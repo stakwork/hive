@@ -3,30 +3,17 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 globalThis.React = React;
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-      <div {...props}>{children}</div>
-    ),
-  },
-}));
+const mockRouterPush = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
-}));
-
-vi.mock("@/lib/utils/slug", () => ({
-  extractRepoNameFromUrl: (url: string) => {
-    const match = url.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/);
-    return match ? match[2].toLowerCase() : null;
-  },
+  useRouter: () => ({ push: mockRouterPush }),
 }));
 
 // Stub ui components with minimal HTML equivalents
@@ -58,30 +45,11 @@ vi.mock("@/components/ui/alert", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-// localStorage stub
-const localStorageMock = (() => {
-  let store: Record<string, string> = {};
-  return {
-    getItem: (k: string) => store[k] ?? null,
-    setItem: (k: string, v: string) => {
-      store[k] = v;
-    },
-    clear: () => {
-      store = {};
-    },
-    removeItem: (k: string) => {
-      delete store[k];
-    },
-  };
-})();
-Object.defineProperty(global, "localStorage", { value: localStorageMock });
-
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("LandingPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorageMock.clear();
   });
 
   afterEach(() => {
@@ -98,8 +66,6 @@ describe("LandingPage", () => {
     render(<LandingPage />);
     expect(screen.getByPlaceholderText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /continue/i })).toBeInTheDocument();
-    expect(screen.queryByText(/Create Hive/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Build Graph/i)).not.toBeInTheDocument();
   });
 
   it("shows error on wrong password response", async () => {
@@ -120,7 +86,23 @@ describe("LandingPage", () => {
     });
   });
 
-  it("reveals two-card layout on correct password", async () => {
+  it("shows generic error on fetch failure", async () => {
+    const LandingPage = await importComponent();
+    mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+    const user = userEvent.setup();
+    render(<LandingPage />);
+
+    await user.type(screen.getByPlaceholderText("Password"), "somepass");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByText("An error occurred. Please try again.")).toBeInTheDocument();
+    });
+  });
+
+  it("calls router.push('/onboarding/workspace') on correct password", async () => {
     const LandingPage = await importComponent();
     mockFetch.mockResolvedValueOnce({
       json: async () => ({ success: true }),
@@ -133,198 +115,29 @@ describe("LandingPage", () => {
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /create hive/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /build graph/i })).toBeInTheDocument();
-    });
-    // Password input should be gone
-    expect(screen.queryByPlaceholderText("Password")).not.toBeInTheDocument();
-  });
-
-  describe("Hive card", () => {
-    async function renderUnlocked() {
-      const LandingPage = await importComponent();
-      mockFetch.mockResolvedValueOnce({
-        json: async () => ({ success: true }),
-      });
-      const user = userEvent.setup();
-      render(<LandingPage />);
-      await user.type(screen.getByPlaceholderText("Password"), "pass");
-      await user.click(screen.getByRole("button", { name: /continue/i }));
-      await waitFor(() => screen.getByRole("button", { name: /create hive/i }));
-      return user;
-    }
-
-    it("Create Hive button is disabled for empty input", async () => {
-      await renderUnlocked();
-      expect(screen.getByRole("button", { name: /create hive/i })).toBeDisabled();
-    });
-
-    it("Create Hive button is disabled for invalid GitHub URL", async () => {
-      const user = await renderUnlocked();
-      const input = screen.getByPlaceholderText("https://github.com/username/repository");
-      await user.type(input, "not-a-github-url");
-      expect(screen.getByRole("button", { name: /create hive/i })).toBeDisabled();
-    });
-
-    it("Create Hive button is enabled for valid GitHub URL", async () => {
-      const user = await renderUnlocked();
-      const input = screen.getByPlaceholderText("https://github.com/username/repository");
-      await user.type(input, "https://github.com/org/repo");
-      expect(screen.getByRole("button", { name: /create hive/i })).not.toBeDisabled();
-    });
-
-    it("clicking Create Hive stores repoUrl and calls Stripe checkout", async () => {
-      const user = await renderUnlocked();
-      // Mock the checkout response
-      mockFetch.mockResolvedValueOnce({
-        json: async () => ({ sessionUrl: "https://checkout.stripe.com/pay/test" }),
-      });
-
-      const input = screen.getByPlaceholderText("https://github.com/username/repository");
-      await user.type(input, "https://github.com/org/my-repo");
-      await user.click(screen.getByRole("button", { name: /create hive/i }));
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          "/api/stripe/checkout",
-          expect.objectContaining({
-            method: "POST",
-            body: JSON.stringify({
-              workspaceName: "my-repo",
-              workspaceSlug: "my-repo",
-              workspaceType: "hive",
-              repositoryUrl: "https://github.com/org/my-repo",
-            }),
-          })
-        );
-        expect(localStorageMock.getItem("repoUrl")).toBe("https://github.com/org/my-repo");
-      });
-    });
-
-    it("checkout body includes workspaceType 'hive' and correct repositoryUrl", async () => {
-      const user = await renderUnlocked();
-      mockFetch.mockResolvedValueOnce({
-        json: async () => ({ sessionUrl: "https://checkout.stripe.com/pay/test" }),
-      });
-
-      const input = screen.getByPlaceholderText("https://github.com/username/repository");
-      await user.type(input, "https://github.com/acme/awesome-app");
-      await user.click(screen.getByRole("button", { name: /create hive/i }));
-
-      await waitFor(() => {
-        const call = mockFetch.mock.calls.find(
-          ([url]) => url === "/api/stripe/checkout"
-        );
-        expect(call).toBeDefined();
-        const body = JSON.parse(call![1].body);
-        expect(body.workspaceType).toBe("hive");
-        expect(body.repositoryUrl).toBe("https://github.com/acme/awesome-app");
-      });
+      expect(mockRouterPush).toHaveBeenCalledWith("/onboarding/workspace");
     });
   });
 
-  describe("GraphMindset card", () => {
-    // renderUnlocked must set the password mock last so per-test mocks
-    // added AFTER this call are consumed in the correct order.
-    async function renderUnlocked() {
-      const LandingPage = await importComponent();
-      const user = userEvent.setup();
-      render(<LandingPage />);
+  it("Continue button is disabled when password is empty", async () => {
+    const LandingPage = await importComponent();
+    render(<LandingPage />);
+    expect(screen.getByRole("button", { name: /continue/i })).toBeDisabled();
+  });
 
-      // Set password mock right before the submit so nothing else consumes it first
-      mockFetch.mockResolvedValueOnce({
-        json: async () => ({ success: true }),
-      });
+  it("shows loading state while verifying", async () => {
+    const LandingPage = await importComponent();
+    // Never resolves — keeps the component in loading state
+    mockFetch.mockImplementationOnce(() => new Promise(() => {}));
 
-      await user.type(screen.getByPlaceholderText("Password"), "pass");
-      await user.click(screen.getByRole("button", { name: /continue/i }));
-      await waitFor(() => screen.getByRole("button", { name: /build graph/i }));
-      return user;
-    }
+    const user = userEvent.setup();
+    render(<LandingPage />);
 
-    it("Build Graph button is disabled when name is empty", async () => {
-      await renderUnlocked();
-      expect(screen.getByRole("button", { name: /build graph/i })).toBeDisabled();
-    });
+    await user.type(screen.getByPlaceholderText("Password"), "somepass");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
 
-    it("Build Graph button is disabled while slug is checking", async () => {
-      const user = await renderUnlocked();
-
-      // Replace setTimeout with a fake so the debounce never fires in real time.
-      // We fake only setTimeout/clearTimeout to avoid breaking waitFor's setInterval.
-      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-      try {
-        // Never resolves — keeps the component in the "checking" state.
-        mockFetch.mockImplementationOnce(() => new Promise(() => {}));
-
-        // fireEvent is synchronous and does not interact with timers.
-        const input = screen.getByPlaceholderText("Workspace name");
-        fireEvent.change(input, { target: { value: "my-workspace" } });
-
-        // Debounce hasn't fired yet (timer is fake) → button still disabled.
-        expect(screen.getByRole("button", { name: /build graph/i })).toBeDisabled();
-      } finally {
-        // Discard the pending fake timer without leaking it into real time.
-        vi.useRealTimers();
-      }
-    });
-
-    it("Build Graph button is disabled when slug is unavailable", async () => {
-      const user = await renderUnlocked();
-      mockFetch.mockResolvedValueOnce({
-        json: async () => ({ data: { isAvailable: false, slug: "taken-name", message: "Already taken" } }),
-      });
-      const input = screen.getByPlaceholderText("Workspace name");
-      await user.type(input, "taken-name");
-
-      await waitFor(() => {
-        expect(screen.getByText("Already taken")).toBeInTheDocument();
-      });
-      expect(screen.getByRole("button", { name: /build graph/i })).toBeDisabled();
-    });
-
-    it("Build Graph button is enabled when slug is available", async () => {
-      const user = await renderUnlocked();
-      mockFetch.mockResolvedValueOnce({
-        json: async () => ({ data: { isAvailable: true, slug: "my-workspace" } }),
-      });
-      const input = screen.getByPlaceholderText("Workspace name");
-      await user.type(input, "my-workspace");
-
-      await waitFor(() => {
-        expect(screen.getByText(/name is available/i)).toBeInTheDocument();
-      });
-      expect(screen.getByRole("button", { name: /build graph/i })).not.toBeDisabled();
-    });
-
-    it("clicking Build Graph stores name and calls Stripe checkout", async () => {
-      const user = await renderUnlocked();
-      // slug availability
-      mockFetch.mockResolvedValueOnce({
-        json: async () => ({ data: { isAvailable: true, slug: "my-graph" } }),
-      });
-      // stripe checkout
-      mockFetch.mockResolvedValueOnce({
-        json: async () => ({ sessionUrl: "https://checkout.stripe.com/pay/gm-test" }),
-      });
-
-      const input = screen.getByPlaceholderText("Workspace name");
-      await user.type(input, "my-graph");
-
-      await waitFor(() => screen.getByText(/name is available/i));
-
-      await user.click(screen.getByRole("button", { name: /build graph/i }));
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          "/api/stripe/checkout",
-          expect.objectContaining({
-            method: "POST",
-            body: JSON.stringify({ workspaceName: "my-graph", workspaceSlug: "my-graph" }),
-          })
-        );
-        expect(localStorageMock.getItem("graphMindsetWorkspaceName")).toBe("my-graph");
-      });
+    await waitFor(() => {
+      expect(screen.getByText(/verifying/i)).toBeInTheDocument();
     });
   });
 });
