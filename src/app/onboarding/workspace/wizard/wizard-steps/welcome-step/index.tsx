@@ -62,7 +62,17 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
         if (data?.payment) {
           setIsClaiming(false);
-          router.push("/onboarding/graphmindset");
+          const wType = data.workspaceType;
+          if (wType === "hive") {
+            const repoUrl = data.repositoryUrl || localStorage.getItem("repoUrl") || "";
+            if (repoUrl) {
+              createWorkspaceAutomatically(repoUrl);
+            } else {
+              setClaimError("No repository URL found. Please enter your GitHub repository URL below.");
+            }
+          } else {
+            router.push("/onboarding/graphmindset");
+          }
         } else {
           setClaimError("Failed to confirm payment. Please contact support.");
           setIsClaiming(false);
@@ -86,7 +96,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         claimPayment(stripeSessionId || undefined);
       } else {
         // Not signed in — redirect to sign-in; cookie carries the session ID
-        const returnUrl = `/onboarding/workspace?payment=success${stripeSessionId ? `&session_id=${stripeSessionId}` : ""}`;
+        const returnUrl = `/onboarding/workspace?payment=success${stripeSessionId ? `&session_id=${stripeSessionId}` : ""}&workspace_type=${searchParams.get("workspace_type") ?? ""}`;
         router.push(`/auth/signin?redirect=${encodeURIComponent(returnUrl)}`);
       }
     } else if (paymentState === "cancelled") {

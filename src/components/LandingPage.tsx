@@ -128,7 +128,12 @@ function HiveCard() {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceName: slug, workspaceSlug: slug }),
+        body: JSON.stringify({
+          workspaceName: slug,
+          workspaceSlug: slug,
+          workspaceType: "hive",
+          repositoryUrl: repoUrl.trim(),
+        }),
       });
       const { sessionUrl } = await res.json();
       window.location.href = sessionUrl;
