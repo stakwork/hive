@@ -25,7 +25,7 @@ export default function WorkspaceWizard() {
         <div className="absolute -top-[40%] -left-[10%] w-[70%] h-[70%] bg-blue-500/5 blur-[120px] rounded-full" />
         <div className="absolute -bottom-[40%] -right-[10%] w-[70%] h-[70%] bg-purple-500/5 blur-[120px] rounded-full" />
       </div>
-      <main className="relative max-w-5xl mx-auto px-6 py-24 md:py-32">
+      <main className="relative max-w-5xl mx-auto px-6 py-12 md:py-16">
         {/* Animated gradient hero header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

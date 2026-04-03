@@ -32,9 +32,9 @@ vi.mock("@/components/onboarding/SwarmSetupLoader", () => ({
 vi.mock("@/components/onboarding/GraphMindsetCard", () => ({
   GraphMindsetCard: () => (
     <div>
-      <h3>GraphMindset</h3>
-      <button disabled>Create my graph</button>
-      <input placeholder="e.g., my-api-graph" />
+      <h2>GraphMindset</h2>
+      <button disabled>Build Graph</button>
+      <input placeholder="Workspace name" />
     </div>
   ),
 }));
@@ -79,20 +79,20 @@ describe("WelcomeStep - Sign In button visibility", () => {
     mockUseSearchParams.mockReturnValue({ get: () => null });
   });
 
-  it("shows 'Sign In to existing workspace' button when user has no session", () => {
-    mockUseSession.mockReturnValue({ data: null });
+  it("shows 'Sign in to existing workspace' link when user has no session", () => {
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
     render(<WelcomeStep onNext={vi.fn()} />);
     expect(screen.getByRole("button", { name: /sign in to existing workspace/i })).toBeInTheDocument();
   });
 
-  it("does NOT show 'Sign In to existing workspace' button when user is signed in", () => {
-    mockUseSession.mockReturnValue({ data: { user: { name: "Test User", id: "user-1" } } });
+  it("does NOT show 'Sign in to existing workspace' link when user is signed in", () => {
+    mockUseSession.mockReturnValue({ data: { user: { name: "Test User", id: "user-1" } }, status: "authenticated" });
     render(<WelcomeStep onNext={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /sign in to existing workspace/i })).not.toBeInTheDocument();
   });
 
-  it("navigates to /auth/signin?redirect=/workspaces when Sign In button is clicked", () => {
-    mockUseSession.mockReturnValue({ data: null });
+  it("navigates to /auth/signin?redirect=/workspaces when Sign In link is clicked", () => {
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
     render(<WelcomeStep onNext={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /sign in to existing workspace/i }));
     expect(mockRouterPush).toHaveBeenCalledWith("/auth/signin?redirect=/workspaces");
@@ -104,28 +104,28 @@ describe("WelcomeStep - GraphMindsetCard integration", () => {
     vi.clearAllMocks();
     localStorageMock.clear();
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
-    mockUseSession.mockReturnValue({ data: null });
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
     mockUseSearchParams.mockReturnValue({ get: () => null });
   });
 
   it("renders GraphMindsetCard alongside the Hive card", () => {
     render(<WelcomeStep onNext={vi.fn()} />);
     expect(screen.getByText("GraphMindset")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /create my graph/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /build graph/i })).toBeInTheDocument();
   });
 
-  it("'Create my graph' button is disabled regardless of input state", () => {
+  it("'Build Graph' button is disabled regardless of input state", () => {
     render(<WelcomeStep onNext={vi.fn()} />);
-    const button = screen.getByRole("button", { name: /create my graph/i });
+    const button = screen.getByRole("button", { name: /build graph/i });
     expect(button).toBeDisabled();
   });
 
   it("workspace name input is present and accepts input without errors", () => {
     render(<WelcomeStep onNext={vi.fn()} />);
-    const input = screen.getByPlaceholderText("e.g., my-api-graph") as HTMLInputElement;
+    const input = screen.getByPlaceholderText("Workspace name") as HTMLInputElement;
     expect(input).toBeInTheDocument();
     fireEvent.change(input, { target: { value: "test-workspace" } });
-    expect(screen.getByRole("button", { name: /create my graph/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /build graph/i })).toBeDisabled();
   });
 });
 
@@ -135,7 +135,7 @@ describe("WelcomeStep - Hive card rendering", () => {
     localStorageMock.clear();
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
     mockUseSearchParams.mockReturnValue({ get: () => null });
-    mockUseSession.mockReturnValue({ data: null });
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
   });
 
   it("renders the Hive card with title and Create Hive button", () => {
@@ -167,7 +167,7 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
     vi.clearAllMocks();
     localStorageMock.clear();
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
-    mockUseSession.mockReturnValue({ data: { user: { name: "Test User", id: "user-1" } } });
+    mockUseSession.mockReturnValue({ data: { user: { name: "Test User", id: "user-1" } }, status: "authenticated" });
   });
 
   it("calls createWorkspaceAutomatically with repositoryUrl when workspaceType is 'hive'", async () => {
@@ -303,7 +303,7 @@ describe("WelcomeStep - Go to my workspace button", () => {
   });
 
   it("shows button when signed-in user has workspaces", () => {
-    mockUseSession.mockReturnValue({ data: { user: { name: "Test User" } } });
+    mockUseSession.mockReturnValue({ data: { user: { name: "Test User" } }, status: "authenticated" });
     mockUseWorkspace.mockReturnValue({
       refreshWorkspaces: vi.fn(),
       workspaces: [{ slug: "my-workspace", id: "1" }],
@@ -314,7 +314,7 @@ describe("WelcomeStep - Go to my workspace button", () => {
   });
 
   it("does not show button when signed-in user has no workspaces", () => {
-    mockUseSession.mockReturnValue({ data: { user: { name: "Test User" } } });
+    mockUseSession.mockReturnValue({ data: { user: { name: "Test User" } }, status: "authenticated" });
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
 
     render(<WelcomeStep onNext={vi.fn()} />);
@@ -322,7 +322,7 @@ describe("WelcomeStep - Go to my workspace button", () => {
   });
 
   it("does not show button when user is not signed in", () => {
-    mockUseSession.mockReturnValue({ data: null });
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
     mockUseWorkspace.mockReturnValue({
       refreshWorkspaces: vi.fn(),
       workspaces: [{ slug: "my-workspace", id: "1" }],
@@ -333,7 +333,7 @@ describe("WelcomeStep - Go to my workspace button", () => {
   });
 
   it("navigates to / when button is clicked", () => {
-    mockUseSession.mockReturnValue({ data: { user: { name: "Test User" } } });
+    mockUseSession.mockReturnValue({ data: { user: { name: "Test User" } }, status: "authenticated" });
     mockUseWorkspace.mockReturnValue({
       refreshWorkspaces: vi.fn(),
       workspaces: [{ slug: "my-workspace", id: "1" }],
@@ -350,7 +350,7 @@ describe("WelcomeStep - Cancel banner", () => {
     vi.clearAllMocks();
     localStorageMock.clear();
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
-    mockUseSession.mockReturnValue({ data: null });
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
   });
 
   it("shows cancel banner when payment=cancelled is in URL", () => {
