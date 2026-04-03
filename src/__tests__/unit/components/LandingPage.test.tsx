@@ -3,7 +3,7 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 globalThis.React = React;
@@ -223,19 +223,30 @@ describe("LandingPage", () => {
 
     it("Build Graph button is disabled while slug is checking", async () => {
       const user = await renderUnlocked();
-      // Never resolves so it stays in checking state
-      mockFetch.mockImplementationOnce(() => new Promise(() => {}));
-      const input = screen.getByPlaceholderText("Workspace name");
-      await user.type(input, "my-workspace");
 
-      // During debounce / checking the button stays disabled
-      expect(screen.getByRole("button", { name: /build graph/i })).toBeDisabled();
+      // Replace setTimeout with a fake so the debounce never fires in real time.
+      // We fake only setTimeout/clearTimeout to avoid breaking waitFor's setInterval.
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        // Never resolves — keeps the component in the "checking" state.
+        mockFetch.mockImplementationOnce(() => new Promise(() => {}));
+
+        // fireEvent is synchronous and does not interact with timers.
+        const input = screen.getByPlaceholderText("Workspace name");
+        fireEvent.change(input, { target: { value: "my-workspace" } });
+
+        // Debounce hasn't fired yet (timer is fake) → button still disabled.
+        expect(screen.getByRole("button", { name: /build graph/i })).toBeDisabled();
+      } finally {
+        // Discard the pending fake timer without leaking it into real time.
+        vi.useRealTimers();
+      }
     });
 
     it("Build Graph button is disabled when slug is unavailable", async () => {
       const user = await renderUnlocked();
       mockFetch.mockResolvedValueOnce({
-        json: async () => ({ available: false, message: "Already taken" }),
+        json: async () => ({ data: { isAvailable: false, slug: "taken-name", message: "Already taken" } }),
       });
       const input = screen.getByPlaceholderText("Workspace name");
       await user.type(input, "taken-name");
@@ -249,7 +260,7 @@ describe("LandingPage", () => {
     it("Build Graph button is enabled when slug is available", async () => {
       const user = await renderUnlocked();
       mockFetch.mockResolvedValueOnce({
-        json: async () => ({ available: true }),
+        json: async () => ({ data: { isAvailable: true, slug: "my-workspace" } }),
       });
       const input = screen.getByPlaceholderText("Workspace name");
       await user.type(input, "my-workspace");
@@ -264,7 +275,7 @@ describe("LandingPage", () => {
       const user = await renderUnlocked();
       // slug availability
       mockFetch.mockResolvedValueOnce({
-        json: async () => ({ available: true }),
+        json: async () => ({ data: { isAvailable: true, slug: "my-graph" } }),
       });
       // stripe checkout
       mockFetch.mockResolvedValueOnce({
