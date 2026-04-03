@@ -18,20 +18,26 @@ interface WorkflowContext {
 }
 
 /**
- * Attempts an automatic single retry for a workflow_editor task that has entered a terminal state.
+ * Core execution logic for retrying a workflow_editor task.
+ * Recovers workflow context from DB artifacts, finds the last USER message,
+ * calls Stakwork, updates the task to IN_PROGRESS, creates a WORKFLOW artifact,
+ * and triggers Pusher.
  *
- * Returns `true` if a retry was successfully fired (task stays IN_PROGRESS, Pusher notified).
- * Returns `false` if the retry was skipped (wrong mode, already retried, no context) or failed
- * (Stakwork API error) — caller should proceed with the normal terminal-state flow.
+ * Returns `true` on success, `false` on any failure (no context, no user message,
+ * Stakwork error, etc.).
+ *
+ * Does NOT check or modify `haltRetryAttempted` — that guard lives in
+ * `retryWorkflowEditorTask` (auto-retry path only).
  */
-export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> {
+export async function executeWorkflowEditorRetry(
+  taskId: string,
+  userId: string,
+): Promise<boolean> {
   // Fetch task with all data needed to reconstruct the workflow context
   const task = await db.task.findFirst({
     where: { id: taskId, deleted: false },
     select: {
       id: true,
-      mode: true,
-      haltRetryAttempted: true,
       createdById: true,
       workspaceId: true,
       workspace: {
@@ -67,10 +73,6 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
 
   if (!task) return false;
 
-  // Only retry workflow_editor tasks that haven't already been retried
-  if (task.mode !== "workflow_editor") return false;
-  if (task.haltRetryAttempted) return false;
-
   // Recover workflow context by scanning WORKFLOW artifacts oldest→newest (last match wins)
   const workflowContext = recoverWorkflowContext(task.chatMessages);
   if (!workflowContext) return false;
@@ -81,12 +83,6 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
     .find((m) => m.role === ChatRole.USER);
 
   if (!lastUserMessage?.message) return false;
-
-  // Set haltRetryAttempted = true BEFORE calling Stakwork (race-condition guard)
-  await db.task.update({
-    where: { id: taskId },
-    data: { haltRetryAttempted: true },
-  });
 
   try {
     // Get GitHub credentials using the task creator
@@ -106,7 +102,7 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
     const webhookUrl = `${appBaseUrl}/api/chat/response`;
     const workflowWebhookUrl = `${appBaseUrl}/api/stakwork/webhook?task_id=${taskId}`;
 
-    // Fetch full chat history (matches what the route sends, excluding the new user message)
+    // Fetch full chat history (excluding the new user message)
     const history = await fetchChatHistory(taskId);
 
     const vars = {
@@ -122,7 +118,7 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
         workflow_version_id: workflowContext.workflowVersionId,
       }),
 
-      // No step-specific context on retry — send empty values (same as retry button)
+      // No step-specific context on retry — send empty values
       workflow_step_name: "",
       step_unique_id: "",
       step_display_name: "",
@@ -164,7 +160,6 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
     });
 
     if (!response.ok) {
-      // Leave haltRetryAttempted = true; caller applies terminal status
       return false;
     }
 
@@ -174,7 +169,7 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
       return false;
     }
 
-    // Retry succeeded — reset task to IN_PROGRESS and clear the retry flag
+    // Retry succeeded — reset task to IN_PROGRESS and clear the halt-retry flag
     await db.task.update({
       where: { id: taskId },
       data: {
@@ -224,9 +219,42 @@ export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> 
     return true;
   } catch (error) {
     console.error("[workflow-editor-retry] Unexpected error during retry:", error);
-    // haltRetryAttempted remains true — caller applies terminal status
     return false;
   }
+}
+
+/**
+ * Attempts an automatic single retry for a workflow_editor task that has entered a terminal state.
+ *
+ * Returns `true` if a retry was successfully fired (task stays IN_PROGRESS, Pusher notified).
+ * Returns `false` if the retry was skipped (wrong mode, already retried, no context) or failed
+ * (Stakwork API error) — caller should proceed with the normal terminal-state flow.
+ */
+export async function retryWorkflowEditorTask(taskId: string): Promise<boolean> {
+  // Fetch task with minimal fields needed for guard checks
+  const task = await db.task.findFirst({
+    where: { id: taskId, deleted: false },
+    select: {
+      id: true,
+      mode: true,
+      haltRetryAttempted: true,
+      createdById: true,
+    },
+  });
+
+  if (!task) return false;
+
+  // Only retry workflow_editor tasks that haven't already been retried
+  if (task.mode !== "workflow_editor") return false;
+  if (task.haltRetryAttempted) return false;
+
+  // Set haltRetryAttempted = true BEFORE calling Stakwork (race-condition guard)
+  await db.task.update({
+    where: { id: taskId },
+    data: { haltRetryAttempted: true },
+  });
+
+  return executeWorkflowEditorRetry(taskId, task.createdById);
 }
 
 /**
