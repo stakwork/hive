@@ -18,7 +18,7 @@ import {
   Zap,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 
 const GITHUB_URL_REGEX = /^https:\/\/github\.com\/[^/]+\/[^/]+(\/.*)?$/;
 
@@ -234,49 +234,48 @@ function HiveCard() {
 
 // ─── GraphMindset Card ─────────────────────────────────────────────────────────
 
-type SlugStatus = "idle" | "checking" | "available" | "unavailable";
-
 function GraphMindsetCard() {
   const [name, setName] = useState("");
-  const [slugStatus, setSlugStatus] = useState<SlugStatus>("idle");
-  const [slugMessage, setSlugMessage] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [isAvailable, setIsAvailable] = useState(false);
+  const [nameError, setNameError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const checkAvailability = useCallback(async (value: string) => {
-    if (!value.trim()) {
-      setSlugStatus("idle");
-      setSlugMessage(null);
-      return;
-    }
-    setSlugStatus("checking");
-    setSlugMessage(null);
-    try {
-      const res = await fetch(`/api/workspaces/slug-availability?slug=${encodeURIComponent(value.trim())}`);
-      const data = await res.json();
-      if (data.available) {
-        setSlugStatus("available");
-        setSlugMessage("Name is available ✓");
-      } else {
-        setSlugStatus("unavailable");
-        setSlugMessage(data.message || "This name is already taken.");
-      }
-    } catch {
-      setSlugStatus("unavailable");
-      setSlugMessage("Could not check availability. Please try again.");
-    }
-  }, []);
+  const handleNameChange = (value: string) => {
+    setName(value);
+    setIsAvailable(false);
+    setNameError("");
 
-  useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => checkAvailability(name), 500);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [name, checkAvailability]);
 
-  const canSubmit = name.trim().length > 0 && slugStatus === "available" && !isLoading;
+    if (!value.trim()) return;
+
+    setIsValidating(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/graphmindset/slug-availability?slug=${encodeURIComponent(value.trim())}`
+        );
+        const json = await res.json();
+        if (json.data.isAvailable) {
+          setIsAvailable(true);
+          setNameError("");
+        } else {
+          setIsAvailable(false);
+          setNameError(json.data.message || "This name is already taken.");
+        }
+      } catch {
+        setIsAvailable(false);
+        setNameError("Could not check availability. Please try again.");
+      } finally {
+        setIsValidating(false);
+      }
+    }, 500);
+  };
+
+  const canSubmit = name.trim().length > 0 && isAvailable && !isValidating && !isLoading;
 
   const handleBuild = async () => {
     if (!canSubmit) return;
@@ -348,20 +347,20 @@ function GraphMindsetCard() {
           type="text"
           placeholder="Workspace name"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => handleNameChange(e.target.value)}
           disabled={isLoading}
           className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-purple-500"
         />
-        {slugStatus === "checking" && (
+        {isValidating && (
           <p className="text-zinc-400 text-xs flex items-center gap-1">
-            <Loader2 className="w-3 h-3 animate-spin" /> Checking…
+            <Loader2 className="w-3 h-3 animate-spin" /> Checking availability…
           </p>
         )}
-        {slugStatus === "available" && (
-          <p className="text-green-400 text-xs">{slugMessage}</p>
+        {!isValidating && isAvailable && !nameError && (
+          <p className="text-green-400 text-xs">Name is available ✓</p>
         )}
-        {slugStatus === "unavailable" && (
-          <p className="text-red-400 text-xs">{slugMessage}</p>
+        {!isValidating && nameError && (
+          <p className="text-red-400 text-xs">{nameError}</p>
         )}
       </div>
 
