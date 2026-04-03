@@ -193,33 +193,36 @@ export async function POST(request: NextRequest) {
 
     console.log(`[SWARM_CREATE] Generated password length: ${swarmPassword.length}, instance type: ${instance_type}`);
 
-    // For graph_mindset workspaces: create Stakwork customer and build env vars
+    // For graph_mindset workspaces: create Stakwork customer and build env vars (fatal on failure)
     let graphmindsetEnv: Record<string, string> = {};
     if (workspace_type === "graph_mindset") {
-      try {
-        console.log(`[SWARM_CREATE] Creating Stakwork customer for graph_mindset workspace ${workspaceId}`);
-        const pubkey = (session.user as { lightningPubkey?: string }).lightningPubkey;
-        const customerResponse = await stakworkService().createCustomer(workspaceId);
-        const customerData =
-          customerResponse && typeof customerResponse === "object" && "data" in customerResponse
-            ? (customerResponse as { data?: { id?: number | string; token?: string; workflow_id?: number | null } }).data
-            : undefined;
+      console.log(`[SWARM_CREATE] Creating Stakwork customer for graph_mindset workspace ${workspaceId}`);
+      const pubkey = (session.user as { lightningPubkey?: string }).lightningPubkey;
+      const customerResponse = await stakworkService().createCustomer(workspaceId);
+      const customerData =
+        customerResponse && typeof customerResponse === "object" && "data" in customerResponse
+          ? (customerResponse as { data?: { id?: number | string; token?: string; workflow_id?: number | null } }).data
+          : undefined;
 
-        const customerId = customerData?.id != null ? String(customerData.id) : undefined;
-        const token = customerData?.token;
-        const workflowId = customerData?.workflow_id ?? null;
+      const customerId = customerData?.id != null ? String(customerData.id) : undefined;
+      const token = customerData?.token;
+      const workflowId = customerData?.workflow_id ?? null;
 
-        graphmindsetEnv = {
-          ...(token ? { STAKWORK_ADD_NODE_TOKEN: token, STAKWORK_RADAR_REQUEST_TOKEN: token } : {}),
-          ...(pubkey ? { OWNER_PUBKEY: pubkey } : {}),
-          ...(customerId ? { STAKWORK_CUSTOMER_ID: customerId } : {}),
-          ...(workflowId ? { GRAPHMINDSET_STAKWORK_WORKFLOW_ID: String(workflowId) } : {}),
-        };
-        console.log(`[SWARM_CREATE] Stakwork customer created for graph_mindset - customerId: ${customerId}, workflowId: ${workflowId}`);
-      } catch (err) {
-        console.error(`[SWARM_CREATE] Failed to create Stakwork customer for graph_mindset:`, err);
-        // Non-fatal: proceed without Stakwork env vars
+      if (!token || !customerId) {
+        console.error(`[SWARM_CREATE] Stakwork customer creation failed — missing token or customerId`);
+        // Mark the placeholder as failed before returning
+        await db.swarm.update({ where: { id: result.swarm.id }, data: { status: SwarmStatus.FAILED } });
+        return NextResponse.json({ success: false, message: "Failed to create Stakwork customer" }, { status: 500 });
       }
+
+      graphmindsetEnv = {
+        STAKWORK_ADD_NODE_TOKEN: token,
+        STAKWORK_RADAR_REQUEST_TOKEN: token,
+        ...(pubkey ? { OWNER_PUBKEY: pubkey } : {}),
+        STAKWORK_CUSTOMER_ID: customerId,
+        ...(workflowId ? { GRAPHMINDSET_STAKWORK_WORKFLOW_ID: String(workflowId) } : {}),
+      };
+      console.log(`[SWARM_CREATE] Stakwork customer created for graph_mindset - customerId: ${customerId}, workflowId: ${workflowId}`);
     }
 
     // Merge caller-supplied env with graphmindset env (graphmindset takes precedence)
