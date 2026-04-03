@@ -296,8 +296,8 @@ export async function startTaskWorkflow(params: {
     throw new Error("Task not found");
   }
 
-  // Build message from task title and description
-  const message = `${task.title}\n\n${task.description || ""}`.trim();
+  // Build message from task title and description (may be overridden by last USER message when includeHistory is true)
+  let message = `${task.title}\n\n${task.description || ""}`.trim();
 
   // Build feature context if task is linked to a feature and phase
   let featureContext;
@@ -315,7 +315,20 @@ export async function startTaskWorkflow(params: {
   if (includeHistory) {
     try {
       const fetchedHistory = await fetchChatHistory(taskId);
-      history = fetchedHistory || [];
+      const allHistory = fetchedHistory || [];
+
+      // Find the last USER message to use as the outgoing message
+      const lastUserMessage = [...allHistory].reverse().find(
+        (msg) => (msg.role as string) === "USER"
+      ) as (Record<string, unknown> & { id: string; message: string }) | undefined;
+
+      if (lastUserMessage) {
+        // Use last user message text as the outgoing message
+        message = lastUserMessage.message;
+        // Re-fetch history excluding the last user message (it will be re-sent as the new message)
+        history = (await fetchChatHistory(taskId, lastUserMessage.id)) || [];
+      }
+      // If no USER message found, fall back to task.title + task.description with empty history
     } catch (error) {
       console.error("Error fetching chat history:", error);
       // Continue without history if it fails

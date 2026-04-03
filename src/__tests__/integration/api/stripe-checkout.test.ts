@@ -35,6 +35,7 @@ describe('Stripe Checkout API Integration Tests', () => {
         OR: [
           { stripeSessionId: 'cs_test_mock_session_id' },
           { workspaceSlug: 'my-graph' },
+          { workspaceSlug: 'my-hive' },
         ],
       },
     });
@@ -89,6 +90,50 @@ describe('Stripe Checkout API Integration Tests', () => {
       expect(payment!.workspaceSlug).toBe('my-graph');
       expect(payment!.workspaceId).toBeNull();
       expect(payment!.password).toBeTruthy();
+    });
+
+    test('forwards workspaceType and repositoryUrl into Stripe session metadata when provided', async () => {
+      const req = createPostRequest('/api/stripe/checkout', {
+        workspaceName: 'My Hive',
+        workspaceSlug: 'my-hive',
+        workspaceType: 'hive',
+        repositoryUrl: 'https://github.com/org/my-repo',
+      });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+
+      // Use the client instance the route actually received (factory returns a new object per call)
+      const stripe = vi.mocked(getStripeClient).mock.results[0].value;
+      expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            workspaceType: 'hive',
+            repositoryUrl: 'https://github.com/org/my-repo',
+          }),
+        })
+      );
+    });
+
+    test('workspaceType and repositoryUrl default to empty string when not provided', async () => {
+      const req = createPostRequest('/api/stripe/checkout', {
+        workspaceName: 'My Graph',
+        workspaceSlug: 'my-graph',
+      });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+
+      // Use the client instance the route actually received (factory returns a new object per call)
+      const stripe = vi.mocked(getStripeClient).mock.results[0].value;
+      expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            workspaceType: '',
+            repositoryUrl: '',
+          }),
+        })
+      );
     });
 
     test('creates a PENDING FiatPayment with stripe_failed_<uuid> when Stripe is down, still returns 500', async () => {

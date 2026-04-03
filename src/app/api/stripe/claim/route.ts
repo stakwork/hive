@@ -31,19 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No payment session found' }, { status: 400 });
   }
 
-  // Look up existing payment record (created at checkout time)
-  const existing = await db.fiatPayment.findUnique({
-    where: { stripeSessionId: sessionId },
-  });
-
-  // Idempotency: if already claimed by this user, return it
-  if (existing?.status === 'PAID' && existing?.userId === userId) {
-    const res = NextResponse.json({ payment: existing });
-    res.cookies.delete('stripe_session_id');
-    return res;
-  }
-
-  // Retrieve and validate the Stripe session with Stripe API
+  // Retrieve and validate the Stripe session first (needed for metadata on all paths)
   const stripe = getStripeClient();
   let stripeSession;
   try {
@@ -51,6 +39,21 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     logger.error('Failed to retrieve Stripe session', 'stripe-claim', { err });
     return NextResponse.json({ error: 'Invalid payment session' }, { status: 400 });
+  }
+
+  const workspaceType = stripeSession.metadata?.workspaceType || null;
+  const repositoryUrl = stripeSession.metadata?.repositoryUrl || null;
+
+  // Look up existing payment record (created at checkout time)
+  const existing = await db.fiatPayment.findUnique({
+    where: { stripeSessionId: sessionId },
+  });
+
+  // Idempotency: if already claimed by this user, return it
+  if (existing?.status === 'PAID' && existing?.userId === userId) {
+    const res = NextResponse.json({ payment: existing, workspaceType, repositoryUrl });
+    res.cookies.delete('stripe_session_id');
+    return res;
   }
 
   if (stripeSession.payment_status !== 'paid') {
@@ -83,7 +86,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const res = NextResponse.json({ payment });
+  const res = NextResponse.json({ payment, workspaceType, repositoryUrl });
   res.cookies.delete('stripe_session_id');
   return res;
 }

@@ -189,10 +189,36 @@ describe("LandingPage", () => {
           "/api/stripe/checkout",
           expect.objectContaining({
             method: "POST",
-            body: JSON.stringify({ workspaceName: "my-repo", workspaceSlug: "my-repo" }),
+            body: JSON.stringify({
+              workspaceName: "my-repo",
+              workspaceSlug: "my-repo",
+              workspaceType: "hive",
+              repositoryUrl: "https://github.com/org/my-repo",
+            }),
           })
         );
         expect(localStorageMock.getItem("repoUrl")).toBe("https://github.com/org/my-repo");
+      });
+    });
+
+    it("checkout body includes workspaceType 'hive' and correct repositoryUrl", async () => {
+      const user = await renderUnlocked();
+      mockFetch.mockResolvedValueOnce({
+        json: async () => ({ sessionUrl: "https://checkout.stripe.com/pay/test" }),
+      });
+
+      const input = screen.getByPlaceholderText("https://github.com/username/repository");
+      await user.type(input, "https://github.com/acme/awesome-app");
+      await user.click(screen.getByRole("button", { name: /create hive/i }));
+
+      await waitFor(() => {
+        const call = mockFetch.mock.calls.find(
+          ([url]) => url === "/api/stripe/checkout"
+        );
+        expect(call).toBeDefined();
+        const body = JSON.parse(call![1].body);
+        expect(body.workspaceType).toBe("hive");
+        expect(body.repositoryUrl).toBe("https://github.com/acme/awesome-app");
       });
     });
   });

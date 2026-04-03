@@ -39,12 +39,13 @@ function buildClaimRequest(body: object): NextRequest {
 function buildPaidStripeSession(
   sessionId: string,
   paymentIntentId = 'pi_test_intent_123',
+  extraMetadata: Record<string, string> = {},
 ) {
   return {
     id: sessionId,
     payment_status: 'paid',
     payment_intent: paymentIntentId,
-    metadata: { workspaceName: 'Test Workspace', workspaceSlug: 'test-workspace' },
+    metadata: { workspaceName: 'Test Workspace', workspaceSlug: 'test-workspace', ...extraMetadata },
   };
 }
 
@@ -174,8 +175,8 @@ describe('Stripe Claim Route Integration Tests', () => {
       const allPayments = await db.fiatPayment.findMany({ where: { stripeSessionId: sessionId } });
       expect(allPayments).toHaveLength(1);
 
-      // Stripe was only called once (idempotency skips it on second call)
-      expect(mockRetrieveSession).toHaveBeenCalledTimes(1);
+      // Stripe is called on every request (needed to read metadata for response)
+      expect(mockRetrieveSession).toHaveBeenCalledTimes(2);
     });
 
     test('updates existing PENDING FiatPayment to PAID when checkout record already exists', async () => {
@@ -210,6 +211,49 @@ describe('Stripe Claim Route Integration Tests', () => {
       // No duplicates
       const allPayments = await db.fiatPayment.findMany({ where: { stripeSessionId: sessionId } });
       expect(allPayments).toHaveLength(1);
+    });
+
+    test('returns workspaceType and repositoryUrl from Stripe metadata when present (hive flow)', async () => {
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email, name: testUser.name },
+      } as any);
+
+      const sessionId = `cs_test_claim_hive_${Date.now()}`;
+      mockRetrieveSession.mockResolvedValue(
+        buildPaidStripeSession(sessionId, 'pi_test_hive_123', {
+          workspaceType: 'hive',
+          repositoryUrl: 'https://github.com/org/my-repo',
+        })
+      );
+
+      const req = buildClaimRequest({ sessionId });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.payment).toBeDefined();
+      expect(data.workspaceType).toBe('hive');
+      expect(data.repositoryUrl).toBe('https://github.com/org/my-repo');
+    });
+
+    test('returns null for workspaceType and repositoryUrl when absent (GraphMindset / legacy sessions)', async () => {
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email, name: testUser.name },
+      } as any);
+
+      const sessionId = `cs_test_claim_gm_${Date.now()}`;
+      mockRetrieveSession.mockResolvedValue(
+        buildPaidStripeSession(sessionId, 'pi_test_gm_123')
+      );
+
+      const req = buildClaimRequest({ sessionId });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.payment).toBeDefined();
+      expect(data.workspaceType).toBeNull();
+      expect(data.repositoryUrl).toBeNull();
     });
   });
 });
