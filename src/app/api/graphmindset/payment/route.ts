@@ -33,6 +33,7 @@ export async function GET() {
         workspaceName: payment.workspaceName,
         workspaceSlug: payment.workspaceSlug,
         status: payment.status,
+        type: 'fiat' as const,
       },
     });
   }
@@ -57,6 +58,7 @@ export async function GET() {
       workspaceName: lightningPayment.workspaceName,
       workspaceSlug: lightningPayment.workspaceSlug,
       status: lightningPayment.status,
+      type: 'lightning' as const,
     },
   });
 }
