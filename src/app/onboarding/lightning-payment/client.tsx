@@ -68,7 +68,7 @@ export function LightningPaymentClient() {
       setIsLoadingInvoice(false);
       setIsPaid(true);
       if (session?.user) {
-        router.push("/onboarding/workspace");
+        router.push("/onboarding/graphmindset");
       }
       return;
     }
@@ -121,7 +121,7 @@ export function LightningPaymentClient() {
     if (!session?.user) return;
     const paymentState = searchParams.get("payment");
     if (paymentState === "success") {
-      router.push("/onboarding/workspace");
+      router.push("/onboarding/graphmindset");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user]);

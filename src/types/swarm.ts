@@ -1,10 +1,11 @@
 // Swarm-specific types and interfaces
 
 export interface CreateSwarmRequest {
-  // name: string;
   instance_type: string;
   password?: string;
-
+  name?: string;
+  vanity_address?: string;
+  workspace_type?: string;
 }
 
 export interface StopSwarmRequest {

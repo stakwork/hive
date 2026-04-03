@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { workspaceId, repositoryUrl, repositoryName, repositoryDefaultBranch } = body;
+    const { workspaceId, repositoryUrl, repositoryName, repositoryDefaultBranch, vanity_address, workspace_type } = body;
 
     console.log(`[SWARM_CREATE] Starting swarm creation for workspace: ${workspaceId}, repository: ${repositoryUrl}, user: ${session.user.id}`);
 
@@ -200,6 +200,8 @@ export async function POST(request: NextRequest) {
       const apiResponse = await swarmService.createSwarm({
         instance_type,
         password: swarmPassword,
+        ...(vanity_address ? { vanity_address } : {}),
+        ...(workspace_type ? { workspace_type } : {}),
       });
 
       const apiCallDuration = Date.now() - startTime;
