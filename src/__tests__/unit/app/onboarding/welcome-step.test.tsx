@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { WelcomeStep } from "@/app/onboarding/workspace/wizard/wizard-steps/welcome-step";
 
 const mockRouterPush = vi.fn();
@@ -39,6 +39,14 @@ vi.mock("@/components/onboarding/GraphMindsetCard", () => ({
   ),
 }));
 
+vi.mock("framer-motion", () => ({
+  motion: {
+    div: ({ children, ...props }: React.PropsWithChildren<React.HTMLAttributes<HTMLDivElement>>) => (
+      <div {...props}>{children}</div>
+    ),
+  },
+}));
+
 import { useSession } from "next-auth/react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useSearchParams } from "next/navigation";
@@ -63,15 +71,44 @@ Object.defineProperty(global, "localStorage", { value: localStorageMock });
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+describe("WelcomeStep - Sign In button visibility", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
+    mockUseSearchParams.mockReturnValue({ get: () => null });
+  });
+
+  it("shows 'Sign In to existing workspace' button when user has no session", () => {
+    mockUseSession.mockReturnValue({ data: null });
+    render(<WelcomeStep onNext={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /sign in to existing workspace/i })).toBeInTheDocument();
+  });
+
+  it("does NOT show 'Sign In to existing workspace' button when user is signed in", () => {
+    mockUseSession.mockReturnValue({ data: { user: { name: "Test User", id: "user-1" } } });
+    render(<WelcomeStep onNext={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /sign in to existing workspace/i })).not.toBeInTheDocument();
+  });
+
+  it("navigates to /auth/signin?redirect=/workspaces when Sign In button is clicked", () => {
+    mockUseSession.mockReturnValue({ data: null });
+    render(<WelcomeStep onNext={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /sign in to existing workspace/i }));
+    expect(mockRouterPush).toHaveBeenCalledWith("/auth/signin?redirect=/workspaces");
+  });
+});
+
 describe("WelcomeStep - GraphMindsetCard integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
     mockUseSession.mockReturnValue({ data: null });
+    mockUseSearchParams.mockReturnValue({ get: () => null });
   });
 
-  it("renders GraphMindsetCard below the Welcome card", () => {
+  it("renders GraphMindsetCard alongside the Hive card", () => {
     render(<WelcomeStep onNext={vi.fn()} />);
     expect(screen.getByText("GraphMindset")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create my graph/i })).toBeInTheDocument();
@@ -88,8 +125,40 @@ describe("WelcomeStep - GraphMindsetCard integration", () => {
     const input = screen.getByPlaceholderText("e.g., my-api-graph") as HTMLInputElement;
     expect(input).toBeInTheDocument();
     fireEvent.change(input, { target: { value: "test-workspace" } });
-    // No errors thrown; button remains disabled
     expect(screen.getByRole("button", { name: /create my graph/i })).toBeDisabled();
+  });
+});
+
+describe("WelcomeStep - Hive card rendering", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
+    mockUseSearchParams.mockReturnValue({ get: () => null });
+    mockUseSession.mockReturnValue({ data: null });
+  });
+
+  it("renders the Hive card with title and Create Hive button", () => {
+    render(<WelcomeStep onNext={vi.fn()} />);
+    expect(screen.getByText("Hive")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create hive/i })).toBeInTheDocument();
+  });
+
+  it("renders the repository URL input", () => {
+    render(<WelcomeStep onNext={vi.fn()} />);
+    expect(screen.getByPlaceholderText(/https:\/\/github\.com\/username\/repository/i)).toBeInTheDocument();
+  });
+
+  it("Create Hive button is disabled when input is empty", () => {
+    render(<WelcomeStep onNext={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /create hive/i })).toBeDisabled();
+  });
+
+  it("Create Hive button is enabled when repo URL is entered", () => {
+    render(<WelcomeStep onNext={vi.fn()} />);
+    const input = screen.getByPlaceholderText(/https:\/\/github\.com\/username\/repository/i);
+    fireEvent.change(input, { target: { value: "https://github.com/org/repo" } });
+    expect(screen.getByRole("button", { name: /create hive/i })).not.toBeDisabled();
   });
 });
 
@@ -102,7 +171,6 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
   });
 
   it("calls createWorkspaceAutomatically with repositoryUrl when workspaceType is 'hive'", async () => {
-    // payment=success in URL so claimPayment runs
     mockUseSearchParams.mockReturnValue({
       get: (key: string) => {
         if (key === "payment") return "success";
@@ -111,7 +179,6 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
       },
     });
 
-    // claim returns hive + repositoryUrl
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -121,7 +188,6 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
       }),
     });
 
-    // createWorkspaceAutomatically calls: slug-availability, workspaces POST, github check, github install
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, data: { isAvailable: true } }),
@@ -130,9 +196,7 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
     render(<WelcomeStep onNext={vi.fn()} />);
 
     await waitFor(() => {
-      // Should NOT navigate to graphmindset
       expect(mockRouterPush).not.toHaveBeenCalledWith("/onboarding/graphmindset");
-      // Should have called fetch for workspace creation (claim + workspace API calls)
       expect(mockFetch).toHaveBeenCalledWith(
         "/api/stripe/claim",
         expect.objectContaining({ method: "POST" })
@@ -151,7 +215,6 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
 
     localStorageMock.setItem("repoUrl", "https://github.com/fallback/repo");
 
-    // claim returns hive but no repositoryUrl
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -161,7 +224,6 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
       }),
     });
 
-    // subsequent workspace creation calls
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, data: { isAvailable: true } }),
@@ -187,7 +249,6 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
       },
     });
 
-    // No localStorage repoUrl
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -284,4 +345,30 @@ describe("WelcomeStep - Go to my workspace button", () => {
   });
 });
 
+describe("WelcomeStep - Cancel banner", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
+    mockUseSession.mockReturnValue({ data: null });
+  });
 
+  it("shows cancel banner when payment=cancelled is in URL", () => {
+    mockUseSearchParams.mockReturnValue({
+      get: (key: string) => (key === "payment" ? "cancelled" : null),
+    });
+
+    render(<WelcomeStep onNext={vi.fn()} />);
+    expect(screen.getByText(/payment cancelled/i)).toBeInTheDocument();
+  });
+
+  it("dismisses cancel banner when X is clicked", () => {
+    mockUseSearchParams.mockReturnValue({
+      get: (key: string) => (key === "payment" ? "cancelled" : null),
+    });
+
+    render(<WelcomeStep onNext={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    expect(screen.queryByText(/payment cancelled/i)).not.toBeInTheDocument();
+  });
+});
