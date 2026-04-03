@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -37,8 +37,6 @@ async function postGraphAdminCmd(workspaceSlug: string, cmd: SwarmCmd) {
 }
 
 export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientProps) {
-  const hostname = swarmUrl ? new URL(swarmUrl).hostname : null;
-
   const [isPublic, setIsPublic] = useState<boolean | null>(null);
   const [endpoints, setEndpoints] = useState<PaidEndpoint[] | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -154,11 +152,10 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
           <CardDescription>Open the graph viewer or swarm dashboard in a new tab.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
-          {hostname ? (
-            <>
+          <>
               <Button asChild variant="outline">
                 <a
-                  href={`https://${hostname}:8000`}
+                  href={`https://${workspaceSlug}.sphinx.chat:8000`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -168,7 +165,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
               </Button>
               <Button asChild variant="outline">
                 <a
-                  href={`https://${hostname}:8800`}
+                  href={`https://${workspaceSlug}.sphinx.chat:8800`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -177,12 +174,6 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
                 </a>
               </Button>
             </>
-          ) : (
-            <>
-              <Skeleton className="h-10 w-36" />
-              <Skeleton className="h-10 w-36" />
-            </>
-          )}
         </CardContent>
       </Card>
 
