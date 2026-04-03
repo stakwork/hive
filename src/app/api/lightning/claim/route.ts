@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   // Idempotency: already claimed
   if (payment.userId) {
-    return NextResponse.json({ success: true, redirect: '/onboarding/graphmindset' });
+    return NextResponse.json({ success: true, redirect: '/onboarding/graphmindset?paymentType=lightning' });
   }
 
   if (payment.status !== 'PAID') {
@@ -47,5 +47,5 @@ export async function POST(req: NextRequest) {
     data: { userId },
   });
 
-  return NextResponse.json({ success: true, redirect: '/onboarding/graphmindset' });
+  return NextResponse.json({ success: true, redirect: '/onboarding/graphmindset?paymentType=lightning' });
 }
