@@ -4296,11 +4296,13 @@ describe("startTaskWorkflow with includeHistory", () => {
     test("should call fetchChatHistory when includeHistory is true", async () => {
       MockSetup.setupSuccessfulWorkflow();
       
-      const mockHistory = [
-        { role: "user", content: "Previous message 1" },
-        { role: "assistant", content: "Previous response 1" },
-      ];
-      mockFetchChatHistory.mockResolvedValue(mockHistory as any);
+      const lastUserMsg = { id: "msg-1", role: "USER", message: "Previous message 1" };
+      const assistantMsg = { id: "msg-2", role: "ASSISTANT", message: "Previous response 1" };
+      const filteredHistory = [assistantMsg];
+
+      mockFetchChatHistory
+        .mockResolvedValueOnce([lastUserMsg, assistantMsg] as any)
+        .mockResolvedValueOnce(filteredHistory as any);
 
       const { startTaskWorkflow } = await import("@/services/task-workflow");
       
@@ -4311,17 +4313,21 @@ describe("startTaskWorkflow with includeHistory", () => {
       });
 
       expect(mockFetchChatHistory).toHaveBeenCalledWith("test-task-id");
-      expect(mockFetchChatHistory).toHaveBeenCalledTimes(1);
+      // Second call fetches history excluding the last user message
+      expect(mockFetchChatHistory).toHaveBeenCalledTimes(2);
     });
 
     test("should pass fetched history to callStakworkAPI", async () => {
       MockSetup.setupSuccessfulWorkflow();
       
-      const mockHistory = [
-        { role: "user", content: "Previous message" },
-        { role: "assistant", content: "Previous response" },
-      ];
-      mockFetchChatHistory.mockResolvedValue(mockHistory as any);
+      const lastUserMsg = { id: "msg-1", role: "USER", message: "Previous message" };
+      const assistantMsg = { id: "msg-2", role: "ASSISTANT", message: "Previous response" };
+      const historyWithoutLastUser = [assistantMsg];
+
+      // First call returns full history; second call (excludeMessageId) returns history minus last user msg
+      mockFetchChatHistory
+        .mockResolvedValueOnce([lastUserMsg, assistantMsg] as any)
+        .mockResolvedValueOnce(historyWithoutLastUser as any);
 
       const { startTaskWorkflow } = await import("@/services/task-workflow");
       
@@ -4331,9 +4337,10 @@ describe("startTaskWorkflow with includeHistory", () => {
         includeHistory: true,
       });
 
-      // Verify history was passed to Stakwork API
+      // History sent to Stakwork excludes the last user message (it is re-sent as the new message)
       TestHelpers.expectStakworkCalledWithVars({
-        history: mockHistory,
+        history: historyWithoutLastUser,
+        message: "Previous message",
       });
     });
 
@@ -4451,14 +4458,18 @@ describe("startTaskWorkflow with includeHistory", () => {
     test("should handle history with multiple messages", async () => {
       MockSetup.setupSuccessfulWorkflow();
       
-      const mockHistory = [
-        { role: "user", content: "Message 1" },
-        { role: "assistant", content: "Response 1" },
-        { role: "user", content: "Message 2" },
-        { role: "assistant", content: "Response 2" },
-        { role: "user", content: "Message 3" },
-      ];
-      mockFetchChatHistory.mockResolvedValue(mockHistory as any);
+      const msg1 = { id: "msg-1", role: "USER", message: "Message 1" };
+      const resp1 = { id: "msg-2", role: "ASSISTANT", message: "Response 1" };
+      const msg2 = { id: "msg-3", role: "USER", message: "Message 2" };
+      const resp2 = { id: "msg-4", role: "ASSISTANT", message: "Response 2" };
+      const msg3 = { id: "msg-5", role: "USER", message: "Message 3" };
+
+      const fullHistory = [msg1, resp1, msg2, resp2, msg3];
+      const historyWithoutLastUser = [msg1, resp1, msg2, resp2];
+
+      mockFetchChatHistory
+        .mockResolvedValueOnce(fullHistory as any)
+        .mockResolvedValueOnce(historyWithoutLastUser as any);
 
       const { startTaskWorkflow } = await import("@/services/task-workflow");
       
@@ -4468,8 +4479,10 @@ describe("startTaskWorkflow with includeHistory", () => {
         includeHistory: true,
       });
 
+      // Last USER message ("Message 3") used as outgoing message; excluded from history
       TestHelpers.expectStakworkCalledWithVars({
-        history: mockHistory,
+        history: historyWithoutLastUser,
+        message: "Message 3",
       });
     });
 
@@ -4486,27 +4499,33 @@ describe("startTaskWorkflow with includeHistory", () => {
         includeHistory: true,
       });
 
+      // No USER message found — falls back to task title/description with empty history
       TestHelpers.expectStakworkCalledWithVars({
         history: [],
+        message: "Test Task\n\nTest Description",
       });
     });
 
     test("should handle history with artifacts", async () => {
       MockSetup.setupSuccessfulWorkflow();
       
-      const mockHistory = [
-        {
-          role: "user",
-          content: "Create a component",
-          artifacts: [{ type: "CODE", content: "const Component = () => {}" }],
-        },
-        {
-          role: "assistant",
-          content: "Here's the component",
-          artifacts: [{ type: "CODE", content: "export default Component;" }],
-        },
-      ];
-      mockFetchChatHistory.mockResolvedValue(mockHistory as any);
+      const lastUserMsg = {
+        id: "msg-1",
+        role: "USER",
+        message: "Create a component",
+        artifacts: [{ type: "CODE", content: "const Component = () => {}" }],
+      };
+      const assistantMsg = {
+        id: "msg-2",
+        role: "ASSISTANT",
+        message: "Here's the component",
+        artifacts: [{ type: "CODE", content: "export default Component;" }],
+      };
+      const historyWithoutLastUser = [assistantMsg];
+
+      mockFetchChatHistory
+        .mockResolvedValueOnce([lastUserMsg, assistantMsg] as any)
+        .mockResolvedValueOnce(historyWithoutLastUser as any);
 
       const { startTaskWorkflow } = await import("@/services/task-workflow");
       
@@ -4517,8 +4536,113 @@ describe("startTaskWorkflow with includeHistory", () => {
       });
 
       TestHelpers.expectStakworkCalledWithVars({
-        history: mockHistory,
+        history: historyWithoutLastUser,
+        message: "Create a component",
       });
+    });
+
+    test("should use last USER message and exclude it from history", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      const userMsg1 = { id: "msg-1", role: "USER", message: "Initial task description" };
+      const assistantMsg1 = { id: "msg-2", role: "ASSISTANT", message: "Got it, working on it" };
+      const userMsg2 = { id: "msg-3", role: "USER", message: "Actually, add error handling too" };
+      const assistantMsg2 = { id: "msg-4", role: "ASSISTANT", message: "Error handling added" };
+      const userMsg3 = { id: "msg-5", role: "USER", message: "Make the function async" };
+
+      const fullHistory = [userMsg1, assistantMsg1, userMsg2, assistantMsg2, userMsg3];
+      const historyWithoutLastUser = [userMsg1, assistantMsg1, userMsg2, assistantMsg2];
+
+      mockFetchChatHistory
+        .mockResolvedValueOnce(fullHistory as any)
+        .mockResolvedValueOnce(historyWithoutLastUser as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      // Last USER message used as outgoing message, excluded from history
+      TestHelpers.expectStakworkCalledWithVars({
+        message: "Make the function async",
+        history: historyWithoutLastUser,
+      });
+    });
+
+    test("fetchChatHistory called with excludeMessageId of last user message", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      const userMsg = { id: "last-user-msg-id", role: "USER", message: "Fix the bug" };
+      const assistantMsg = { id: "assist-msg-id", role: "ASSISTANT", message: "Looking into it" };
+
+      mockFetchChatHistory
+        .mockResolvedValueOnce([userMsg, assistantMsg, { id: "last-user-2", role: "USER", message: "Also add tests" }] as any)
+        .mockResolvedValueOnce([] as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      // First call: no excludeMessageId
+      expect(mockFetchChatHistory).toHaveBeenNthCalledWith(1, "test-task-id");
+      // Second call: excludeMessageId is the id of the last USER message
+      expect(mockFetchChatHistory).toHaveBeenNthCalledWith(2, "test-task-id", "last-user-2");
+    });
+
+    test("should fall back to task title/description when no USER messages in history", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      const onlyAssistantHistory = [
+        { id: "msg-1", role: "ASSISTANT", message: "I started working on this" },
+        { id: "msg-2", role: "ASSISTANT", message: "Still processing" },
+      ];
+
+      mockFetchChatHistory.mockResolvedValueOnce(onlyAssistantHistory as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      // Falls back to task title + description; history remains empty (no second fetchChatHistory call)
+      TestHelpers.expectStakworkCalledWithVars({
+        message: "Test Task\n\nTest Description",
+        history: [],
+      });
+      // Only the initial fetchChatHistory call — no second call since no USER message found
+      expect(mockFetchChatHistory).toHaveBeenCalledTimes(1);
+    });
+
+    test("should fall back to task title/description when history is empty", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      mockFetchChatHistory.mockResolvedValueOnce([] as any);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        includeHistory: true,
+      });
+
+      // Falls back to task title + description with empty history
+      TestHelpers.expectStakworkCalledWithVars({
+        message: "Test Task\n\nTest Description",
+        history: [],
+      });
+      // Only one call — no second fetchChatHistory since no USER message found
+      expect(mockFetchChatHistory).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -4526,8 +4650,12 @@ describe("startTaskWorkflow with includeHistory", () => {
     test("should work with mode parameter", async () => {
       MockSetup.setupSuccessfulWorkflow();
       
-      const mockHistory = [{ role: "user", content: "Test" }];
-      mockFetchChatHistory.mockResolvedValue(mockHistory as any);
+      const userMsg = { id: "msg-1", role: "USER", message: "Test" };
+      const historyWithoutLastUser: never[] = [];
+
+      mockFetchChatHistory
+        .mockResolvedValueOnce([userMsg] as any)
+        .mockResolvedValueOnce(historyWithoutLastUser as any);
 
       const { startTaskWorkflow } = await import("@/services/task-workflow");
       
@@ -4540,7 +4668,8 @@ describe("startTaskWorkflow with includeHistory", () => {
 
       expect(mockFetchChatHistory).toHaveBeenCalled();
       TestHelpers.expectStakworkCalledWithVars({
-        history: mockHistory,
+        history: historyWithoutLastUser,
+        message: "Test",
         taskMode: "live",
       });
     });
