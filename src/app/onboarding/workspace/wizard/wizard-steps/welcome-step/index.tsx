@@ -74,7 +74,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
               setClaimError("No repository URL found. Please enter your GitHub repository URL below.");
             }
           } else {
-            router.push("/onboarding/graphmindset");
+            router.push(data.redirect || "/onboarding/graphmindset");
           }
         } else {
           setClaimError("Failed to confirm payment. Please contact support.");
