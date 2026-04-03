@@ -119,19 +119,18 @@ export async function POST(request: NextRequest) {
       workspaceKind,
     });
 
-    // For graph_mindset workspaces: link the user's pending FiatPayment and save swarm details
+    // For graph_mindset workspaces: link the user's pending payment and set paymentStatus
     if (workspaceKind === "graph_mindset") {
-      const { swarmId, graphUrl } = body;
-
-      // Link the most recent unclaimed PAID payment to this workspace
-      const payment = await db.fiatPayment.findFirst({
+      // Try FiatPayment first, then fall back to LightningPayment
+      const fiatPayment = await db.fiatPayment.findFirst({
         where: { userId: ownerId, status: "PAID", workspaceId: null },
         orderBy: { createdAt: "desc" },
       });
-      if (payment) {
+
+      if (fiatPayment) {
         await db.$transaction([
           db.fiatPayment.update({
-            where: { id: payment.id },
+            where: { id: fiatPayment.id },
             data: { workspaceId: workspace.id },
           }),
           db.workspace.update({
@@ -139,20 +138,24 @@ export async function POST(request: NextRequest) {
             data: { paymentStatus: "PAID" },
           }),
         ]);
-      }
-
-      // Save swarm record if swarmId was provided from graph creation step
-      if (swarmId) {
-        await db.swarm.create({
-          data: {
-            workspaceId: workspace.id,
-            name: finalSlug,
-            swarmId,
-            swarmUrl: graphUrl || null,
-            status: "ACTIVE",
-            instanceType: "m6i.xlarge",
-          },
+      } else {
+        // Fallback: check for PAID LightningPayment
+        const lightningPayment = await db.lightningPayment.findFirst({
+          where: { userId: ownerId, status: "PAID", workspaceId: null },
+          orderBy: { createdAt: "desc" },
         });
+        if (lightningPayment) {
+          await db.$transaction([
+            db.lightningPayment.update({
+              where: { id: lightningPayment.id },
+              data: { workspaceId: workspace.id },
+            }),
+            db.workspace.update({
+              where: { id: workspace.id },
+              data: { paymentStatus: "PAID" },
+            }),
+          ]);
+        }
       }
     }
 
