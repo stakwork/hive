@@ -104,7 +104,7 @@ export function GraphMindsetCard() {
   const isButtonDisabled = !name.trim() || !isAvailable || isValidating || isLoading;
 
   return (
-    <Card className="overflow-hidden border border-blue-500/30 bg-card">
+    <Card className="overflow-hidden border border-zinc-800 bg-zinc-900/60">
       <div className="flex flex-col md:flex-row">
         {/* Left — visual panel */}
         <div className="relative flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-600/10 via-purple-600/5 to-transparent border-b md:border-b-0 md:border-r border-border md:w-5/12">
@@ -146,6 +146,7 @@ export function GraphMindsetCard() {
                 value={name}
                 onChange={handleNameChange}
                 aria-invalid={!!nameError}
+                className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500"
               />
               {isValidating && (
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
