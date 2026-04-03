@@ -4,8 +4,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { GraphMindsetCard } from "@/components/onboarding/GraphMindsetCard";
 
-vi.mock("@/components/onboarding/GraphNetworkIcon", () => ({
-  GraphNetworkIcon: () => <div data-testid="graph-network-icon" />,
+vi.mock("framer-motion", () => ({
+  motion: {
+    div: ({ children, ...props }: React.PropsWithChildren<React.HTMLAttributes<HTMLDivElement>>) => (
+      <div {...props}>{children}</div>
+    ),
+  },
 }));
 
 const mockRouterPush = vi.fn();
@@ -57,7 +61,7 @@ function takenSlugResponse() {
 
 /** Helper: type into the name field and advance the debounce timer */
 async function fillName(value: string) {
-  const input = screen.getByPlaceholderText("e.g., my-api-graph");
+  const input = screen.getByPlaceholderText("Workspace name");
   fireEvent.change(input, { target: { value } });
   await act(async () => { vi.advanceTimersByTime(600); });
 }
@@ -73,28 +77,29 @@ async function fillValidForm(name = "my-graph") {
 }
 
 describe("GraphMindsetCard", () => {
-  it("renders left panel with $50 price badge", () => {
+  it("renders price", () => {
     render(<GraphMindsetCard />);
     expect(screen.getByText("$50")).toBeInTheDocument();
     expect(screen.getByText("/ workspace")).toBeInTheDocument();
   });
 
-  it("renders left panel with GraphMindset title and subtitle", () => {
+  it("renders GraphMindset title and description", () => {
     render(<GraphMindsetCard />);
     expect(screen.getByText("GraphMindset")).toBeInTheDocument();
-    expect(screen.getByText("Build a knowledge graph from your codebase")).toBeInTheDocument();
+    expect(screen.getByText(/Build an AI-powered knowledge graph/i)).toBeInTheDocument();
   });
 
-  it("renders right panel with all three feature bullets", () => {
+  it("renders feature bullets", () => {
     render(<GraphMindsetCard />);
-    expect(screen.getByText("Automatic code graph indexing")).toBeInTheDocument();
-    expect(screen.getByText("AI-powered codebase queries")).toBeInTheDocument();
-    expect(screen.getByText("Real-time graph updates on push")).toBeInTheDocument();
+    expect(screen.getByText("Graph-based code exploration")).toBeInTheDocument();
+    expect(screen.getByText("Team collaboration workspace")).toBeInTheDocument();
+    expect(screen.getByText("Persistent knowledge store")).toBeInTheDocument();
+    expect(screen.getByText("AI-powered graph insights")).toBeInTheDocument();
   });
 
-  it("renders 'Create my graph' button that is disabled when name is empty", () => {
+  it("renders 'Build Graph' button that is disabled when name is empty", () => {
     render(<GraphMindsetCard />);
-    const button = screen.getByRole("button", { name: /create my graph/i });
+    const button = screen.getByRole("button", { name: /build graph/i });
     expect(button).toBeDisabled();
   });
 
@@ -103,7 +108,7 @@ describe("GraphMindsetCard", () => {
     mockFetch.mockReturnValue(new Promise(() => {})); // never resolves
     render(<GraphMindsetCard />);
     await fillName("my-graph");
-    const button = screen.getByRole("button", { name: /create my graph/i });
+    const button = screen.getByRole("button", { name: /build graph/i });
     expect(button).toBeDisabled();
   });
 
@@ -116,7 +121,7 @@ describe("GraphMindsetCard", () => {
     await waitFor(() => {
       expect(screen.getByText("Name is already taken")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /create my graph/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /build graph/i })).toBeDisabled();
   });
 
   it("button is enabled when slug is available", async () => {
@@ -128,7 +133,7 @@ describe("GraphMindsetCard", () => {
     await waitFor(() => {
       expect(screen.getByText(/Name is available/i)).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /create my graph/i })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /build graph/i })).not.toBeDisabled();
   });
 
   it("shows inline error for taken slug", async () => {
@@ -145,18 +150,18 @@ describe("GraphMindsetCard", () => {
   it("shows payment options after clicking 'Create my graph' with valid form", async () => {
     await fillValidForm();
 
-    const createBtn = screen.getByRole("button", { name: /create my graph/i });
+    const createBtn = screen.getByRole("button", { name: /build graph/i });
     await act(async () => { fireEvent.click(createBtn); });
 
     expect(screen.getByRole("button", { name: /pay with card/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /pay with lightning/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /create my graph/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /build graph/i })).not.toBeInTheDocument();
   });
 
   it("stores name in localStorage and redirects to Stripe when 'Pay with Card' is clicked", async () => {
     await fillValidForm();
 
-    const createBtn = screen.getByRole("button", { name: /create my graph/i });
+    const createBtn = screen.getByRole("button", { name: /build graph/i });
     await act(async () => { fireEvent.click(createBtn); });
 
     // Stripe checkout
@@ -186,7 +191,7 @@ describe("GraphMindsetCard", () => {
   it("stores localStorage keys and calls router.push when 'Pay with Lightning' is clicked", async () => {
     await fillValidForm();
 
-    const createBtn = screen.getByRole("button", { name: /create my graph/i });
+    const createBtn = screen.getByRole("button", { name: /build graph/i });
     await act(async () => { fireEvent.click(createBtn); });
 
     const lightningBtn = screen.getByRole("button", { name: /pay with lightning/i });
@@ -200,7 +205,7 @@ describe("GraphMindsetCard", () => {
   it("redirects to Stripe and stores sessionId + name in localStorage on success", async () => {
     await fillValidForm();
 
-    const createBtn = screen.getByRole("button", { name: /create my graph/i });
+    const createBtn = screen.getByRole("button", { name: /build graph/i });
     await act(async () => { fireEvent.click(createBtn); });
 
     mockFetch.mockResolvedValueOnce({
@@ -230,7 +235,7 @@ describe("GraphMindsetCard", () => {
   it("shows inline error on Stripe session creation failure", async () => {
     await fillValidForm();
 
-    const createBtn = screen.getByRole("button", { name: /create my graph/i });
+    const createBtn = screen.getByRole("button", { name: /build graph/i });
     await act(async () => { fireEvent.click(createBtn); });
 
     // Stripe checkout fails
