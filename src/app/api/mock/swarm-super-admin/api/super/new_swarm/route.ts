@@ -19,8 +19,8 @@ export async function POST(request: NextRequest) {
 
     // 2. Parse request body
     const body = await request.json();
-    const { instance_type, password, vanity_address, workspace_type } = body;
-    void vanity_address; void workspace_type; // accepted but not used in mock
+    const { instance_type, password, vanity_address, workspace_type, env: envVars } = body;
+    void vanity_address; void workspace_type; void envVars; // accepted but not used in mock
 
     if (!instance_type) {
       return NextResponse.json(
