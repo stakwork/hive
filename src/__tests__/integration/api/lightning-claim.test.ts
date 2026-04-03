@@ -75,7 +75,7 @@ describe('Lightning Claim API Integration Tests', () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
-      expect(data.redirect).toBe('/onboarding/graphmindset');
+      expect(data.redirect).toBe('/onboarding/graphmindset?paymentType=lightning');
 
       // Verify LightningPayment updated with userId
       const updatedPayment = await db.lightningPayment.findUnique({
@@ -111,7 +111,7 @@ describe('Lightning Claim API Integration Tests', () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
-      expect(data.redirect).toBe('/onboarding/graphmindset');
+      expect(data.redirect).toBe('/onboarding/graphmindset?paymentType=lightning');
 
       const updatedPayment = await db.lightningPayment.findUnique({
         where: { paymentHash: payment.paymentHash },
@@ -139,7 +139,7 @@ describe('Lightning Claim API Integration Tests', () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
-      expect(data.redirect).toBe('/onboarding/graphmindset');
+      expect(data.redirect).toBe('/onboarding/graphmindset?paymentType=lightning');
     });
 
     test('returns 400 when paymentHash is missing', async () => {
