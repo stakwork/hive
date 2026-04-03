@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { extractRepoNameFromUrl, nextIndexedName } from "@/lib/utils/slug";
-import { AlertCircle, Code2, Cpu, Github, Hexagon, Loader2, X, Zap } from "lucide-react";
+import { ArrowRight, AlertCircle, Code2, Cpu, Github, Hexagon, Loader2, X, Zap } from "lucide-react";
 import { motion } from "framer-motion";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -36,7 +36,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
   const [claimError, setClaimError] = useState("");
   const [isClaiming, setIsClaiming] = useState(false);
 
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const { refreshWorkspaces, workspaces } = useWorkspace();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -221,12 +221,22 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
     if (e.key === "Enter") handleNext();
   };
 
-  if (isClaiming) {
+  // Show loading while session is resolving (prevents flash after sign-in redirect)
+  const paymentState = searchParams.get("payment");
+  const isPaymentReturn = paymentState === "success" && !claimError;
+
+  if (sessionStatus === "loading" || isClaiming || isPaymentReturn) {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8 text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-400" />
-          <p className="text-sm text-zinc-400">Linking your payment...</p>
+          <p className="text-sm text-zinc-400">
+            {isClaiming
+              ? "Linking your payment..."
+              : isPaymentReturn
+                ? "Completing payment..."
+                : "Loading..."}
+          </p>
         </div>
       </div>
     );
@@ -251,16 +261,15 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
   return (
     <div className="space-y-6">
-      {/* Sign In button — visible only when no session */}
+      {/* Sign In link — visible only when no session */}
       {!session?.user && (
-        <div className="flex justify-center">
-          <Button
-            variant="outline"
-            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+        <div className="flex justify-end">
+          <button
             onClick={() => router.push("/auth/signin?redirect=/workspaces")}
+            className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
           >
-            Sign In to existing workspace
-          </Button>
+            Sign in to existing workspace
+          </button>
         </div>
       )}
 
@@ -280,72 +289,83 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
       {/* Two-column card grid */}
       <div className="grid md:grid-cols-2 gap-8">
-        {/* Hive card — restyled */}
+        {/* Hive card */}
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
           className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur-sm p-8 flex flex-col gap-6"
         >
-          {/* Icon + title */}
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center flex-shrink-0">
+          {/* Icon */}
+          <div className="relative w-12 h-12">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
               {isCreatingWorkspace ? (
                 <Loader2 className="w-6 h-6 animate-spin text-white" />
               ) : (
                 <Hexagon className="w-6 h-6 text-white" />
               )}
             </div>
-            <div>
-              <h2 className="text-xl font-semibold text-white">Hive</h2>
-              <p className="text-zinc-400 text-sm">
-                {isCreatingWorkspace ? "Setting up your workspace..." : "AI-first PM toolkit for your codebase"}
-              </p>
-            </div>
+            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-white border-2 border-zinc-900" />
           </div>
 
-          {/* Feature bullets */}
+          {/* Header */}
+          <div>
+            <h2 className="text-xl font-semibold text-white mb-1">Hive</h2>
+            <p className="text-zinc-400 text-sm leading-relaxed">
+              {isCreatingWorkspace
+                ? "Setting up your workspace..."
+                : "AI-first PM toolkit that automates janitor workflows, lifts test coverage, and hardens your codebase — all from a single GitHub repo."}
+            </p>
+          </div>
+
+          {/* Features */}
           <ul className="space-y-2">
             {HIVE_FEATURES.map(({ icon: Icon, label }) => (
               <li key={label} className="flex items-center gap-3 text-sm text-zinc-300">
-                <Icon className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                <Icon className="w-4 h-4 text-blue-400 shrink-0" />
                 {label}
               </li>
             ))}
           </ul>
 
           {/* Price */}
-          <div className="text-sm text-zinc-400">
+          <p className="text-zinc-500 text-sm font-medium">
             <span className="text-white text-lg font-bold">$50</span> / environment
-          </div>
+          </p>
 
           {/* Input + CTA */}
           {!isCreatingWorkspace ? (
-            <div className="flex flex-col gap-3">
-              <Input
-                id="repository-url"
-                type="url"
-                placeholder="https://github.com/username/repository"
-                value={repositoryUrl}
-                onChange={(e) => handleRepositoryUrlChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className={`bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500 ${error ? "border-red-500 focus:border-red-500" : ""}`}
-                disabled={isCreatingWorkspace}
-              />
-              {error && (
-                <div className="flex items-center gap-2 text-red-400 text-sm">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{error}</span>
-                </div>
-              )}
-              <Button
-                onClick={handleNext}
-                className="bg-blue-600 hover:bg-blue-500 text-white w-full"
-                disabled={!repositoryUrl.trim() || isCreatingWorkspace}
-              >
-                Create Hive
-              </Button>
-            </div>
+            <>
+              <div className="space-y-1">
+                <Input
+                  id="repository-url"
+                  type="url"
+                  placeholder="https://github.com/username/repository"
+                  value={repositoryUrl}
+                  onChange={(e) => handleRepositoryUrlChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isCreatingWorkspace}
+                  className={`bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-blue-500 ${error ? "border-red-500 focus:border-red-500" : ""}`}
+                />
+                {error && (
+                  <div className="flex items-center gap-2 text-red-400 text-xs">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{error}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <Button
+                  onClick={handleNext}
+                  disabled={!repositoryUrl.trim() || isCreatingWorkspace}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white"
+                >
+                  Create Hive
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
+            </>
           ) : (
             <div className="flex flex-col items-center gap-3">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400" />
