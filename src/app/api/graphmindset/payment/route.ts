@@ -26,16 +26,37 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
   });
 
-  if (!payment) {
+  if (payment) {
+    return NextResponse.json({
+      payment: {
+        id: payment.id,
+        workspaceName: payment.workspaceName,
+        workspaceSlug: payment.workspaceSlug,
+        status: payment.status,
+      },
+    });
+  }
+
+  // Fallback: check LightningPayment for the same user
+  const lightningPayment = await db.lightningPayment.findFirst({
+    where: {
+      userId: session.user.id,
+      status: 'PAID',
+      workspaceId: null,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!lightningPayment) {
     return NextResponse.json({ error: 'No pending payment found' }, { status: 404 });
   }
 
   return NextResponse.json({
     payment: {
-      id: payment.id,
-      workspaceName: payment.workspaceName,
-      workspaceSlug: payment.workspaceSlug,
-      status: payment.status,
+      id: lightningPayment.id,
+      workspaceName: lightningPayment.workspaceName,
+      workspaceSlug: lightningPayment.workspaceSlug,
+      status: lightningPayment.status,
     },
   });
 }
