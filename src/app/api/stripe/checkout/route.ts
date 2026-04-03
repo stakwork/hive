@@ -9,6 +9,8 @@ import { EncryptionService } from '@/lib/encryption';
 const checkoutBodySchema = z.object({
   workspaceName: z.string().min(1),
   workspaceSlug: z.string().min(1),
+  workspaceType: z.string().optional(),
+  repositoryUrl: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -20,7 +22,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { workspaceName, workspaceSlug } = body;
+  const { workspaceName, workspaceSlug, workspaceType, repositoryUrl } = body;
 
   const password = generateSecurePassword(20);
   const encryptedPassword = JSON.stringify(
@@ -39,7 +41,7 @@ export async function POST(req: NextRequest) {
       line_items: [{ price: process.env.STRIPE_PRICE_ID!, quantity: 1 }],
       success_url: successUrl,
       cancel_url: process.env.STRIPE_CANCEL_URL!,
-      metadata: { workspaceName, workspaceSlug },
+      metadata: { workspaceName, workspaceSlug, workspaceType: workspaceType ?? '', repositoryUrl: repositoryUrl ?? '' },
     });
 
     await db.fiatPayment.create({
