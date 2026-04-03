@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/api/lightning/claim/route';
 import { db } from '@/lib/db';
-import { createTestWorkspaceScenario } from '@/__tests__/support/factories/workspace.factory';
 import { createTestUser } from '@/__tests__/support/factories/user.factory';
 import { createTestLightningPayment } from '@/__tests__/support/factories/lightning-payment.factory';
 import { createTestWorkspaceTransaction } from '@/__tests__/support/factories/workspace-transaction.factory';
@@ -12,29 +11,9 @@ import {
 } from '@/__tests__/support/helpers/auth';
 import { createPostRequest } from '@/__tests__/support/helpers/request-builders';
 
-const mockCreateSwarm = vi.fn();
-
-vi.mock('@/services/swarm', () => ({
-  SwarmService: vi.fn().mockImplementation(() => ({
-    createSwarm: mockCreateSwarm,
-  })),
-}));
-
-vi.mock('@/services/swarm/db', () => ({
-  saveOrUpdateSwarm: vi.fn().mockResolvedValue({}),
-}));
-
 describe('Lightning Claim API Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCreateSwarm.mockResolvedValue({
-      data: {
-        swarm_id: 'mock-swarm-id',
-        address: 'mock.swarm.address',
-        x_api_key: 'mock-api-key',
-        ec2_id: 'mock-ec2-id',
-      },
-    });
   });
 
   describe('POST /api/lightning/claim', () => {
@@ -43,7 +22,6 @@ describe('Lightning Claim API Integration Tests', () => {
 
       const req = createPostRequest('/api/lightning/claim', {
         paymentHash: 'any-hash',
-        password: 'any-password',
       });
       const response = await POST(req);
       expect(response.status).toBe(401);
@@ -55,7 +33,6 @@ describe('Lightning Claim API Integration Tests', () => {
 
       const req = createPostRequest('/api/lightning/claim', {
         paymentHash: 'nonexistent-hash-xyz',
-        password: 'my-password',
       });
       const response = await POST(req);
       expect(response.status).toBe(404);
@@ -74,13 +51,12 @@ describe('Lightning Claim API Integration Tests', () => {
 
       const req = createPostRequest('/api/lightning/claim', {
         paymentHash: payment.paymentHash,
-        password: 'my-password',
       });
       const response = await POST(req);
       expect(response.status).toBe(402);
     });
 
-    test('creates workspace and updates payment on successful claim', async () => {
+    test('links userId on payment and returns redirect on successful claim', async () => {
       const user = await createTestUser({ name: 'Claimant' });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
@@ -93,27 +69,22 @@ describe('Lightning Claim API Integration Tests', () => {
 
       const req = createPostRequest('/api/lightning/claim', {
         paymentHash: payment.paymentHash,
-        password: 'my-password',
       });
       const response = await POST(req);
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.workspace).toBeDefined();
-      expect(data.workspace.name).toBe('Lightning Workspace');
+      expect(data.success).toBe(true);
+      expect(data.redirect).toBe('/onboarding/graphmindset');
 
-      // Verify LightningPayment updated with workspaceId
+      // Verify LightningPayment updated with userId
       const updatedPayment = await db.lightningPayment.findUnique({
         where: { paymentHash: payment.paymentHash },
       });
-      expect(updatedPayment!.workspaceId).toBe(data.workspace.id);
-
-      // Verify workspace paymentStatus is PAID
-      const workspace = await db.workspace.findUnique({ where: { id: data.workspace.id } });
-      expect(workspace!.paymentStatus).toBe('PAID');
+      expect(updatedPayment!.userId).toBe(user.id);
     });
 
-    test('backfills workspaceId on existing WorkspaceTransaction after successful claim', async () => {
+    test('links userId on payment and returns redirect even when a WorkspaceTransaction exists', async () => {
       const user = await createTestUser({ name: 'Claimant Backfill' });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
@@ -134,29 +105,26 @@ describe('Lightning Claim API Integration Tests', () => {
 
       const req = createPostRequest('/api/lightning/claim', {
         paymentHash: payment.paymentHash,
-        password: 'my-password',
       });
       const response = await POST(req);
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.workspace).toBeDefined();
+      expect(data.success).toBe(true);
+      expect(data.redirect).toBe('/onboarding/graphmindset');
 
-      const tx = await db.workspaceTransaction.findUnique({
-        where: { lightningPaymentId: payment.id },
+      const updatedPayment = await db.lightningPayment.findUnique({
+        where: { paymentHash: payment.paymentHash },
       });
-      expect(tx).not.toBeNull();
-      expect(tx!.workspaceId).toBe(data.workspace.id);
+      expect(updatedPayment!.userId).toBe(user.id);
     });
 
-    test('returns existing workspace for already-claimed invoice (idempotency)', async () => {
+    test('returns redirect immediately for already-claimed invoice (idempotency)', async () => {
       const user = await createTestUser({ name: 'Claimant Idempotent' });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const { workspace: existingWorkspace } = await createTestWorkspaceScenario();
-
       const payment = await createTestLightningPayment({
-        workspaceId: existingWorkspace.id,
+        userId: user.id,
         workspaceName: 'Already Claimed',
         workspaceSlug: 'already-claimed',
         paymentHash: 'claim_test_already_claimed_hash',
@@ -165,22 +133,20 @@ describe('Lightning Claim API Integration Tests', () => {
 
       const req = createPostRequest('/api/lightning/claim', {
         paymentHash: payment.paymentHash,
-        password: 'my-password',
       });
       const response = await POST(req);
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.workspace.id).toBe(existingWorkspace.id);
+      expect(data.success).toBe(true);
+      expect(data.redirect).toBe('/onboarding/graphmindset');
     });
 
     test('returns 400 when paymentHash is missing', async () => {
       const user = await createTestUser({ name: 'Claimant' });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const req = createPostRequest('/api/lightning/claim', {
-        password: 'my-password',
-      });
+      const req = createPostRequest('/api/lightning/claim', {});
       const response = await POST(req);
       expect(response.status).toBe(400);
     });
