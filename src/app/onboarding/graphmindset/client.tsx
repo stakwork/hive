@@ -11,19 +11,13 @@ import { Loader2, Check, AlertCircle, Smartphone, GitFork, Network } from "lucid
 const POLL_INTERVAL = 2000;
 const CHALLENGE_EXPIRATION = 5 * 60 * 1000; // 5 minutes
 
-type Step = "sphinx-link" | "fork-repo" | "create-graph" | "create-workspace";
-
-interface GraphResult {
-  swarmId?: string;
-  url?: string;
-}
+type Step = "sphinx-link" | "fork-repo" | "provision";
 
 export function GraphMindsetOnboardingClient() {
   const { data: session, status, update } = useSession();
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<Step>("sphinx-link");
   const [forkUrl, setForkUrl] = useState<string | null>(null);
-  const [graphResult, setGraphResult] = useState<GraphResult | null>(null);
 
   // Redirect to sign-in if not authenticated
   useEffect(() => {
@@ -65,23 +59,12 @@ export function GraphMindsetOnboardingClient() {
         <ForkRepoStep
           onComplete={(url) => {
             setForkUrl(url);
-            setCurrentStep("create-graph");
+            setCurrentStep("provision");
           }}
         />
       )}
-      {currentStep === "create-graph" && (
-        <CreateGraphStep
-          onComplete={(result) => {
-            setGraphResult(result);
-            setCurrentStep("create-workspace");
-          }}
-        />
-      )}
-      {currentStep === "create-workspace" && (
-        <CreateWorkspaceStep
-          forkUrl={forkUrl}
-          graphResult={graphResult}
-        />
+      {currentStep === "provision" && forkUrl && (
+        <ProvisionStep forkUrl={forkUrl} />
       )}
     </div>
   );
@@ -354,11 +337,9 @@ function ForkRepoStep({ onComplete }: ForkRepoStepProps) {
   }, [onComplete]);
 
   const handleRetry = () => {
-    forkCalledRef.current = false;
+    forkCalledRef.current = true;
     setError(null);
     setForkUrl(null);
-    // Re-trigger by resetting the ref and forcing re-render
-    forkCalledRef.current = true;
 
     const retry = async () => {
       setIsForking(true);
@@ -444,95 +425,84 @@ function ForkRepoStep({ onComplete }: ForkRepoStepProps) {
 }
 
 // =============================================================================
-// Create Graph Step
+// Provision Step
 // =============================================================================
 
-interface CreateGraphStepProps {
-  onComplete: (result: GraphResult) => void;
+interface ProvisionStepProps {
+  forkUrl: string;
 }
 
-function CreateGraphStep({ onComplete }: CreateGraphStepProps) {
-  const [isCreating, setIsCreating] = useState(false);
-  const [graphUrl, setGraphUrl] = useState<string | null>(null);
+function ProvisionStep({ forkUrl }: ProvisionStepProps) {
+  const router = useRouter();
+  const provisionCalledRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const createCalledRef = useRef(false);
 
-  const createGraph = useCallback(async () => {
-    setIsCreating(true);
+  const provision = useCallback(async () => {
     setError(null);
 
     try {
-      // Fetch graph name from payment record
+      // 1. Get workspace name/slug from payment record
       const paymentRes = await fetch("/api/graphmindset/payment");
       const paymentData = await paymentRes.json();
-
       if (!paymentRes.ok) {
         setError(paymentData.error || "No payment found. Please complete payment first.");
         return;
       }
+      const { workspaceName, workspaceSlug } = paymentData.payment;
 
-      const name = paymentData.payment?.workspaceName || paymentData.payment?.workspaceSlug;
-      if (!name) {
-        setError("Missing workspace name. Please contact support.");
+      if (!workspaceName || !workspaceSlug) {
+        setError("Missing workspace details. Please contact support.");
         return;
       }
 
-      const res = await fetch("/api/graphmindset/create", {
+      // 2. Create workspace — server handles payment linking + paymentStatus: PAID
+      const wsRes = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name: workspaceName, slug: workspaceSlug, workspaceKind: "graph_mindset" }),
       });
-      const data = await res.json();
+      const wsData = await wsRes.json();
+      if (!wsRes.ok) {
+        setError(wsData.error || "Failed to create workspace");
+        return;
+      }
+      const { id: workspaceId, slug } = wsData.workspace;
 
-      if (!res.ok) {
-        setError(data.error || "Failed to create graph");
+      // 3. Create swarm — server handles Stakwork customer + env vars for graph_mindset
+      const swarmRes = await fetch("/api/swarm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          repositoryUrl: forkUrl,
+          vanity_address: `${slug}.sphinx.chat`,
+          workspace_type: "graph_mindset",
+        }),
+      });
+      const swarmData = await swarmRes.json();
+      if (!swarmRes.ok || !swarmData.success) {
+        setError(swarmData.message || "Failed to create swarm");
         return;
       }
 
-      setGraphUrl(data.graph?.url || null);
-      onComplete({
-        swarmId: data.graph?.swarmId,
-        url: data.graph?.url,
-      });
+      // 4. Redirect to workspace
+      router.push(`/w/${slug}`);
     } catch {
       setError("Something went wrong. Please try again.");
-    } finally {
-      setIsCreating(false);
     }
-  }, [onComplete]);
+  }, [forkUrl, router]);
 
-  // Auto-create on mount
   useEffect(() => {
-    if (createCalledRef.current) return;
-    createCalledRef.current = true;
-    createGraph();
-  }, [createGraph]);
+    if (provisionCalledRef.current) return;
+    provisionCalledRef.current = true;
+    provision().catch(() => setError("Something went wrong. Please try again."));
+  }, [provision]);
 
   const handleRetry = () => {
-    createCalledRef.current = true;
+    provisionCalledRef.current = true;
     setError(null);
-    setGraphUrl(null);
-    createGraph();
+    provision().catch(() => setError("Something went wrong. Please try again."));
   };
-
-  if (graphUrl) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center py-12 gap-4">
-          <Check className="h-12 w-12 text-green-500" />
-          <p className="font-medium text-lg">Your graph is ready!</p>
-          <a
-            href={graphUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            {graphUrl}
-          </a>
-        </CardContent>
-      </Card>
-    );
-  }
 
   if (error) {
     return (
@@ -554,121 +524,9 @@ function CreateGraphStep({ onComplete }: CreateGraphStepProps) {
         <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-4">
           <Network className="w-8 h-8 text-green-600 dark:text-green-400" />
         </div>
-        <CardTitle className="text-2xl">Creating your graph</CardTitle>
-        <CardDescription>
-          {isCreating ? "Provisioning your knowledge graph..." : "Preparing..."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex justify-center py-8">
-        <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-      </CardContent>
-    </Card>
-  );
-}
-
-// =============================================================================
-// Create Workspace Step
-// =============================================================================
-
-interface CreateWorkspaceStepProps {
-  forkUrl: string | null;
-  graphResult: GraphResult | null;
-}
-
-function CreateWorkspaceStep({ forkUrl, graphResult }: CreateWorkspaceStepProps) {
-  const router = useRouter();
-  const [isCreating, setIsCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const createCalledRef = useRef(false);
-
-  const createWorkspace = useCallback(async () => {
-    setIsCreating(true);
-    setError(null);
-
-    try {
-      // Fetch workspace name from payment record
-      const paymentRes = await fetch("/api/graphmindset/payment");
-      const paymentData = await paymentRes.json();
-
-      if (!paymentRes.ok) {
-        setError(paymentData.error || "No payment found.");
-        return;
-      }
-
-      const name = paymentData.payment?.workspaceName;
-      const slug = paymentData.payment?.workspaceSlug;
-
-      if (!name || !slug) {
-        setError("Missing workspace details. Please contact support.");
-        return;
-      }
-
-      const res = await fetch("/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          slug,
-          repositoryUrl: forkUrl,
-          workspaceKind: "graph_mindset",
-          swarmId: graphResult?.swarmId,
-          graphUrl: graphResult?.url,
-        }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Failed to create workspace");
-        return;
-      }
-
-      // Navigate to the new workspace
-      if (data.workspace?.slug) {
-        router.push(`/w/${data.workspace.slug}`);
-      }
-    } catch {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setIsCreating(false);
-    }
-  }, [forkUrl, graphResult, router]);
-
-  // Auto-create on mount
-  useEffect(() => {
-    if (createCalledRef.current) return;
-    createCalledRef.current = true;
-    createWorkspace();
-  }, [createWorkspace]);
-
-  const handleRetry = () => {
-    createCalledRef.current = true;
-    setError(null);
-    createWorkspace();
-  };
-
-  if (error) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center py-12 gap-4">
-          <AlertCircle className="h-12 w-12 text-destructive" />
-          <p className="text-sm text-center text-destructive">{error}</p>
-          <Button onClick={handleRetry} variant="outline">
-            Try Again
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader className="text-center">
-        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-400" />
-        </div>
         <CardTitle className="text-2xl">Setting up your workspace</CardTitle>
         <CardDescription>
-          {isCreating ? "Creating your workspace..." : "Preparing..."}
+          Provisioning your workspace and knowledge graph...
         </CardDescription>
       </CardHeader>
       <CardContent className="flex justify-center py-8">
