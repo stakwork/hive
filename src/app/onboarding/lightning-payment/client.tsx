@@ -133,10 +133,13 @@ export function LightningPaymentClient() {
           body: JSON.stringify({ paymentHash: hash }),
         });
         const data = await res.json();
-        const redirect = data?.redirect || "/onboarding/graphmindset";
-        router.push(redirect);
+        if (!res.ok) {
+          router.push("/onboarding/workspace");
+          return;
+        }
+        router.push(data?.redirect || "/onboarding/graphmindset");
       } catch {
-        router.push("/onboarding/graphmindset");
+        router.push("/onboarding/workspace");
       }
     };
 
