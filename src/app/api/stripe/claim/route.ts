@@ -56,9 +56,11 @@ export async function POST(req: NextRequest) {
     return res;
   }
 
-  // Guard: reject if already claimed by a different user
+  // Guard: reject if already claimed by a different user — clear cookie to stop retry loops
   if (existing?.userId && existing.userId !== userId) {
-    return NextResponse.json({ error: 'Payment already claimed' }, { status: 403 });
+    const res = NextResponse.json({ error: 'Payment already claimed' }, { status: 403 });
+    res.cookies.delete('stripe_session_id');
+    return res;
   }
 
   if (stripeSession.payment_status !== 'paid') {
