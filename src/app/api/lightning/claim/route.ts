@@ -33,9 +33,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
   }
 
-  // Idempotency: already claimed
-  if (payment.userId) {
+  // Idempotency: already claimed by this user
+  if (payment.userId === userId) {
     return NextResponse.json({ success: true, redirect: '/onboarding/graphmindset?paymentType=lightning' });
+  }
+
+  // Guard: reject if already claimed by a different user
+  if (payment.userId) {
+    return NextResponse.json({ error: 'Payment already claimed' }, { status: 403 });
   }
 
   if (payment.status !== 'PAID') {
