@@ -269,6 +269,92 @@ describe("POST /api/learnings/diagrams/create", () => {
     );
   });
 
+  it("should pass resolved subAgents to repoAgent when prompt contains @mentions", async () => {
+    // Create a second workspace with swarm + repository
+    const scenario2 = await createTestWorkspaceScenario({
+      owner: { name: "Second Workspace Owner" },
+      workspace: { slug: `second-ws-${generateUniqueId("ws")}` },
+    });
+    const workspace2 = scenario2.workspace;
+
+    // Add the original owner as a member of the second workspace
+    await db.workspaceMember.create({
+      data: {
+        workspaceId: workspace2.id,
+        userId: owner.id,
+        role: "DEVELOPER",
+      },
+    });
+
+    const encryptionService = EncryptionService.getInstance();
+    const encryptedApiKey2 = encryptionService.encryptField(
+      "swarmApiKey",
+      "second-ws-swarm-key"
+    );
+
+    const swarm2 = await createTestSwarm({
+      workspaceId: workspace2.id,
+      name: `second-ws-swarm-${generateUniqueId("swarm")}`,
+      status: "ACTIVE",
+    });
+
+    await db.swarm.update({
+      where: { id: swarm2.id },
+      data: {
+        swarmUrl: "https://second-ws.sphinx.chat",
+        swarmApiKey: JSON.stringify(encryptedApiKey2),
+      },
+    });
+
+    await createTestRepository({
+      workspaceId: workspace2.id,
+      repositoryUrl: "https://github.com/test-owner/second-ws-repo",
+      branch: "main",
+    });
+
+    const mermaidBody = "graph TD\n  A --> B";
+    vi.mocked(repoAgent).mockResolvedValue({ content: "```mermaid\n" + mermaidBody + "\n```" });
+
+    const request = createAuthenticatedPostRequest(
+      "/api/learnings/diagrams/create",
+      {
+        workspace: workspace.slug,
+        name: "Cross WS Diagram",
+        prompt: `Show the integration with @${workspace2.slug}`,
+      },
+      owner
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const callArg = vi.mocked(repoAgent).mock.calls[0][2];
+    expect(callArg.subAgents).toBeDefined();
+    expect(callArg.subAgents).toHaveLength(1);
+    expect(callArg.subAgents![0].name).toBe(workspace2.slug);
+    expect(callArg.subAgents![0].url).toContain("second-ws.sphinx.chat");
+    expect(callArg.subAgents![0].repoUrl).toBe("https://github.com/test-owner/second-ws-repo");
+  });
+
+  it("should call repoAgent without subAgents when mentions don't match any accessible workspace", async () => {
+    const mermaidBody = "graph TD\n  A --> B";
+    vi.mocked(repoAgent).mockResolvedValue({ content: "```mermaid\n" + mermaidBody + "\n```" });
+
+    const request = createAuthenticatedPostRequest(
+      "/api/learnings/diagrams/create",
+      {
+        workspace: workspace.slug,
+        name: "No Match Diagram",
+        prompt: "Show the integration with @nonexistent-workspace-slug",
+      },
+      owner
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const callArg = vi.mocked(repoAgent).mock.calls[0][2];
+    expect(callArg.subAgents).toBeUndefined();
+  });
+
   it("should return 500 when repoAgent throws", async () => {
     vi.mocked(repoAgent).mockRejectedValue(new Error("No request_id returned from repo agent"));
 

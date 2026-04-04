@@ -269,6 +269,119 @@ describe("POST /api/learnings/diagrams/edit", () => {
     );
   });
 
+  it("should pass resolved subAgents to repoAgent when prompt contains @mentions", async () => {
+    // Create the source diagram
+    const sourceDiagram = await db.diagram.create({
+      data: {
+        name: "Flow",
+        body: "graph TD\n  A --> B",
+        description: null,
+        createdBy: owner.id,
+        groupId: generateUniqueId("group"),
+      },
+    });
+    await db.diagramWorkspace.create({
+      data: { diagramId: sourceDiagram.id, workspaceId: workspace.id },
+    });
+
+    // Create a second workspace with swarm + repository
+    const scenario2 = await createTestWorkspaceScenario({
+      owner: { name: "Second WS Edit Owner" },
+      workspace: { slug: `second-ws-edit-${generateUniqueId("ws")}` },
+    });
+    const workspace2 = scenario2.workspace;
+
+    // Add the original owner as a member of the second workspace
+    await db.workspaceMember.create({
+      data: {
+        workspaceId: workspace2.id,
+        userId: owner.id,
+        role: "DEVELOPER",
+      },
+    });
+
+    const encryptionService = EncryptionService.getInstance();
+    const encryptedApiKey2 = encryptionService.encryptField(
+      "swarmApiKey",
+      "second-ws-edit-swarm-key"
+    );
+
+    const swarm2 = await createTestSwarm({
+      workspaceId: workspace2.id,
+      name: `second-ws-edit-swarm-${generateUniqueId("swarm")}`,
+      status: "ACTIVE",
+    });
+
+    await db.swarm.update({
+      where: { id: swarm2.id },
+      data: {
+        swarmUrl: "https://second-ws-edit.sphinx.chat",
+        swarmApiKey: JSON.stringify(encryptedApiKey2),
+      },
+    });
+
+    await createTestRepository({
+      workspaceId: workspace2.id,
+      repositoryUrl: "https://github.com/test-owner/second-ws-edit-repo",
+      branch: "main",
+    });
+
+    const updatedBody = "graph TD\n  A --> B --> C";
+    vi.mocked(repoAgent).mockResolvedValue({ content: "```mermaid\n" + updatedBody + "\n```" });
+
+    const request = createAuthenticatedPostRequest(
+      "/api/learnings/diagrams/edit",
+      {
+        workspace: workspace.slug,
+        diagramId: sourceDiagram.id,
+        prompt: `Add integration with @${workspace2.slug}`,
+      },
+      owner
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const callArg = vi.mocked(repoAgent).mock.calls[0][2];
+    expect(callArg.subAgents).toBeDefined();
+    expect(callArg.subAgents).toHaveLength(1);
+    expect(callArg.subAgents![0].name).toBe(workspace2.slug);
+    expect(callArg.subAgents![0].url).toContain("second-ws-edit.sphinx.chat");
+    expect(callArg.subAgents![0].repoUrl).toBe("https://github.com/test-owner/second-ws-edit-repo");
+  });
+
+  it("should call repoAgent without subAgents when mentions don't match any accessible workspace", async () => {
+    const sourceDiagram = await db.diagram.create({
+      data: {
+        name: "Flow",
+        body: "graph TD\n  A --> B",
+        description: null,
+        createdBy: owner.id,
+        groupId: generateUniqueId("group"),
+      },
+    });
+    await db.diagramWorkspace.create({
+      data: { diagramId: sourceDiagram.id, workspaceId: workspace.id },
+    });
+
+    const updatedBody = "graph TD\n  A --> B --> C";
+    vi.mocked(repoAgent).mockResolvedValue({ content: "```mermaid\n" + updatedBody + "\n```" });
+
+    const request = createAuthenticatedPostRequest(
+      "/api/learnings/diagrams/edit",
+      {
+        workspace: workspace.slug,
+        diagramId: sourceDiagram.id,
+        prompt: "Add integration with @nonexistent-workspace-slug",
+      },
+      owner
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const callArg = vi.mocked(repoAgent).mock.calls[0][2];
+    expect(callArg.subAgents).toBeUndefined();
+  });
+
   it("should return 422 when repoAgent response has no mermaid block", async () => {
     const sourceDiagram = await db.diagram.create({
       data: {
