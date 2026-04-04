@@ -56,6 +56,11 @@ export async function POST(req: NextRequest) {
     return res;
   }
 
+  // Guard: reject if already claimed by a different user
+  if (existing?.userId && existing.userId !== userId) {
+    return NextResponse.json({ error: 'Payment already claimed' }, { status: 403 });
+  }
+
   if (stripeSession.payment_status !== 'paid') {
     return NextResponse.json({ error: 'Payment not completed' }, { status: 402 });
   }
