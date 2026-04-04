@@ -8,13 +8,13 @@
 // 5) Reuses edge buffers (no per-frame Float32Array allocations)
 // =======================================
 
-import { useRef, useMemo, useEffect, useState } from "react";
-import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { VIRTUAL_CENTER } from "../graph/extract";
 import type { Graph, GraphEdge, ViewState } from "../graph/types";
 import { edgeKey, isStructuralEdge } from "../graph/types";
-import { VIRTUAL_CENTER } from "../graph/extract";
 import { NodeDetailPanel } from "./NodeDetailPanel";
 import { PulseLayer } from "./PulseLayer";
 
@@ -215,18 +215,8 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
 
   const nodeCount = graph.nodes.length;
 
-  // Stable mesh capacity — only grows (doubles), so InstancedMesh is rarely recreated
-  const meshCapacityRef = useRef(Math.max(nodeCount, 1024));
-  // Grow capacity synchronously to avoid frame where count > capacity
-  if (nodeCount > meshCapacityRef.current) {
-    meshCapacityRef.current = Math.max(nodeCount, meshCapacityRef.current * 2);
-  }
-  const [meshCapacity, setMeshCapacity] = useState(meshCapacityRef.current);
-  useEffect(() => {
-    if (meshCapacityRef.current > meshCapacity) {
-      setMeshCapacity(meshCapacityRef.current);
-    }
-  }, [nodeCount, meshCapacity]);
+  // Capacity rounds up to next 1000 — mesh is recreated only at these boundaries
+  const meshCapacity = Math.ceil(Math.max(nodeCount, 1) / 1000) * 1000;
   // Track nodeCount and graph for the custom raycast closure (via refs so always current)
   const nodeCountRef = useRef(nodeCount);
   nodeCountRef.current = nodeCount;
@@ -267,6 +257,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
 
   // Resize buffers when nodeCount grows (streaming support)
   const prevNodeCount = useRef(nodeCount);
+  const buffersGrewRef = useRef(false);
   if (nodeCount > prevNodeCount.current) {
     const grow = <T extends Float32Array>(old: T, perNode: number, fillVal?: number): T => {
       const next = new Float32Array(nodeCount * perNode) as unknown as T;
@@ -285,17 +276,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     progressArray.current = grow(progressArray.current, 1, -1);
     fisheyeLabelPos.current = grow(fisheyeLabelPos.current, 3);
     nimbusScale.current = grow(nimbusScale.current, 1, 1);
-
-    // Update instanced buffer attributes to point to the new arrays
-    const mesh = meshRef.current;
-    if (mesh) {
-      const pAttr = new THREE.InstancedBufferAttribute(progressArray.current, 1);
-      mesh.geometry.setAttribute("instanceProgress", pAttr);
-      progressAttrRef.current = pAttr;
-      const aAttr = new THREE.InstancedBufferAttribute(currentAlpha.current, 1);
-      mesh.geometry.setAttribute("instanceAlpha", aAttr);
-      alphaAttrRef.current = aAttr;
-    }
+    buffersGrewRef.current = true;
 
     prevNodeCount.current = nodeCount;
   }
@@ -578,11 +559,22 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
 
   // Snap all animation state to targets on mount and when graph structure changes
   const prevGraphRef = useRef(graph);
+  const prevSnapNodeCount = useRef(nodeCount);
   useEffect(() => {
     // Always snap on mount; also snap when the graph object itself changes (rebuild)
+    // or when nodeCount increased (graph mutated in-place by appendToGraph)
     const graphChanged = prevGraphRef.current !== graph;
+    const nodeCountGrew = nodeCount > prevSnapNodeCount.current;
     prevGraphRef.current = graph;
-    if (!graphChanged && currentPos.current.length >= nodeCount * 3) return; // skip if just targets changed
+    const oldSnapCount = prevSnapNodeCount.current;
+    prevSnapNodeCount.current = nodeCount;
+    if (!graphChanged && !nodeCountGrew && currentPos.current.length >= nodeCount * 3) return; // skip if just targets changed
+
+    console.log(`[GV] SNAP: graphChanged=${graphChanged} nodeCountGrew=${nodeCountGrew} (${oldSnapCount}→${nodeCount})`);
+    // Count how many nodes are visible (scale > 0) in the targets
+    let visCount = 0;
+    for (let i = 0; i < nodeCount; i++) { if (targets.scales[i] > 0.01) visCount++; }
+    console.log(`[GV] SNAP: ${visCount}/${nodeCount} nodes visible in targets`);
 
     for (let i = 0; i < nodeCount; i++) {
       const i3 = i * 3;
@@ -598,7 +590,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     setLabelPos(new Float32Array(currentPos.current));
   }, [graph, targets, nodeCount]);
 
-  // Attach per-instance progress attribute
+  // Attach per-instance progress attribute (runs on mesh recreation AND buffer growth)
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
@@ -608,17 +600,79 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     const alphaAttr = new THREE.InstancedBufferAttribute(currentAlpha.current, 1);
     mesh.geometry.setAttribute("instanceAlpha", alphaAttr);
     alphaAttrRef.current = alphaAttr;
-  }, [meshCapacity]);
+  }, [meshCapacity, nodeCount]);
 
-  // Custom sphere raycast (because planeGeometry is edge-on for triangle tests)
-  // Uses nodeCountRef so it always reads the current count without needing mesh recreation
+  // Custom sphere raycast — defined once as a stable function that reads refs.
+  // Assigned to mesh in useEffect and re-assigned whenever the mesh changes.
+  const raycastFn = useRef<THREE.Mesh["raycast"] | null>(null);
+  if (!raycastFn.current) {
+    let _raycastLogTimer = 0;
+    raycastFn.current = function customRaycast(this: THREE.InstancedMesh, raycaster, intersects) {
+      const m = this; // `this` is the mesh R3F calls raycast on — always current
+      const count = Math.min(nodeCountRef.current, m.instanceMatrix.count);
+      const g = graphRef.current;
+      const nodes = g.nodes;
+      const alphas = currentAlpha.current;
+
+      const clouds = new Set<number>();
+      const proxyRadius = new Map<number, number>();
+      const expCluster = expandedClusterRef.current;
+      if (g.unstructuredRegions) {
+        for (const r of g.unstructuredRegions) {
+          if (r.proxyNodeId === expCluster) continue;
+          for (const mid of r.memberIds) clouds.add(mid);
+          proxyRadius.set(r.proxyNodeId, Math.max(r.radius, 3));
+        }
+      }
+      let _skippedCloud = 0, _skippedAlpha = 0, _skippedScale = 0, _tested = 0, _hit = 0;
+      for (let i = 0; i < count; i++) {
+        if (clouds.has(i)) { _skippedCloud++; continue; }
+        if (alphas[i] < 0.02) { _skippedAlpha++; continue; }
+
+        m.getMatrixAt(i, _mat4);
+        _mat4.decompose(_pos, _quat, _scale);
+        if (_scale.x < 0.01) { _skippedScale++; continue; }
+
+        _sphere.center.copy(_pos);
+
+        const pr = proxyRadius.get(i);
+        if (pr !== undefined) {
+          _sphere.radius = pr;
+        } else {
+          const camDist = raycaster.ray.origin.distanceTo(_pos);
+          const baseScale = nodes[i]?.icon ? _scale.x / 0.3 : _scale.x;
+          _sphere.radius = baseScale * camDist * 0.08;
+        }
+
+        _tested++;
+        if (raycaster.ray.intersectSphere(_sphere, _hitPoint)) {
+          const distance = raycaster.ray.origin.distanceTo(_hitPoint);
+          if (distance >= raycaster.near && distance <= raycaster.far) {
+            _hit++;
+            intersects.push({
+              distance,
+              point: _hitPoint.clone(),
+              instanceId: i,
+              object: m,
+            } as THREE.Intersection);
+          }
+        }
+      }
+      const now = Date.now();
+      if (now - _raycastLogTimer > 2000) {
+        _raycastLogTimer = now;
+        console.log(`[GV] raycast: count=${count} tested=${_tested} hit=${_hit} cloud=${_skippedCloud} alpha=${_skippedAlpha} scale=${_skippedScale}`);
+      }
+    };
+  }
+
+  // Attach custom raycast + pre-populate matrices whenever mesh is (re)created
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
 
-    // After mesh remount, immediately populate instance matrices from current state
-    // so raycasting works before the first useFrame tick
-    const count = nodeCountRef.current;
+    // Pre-populate instance matrices so raycasting works before first useFrame
+    const count = Math.min(nodeCountRef.current, mesh.instanceMatrix.count);
     for (let i = 0; i < count; i++) {
       const i3 = i * 3;
       tmpObj.position.set(
@@ -632,61 +686,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     }
     mesh.count = count;
     mesh.instanceMatrix.needsUpdate = true;
-
-    mesh.raycast = (raycaster, intersects) => {
-      const count = nodeCountRef.current;
-      const g = graphRef.current;
-      const nodes = g.nodes;
-      const alphas = currentAlpha.current;
-
-      // Cloud members of COLLAPSED clusters are not hittable (proxy absorbs clicks).
-      // Members of the EXPANDED cluster ARE hittable.
-      const clouds = new Set<number>();
-      const proxyRadius = new Map<number, number>();
-      const expCluster = expandedClusterRef.current;
-      if (g.unstructuredRegions) {
-        for (const r of g.unstructuredRegions) {
-          if (r.proxyNodeId === expCluster) continue; // expanded — members are selectable
-          for (const mid of r.memberIds) clouds.add(mid);
-          proxyRadius.set(r.proxyNodeId, Math.max(r.radius, 3));
-        }
-      }
-      for (let i = 0; i < count; i++) {
-        if (clouds.has(i)) continue;
-
-        // Skip truly invisible nodes (scale 0 already caught below,
-        // this catches alpha-hidden nodes like nodes outside visible set)
-        if (alphas[i] < 0.02) continue;
-
-        mesh.getMatrixAt(i, _mat4);
-        _mat4.decompose(_pos, _quat, _scale);
-        if (_scale.x < 0.01) continue;
-
-        _sphere.center.copy(_pos);
-
-        const pr = proxyRadius.get(i);
-        if (pr !== undefined) {
-          _sphere.radius = pr;
-        } else {
-          // Match billboard shader: hit radius scales with camera distance
-          const camDist = raycaster.ray.origin.distanceTo(_pos);
-          const baseScale = nodes[i]?.icon ? _scale.x / 0.3 : _scale.x;
-          _sphere.radius = baseScale * camDist * 0.08;
-        }
-
-        if (raycaster.ray.intersectSphere(_sphere, _hitPoint)) {
-          const distance = raycaster.ray.origin.distanceTo(_hitPoint);
-          if (distance >= raycaster.near && distance <= raycaster.far) {
-            intersects.push({
-              distance,
-              point: _hitPoint.clone(),
-              instanceId: i,
-              object: mesh,
-            } as THREE.Intersection);
-          }
-        }
-      }
-    };
+    mesh.raycast = raycastFn.current!;
   }, [meshCapacity]);
 
 
@@ -695,8 +695,20 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     const lines = linesRef.current;
     if (!mesh) return;
 
-    // Only render active instances — cap to capacity to avoid WebGL buffer overflow
-    mesh.count = Math.min(nodeCount, meshCapacityRef.current);
+    // Only render active instances — cap to actual mesh allocation (meshCapacity state)
+    // meshCapacityRef.current may be updated before the mesh is recreated with new capacity
+    mesh.count = Math.min(nodeCount, meshCapacity);
+
+    // Re-attach buffer attributes after buffers grew (useFrame runs before effects)
+    if (buffersGrewRef.current) {
+      buffersGrewRef.current = false;
+      const pAttr = new THREE.InstancedBufferAttribute(progressArray.current, 1);
+      mesh.geometry.setAttribute("instanceProgress", pAttr);
+      progressAttrRef.current = pAttr;
+      const aAttr = new THREE.InstancedBufferAttribute(currentAlpha.current, 1);
+      mesh.geometry.setAttribute("instanceAlpha", aAttr);
+      alphaAttrRef.current = aAttr;
+    }
 
     const now = Date.now();
 
@@ -1126,7 +1138,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
               const t0 = s / HL_SUBDIVS, t1 = (s + 1) / HL_SUBDIVS;
               const omt0 = 1 - t0, omt1 = 1 - t1;
               const vi = segIdx * 6;
-              hlPos[vi]     = omt0 * omt0 * ax + 2 * omt0 * t0 * cx + t0 * t0 * bx;
+              hlPos[vi] = omt0 * omt0 * ax + 2 * omt0 * t0 * cx + t0 * t0 * bx;
               hlPos[vi + 1] = omt0 * omt0 * ay + 2 * omt0 * t0 * cy + t0 * t0 * by;
               hlPos[vi + 2] = omt0 * omt0 * az + 2 * omt0 * t0 * cz + t0 * t0 * bz;
               hlPos[vi + 3] = omt1 * omt1 * ax + 2 * omt1 * t1 * cx + t1 * t1 * bx;
@@ -1348,8 +1360,8 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
   });
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
-    if (e.instanceId === undefined) return;
-    if (visibleNodes && !visibleNodes.has(e.instanceId)) return;
+    if (e.instanceId === undefined) { console.log("[GV] click: no instanceId"); return; }
+    if (visibleNodes && !visibleNodes.has(e.instanceId)) { console.log("[GV] click: filtered by visibleNodes", e.instanceId, "set size:", visibleNodes.size); return; }
     e.stopPropagation();
     onNodeClick(e.instanceId);
   };
@@ -1373,6 +1385,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
   return (
     <>
       <instancedMesh
+        key={meshCapacity}
         ref={meshRef}
         args={[undefined, undefined, meshCapacity]}
         frustumCulled={false}
@@ -1502,113 +1515,113 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         const useFilteredHover = hoveredRelated && hoveredRelated.size > MAX_HOVER_LABELS;
 
         return graph.nodes.map((node, i) => {
-        const isExpandedProxy = i === expandedClusterId;
-        // Skip invisible nodes, but keep expanded proxy label visible
-        if (targets.scales[i] < 0.01 && !isExpandedProxy) return null;
+          const isExpandedProxy = i === expandedClusterId;
+          // Skip invisible nodes, but keep expanded proxy label visible
+          if (targets.scales[i] < 0.01 && !isExpandedProxy) return null;
 
-        // Label gating: show for depth 0-1, hovered + neighbors, cursor-revealed, recent
-        const isSelected = viewState.mode === "subgraph" && i === viewState.selectedNodeId;
-        const isHovered = i === hovered;
-        const isHoverNeighbor = useFilteredHover
-          ? shownHoverNeighbors.has(i)
-          : (hoveredRelated?.has(i) ?? false);
-        const isCursorRevealed = fisheyeRevealed.has(i);
-        const isSearchMatch = searchMatches?.has(i) ?? false;
-        const isRecentNode = recentNodes?.has(i) ?? false;
-        const isProminent = isSelected || isHovered || isHoverNeighbor || isCursorRevealed || isSearchMatch || isRecentNode || isExpandedProxy;
+          // Label gating: show for depth 0-1, hovered + neighbors, cursor-revealed, recent
+          const isSelected = viewState.mode === "subgraph" && i === viewState.selectedNodeId;
+          const isHovered = i === hovered;
+          const isHoverNeighbor = useFilteredHover
+            ? shownHoverNeighbors.has(i)
+            : (hoveredRelated?.has(i) ?? false);
+          const isCursorRevealed = fisheyeRevealed.has(i);
+          const isSearchMatch = searchMatches?.has(i) ?? false;
+          const isRecentNode = recentNodes?.has(i) ?? false;
+          const isProminent = isSelected || isHovered || isHoverNeighbor || isCursorRevealed || isSearchMatch || isRecentNode || isExpandedProxy;
 
-        // Unstructured nodes: no label unless hovered, selected, or neighbor of selected
-        if ((graph.unstructuredNodeIds?.has(i) ?? false) && !isHovered && !isSelected && !isHoverNeighbor) return null;
+          // Unstructured nodes: no label unless hovered, selected, or neighbor of selected
+          if ((graph.unstructuredNodeIds?.has(i) ?? false) && !isHovered && !isSelected && !isHoverNeighbor) return null;
 
-        // Depth-based filter: allow depth 0-1, hide deeper unless prominent
-        if (!isProminent) {
-          if (viewState.mode === "overview") {
-            const depth = graph.initialDepthMap?.get(i) ?? 0;
-            if (depth > 1) return null;
-          } else {
-            const selectedId = viewState.selectedNodeId;
-            const depth = i === selectedId ? 0 : viewState.depthMap.get(i);
-            if (depth === undefined) return null;
-            if (depth !== -1 && depth > 1) return null;
+          // Depth-based filter: allow depth 0-1, hide deeper unless prominent
+          if (!isProminent) {
+            if (viewState.mode === "overview") {
+              const depth = graph.initialDepthMap?.get(i) ?? 0;
+              if (depth > 1) return null;
+            } else {
+              const selectedId = viewState.selectedNodeId;
+              const depth = i === selectedId ? 0 : viewState.depthMap.get(i);
+              if (depth === undefined) return null;
+              if (depth !== -1 && depth > 1) return null;
+            }
           }
-        }
 
-        const i3 = i * 3;
-        // Use target position if labelPos hasn't grown yet (newly added nodes)
-        const lx = i3 + 2 < labelPos.length ? labelPos[i3] : targets.positions[i3];
-        const ly = i3 + 2 < labelPos.length ? labelPos[i3 + 1] : targets.positions[i3 + 1];
-        const lz = i3 + 2 < labelPos.length ? labelPos[i3 + 2] : targets.positions[i3 + 2];
-        const isExecuting = node.status === "executing";
+          const i3 = i * 3;
+          // Use target position if labelPos hasn't grown yet (newly added nodes)
+          const lx = i3 + 2 < labelPos.length ? labelPos[i3] : targets.positions[i3];
+          const ly = i3 + 2 < labelPos.length ? labelPos[i3 + 1] : targets.positions[i3 + 1];
+          const lz = i3 + 2 < labelPos.length ? labelPos[i3 + 2] : targets.positions[i3 + 2];
+          const isExecuting = node.status === "executing";
 
-        // Style tiers: search > hovered > selected > recent > cursor-revealed > default
-        const recentAge = isRecentNode ? (Date.now() - recentNodes!.get(i)!) / 3000 : 1;
-        const recentOpacity = Math.max(0, 1 - recentAge);
-        const labelColor = isSearchMatch ? "rgba(255,220,80,0.95)"
-          : isHovered ? "rgba(255,255,255,0.95)"
-          : isSelected ? "rgba(100,220,255,0.95)"
-          : isHoverNeighbor ? "rgba(200,200,200,0.85)"
-          : isRecentNode ? `rgba(100,255,180,${(0.5 + 0.45 * recentOpacity).toFixed(2)})`
-          : isCursorRevealed ? "rgba(180,210,240,0.85)"
-          : "rgba(190,200,210,0.75)";
-        const labelSize = isSearchMatch ? 14
-          : isHovered || isSelected ? 14
-          : isRecentNode ? 13
-          : isCursorRevealed || isHoverNeighbor ? 12
-          : 11;
+          // Style tiers: search > hovered > selected > recent > cursor-revealed > default
+          const recentAge = isRecentNode ? (Date.now() - recentNodes!.get(i)!) / 3000 : 1;
+          const recentOpacity = Math.max(0, 1 - recentAge);
+          const labelColor = isSearchMatch ? "rgba(255,220,80,0.95)"
+            : isHovered ? "rgba(255,255,255,0.95)"
+              : isSelected ? "rgba(100,220,255,0.95)"
+                : isHoverNeighbor ? "rgba(200,200,200,0.85)"
+                  : isRecentNode ? `rgba(100,255,180,${(0.5 + 0.45 * recentOpacity).toFixed(2)})`
+                    : isCursorRevealed ? "rgba(180,210,240,0.85)"
+                      : "rgba(190,200,210,0.75)";
+          const labelSize = isSearchMatch ? 14
+            : isHovered || isSelected ? 14
+              : isRecentNode ? 13
+                : isCursorRevealed || isHoverNeighbor ? 12
+                  : 11;
 
-        const iconColor = node.icon
-          ? isHovered
-            ? "rgb(255, 51, 51)"
-            : isHoverNeighbor
-              ? "rgb(204, 38, 38)"
-              : isExecuting
-                ? "rgb(51, 255, 102)"
-                : `rgb(${Math.round(currentColor.current[i3] * 255)}, ${Math.round(currentColor.current[i3 + 1] * 255)}, ${Math.round(currentColor.current[i3 + 2] * 255)})`
-          : undefined;
+          const iconColor = node.icon
+            ? isHovered
+              ? "rgb(255, 51, 51)"
+              : isHoverNeighbor
+                ? "rgb(204, 38, 38)"
+                : isExecuting
+                  ? "rgb(51, 255, 102)"
+                  : `rgb(${Math.round(currentColor.current[i3] * 255)}, ${Math.round(currentColor.current[i3 + 1] * 255)}, ${Math.round(currentColor.current[i3 + 2] * 255)})`
+            : undefined;
 
-        return (
-          <group key={node.id}>
-            {node.icon && (
+          return (
+            <group key={node.id}>
+              {node.icon && (
+                <Html
+                  position={[lx, ly, lz]}
+                  style={{
+                    color: iconColor,
+                    fontSize: 36,
+                    pointerEvents: "none",
+                    userSelect: "none",
+                    transform: "translate(-50%, -50%)",
+                    textShadow: `0 0 8px ${iconColor}, 0 0 20px ${iconColor}`,
+                    lineHeight: 1,
+                    filter: "drop-shadow(0 0 4px rgba(0,0,0,0.9))",
+                  }}
+                  center
+                >
+                  {node.icon}
+                </Html>
+              )}
               <Html
                 position={[lx, ly, lz]}
                 style={{
-                  color: iconColor,
-                  fontSize: 36,
-                  pointerEvents: "none",
+                  color: isExpandedProxy ? "rgba(100,220,255,0.95)" : labelColor,
+                  fontSize: isExpandedProxy ? 13 : labelSize,
+                  fontFamily: "'Barlow', sans-serif",
+                  fontWeight: isHovered || isSelected || isExpandedProxy ? 600 : 500,
+                  letterSpacing: "0.3px",
+                  whiteSpace: "nowrap",
+                  pointerEvents: isExpandedProxy ? "auto" : "none",
                   userSelect: "none",
-                  transform: "translate(-50%, -50%)",
-                  textShadow: `0 0 8px ${iconColor}, 0 0 20px ${iconColor}`,
-                  lineHeight: 1,
-                  filter: "drop-shadow(0 0 4px rgba(0,0,0,0.9))",
+                  cursor: isExpandedProxy ? "pointer" : undefined,
+                  textShadow: "0 0 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7)",
+                  transform: "translate(-50%, 20px)",
                 }}
-                center
               >
-                {node.icon}
+                {isExpandedProxy
+                  ? <span onClick={(e) => { e.stopPropagation(); onNodeClick(i); }}>{node.label}</span>
+                  : node.label}
               </Html>
-            )}
-            <Html
-              position={[lx, ly, lz]}
-              style={{
-                color: isExpandedProxy ? "rgba(100,220,255,0.95)" : labelColor,
-                fontSize: isExpandedProxy ? 13 : labelSize,
-                fontFamily: "'Barlow', sans-serif",
-                fontWeight: isHovered || isSelected || isExpandedProxy ? 600 : 500,
-                letterSpacing: "0.3px",
-                whiteSpace: "nowrap",
-                pointerEvents: isExpandedProxy ? "auto" : "none",
-                userSelect: "none",
-                cursor: isExpandedProxy ? "pointer" : undefined,
-                textShadow: "0 0 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7)",
-                transform: "translate(-50%, 20px)",
-              }}
-            >
-              {isExpandedProxy
-                ? <span onClick={(e) => { e.stopPropagation(); onNodeClick(i); }}>{node.label}</span>
-                : node.label}
-            </Html>
-          </group>
-        );
-      });
+            </group>
+          );
+        });
       })()}
 
       {!minimap && graph.nodes.map((node, i) => {
