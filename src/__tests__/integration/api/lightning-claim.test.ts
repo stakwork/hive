@@ -142,6 +142,36 @@ describe('Lightning Claim API Integration Tests', () => {
       expect(data.redirect).toBe('/onboarding/graphmindset?paymentType=lightning');
     });
 
+    test('returns 403 when a different user tries to claim an already-claimed payment', async () => {
+      const originalUser = await createTestUser({ name: 'Original Claimant' });
+      const thief = await createTestUser({ name: 'Thief' });
+
+      const payment = await createTestLightningPayment({
+        userId: originalUser.id,
+        workspaceName: 'Stolen Attempt',
+        workspaceSlug: 'stolen-attempt',
+        paymentHash: 'claim_test_cross_user_hash',
+        status: 'PAID',
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(thief));
+
+      const req = createPostRequest('/api/lightning/claim', {
+        paymentHash: payment.paymentHash,
+      });
+      const response = await POST(req);
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error).toMatch(/already claimed/i);
+
+      // Original userId unchanged
+      const unchanged = await db.lightningPayment.findUnique({
+        where: { paymentHash: payment.paymentHash },
+      });
+      expect(unchanged!.userId).toBe(originalUser.id);
+    });
+
     test('returns 400 when paymentHash is missing', async () => {
       const user = await createTestUser({ name: 'Claimant' });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
