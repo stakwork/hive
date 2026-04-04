@@ -236,6 +236,66 @@ describe('Stripe Claim Route Integration Tests', () => {
       expect(data.repositoryUrl).toBe('https://github.com/org/my-repo');
     });
 
+    test('returns 403 when a different user tries to claim an already-claimed payment', async () => {
+      const otherUser = await createTestUser();
+
+      // First user claims
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email, name: testUser.name },
+      } as any);
+
+      const sessionId = `cs_test_cross_user_${Date.now()}`;
+      mockRetrieveSession.mockResolvedValue(buildPaidStripeSession(sessionId, 'pi_cross_user'));
+
+      const req1 = buildClaimRequest({ sessionId });
+      const res1 = await POST(req1);
+      expect(res1.status).toBe(200);
+
+      // Second user tries to claim the same session
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: otherUser.id, email: otherUser.email, name: otherUser.name },
+      } as any);
+
+      const req2 = buildClaimRequest({ sessionId });
+      const res2 = await POST(req2);
+
+      expect(res2.status).toBe(403);
+      const data = await res2.json();
+      expect(data.error).toMatch(/already claimed/i);
+
+      // Original user's claim should be untouched
+      const payment = await db.fiatPayment.findUnique({ where: { stripeSessionId: sessionId } });
+      expect(payment!.userId).toBe(testUser.id);
+    });
+
+    test('returns 403 when claiming a PENDING payment already owned by another user', async () => {
+      const otherUser = await createTestUser();
+
+      const sessionId = `cs_test_pending_owned_${Date.now()}`;
+      await createTestFiatPayment({
+        stripeSessionId: sessionId,
+        status: 'PENDING',
+        userId: otherUser.id,
+        workspaceName: 'Owned Pending',
+        workspaceSlug: 'owned-pending',
+      });
+
+      vi.mocked(getServerSession).mockResolvedValue({
+        user: { id: testUser.id, email: testUser.email, name: testUser.name },
+      } as any);
+
+      mockRetrieveSession.mockResolvedValue(buildPaidStripeSession(sessionId, 'pi_owned'));
+
+      const req = buildClaimRequest({ sessionId });
+      const response = await POST(req);
+
+      expect(response.status).toBe(403);
+
+      // Payment userId unchanged
+      const payment = await db.fiatPayment.findUnique({ where: { stripeSessionId: sessionId } });
+      expect(payment!.userId).toBe(otherUser.id);
+    });
+
     test('returns null for workspaceType and repositoryUrl when absent (GraphMindset / legacy sessions)', async () => {
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
