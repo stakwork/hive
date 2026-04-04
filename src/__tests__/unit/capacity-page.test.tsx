@@ -1,8 +1,10 @@
+// @vitest-environment jsdom
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import CapacityPage from "@/app/w/[slug]/capacity/page";
+import { mergeMetricsIntoVmData } from "@/lib/pods/capacity-utils";
 import * as workspaceHook from "@/hooks/useWorkspace";
 import * as poolStatusHook from "@/hooks/usePoolStatus";
 
@@ -505,5 +507,94 @@ describe("CapacityPage - Manual Refresh", () => {
     // Verify the endpoints used for progressive loading
     expect((global.fetch as any)).toHaveBeenNthCalledWith(1, "/api/w/test-workspace/pool/basic-workspaces");
     expect((global.fetch as any)).toHaveBeenNthCalledWith(2, "/api/w/test-workspace/pool/workspaces");
+  });
+});
+
+describe("mergeMetricsIntoVmData", () => {
+  const assignedTask = {
+    id: "task-1",
+    title: "Fix the bug",
+    creator: { id: "user-1", alias: "alice", img: "https://example.com/alice.png" },
+  };
+
+  const baseVm = {
+    id: "vm-1",
+    subdomain: "pod-1",
+    state: "pending",
+    internal_state: "starting",
+    usage_status: "used",
+    resource_usage: { available: false },
+    assignedTask,
+    password: "secret",
+  };
+
+  it("preserves assignedTask and other DB-enriched fields when merging metrics", () => {
+    const existing = [baseVm] as any[];
+    const incoming = [
+      {
+        id: "vm-1",
+        state: "running",
+        internal_state: "active",
+        resource_usage: { available: true, usage: { cpu: "500m", memory: "512Mi" } },
+      },
+    ] as any[];
+
+    const result = mergeMetricsIntoVmData(existing, incoming);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].assignedTask).toEqual(assignedTask);
+    expect(result[0].password).toBe("secret");
+    expect(result[0].state).toBe("running");
+    expect(result[0].internal_state).toBe("active");
+    expect(result[0].resource_usage).toEqual(incoming[0].resource_usage);
+  });
+
+  it("appends incoming VMs that have no matching existing entry", () => {
+    const existing = [baseVm] as any[];
+    const newVm = { id: "vm-2", state: "running", internal_state: "active", resource_usage: { available: true } };
+    const incoming = [
+      { ...baseVm, resource_usage: { available: true } },
+      newVm,
+    ] as any[];
+
+    const result = mergeMetricsIntoVmData(existing, incoming);
+
+    expect(result).toHaveLength(2);
+    expect(result[1]).toEqual(newVm);
+    expect(result[1].assignedTask).toBeUndefined();
+  });
+
+  it("returns all incoming VMs unchanged when existing is empty", () => {
+    const incoming = [
+      { id: "vm-1", state: "running", resource_usage: { available: true } },
+      { id: "vm-2", state: "pending", resource_usage: { available: false } },
+    ] as any[];
+
+    const result = mergeMetricsIntoVmData([], incoming);
+
+    expect(result).toHaveLength(2);
+    expect(result).toEqual(incoming);
+  });
+
+  it("updates only metrics fields, not other base fields", () => {
+    const existing = [baseVm] as any[];
+    const incoming = [
+      {
+        id: "vm-1",
+        state: "running",
+        internal_state: "active",
+        resource_usage: { available: true, usage: { cpu: "250m", memory: "256Mi" } },
+        // these should NOT overwrite base
+        password: "WRONG",
+        assignedTask: null,
+      },
+    ] as any[];
+
+    const result = mergeMetricsIntoVmData(existing, incoming);
+
+    expect(result[0].password).toBe("secret");
+    expect(result[0].assignedTask).toEqual(assignedTask);
+    expect(result[0].state).toBe("running");
+    expect(result[0].resource_usage.usage.cpu).toBe("250m");
   });
 });
