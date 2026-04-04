@@ -7,6 +7,7 @@ import { validateWorkspaceAccess } from "@/services/workspace";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { extractMermaidBody } from "@/lib/diagrams/mermaid-parser";
+import { resolveExtraSwarms } from "@/services/roadmap/feature-chat";
 
 const MERMAID_INSTRUCTION =
   "\n\nReturn a mermaid diagram surrounded by backticks like ```mermaid ... ```. Only return the mermaid block, no other commentary.";
@@ -49,6 +50,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "GitHub PAT not found for this user" }, { status: 404 });
     }
 
+    const resolved = await resolveExtraSwarms(prompt, userOrResponse.id);
+    const subAgents = resolved.length
+      ? resolved.map((s) => ({
+          name: s.name,
+          url: s.url,
+          apiToken: s.apiKey,
+          repoUrl: s.repoUrls,
+          toolsConfig: s.toolsConfig as Record<string, unknown> | undefined,
+        }))
+      : undefined;
+
     const augmentedPrompt = prompt + MERMAID_INSTRUCTION;
 
     const agentResult = await repoAgent(baseSwarmUrl, decryptedSwarmApiKey, {
@@ -58,6 +70,7 @@ export async function POST(request: NextRequest) {
       skills: { mermaid: true },
       toolsConfig: { learn_concepts: true },
       model: "opus",
+      subAgents,
     });
 
     const responseContent = agentResult?.content ?? JSON.stringify(agentResult);
