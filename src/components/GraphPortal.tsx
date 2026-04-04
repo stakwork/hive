@@ -7,7 +7,7 @@ import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import type CameraControlsImpl from "camera-controls";
 import { buildGraph, appendToGraph, type RawNode, type RawEdge } from "@/graph-viz/graph/buildGraph";
 import { extractSubgraph } from "@/graph-viz/graph/extract";
-import { buildEntityTree } from "@/graph-viz/graph/buildEntityTree";
+import { buildEntityTree, stripProxyNodes } from "@/graph-viz/graph/buildEntityTree";
 import { layoutEntityTree } from "@/graph-viz/graph/layoutEntity";
 import { GraphView, type Pulse } from "@/graph-viz/components/GraphView";
 import { OffscreenIndicators } from "@/graph-viz/components/OffscreenIndicators";
@@ -503,6 +503,7 @@ interface GamepadControllerProps {
   onNodeClick: (id: number) => void;
   onReset: () => void;
   onCollapse: () => void;
+  onExpand: () => void;
   expanded: boolean;
   actions: { label: string; matches: Set<number> }[];
   onAction: (matches: Set<number>) => void;
@@ -512,13 +513,31 @@ interface GamepadControllerProps {
 }
 
 function GamepadController({
-  graph, viewState, cameraRef, onNodeClick, onReset, onCollapse,
+  graph, viewState, cameraRef, onNodeClick, onReset, onCollapse, onExpand,
   expanded, actions, onAction, onNavigate, onCursorChange, cursorId,
 }: GamepadControllerProps) {
   const prevButtons = useRef<boolean[]>([]);
   const actionIdx = useRef(0);
   // Flick model: track whether stick was in center zone last frame
   const stickWasCentered = useRef(true);
+
+  // When collapsed, listen for X button to expand
+  useEffect(() => {
+    if (expanded) return;
+    let raf: number;
+    const prev: boolean[] = [];
+    const tick = () => {
+      const gp = navigator.getGamepads?.()[0];
+      if (gp) {
+        const pressed = gp.buttons[0]?.pressed ?? false;
+        if (pressed && !prev[0]) onExpand();
+        prev[0] = pressed;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [expanded, onExpand]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -558,12 +577,19 @@ function GamepadController({
 
       if (stickPushed && stickWasCentered.current) {
         stickWasCentered.current = false;
-        const currentId = cursorId ?? (viewState.mode === "subgraph" ? viewState.selectedNodeId : -1);
+        const selectedId = viewState.mode === "subgraph" ? viewState.selectedNodeId : -1;
+        const currentId = cursorId ?? selectedId;
 
         // Find parent and siblings
         let parentId = -1;
         let siblings: number[] = [];
-        if (currentId >= 0 && graph.childrenOf) {
+
+        if (cursorId === null && selectedId >= 0 && graph.childrenOf) {
+          // No cursor — navigate children of the selected node
+          parentId = selectedId;
+          siblings = graph.childrenOf.get(selectedId) ?? [];
+        } else if (currentId >= 0 && graph.childrenOf) {
+          // Cursor active — navigate siblings of cursor node
           for (const [pid, kids] of graph.childrenOf.entries()) {
             if (kids.includes(currentId)) {
               parentId = pid;
@@ -733,10 +759,13 @@ export function GraphPortal() {
       loadedRef.current.add(loaderId);
       const g = graphRef.current;
       if (g && newNodes.length > 0) {
+        // Strip old proxy nodes before appending to avoid orphaned proxies
+        stripProxyNodes(g, realNodeCountRef.current);
         // Append to existing graph — indices stay stable
         const newIdMap = appendToGraph(g, newNodes, newEdges, idMapRef.current);
         for (const [id, idx] of newIdMap) idMapRef.current.set(id, idx);
         allNodeIdsRef.current = [...allNodeIdsRef.current, ...newNodes.map(n => n.id)];
+        realNodeCountRef.current = g.nodes.length;
         // Re-layout to position new nodes
         const entityTree = buildEntityTree(g);
         layoutEntityTree(entityTree, g, "radial");
@@ -744,6 +773,43 @@ export function GraphPortal() {
         // Clear loading progress on the loader node
         const loaderNode = g.nodes.find(n => n.loaderId === loaderId);
         if (loaderNode) loaderNode.progress = undefined;
+
+        // Recompute subgraph view to include newly loaded nodes
+        setViewState(prev => {
+          if (prev.mode !== "subgraph") return prev;
+          const sub = extractSubgraph(g, prev.selectedNodeId, 30, { useAdj: "undirected" });
+          // Filter stale indices (old proxy nodes that were stripped) from previous visible set
+          const validPrev = prev.visibleNodeIds.filter(n => n < g.nodes.length);
+          const prevSet = new Set(validPrev);
+          const added = sub.nodeIds.filter(n => !prevSet.has(n));
+          return {
+            ...prev,
+            depthMap: sub.depthMap,
+            neighborsByDepth: sub.neighborsByDepth,
+            parentId: sub.parentId,
+            visibleNodeIds: [...validPrev, ...added],
+          };
+        });
+
+        // Reposition camera to the loader node's new position after re-layout
+        // (the loader node is the selected/clicked node that triggered loading)
+        const cam = cameraRef.current;
+        if (cam && loaderNode) {
+          const nodeIdx = loaderNode.id;
+          const p = loaderNode.position;
+          const treeKids = g.childrenOf?.get(nodeIdx) ?? [];
+          const allPts = [p, ...treeKids.map(nid => g.nodes[nid]?.position).filter(Boolean)];
+          const cx = allPts.reduce((s, pt) => s + pt.x, 0) / allPts.length;
+          const cz = allPts.reduce((s, pt) => s + pt.z, 0) / allPts.length;
+          let maxRadius = 0;
+          for (const pt of allPts) {
+            const dx = pt.x - cx, dz = pt.z - cz;
+            maxRadius = Math.max(maxRadius, Math.sqrt(dx * dx + dz * dz));
+          }
+          const fovRad = (50 / 2) * (Math.PI / 180);
+          const cameraHeight = Math.max(5, (maxRadius * 1.05) / Math.tan(fovRad));
+          cam.setLookAt(cx, p.y + cameraHeight, cz + 0.1, cx, p.y, cz, true);
+        }
       }
       // Bump version to trigger re-render (graph is mutated, same ref)
       setGraphVersion(v => v + 1);
@@ -769,6 +835,8 @@ export function GraphPortal() {
 
   // Build base graph once from workspace data — stable node indices
   const idMapRef = useRef<Map<string, number>>(new Map());
+  // Track real node count (from buildGraph + appendToGraph, excluding proxy nodes from buildEntityTree)
+  const realNodeCountRef = useRef(0);
   const [graphVersion, setGraphVersion] = useState(0);
 
   // Build graph from workspace data — only rebuilds when workspace data changes
@@ -782,6 +850,7 @@ export function GraphPortal() {
     for (let i = 0; i < nodes.length; i++) idMap.set(nodes[i].id, i);
     idMapRef.current = idMap;
     loadedRef.current.clear(); // reset loaded loaders when base data changes
+    realNodeCountRef.current = g.nodes.length;
     const entityTree = buildEntityTree(g);
     layoutEntityTree(entityTree, g, "radial");
     g.entityTree = entityTree;
@@ -1074,6 +1143,7 @@ export function GraphPortal() {
         onNodeClick={handleNodeClick}
         onReset={handleReset}
         onCollapse={handleCollapse}
+        onExpand={handleExpand}
         expanded={expanded}
         actions={currentActions}
         onAction={handleQueryAction}

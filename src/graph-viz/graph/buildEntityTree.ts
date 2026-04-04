@@ -52,6 +52,42 @@ interface ClusterInfo {
   clusterIndex: number;
 }
 
+// ── Strip old proxy nodes before rebuilding ──
+
+/**
+ * Remove proxy nodes previously added by buildEntityTree.
+ * Call this before re-running buildEntityTree on a mutated graph
+ * to prevent orphaned proxy nodes from accumulating.
+ *
+ * @param graph The graph to clean
+ * @param realNodeCount Number of "real" nodes (from buildGraph + appendToGraph).
+ *   Everything at index >= realNodeCount is considered a proxy and removed.
+ */
+export function stripProxyNodes(graph: Graph, realNodeCount: number): void {
+  if (graph.nodes.length <= realNodeCount) return;
+
+  graph.nodes.length = realNodeCount;
+  graph.adj.length = realNodeCount;
+  graph.outAdj.length = realNodeCount;
+  graph.inAdj.length = realNodeCount;
+  if (graph.structuralAdj) graph.structuralAdj.length = realNodeCount;
+  if (graph.structuralOutAdj) graph.structuralOutAdj.length = realNodeCount;
+  if (graph.structuralInAdj) graph.structuralInAdj.length = realNodeCount;
+
+  // Remove edges referencing pruned nodes
+  graph.edges = graph.edges.filter(e => e.src < realNodeCount && e.dst < realNodeCount);
+
+  // Clean adjacency lists of references to pruned nodes
+  for (let i = 0; i < realNodeCount; i++) {
+    graph.adj[i] = graph.adj[i].filter(n => n < realNodeCount);
+    graph.outAdj[i] = graph.outAdj[i].filter(n => n < realNodeCount);
+    graph.inAdj[i] = graph.inAdj[i].filter(n => n < realNodeCount);
+    if (graph.structuralAdj) graph.structuralAdj[i] = graph.structuralAdj[i].filter(n => n < realNodeCount);
+    if (graph.structuralOutAdj) graph.structuralOutAdj[i] = graph.structuralOutAdj[i].filter(n => n < realNodeCount);
+    if (graph.structuralInAdj) graph.structuralInAdj[i] = graph.structuralInAdj[i].filter(n => n < realNodeCount);
+  }
+}
+
 // ── Main entry point ──
 
 export function buildEntityTree(graph: Graph): GraphEntity {
