@@ -86,7 +86,10 @@ function nextId(): string {
  * Attempts ELK layout first, falls back to dagre on failure.
  */
 export async function renderMermaidToSvg(source: string): Promise<string> {
-  const trimmed = source.trim();
+  // Replace literal "\n" (backslash + n) with <br/> for line breaks in labels.
+  // AI-generated diagrams often produce e.g. "Hive\n(Next.js App)" where the
+  // intent is a line break, but Mermaid only interprets <br/> as such.
+  const trimmed = source.trim().replace(/\\n/g, "<br/>");
   if (!trimmed) throw new Error("No diagram code provided");
 
   const mermaid = await getMermaid();
