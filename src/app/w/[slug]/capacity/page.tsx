@@ -16,6 +16,7 @@ import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualiza
 import { VMGrid } from "@/components/capacity/VMGrid";
 import { VMCardSkeleton } from "@/components/capacity/VMCardSkeleton";
 import { VMData } from "@/types/pool-manager";
+import { mergeMetricsIntoVmData } from "@/lib/pods/capacity-utils";
 
 export default function CapacityPage() {
   const { workspace, slug, isAdmin, isOwner } = useWorkspace();
@@ -109,7 +110,7 @@ export default function CapacityPage() {
         if (result.warning && (!result.data?.workspaces || result.data.workspaces.length === 0)) {
           setMetricsError(true);
         } else if (result.success && result.data) {
-          setVmData(result.data.workspaces || []);
+          setVmData((prev) => mergeMetricsIntoVmData(prev, result.data.workspaces || []));
         }
       } catch (err) {
         console.warn("Failed to load real-time metrics:", err);
@@ -156,7 +157,7 @@ export default function CapacityPage() {
       if (result.warning && (!result.data?.workspaces || result.data.workspaces.length === 0)) {
         setMetricsError(true);
       } else if (result.success && result.data) {
-        setVmData(result.data.workspaces || []);
+        setVmData((prev) => mergeMetricsIntoVmData(prev, result.data.workspaces || []));
       }
     } catch (err) {
       console.warn("Failed to load real-time metrics:", err);
