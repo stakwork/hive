@@ -263,6 +263,10 @@ describe('Stripe Claim Route Integration Tests', () => {
       const data = await res2.json();
       expect(data.error).toMatch(/already claimed/i);
 
+      // Cookie must be cleared to prevent infinite retry loops
+      const setCookie = res2.headers.get('set-cookie');
+      expect(setCookie).toMatch(/stripe_session_id=;/);
+
       // Original user's claim should be untouched
       const payment = await db.fiatPayment.findUnique({ where: { stripeSessionId: sessionId } });
       expect(payment!.userId).toBe(testUser.id);
@@ -290,6 +294,10 @@ describe('Stripe Claim Route Integration Tests', () => {
       const response = await POST(req);
 
       expect(response.status).toBe(403);
+
+      // Cookie must be cleared to prevent infinite retry loops
+      const setCookie = response.headers.get('set-cookie');
+      expect(setCookie).toMatch(/stripe_session_id=;/);
 
       // Payment userId unchanged
       const payment = await db.fiatPayment.findUnique({ where: { stripeSessionId: sessionId } });
