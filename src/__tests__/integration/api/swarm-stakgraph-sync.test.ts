@@ -294,7 +294,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
       expect(mockTriggerAsyncSync).toHaveBeenCalledWith(
-        testSwarm.name,
+        `${testSwarm.name}.sphinx.chat`,
         testSwarm.swarmApiKey,
         testRepositoryUrl,
         { username: "testuser", pat: "github-pat-token" },
@@ -321,7 +321,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
       expect(mockTriggerAsyncSync).toHaveBeenCalledWith(
-        testSwarm.name,
+        `${testSwarm.name}.sphinx.chat`,
         testSwarm.swarmApiKey,
         testRepositoryUrl,
         undefined,
@@ -872,7 +872,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
 
       // Verify triggerAsyncSync called with correct parameters
       expect(mockTriggerAsyncSync).toHaveBeenCalledWith(
-        testSwarm.name,
+        `${testSwarm.name}.sphinx.chat`,
         testSwarm.swarmApiKey,
         testRepositoryUrl,
         { username: "e2e-testuser", pat: "e2e-github-token" },
