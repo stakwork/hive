@@ -9,6 +9,7 @@ import { buildGraph, appendToGraph, type RawNode, type RawEdge } from "@/graph-v
 import { extractSubgraph } from "@/graph-viz/graph/extract";
 import { buildEntityTree, stripProxyNodes } from "@/graph-viz/graph/buildEntityTree";
 import { layoutEntityTree } from "@/graph-viz/graph/layoutEntity";
+import { computeRadialLayout } from "@/graph-viz/graph/layout";
 import { GraphView, type Pulse } from "@/graph-viz/components/GraphView";
 import { OffscreenIndicators } from "@/graph-viz/components/OffscreenIndicators";
 import { PrevNodeIndicator } from "@/graph-viz/components/PrevNodeIndicator";
@@ -281,29 +282,29 @@ function buildWorkspaceGraph(
     const wsId = hasMultiple ? `ws-${ws.slug}` : "workspace";
     const prefix = hasMultiple ? `${ws.slug}-` : "";
 
-    nodes.push({ id: wsId, label: ws.name, link: `/w/${ws.slug}/dashboard` });
+    nodes.push({ id: wsId, label: ws.name, link: `/w/${ws.slug}/dashboard`, nodeType: "workspace" });
     meta(wsId, ws.slug, "workspace");
 
     // Group nodes
-    nodes.push({ id: `${prefix}group-members`, label: "Members" });
-    nodes.push({ id: `${prefix}group-features`, label: "Features" });
+    nodes.push({ id: `${prefix}group-members`, label: "Members", nodeType: "group" });
+    nodes.push({ id: `${prefix}group-features`, label: "Features", nodeType: "group" });
     meta(`${prefix}group-members`, ws.slug, "group");
     meta(`${prefix}group-features`, ws.slug, "group");
     edges.push({ source: wsId, target: `${prefix}group-members` });
     edges.push({ source: wsId, target: `${prefix}group-features` });
 
     // Repository — loadable
-    nodes.push({ id: `${prefix}group-repo`, label: "Repository" });
+    nodes.push({ id: `${prefix}group-repo`, label: "Repository", nodeType: "group" });
     edges.push({ source: wsId, target: `${prefix}group-repo` });
-    nodes.push({ id: `${prefix}repo-code`, label: "Code", loaderId: `${prefix}repo-code` });
+    nodes.push({ id: `${prefix}repo-code`, label: "Code", loaderId: `${prefix}repo-code`, nodeType: "repo" });
     edges.push({ source: `${prefix}group-repo`, target: `${prefix}repo-code` });
-    nodes.push({ id: `${prefix}repo-prs`, label: "Pull Requests", loaderId: `${prefix}repo-prs` });
+    nodes.push({ id: `${prefix}repo-prs`, label: "Pull Requests", loaderId: `${prefix}repo-prs`, nodeType: "repo" });
     edges.push({ source: `${prefix}group-repo`, target: `${prefix}repo-prs` });
 
     // Infrastructure — loadable
-    nodes.push({ id: `${prefix}group-infra`, label: "Infrastructure" });
+    nodes.push({ id: `${prefix}group-infra`, label: "Infrastructure", nodeType: "group" });
     edges.push({ source: wsId, target: `${prefix}group-infra` });
-    nodes.push({ id: `${prefix}infra-pods`, label: "Pods", loaderId: `${prefix}infra-pods` });
+    nodes.push({ id: `${prefix}infra-pods`, label: "Pods", loaderId: `${prefix}infra-pods`, nodeType: "infra" });
     edges.push({ source: `${prefix}group-infra`, target: `${prefix}infra-pods` });
 
     // Members
@@ -311,7 +312,7 @@ function buildWorkspaceGraph(
     for (const member of ws.members) {
       const label = truncLabel(member.user.name || member.user.email || "Unknown");
       const nodeId = `${prefix}member-${member.id}`;
-      nodes.push({ id: nodeId, label, content: member.role });
+      nodes.push({ id: nodeId, label, content: member.role, nodeType: "member" });
       meta(nodeId, ws.slug, "member");
       edges.push({ source: `${prefix}group-members`, target: nodeId });
       userIdToMemberId.set(member.userId, nodeId);
@@ -328,6 +329,7 @@ function buildWorkspaceGraph(
         status: featureVis,
         content: feature.status,
         link: `/w/${ws.slug}/plan/${feature.id}`,
+        nodeType: "feature",
       });
       meta(featureNodeId, ws.slug, "feature", featureVis);
       edges.push({ source: parentId, target: featureNodeId });
@@ -360,7 +362,7 @@ function buildWorkspaceGraph(
         if (bucket.length === 0) continue;
         const parentId = bucket.length === 1 ? `${prefix}group-features` : `${prefix}features-${bucketLabel.toLowerCase()}`;
         if (bucket.length > 1) {
-          nodes.push({ id: parentId, label: `${bucketLabel} (${bucket.length})` });
+          nodes.push({ id: parentId, label: `${bucketLabel} (${bucket.length})`, nodeType: "group" });
           edges.push({ source: `${prefix}group-features`, target: parentId });
         }
         for (const feature of bucket) addFeatureNode(feature, parentId);
@@ -371,7 +373,7 @@ function buildWorkspaceGraph(
 
     // Whiteboards
     if (ws.whiteboards.length > 0) {
-      nodes.push({ id: `${prefix}group-whiteboards`, label: "Whiteboards" });
+      nodes.push({ id: `${prefix}group-whiteboards`, label: "Whiteboards", nodeType: "group" });
       edges.push({ source: wsId, target: `${prefix}group-whiteboards` });
       for (const wb of ws.whiteboards) {
         const wbNodeId = `${prefix}wb-${wb.id}`;
@@ -379,6 +381,7 @@ function buildWorkspaceGraph(
           id: wbNodeId,
           label: truncLabel(wb.name),
           link: `/w/${ws.slug}/whiteboards/${wb.id}`,
+          nodeType: "whiteboard",
         });
         edges.push({ source: `${prefix}group-whiteboards`, target: wbNodeId });
         if (wb.featureId) {
@@ -472,22 +475,6 @@ function getNodeActions(nodeIdx: number, graph: ReturnType<typeof buildGraph>, m
   return actions;
 }
 
-const actionBtnStyle: React.CSSProperties = {
-  padding: "5px 12px",
-  borderRadius: 20,
-  border: "1px solid rgba(77, 217, 232, 0.4)",
-  background: "rgba(10, 10, 20, 0.85)",
-  backdropFilter: "blur(12px)",
-  color: "rgba(77, 217, 232, 0.9)",
-  fontSize: 11,
-  fontFamily: "'Barlow', sans-serif",
-  fontWeight: 600,
-  cursor: "pointer",
-  pointerEvents: "auto" as const,
-  whiteSpace: "nowrap" as const,
-  boxShadow: "0 0 12px rgba(77, 217, 232, 0.15)",
-  transition: "transform 0.15s, background 0.15s",
-};
 
 // ---- Gamepad controller ----
 const DEAD_ZONE = 0.2;
@@ -509,12 +496,13 @@ interface GamepadControllerProps {
   onAction: (matches: Set<number>) => void;
   onNavigate: (link: string) => void;
   onCursorChange: (id: number | null) => void;
+  onPin: (id: number) => void;
   cursorId: number | null;
 }
 
 function GamepadController({
   graph, viewState, cameraRef, onNodeClick, onReset, onCollapse, onExpand,
-  expanded, actions, onAction, onNavigate, onCursorChange, cursorId,
+  expanded, actions, onAction, onNavigate, onCursorChange, onPin, cursorId,
 }: GamepadControllerProps) {
   const prevButtons = useRef<boolean[]>([]);
   const actionIdx = useRef(0);
@@ -692,6 +680,15 @@ function GamepadController({
         }
       }
 
+      // Square (2) → pin node
+      if (justPressed(2)) {
+        const target = cursorId ?? (viewState.mode === "subgraph" ? viewState.selectedNodeId : -1);
+        if (target >= 0) {
+          onPin(target);
+          onCursorChange(null);
+        }
+      }
+
       // Triangle (3) → open link
       if (justPressed(3)) {
         const target = cursorId ?? (viewState.mode === "subgraph" ? viewState.selectedNodeId : -1);
@@ -707,7 +704,7 @@ function GamepadController({
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [expanded, graph, viewState, cameraRef, onNodeClick, onReset, onCollapse, actions, onAction, onNavigate, cursorId]);
+  }, [expanded, graph, viewState, cameraRef, onNodeClick, onReset, onCollapse, actions, onAction, onNavigate, onPin, cursorId]);
 
   return null;
 }
@@ -725,7 +722,16 @@ export function GraphPortal() {
   const [viewState, setViewState] = useState<ViewState>({ mode: "overview" });
   const [pulses, setPulses] = useState<Pulse[]>([]);
   const [simulating, setSimulating] = useState(false);
+  // Pin stack: each entry is a node ID in the original (unfiltered) graph.
+  // The last entry is the active pin. Pinning again pushes; unpinning pops.
+  const [pinStack, setPinStack] = useState<number[]>([]);
+  const pinnedNodeId = pinStack.length > 0 ? pinStack[pinStack.length - 1] : null;
   const simRef = useRef<number | null>(null);
+
+  // Graph filters
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(() => new Set());
+  const [hiddenWorkspaces, setHiddenWorkspaces] = useState<Set<string>>(() => new Set());
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // On-demand loader system
   const loadedRef = useRef<Set<string>>(new Set());
@@ -839,25 +845,175 @@ export function GraphPortal() {
   const realNodeCountRef = useRef(0);
   const [graphVersion, setGraphVersion] = useState(0);
 
-  // Build graph from workspace data — only rebuilds when workspace data changes
+  // Build graph from workspace data — rebuilds when data or filters change
   const graph = useMemo(() => {
     if (allWsData.length === 0) return null;
-    const { nodes, edges, nodeMeta } = buildWorkspaceGraph(allWsData);
+    const { nodes: allNodes, edges: allEdges, nodeMeta } = buildWorkspaceGraph(allWsData);
     nodeMetaRef.current = nodeMeta;
+
+    // Apply filters: remove hidden node types and workspaces
+    const filteredWsData = hiddenWorkspaces.size > 0
+      ? allWsData.filter(ws => !hiddenWorkspaces.has(ws.slug))
+      : allWsData;
+    const hasFilters = hiddenTypes.size > 0 || hiddenWorkspaces.size > 0;
+
+    let nodes = allNodes;
+    let edges = allEdges;
+
+    if (hasFilters) {
+      // Determine which workspaces are included
+      const includedSlugs = new Set(filteredWsData.map(ws => ws.slug));
+      const prefix = (slug: string) => allWsData.length > 1 ? `${slug}-` : "";
+
+      // Filter nodes
+      const keptNodeIds = new Set<string>();
+      nodes = allNodes.filter(n => {
+        // Filter by workspace
+        if (hiddenWorkspaces.size > 0 && allWsData.length > 1) {
+          const isWsNode = allWsData.some(ws => {
+            const p = prefix(ws.slug);
+            return n.id.startsWith(p) || n.id === `ws-${ws.slug}`;
+          });
+          if (isWsNode) {
+            const belongsToIncluded = filteredWsData.some(ws => {
+              const p = prefix(ws.slug);
+              return n.id.startsWith(p) || n.id === `ws-${ws.slug}`;
+            });
+            if (!belongsToIncluded) return false;
+          }
+        }
+        // Filter by node type
+        if (n.nodeType && hiddenTypes.has(n.nodeType)) return false;
+        keptNodeIds.add(n.id);
+        return true;
+      });
+
+      // Filter edges to only reference kept nodes
+      edges = allEdges.filter(e => keptNodeIds.has(e.source) && keptNodeIds.has(e.target));
+    }
+
     allNodeIdsRef.current = nodes.map(n => n.id);
     const g = buildGraph(nodes, edges);
     const idMap = new Map<string, number>();
     for (let i = 0; i < nodes.length; i++) idMap.set(nodes[i].id, i);
     idMapRef.current = idMap;
-    loadedRef.current.clear(); // reset loaded loaders when base data changes
+    loadedRef.current.clear();
     realNodeCountRef.current = g.nodes.length;
     const entityTree = buildEntityTree(g);
     layoutEntityTree(entityTree, g, "radial");
     g.entityTree = entityTree;
     return g;
-  }, [allWsData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allWsData, hiddenTypes, hiddenWorkspaces]);
   // graphVersion triggers re-render only — graph is mutated in place by appendToGraph
   void graphVersion;
+
+  // Reset view when filters change (node indices shift with rebuilt graph)
+  useEffect(() => {
+    setViewState({ mode: "overview" });
+    setPinStack([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hiddenTypes, hiddenWorkspaces]);
+
+  // Pinned view: build a chain of radial layouts.
+  // Each pin extracts a subgraph from the previous pin's graph.
+  const pinnedGraph = useMemo(() => {
+    if (pinStack.length === 0 || !graph) return null;
+
+    // Each pin in the stack narrows the graph and re-layouts around that node
+    let result = graph;
+
+    for (const pid of pinStack) {
+      const node = result.nodes[pid];
+      if (!node) return null;
+
+      const sub = extractSubgraph(result, pid, 4, { useAdj: "undirected" });
+
+      // Sort hop-1 by nodeType for type-clustered sectors
+      if (sub.neighborsByDepth[0]) {
+        sub.neighborsByDepth[0].sort((a, b) => {
+          const ta = result.nodes[a]?.nodeType || "";
+          const tb = result.nodes[b]?.nodeType || "";
+          return ta.localeCompare(tb);
+        });
+      }
+
+      const layoutEdges = sub.edges.map(e => ({ src: e.src, dst: e.dst }));
+      const layout = computeRadialLayout(
+        pid,
+        sub.neighborsByDepth,
+        layoutEdges,
+        { parentId: sub.parentId },
+      );
+
+      // Offset layout to the node's real position (teleport feel)
+      const cx = node.position.x;
+      const cy = node.position.y;
+      const cz = node.position.z;
+
+      const clonedNodes = result.nodes.map((n, i) => {
+        const layoutPos = layout.positions.get(i);
+        if (layoutPos) {
+          return { ...n, position: { x: cx + layoutPos.x, y: cy + layoutPos.y, z: cz + layoutPos.z } };
+        }
+        return n;
+      });
+
+      // Filter adj/edges to only include nodes in the subgraph
+      const subNodeSet = new Set(sub.nodeIds);
+      const filteredAdj = result.adj.map((neighbors, i) =>
+        subNodeSet.has(i) ? neighbors.filter(n => subNodeSet.has(n)) : []
+      );
+      const filteredEdges = result.edges.filter(e => subNodeSet.has(e.src) && subNodeSet.has(e.dst));
+
+      result = {
+        ...result,
+        nodes: clonedNodes,
+        adj: filteredAdj,
+        edges: filteredEdges,
+        childrenOf: layout.childrenOf,
+        treeEdgeSet: layout.treeEdgeSet,
+        initialDepthMap: sub.depthMap,
+      };
+    }
+
+    return result;
+  }, [pinStack, graph]);
+
+  // When a node is pinned, set initial viewState for the pinned graph
+  useEffect(() => {
+    if (pinnedNodeId === null || !pinnedGraph) return;
+    const sub = extractSubgraph(pinnedGraph, pinnedNodeId, 30, { useAdj: "undirected" });
+    setViewState({
+      mode: "subgraph",
+      selectedNodeId: pinnedNodeId,
+      navigationHistory: [pinnedNodeId],
+      depthMap: sub.depthMap,
+      neighborsByDepth: sub.neighborsByDepth,
+      parentId: sub.parentId,
+      visibleNodeIds: sub.nodeIds,
+    });
+
+    // Move camera to pinned node
+    const cam = cameraRef.current;
+    if (cam) {
+      const node = pinnedGraph.nodes[pinnedNodeId];
+      if (node) {
+        const treeKids = pinnedGraph.childrenOf?.get(pinnedNodeId) ?? [];
+        const pts = [node.position, ...treeKids.map(nid => pinnedGraph.nodes[nid]?.position).filter(Boolean)];
+        const cx = pts.reduce((s, pt) => s + pt.x, 0) / pts.length;
+        const cz = pts.reduce((s, pt) => s + pt.z, 0) / pts.length;
+        let maxR = 0;
+        for (const pt of pts) {
+          const dx = pt.x - cx, dz = pt.z - cz;
+          maxR = Math.max(maxR, Math.sqrt(dx * dx + dz * dz));
+        }
+        const fovRad = (50 / 2) * (Math.PI / 180);
+        const camH = Math.max(5, (maxR * 1.3) / Math.tan(fovRad));
+        cam.setLookAt(cx, node.position.y + camH, cz + 0.1, cx, node.position.y, cz, true);
+      }
+    }
+  }, [pinStack, pinnedGraph, pinnedNodeId]);
 
   const handleQueryAction = useCallback((matches: Set<number>) => {
     setQueryMatches(prev => prev === matches ? null : matches);
@@ -867,17 +1023,20 @@ export function GraphPortal() {
   graphRef.current = graph;
 
   const handleNodeClick = useCallback((nodeId: number) => {
-    if (!expanded || !graph) return;
+    const activeGraph = pinnedGraph ?? graph;
+    if (!expanded || !activeGraph) return;
     if (viewState.mode === "subgraph" && viewState.selectedNodeId === nodeId) return;
     setGamepadCursor(null);
 
-    // Trigger on-demand loading if node has a loaderId
-    const node = graph.nodes[nodeId];
-    if (node?.loaderId) {
-      triggerLoader(node.loaderId);
+    // Trigger on-demand loading if node has a loaderId (only for main graph)
+    if (!pinnedGraph) {
+      const node = activeGraph.nodes[nodeId];
+      if (node?.loaderId) {
+        triggerLoader(node.loaderId);
+      }
     }
 
-    const sub = extractSubgraph(graph, nodeId, 30, { useAdj: "undirected" });
+    const sub = extractSubgraph(activeGraph, nodeId, 30, { useAdj: "undirected" });
     setViewState(prev => {
       const prevVisible = prev.mode === "subgraph" ? prev.visibleNodeIds : [];
       const prevSet = new Set(prevVisible);
@@ -900,9 +1059,9 @@ export function GraphPortal() {
 
     const cam = cameraRef.current;
     if (cam) {
-      const p = graph.nodes[nodeId].position;
-      const treeKids = graph.childrenOf?.get(nodeId) ?? [];
-      const allPts = [p, ...treeKids.map(nid => graph.nodes[nid].position)];
+      const p = activeGraph.nodes[nodeId].position;
+      const treeKids = activeGraph.childrenOf?.get(nodeId) ?? [];
+      const allPts = [p, ...treeKids.map(nid => activeGraph.nodes[nid]?.position).filter(Boolean)];
       const cx = allPts.reduce((s, pt) => s + pt.x, 0) / allPts.length;
       const cz = allPts.reduce((s, pt) => s + pt.z, 0) / allPts.length;
       let maxRadius = 0;
@@ -914,11 +1073,12 @@ export function GraphPortal() {
       const cameraHeight = Math.max(5, (maxRadius * 1.05) / Math.tan(fovRad));
       cam.setLookAt(cx, p.y + cameraHeight, cz + 0.1, cx, p.y, cz, true);
     }
-  }, [graph, viewState, expanded, triggerLoader]);
+  }, [graph, pinnedGraph, viewState, expanded, triggerLoader]);
 
   const handleReset = useCallback(() => {
     setViewState({ mode: "overview" });
     setQueryMatches(null);
+    setPinStack([]);
     const cam = cameraRef.current;
     if (cam) cam.setLookAt(0, MINIMAP_CAM_HEIGHT, 0.1, 0, 0, 0, true);
   }, []);
@@ -1025,12 +1185,12 @@ export function GraphPortal() {
         style={{ background: "transparent", pointerEvents: expanded ? "auto" : "none" }}
       >
         <GraphView
-          graph={graph}
+          graph={(pinnedGraph ?? graph)!}
           viewState={expanded ? viewState : { mode: "overview" }}
           onNodeClick={expanded ? handleNodeClick : () => {}}
           minimap={!expanded}
-          pulses={expanded ? pulses : undefined}
-          searchMatches={expanded ? searchMatches : null}
+          pulses={expanded && !pinnedGraph ? pulses : undefined}
+          searchMatches={expanded && !pinnedGraph ? searchMatches : null}
         />
         <CameraControls
           ref={cameraRef}
@@ -1045,11 +1205,11 @@ export function GraphPortal() {
             <OffscreenIndicators graph={graph} viewState={viewState} onNodeClick={handleNodeClick} />
             <PrevNodeIndicator graph={graph} viewState={viewState} onNodeClick={handleNodeClick} />
             {viewState.mode === "subgraph" && (() => {
+              const activeGraph = (pinnedGraph ?? graph)!;
               const nodeId = viewState.selectedNodeId;
-              const node = graph.nodes[nodeId];
+              const node = activeGraph.nodes[nodeId];
               if (!node) return null;
               const p = node.position;
-              const actions = getNodeActions(nodeId, graph, nodeMetaRef.current, allNodeIdsRef.current);
               return (
                 <>
                   {/* Link button */}
@@ -1093,38 +1253,57 @@ export function GraphPortal() {
                       </button>
                     </Html>
                   )}
-                  {/* Contextual query actions */}
-                  {actions.length > 0 && (
-                    <Html position={[p.x, p.y, p.z]} center style={{ pointerEvents: "none" }}>
-                      <div style={{
+                  {/* Pin node button */}
+                  <Html position={[p.x, p.y, p.z]} center style={{ pointerEvents: "none" }}>
+                    <button
+                      onClick={() => {
+                        // Don't pin the same node that's already the active pin
+                        if (nodeId === pinnedNodeId) return;
+                        const activeGraph = pinnedGraph ?? graph;
+                        setPinStack(prev => [...prev, nodeId]);
+                        const cam = cameraRef.current;
+                        if (cam && activeGraph) {
+                            const neighborCount = (activeGraph.adj[nodeId] ?? []).length;
+                            const radius = Math.max(8, 3 * Math.sqrt(neighborCount));
+                            const fovRad = (50 / 2) * (Math.PI / 180);
+                            const camH = Math.max(5, (radius * 1.3) / Math.tan(fovRad));
+                            cam.setLookAt(p.x, p.y + camH, p.z + 0.1, p.x, p.y, p.z, true);
+                        }
+                      }}
+                      title="Pin as root"
+                      style={{
                         position: "absolute",
-                        top: node.link ? -90 : -52,
-                        left: -60,
+                        top: -52,
+                        left: node.link ? 58 : 12,
+                        width: 40,
+                        height: 40,
+                        borderRadius: "50%",
+                        border: "1.5px solid rgba(77, 217, 232, 0.5)",
+                        background: "rgba(10, 10, 20, 0.85)",
+                        backdropFilter: "blur(12px)",
+                        cursor: "pointer",
                         display: "flex",
-                        gap: 6,
+                        alignItems: "center",
+                        justifyContent: "center",
                         pointerEvents: "auto",
-                      }}>
-                        {actions.map(a => (
-                          <button
-                            key={a.label}
-                            onClick={() => handleQueryAction(a.matches)}
-                            style={{
-                              ...actionBtnStyle,
-                              ...(queryMatches === a.matches ? {
-                                borderColor: "rgba(255, 220, 80, 0.6)",
-                                color: "rgba(255, 220, 80, 0.95)",
-                                background: "rgba(40, 30, 0, 0.85)",
-                              } : {}),
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.08)"; }}
-                            onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
-                          >
-                            {a.label} ({a.matches.size})
-                          </button>
-                        ))}
-                      </div>
-                    </Html>
-                  )}
+                        boxShadow: "0 0 20px rgba(77, 217, 232, 0.2), inset 0 0 12px rgba(77, 217, 232, 0.05)",
+                        transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.transform = "scale(1.15)";
+                        e.currentTarget.style.boxShadow = "0 0 28px rgba(77, 217, 232, 0.4)";
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.transform = "scale(1)";
+                        e.currentTarget.style.boxShadow = "0 0 20px rgba(77, 217, 232, 0.2)";
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4dd9e8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 17v5" />
+                        <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                      </svg>
+                    </button>
+                  </Html>
                 </>
               );
             })()}
@@ -1137,7 +1316,7 @@ export function GraphPortal() {
 
       {/* Gamepad controller */}
       <GamepadController
-        graph={graph}
+        graph={(pinnedGraph ?? graph)!}
         viewState={viewState}
         cameraRef={cameraRef}
         onNodeClick={handleNodeClick}
@@ -1150,6 +1329,7 @@ export function GraphPortal() {
         onNavigate={handleGamepadNavigate}
         cursorId={gamepadCursor}
         onCursorChange={setGamepadCursor}
+        onPin={(id) => setPinStack(prev => [...prev, id])}
       />
 
       {/* Expanded overlay controls */}
@@ -1173,6 +1353,93 @@ export function GraphPortal() {
               {queryMatches.size} matches \u2715
             </button>
           )}
+          {/* Pin chain HUD */}
+          {pinStack.length > 0 && (
+            <div style={{
+              position: "absolute", top: 20, left: 20, zIndex: 20,
+              display: "flex", alignItems: "center", gap: 4,
+              pointerEvents: "auto",
+            }}>
+              {pinStack.map((pid, i) => {
+                const nodeLabel = graph!.nodes[pid]?.label ?? `#${pid}`;
+                const isLast = i === pinStack.length - 1;
+                return (
+                  <div key={`${pid}-${i}`} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <button
+                      onClick={() => {
+                        if (isLast && pinStack.length === 1) {
+                          // Last pin — clear all
+                          setPinStack([]);
+                          setViewState({ mode: "overview" });
+                          const cam = cameraRef.current;
+                          if (cam) cam.setLookAt(0, MINIMAP_CAM_HEIGHT, 0.1, 0, 0, 0, true);
+                        } else {
+                          // Click a breadcrumb — pop back to that level
+                          setPinStack(pinStack.slice(0, i + 1));
+                        }
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        padding: "5px 10px", borderRadius: 16,
+                        border: isLast ? "1px solid rgba(255, 220, 80, 0.4)" : "1px solid rgba(255,255,255,0.15)",
+                        background: isLast ? "rgba(40, 30, 0, 0.85)" : "rgba(20, 20, 30, 0.85)",
+                        backdropFilter: "blur(8px)",
+                        cursor: "pointer",
+                        fontSize: 11, fontFamily: "'Barlow', sans-serif", fontWeight: 600,
+                        color: isLast ? "rgba(255, 220, 80, 0.9)" : "rgba(200, 200, 210, 0.7)",
+                        whiteSpace: "nowrap",
+                        transition: "background 0.15s",
+                      }}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" opacity={0.7}>
+                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/>
+                      </svg>
+                      {nodeLabel}
+                    </button>
+                    {!isLast && (
+                      <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 11 }}>{"\u203A"}</span>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Clear all */}
+              <button
+                onClick={() => {
+                  setPinStack([]);
+                  setViewState({ mode: "overview" });
+                  const cam = cameraRef.current;
+                  if (cam) cam.setLookAt(0, MINIMAP_CAM_HEIGHT, 0.1, 0, 0, 0, true);
+                }}
+                style={{
+                  background: "none", border: "none", color: "rgba(255,255,255,0.3)",
+                  cursor: "pointer", fontSize: 13, padding: "0 4px", lineHeight: 1,
+                  marginLeft: 2,
+                }}
+                title="Clear all pins"
+              >
+                {"\u2715"}
+              </button>
+            </div>
+          )}
+          {/* Filter */}
+          <button
+            onClick={() => setFilterOpen(f => !f)}
+            style={{
+              position: "absolute", top: 20, right: 62, zIndex: 20,
+              width: 36, height: 36, borderRadius: 8,
+              border: filterOpen ? "1px solid rgba(77, 217, 232, 0.5)" : "1px solid rgba(255,255,255,0.1)",
+              background: filterOpen ? "rgba(77, 217, 232, 0.12)" : "rgba(0,0,0,0.5)",
+              color: filterOpen ? "#4dd9e8" : "#aaa",
+              fontSize: 16, cursor: "pointer", pointerEvents: "auto",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              backdropFilter: "blur(4px)",
+            }}
+            title="Filters"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+          </button>
           {/* Close */}
           <button
             onClick={handleCollapse}
@@ -1188,6 +1455,97 @@ export function GraphPortal() {
           >
             {"\u2715"}
           </button>
+
+          {/* Filter panel */}
+          {filterOpen && (
+            <div style={{
+              position: "absolute", top: 64, right: 20, zIndex: 20,
+              width: 200, borderRadius: 10,
+              border: "1px solid rgba(77, 217, 232, 0.2)",
+              background: "rgba(8, 10, 22, 0.95)",
+              backdropFilter: "blur(16px)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+              padding: "12px 0",
+              pointerEvents: "auto",
+            }}>
+              {/* Node types */}
+              <div style={{ padding: "0 14px 6px", fontSize: 10, fontFamily: "'Barlow', sans-serif", fontWeight: 600, color: "rgba(77, 217, 232, 0.5)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                Node Types
+              </div>
+              {["feature", "member", "whiteboard", "repo", "infra", "group"].map(type => (
+                <label key={type} style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "5px 14px", cursor: "pointer",
+                  fontSize: 12, fontFamily: "'Barlow', sans-serif", fontWeight: 500,
+                  color: hiddenTypes.has(type) ? "rgba(255,255,255,0.3)" : "rgba(200, 210, 220, 0.9)",
+                }} onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(77, 217, 232, 0.08)"; }}
+                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                  <input
+                    type="checkbox"
+                    checked={!hiddenTypes.has(type)}
+                    onChange={() => setHiddenTypes(prev => {
+                      const next = new Set(prev);
+                      if (next.has(type)) next.delete(type); else next.add(type);
+                      return next;
+                    })}
+                    style={{ accentColor: "#4dd9e8" }}
+                  />
+                  {type.charAt(0).toUpperCase() + type.slice(1)}s
+                </label>
+              ))}
+
+              {/* Workspaces (only if multiple) */}
+              {allWsData.length > 1 && (
+                <>
+                  <div style={{ borderTop: "1px solid rgba(77, 217, 232, 0.1)", margin: "8px 0" }} />
+                  <div style={{ padding: "0 14px 6px", fontSize: 10, fontFamily: "'Barlow', sans-serif", fontWeight: 600, color: "rgba(77, 217, 232, 0.5)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                    Workspaces
+                  </div>
+                  {allWsData.map(ws => (
+                    <label key={ws.slug} style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "5px 14px", cursor: "pointer",
+                      fontSize: 12, fontFamily: "'Barlow', sans-serif", fontWeight: 500,
+                      color: hiddenWorkspaces.has(ws.slug) ? "rgba(255,255,255,0.3)" : "rgba(200, 210, 220, 0.9)",
+                    }} onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(77, 217, 232, 0.08)"; }}
+                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+                      <input
+                        type="checkbox"
+                        checked={!hiddenWorkspaces.has(ws.slug)}
+                        onChange={() => setHiddenWorkspaces(prev => {
+                          const next = new Set(prev);
+                          if (next.has(ws.slug)) next.delete(ws.slug); else next.add(ws.slug);
+                          return next;
+                        })}
+                        style={{ accentColor: "#4dd9e8" }}
+                      />
+                      {ws.name}
+                    </label>
+                  ))}
+                </>
+              )}
+
+              {/* Reset filters */}
+              {(hiddenTypes.size > 0 || hiddenWorkspaces.size > 0) && (
+                <div style={{ borderTop: "1px solid rgba(77, 217, 232, 0.1)", margin: "8px 0 4px" }} />
+              )}
+              {(hiddenTypes.size > 0 || hiddenWorkspaces.size > 0) && (
+                <button
+                  onClick={() => { setHiddenTypes(new Set()); setHiddenWorkspaces(new Set()); }}
+                  style={{
+                    display: "block", width: "calc(100% - 28px)", margin: "0 14px",
+                    padding: "6px 0", borderRadius: 6,
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    background: "transparent", color: "rgba(200, 210, 220, 0.7)",
+                    fontSize: 11, fontFamily: "'Barlow', sans-serif", fontWeight: 600,
+                    cursor: "pointer", textAlign: "center",
+                  }}
+                >
+                  Reset all filters
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Reset */}
           {viewState.mode === "subgraph" && (
@@ -1225,6 +1583,7 @@ export function GraphPortal() {
           </button>
         </div>
       )}
+
     </div>
   );
 }

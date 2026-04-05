@@ -1045,7 +1045,12 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         const cy = my + Math.min(3, edgeLen * 0.1);
         const cz = mz * (1 - curveFactor);
 
-        const alpha = Math.min(currentAlpha.current[e.src], currentAlpha.current[e.dst]);
+        // Progressive disclosure: bright on hover, dim otherwise
+        const nodeAlpha = Math.min(currentAlpha.current[e.src], currentAlpha.current[e.dst]);
+        const isHoverEdge = (e.src === hovered || e.dst === hovered);
+        const isSelectedEdge = (e.src === selectedId || e.dst === selectedId);
+        const interactionFactor = isHoverEdge ? 1.0 : isSelectedEdge ? 0.4 : 0.15;
+        const alpha = nodeAlpha * interactionFactor;
         const baseIdx = i * SUBDIVS;
 
         for (let s = 0; s < SUBDIVS; s++) {
@@ -1432,7 +1437,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
           toneMapped={false}
           uniforms={{
             color: { value: new THREE.Color(0.6, 0.3, 0.9) },
-            opacity: { value: viewState.mode === "overview" ? 0.15 : 0.2 },
+            opacity: { value: viewState.mode === "overview" ? 0.15 : 0.5 },
           }}
         />
       </lineSegments>

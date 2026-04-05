@@ -10,6 +10,7 @@ export interface RawNode {
   progress?: number;
   content?: string;
   loaderId?: string;
+  nodeType?: string;
 }
 
 export interface RawEdge {
@@ -49,6 +50,7 @@ export function appendToGraph(
       ...(node.progress != null && { progress: node.progress }),
       ...(node.content != null && { content: node.content }),
       ...(node.loaderId != null && { loaderId: node.loaderId }),
+      ...(node.nodeType != null && { nodeType: node.nodeType }),
     });
     graph.adj.push([]);
     graph.outAdj.push([]);
@@ -136,6 +138,7 @@ export function buildGraph(nodes: RawNode[], edges: RawEdge[]): Graph {
     ...(node.progress != null && { progress: node.progress }),
     ...(node.content != null && { content: node.content }),
     ...(node.loaderId != null && { loaderId: node.loaderId }),
+    ...(node.nodeType != null && { nodeType: node.nodeType }),
   }));
 
   // Classify unstructured nodes: BFS from roots through structural edges only

@@ -15,6 +15,7 @@ export interface GraphNode {
   progress?: number; // 0–1 for executing nodes
   content?: string; // descriptive text for detail view
   loaderId?: string; // triggers on-demand loading when selected
+  nodeType?: string; // entity type (e.g. "member", "feature", "workspace")
 }
 
 export type LayoutStrategyName = "radial" | "force" | "auto";
