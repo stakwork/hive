@@ -14,6 +14,7 @@ import { NextRequest } from 'next/server';
 
 const mockCreateSwarm = vi.fn();
 const mockCreateCustomer = vi.fn();
+const mockCreateSecret = vi.fn();
 
 vi.mock('@/lib/runtime', () => ({
   isSwarmFakeModeEnabled: vi.fn(() => false),
@@ -29,6 +30,7 @@ vi.mock('@/services/swarm', () => ({
 vi.mock('@/lib/service-factory', () => ({
   stakworkService: vi.fn(() => ({
     createCustomer: mockCreateCustomer,
+    createSecret: mockCreateSecret,
   })),
 }));
 
@@ -80,6 +82,7 @@ describe('POST /api/swarm — graph_mindset', () => {
     });
 
     mockCreateSwarm.mockResolvedValue(defaultSwarmResponse());
+    mockCreateSecret.mockResolvedValue({ success: true });
   });
 
   // ── Happy path: full DB state after successful graph_mindset creation ──
@@ -125,6 +128,10 @@ describe('POST /api/swarm — graph_mindset', () => {
 
     // Stakwork customer was called for this workspace
     expect(mockCreateCustomer).toHaveBeenCalledWith(workspace.id);
+
+    // Secret was registered after swarm save
+    expect(mockCreateSecret).toHaveBeenCalledOnce();
+    expect(mockCreateSecret).toHaveBeenCalledWith('swarm-abc123_API_KEY', 'api-key-xyz', 'stk-token');
   });
 
   // ── SourceControlOrg linking ──
@@ -153,7 +160,7 @@ describe('POST /api/swarm — graph_mindset', () => {
 
   // ── Error paths: verify DB state after failures ──
 
-  test('placeholder stays FAILED when Stakwork returns no token', async () => {
+  test('no swarm created when Stakwork returns no token', async () => {
     mockSession(testUser);
     mockCreateCustomer.mockResolvedValue({
       data: { id: null, token: null, workflow_id: null },
@@ -169,15 +176,9 @@ describe('POST /api/swarm — graph_mindset', () => {
     const body = await response.json();
     expect(body.success).toBe(false);
 
-    // Placeholder was created but marked FAILED — not left dangling as PENDING
+    // Customer fails before placeholder is created — no swarm record at all
     const swarm = await db.swarm.findFirst({ where: { workspaceId: workspace.id } });
-    expect(swarm).not.toBeNull();
-    expect(swarm!.status).toBe('FAILED');
-    expect(swarm!.swarmId).toBeNull(); // Never got external ID
-
-    // Repository was still created (in the placeholder transaction)
-    const repo = await db.repository.findFirst({ where: { workspaceId: workspace.id } });
-    expect(repo).not.toBeNull();
+    expect(swarm).toBeNull();
   });
 
   test('placeholder stays FAILED when SwarmService throws', async () => {
@@ -200,6 +201,30 @@ describe('POST /api/swarm — graph_mindset', () => {
     expect(swarm!.swarmId).toBeNull();
     // Encrypted fields should NOT be populated since external call failed
     expect(swarm!.swarmApiKey).toBeNull();
+  });
+
+  // ── createSecret failure is non-fatal ──
+
+  test('createSecret failure is non-fatal — swarm still returns success', async () => {
+    mockSession(testUser);
+    mockCreateCustomer.mockResolvedValue({
+      data: { id: 42, token: 'stk-token', workflow_id: 99 },
+    });
+    mockCreateSecret.mockRejectedValue(new Error('secret fail'));
+
+    const response = await POST(buildRequest({
+      workspaceId: workspace.id,
+      repositoryUrl: 'https://github.com/user/my-repo',
+      workspace_type: 'graph_mindset',
+    }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.success).toBe(true);
+
+    // Swarm should be ACTIVE despite secret failure
+    const swarm = await db.swarm.findFirst({ where: { workspaceId: workspace.id } });
+    expect(swarm!.status).toBe('ACTIVE');
   });
 
   // ── Idempotency: existing swarm is returned, nothing new created ──
@@ -236,15 +261,18 @@ describe('POST /api/swarm — graph_mindset', () => {
     const repos = await db.repository.findMany({ where: { workspaceId: workspace.id } });
     expect(repos).toHaveLength(0);
 
-    // External services never called
+    // External services never called (early return on existing swarm)
     expect(mockCreateCustomer).not.toHaveBeenCalled();
     expect(mockCreateSwarm).not.toHaveBeenCalled();
   });
 
-  // ── Stakwork is only called for graph_mindset ──
+  // ── createCustomer now runs for ALL workspace types ──
 
-  test('non-graph_mindset skips Stakwork and creates swarm normally', async () => {
+  test('normal workspace type: creates customer and swarm without graphmindset ENVs', async () => {
     mockSession(testUser);
+    mockCreateCustomer.mockResolvedValue({
+      data: { id: 1, token: 'stk-token', workflow_id: null },
+    });
 
     const response = await POST(buildRequest({
       workspaceId: workspace.id,
@@ -258,8 +286,11 @@ describe('POST /api/swarm — graph_mindset', () => {
     const swarm = await db.swarm.findFirst({ where: { workspaceId: workspace.id } });
     expect(swarm!.status).toBe('ACTIVE');
 
-    // Stakwork was never called
-    expect(mockCreateCustomer).not.toHaveBeenCalled();
+    // Stakwork customer IS called for all types now
+    expect(mockCreateCustomer).toHaveBeenCalledWith(workspace.id);
+
+    // Secret is also registered
+    expect(mockCreateSecret).toHaveBeenCalledOnce();
   });
 
   // ── Auth & access control (real DB permission checks) ──

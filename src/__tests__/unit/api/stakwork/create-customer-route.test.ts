@@ -9,12 +9,10 @@ vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
 
-// Mock function declarations - will be assigned after vi.mocked() imports
-
 vi.mock("@/lib/service-factory", () => {
   const mockCreateCustomer = vi.fn();
   const mockCreateSecret = vi.fn();
-  
+
   return {
     stakworkService: vi.fn(() => ({
       createCustomer: mockCreateCustomer,
@@ -46,7 +44,6 @@ vi.mock("@/lib/encryption", () => {
 vi.mock("@/lib/db", () => {
   const mockWorkspaceUpdate = vi.fn();
   const mockWorkspaceFindFirst = vi.fn();
-  const mockSwarmFindFirst = vi.fn();
 
   return {
     db: {
@@ -54,13 +51,9 @@ vi.mock("@/lib/db", () => {
         update: mockWorkspaceUpdate,
         findFirst: mockWorkspaceFindFirst,
       },
-      swarm: {
-        findFirst: mockSwarmFindFirst,
-      },
     },
     __mockWorkspaceUpdate: mockWorkspaceUpdate,
     __mockWorkspaceFindFirst: mockWorkspaceFindFirst,
-    __mockSwarmFindFirst: mockSwarmFindFirst,
   };
 });
 
@@ -89,26 +82,6 @@ const TestDataFactory = {
     ownerId: "user-123",
     deleted: false,
     stakworkApiKey: null,
-    ...overrides,
-  }),
-
-  createValidSwarm: (overrides = {}) => ({
-    id: "swarm-123",
-    workspaceId: "workspace-123",
-    name: "test-swarm",
-    swarmId: "swarm-id-123",
-    swarmUrl: "https://test-swarm.example.com",
-    swarmSecretAlias: "{{SWARM_API_KEY}}",
-    swarmApiKey: JSON.stringify({
-      data: "encrypted-swarm-key",
-      iv: "iv-123",
-      tag: "tag-123",
-      keyId: "default",
-      version: "1",
-      encryptedAt: "2024-01-01T00:00:00.000Z",
-    }),
-    status: "ACTIVE",
-    services: [],
     ...overrides,
   }),
 
@@ -200,11 +173,8 @@ const dbMock = vi.mocked(await import("@/lib/db"));
 const mockCreateCustomer = serviceFactoryMock.__mockCreateCustomer;
 const mockCreateSecret = serviceFactoryMock.__mockCreateSecret;
 const mockEncryptField = encryptionMock.__mockEncryptField;
-const mockDecryptField = encryptionMock.__mockDecryptField;
-const mockGetInstance = encryptionMock.__mockGetInstance;
 const mockWorkspaceUpdate = dbMock.__mockWorkspaceUpdate;
 const mockWorkspaceFindFirst = dbMock.__mockWorkspaceFindFirst;
-const mockSwarmFindFirst = dbMock.__mockSwarmFindFirst;
 
 const MockSetup = {
   reset: () => {
@@ -222,28 +192,8 @@ const MockSetup = {
       ...workspace,
       stakworkApiKey: JSON.stringify(encryptedToken),
     });
-    mockSwarmFindFirst.mockResolvedValue(null);
 
     return { workspace, encryptedToken };
-  },
-
-  setupWithSwarm: (token: string, swarmApiKey: string) => {
-    const workspace = TestDataFactory.createValidWorkspace();
-    const swarm = TestDataFactory.createValidSwarm();
-    const encryptedToken = TestDataFactory.createEncryptedData(token);
-
-    mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
-    mockWorkspaceFindFirst.mockResolvedValue(workspace);
-    mockEncryptField.mockReturnValue(encryptedToken);
-    mockWorkspaceUpdate.mockResolvedValue({
-      ...workspace,
-      stakworkApiKey: JSON.stringify(encryptedToken),
-    });
-    mockSwarmFindFirst.mockResolvedValue(swarm);
-    mockDecryptField.mockReturnValue(swarmApiKey);
-    mockCreateSecret.mockResolvedValue({ success: true });
-
-    return { workspace, swarm, encryptedToken };
   },
 };
 
@@ -452,7 +402,6 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
       mockEncryptField.mockReturnValue(encryptedData);
       mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockSwarmFindFirst.mockResolvedValue(null);
 
       const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
       await POST(request);
@@ -468,23 +417,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
       await POST(request);
 
-      // The singleton is created at module level, so getInstance is called during import
-      // We verify the encryption service is used by checking encryptField was called
       expect(mockEncryptField).toHaveBeenCalledWith("stakworkApiKey", token);
-    });
-
-    test("should handle encryption service returning null token gracefully", async () => {
-      const token = "null-token";
-      mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
-      mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData("null"));
-      mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockSwarmFindFirst.mockResolvedValue(null);
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
-      const response = await POST(request);
-
-      expect(response.status).toBe(201);
     });
   });
 
@@ -501,7 +434,6 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceFindFirst.mockResolvedValue(workspace);
       mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData(token));
       mockWorkspaceUpdate.mockResolvedValue(workspace);
-      mockSwarmFindFirst.mockResolvedValue(null);
 
       const request = TestHelpers.createMockRequest({ workspaceId: "workspace-456" });
       await POST(request);
@@ -520,7 +452,6 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceFindFirst.mockResolvedValue(workspace);
       mockEncryptField.mockReturnValue(encryptedData);
       mockWorkspaceUpdate.mockResolvedValue(workspace);
-      mockSwarmFindFirst.mockResolvedValue(null);
 
       const request = TestHelpers.createMockRequest({ workspaceId: workspace.id });
       await POST(request);
@@ -538,31 +469,12 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
       mockWorkspaceFindFirst.mockResolvedValue(null);
-      mockSwarmFindFirst.mockResolvedValue(null);
 
       const request = TestHelpers.createMockRequest({ workspaceId: "nonexistent-workspace" });
       const response = await POST(request);
 
       expect(mockWorkspaceUpdate).not.toHaveBeenCalled();
       await TestHelpers.expectSuccessfulResponse(response);
-    });
-
-    test("should query swarm after workspace update", async () => {
-      const token = "swarm-query-token";
-      const workspace = TestDataFactory.createValidWorkspace();
-
-      mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
-      mockWorkspaceFindFirst.mockResolvedValue(workspace);
-      mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData(token));
-      mockWorkspaceUpdate.mockResolvedValue(workspace);
-      mockSwarmFindFirst.mockResolvedValue(null);
-
-      const request = TestHelpers.createMockRequest({ workspaceId: workspace.id });
-      await POST(request);
-
-      expect(mockSwarmFindFirst).toHaveBeenCalledWith({
-        where: { workspaceId: workspace.id },
-      });
     });
 
     test("should handle database connection failure", async () => {
@@ -578,115 +490,19 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
     });
   });
 
-  describe("Secret Creation Logic", () => {
+  describe("Secret Creation", () => {
     beforeEach(() => {
       TestHelpers.setupAuthenticatedUser();
     });
 
-    test("should not create secret when swarm is not found", async () => {
-      const token = "no-swarm-token";
+    test("does not call createSecret", async () => {
+      const token = "no-secret-token";
       MockSetup.setupSuccessfulCustomerCreation(token);
 
       const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
-      await POST(request);
+      const response = await POST(request);
 
-      expect(mockSwarmFindFirst).toHaveBeenCalled();
-      expect(mockCreateSecret).not.toHaveBeenCalled();
-    });
-
-    test("should create secret when swarm has API key and secret alias", async () => {
-      const token = "secret-creation-token";
-      const swarmApiKey = "decrypted-swarm-key";
-      MockSetup.setupWithSwarm(token, swarmApiKey);
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
-      await POST(request);
-
-      expect(mockCreateSecret).toHaveBeenCalledWith("SWARM_API_KEY", swarmApiKey, token);
-    });
-
-    test("should sanitize swarm secret alias by removing curly braces", async () => {
-      const token = "sanitize-test-token";
-      const swarmApiKey = "swarm-key-123";
-      const swarm = TestDataFactory.createValidSwarm({
-        swarmSecretAlias: "{{CUSTOM_API_KEY}}",
-      });
-
-      mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
-      mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData(token));
-      mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockSwarmFindFirst.mockResolvedValue(swarm);
-      mockDecryptField.mockReturnValue(swarmApiKey);
-      mockCreateSecret.mockResolvedValue({ success: true });
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
-      await POST(request);
-
-      expect(mockCreateSecret).toHaveBeenCalledWith("CUSTOM_API_KEY", swarmApiKey, token);
-    });
-
-    test("should handle double-encrypted swarm API key", async () => {
-      const token = "double-encrypt-token";
-      const plaintextSwarmKey = "plaintext-swarm-key";
-      const firstEncryption = TestDataFactory.createEncryptedData(plaintextSwarmKey);
-      const swarm = TestDataFactory.createValidSwarm({
-        swarmApiKey: JSON.stringify(firstEncryption),
-      });
-
-      mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
-      mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData(token));
-      mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockSwarmFindFirst.mockResolvedValue(swarm);
-
-      // First decryption returns JSON string, second decryption returns plaintext
-      mockDecryptField
-        .mockReturnValueOnce(JSON.stringify(firstEncryption))
-        .mockReturnValueOnce(plaintextSwarmKey);
-
-      mockCreateSecret.mockResolvedValue({ success: true });
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
-      await POST(request);
-
-      expect(mockDecryptField).toHaveBeenCalledTimes(2);
-      expect(mockCreateSecret).toHaveBeenCalledWith("SWARM_API_KEY", plaintextSwarmKey, token);
-    });
-
-    test("should not create secret when swarmSecretAlias is empty", async () => {
-      const token = "empty-alias-token";
-      const swarm = TestDataFactory.createValidSwarm({
-        swarmSecretAlias: "",
-      });
-
-      mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
-      mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData(token));
-      mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockSwarmFindFirst.mockResolvedValue(swarm);
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
-      await POST(request);
-
-      expect(mockCreateSecret).not.toHaveBeenCalled();
-    });
-
-    test("should not create secret when swarmApiKey is null", async () => {
-      const token = "null-swarm-key-token";
-      const swarm = TestDataFactory.createValidSwarm({
-        swarmApiKey: null,
-      });
-
-      mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
-      mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData(token));
-      mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockSwarmFindFirst.mockResolvedValue(swarm);
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
-      await POST(request);
-
+      await TestHelpers.expectSuccessfulResponse(response);
       expect(mockCreateSecret).not.toHaveBeenCalled();
     });
   });
@@ -852,31 +668,11 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockWorkspaceFindFirst.mockResolvedValue(workspace);
       mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData(token));
       mockWorkspaceUpdate.mockResolvedValue(workspace);
-      mockSwarmFindFirst.mockResolvedValue(null);
 
       const request = TestHelpers.createMockRequest({ workspaceId: workspace.id });
       await POST(request);
 
       expect(mockWorkspaceUpdate).toHaveBeenCalled();
-    });
-
-    test("should handle malformed JSON in swarm API key", async () => {
-      const token = "malformed-json-token";
-      const swarm = TestDataFactory.createValidSwarm({
-        swarmApiKey: "not-valid-json",
-      });
-
-      mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
-      mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData(token));
-      mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockSwarmFindFirst.mockResolvedValue(swarm);
-      mockDecryptField.mockReturnValue("plaintext-key");
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
-      const response = await POST(request);
-
-      expect(response.status).toBe(201);
     });
 
     test("should handle very long workspace IDs", async () => {
@@ -899,43 +695,6 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       expect(mockCreateCustomer).toHaveBeenCalledWith(specialWorkspaceId);
       expect(response.status).toBe(201);
-    });
-
-    test("should handle createSecret throwing error", async () => {
-      const token = "secret-error-token";
-      const swarmApiKey = "swarm-key";
-
-      mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
-      mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData(token));
-      mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockSwarmFindFirst.mockResolvedValue(TestDataFactory.createValidSwarm());
-      mockDecryptField.mockReturnValue(swarmApiKey);
-      mockCreateSecret.mockRejectedValue(new Error("Secret creation failed"));
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
-      const response = await POST(request);
-
-      // Should still return 500 due to error in createSecret
-      await TestHelpers.expectGenericErrorResponse(response);
-    });
-
-    test("should handle swarm with null secret alias", async () => {
-      const token = "null-alias-token";
-      const swarm = TestDataFactory.createValidSwarm({
-        swarmSecretAlias: null,
-      });
-
-      mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse(token));
-      mockWorkspaceFindFirst.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockEncryptField.mockReturnValue(TestDataFactory.createEncryptedData(token));
-      mockWorkspaceUpdate.mockResolvedValue(TestDataFactory.createValidWorkspace());
-      mockSwarmFindFirst.mockResolvedValue(swarm);
-
-      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
-      await POST(request);
-
-      expect(mockCreateSecret).not.toHaveBeenCalled();
     });
   });
 });
