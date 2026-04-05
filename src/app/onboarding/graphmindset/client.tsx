@@ -441,7 +441,7 @@ function ProvisionStep({ forkUrl }: ProvisionStepProps) {
     setError(null);
 
     try {
-      // 1. Get workspace name/slug from payment record
+      // 1. Fetch payment record
       const paymentRes = await fetch("/api/graphmindset/payment");
       const paymentData = await paymentRes.json();
       if (!paymentRes.ok) {
@@ -455,37 +455,25 @@ function ProvisionStep({ forkUrl }: ProvisionStepProps) {
         return;
       }
 
-      // 2. Create workspace — server handles payment linking + paymentStatus: PAID
+      // 2. Create workspace — passes forkUrl as repositoryUrl so repositoryDraft is set for SwarmSetupHandler
       const wsRes = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: workspaceName, slug: workspaceSlug, workspaceKind: "graph_mindset" }),
+        body: JSON.stringify({
+          name: workspaceName,
+          slug: workspaceSlug,
+          workspaceKind: "graph_mindset",
+          repositoryUrl: forkUrl,
+        }),
       });
       const wsData = await wsRes.json();
       if (!wsRes.ok) {
         setError(wsData.error || "Failed to create workspace");
         return;
       }
-      const { id: workspaceId, slug } = wsData.workspace;
+      const { slug } = wsData.workspace;
 
-      // 3. Create swarm — server handles Stakwork customer + env vars for graph_mindset
-      const swarmRes = await fetch("/api/swarm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId,
-          repositoryUrl: forkUrl,
-          vanity_address: `${slug}.sphinx.chat`,
-          workspace_type: "graph_mindset",
-        }),
-      });
-      const swarmData = await swarmRes.json();
-      if (!swarmRes.ok || !swarmData.success) {
-        setError(swarmData.message || "Failed to create swarm");
-        return;
-      }
-
-      // 4. Redirect to workspace
+      // 3. Redirect — SwarmSetupHandler fires automatically on the workspace page
       router.push(`/w/${slug}`);
     } catch {
       setError("Something went wrong. Please try again.");
