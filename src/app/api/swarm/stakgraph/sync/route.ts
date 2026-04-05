@@ -1,4 +1,5 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
@@ -102,8 +103,11 @@ export async function POST(request: NextRequest) {
       hasGithubAuth: !!(username && pat),
     });
 
+    const swarmVanityHost = getSwarmVanityAddress(swarm.name);
+    console.log(`[Sync] Resolved vanity host — swarm.name: ${swarm.name}, vanityHost: ${swarmVanityHost}`);
+
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
-      swarm.name,
+      swarmVanityHost,
       swarm.swarmApiKey,
       repositoryUrl,
       username && pat ? { username, pat } : undefined,
