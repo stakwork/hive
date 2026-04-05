@@ -1,5 +1,6 @@
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
+import { getSwarmVanityAddress } from "@/lib/constants";
 
 type Creds = { username?: string; pat?: string };
 
@@ -23,7 +24,7 @@ export async function triggerSync(
   useLsp: boolean = false,
 ) {
   console.log("===Trigger Sync was hit");
-  const stakgraphUrl = getStakgraphUrl(swarmName);
+  const stakgraphUrl = getStakgraphUrl(getSwarmVanityAddress(swarmName));
   const data: Record<string, string | boolean> = { repo_url: repoUrl, use_lsp: useLsp };
   if (creds?.username) data.username = creds.username;
   if (creds?.pat) data.pat = creds.pat;
@@ -47,7 +48,7 @@ export async function triggerAsyncSync(
   options?: SyncOptions,
 ): Promise<AsyncSyncResult> {
   console.log("===Trigger AsyncSync was hit");
-  const stakgraphUrl = getStakgraphUrl(swarmHost);
+  const stakgraphUrl = getStakgraphUrl(getSwarmVanityAddress(swarmHost));
   const data: Record<string, string | boolean> = { repo_url: repoUrl, use_lsp: useLsp };
   if (creds?.username) data.username = creds.username;
   if (creds?.pat) data.pat = creds.pat;
@@ -80,7 +81,7 @@ export async function triggerIngestAsync(
   options?: SyncOptions,
 ) {
   console.log("===Trigger IngestAsync was hit. useLsp:", useLsp);
-  const stakgraphUrl = getStakgraphUrl(swarmName);
+  const stakgraphUrl = getStakgraphUrl(getSwarmVanityAddress(swarmName));
   const data: Record<string, string | boolean> = {
     repo_url: repoUrl,
     username: creds.username,
