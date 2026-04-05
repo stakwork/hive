@@ -2,6 +2,7 @@ import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
 import { SWARM_DEFAULT_INSTANCE_TYPE } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import { stakworkService } from "@/lib/service-factory";
 import { generateSecurePassword } from "@/lib/utils/password";
 import { SwarmService } from "@/services/swarm";
@@ -12,6 +13,8 @@ import { RepositoryStatus, SwarmStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+
+const encryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
   if (isFakeMode) {
@@ -109,28 +112,64 @@ export async function POST(request: NextRequest) {
       console.log(`[SWARM_CREATE] Skipping SourceControlOrg linking — no repositoryUrl`);
     }
 
-    // Check for existing swarm and create placeholder in single transaction
-    console.log(`[SWARM_CREATE] Starting transaction to check/create swarm for workspace ${workspaceId}`);
+    // Check for an already-existing swarm before doing any external work
+    console.log(`[SWARM_CREATE] Checking for existing swarm for workspace ${workspaceId}`);
+    const existingSwarm = await db.swarm.findFirst({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existingSwarm) {
+      console.log(`[SWARM_CREATE] Found existing swarm - ID: ${existingSwarm.id}, SwarmId: ${existingSwarm.swarmId}, Status: ${existingSwarm.status}`);
+      return NextResponse.json({
+        success: true,
+        message: "Swarm already exists for this workspace",
+        data: { id: existingSwarm.id, swarmId: existingSwarm.swarmId },
+      }, { status: 200 });
+    }
+
+    // Step 1: Create Stakwork customer — runs for ALL workspace types (fatal on failure)
+    console.log(`[SWARM_CREATE] Creating Stakwork customer for workspace ${workspaceId}`);
+    const pubkey = (session.user as { lightningPubkey?: string }).lightningPubkey;
+    const customerResponse = await stakworkService().createCustomer(workspaceId);
+    const customerData =
+      customerResponse && typeof customerResponse === "object" && "data" in customerResponse
+        ? (customerResponse as { data?: { id?: number | string; token?: string; workflow_id?: number | null } }).data
+        : undefined;
+
+    const customerId = customerData?.id != null ? String(customerData.id) : undefined;
+    const token = customerData?.token;
+    const workflowId = customerData?.workflow_id ?? null;
+
+    if (!token) {
+      console.error(`[SWARM_CREATE] Stakwork customer creation failed — missing token`);
+      return NextResponse.json({ success: false, message: "Failed to create Stakwork customer" }, { status: 500 });
+    }
+
+    // Save encrypted token to workspace.stakworkApiKey
+    const encryptedToken = encryptionService.encryptField("stakworkApiKey", token);
+    await db.workspace.update({
+      where: { id: workspaceId },
+      data: { stakworkApiKey: JSON.stringify(encryptedToken) },
+    });
+    console.log(`[SWARM_CREATE] Stakwork customer created - customerId: ${customerId}, workflowId: ${workflowId}, token saved to workspace`);
+
+    // Build GraphMindset ENV map only for graph_mindset workspaces
+    let graphmindsetEnv: Record<string, string> = {};
+    if (workspace_type === "graph_mindset") {
+      graphmindsetEnv = {
+        STAKWORK_ADD_NODE_TOKEN: token,
+        STAKWORK_RADAR_REQUEST_TOKEN: token,
+        ...(pubkey ? { OWNER_PUBKEY: pubkey } : {}),
+        ...(customerId ? { STAKWORK_CUSTOMER_ID: customerId } : {}),
+        ...(workflowId ? { GRAPHMINDSET_STAKWORK_WORKFLOW_ID: String(workflowId) } : {}),
+      };
+      console.log(`[SWARM_CREATE] Built graphmindset ENV vars`);
+    }
+
+    // Step 2: Create placeholder swarm + repository in a single transaction
+    console.log(`[SWARM_CREATE] Starting transaction to create placeholder swarm for workspace ${workspaceId}`);
     const result = await db.$transaction(async (tx) => {
-      // Check for existing swarm
-      console.log(`[SWARM_CREATE] Checking for existing swarm in workspace ${workspaceId}`);
-      const existingSwarm = await tx.swarm.findFirst({
-        where: {
-          workspaceId: workspaceId,
-        },
-        orderBy: {
-          createdAt: 'desc'
-        }
-      });
-
-      if (existingSwarm) {
-        console.log(`[SWARM_CREATE] Found existing swarm - ID: ${existingSwarm.id}, SwarmId: ${existingSwarm.swarmId}, Status: ${existingSwarm.status}`);
-        return {
-          exists: true,
-          swarm: existingSwarm
-        };
-      }
-
       console.log(`[SWARM_CREATE] No existing swarm found, creating placeholder for workspace ${workspaceId}`);
       // Create placeholder swarm record immediately to reserve the workspace
       const placeholderSwarm = await tx.swarm.create({
@@ -167,63 +206,18 @@ export async function POST(request: NextRequest) {
         console.log(`[SWARM_CREATE] Created repository record - ID: ${createdRepo.id}, Name: ${repoName}`);
       }
 
-      return {
-        exists: false,
-        swarm: placeholderSwarm
-      };
+      return placeholderSwarm;
     });
-    console.log(`[SWARM_CREATE] Transaction completed - exists: ${result.exists}, swarm ID: ${result.swarm.id}`);
+    console.log(`[SWARM_CREATE] Transaction completed - placeholder swarm ID: ${result.id}`);
 
-    // If swarm already exists, return it
-    if (result.exists) {
-      console.log(`[SWARM_CREATE] Returning existing swarm for workspace ${workspaceId} - ID: ${result.swarm.id}, SwarmId: ${result.swarm.swarmId}, Status: ${result.swarm.status}`);
-      return NextResponse.json({
-        success: true,
-        message: "Swarm already exists for this workspace",
-        data: { id: result.swarm.id, swarmId: result.swarm.swarmId },
-      }, { status: 200 });
-    }
-
-    // Now make external API call with workspace already reserved
-    console.log(`[SWARM_CREATE] Starting external swarm creation for placeholder ID: ${result.swarm.id}`);
+    // Step 3: Make external API call with workspace already reserved
+    console.log(`[SWARM_CREATE] Starting external swarm creation for placeholder ID: ${result.id}`);
     const instance_type = SWARM_DEFAULT_INSTANCE_TYPE;
     const swarmConfig = getServiceConfig("swarm");
     const swarmService = new SwarmService(swarmConfig);
     const swarmPassword = generateSecurePassword(20);
 
     console.log(`[SWARM_CREATE] Generated password length: ${swarmPassword.length}, instance type: ${instance_type}`);
-
-    // For graph_mindset workspaces: create Stakwork customer and build env vars (fatal on failure)
-    let graphmindsetEnv: Record<string, string> = {};
-    if (workspace_type === "graph_mindset") {
-      console.log(`[SWARM_CREATE] Creating Stakwork customer for graph_mindset workspace ${workspaceId}`);
-      const pubkey = (session.user as { lightningPubkey?: string }).lightningPubkey;
-      const customerResponse = await stakworkService().createCustomer(workspaceId);
-      const customerData =
-        customerResponse && typeof customerResponse === "object" && "data" in customerResponse
-          ? (customerResponse as { data?: { id?: number | string; token?: string; workflow_id?: number | null } }).data
-          : undefined;
-
-      const customerId = customerData?.id != null ? String(customerData.id) : undefined;
-      const token = customerData?.token;
-      const workflowId = customerData?.workflow_id ?? null;
-
-      if (!token || !customerId) {
-        console.error(`[SWARM_CREATE] Stakwork customer creation failed — missing token or customerId`);
-        // Mark the placeholder as failed before returning
-        await db.swarm.update({ where: { id: result.swarm.id }, data: { status: SwarmStatus.FAILED } });
-        return NextResponse.json({ success: false, message: "Failed to create Stakwork customer" }, { status: 500 });
-      }
-
-      graphmindsetEnv = {
-        STAKWORK_ADD_NODE_TOKEN: token,
-        STAKWORK_RADAR_REQUEST_TOKEN: token,
-        ...(pubkey ? { OWNER_PUBKEY: pubkey } : {}),
-        STAKWORK_CUSTOMER_ID: customerId,
-        ...(workflowId ? { GRAPHMINDSET_STAKWORK_WORKFLOW_ID: String(workflowId) } : {}),
-      };
-      console.log(`[SWARM_CREATE] Stakwork customer created for graph_mindset - customerId: ${customerId}, workflowId: ${workflowId}`);
-    }
 
     // Merge caller-supplied env with graphmindset env (graphmindset takes precedence)
     const mergedEnv: Record<string, string> = {
@@ -257,8 +251,8 @@ export async function POST(request: NextRequest) {
       // Use swarm_id directly for secret alias
       const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
 
-      console.log(`[SWARM_CREATE] Updating placeholder ${result.swarm.id} with external API data`);
-      // Update the placeholder record with real data (using saveOrUpdateSwarm for proper encryption)
+      console.log(`[SWARM_CREATE] Updating placeholder ${result.id} with external API data`);
+      // Step 4: Update the placeholder record with real data (using saveOrUpdateSwarm for proper encryption)
       const updatedSwarm = await saveOrUpdateSwarm({
         workspaceId: workspaceId,
         name: swarm_id, // Use swarm_id as name
@@ -273,6 +267,17 @@ export async function POST(request: NextRequest) {
 
       console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm?.id} to ACTIVE status with swarmId: ${swarm_id}`);
 
+      // Step 5: Register Stakwork secret (non-fatal)
+      const sanitizedAlias = swarm_id ? `${swarm_id}_API_KEY` : undefined;
+      if (sanitizedAlias && x_api_key && token) {
+        try {
+          await stakworkService().createSecret(sanitizedAlias, x_api_key, token);
+          console.log(`[SWARM_CREATE] Stakwork secret registered for alias: ${sanitizedAlias}`);
+        } catch (err) {
+          console.error('[SWARM_CREATE] createSecret failed (non-fatal):', err);
+        }
+      }
+
       return NextResponse.json({
         success: true,
         message: `Swarm was created successfully`,
@@ -280,12 +285,12 @@ export async function POST(request: NextRequest) {
       });
 
     } catch (error) {
-      console.error(`[SWARM_CREATE] External API call failed for placeholder ${result.swarm.id}:`, error);
+      console.error(`[SWARM_CREATE] External API call failed for placeholder ${result.id}:`, error);
 
       // If external API fails, mark the placeholder as failed
-      console.log(`[SWARM_CREATE] Marking placeholder ${result.swarm.id} as FAILED`);
+      console.log(`[SWARM_CREATE] Marking placeholder ${result.id} as FAILED`);
       await db.swarm.update({
-        where: { id: result.swarm.id },
+        where: { id: result.id },
         data: {
           status: SwarmStatus.FAILED,
         },
