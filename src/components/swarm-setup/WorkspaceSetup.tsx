@@ -14,7 +14,7 @@ interface WorkspaceSetupProps {
 }
 
 export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSetupProps) {
-  const { workspace, slug, id: workspaceId, updateWorkspace } = useWorkspace();
+  const { workspace, slug, id: workspaceId, updateWorkspace, refreshCurrentWorkspace } = useWorkspace();
   const setIsOnboarding = useDataStore((s) => s.setIsOnboarding);
   const [error, setError] = useState<string | null>(null);
   const ingestRefId = workspace?.ingestRefId;
@@ -26,7 +26,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const lastWorkspaceId = useRef<string | null>(null);
   const swarmCreationStarted = useRef(false);
   const ingestionStarted = useRef(false);
-  const customerCreationStarted = useRef(false);
 
   console.log(`WorkspaceSetup render - workspace:`, workspace);
 
@@ -85,43 +84,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     }
   }, [workspaceId, swarmId, ingestRefId, updateWorkspace, setIsOnboarding]);
 
-  // Step 3: Create Stakwork customer
-  const createStakworkCustomer = useCallback(async () => {
-    // Primary guard: check workspace state (persists across remounts)
-    if (!workspaceId || hasStakworkCustomer) {
-      console.log("createStakworkCustomer skipped (state):", { workspaceId: !!workspaceId, hasStakworkCustomer });
-      return;
-    }
-
-    // Secondary guard: prevent duplicate calls within same lifecycle
-    if (customerCreationStarted.current) {
-      console.log("createStakworkCustomer skipped (already started)");
-      return;
-    }
-
-    customerCreationStarted.current = true;
-
-    try {
-      console.log("Creating Stakwork customer for workspace:", workspaceId);
-
-      const customerRes = await fetch("/api/stakwork/create-customer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId }),
-      });
-
-      if (!customerRes.ok) {
-        throw new Error("Failed to create Stakwork customer");
-      }
-
-      updateWorkspace({ hasKey: true });
-    } catch (error) {
-      console.error("Failed to create customer:", error);
-      setError(error instanceof Error ? error.message : "Failed to create customer");
-      toast.error("Customer Creation Error", { description: error instanceof Error ? error.message : "Failed to create customer" });
-    }
-  }, [workspaceId, hasStakworkCustomer]);
-
   // Reactive swarm creation: Only execute when conditions transition from false to true
   const shouldCreateSwarm = !!(workspace && workspaceId && slug && !swarmId);
   const prevShouldCreateSwarmRef = useRef<boolean>(false);
@@ -171,6 +133,10 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
               repositoryName: repoInfo.name,
               repositoryUrl: repositoryUrl,
               repositoryDefaultBranch: defaultBranch,
+              ...(workspace?.workspaceKind === "graph_mindset" && {
+                workspace_type: "graph_mindset",
+                vanity_address: `${slug}.sphinx.chat`,
+              }),
             }),
           });
 
@@ -198,6 +164,8 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
             setIsOnboarding(true);
 
+            // Refresh workspace so hasKey is re-derived from server (stakworkApiKey now set by /api/swarm)
+            await refreshCurrentWorkspace();
           }
 
         } catch (error) {
@@ -224,13 +192,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     }
   }, [workspace, workspaceId, swarmId, ingestRefId, startIngestion]);
 
-  // Step 3: Create customer when swarm is ready
-  useEffect(() => {
-    if (workspace && workspaceId && swarmId && !hasStakworkCustomer) {
-      createStakworkCustomer();
-    }
-  }, [workspace, workspaceId, swarmId, hasStakworkCustomer, createStakworkCustomer]);
-
   // Reset guards when workspace or conditions change
   useEffect(() => {
     if (swarmId && swarmId !== lastSwarmId.current) {
@@ -250,13 +211,9 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       if (!ingestRefId) {
         ingestionStarted.current = false;
       }
-      // Only reset customer creation guard if we don't have a customer yet
-      if (!hasStakworkCustomer) {
-        customerCreationStarted.current = false;
-      }
       lastWorkspaceId.current = workspaceId;
     }
-  }, [workspaceId, swarmId, ingestRefId, hasStakworkCustomer]);
+  }, [workspaceId, swarmId, ingestRefId]);
 
   // Handle services setup when swarmId becomes available
   useEffect(() => {
