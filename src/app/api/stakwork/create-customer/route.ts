@@ -51,44 +51,6 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const swarm = await db.swarm.findFirst({
-        where: {
-          workspaceId: workspace?.id || "",
-        },
-      });
-
-      const sanitizedSecretAlias = (swarm?.swarmSecretAlias || "").replace(
-        /{{(.*?)}}/g,
-        "$1",
-      );
-      let decryptedSwarmApiKey = encryptionService.decryptField(
-        "swarmApiKey",
-        swarm?.swarmApiKey || "",
-      );
-      try {
-        const maybeEncryptedAgain = JSON.parse(decryptedSwarmApiKey);
-        if (
-          maybeEncryptedAgain &&
-          typeof maybeEncryptedAgain === "object" &&
-          "data" in maybeEncryptedAgain &&
-          "iv" in maybeEncryptedAgain &&
-          "tag" in maybeEncryptedAgain
-        ) {
-          decryptedSwarmApiKey = encryptionService.decryptField(
-            "swarmApiKey",
-            maybeEncryptedAgain as any,
-          );
-        }
-      } catch { }
-
-      if (sanitizedSecretAlias && swarm?.swarmApiKey && token) {
-        await stakworkService().createSecret(
-          sanitizedSecretAlias,
-          decryptedSwarmApiKey,
-          token,
-        );
-      }
-
       return NextResponse.json({ success: true }, { status: 201 });
     }
 
