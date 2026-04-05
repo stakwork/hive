@@ -35,111 +35,67 @@ const createTestWorkspaceData = (ownerId: string) => ({
   ownerId,
 });
 
-const createTestSwarmData = (workspaceId: string, swarmApiKey: string) => ({
-  workspaceId,
-  name: "s1-name",
-  status: "ACTIVE" as const,
-  swarmId: generateUniqueId("s1"),
-  swarmUrl: "https://s1-name.sphinx.chat/api",
-  swarmSecretAlias: "{{SWARM_123456_API_KEY}}",
-  swarmApiKey,
-  services: [],
-});
-
-// Test assertion helpers
-const expectSuccessfulCustomerCreation = (res: Response) => {
-  expect(res?.status).toBe(201);
-  expect(mockCreateCustomer).toHaveBeenCalledOnce();
-  expect(mockCreateSecret).toHaveBeenCalledOnce();
-};
-
-const expectMockCreateSecretCallArgs = (expectedAlias: string | any, expectedKey: string, expectedToken: string) => {
-  const args = mockCreateSecret.mock.calls[0] as unknown as [string, string, string];
-  if (typeof expectedAlias === 'string') {
-    expect(args[0]).toBe(expectedAlias);
-  } else {
-    expect(args[0]).toEqual(expectedAlias);
-  }
-  expect(args[1]).toBe(expectedKey);
-  expect(args[2]).toBe(expectedToken);
-};
-
-const expectErrorResponse = async (res: Response, expectedStatus: number, expectedError: object) => {
-  expect(res?.status).toBe(expectedStatus);
-  const json = await res.json();
-  expect(json).toEqual(expectedError);
-};
-
-// Setup helper for creating test workspace with optional swarm
-const setupTestData = async (options: {
-  includeSwarm?: boolean;
-  swarmOverrides?: Partial<ReturnType<typeof createTestSwarmData>>;
-} = {}) => {
-  const { includeSwarm = true, swarmOverrides = {} } = options;
-  const enc = EncryptionService.getInstance();
-  const PLAINTEXT_SWARM_API_KEY = "swarm_plain_key_123";
-
+// Setup helper for creating test workspace
+const setupTestData = async () => {
   const testData = await db.$transaction(async (tx) => {
     const user = await tx.user.create({ data: createTestUserData() });
     const workspace = await tx.workspace.create({ data: createTestWorkspaceData(user.id) });
-
-    if (includeSwarm) {
-      const encryptedApiKey = JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY));
-      await tx.swarm.create({
-        data: {
-          ...createTestSwarmData(workspace.id, encryptedApiKey),
-          ...swarmOverrides,
-        },
-      });
-    }
-
     return { user, workspace };
   });
 
-  return { testData, PLAINTEXT_SWARM_API_KEY };
+  return { testData };
 };
 
 describe("POST /api/stakwork/create-customer", () => {
   let workspaceId: string;
-  let PLAINTEXT_SWARM_API_KEY: string;
 
   beforeEach(async () => {
     vi.clearAllMocks();
 
-    const { testData, PLAINTEXT_SWARM_API_KEY: plainTextKey } = await setupTestData();
+    const { testData } = await setupTestData();
     workspaceId = testData.workspace.id;
-    PLAINTEXT_SWARM_API_KEY = plainTextKey;
 
     getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
   });
 
-  it("creates secret with plaintext value (not encrypted JSON)", async () => {
+  it("does not call createSecret", async () => {
     const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
 
     const res = await POST(req);
 
-    expectSuccessfulCustomerCreation(res);
-    expectMockCreateSecretCallArgs("SWARM_123456_API_KEY", PLAINTEXT_SWARM_API_KEY, "stak-token");
+    expect(res?.status).toBe(201);
+    expect(mockCreateCustomer).toHaveBeenCalledOnce();
+    expect(mockCreateSecret).not.toHaveBeenCalled();
   });
 
-  it("double-encrypted rows are decrypted back to plaintext before sending", async () => {
+  it("encrypts and stores stakwork API key in workspace", async () => {
     const enc = EncryptionService.getInstance();
-    
-    // Make swarm row contain double-encrypted content to simulate legacy bug
-    const first = enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY);
-    const doubleCipher = enc.encryptField("swarmApiKey", JSON.stringify(first));
-    await db.swarm.updateMany({
-      where: { workspaceId },
-      data: { swarmApiKey: JSON.stringify(doubleCipher) },
+    const stakworkToken = "stakwork-api-key-12345";
+    mockCreateCustomer.mockResolvedValueOnce({
+      data: { token: stakworkToken },
     });
 
     const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
 
-    mockCreateSecret.mockClear();
     const res = await POST(req);
     expect(res?.status).toBe(201);
 
-    expectMockCreateSecretCallArgs(expect.any(String), PLAINTEXT_SWARM_API_KEY, "stak-token");
+    // Verify stakwork API key was encrypted and stored
+    const workspace = await db.workspace.findFirst({
+      where: { id: workspaceId },
+    });
+
+    expect(workspace?.stakworkApiKey).toBeDefined();
+
+    // Verify the stored value is encrypted (should be JSON with data, iv, tag fields)
+    const storedValue = JSON.parse(workspace!.stakworkApiKey!);
+    expect(storedValue).toHaveProperty("data");
+    expect(storedValue).toHaveProperty("iv");
+    expect(storedValue).toHaveProperty("tag");
+
+    // Verify decryption returns original token
+    const decrypted = enc.decryptField("stakworkApiKey", storedValue);
+    expect(decrypted).toBe(stakworkToken);
   });
 
   describe("authentication failures", () => {
@@ -160,9 +116,8 @@ describe("POST /api/stakwork/create-customer", () => {
       const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {});
 
       const res = await POST(req);
-      
+
       // The endpoint will try to create customer with undefined workspaceId
-      // which should result in an error from stakworkService
       expect(mockCreateCustomer).toHaveBeenCalledWith(undefined);
     });
   });
@@ -179,61 +134,32 @@ describe("POST /api/stakwork/create-customer", () => {
       });
 
       const res = await POST(req);
-      
+
       // Should still succeed with 201 but not update any workspace
       expect(res?.status).toBe(201);
       const json = await res.json();
       expect(json).toEqual({ success: true });
-      
+
       // Verify no workspace was updated
       const workspace = await db.workspace.findFirst({
         where: { id: nonExistentWorkspaceId },
       });
       expect(workspace).toBeNull();
-    });
 
-    it("handles swarm not found by skipping secret creation", async () => {
-      // Create workspace without swarm using helper
-      const { testData: userData } = await setupTestData({ includeSwarm: false });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(userData.user));
-      mockCreateCustomer.mockResolvedValueOnce({
-        data: { token: "stak-token-no-swarm" },
-      });
-
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {
-        workspaceId: userData.workspace.id,
-      });
-
-      const res = await POST(req);
-      expect(res?.status).toBe(201);
-
-      // Verify createSecret was not called (no swarm exists)
+      // createSecret should never be called
       expect(mockCreateSecret).not.toHaveBeenCalled();
     });
-  });
 
-  describe("API error handling", () => {
-    it("returns 500 when Stakwork API returns invalid response (no token)", async () => {
-      mockCreateCustomer.mockResolvedValueOnce({
-        data: { message: "Customer created but no token" },
-      });
+    it("handles invalid Stakwork response gracefully", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mockCreateCustomer.mockResolvedValueOnce({ data: null as any });
 
       const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
 
       const res = await POST(req);
-      await expectErrorResponse(res, 500, { error: "Invalid response from Stakwork API" });
-    });
-
-    it("returns 500 when Stakwork API returns response without data field", async () => {
-      mockCreateCustomer.mockResolvedValueOnce({
-        message: "Success",
-      });
-
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
-
-      const res = await POST(req);
-      await expectErrorResponse(res, 500, { error: "Invalid response from Stakwork API" });
+      expect(res?.status).toBe(500);
+      const json = await res.json();
+      expect(json).toEqual({ error: "Invalid response from Stakwork API" });
     });
 
     it("handles createCustomer API error with ApiError structure", async () => {
@@ -249,29 +175,13 @@ describe("POST /api/stakwork/create-customer", () => {
       const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
 
       const res = await POST(req);
-      await expectErrorResponse(res, 503, {
+      expect(res?.status).toBe(503);
+      const json = await res.json();
+      expect(json).toEqual({
         error: "Stakwork API unavailable",
         service: "stakwork",
         details: { reason: "Service temporarily unavailable" },
       });
-    });
-
-    it("handles createSecret API error gracefully", async () => {
-      mockCreateCustomer.mockResolvedValueOnce({
-        data: { token: "stak-token-secret-fail" },
-      });
-
-      mockCreateSecret.mockRejectedValueOnce(
-        new Error("Failed to create secret on Stakwork")
-      );
-
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
-
-      const res = await POST(req);
-      
-      // The endpoint doesn't explicitly handle createSecret errors,
-      // so it will bubble up as a generic 500 error
-      await expectErrorResponse(res, 500, { error: "Failed to create customer" });
     });
 
     it("handles generic errors during customer creation", async () => {
@@ -282,38 +192,14 @@ describe("POST /api/stakwork/create-customer", () => {
       const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
 
       const res = await POST(req);
-      await expectErrorResponse(res, 500, { error: "Failed to create customer" });
+      expect(res?.status).toBe(500);
+      const json = await res.json();
+      expect(json).toEqual({ error: "Failed to create customer" });
     });
   });
 
   describe("edge cases", () => {
-    it("skips secret creation when swarmSecretAlias is empty", async () => {
-      // Update swarm to have empty secret alias
-      await db.swarm.updateMany({
-        where: { workspaceId },
-        data: { swarmSecretAlias: "" },
-      });
-
-      mockCreateCustomer.mockResolvedValueOnce({
-        data: { token: "stak-token-no-alias" },
-      });
-
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
-
-      const res = await POST(req);
-      expect(res?.status).toBe(201);
-
-      // Verify createSecret was not called (empty secret alias)
-      expect(mockCreateSecret).not.toHaveBeenCalled();
-    });
-
-    it("skips secret creation when swarmApiKey is null", async () => {
-      // Update swarm to have null API key
-      await db.swarm.updateMany({
-        where: { workspaceId },
-        data: { swarmApiKey: null },
-      });
-
+    it("skips workspace update when swarmApiKey is null but still returns 201", async () => {
       mockCreateCustomer.mockResolvedValueOnce({
         data: { token: "stak-token-null-key" },
       });
@@ -323,57 +209,8 @@ describe("POST /api/stakwork/create-customer", () => {
       const res = await POST(req);
       expect(res?.status).toBe(201);
 
-      // Verify createSecret was not called (null API key)
+      // createSecret should NOT be called
       expect(mockCreateSecret).not.toHaveBeenCalled();
-    });
-
-    it("correctly sanitizes swarmSecretAlias by removing template braces", async () => {
-      mockCreateCustomer.mockResolvedValueOnce({
-        data: { token: "stak-token-sanitize" },
-      });
-
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
-
-      const res = await POST(req);
-      expect(res?.status).toBe(201);
-
-      // Verify secret was created with sanitized alias (braces removed)
-      const args = mockCreateSecret.mock.calls[0] as unknown as [
-        string,
-        string,
-        string,
-      ];
-      expect(args[0]).toBe("SWARM_123456_API_KEY"); // {{...}} removed
-    });
-
-    it("encrypts and stores stakwork API key in workspace", async () => {
-      const enc = EncryptionService.getInstance();
-      const stakworkToken = "stakwork-api-key-12345";
-      mockCreateCustomer.mockResolvedValueOnce({
-        data: { token: stakworkToken },
-      });
-
-      const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
-
-      const res = await POST(req);
-      expect(res?.status).toBe(201);
-
-      // Verify stakwork API key was encrypted and stored
-      const workspace = await db.workspace.findFirst({
-        where: { id: workspaceId },
-      });
-      
-      expect(workspace?.stakworkApiKey).toBeDefined();
-      
-      // Verify the stored value is encrypted (should be JSON with data, iv, tag fields)
-      const storedValue = JSON.parse(workspace!.stakworkApiKey!);
-      expect(storedValue).toHaveProperty("data");
-      expect(storedValue).toHaveProperty("iv");
-      expect(storedValue).toHaveProperty("tag");
-
-      // Verify decryption returns original token
-      const decrypted = enc.decryptField("stakworkApiKey", storedValue);
-      expect(decrypted).toBe(stakworkToken);
     });
   });
 });
