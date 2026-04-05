@@ -251,11 +251,12 @@ export async function POST(request: NextRequest) {
       // Use swarm_id directly for secret alias
       const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
 
-      console.log(`[SWARM_CREATE] Updating placeholder ${result.id} with external API data`);
+      const swarmName = vanity_address ? vanity_address.replace(/\.sphinx\.chat$/, "") : swarm_id;
+      console.log(`[SWARM_CREATE] Updating placeholder ${result.id} with external API data — name: ${swarmName} (vanity_address: ${vanity_address ?? "none"}, swarm_id: ${swarm_id})`);
       // Step 4: Update the placeholder record with real data (using saveOrUpdateSwarm for proper encryption)
       const updatedSwarm = await saveOrUpdateSwarm({
         workspaceId: workspaceId,
-        name: vanity_address ? vanity_address.replace(/\.sphinx\.chat$/, "") : swarm_id,
+        name: swarmName,
         status: SwarmStatus.ACTIVE,
         swarmUrl: `https://${swarm_address}/api`,
         ec2Id: ec2_id,
