@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
       // Step 4: Update the placeholder record with real data (using saveOrUpdateSwarm for proper encryption)
       const updatedSwarm = await saveOrUpdateSwarm({
         workspaceId: workspaceId,
-        name: swarm_id, // Use swarm_id as name
+        name: vanity_address ? vanity_address.replace(/\.sphinx\.chat$/, "") : swarm_id,
         status: SwarmStatus.ACTIVE,
         swarmUrl: `https://${swarm_address}/api`,
         ec2Id: ec2_id,
