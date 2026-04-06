@@ -1327,6 +1327,16 @@ model LightningPayment {
   @@map("lightning_payments")
 }
 
+model PlatformConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_configs")
+}
+
 enum WorkspaceTransactionType {
   LIGHTNING
   STRIPE

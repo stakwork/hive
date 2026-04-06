@@ -1211,6 +1211,20 @@ async function seedDashboardConversations(
   console.log(`✓ Created 4 dashboard conversations for recent chats seeding`);
 }
 
+async function seedPlatformConfig() {
+  await prisma.platformConfig.upsert({
+    where: { key: 'hiveAmountUsd' },
+    update: {},
+    create: { key: 'hiveAmountUsd', value: '50' },
+  });
+  await prisma.platformConfig.upsert({
+    where: { key: 'graphmindsetAmountUsd' },
+    update: {},
+    create: { key: 'graphmindsetAmountUsd', value: '50' },
+  });
+  console.log('✓ Seeded PlatformConfig: hiveAmountUsd=50, graphmindsetAmountUsd=50');
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1222,6 +1236,7 @@ async function main() {
   await seedDeploymentTracking();
   await seedAgentLogs();
   await seedDashboardConversations(users);
+  await seedPlatformConfig();
 
   console.log("Seed completed.");
 }
