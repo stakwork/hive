@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { TaskStatus, Priority, WorkflowStatus, NotificationTriggerType } from "@prisma/client";
+import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type {
   CreateRoadmapTaskRequest,
   UpdateRoadmapTaskRequest,
@@ -258,6 +259,17 @@ export async function createTicket(
       },
     },
   });
+
+  // Broadcast live update to all Plan mode viewers
+  try {
+    void pusherServer.trigger(
+      getFeatureChannelName(featureId),
+      PUSHER_EVENTS.FEATURE_UPDATED,
+      { featureId, timestamp: new Date().toISOString() }
+    );
+  } catch (pusherError) {
+    console.error("[createTicket] Pusher trigger failed:", pusherError);
+  }
 
   // Convert system assignee type to virtual user object
   if (task.systemAssigneeType) {
@@ -608,6 +620,19 @@ export async function deleteTicket(
       deletedAt: new Date(),
     },
   });
+
+  // Broadcast live update to all Plan mode viewers
+  if (task.feature?.id) {
+    try {
+      void pusherServer.trigger(
+        getFeatureChannelName(task.feature.id),
+        PUSHER_EVENTS.FEATURE_UPDATED,
+        { featureId: task.feature.id, timestamp: new Date().toISOString() }
+      );
+    } catch (pusherError) {
+      console.error("[deleteTicket] Pusher trigger failed:", pusherError);
+    }
+  }
 }
 
 /**

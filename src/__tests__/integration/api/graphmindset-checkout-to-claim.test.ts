@@ -3,7 +3,7 @@ import { POST as checkoutPOST } from '@/app/api/stripe/checkout/route';
 import { POST as claimPOST } from '@/app/api/stripe/claim/route';
 import { GET as paymentGET } from '@/app/api/graphmindset/payment/route';
 import { db } from '@/lib/db';
-import { createTestUser } from '@/__tests__/support/factories';
+import { createTestUser, upsertTestPlatformConfig } from '@/__tests__/support/factories';
 import {
   createAuthenticatedSession,
   getMockedSession,
@@ -34,7 +34,7 @@ describe('GraphMindset checkout → claim round-trip', () => {
     vi.clearAllMocks();
     vi.stubEnv('STRIPE_SUCCESS_URL', 'https://example.com/success');
     vi.stubEnv('STRIPE_CANCEL_URL', 'https://example.com/cancel');
-    vi.stubEnv('STRIPE_PRICE_ID', 'price_test_123');
+    await upsertTestPlatformConfig('hiveAmountUsd', '50');
 
     testUser = await createTestUser();
 
