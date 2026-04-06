@@ -25,32 +25,28 @@ export async function POST(req: NextRequest) {
 
   const { paymentHash } = body;
 
-  const payment = await db.lightningPayment.findUnique({
-    where: { paymentHash },
-  });
-
-  if (!payment) {
-    return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
-  }
-
-  // Idempotency: already claimed by this user
-  if (payment.userId === userId) {
-    return NextResponse.json({ success: true, redirect: '/onboarding/graphmindset?paymentType=lightning' });
-  }
-
-  // Guard: reject if already claimed by a different user
-  if (payment.userId) {
-    return NextResponse.json({ error: 'Payment already claimed' }, { status: 403 });
-  }
-
-  if (payment.status !== 'PAID') {
-    return NextResponse.json({ error: 'Payment not completed' }, { status: 402 });
-  }
-
-  await db.lightningPayment.update({
-    where: { paymentHash },
+  // Atomic compare-and-set: only updates when payment is PAID and not yet claimed
+  const claimResult = await db.lightningPayment.updateMany({
+    where: { paymentHash, status: 'PAID', userId: null },
     data: { userId },
   });
+
+  if (claimResult.count === 0) {
+    // Atomic update found nothing — determine why with a read-only fallback
+    const payment = await db.lightningPayment.findUnique({ where: { paymentHash } });
+    if (!payment) {
+      return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
+    }
+    if (payment.status !== 'PAID') {
+      return NextResponse.json({ error: 'Payment not completed' }, { status: 402 });
+    }
+    if (payment.userId === userId) {
+      // Idempotent: same user re-claiming
+      return NextResponse.json({ success: true, redirect: '/onboarding/graphmindset?paymentType=lightning' });
+    }
+    // Already claimed by a different user
+    return NextResponse.json({ error: 'Payment already claimed' }, { status: 403 });
+  }
 
   return NextResponse.json({ success: true, redirect: '/onboarding/graphmindset?paymentType=lightning' });
 }

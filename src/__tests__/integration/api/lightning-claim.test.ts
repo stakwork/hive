@@ -180,5 +180,42 @@ describe('Lightning Claim API Integration Tests', () => {
       const response = await POST(req);
       expect(response.status).toBe(400);
     });
+
+    test('concurrent claims: only one user succeeds, the other gets 403', async () => {
+      const userA = await createTestUser({ name: 'Concurrent User A' });
+      const userB = await createTestUser({ name: 'Concurrent User B' });
+
+      const payment = await createTestLightningPayment({
+        workspaceName: 'Concurrent Workspace',
+        workspaceSlug: 'concurrent-ws',
+        paymentHash: 'claim_test_concurrent_hash',
+        status: 'PAID',
+      });
+
+      // Simulate two concurrent requests from different users
+      const [resA, resB] = await Promise.all([
+        (async () => {
+          getMockedSession().mockResolvedValueOnce(createAuthenticatedSession(userA));
+          const req = createPostRequest('/api/lightning/claim', { paymentHash: payment.paymentHash });
+          return POST(req);
+        })(),
+        (async () => {
+          getMockedSession().mockResolvedValueOnce(createAuthenticatedSession(userB));
+          const req = createPostRequest('/api/lightning/claim', { paymentHash: payment.paymentHash });
+          return POST(req);
+        })(),
+      ]);
+
+      const statuses = [resA.status, resB.status].sort();
+      // Exactly one succeeds (200) and one is rejected (403)
+      expect(statuses).toEqual([200, 403]);
+
+      // The payment must be linked to exactly one user
+      const updated = await db.lightningPayment.findUnique({
+        where: { paymentHash: payment.paymentHash },
+      });
+      expect(updated!.userId).not.toBeNull();
+      expect([userA.id, userB.id]).toContain(updated!.userId);
+    });
   });
 });

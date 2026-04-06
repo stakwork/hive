@@ -77,6 +77,7 @@ export class StakworkService extends BaseServiceClass {
     name: string,
     value: string,
     token: string,
+    customerId?: string,
   ): Promise<T> {
     const endpoint = `/secrets`;
 
@@ -89,7 +90,11 @@ export class StakworkService extends BaseServiceClass {
     const requestFn = () => {
       return client.post<T>(
         endpoint,
-        { source: "hive", secret: { name: name, value: value } },
+        {
+          source: "hive",
+          secret: { name, value },
+          ...(customerId ? { customer_id: customerId } : {}),
+        },
         headers,
         this.serviceName,
       );
