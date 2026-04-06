@@ -187,18 +187,92 @@ export async function refreshAndUpdateAccessTokens(userId: string): Promise<bool
   }
 }
 
+const EXPIRY_BUFFER_SECONDS = 300; // 5-minute buffer before actual expiry
+
 /**
  * Get and decrypt the user's personal GitHub OAuth token from the Account table.
+ * If the token is expired (or within the 5-minute buffer), attempts a refresh using
+ * the stored refresh_token. Returns null if refresh is unavailable or fails.
  * Used as a fallback when no GitHub App installation token exists yet.
  */
 export async function getPersonalOAuthToken(userId: string): Promise<string | null> {
   const account = await db.account.findFirst({
     where: { userId, provider: "github" },
-    select: { access_token: true },
+    select: { id: true, access_token: true, refresh_token: true, expires_at: true },
   });
   if (!account?.access_token) return null;
+
   try {
     const encryptionService = EncryptionService.getInstance();
+
+    const nowUnix = Math.floor(Date.now() / 1000);
+    const isExpired =
+      account.expires_at != null && nowUnix >= account.expires_at - EXPIRY_BUFFER_SECONDS;
+
+    if (isExpired) {
+      if (!account.refresh_token) {
+        console.error(
+          `[getPersonalOAuthToken] Token expired and no refresh token available for user: ${userId}`,
+        );
+        return null;
+      }
+
+      let decryptedRefreshToken: string;
+      try {
+        decryptedRefreshToken = encryptionService.decryptField("refresh_token", account.refresh_token);
+      } catch (err) {
+        console.error(`[getPersonalOAuthToken] Failed to decrypt refresh token for user: ${userId}`, err);
+        return null;
+      }
+
+      const refreshResponse = await fetch(optionalEnvVars.GITHUB_OAUTH_TOKEN_URL, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          client_id: process.env.GITHUB_CLIENT_ID,
+          client_secret: process.env.GITHUB_CLIENT_SECRET,
+          grant_type: "refresh_token",
+          refresh_token: decryptedRefreshToken,
+        }),
+      });
+
+      if (!refreshResponse.ok) {
+        console.error(
+          `[getPersonalOAuthToken] Token refresh failed for user: ${userId} — HTTP ${refreshResponse.status}`,
+        );
+        return null;
+      }
+
+      const data = await refreshResponse.json();
+
+      if (data.error) {
+        console.error(
+          `[getPersonalOAuthToken] Token refresh failed for user: ${userId} — ${data.error_description || data.error}`,
+        );
+        return null;
+      }
+
+      await db.account.update({
+        where: { id: account.id },
+        data: {
+          access_token: JSON.stringify(
+            encryptionService.encryptField("access_token", data.access_token),
+          ),
+          refresh_token: data.refresh_token
+            ? JSON.stringify(encryptionService.encryptField("refresh_token", data.refresh_token))
+            : account.refresh_token,
+          expires_at: data.expires_in
+            ? Math.floor(Date.now() / 1000) + data.expires_in
+            : account.expires_at,
+        },
+      });
+
+      return data.access_token;
+    }
+
     return encryptionService.decryptField("access_token", account.access_token);
   } catch (error) {
     console.error("Failed to decrypt personal OAuth token:", error);
