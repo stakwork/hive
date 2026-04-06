@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Tests for WhiteboardsPage — delete button, pagination, and navigation
+// Tests for WhiteboardsPage — delete button, pagination, and navigation (v2)
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
