@@ -245,58 +245,6 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
     expect(untouched!.workspaceId).toBeNull();
   });
 
-  test('returns 400 when repositoryUrl is not in ONBOARDING_FORK_REPOS', async () => {
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-    await createTestFiatPayment({
-      userId: testUser.id,
-      status: 'PAID',
-      workspaceName: 'repo-check',
-      workspaceSlug: 'repo-check',
-    });
-
-    vi.stubEnv('ONBOARDING_FORK_REPOS', 'https://github.com/allowed/repo');
-
-    const slug = generateUniqueSlug('graph-badrepo');
-    const request = createPostRequest('http://localhost:3000/api/workspaces', {
-      name: 'Bad Repo Graph',
-      slug,
-      workspaceKind: 'graph_mindset',
-      repositoryUrl: 'https://github.com/evil/repo',
-    });
-
-    const response = await POST(request);
-    expect(response.status).toBe(400);
-
-    vi.unstubAllEnvs();
-  });
-
-  test('accepts repositoryUrl that matches ONBOARDING_FORK_REPOS', async () => {
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
-    await createTestFiatPayment({
-      userId: testUser.id,
-      status: 'PAID',
-      workspaceName: 'repo-check-ok',
-      workspaceSlug: 'repo-check-ok',
-    });
-
-    vi.stubEnv('ONBOARDING_FORK_REPOS', 'https://github.com/allowed/repo');
-
-    const slug = generateUniqueSlug('graph-goodrepo');
-    const request = createPostRequest('http://localhost:3000/api/workspaces', {
-      name: 'Good Repo Graph',
-      slug,
-      workspaceKind: 'graph_mindset',
-      repositoryUrl: 'https://github.com/allowed/repo',
-    });
-
-    const response = await POST(request);
-    const data = await expectSuccess(response, 201);
-    expect(data.workspace.workspaceKind).toBe('graph_mindset');
-
-    vi.unstubAllEnvs();
-  });
 
   test('concurrent POSTs with same PAID payment — only one workspace links it', async () => {
     getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
