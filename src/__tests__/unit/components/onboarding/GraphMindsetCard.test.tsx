@@ -30,10 +30,12 @@ beforeEach(() => {
   mockFetch.mockReset();
   mockRouterPush.mockReset();
   localStorage.clear();
-  // Default fallback response
-  mockFetch.mockResolvedValue({
-    ok: true,
-    json: () => Promise.resolve({}),
+  // Default: first call is price endpoint, subsequent calls return empty
+  mockFetch.mockImplementation((url: string) => {
+    if (typeof url === "string" && url.includes("/api/config/price")) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ amountUsd: 50 }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   });
 });
 afterEach(() => {
@@ -66,9 +68,18 @@ async function fillName(value: string) {
   await act(async () => { vi.advanceTimersByTime(600); });
 }
 
+function priceResponse(amountUsd = 50) {
+  return Promise.resolve({
+    ok: true,
+    json: () => Promise.resolve({ amountUsd }),
+  });
+}
+
 /** Helper: fill valid form and wait for "available" message */
 async function fillValidForm(name = "my-graph") {
   vi.useFakeTimers();
+  // First fetch on mount is the price endpoint, second is slug availability
+  mockFetch.mockReturnValueOnce(priceResponse());
   mockFetch.mockReturnValueOnce(availableSlugResponse());
   render(<GraphMindsetCard />);
   await fillName(name);
@@ -77,9 +88,9 @@ async function fillValidForm(name = "my-graph") {
 }
 
 describe("GraphMindsetCard", () => {
-  it("renders price", () => {
+  it("renders price dynamically from API", async () => {
     render(<GraphMindsetCard />);
-    expect(screen.getByText("$50")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("$50")).toBeInTheDocument());
     expect(screen.getByText("/ workspace")).toBeInTheDocument();
   });
 

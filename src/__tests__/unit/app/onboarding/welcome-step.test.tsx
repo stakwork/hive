@@ -71,10 +71,26 @@ Object.defineProperty(global, "localStorage", { value: localStorageMock });
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+function priceResponse(amountUsd = 50) {
+  return Promise.resolve({ ok: true, json: async () => ({ amountUsd }) });
+}
+
+/** Default fetch mock: returns price for /api/config/price, empty for others */
+function setupDefaultFetch() {
+  mockFetch.mockImplementation((url: string) => {
+    if (typeof url === "string" && url.includes("/api/config/price")) {
+      return priceResponse();
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) });
+  });
+}
+
 describe("WelcomeStep - Sign In button visibility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
+    mockFetch.mockReset();
+    setupDefaultFetch();
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
     mockUseSearchParams.mockReturnValue({ get: () => null });
   });
@@ -103,6 +119,8 @@ describe("WelcomeStep - GraphMindsetCard integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
+    mockFetch.mockReset();
+    setupDefaultFetch();
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
     mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
     mockUseSearchParams.mockReturnValue({ get: () => null });
@@ -133,6 +151,8 @@ describe("WelcomeStep - Hive card rendering", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
+    mockFetch.mockReset();
+    setupDefaultFetch();
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
     mockUseSearchParams.mockReturnValue({ get: () => null });
     mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
@@ -166,6 +186,8 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
+    mockFetch.mockReset();
+    setupDefaultFetch();
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
     mockUseSession.mockReturnValue({ data: { user: { name: "Test User", id: "user-1" } }, status: "authenticated" });
   });
@@ -249,6 +271,8 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
       },
     });
 
+    // Price fetch runs first on mount; claim fetch is second
+    mockFetch.mockReturnValueOnce(priceResponse());
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -277,6 +301,8 @@ describe("WelcomeStep - Stripe payment claim branching", () => {
       },
     });
 
+    // Price fetch runs first on mount; claim fetch is second
+    mockFetch.mockReturnValueOnce(priceResponse());
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -298,6 +324,8 @@ describe("WelcomeStep - Go to my workspace button", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
+    mockFetch.mockReset();
+    setupDefaultFetch();
     mockUseSearchParams.mockReturnValue({ get: () => null });
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
   });
@@ -349,6 +377,8 @@ describe("WelcomeStep - Cancel banner", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
+    mockFetch.mockReset();
+    setupDefaultFetch();
     mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
     mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
   });
