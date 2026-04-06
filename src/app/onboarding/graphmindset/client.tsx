@@ -281,9 +281,11 @@ interface ForkRepoStepProps {
 }
 
 function ForkRepoStep({ onComplete }: ForkRepoStepProps) {
+  const router = useRouter();
   const [isForking, setIsForking] = useState(false);
   const [forkUrl, setForkUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [needsReauth, setNeedsReauth] = useState(false);
   const forkCalledRef = useRef(false);
 
   // Auto-fork on mount: fetch config then fork
@@ -316,8 +318,9 @@ function ForkRepoStep({ onComplete }: ForkRepoStepProps) {
         const data = await res.json();
 
         if (!res.ok) {
-          if (data.error === "insufficient_scope") {
-            setError("Your GitHub token doesn't have permission to fork repositories. Please re-authenticate.");
+          if (data.error === "github_token_expired" || data.error === "insufficient_scope") {
+            setNeedsReauth(true);
+            setError("Your GitHub session has expired. Please re-authenticate to continue.");
           } else {
             setError(data.error || "Failed to fork repository");
           }
@@ -340,6 +343,7 @@ function ForkRepoStep({ onComplete }: ForkRepoStepProps) {
     forkCalledRef.current = true;
     setError(null);
     setForkUrl(null);
+    setNeedsReauth(false);
 
     const retry = async () => {
       setIsForking(true);
@@ -359,7 +363,12 @@ function ForkRepoStep({ onComplete }: ForkRepoStepProps) {
         });
         const data = await res.json();
         if (!res.ok) {
-          setError(data.error || "Failed to fork repository");
+          if (data.error === "github_token_expired" || data.error === "insufficient_scope") {
+            setNeedsReauth(true);
+            setError("Your GitHub session has expired. Please re-authenticate to continue.");
+          } else {
+            setError(data.error || "Failed to fork repository");
+          }
           return;
         }
         setForkUrl(data.forkUrl);
@@ -398,9 +407,21 @@ function ForkRepoStep({ onComplete }: ForkRepoStepProps) {
         <CardContent className="flex flex-col items-center py-12 gap-4">
           <AlertCircle className="h-12 w-12 text-destructive" />
           <p className="text-sm text-center text-destructive">{error}</p>
-          <Button onClick={handleRetry} variant="outline">
-            Try Again
-          </Button>
+          {needsReauth ? (
+            <Button
+              onClick={() =>
+                router.push(
+                  `/auth/signin?redirect=${encodeURIComponent("/onboarding/graphmindset")}`,
+                )
+              }
+            >
+              Re-authenticate with GitHub
+            </Button>
+          ) : (
+            <Button onClick={handleRetry} variant="outline">
+              Try Again
+            </Button>
+          )}
         </CardContent>
       </Card>
     );
