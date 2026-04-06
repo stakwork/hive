@@ -18,12 +18,11 @@ vi.mock("@xyflow/react", () => ({
   MarkerType: { ArrowClosed: "arrowclosed" },
 }));
 
-// Mock dagre layout — return nodes unchanged
+// Mock dagre layout — return nodes unchanged (positions stay 0,0)
 vi.mock("@/components/features/DependencyGraph/layouts/dagre", () => ({
   getLayoutedElements: (nodes: any, edges: any) => ({ nodes, edges }),
 }));
 
-// Mock child nodes (avoid CSS module issues in jsdom)
 vi.mock("@/components/features/DependencyGraph/nodes", () => ({
   RoadmapTaskNode: ({ data }: any) =>
     React.createElement("div", { "data-testid": `task-node-${data.id}` }, data.title),
@@ -50,9 +49,6 @@ import {
   GROUP_PADDING,
 } from "@/components/features/BoardCanvas";
 import type { BoardFeature } from "@/types/roadmap";
-
-// Re-import the pure function for logic tests
-import * as BoardCanvasModule from "@/components/features/BoardCanvas";
 
 const makeTask = (overrides: Partial<any> = {}) => ({
   id: "task-1",
@@ -118,29 +114,6 @@ describe("BoardCanvas — node list construction", () => {
     expect(taskNode?.type).toBe("taskNode");
   });
 
-  it("stacks task nodes vertically inside the group", () => {
-    const tasks = [
-      makeTask({ id: "t-1", featureId: "f-1" }),
-      makeTask({ id: "t-2", featureId: "f-1" }),
-      makeTask({ id: "t-3", featureId: "f-1" }),
-    ];
-    const features = [makeFeature("f-1", tasks)];
-    const { nodes } = buildNodesAndEdges(features, "ws", noop);
-
-    const t1 = nodes.find((n) => n.id === "t-1");
-    const t2 = nodes.find((n) => n.id === "t-2");
-    const t3 = nodes.find((n) => n.id === "t-3");
-
-    expect(t1?.position.x).toBe(GROUP_PADDING);
-    expect(t1?.position.y).toBe(HEADER_HEIGHT + GROUP_PADDING);
-
-    expect(t2?.position.x).toBe(GROUP_PADDING);
-    expect(t2?.position.y).toBe(HEADER_HEIGHT + GROUP_PADDING + TASK_NODE_HEIGHT);
-
-    expect(t3?.position.x).toBe(GROUP_PADDING);
-    expect(t3?.position.y).toBe(HEADER_HEIGHT + GROUP_PADDING + TASK_NODE_HEIGHT * 2);
-  });
-
   it("handles features with no tasks (empty group)", () => {
     const features = [makeFeature("f-1", [])];
     const { nodes } = buildNodesAndEdges(features, "ws", noop);
@@ -158,12 +131,22 @@ describe("BoardCanvas — node list construction", () => {
     expect(groupNode?.data.slug).toBe("test-slug");
     expect(groupNode?.data.taskCount).toBe(1);
   });
+
+  it("lays out feature groups horizontally (each group x > previous group x)", () => {
+    const f1 = makeFeature("f-1", [makeTask({ id: "t-1", featureId: "f-1" })]);
+    const f2 = makeFeature("f-2", [makeTask({ id: "t-2", featureId: "f-2" })]);
+    const { nodes } = buildNodesAndEdges([f1, f2], "ws", noop);
+    const g1 = nodes.find((n) => n.id === "f-1");
+    const g2 = nodes.find((n) => n.id === "f-2");
+    expect(g1!.position.x).toBe(0);
+    expect(g2!.position.x).toBeGreaterThan(0);
+  });
 });
 
 describe("BoardCanvas — edge derivation", () => {
   const noop = () => {};
 
-  it("creates edges from dependsOnTaskIds", () => {
+  it("creates edges from within-feature dependsOnTaskIds", () => {
     const tasks = [
       makeTask({ id: "t-1", featureId: "f-1", dependsOnTaskIds: [] }),
       makeTask({ id: "t-2", featureId: "f-1", dependsOnTaskIds: ["t-1"] }),
@@ -175,17 +158,16 @@ describe("BoardCanvas — edge derivation", () => {
     expect(edges[0].target).toBe("t-2");
   });
 
-  it("creates cross-feature dependency edges", () => {
+  it("does NOT create edges for tasks in different features (no cross-feature edges)", () => {
     const task1 = makeTask({ id: "t-1", featureId: "f-1", dependsOnTaskIds: [] });
+    // t-2 is in f-2 but lists t-1 (from f-1) as a dep — should be ignored
     const task2 = makeTask({ id: "t-2", featureId: "f-2", dependsOnTaskIds: ["t-1"] });
     const features = [makeFeature("f-1", [task1]), makeFeature("f-2", [task2])];
     const { edges } = buildNodesAndEdges(features, "ws", noop);
-    expect(edges).toHaveLength(1);
-    expect(edges[0].source).toBe("t-1");
-    expect(edges[0].target).toBe("t-2");
+    expect(edges).toHaveLength(0);
   });
 
-  it("filters out stale dependency references (source not in current feature set)", () => {
+  it("filters out stale dependency references (dep ID not in this feature)", () => {
     const task = makeTask({
       id: "t-2",
       featureId: "f-1",
@@ -196,16 +178,18 @@ describe("BoardCanvas — edge derivation", () => {
     expect(edges).toHaveLength(0);
   });
 
-  it("filters out stale dependency references (target not in current feature set)", () => {
-    const task = makeTask({
-      id: "t-1",
-      featureId: "f-1",
-      dependsOnTaskIds: [],
-    });
-    // t-2 depends on t-1 but is not included in features
-    const features = [makeFeature("f-1", [task])];
+  it("creates multiple edges within a feature correctly", () => {
+    const tasks = [
+      makeTask({ id: "t-1", featureId: "f-1", dependsOnTaskIds: [] }),
+      makeTask({ id: "t-2", featureId: "f-1", dependsOnTaskIds: ["t-1"] }),
+      makeTask({ id: "t-3", featureId: "f-1", dependsOnTaskIds: ["t-2"] }),
+    ];
+    const features = [makeFeature("f-1", tasks)];
     const { edges } = buildNodesAndEdges(features, "ws", noop);
-    expect(edges).toHaveLength(0);
+    expect(edges).toHaveLength(2);
+    expect(edges.map((e) => `${e.source}->${e.target}`)).toEqual(
+      expect.arrayContaining(["t-1->t-2", "t-2->t-3"]),
+    );
   });
 
   it("uses smoothstep edge type with correct style", () => {
@@ -219,22 +203,24 @@ describe("BoardCanvas — edge derivation", () => {
     expect((edges[0] as any).style?.stroke).toBe("#3b82f6");
   });
 
-  it("deduplicates edges when multiple tasks reference the same dependency", () => {
-    const tasks = [
-      makeTask({ id: "t-1", featureId: "f-1" }),
-      makeTask({ id: "t-2", featureId: "f-1", dependsOnTaskIds: ["t-1"] }),
+  it("keeps edges isolated per feature (two features with internal deps)", () => {
+    const f1tasks = [
+      makeTask({ id: "a-1", featureId: "f-1" }),
+      makeTask({ id: "a-2", featureId: "f-1", dependsOnTaskIds: ["a-1"] }),
     ];
-    // Add same task twice to simulate duplicated dep entries
-    const feature: BoardFeature = {
-      id: "f-1",
-      title: "F1",
-      status: "IN_PROGRESS" as any,
-      priority: "MEDIUM" as any,
-      tasks,
-    };
-    const { edges } = buildNodesAndEdges([feature], "ws", noop);
-    const dupes = edges.filter((e) => e.source === "t-1" && e.target === "t-2");
-    expect(dupes).toHaveLength(1);
+    const f2tasks = [
+      makeTask({ id: "b-1", featureId: "f-2" }),
+      makeTask({ id: "b-2", featureId: "f-2", dependsOnTaskIds: ["b-1"] }),
+    ];
+    const { edges } = buildNodesAndEdges(
+      [makeFeature("f-1", f1tasks), makeFeature("f-2", f2tasks)],
+      "ws",
+      noop,
+    );
+    expect(edges).toHaveLength(2);
+    const sources = edges.map((e) => e.source);
+    expect(sources).toContain("a-1");
+    expect(sources).toContain("b-1");
   });
 });
 
