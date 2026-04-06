@@ -3,7 +3,7 @@ import { POST as preauthPOST } from '@/app/api/lightning/invoice/preauth/route';
 import { POST as claimPOST } from '@/app/api/lightning/claim/route';
 import { GET as paymentGET } from '@/app/api/graphmindset/payment/route';
 import { db } from '@/lib/db';
-import { createTestUser } from '@/__tests__/support/factories';
+import { createTestUser, upsertTestPlatformConfig } from '@/__tests__/support/factories';
 import {
   createAuthenticatedSession,
   getMockedSession,
@@ -23,6 +23,11 @@ vi.mock('qrcode', () => ({
   default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mockqr') },
 }));
 
+// Mock BTC price for deterministic sats calculation
+vi.mock('@/lib/btc-price', () => ({
+  fetchBtcPriceUsd: vi.fn().mockResolvedValue(100000),
+}));
+
 describe('GraphMindset lightning chain: preauth → webhook settle → claim → payment lookup', () => {
   let testUser: Awaited<ReturnType<typeof createTestUser>>;
   const lndPaymentHash = `lnd_hash_${Date.now()}`;
@@ -31,6 +36,14 @@ describe('GraphMindset lightning chain: preauth → webhook settle → claim →
   beforeEach(async () => {
     vi.clearAllMocks();
     testUser = await createTestUser();
+
+    // Seed PlatformConfig records required by the preauth route
+    await upsertTestPlatformConfig('graphmindsetAmountUsd', '50');
+    await upsertTestPlatformConfig('hiveAmountUsd', '50');
+
+    // Re-apply mocks after clearAllMocks
+    const { fetchBtcPriceUsd } = await import('@/lib/btc-price');
+    vi.mocked(fetchBtcPriceUsd).mockResolvedValue(100000);
 
     mockCreateLndInvoice.mockResolvedValue({
       payment_hash: lndPaymentHash,

@@ -19,7 +19,7 @@ describe('fetchBtcPriceUsd', () => {
     expect(price).toBe(65000);
   });
 
-  it('returns null when the response is not ok', async () => {
+  it('throws when the response is not ok', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -28,18 +28,16 @@ describe('fetchBtcPriceUsd', () => {
       }),
     );
 
-    const price = await fetchBtcPriceUsd();
-    expect(price).toBeNull();
+    await expect(fetchBtcPriceUsd()).rejects.toThrow('503');
   });
 
-  it('returns null when fetch throws a network error', async () => {
+  it('throws when fetch throws a network error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
 
-    const price = await fetchBtcPriceUsd();
-    expect(price).toBeNull();
+    await expect(fetchBtcPriceUsd()).rejects.toThrow('Network error');
   });
 
-  it('returns null when USD value is missing from the response', async () => {
+  it('throws when USD value is missing from the response', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -48,11 +46,10 @@ describe('fetchBtcPriceUsd', () => {
       }),
     );
 
-    const price = await fetchBtcPriceUsd();
-    expect(price).toBeNull();
+    await expect(fetchBtcPriceUsd()).rejects.toThrow('Invalid BTC price');
   });
 
-  it('returns null when USD value is zero or negative', async () => {
+  it('throws when USD value is zero or negative', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -61,7 +58,6 @@ describe('fetchBtcPriceUsd', () => {
       }),
     );
 
-    const price = await fetchBtcPriceUsd();
-    expect(price).toBeNull();
+    await expect(fetchBtcPriceUsd()).rejects.toThrow('Invalid BTC price');
   });
 });

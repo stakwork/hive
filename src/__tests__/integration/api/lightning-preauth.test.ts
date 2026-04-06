@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/api/lightning/invoice/preauth/route';
 import { db } from '@/lib/db';
 import { createPostRequest } from '@/__tests__/support/helpers/request-builders';
+import { upsertTestPlatformConfig } from '@/__tests__/support/factories';
 
 vi.mock('@/services/lightning', () => ({
   createLndInvoice: vi.fn().mockResolvedValue({
@@ -16,9 +17,21 @@ vi.mock('qrcode', () => ({
   },
 }));
 
+vi.mock('@/lib/btc-price', () => ({
+  fetchBtcPriceUsd: vi.fn().mockResolvedValue(100000),
+}));
+
+// Expected sats: Math.round((50 / 100000) * 1e8) = 50000
+const EXPECTED_SATS = 50000;
+
 describe('Lightning Pre-auth Invoice API Integration Tests', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    // Re-apply the default mock after clearAllMocks
+    const { fetchBtcPriceUsd } = await import('@/lib/btc-price');
+    vi.mocked(fetchBtcPriceUsd).mockResolvedValue(100000);
+
+    await upsertTestPlatformConfig('graphmindsetAmountUsd', '50');
   });
 
   describe('POST /api/lightning/invoice/preauth', () => {
@@ -33,7 +46,7 @@ describe('Lightning Pre-auth Invoice API Integration Tests', () => {
       const data = await response.json();
       expect(data.invoice).toBe('lnbc500000umock_preauth_abc');
       expect(data.paymentHash).toBe('mock_preauth_hash_abc');
-      expect(data.amount).toBe(500000);
+      expect(data.amount).toBe(EXPECTED_SATS);
       expect(data.qrCodeDataUrl).toBe('data:image/png;base64,mockqr');
 
       const payment = await db.lightningPayment.findUnique({
@@ -44,11 +57,60 @@ describe('Lightning Pre-auth Invoice API Integration Tests', () => {
       expect(payment!.workspaceName).toBe('My Graph');
       expect(payment!.workspaceSlug).toBe('my-graph');
       expect(payment!.status).toBe('UNPAID');
+      expect(payment!.amount).toBe(EXPECTED_SATS);
 
       const pendingRecord = await db.lightningPayment.findFirst({
         where: { paymentHash: { startsWith: 'pending_' } },
       });
       expect(pendingRecord).toBeNull();
+    });
+
+    test('amount stored in LightningPayment matches calculated sats value', async () => {
+      // Use a different BTC price to verify the formula
+      const { fetchBtcPriceUsd } = await import('@/lib/btc-price');
+      vi.mocked(fetchBtcPriceUsd).mockResolvedValueOnce(50000);
+      // Expected: Math.round((50 / 50000) * 1e8) = 100000 sats
+
+      const req = createPostRequest('/api/lightning/invoice/preauth', {
+        workspaceName: 'Sats Check',
+        workspaceSlug: 'sats-check',
+      });
+      const response = await POST(req);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.amount).toBe(100000);
+
+      const payment = await db.lightningPayment.findUnique({
+        where: { paymentHash: 'mock_preauth_hash_abc' },
+      });
+      expect(payment!.amount).toBe(100000);
+    });
+
+    test('returns 503 when PlatformConfig record is missing', async () => {
+      await db.platformConfig.deleteMany({ where: { key: 'graphmindsetAmountUsd' } });
+
+      const req = createPostRequest('/api/lightning/invoice/preauth', {
+        workspaceName: 'My Graph',
+        workspaceSlug: 'my-graph',
+      });
+      const response = await POST(req);
+      expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.error).toBe('Payment price not configured');
+    });
+
+    test('returns 503 when fetchBtcPriceUsd throws', async () => {
+      const { fetchBtcPriceUsd } = await import('@/lib/btc-price');
+      vi.mocked(fetchBtcPriceUsd).mockRejectedValueOnce(new Error('mempool.space unavailable'));
+
+      const req = createPostRequest('/api/lightning/invoice/preauth', {
+        workspaceName: 'My Graph',
+        workspaceSlug: 'my-graph',
+      });
+      const response = await POST(req);
+      expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.error).toBe('BTC price unavailable, please try again');
     });
 
     test('returns 400 when workspaceName is missing', async () => {
