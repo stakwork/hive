@@ -304,6 +304,53 @@ describe('Stripe Claim Route Integration Tests', () => {
       expect(payment!.userId).toBe(otherUser.id);
     });
 
+    test('concurrent claims: only one user succeeds, the other gets 403', async () => {
+      const userA = testUser;
+      const userB = await createTestUser();
+
+      const sessionId = `cs_test_concurrent_${Date.now()}`;
+      // Pre-create PENDING record as checkout would
+      await createTestFiatPayment({
+        stripeSessionId: sessionId,
+        workspaceName: 'Concurrent Workspace',
+        workspaceSlug: 'concurrent-ws',
+        status: 'PENDING',
+        workspaceId: undefined,
+      });
+
+      mockRetrieveSession.mockResolvedValue(
+        buildPaidStripeSession(sessionId, 'pi_concurrent_123')
+      );
+
+      // Simulate two concurrent requests from different users
+      const [resA, resB] = await Promise.all([
+        (async () => {
+          vi.mocked(getServerSession).mockResolvedValueOnce({
+            user: { id: userA.id, email: userA.email, name: userA.name },
+          } as any);
+          const req = buildClaimRequest({ sessionId });
+          return POST(req);
+        })(),
+        (async () => {
+          vi.mocked(getServerSession).mockResolvedValueOnce({
+            user: { id: userB.id, email: userB.email, name: userB.name },
+          } as any);
+          const req = buildClaimRequest({ sessionId });
+          return POST(req);
+        })(),
+      ]);
+
+      const statuses = [resA.status, resB.status].sort();
+      // Exactly one succeeds (200) and one is rejected (403)
+      expect(statuses).toEqual([200, 403]);
+
+      // The payment must be linked to exactly one user
+      const payment = await db.fiatPayment.findUnique({ where: { stripeSessionId: sessionId } });
+      expect(payment!.userId).not.toBeNull();
+      expect([userA.id, userB.id]).toContain(payment!.userId);
+      expect(payment!.status).toBe('PAID');
+    });
+
     test('returns null for workspaceType and repositoryUrl when absent (GraphMindset / legacy sessions)', async () => {
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: testUser.id, email: testUser.email, name: testUser.name },
