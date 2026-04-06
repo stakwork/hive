@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { createLndInvoice } from '@/services/lightning';
 import { fetchBtcPriceUsd } from '@/lib/btc-price';
 import { logger } from '@/lib/logger';
+import { getClientIp, checkRateLimit } from '@/lib/rate-limit';
 
 const preauthBodySchema = z.object({
   workspaceName: z.string().min(1),
@@ -12,6 +13,10 @@ const preauthBodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const rl = await checkRateLimit(`rl:lightning-preauth:${ip}`, 5, 60);
+  if (!rl.allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+
   let body: z.infer<typeof preauthBodySchema>;
   try {
     const raw = await req.json();

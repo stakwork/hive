@@ -13,8 +13,14 @@ vi.mock('@/lib/btc-price', () => ({
   fetchBtcPriceUsd: vi.fn(),
 }));
 
+vi.mock('@/lib/rate-limit', () => ({
+  getClientIp: vi.fn().mockReturnValue('1.2.3.4'),
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+}));
+
 import { lookupLndInvoice } from '@/services/lightning';
 import { fetchBtcPriceUsd } from '@/lib/btc-price';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 const mockLookupLndInvoice = vi.mocked(lookupLndInvoice);
 const mockFetchBtcPriceUsd = vi.mocked(fetchBtcPriceUsd);
@@ -23,6 +29,7 @@ describe('Lightning Invoice Status API Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetchBtcPriceUsd.mockResolvedValue(50000);
+    vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true });
   });
 
   describe('GET /api/lightning/invoice/status', () => {
@@ -208,6 +215,16 @@ describe('Lightning Invoice Status API Integration Tests', () => {
       const response = await GET(req);
 
       expect(response.status).toBe(400);
+    });
+
+    test('returns 429 when per-IP rate limit is exceeded', async () => {
+      vi.mocked(checkRateLimit).mockResolvedValueOnce({ allowed: false, retryAfter: 30 });
+
+      const req = createGetRequest('/api/lightning/invoice/status', { paymentHash: 'some_hash' });
+      const response = await GET(req);
+      expect(response.status).toBe(429);
+      const data = await response.json();
+      expect(data.error).toBe('Too many requests');
     });
 
     test('UNPAID + LND settled + BTC price null → WorkspaceTransaction with null amountUsd', async () => {
