@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,7 +25,15 @@ export function GraphMindsetCard() {
   const [isLightningLoading, setIsLightningLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
+  const [amountUsd, setAmountUsd] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    fetch("/api/config/price?type=graphmindset")
+      .then((r) => r.json())
+      .then((d) => { if (d?.amountUsd != null) setAmountUsd(d.amountUsd); })
+      .catch(() => {});
+  }, []);
   const router = useRouter();
 
   const handleNameChange = (value: string) => {
@@ -145,7 +153,10 @@ export function GraphMindsetCard() {
 
       {/* Price */}
       <p className="text-zinc-500 text-sm font-medium">
-        <span className="text-white text-lg font-bold">$50</span> / workspace
+        <span className="text-white text-lg font-bold">
+          {amountUsd !== null ? `$${amountUsd}` : "—"}
+        </span>{" "}
+        / workspace
       </p>
 
       {/* Input */}

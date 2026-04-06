@@ -27,6 +27,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [error, setError] = useState("");
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
+  const [hiveAmountUsd, setHiveAmountUsd] = useState<number | null>(null);
   const [creationStatus, setCreationStatus] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingRepoUrl, setPendingRepoUrl] = useState("");
@@ -87,6 +88,13 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
     },
     [router]
   );
+
+  useEffect(() => {
+    fetch("/api/config/price?type=hive")
+      .then((r) => r.json())
+      .then((d) => { if (d?.amountUsd != null) setHiveAmountUsd(d.amountUsd); })
+      .catch(() => {});
+  }, []);
 
   // Handle Stripe return on mount
   useEffect(() => {
@@ -201,6 +209,20 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
     }
   };
 
+  // Auto-resume workspace creation after OAuth sign-in redirect
+  useEffect(() => {
+    if (!session?.user) return;
+    if (searchParams.get("payment")) return; // don't interfere with payment flow
+    if (localStorage.getItem("pendingHiveCreate") !== "true") return;
+    localStorage.removeItem("pendingHiveCreate");
+    const repoUrl = localStorage.getItem("repoUrl");
+    if (repoUrl && validateGitHubUrl(repoUrl)) {
+      setRepositoryUrl(repoUrl);
+      createWorkspaceAutomatically(repoUrl);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user]);
+
   const handleNext = () => {
     const trimmedUrl = repositoryUrl.trim().replace(/\/$/, "");
     if (!trimmedUrl) { setError("Please enter a GitHub repository URL"); return; }
@@ -209,7 +231,12 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
       return;
     }
     localStorage.setItem("repoUrl", trimmedUrl);
-    if (!session?.user) { setPendingRepoUrl(trimmedUrl); setShowAuthModal(true); return; }
+    if (!session?.user) {
+      localStorage.setItem("pendingHiveCreate", "true");
+      setPendingRepoUrl(trimmedUrl);
+      setShowAuthModal(true);
+      return;
+    }
     createWorkspaceAutomatically(trimmedUrl);
   };
 
@@ -330,7 +357,10 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
 
           {/* Price */}
           <p className="text-zinc-500 text-sm font-medium">
-            <span className="text-white text-lg font-bold">$50</span> / environment
+            <span className="text-white text-lg font-bold">
+              {hiveAmountUsd !== null ? `$${hiveAmountUsd}` : "—"}
+            </span>{" "}
+            / environment
           </p>
 
           {/* Input + CTA */}

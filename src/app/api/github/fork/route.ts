@@ -59,7 +59,15 @@ export async function POST(request: Request) {
     body: JSON.stringify({}),
   });
 
+  if (githubResponse.status === 401) {
+    const body = await githubResponse.text();
+    console.error(`[FORK] GitHub returned 401 for user ${session.user.id}:`, body);
+    return NextResponse.json({ error: "github_token_expired" }, { status: 401 });
+  }
+
   if (githubResponse.status === 403) {
+    const body = await githubResponse.text();
+    console.error(`[FORK] GitHub returned 403 for user ${session.user.id}:`, body);
     return NextResponse.json({ error: "insufficient_scope" }, { status: 403 });
   }
 
@@ -68,5 +76,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ forkUrl: data.html_url });
   }
 
+  const fallbackBody = await githubResponse.text();
+  console.error(
+    `[FORK] GitHub returned unexpected status ${githubResponse.status} for user ${session.user.id}:`,
+    fallbackBody,
+  );
   return NextResponse.json({ error: "Failed to fork repository" }, { status: 500 });
 }
