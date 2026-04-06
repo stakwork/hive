@@ -84,7 +84,6 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const { slug: workspaceSlug, workspace } = useWorkspace();
   const { updateTicket } = useRoadmapTaskMutations();
   const isMobile = useIsMobile();
-  const [graphOpen, setGraphOpen] = useState(false);
   const [assigningTasks, setAssigningTasks] = useState(false);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
@@ -98,6 +97,8 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }, [defaultPhase?.tasks]);
+
+  const [graphOpen, setGraphOpen] = useState(tasks.length > 1);
 
   const hasDependencies = useMemo(
     () => tasks.some((t) => (t.dependsOnTaskIds ?? []).length > 0),
