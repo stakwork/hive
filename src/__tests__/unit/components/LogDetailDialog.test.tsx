@@ -446,4 +446,15 @@ describe("MessageBubble — newline rendering", () => {
       expect(p?.textContent).toContain("Line two");
     });
   });
+
+  test("user message bubble unescapes literal \\n sequences", async () => {
+    global.fetch = makeStatsFetch([{ role: "user", content: "Line one\\nLine two" }]);
+    render(<LogDetailDialog open logId="log-nl-2" onOpenChange={noop} />);
+    await waitFor(() => {
+      const p = document.querySelector("p.whitespace-pre-wrap");
+      expect(p?.textContent).toContain("Line one");
+      expect(p?.textContent).toContain("Line two");
+      expect(p?.textContent).not.toContain("\\n");
+    });
+  });
 });
