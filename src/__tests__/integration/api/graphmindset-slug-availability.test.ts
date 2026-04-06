@@ -63,7 +63,7 @@ describe('GET /api/graphmindset/slug-availability', () => {
     const data = await response.json();
     expect(data.success).toBe(true);
     expect(data.data.isAvailable).toBe(false);
-    expect(data.data.message).toBeTruthy();
+    expect(data.data.message).toBe('This slug is not available. Please choose a different one.');
   });
 
   test('returns isAvailable: false with format error for slug starting with dashes', async () => {
@@ -95,7 +95,7 @@ describe('GET /api/graphmindset/slug-availability', () => {
     const data = await response.json();
     expect(data.success).toBe(true);
     expect(data.data.isAvailable).toBe(false);
-    expect(data.data.message).toBe('A workspace with this slug already exists');
+    expect(data.data.message).toBe('This slug is not available. Please choose a different one.');
     // Should not call swarm admin if DB already shows taken
     expect(global.fetch).not.toHaveBeenCalled();
   });
@@ -128,9 +128,7 @@ describe('GET /api/graphmindset/slug-availability', () => {
     const data = await response.json();
     expect(data.success).toBe(true);
     expect(data.data.isAvailable).toBe(false);
-    expect(data.data.message).toBe(
-      'This name is already in use as a graph workspace. Please choose a different name.'
-    );
+    expect(data.data.message).toBe('This slug is not available. Please choose a different one.');
   });
 
   test('falls back to DB-only result (isAvailable: true) when swarm admin fetch throws', async () => {
