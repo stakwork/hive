@@ -5,6 +5,8 @@ import { validateWorkspaceAccess } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getSwarmCmdJwt, swarmCmdRequest, SwarmCmd } from "@/services/swarm/cmd";
+import { getActiveWorkspaceMembersWithSphinx } from "@/lib/helpers/workspace-member-queries";
+import QRCode from "qrcode";
 
 export const runtime = "nodejs";
 
@@ -13,6 +15,14 @@ const ALLOWED_CMDS = new Set([
   "UpdateBoltwallAccessibility",
   "ListPaidEndpoint",
   "UpdatePaidEndpoint",
+  "GetBotBalance",
+  "CreateBotInvoice",
+  "GetEnrichedBoltwallUsers",
+  "AddBoltwallAdminPubkey",
+  "AddBoltwallUser",
+  "ListAdmins",
+  "DeleteSubAdmin",
+  "UpdateUser",
 ]);
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
@@ -93,13 +103,84 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  // 7. Proxy cmd
+  // 7. Intercept composite command: GetEnrichedBoltwallUsers
+  if (cmdName === "GetEnrichedBoltwallUsers") {
+    const [adminsResult, superAdminResult] = await Promise.allSettled([
+      swarmCmdRequest({ swarmUrl: swarm.swarmUrl, jwt, cmd: { type: "Swarm", data: { cmd: "ListAdmins" } } }),
+      swarmCmdRequest({ swarmUrl: swarm.swarmUrl, jwt, cmd: { type: "Swarm", data: { cmd: "GetBoltwallSuperAdmin" } } }),
+    ]);
+
+    const admins: Array<{ id: number; pubkey: string; name: string; role: string }> =
+      adminsResult.status === "fulfilled" && adminsResult.value.ok
+        ? ((adminsResult.value.data as { admins?: unknown[] })?.admins ?? []) as Array<{ id: number; pubkey: string; name: string; role: string }>
+        : [];
+
+    const superAdmin: { pubkey: string; name: string } | null =
+      superAdminResult.status === "fulfilled" && superAdminResult.value.ok
+        ? ((superAdminResult.value.data as { pubkey?: string; name?: string })?.pubkey
+            ? (superAdminResult.value.data as { pubkey: string; name: string })
+            : null)
+        : null;
+
+    // Build pubkey → Hive identity map from workspace members
+    const members = await getActiveWorkspaceMembersWithSphinx(workspaceId);
+    const hiveMap = new Map<string, { name: string | null; image: string | null }>();
+    for (const member of members) {
+      const rawPubkey = member.user?.lightningPubkey;
+      if (!rawPubkey) continue;
+      try {
+        const decrypted = encryptionService.decryptField("lightningPubkey", rawPubkey);
+        hiveMap.set(decrypted, { name: member.user.name ?? null, image: member.user.image ?? null });
+      } catch {
+        // skip members whose pubkey cannot be decrypted
+      }
+    }
+
+    // Build enriched list: owner first, then admins/members (deduplicating super admin)
+    const superAdminPubkey = superAdmin?.pubkey ?? null;
+    const ownerEntry = {
+      pubkey: superAdminPubkey,
+      name: superAdmin?.name ?? null,
+      role: "owner" as const,
+      hive: superAdminPubkey ? (hiveMap.get(superAdminPubkey) ?? null) : null,
+    };
+
+    const enrichedAdmins = admins
+      .filter((a) => a.pubkey !== superAdminPubkey)
+      .map((a) => ({
+        id: a.id,
+        pubkey: a.pubkey,
+        name: a.name,
+        role: a.role,
+        hive: hiveMap.get(a.pubkey) ?? null,
+      }));
+
+    return NextResponse.json({ users: [ownerEntry, ...enrichedAdmins] });
+  }
+
+  // 8. Proxy cmd to swarm
   const result = await swarmCmdRequest({ swarmUrl: swarm.swarmUrl, jwt, cmd });
   if (!result.ok) {
     return NextResponse.json(
       { error: "Swarm cmd failed", status: result.status, swarm: result.data ?? result.rawText },
       { status: 502 },
     );
+  }
+
+  // 9. Post-process CreateBotInvoice: append QR code
+  if (cmdName === "CreateBotInvoice") {
+    const resultData = result.data as { invoice?: string } | string | undefined;
+    const bolt11 = typeof resultData === "string" ? resultData : resultData?.invoice;
+    if (bolt11) {
+      const qrCodeDataUrl = await QRCode.toDataURL(bolt11, {
+        errorCorrectionLevel: "M",
+        type: "image/png",
+        width: 300,
+        margin: 2,
+      });
+      const baseData = typeof resultData === "string" ? { invoice: bolt11 } : resultData;
+      return NextResponse.json({ ...baseData, qrCodeDataUrl });
+    }
   }
 
   return NextResponse.json(result.data ?? result.rawText);
