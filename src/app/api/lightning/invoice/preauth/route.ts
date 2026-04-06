@@ -3,7 +3,6 @@ import { z } from 'zod';
 import QRCode from 'qrcode';
 import { db } from '@/lib/db';
 import { createLndInvoice } from '@/services/lightning';
-import { optionalEnvVars } from '@/config/env';
 import { logger } from '@/lib/logger';
 
 const preauthBodySchema = z.object({
@@ -21,7 +20,8 @@ export async function POST(req: NextRequest) {
   }
 
   const { workspaceName, workspaceSlug } = body;
-  const amount = optionalEnvVars.LIGHTNING_AMOUNT_SATS;
+  // TODO: replaced by dynamic USD→sats conversion in next ticket
+  const amount = 500000;
 
   const placeholderHash = `pending_${crypto.randomUUID()}`;
 
