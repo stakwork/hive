@@ -22,6 +22,14 @@ export interface LogDetailContentProps {
   variant?: "modal" | "page";
 }
 
+export function unescapeLogString(str: string): string {
+  return str
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'");
+}
+
 export function extractTextContent(message: ParsedMessage): string | null {
   const { content, reasoning } = message;
 
@@ -62,11 +70,11 @@ export function extractToolResults(content: ParsedMessage["content"]): ToolResul
 }
 
 export function getToolResultValue(output: ToolResultContent["output"]): string {
-  if (typeof output === "string") return output;
+  if (typeof output === "string") return unescapeLogString(output);
   if (output && typeof output === "object" && "value" in output) {
     const val = output.value;
     if (typeof val === "string") {
-      return val.length > 2000 ? val.slice(0, 2000) + "\n... (truncated)" : val;
+      return unescapeLogString(val.length > 2000 ? val.slice(0, 2000) + "\n... (truncated)" : val);
     }
   }
   try {
@@ -101,7 +109,7 @@ export function ToolCallItem({
       </button>
       {open && truncated && (
         <pre className="mt-1 text-xs font-mono bg-muted/70 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
-          {truncated}
+          {unescapeLogString(truncated)}
         </pre>
       )}
     </div>
@@ -238,7 +246,7 @@ export function MessageBubble({ message }: { message: ParsedMessage }) {
         )}
       >
         {isUser ? (
-          <p className="text-sm whitespace-pre-wrap break-words">{textContent}</p>
+          <p className="text-sm whitespace-pre-wrap break-words">{unescapeLogString(textContent)}</p>
         ) : (
           <MarkdownRenderer variant="assistant" size="compact">
             {textContent}
@@ -384,7 +392,7 @@ export function LogDetailContent({
               </div>
             ) : (
               <pre className="p-4 whitespace-pre-wrap break-words font-mono text-sm">
-                {rawContent}
+                {unescapeLogString(rawContent)}
               </pre>
             )}
           </ScrollArea>
