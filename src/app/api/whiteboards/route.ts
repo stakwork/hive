@@ -88,25 +88,58 @@ export async function GET(request: NextRequest) {
       whereClause.createdById = createdByIdParam;
     }
 
-    const whiteboards = await db.whiteboard.findMany({
-      where: whereClause,
-      orderBy: { updatedAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        featureId: true,
-        feature: {
-          select: { id: true, title: true },
-        },
-        createdAt: true,
-        updatedAt: true,
-        createdBy: {
-          select: { id: true, name: true, image: true },
-        },
-      },
-    });
+    // Sort & pagination params
+    const sortByParam = searchParams.get("sortBy") ?? "updatedAt";
+    const sortOrderParam = searchParams.get("sortOrder") ?? "desc";
+    const pageParam = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
+    const limitParam = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "24", 10) || 24));
 
-    return NextResponse.json({ success: true, data: whiteboards }, { status: 200 });
+    const validSortBy = ["createdAt", "updatedAt"] as const;
+    const validSortOrder = ["asc", "desc"] as const;
+    if (!validSortBy.includes(sortByParam as (typeof validSortBy)[number])) {
+      return NextResponse.json({ error: "Invalid sortBy value" }, { status: 400 });
+    }
+    if (!validSortOrder.includes(sortOrderParam as (typeof validSortOrder)[number])) {
+      return NextResponse.json({ error: "Invalid sortOrder value" }, { status: 400 });
+    }
+
+    const orderByClause = { [sortByParam]: sortOrderParam };
+
+    const [whiteboards, totalCount] = await Promise.all([
+      db.whiteboard.findMany({
+        where: whereClause,
+        orderBy: orderByClause,
+        skip: (pageParam - 1) * limitParam,
+        take: limitParam,
+        select: {
+          id: true,
+          name: true,
+          featureId: true,
+          feature: {
+            select: { id: true, title: true },
+          },
+          createdAt: true,
+          updatedAt: true,
+          createdBy: {
+            select: { id: true, name: true, image: true },
+          },
+        },
+      }),
+      db.whiteboard.count({ where: whereClause }),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limitParam);
+    return NextResponse.json({
+      success: true,
+      data: whiteboards,
+      pagination: {
+        page: pageParam,
+        limit: limitParam,
+        totalCount,
+        totalPages,
+        hasMore: pageParam < totalPages,
+      },
+    }, { status: 200 });
   } catch (error) {
     console.error("Error fetching whiteboards:", error);
     return NextResponse.json({ error: "Failed to fetch whiteboards" }, { status: 500 });
