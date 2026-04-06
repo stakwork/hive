@@ -23,10 +23,12 @@ import type { BoardFeature } from "@/types/roadmap";
 import type { TicketListItem } from "@/types/roadmap";
 
 // Layout constants
-export const TASK_NODE_HEIGHT = 110;
+export const TASK_NODE_WIDTH = 300;
+export const TASK_NODE_HEIGHT = 100;
 export const HEADER_HEIGHT = 48;
 export const GROUP_PADDING = 20;
-export const MIN_GROUP_WIDTH = 320;
+export const MIN_GROUP_WIDTH = 340;
+const GROUP_GAP = 60; // horizontal gap between feature columns
 
 interface BoardCanvasProps {
   features: BoardFeature[];
@@ -42,128 +44,114 @@ export function buildNodesAndEdges(
   slug: string,
   onNavigateTask: (taskId: string) => void,
 ): { nodes: Node[]; edges: Edge[] } {
-  // Build a set of all valid task IDs (for filtering stale deps)
-  const allTaskIds = new Set<string>();
-  features.forEach((f) => f.tasks.forEach((t) => allTaskIds.add(t.id)));
+  const allNodes: Node[] = [];
+  const allEdges: Edge[] = [];
 
-  // Compute group heights
-  const getGroupHeight = (taskCount: number) =>
-    taskCount === 0
-      ? HEADER_HEIGHT + 60
-      : HEADER_HEIGHT + GROUP_PADDING * 2 + taskCount * TASK_NODE_HEIGHT;
+  let currentX = 0;
 
-  // Build feature group nodes (for dagre layout)
-  const groupNodes: Node<FeatureGroupNodeData>[] = features.map((feature) => ({
-    id: feature.id,
-    type: "featureGroup",
-    data: {
-      featureId: feature.id,
-      title: feature.title,
-      status: feature.status,
-      taskCount: feature.tasks.length,
-      slug,
-    },
-    position: { x: 0, y: 0 },
-    style: {
-      width: MIN_GROUP_WIDTH,
-      height: getGroupHeight(feature.tasks.length),
-    },
-  }));
+  for (const feature of features) {
+    const featureTaskIds = new Set(feature.tasks.map((t) => t.id));
 
-  // Build edges from dependsOnTaskIds (only valid cross-set deps)
-  const edges: Edge[] = [];
-  const seenEdges = new Set<string>();
-
-  features.forEach((feature) => {
+    // Build internal edges (within-feature task deps only — cross-feature doesn't exist yet)
+    const internalEdges: Edge[] = [];
     feature.tasks.forEach((task) => {
       task.dependsOnTaskIds.forEach((depId) => {
-        // Filter out stale references
-        if (!allTaskIds.has(depId) || !allTaskIds.has(task.id)) return;
+        if (!featureTaskIds.has(depId)) return; // skip stale/cross-feature refs
         const edgeId = `${depId}-${task.id}`;
-        if (seenEdges.has(edgeId)) return;
-        seenEdges.add(edgeId);
-        edges.push({
+        const edge: Edge = {
           id: edgeId,
           source: depId,
           target: task.id,
           type: "smoothstep",
           animated: true,
-          style: { stroke: "#3b82f6", strokeWidth: 3 },
+          style: { stroke: "#3b82f6", strokeWidth: 2 },
           markerEnd: {
             type: MarkerType.ArrowClosed,
-            width: 20,
-            height: 20,
+            width: 18,
+            height: 18,
+          },
+        };
+        internalEdges.push(edge);
+        allEdges.push(edge);
+      });
+    });
+
+    // Layout tasks with Dagre TB so dep arrows flow top → bottom
+    let groupWidth = MIN_GROUP_WIDTH;
+    let groupHeight = HEADER_HEIGHT + 60; // minimum for empty group
+    const childNodes: Node[] = [];
+
+    if (feature.tasks.length > 0) {
+      const rawTaskNodes: Node[] = feature.tasks.map((t) => ({
+        id: t.id,
+        type: "taskNode",
+        data: { ...t, onNavigate: onNavigateTask } as TaskNodeData,
+        position: { x: 0, y: 0 },
+      }));
+
+      const { nodes: dagreTaskNodes } = getLayoutedElements(
+        rawTaskNodes,
+        internalEdges,
+        {
+          nodeWidth: TASK_NODE_WIDTH,
+          nodeHeight: TASK_NODE_HEIGHT,
+          direction: "TB",
+          ranksep: 60,
+          nodesep: 40,
+        },
+      );
+
+      // Compute bounding box of laid-out task nodes
+      let maxRight = 0;
+      let maxBottom = 0;
+      dagreTaskNodes.forEach((n) => {
+        maxRight = Math.max(maxRight, n.position.x + TASK_NODE_WIDTH);
+        maxBottom = Math.max(maxBottom, n.position.y + TASK_NODE_HEIGHT);
+      });
+
+      groupWidth = Math.max(maxRight + GROUP_PADDING * 2, MIN_GROUP_WIDTH);
+      groupHeight = HEADER_HEIGHT + maxBottom + GROUP_PADDING * 2;
+
+      // Center task layout horizontally within the group
+      const centerOffsetX = Math.max(
+        (groupWidth - GROUP_PADDING * 2 - maxRight) / 2,
+        0,
+      );
+
+      dagreTaskNodes.forEach((n) => {
+        childNodes.push({
+          ...n,
+          parentId: feature.id,
+          extent: "parent" as const,
+          draggable: false,
+          position: {
+            x: n.position.x + GROUP_PADDING + centerOffsetX,
+            y: n.position.y + HEADER_HEIGHT + GROUP_PADDING,
           },
         });
       });
-    });
-  });
-
-  // Layout group nodes with dagre (LR, using cross-feature edges for spacing)
-  // We build proxy edges between feature groups based on task deps so dagre spaces them well
-  const proxyEdges: Edge[] = [];
-  edges.forEach((edge) => {
-    // Find which feature each task belongs to
-    let sourceFeatureId: string | undefined;
-    let targetFeatureId: string | undefined;
-    features.forEach((f) => {
-      f.tasks.forEach((t) => {
-        if (t.id === edge.source) sourceFeatureId = f.id;
-        if (t.id === edge.target) targetFeatureId = f.id;
-      });
-    });
-    if (
-      sourceFeatureId &&
-      targetFeatureId &&
-      sourceFeatureId !== targetFeatureId
-    ) {
-      const proxyId = `proxy-${sourceFeatureId}-${targetFeatureId}`;
-      if (!proxyEdges.find((e) => e.id === proxyId)) {
-        proxyEdges.push({
-          id: proxyId,
-          source: sourceFeatureId,
-          target: targetFeatureId,
-        });
-      }
     }
-  });
 
-  const { nodes: layoutedGroupNodes } = getLayoutedElements(
-    groupNodes,
-    proxyEdges,
-    {
-      nodeWidth: MIN_GROUP_WIDTH,
-      nodeHeight: getGroupHeight(0), // use min height for rough layout
-      direction: "LR",
-      ranksep: 250,
-      nodesep: 150,
-    },
-  );
-
-  // Build final nodes: layouted group nodes + task child nodes
-  const allNodes: Node[] = [...layoutedGroupNodes];
-
-  features.forEach((feature) => {
-    const groupNode = layoutedGroupNodes.find((n) => n.id === feature.id);
-    if (!groupNode) return;
-
-    feature.tasks.forEach((task, index) => {
-      allNodes.push({
-        id: task.id,
-        type: "taskNode",
-        data: { ...task, onNavigate: onNavigateTask } as TaskNodeData,
-        parentId: feature.id,
-        extent: "parent",
-        position: {
-          x: GROUP_PADDING,
-          y: HEADER_HEIGHT + GROUP_PADDING + index * TASK_NODE_HEIGHT,
-        },
-        draggable: false,
-      });
+    // Feature group node — positioned in a horizontal row
+    allNodes.push({
+      id: feature.id,
+      type: "featureGroup",
+      data: {
+        featureId: feature.id,
+        title: feature.title,
+        status: feature.status,
+        taskCount: feature.tasks.length,
+        slug,
+      } as FeatureGroupNodeData,
+      position: { x: currentX, y: 0 },
+      style: { width: groupWidth, height: groupHeight },
     });
-  });
 
-  return { nodes: allNodes, edges };
+    allNodes.push(...childNodes);
+    currentX += groupWidth + GROUP_GAP;
+  }
+
+  return { nodes: allNodes, edges: allEdges };
 }
 
 interface BoardInnerProps {
@@ -191,7 +179,7 @@ function BoardInner({ features, slug }: BoardInnerProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Recompute when features change
+  // Recompute when features/filter change
   useEffect(() => {
     const { nodes: newNodes, edges: newEdges } = buildNodesAndEdges(
       features,
@@ -200,12 +188,10 @@ function BoardInner({ features, slug }: BoardInnerProps) {
     );
     setNodes(newNodes);
     setEdges(newEdges);
-    // fitView after state update settles
     setTimeout(() => fitView({ padding: 0.3, duration: 300 }), 100);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [features, slug]);
 
-  // Stable node types - use refs so they don't change on re-render
   const onNavigateTaskRef = useRef(onNavigateTask);
   useEffect(() => {
     onNavigateTaskRef.current = onNavigateTask;
@@ -217,10 +203,7 @@ function BoardInner({ features, slug }: BoardInnerProps) {
         <FeatureGroupNode data={data} />
       ),
       taskNode: ({ data }: { data: TaskNodeData }) => (
-        <RoadmapTaskNode
-          data={data}
-          direction="LR"
-        />
+        <RoadmapTaskNode data={data} direction="TB" />
       ),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,11 +212,10 @@ function BoardInner({ features, slug }: BoardInnerProps) {
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      // Task nodes: navigate to task page
       if (node.type === "taskNode") {
         onNavigateTaskRef.current(node.id);
       }
-      // Feature group node clicks handled inside FeatureGroupNode header
+      // Feature group header clicks handled inside FeatureGroupNode
     },
     [],
   );
@@ -250,8 +232,8 @@ function BoardInner({ features, slug }: BoardInnerProps) {
       maxZoom={1.5}
       defaultEdgeOptions={{
         type: "smoothstep",
-        style: { strokeWidth: 3, stroke: "#3b82f6" },
-        markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 20 },
+        style: { strokeWidth: 2, stroke: "#3b82f6" },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
       }}
       proOptions={{ hideAttribution: true }}
       fitView
