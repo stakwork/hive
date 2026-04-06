@@ -8,18 +8,19 @@ import {
   extractRepoNameFromUrl,
   getUserWorkspaces,
   softDeleteWorkspace,
+  validateWorkspaceSlug,
 } from "@/services/workspace";
+import { WORKSPACE_LIMITS, WORKSPACE_ERRORS } from "@/lib/constants";
 import { findUserByGitHubUsername } from "@/lib/helpers/workspace-member-queries";
 import { db } from "@/lib/db";
 import { getErrorMessage } from "@/lib/utils/error";
-
 
 // Prevent caching of user-specific data
 export const dynamic = "force-dynamic";
 
 /**
  * Helper to get user ID from session cookie or Bearer token.
- * 
+ *
  * Note: This route is marked as "webhook" in middleware config (to allow external API creation),
  * so we can't use getMiddlewareContext(). Instead we check auth manually here.
  * Supports both session cookies (web UI) and Bearer tokens (Sphinx app).
@@ -50,6 +51,108 @@ export async function GET(request: NextRequest) {
   }
   const workspaces = await getUserWorkspaces(userId);
   return NextResponse.json({ workspaces }, { status: 200 });
+}
+
+/**
+ * Create a graph_mindset workspace atomically with payment claiming.
+ *
+ * The entire operation — workspace row creation, payment link (CAS), paymentStatus update,
+ * and WorkspaceMember creation — runs in a single db.$transaction. The payment CAS uses
+ * `updateMany WHERE workspaceId IS NULL`, which returns count=0 if another concurrent
+ * transaction already claimed the payment (causing this transaction to throw and roll back
+ * the workspace creation too). This guarantees one payment → at most one workspace.
+ */
+async function createGraphMindsetWorkspace(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  opts: {
+    name: string;
+    description?: string;
+    slug: string;
+    ownerId: string;
+    repositoryUrl?: string;
+  },
+) {
+  const { name, description, slug, ownerId, repositoryUrl } = opts;
+
+  // Inline the workspace limit + slug-uniqueness checks inside the transaction
+  const existingCount = await tx.workspace.count({
+    where: { ownerId, deleted: false },
+  });
+  if (existingCount >= WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER) {
+    throw new Error(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
+  }
+
+  // Create the workspace row first (will be rolled back if payment CAS fails)
+  const workspace = await tx.workspace.create({
+    data: {
+      name,
+      description,
+      slug,
+      ownerId,
+      repositoryDraft: repositoryUrl,
+      workspaceKind: "graph_mindset",
+    },
+  });
+
+  // --- CAS: claim the payment atomically ---
+  // Try FiatPayment first (preferred), fall back to LightningPayment.
+  // Using updateMany WHERE workspaceId IS NULL is a true compare-and-set:
+  // if another concurrent transaction already linked this payment, count will be 0
+  // and we throw — rolling back the workspace creation above.
+  const fiatClaim = await tx.fiatPayment.findFirst({
+    where: { userId: ownerId, status: "PAID", workspaceId: null },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+
+  let paymentLinked = false;
+
+  if (fiatClaim) {
+    const result = await tx.fiatPayment.updateMany({
+      where: { id: fiatClaim.id, workspaceId: null },
+      data: { workspaceId: workspace.id },
+    });
+    paymentLinked = result.count > 0;
+  } else {
+    const lightningClaim = await tx.lightningPayment.findFirst({
+      where: { userId: ownerId, status: "PAID", workspaceId: null },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    if (lightningClaim) {
+      const result = await tx.lightningPayment.updateMany({
+        where: { id: lightningClaim.id, workspaceId: null },
+        data: { workspaceId: workspace.id },
+      });
+      paymentLinked = result.count > 0;
+    }
+  }
+
+  if (!paymentLinked) {
+    // No unlinked PAID payment available — payment was stolen by a concurrent request.
+    // Throwing here rolls back the workspace.create above.
+    throw new Error("PAYMENT_REQUIRED");
+  }
+
+  // Mark workspace as paid and create the owner WorkspaceMember record
+  await tx.workspace.update({
+    where: { id: workspace.id },
+    data: { paymentStatus: "PAID" },
+  });
+
+  await tx.workspaceMember.upsert({
+    where: { workspaceId_userId: { workspaceId: workspace.id, userId: ownerId } },
+    update: {},
+    create: { workspaceId: workspace.id, userId: ownerId, role: "OWNER" },
+  });
+
+  return {
+    ...workspace,
+    paymentStatus: "PAID" as const,
+    nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+    createdAt: workspace.createdAt.toISOString(),
+    updatedAt: workspace.updatedAt.toISOString(),
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -110,32 +213,62 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // Step 1 — Payment gate: graph_mindset workspaces require a PAID payment record
+  // graph_mindset path: validate then create atomically with payment claim
   if (workspaceKind === "graph_mindset") {
+    // Validate slug format before entering the transaction
+    const slugValidation = validateWorkspaceSlug(finalSlug);
+    if (!slugValidation.isValid) {
+      return NextResponse.json({ error: slugValidation.error }, { status: 400 });
+    }
+
+    // repositoryUrl allowlist: validate against ONBOARDING_FORK_REPOS when configured
+    if (repositoryUrl) {
+      const allowedRepos = (process.env.ONBOARDING_FORK_REPOS || "")
+        .split(",")
+        .map((r: string) => r.trim())
+        .filter(Boolean);
+      if (allowedRepos.length > 0 && !allowedRepos.includes(repositoryUrl)) {
+        return NextResponse.json({ error: "Invalid repository URL" }, { status: 400 });
+      }
+    }
+
+    // Fast-fail pre-check: avoids entering a transaction when there is clearly no payment.
+    // The real enforcement is the CAS inside the transaction below.
     const hasPaidFiat = await db.fiatPayment.findFirst({
       where: { userId: ownerId, status: "PAID", workspaceId: null },
       select: { id: true },
     });
-    const hasPaidLightning = !hasPaidFiat && await db.lightningPayment.findFirst({
-      where: { userId: ownerId, status: "PAID", workspaceId: null },
-      select: { id: true },
-    });
-    if (!hasPaidFiat && !hasPaidLightning) {
-      return NextResponse.json({ error: "Payment required" }, { status: 402 });
+    if (!hasPaidFiat) {
+      const hasPaidLightning = await db.lightningPayment.findFirst({
+        where: { userId: ownerId, status: "PAID", workspaceId: null },
+        select: { id: true },
+      });
+      if (!hasPaidLightning) {
+        return NextResponse.json({ error: "Payment required" }, { status: 402 });
+      }
+    }
+
+    try {
+      const workspace = await db.$transaction((tx) =>
+        createGraphMindsetWorkspace(tx, {
+          name: finalName,
+          description,
+          slug: finalSlug,
+          ownerId,
+          repositoryUrl,
+        }),
+      );
+      return NextResponse.json({ workspace }, { status: 201 });
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message === "PAYMENT_REQUIRED") {
+        return NextResponse.json({ error: "Payment required" }, { status: 402 });
+      }
+      const message = getErrorMessage(error, "Failed to create workspace.");
+      return NextResponse.json({ error: message }, { status: 400 });
     }
   }
 
-  // Step 2 — repositoryUrl allowlist: validate against ONBOARDING_FORK_REPOS when configured
-  if (workspaceKind === "graph_mindset" && repositoryUrl) {
-    const allowedRepos = (process.env.ONBOARDING_FORK_REPOS || "")
-      .split(",")
-      .map((r: string) => r.trim())
-      .filter(Boolean);
-    if (allowedRepos.length > 0 && !allowedRepos.includes(repositoryUrl)) {
-      return NextResponse.json({ error: "Invalid repository URL" }, { status: 400 });
-    }
-  }
-
+  // Non-graph_mindset path: use the standard createWorkspace service
   try {
     const workspace = await createWorkspace({
       name: finalName,
@@ -145,54 +278,6 @@ export async function POST(request: NextRequest) {
       repositoryUrl,
       workspaceKind,
     });
-
-    // For graph_mindset workspaces: atomically link the user's PAID payment,
-    // set paymentStatus, and create the owner WorkspaceMember record.
-    if (workspaceKind === "graph_mindset") {
-      await db.$transaction(async (tx) => {
-        // Try FiatPayment first (preferred), then fall back to LightningPayment.
-        // All reads and writes are inside the transaction to prevent concurrent
-        // requests from linking the same payment to multiple workspaces.
-        const fiatPayment = await tx.fiatPayment.findFirst({
-          where: { userId: ownerId, status: "PAID", workspaceId: null },
-          orderBy: { createdAt: "desc" },
-        });
-
-        if (fiatPayment) {
-          await tx.fiatPayment.update({
-            where: { id: fiatPayment.id },
-            data: { workspaceId: workspace.id },
-          });
-          await tx.workspace.update({
-            where: { id: workspace.id },
-            data: { paymentStatus: "PAID" },
-          });
-        } else {
-          const lightningPayment = await tx.lightningPayment.findFirst({
-            where: { userId: ownerId, status: "PAID", workspaceId: null },
-            orderBy: { createdAt: "desc" },
-          });
-          if (lightningPayment) {
-            await tx.lightningPayment.update({
-              where: { id: lightningPayment.id },
-              data: { workspaceId: workspace.id },
-            });
-            await tx.workspace.update({
-              where: { id: workspace.id },
-              data: { paymentStatus: "PAID" },
-            });
-          }
-        }
-
-        // Create WorkspaceMember for owner (matches the Hive onboarding flow)
-        await tx.workspaceMember.upsert({
-          where: { workspaceId_userId: { workspaceId: workspace.id, userId: ownerId } },
-          update: {},
-          create: { workspaceId: workspace.id, userId: ownerId, role: "OWNER" },
-        });
-      });
-    }
-
     return NextResponse.json({ workspace }, { status: 201 });
   } catch (error: unknown) {
     const message = getErrorMessage(error, "Failed to create workspace.");

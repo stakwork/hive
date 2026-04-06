@@ -330,15 +330,15 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
 
     const statuses = [res1.status, res2.status];
 
-    // One must succeed (201), the other either 402 (payment gate) or 201 with PENDING paymentStatus
-    const successes = statuses.filter((s) => s === 201);
-    expect(successes.length).toBeGreaterThanOrEqual(1);
+    // Exactly one request wins the payment CAS (201); the other loses (402)
+    expect(statuses).toContain(201);
+    expect(statuses).toContain(402);
 
-    // At most one workspace should have paymentStatus PAID (payment linked to exactly one)
+    // Exactly one workspace was created and it has paymentStatus PAID
     const workspaces = await db.workspace.findMany({
       where: { slug: { in: [slug1, slug2] } },
     });
-    const paidWorkspaces = workspaces.filter((w) => w.paymentStatus === 'PAID');
-    expect(paidWorkspaces.length).toBeLessThanOrEqual(1);
+    expect(workspaces).toHaveLength(1);
+    expect(workspaces[0].paymentStatus).toBe('PAID');
   });
 });
