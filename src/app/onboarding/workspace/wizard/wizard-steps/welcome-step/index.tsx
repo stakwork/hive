@@ -201,6 +201,20 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
     }
   };
 
+  // Auto-resume workspace creation after OAuth sign-in redirect
+  useEffect(() => {
+    if (!session?.user) return;
+    if (searchParams.get("payment")) return; // don't interfere with payment flow
+    if (localStorage.getItem("pendingHiveCreate") !== "true") return;
+    localStorage.removeItem("pendingHiveCreate");
+    const repoUrl = localStorage.getItem("repoUrl");
+    if (repoUrl && validateGitHubUrl(repoUrl)) {
+      setRepositoryUrl(repoUrl);
+      createWorkspaceAutomatically(repoUrl);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user]);
+
   const handleNext = () => {
     const trimmedUrl = repositoryUrl.trim().replace(/\/$/, "");
     if (!trimmedUrl) { setError("Please enter a GitHub repository URL"); return; }
@@ -209,7 +223,12 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
       return;
     }
     localStorage.setItem("repoUrl", trimmedUrl);
-    if (!session?.user) { setPendingRepoUrl(trimmedUrl); setShowAuthModal(true); return; }
+    if (!session?.user) {
+      localStorage.setItem("pendingHiveCreate", "true");
+      setPendingRepoUrl(trimmedUrl);
+      setShowAuthModal(true);
+      return;
+    }
     createWorkspaceAutomatically(trimmedUrl);
   };
 
