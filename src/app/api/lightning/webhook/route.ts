@@ -5,7 +5,7 @@ import { fetchBtcPriceUsd } from '@/lib/btc-price';
 import { lookupLndInvoice } from '@/services/lightning';
 
 export async function POST(req: NextRequest) {
-  const token = req.headers.get('x-webhook-secret');
+  const token = req.nextUrl.searchParams.get('secret');
   if (!token || token !== process.env.LIGHTNING_WEBHOOK_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

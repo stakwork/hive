@@ -18,10 +18,13 @@ import { fetchBtcPriceUsd } from '@/lib/btc-price';
 const mockLookupLndInvoice = vi.mocked(lookupLndInvoice);
 const mockFetchBtcPriceUsd = vi.mocked(fetchBtcPriceUsd);
 
-function buildWebhookRequest(body: Record<string, unknown>, headers: Record<string, string> = {}): NextRequest {
-  return new NextRequest('http://localhost/api/lightning/webhook', {
+function buildWebhookRequest(body: Record<string, unknown>, secret: string | null = 'test-secret'): NextRequest {
+  const url = secret !== null
+    ? `http://localhost/api/lightning/webhook?secret=${secret}`
+    : 'http://localhost/api/lightning/webhook';
+  return new NextRequest(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-webhook-secret': 'test-secret', ...headers },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 }
@@ -35,20 +38,16 @@ describe('Lightning Webhook Handler Integration Tests', () => {
   });
 
   describe('POST /api/lightning/webhook', () => {
-    test('returns 401 when x-webhook-secret header is missing', async () => {
-      const req = new NextRequest('http://localhost/api/lightning/webhook', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment_hash: 'any_hash' }),
-      });
+    test('returns 401 when secret query param is missing', async () => {
+      const req = buildWebhookRequest({ payment_hash: 'any_hash' }, null);
       const response = await POST(req);
       expect(response.status).toBe(401);
       const data = await response.json();
       expect(data).toEqual({ error: 'Unauthorized' });
     });
 
-    test('returns 401 when x-webhook-secret header is wrong', async () => {
-      const req = buildWebhookRequest({ payment_hash: 'any_hash' }, { 'x-webhook-secret': 'wrong-secret' });
+    test('returns 401 when secret query param is wrong', async () => {
+      const req = buildWebhookRequest({ payment_hash: 'any_hash' }, 'wrong-secret');
       const response = await POST(req);
       expect(response.status).toBe(401);
       const data = await response.json();
