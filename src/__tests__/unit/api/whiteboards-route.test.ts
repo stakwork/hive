@@ -10,6 +10,7 @@ vi.mock("@/lib/db", () => ({
     },
     whiteboard: {
       findMany: vi.fn(),
+      count: vi.fn(),
       create: vi.fn(),
       findUnique: vi.fn(),
     },
@@ -70,10 +71,12 @@ describe("GET /api/whiteboards", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
+    (db.whiteboard.count as Mock).mockResolvedValue(0);
   });
 
   test("returns whiteboards with createdBy field", async () => {
     (db.whiteboard.findMany as Mock).mockResolvedValue([mockWhiteboard]);
+    (db.whiteboard.count as Mock).mockResolvedValue(1);
 
     const req = authedGetRequest("http://localhost/api/whiteboards?workspaceId=ws1");
     const res = await GET(req);
@@ -87,6 +90,7 @@ describe("GET /api/whiteboards", () => {
 
   test("filters by createdById when param provided", async () => {
     (db.whiteboard.findMany as Mock).mockResolvedValue([mockWhiteboard]);
+    (db.whiteboard.count as Mock).mockResolvedValue(1);
 
     const req = authedGetRequest(
       "http://localhost/api/whiteboards?workspaceId=ws1&createdById=user1"
@@ -110,6 +114,7 @@ describe("GET /api/whiteboards", () => {
       mockWhiteboard,
       mockWhiteboardOtherCreator,
     ]);
+    (db.whiteboard.count as Mock).mockResolvedValue(2);
 
     const req = authedGetRequest(
       "http://localhost/api/whiteboards?workspaceId=ws1&createdById=ALL"
@@ -128,6 +133,7 @@ describe("GET /api/whiteboards", () => {
   test("returns null createdBy for legacy whiteboards", async () => {
     const legacyBoard = { ...mockWhiteboard, createdBy: null };
     (db.whiteboard.findMany as Mock).mockResolvedValue([legacyBoard]);
+    (db.whiteboard.count as Mock).mockResolvedValue(1);
 
     const req = authedGetRequest("http://localhost/api/whiteboards?workspaceId=ws1");
     const res = await GET(req);
