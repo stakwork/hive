@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
@@ -32,8 +32,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { FilterDropdownHeader } from "@/components/features/TableColumnHeaders";
+import { FilterDropdownHeader, SortableColumnHeader } from "@/components/features/TableColumnHeaders";
 import { MoveWhiteboardDialog } from "@/components/whiteboard/MoveWhiteboardDialog";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 const STORAGE_KEY = "whiteboards-filters-preference";
 
@@ -53,8 +62,18 @@ interface CreatorOption {
   image: string | null;
 }
 
+function getPageRange(current: number, total: number): number[] {
+  const range: number[] = [];
+  const start = Math.max(2, current - 2);
+  const end = Math.min(total - 1, current + 2);
+  for (let i = start; i <= end; i++) range.push(i);
+  return range;
+}
+
 export default function WhiteboardsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { id: workspaceId, slug, role } = useWorkspace();
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
@@ -67,6 +86,24 @@ export default function WhiteboardsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [moveTarget, setMoveTarget] = useState<WhiteboardItem | null>(null);
+  const [page, setPage] = useState(() => parseInt(searchParams?.get("page") ?? "1", 10) || 1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const [sortBy, setSortBy] = useState<"createdAt" | "updatedAt">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) { try { return JSON.parse(saved).sortBy || "updatedAt"; } catch {} }
+    }
+    return "updatedAt";
+  });
+
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) { try { return JSON.parse(saved).sortOrder || "desc"; } catch {} }
+    }
+    return "desc";
+  });
 
   const [creatorFilter, setCreatorFilter] = useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -83,20 +120,44 @@ export default function WhiteboardsPage() {
     return "ALL";
   });
 
-  // Persist filter to localStorage
+  const goToPage = useCallback((n: number) => {
+    setPage(n);
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    if (n <= 1) { params.delete("page"); } else { params.set("page", n.toString()); }
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const handleSort = useCallback((field: "createdAt" | "updatedAt", order: "asc" | "desc" | null) => {
+    if (order === null) {
+      setSortBy("updatedAt");
+      setSortOrder("desc");
+    } else {
+      if (sortBy !== field) goToPage(1);
+      setSortBy(field);
+      setSortOrder(order);
+    }
+  }, [sortBy, goToPage]);
+
+  // Persist filter + sort to localStorage
   const handleCreatorFilterChange = useCallback((value: string | string[]) => {
     const next = Array.isArray(value) ? value[0] : value;
     setCreatorFilter(next);
+    goToPage(1);
+  }, [goToPage]);
+
+  // Persist filter + sort to localStorage whenever they change
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ creatorFilter: next }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ creatorFilter, sortBy, sortOrder }));
     }
-  }, []);
+  }, [creatorFilter, sortBy, sortOrder]);
 
   // Initial load: fetch all (unfiltered) to build creator options list
   const loadCreatorOptions = useCallback(async () => {
     if (!workspaceId) return;
     try {
-      const res = await fetch(`/api/whiteboards?workspaceId=${workspaceId}`);
+      const res = await fetch(`/api/whiteboards?workspaceId=${workspaceId}&limit=100`);
       const data = await res.json();
       if (data.success) {
         const seen = new Set<string>();
@@ -121,7 +182,7 @@ export default function WhiteboardsPage() {
   const loadWhiteboards = useCallback(async () => {
     if (!workspaceId) return;
     try {
-      const params = new URLSearchParams({ workspaceId });
+      const params = new URLSearchParams({ workspaceId, sortBy, sortOrder, page: String(page), limit: "24" });
       if (creatorFilter !== "ALL") {
         params.set("createdById", creatorFilter);
       }
@@ -129,13 +190,16 @@ export default function WhiteboardsPage() {
       const data = await res.json();
       if (data.success) {
         setWhiteboards(data.data);
+        if (data.pagination) {
+          setTotalPages(data.pagination.totalPages);
+        }
       }
     } catch (error) {
       console.error("Error loading whiteboards:", error);
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, creatorFilter]);
+  }, [workspaceId, creatorFilter, sortBy, sortOrder, page]);
 
   // Load creator options once on mount
   useEffect(() => {
@@ -236,6 +300,18 @@ export default function WhiteboardsPage() {
           onChange={handleCreatorFilterChange}
           showSearch={true}
           showAvatars={true}
+        />
+        <SortableColumnHeader
+          label="Updated"
+          field="updatedAt"
+          currentSort={sortBy === "updatedAt" ? sortOrder : null}
+          onSort={(order) => handleSort("updatedAt", order)}
+        />
+        <SortableColumnHeader
+          label="Created"
+          field="createdAt"
+          currentSort={sortBy === "createdAt" ? sortOrder : null}
+          onSort={(order) => handleSort("createdAt", order)}
         />
       </div>
 
@@ -338,6 +414,77 @@ export default function WhiteboardsPage() {
               </Card>
             </Link>
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            Page {page} of {totalPages}
+          </div>
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); goToPage(Math.max(1, page - 1)); }}
+                  aria-disabled={page === 1}
+                  className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                />
+              </PaginationItem>
+              {totalPages > 0 && (
+                <PaginationItem>
+                  <PaginationLink
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); goToPage(1); }}
+                    isActive={page === 1}
+                    className={page === 1 ? "pointer-events-none" : "cursor-pointer"}
+                  >
+                    1
+                  </PaginationLink>
+                </PaginationItem>
+              )}
+              {page > 4 && totalPages > 7 && (
+                <PaginationItem><PaginationEllipsis /></PaginationItem>
+              )}
+              {getPageRange(page, totalPages).map((pageNum) => (
+                <PaginationItem key={pageNum}>
+                  <PaginationLink
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); goToPage(pageNum); }}
+                    isActive={page === pageNum}
+                    className={page === pageNum ? "pointer-events-none" : "cursor-pointer"}
+                  >
+                    {pageNum}
+                  </PaginationLink>
+                </PaginationItem>
+              ))}
+              {page < totalPages - 3 && totalPages > 7 && (
+                <PaginationItem><PaginationEllipsis /></PaginationItem>
+              )}
+              {totalPages > 1 && (
+                <PaginationItem>
+                  <PaginationLink
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); goToPage(totalPages); }}
+                    isActive={page === totalPages}
+                    className={page === totalPages ? "pointer-events-none" : "cursor-pointer"}
+                  >
+                    {totalPages}
+                  </PaginationLink>
+                </PaginationItem>
+              )}
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); goToPage(Math.min(totalPages, page + 1)); }}
+                  aria-disabled={page >= totalPages}
+                  className={page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
         </div>
       )}
 
