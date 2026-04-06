@@ -435,6 +435,10 @@ export default function WhiteboardDetailPage() {
   // Auto-fit all content into view on initial load
   useEffect(() => {
     if (!excalidrawAPI) return;
+    const hasElements = whiteboard?.elements?.some(
+      (el) => !(el as { isDeleted?: boolean }).isDeleted
+    );
+    if (!hasElements) return; // empty whiteboard — stay at 100%
     const timer = setTimeout(() => {
       excalidrawAPI.scrollToContent(undefined, {
         fitToViewport: true,
@@ -444,8 +448,7 @@ export default function WhiteboardDetailPage() {
       });
     }, 100);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [excalidrawAPI]);
+  }, [excalidrawAPI, whiteboard?.elements]);
 
   // Update Excalidraw scene when whiteboard version changes (e.g. after diagram generation)
   useEffect(() => {
