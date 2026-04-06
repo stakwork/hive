@@ -13,6 +13,7 @@ import { findUserByGitHubUsername } from "@/lib/helpers/workspace-member-queries
 import { db } from "@/lib/db";
 import { getErrorMessage } from "@/lib/utils/error";
 
+
 // Prevent caching of user-specific data
 export const dynamic = "force-dynamic";
 
@@ -109,6 +110,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  // Step 1 — Payment gate: graph_mindset workspaces require a PAID payment record
+  if (workspaceKind === "graph_mindset") {
+    const hasPaidFiat = await db.fiatPayment.findFirst({
+      where: { userId: ownerId, status: "PAID", workspaceId: null },
+      select: { id: true },
+    });
+    const hasPaidLightning = !hasPaidFiat && await db.lightningPayment.findFirst({
+      where: { userId: ownerId, status: "PAID", workspaceId: null },
+      select: { id: true },
+    });
+    if (!hasPaidFiat && !hasPaidLightning) {
+      return NextResponse.json({ error: "Payment required" }, { status: 402 });
+    }
+  }
+
+  // Step 2 — repositoryUrl allowlist: validate against ONBOARDING_FORK_REPOS when configured
+  if (workspaceKind === "graph_mindset" && repositoryUrl) {
+    const allowedRepos = (process.env.ONBOARDING_FORK_REPOS || "")
+      .split(",")
+      .map((r: string) => r.trim())
+      .filter(Boolean);
+    if (allowedRepos.length > 0 && !allowedRepos.includes(repositoryUrl)) {
+      return NextResponse.json({ error: "Invalid repository URL" }, { status: 400 });
+    }
+  }
+
   try {
     const workspace = await createWorkspace({
       name: finalName,
@@ -119,44 +146,51 @@ export async function POST(request: NextRequest) {
       workspaceKind,
     });
 
-    // For graph_mindset workspaces: link the user's pending payment and set paymentStatus
+    // For graph_mindset workspaces: atomically link the user's PAID payment,
+    // set paymentStatus, and create the owner WorkspaceMember record.
     if (workspaceKind === "graph_mindset") {
-      // Try FiatPayment first, then fall back to LightningPayment
-      const fiatPayment = await db.fiatPayment.findFirst({
-        where: { userId: ownerId, status: "PAID", workspaceId: null },
-        orderBy: { createdAt: "desc" },
-      });
-
-      if (fiatPayment) {
-        await db.$transaction([
-          db.fiatPayment.update({
-            where: { id: fiatPayment.id },
-            data: { workspaceId: workspace.id },
-          }),
-          db.workspace.update({
-            where: { id: workspace.id },
-            data: { paymentStatus: "PAID" },
-          }),
-        ]);
-      } else {
-        // Fallback: check for PAID LightningPayment
-        const lightningPayment = await db.lightningPayment.findFirst({
+      await db.$transaction(async (tx) => {
+        // Try FiatPayment first (preferred), then fall back to LightningPayment.
+        // All reads and writes are inside the transaction to prevent concurrent
+        // requests from linking the same payment to multiple workspaces.
+        const fiatPayment = await tx.fiatPayment.findFirst({
           where: { userId: ownerId, status: "PAID", workspaceId: null },
           orderBy: { createdAt: "desc" },
         });
-        if (lightningPayment) {
-          await db.$transaction([
-            db.lightningPayment.update({
+
+        if (fiatPayment) {
+          await tx.fiatPayment.update({
+            where: { id: fiatPayment.id },
+            data: { workspaceId: workspace.id },
+          });
+          await tx.workspace.update({
+            where: { id: workspace.id },
+            data: { paymentStatus: "PAID" },
+          });
+        } else {
+          const lightningPayment = await tx.lightningPayment.findFirst({
+            where: { userId: ownerId, status: "PAID", workspaceId: null },
+            orderBy: { createdAt: "desc" },
+          });
+          if (lightningPayment) {
+            await tx.lightningPayment.update({
               where: { id: lightningPayment.id },
               data: { workspaceId: workspace.id },
-            }),
-            db.workspace.update({
+            });
+            await tx.workspace.update({
               where: { id: workspace.id },
               data: { paymentStatus: "PAID" },
-            }),
-          ]);
+            });
+          }
         }
-      }
+
+        // Create WorkspaceMember for owner (matches the Hive onboarding flow)
+        await tx.workspaceMember.upsert({
+          where: { workspaceId_userId: { workspaceId: workspace.id, userId: ownerId } },
+          update: {},
+          create: { workspaceId: workspace.id, userId: ownerId, role: "OWNER" },
+        });
+      });
     }
 
     return NextResponse.json({ workspace }, { status: 201 });
