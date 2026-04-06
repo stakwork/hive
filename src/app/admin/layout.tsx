@@ -51,6 +51,12 @@ export default async function AdminLayout({
                 >
                   LLM Models
                 </Link>
+                <Link
+                  href="/admin/payments"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Payments
+                </Link>
               </nav>
             </div>
             <Link
