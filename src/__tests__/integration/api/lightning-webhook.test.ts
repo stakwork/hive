@@ -5,11 +5,17 @@ import { createTestWorkspaceScenario } from '@/__tests__/support/factories/works
 import { createTestLightningPayment } from '@/__tests__/support/factories/lightning-payment.factory';
 import { NextRequest } from 'next/server';
 
+vi.mock('@/services/lightning', () => ({
+  lookupLndInvoice: vi.fn(),
+}));
+
 vi.mock('@/lib/btc-price', () => ({
   fetchBtcPriceUsd: vi.fn(),
 }));
 
+import { lookupLndInvoice } from '@/services/lightning';
 import { fetchBtcPriceUsd } from '@/lib/btc-price';
+const mockLookupLndInvoice = vi.mocked(lookupLndInvoice);
 const mockFetchBtcPriceUsd = vi.mocked(fetchBtcPriceUsd);
 
 function buildWebhookRequest(body: Record<string, unknown>, headers: Record<string, string> = {}): NextRequest {
@@ -24,6 +30,7 @@ describe('Lightning Webhook Handler Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetchBtcPriceUsd.mockResolvedValue(50000);
+    mockLookupLndInvoice.mockResolvedValue({ settled: true });
     process.env.LIGHTNING_WEBHOOK_SECRET = 'test-secret';
   });
 
@@ -46,6 +53,34 @@ describe('Lightning Webhook Handler Integration Tests', () => {
       expect(response.status).toBe(401);
       const data = await response.json();
       expect(data).toEqual({ error: 'Unauthorized' });
+    });
+
+    test('does not mark payment PAID when LND reports invoice not settled', async () => {
+      mockLookupLndInvoice.mockResolvedValue({ settled: false });
+
+      const { workspace } = await createTestWorkspaceScenario();
+      const payment = await createTestLightningPayment({
+        workspaceId: workspace.id,
+        paymentHash: 'test_hash_unsettled',
+        status: 'UNPAID',
+      });
+
+      const req = buildWebhookRequest({ payment_hash: payment.paymentHash });
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({ received: true });
+
+      const unchanged = await db.lightningPayment.findUnique({
+        where: { paymentHash: payment.paymentHash },
+      });
+      expect(unchanged!.status).toBe('UNPAID');
+
+      const tx = await db.workspaceTransaction.findFirst({
+        where: { lightningPaymentId: payment.id },
+      });
+      expect(tx).toBeNull();
     });
 
     test('updates matching UNPAID payment to PAID and returns { received: true }', async () => {

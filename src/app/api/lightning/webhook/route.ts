@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { fetchBtcPriceUsd } from '@/lib/btc-price';
+import { lookupLndInvoice } from '@/services/lightning';
 
 export async function POST(req: NextRequest) {
   const token = req.headers.get('x-webhook-secret');
@@ -23,6 +24,15 @@ export async function POST(req: NextRequest) {
 
     if (!payment) {
       logger.info('Lightning webhook: payment_hash not found, ignoring', 'lightning-webhook', {
+        payment_hash,
+      });
+      return NextResponse.json({ received: true });
+    }
+
+    // Verify settlement with LND directly — never trust the webhook payload alone
+    const { settled } = await lookupLndInvoice(payment_hash);
+    if (!settled) {
+      logger.info('Lightning webhook: LND reports invoice not settled, ignoring', 'lightning-webhook', {
         payment_hash,
       });
       return NextResponse.json({ received: true });
