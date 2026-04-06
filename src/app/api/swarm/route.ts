@@ -112,6 +112,22 @@ export async function POST(request: NextRequest) {
       console.log(`[SWARM_CREATE] Skipping SourceControlOrg linking — no repositoryUrl`);
     }
 
+    // Pre-check: fast-path return for already-existing swarm (avoids unnecessary external API calls).
+    // A second in-transaction check handles true concurrent races between new requests.
+    console.log(`[SWARM_CREATE] Checking for existing swarm for workspace ${workspaceId}`);
+    const existingSwarmCheck = await db.swarm.findFirst({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existingSwarmCheck) {
+      console.log(`[SWARM_CREATE] Found existing swarm - ID: ${existingSwarmCheck.id}, SwarmId: ${existingSwarmCheck.swarmId}, Status: ${existingSwarmCheck.status}`);
+      return NextResponse.json({
+        success: true,
+        message: "Swarm already exists for this workspace",
+        data: { id: existingSwarmCheck.id, swarmId: existingSwarmCheck.swarmId },
+      }, { status: 200 });
+    }
+
     // Step 1: Create Stakwork customer — runs for ALL workspace types (fatal on failure)
     console.log(`[SWARM_CREATE] Creating Stakwork customer for workspace ${workspaceId}`);
     const pubkey = (session.user as { lightningPubkey?: string }).lightningPubkey;
