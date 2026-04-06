@@ -7,7 +7,6 @@ import {
   createTestMembership,
   createTestSwarm,
 } from "@/__tests__/support/factories";
-import { createTestFiatPayment } from "@/__tests__/support/factories/fiat-payment.factory";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
@@ -67,7 +66,6 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
     userIds: [] as string[],
     workspaceIds: [] as string[],
     swarmIds: [] as string[],
-    paymentIds: [] as string[],
   };
 
   beforeEach(async () => {
@@ -116,10 +114,6 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
   });
 
   afterEach(async () => {
-    if (createdEntityIds.paymentIds.length) {
-      await db.fiatPayment.deleteMany({ where: { id: { in: createdEntityIds.paymentIds } } });
-      createdEntityIds.paymentIds.length = 0;
-    }
     if (createdEntityIds.swarmIds.length) {
       await db.swarm.deleteMany({ where: { id: { in: createdEntityIds.swarmIds } } });
       createdEntityIds.swarmIds.length = 0;
@@ -188,7 +182,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
     expect(data.error).toMatch(/swarm not configured/i);
   });
 
-  test("returns 400 when no PAID fiatPayment exists", async () => {
+  test("returns 502 when swarm has no swarmPassword", async () => {
     getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
     const swarm = await createTestSwarm({
@@ -201,9 +195,9 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
       cmd: GRAPH_ADMIN_CMDS[0],
     });
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(502);
     const data = await response.json();
-    expect(data.error).toMatch(/no valid payment/i);
+    expect(data.error).toMatch(/swarm password not configured/i);
   });
 
   // ── Swarm auth failure ────────────────────────────────────────────────────
@@ -214,15 +208,9 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
     const swarm = await createTestSwarm({
       workspaceId: workspace.id,
       swarmUrl: `https://${workspace.slug}.sphinx.chat`,
+      swarmPassword: "test-password",
     });
     createdEntityIds.swarmIds.push(swarm.id);
-
-    const payment = await createTestFiatPayment({
-      workspaceId: workspace.id,
-      status: "PAID",
-      password: "test-password",
-    });
-    createdEntityIds.paymentIds.push(payment.id);
 
     const { getSwarmCmdJwt } = await import("@/services/swarm/cmd");
     vi.mocked(getSwarmCmdJwt).mockRejectedValue(new Error("Swarm login failed (401)"));
@@ -240,21 +228,14 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
 
   describe("200 success for all four cmd types", () => {
     let swarm: Awaited<ReturnType<typeof createTestSwarm>>;
-    let payment: Awaited<ReturnType<typeof createTestFiatPayment>>;
 
     beforeEach(async () => {
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
         swarmUrl: `https://${workspace.slug}.sphinx.chat`,
+        swarmPassword: "test-password-123",
       });
       createdEntityIds.swarmIds.push(swarm.id);
-
-      payment = await createTestFiatPayment({
-        workspaceId: workspace.id,
-        status: "PAID",
-        password: "test-password-123",
-      });
-      createdEntityIds.paymentIds.push(payment.id);
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
@@ -355,15 +336,9 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
     const swarm = await createTestSwarm({
       workspaceId: workspace.id,
       swarmUrl: `https://${workspace.slug}.sphinx.chat`,
+      swarmPassword: "test-password",
     });
     createdEntityIds.swarmIds.push(swarm.id);
-
-    const payment = await createTestFiatPayment({
-      workspaceId: workspace.id,
-      status: "PAID",
-      password: "test-password",
-    });
-    createdEntityIds.paymentIds.push(payment.id);
 
     const response = await callRoute(workspace.slug, {
       cmd: { type: "Swarm", data: { cmd: "UpdateNeo4jConfig", content: {} } },
