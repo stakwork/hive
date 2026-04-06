@@ -44,12 +44,12 @@ export async function POST(req: NextRequest) {
   const workspaceType = stripeSession.metadata?.workspaceType || null;
   const repositoryUrl = stripeSession.metadata?.repositoryUrl || null;
 
-  // Look up existing payment record (created at checkout time)
+  // Check whether a FiatPayment record already exists for this session
   const existing = await db.fiatPayment.findUnique({
     where: { stripeSessionId: sessionId },
   });
 
-  // Idempotency: if already claimed by this user, return it
+  // Idempotency: already claimed by this user
   if (existing?.status === 'PAID' && existing?.userId === userId) {
     const res = NextResponse.json({ payment: existing, workspaceType, repositoryUrl, redirect: '/onboarding/graphmindset?paymentType=fiat' });
     res.cookies.delete('stripe_session_id');
@@ -72,11 +72,28 @@ export async function POST(req: NextRequest) {
 
   let payment;
   if (existing) {
-    // Record was created at checkout time — update with userId and mark PAID
-    payment = await db.fiatPayment.update({
-      where: { stripeSessionId: sessionId },
+    // Record was created at checkout time — use atomic compare-and-set to prevent
+    // concurrent claims from two different users both seeing userId: null
+    const claimResult = await db.fiatPayment.updateMany({
+      where: { stripeSessionId: sessionId, userId: null },
       data: { status: 'PAID', stripePaymentIntentId, userId },
     });
+
+    if (claimResult.count === 0) {
+      // Another concurrent request claimed it — read-only fallback to discriminate
+      const updated = await db.fiatPayment.findUnique({ where: { stripeSessionId: sessionId } });
+      if (updated?.userId === userId) {
+        // Idempotent: same user won the race
+        const res = NextResponse.json({ payment: updated, workspaceType, repositoryUrl, redirect: '/onboarding/graphmindset?paymentType=fiat' });
+        res.cookies.delete('stripe_session_id');
+        return res;
+      }
+      const res = NextResponse.json({ error: 'Payment already claimed' }, { status: 403 });
+      res.cookies.delete('stripe_session_id');
+      return res;
+    }
+
+    payment = await db.fiatPayment.findUnique({ where: { stripeSessionId: sessionId } });
   } else {
     // Create new PAID record (pre-auth: no FiatPayment yet)
     const workspaceName = stripeSession.metadata?.workspaceName ?? null;
