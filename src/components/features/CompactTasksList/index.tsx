@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, FolderOpen, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -199,6 +199,24 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
     onTaskTitleUpdate: handleRealtimeTaskUpdate,
     onPRStatusChange: handlePRStatusChange,
     onDeploymentStatusChange: handleDeploymentStatusChange,
+  });
+
+  const refetchFeature = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/features/${featureId}`);
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success) onUpdate(result.data);
+      }
+    } catch (error) {
+      console.error("[CompactTasksList] Failed to refetch feature:", error);
+    }
+  }, [featureId, onUpdate]);
+
+  usePusherConnection({
+    featureId,
+    enabled: !!featureId,
+    onFeatureUpdated: refetchFeature,
   });
 
   const handleUpdateTask = async (
