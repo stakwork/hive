@@ -12,10 +12,10 @@ vi.mock('@/lib/btc-price', () => ({
 import { fetchBtcPriceUsd } from '@/lib/btc-price';
 const mockFetchBtcPriceUsd = vi.mocked(fetchBtcPriceUsd);
 
-function buildWebhookRequest(body: Record<string, unknown>): NextRequest {
+function buildWebhookRequest(body: Record<string, unknown>, headers: Record<string, string> = {}): NextRequest {
   return new NextRequest('http://localhost/api/lightning/webhook', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-webhook-secret': 'test-secret', ...headers },
     body: JSON.stringify(body),
   });
 }
@@ -24,9 +24,30 @@ describe('Lightning Webhook Handler Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetchBtcPriceUsd.mockResolvedValue(50000);
+    process.env.LIGHTNING_WEBHOOK_SECRET = 'test-secret';
   });
 
   describe('POST /api/lightning/webhook', () => {
+    test('returns 401 when x-webhook-secret header is missing', async () => {
+      const req = new NextRequest('http://localhost/api/lightning/webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_hash: 'any_hash' }),
+      });
+      const response = await POST(req);
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data).toEqual({ error: 'Unauthorized' });
+    });
+
+    test('returns 401 when x-webhook-secret header is wrong', async () => {
+      const req = buildWebhookRequest({ payment_hash: 'any_hash' }, { 'x-webhook-secret': 'wrong-secret' });
+      const response = await POST(req);
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data).toEqual({ error: 'Unauthorized' });
+    });
+
     test('updates matching UNPAID payment to PAID and returns { received: true }', async () => {
       const { workspace } = await createTestWorkspaceScenario();
       const payment = await createTestLightningPayment({

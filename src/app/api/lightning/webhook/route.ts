@@ -4,6 +4,11 @@ import { logger } from '@/lib/logger';
 import { fetchBtcPriceUsd } from '@/lib/btc-price';
 
 export async function POST(req: NextRequest) {
+  const token = req.headers.get('x-webhook-secret');
+  if (!token || token !== process.env.LIGHTNING_WEBHOOK_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
     const payment_hash = body?.payment_hash;
