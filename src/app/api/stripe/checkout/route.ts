@@ -29,6 +29,12 @@ export async function POST(req: NextRequest) {
     EncryptionService.getInstance().encryptField('fiatPaymentPassword', password)
   );
 
+  const priceConfig = await db.platformConfig.findUnique({ where: { key: 'hiveAmountUsd' } });
+  if (!priceConfig) {
+    return NextResponse.json({ error: 'Payment price not configured' }, { status: 503 });
+  }
+  const hiveAmountUsd = parseFloat(priceConfig.value);
+
   try {
     const stripe = getStripeClient();
     // Append session_id as a raw template variable (must not be URL-encoded)
@@ -38,7 +44,14 @@ export async function POST(req: NextRequest) {
 
     const stripeSession = await stripe.checkout.sessions.create({
       mode: 'payment',
-      line_items: [{ price: process.env.STRIPE_PRICE_ID!, quantity: 1 }],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          unit_amount: Math.round(hiveAmountUsd * 100), // cents
+          product_data: { name: 'Hive Environment' },
+        },
+        quantity: 1,
+      }],
       success_url: successUrl,
       cancel_url: process.env.STRIPE_CANCEL_URL!,
       metadata: { workspaceName, workspaceSlug, workspaceType: workspaceType ?? '', repositoryUrl: repositoryUrl ?? '' },
