@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { getJarvisUrl, transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import { getJarvisUrl, transformSwarmUrlToRepo2Graph, extractSwarmSuffix } from "@/lib/utils/swarm";
 
 describe("swarm utils", () => {
   describe("getJarvisUrl", () => {
@@ -58,6 +58,24 @@ describe("swarm utils", () => {
     test("returns empty string for undefined", () => {
       const result = transformSwarmUrlToRepo2Graph(undefined);
       expect(result).toBe("");
+    });
+  });
+
+  describe("extractSwarmSuffix", () => {
+    test("strips swarm prefix from typical swarm_id", () => {
+      expect(extractSwarmSuffix("swarmPLuy9q")).toBe("PLuy9q");
+    });
+
+    test("strips swarm prefix leaving hyphenated suffix", () => {
+      expect(extractSwarmSuffix("swarm-abc123")).toBe("-abc123");
+    });
+
+    test("returns original string when no swarm prefix", () => {
+      expect(extractSwarmSuffix("noprefixhere")).toBe("noprefixhere");
+    });
+
+    test("returns empty string for swarm_id that is exactly 'swarm'", () => {
+      expect(extractSwarmSuffix("swarm")).toBe("");
     });
   });
 });
