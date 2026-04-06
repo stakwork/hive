@@ -7,6 +7,8 @@ import { getErrorMessage } from '@/lib/utils/error';
 
 export const dynamic = 'force-dynamic';
 
+const UNAVAILABLE_MESSAGE = 'This slug is not available. Please choose a different one.';
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -29,7 +31,7 @@ export async function GET(request: NextRequest) {
         data: {
           slug,
           isAvailable: false,
-          message: validation.error,
+          message: UNAVAILABLE_MESSAGE,
         },
       });
     }
@@ -46,7 +48,7 @@ export async function GET(request: NextRequest) {
         data: {
           slug,
           isAvailable: false,
-          message: 'A workspace with this slug already exists',
+          message: UNAVAILABLE_MESSAGE,
         },
       });
     }
@@ -72,7 +74,7 @@ export async function GET(request: NextRequest) {
               data: {
                 slug,
                 isAvailable: false,
-                message: 'This name is already in use as a graph workspace. Please choose a different name.',
+                message: UNAVAILABLE_MESSAGE,
               },
             });
           }
