@@ -129,9 +129,10 @@ describe('POST /api/swarm — graph_mindset', () => {
     // Stakwork customer was called for this workspace
     expect(mockCreateCustomer).toHaveBeenCalledWith(workspace.id);
 
-    // Secret was registered after swarm save
-    expect(mockCreateSecret).toHaveBeenCalledOnce();
+    // Both secrets were registered after swarm save
+    expect(mockCreateSecret).toHaveBeenCalledTimes(2);
     expect(mockCreateSecret).toHaveBeenCalledWith('swarm-abc123_API_KEY', 'api-key-xyz', 'stk-token');
+    expect(mockCreateSecret).toHaveBeenCalledWith('SWARM_-abc123_API_KEY', 'api-key-xyz', 'stk-token', '42');
   });
 
   // ── SourceControlOrg linking ──
@@ -289,8 +290,10 @@ describe('POST /api/swarm — graph_mindset', () => {
     // Stakwork customer IS called for all types now
     expect(mockCreateCustomer).toHaveBeenCalledWith(workspace.id);
 
-    // Secret is also registered
-    expect(mockCreateSecret).toHaveBeenCalledOnce();
+    // Both secrets are registered after swarm save
+    expect(mockCreateSecret).toHaveBeenCalledTimes(2);
+    expect(mockCreateSecret).toHaveBeenCalledWith('swarm-abc123_API_KEY', 'api-key-xyz', 'stk-token');
+    expect(mockCreateSecret).toHaveBeenCalledWith('SWARM_-abc123_API_KEY', 'api-key-xyz', 'stk-token', '1');
   });
 
   // ── Auth & access control (real DB permission checks) ──

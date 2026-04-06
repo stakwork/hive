@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { stakworkService } from "@/lib/service-factory";
 import { generateSecurePassword } from "@/lib/utils/password";
+import { extractSwarmSuffix } from "@/lib/utils/swarm";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { createFakeSwarm, isFakeMode } from "@/services/swarm/fake";
@@ -268,14 +269,28 @@ export async function POST(request: NextRequest) {
 
       console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm?.id} to ACTIVE status with swarmId: ${swarm_id}`);
 
-      // Step 5: Register Stakwork secret (non-fatal)
+      // Step 5: Register Stakwork secrets (both non-fatal)
       const sanitizedAlias = swarm_id ? `${swarm_id}_API_KEY` : undefined;
+      const swarmSuffix = swarm_id ? extractSwarmSuffix(swarm_id) : undefined;
+      const customerScopedAlias = swarmSuffix ? `SWARM_${swarmSuffix}_API_KEY` : undefined;
+
       if (sanitizedAlias && x_api_key && token) {
+        // Call 1: unscoped (existing behaviour, unchanged)
         try {
           await stakworkService().createSecret(sanitizedAlias, x_api_key, token);
-          console.log(`[SWARM_CREATE] Stakwork secret registered for alias: ${sanitizedAlias}`);
+          console.log(`[SWARM_CREATE] Stakwork secret registered: ${sanitizedAlias}`);
         } catch (err) {
-          console.error('[SWARM_CREATE] createSecret failed (non-fatal):', err);
+          console.error('[SWARM_CREATE] createSecret (unscoped) failed (non-fatal):', err);
+        }
+
+        // Call 2: customer-scoped (new)
+        if (customerScopedAlias && customerId) {
+          try {
+            await stakworkService().createSecret(customerScopedAlias, x_api_key, token, customerId);
+            console.log(`[SWARM_CREATE] Stakwork secret registered (customer-scoped): ${customerScopedAlias}`);
+          } catch (err) {
+            console.error('[SWARM_CREATE] createSecret (customer-scoped) failed (non-fatal):', err);
+          }
         }
       }
 
