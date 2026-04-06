@@ -3,7 +3,7 @@ import { z } from 'zod';
 import QRCode from 'qrcode';
 import { db } from '@/lib/db';
 import { createLndInvoice } from '@/services/lightning';
-import { optionalEnvVars } from '@/config/env';
+import { fetchBtcPriceUsd } from '@/lib/btc-price';
 import { logger } from '@/lib/logger';
 
 const preauthBodySchema = z.object({
@@ -21,7 +21,24 @@ export async function POST(req: NextRequest) {
   }
 
   const { workspaceName, workspaceSlug } = body;
-  const amount = optionalEnvVars.LIGHTNING_AMOUNT_SATS;
+
+  // 1. Read configured USD price
+  const config = await db.platformConfig.findUnique({ where: { key: 'graphmindsetAmountUsd' } });
+  if (!config) {
+    return NextResponse.json({ error: 'Payment price not configured' }, { status: 503 });
+  }
+  const amountUsd = parseFloat(config.value);
+
+  // 2. Fetch live BTC price — throws on failure
+  let btcPriceUsd: number;
+  try {
+    btcPriceUsd = await fetchBtcPriceUsd();
+  } catch {
+    return NextResponse.json({ error: 'BTC price unavailable, please try again' }, { status: 503 });
+  }
+
+  // 3. Convert USD → sats
+  const amount = Math.round((amountUsd / btcPriceUsd) * 100_000_000);
 
   const placeholderHash = `pending_${crypto.randomUUID()}`;
 
