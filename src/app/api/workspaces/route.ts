@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth/nextauth";
+import { WORKSPACE_ERRORS, WORKSPACE_LIMITS } from "@/lib/constants";
+import { db } from "@/lib/db";
+import { findUserByGitHubUsername } from "@/lib/helpers/workspace-member-queries";
+import { getErrorMessage } from "@/lib/utils/error";
 import {
   createWorkspace,
   ensureUniqueSlug,
@@ -10,10 +11,9 @@ import {
   softDeleteWorkspace,
   validateWorkspaceSlug,
 } from "@/services/workspace";
-import { WORKSPACE_LIMITS, WORKSPACE_ERRORS } from "@/lib/constants";
-import { findUserByGitHubUsername } from "@/lib/helpers/workspace-member-queries";
-import { db } from "@/lib/db";
-import { getErrorMessage } from "@/lib/utils/error";
+import { getToken } from "next-auth/jwt";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
 // Prevent caching of user-specific data
 export const dynamic = "force-dynamic";
@@ -219,17 +219,6 @@ export async function POST(request: NextRequest) {
     const slugValidation = validateWorkspaceSlug(finalSlug);
     if (!slugValidation.isValid) {
       return NextResponse.json({ error: slugValidation.error }, { status: 400 });
-    }
-
-    // repositoryUrl allowlist: validate against ONBOARDING_FORK_REPOS when configured
-    if (repositoryUrl) {
-      const allowedRepos = (process.env.ONBOARDING_FORK_REPOS || "")
-        .split(",")
-        .map((r: string) => r.trim())
-        .filter(Boolean);
-      if (allowedRepos.length > 0 && !allowedRepos.includes(repositoryUrl)) {
-        return NextResponse.json({ error: "Invalid repository URL" }, { status: 400 });
-      }
     }
 
     // Fast-fail pre-check: avoids entering a transaction when there is clearly no payment.
