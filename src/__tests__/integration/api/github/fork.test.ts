@@ -170,7 +170,7 @@ describe("GitHub Fork Infrastructure", () => {
 
         global.fetch = vi.fn().mockResolvedValue({
           status: 403,
-          json: async () => ({ message: "Resource not accessible by integration" }),
+          text: async () => "Resource not accessible by integration",
         } as any);
 
         const request = createPostRequest("/api/github/fork", {
@@ -189,7 +189,7 @@ describe("GitHub Fork Infrastructure", () => {
 
         global.fetch = vi.fn().mockResolvedValue({
           status: 500,
-          json: async () => ({ message: "Internal Server Error" }),
+          text: async () => "Internal Server Error",
         } as any);
 
         const request = createPostRequest("/api/github/fork", {
@@ -200,6 +200,73 @@ describe("GitHub Fork Infrastructure", () => {
         expect(response.status).toBe(500);
         const data = await response.json();
         expect(data.error).toBe("Failed to fork repository");
+      });
+
+      it("returns { error: 'github_token_expired' } with status 401 when GitHub returns 401", async () => {
+        mockSession();
+        vi.mocked(githubApp.getPersonalOAuthToken).mockResolvedValue("expired-token");
+
+        global.fetch = vi.fn().mockResolvedValue({
+          status: 401,
+          text: async () => "Requires authentication",
+        } as any);
+
+        const request = createPostRequest("/api/github/fork", {
+          repositoryUrl: "https://github.com/owner/repo",
+        });
+
+        const response = await postFork(request);
+        expect(response.status).toBe(401);
+        const data = await response.json();
+        expect(data.error).toBe("github_token_expired");
+      });
+
+      it("logs [FORK] prefix with GitHub status on 401 response", async () => {
+        mockSession();
+        vi.mocked(githubApp.getPersonalOAuthToken).mockResolvedValue("expired-token");
+
+        global.fetch = vi.fn().mockResolvedValue({
+          status: 401,
+          text: async () => "Requires authentication",
+        } as any);
+
+        const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        const request = createPostRequest("/api/github/fork", {
+          repositoryUrl: "https://github.com/owner/repo",
+        });
+
+        await postFork(request);
+
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("[FORK]"),
+          expect.any(String),
+        );
+        consoleSpy.mockRestore();
+      });
+
+      it("logs [FORK] prefix with GitHub status on unexpected status codes", async () => {
+        mockSession();
+        vi.mocked(githubApp.getPersonalOAuthToken).mockResolvedValue("mock-token");
+
+        global.fetch = vi.fn().mockResolvedValue({
+          status: 422,
+          text: async () => "Unprocessable Entity",
+        } as any);
+
+        const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        const request = createPostRequest("/api/github/fork", {
+          repositoryUrl: "https://github.com/owner/repo",
+        });
+
+        await postFork(request);
+
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("[FORK]"),
+          expect.any(String),
+        );
+        consoleSpy.mockRestore();
       });
     });
   });
