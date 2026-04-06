@@ -725,3 +725,14 @@ export interface BatchCreatePhasesResponse {
 
 export type GeneratedTicket = GeneratedTask;
 export type GeneratedPhasesAndTickets = GeneratedPhasesAndTasks;
+
+// Board types
+export type BoardFeature = {
+  id: string;
+  title: string;
+  status: FeatureStatus;
+  priority: FeaturePriority;
+  tasks: RoadmapTaskListItem[];
+};
+
+export type BoardResponse = ApiSuccessResponse<BoardFeature[]>;
