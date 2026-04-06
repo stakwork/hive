@@ -85,7 +85,9 @@ export const optionalEnvVars = {
     : process.env.LIGHTNING_NODE_URL || '',
   LIGHTNING_MACAROON: process.env.LIGHTNING_MACAROON || '',
   LIGHTNING_TLS_CERT: process.env.LIGHTNING_TLS_CERT || '',
-  LIGHTNING_AMOUNT_SATS: parseInt(process.env.LIGHTNING_AMOUNT_SATS || '500000'),
+  MEMPOOL_BASE_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/mempool`
+    : 'https://mempool.space',
 } as const;
 
 /**
