@@ -49,6 +49,13 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
     // Payment is linked to workspace
     const updatedPayment = await db.fiatPayment.findUnique({ where: { id: payment.id } });
     expect(updatedPayment!.workspaceId).toBe(data.workspace.id);
+
+    // Owner WorkspaceMember record created
+    const member = await db.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: data.workspace.id, userId: testUser.id } },
+    });
+    expect(member).not.toBeNull();
+    expect(member!.role).toBe('OWNER');
   });
 
   test('falls back to lightning payment when no fiat payment exists', async () => {
@@ -76,6 +83,13 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
 
     const updatedPayment = await db.lightningPayment.findUnique({ where: { id: lightning.id } });
     expect(updatedPayment!.workspaceId).toBe(data.workspace.id);
+
+    // Owner WorkspaceMember record created
+    const member = await db.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: data.workspace.id, userId: testUser.id } },
+    });
+    expect(member).not.toBeNull();
+    expect(member!.role).toBe('OWNER');
   });
 
   test('prefers fiat over lightning when both exist', async () => {
@@ -111,9 +125,16 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
 
     const updatedLightning = await db.lightningPayment.findUnique({ where: { id: lightning.id } });
     expect(updatedLightning!.workspaceId).toBeNull();
+
+    // Owner WorkspaceMember record created
+    const member = await db.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: data.workspace.id, userId: testUser.id } },
+    });
+    expect(member).not.toBeNull();
+    expect(member!.role).toBe('OWNER');
   });
 
-  test('workspace created with PENDING paymentStatus when no payment exists', async () => {
+  test('returns 402 when no PAID payment exists for graph_mindset workspace', async () => {
     getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
     const slug = generateUniqueSlug('graph-nopay');
@@ -124,20 +145,21 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
     });
 
     const response = await POST(request);
-    const data = await expectSuccess(response, 201);
+    expect(response.status).toBe(402);
 
-    const workspace = await db.workspace.findUnique({ where: { id: data.workspace.id } });
-    expect(workspace!.paymentStatus).toBe('PENDING');
-    expect(workspace!.workspaceKind).toBe('graph_mindset');
+    // Workspace must not have been created
+    const workspace = await db.workspace.findFirst({ where: { slug } });
+    expect(workspace).toBeNull();
   });
 
-  test('does not link payment already attached to another workspace', async () => {
+  test('does not link payment already attached to another workspace — returns 402 (no unlinked payment)', async () => {
     getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
     const existingWorkspace = await db.workspace.create({
       data: { name: 'existing', slug: generateUniqueSlug('existing'), ownerId: testUser.id },
     });
 
+    // Payment already linked to another workspace — no unlinked PAID payment available
     await createTestFiatPayment({
       userId: testUser.id,
       status: 'PAID',
@@ -154,11 +176,12 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
     });
 
     const response = await POST(request);
-    const data = await expectSuccess(response, 201);
+    // Payment gate finds no unlinked PAID payment → 402
+    expect(response.status).toBe(402);
 
-    // No unlinked payment found — paymentStatus stays PENDING
-    const workspace = await db.workspace.findUnique({ where: { id: data.workspace.id } });
-    expect(workspace!.paymentStatus).toBe('PENDING');
+    // Workspace must not have been created
+    const workspace = await db.workspace.findFirst({ where: { slug } });
+    expect(workspace).toBeNull();
   });
 
   test('does not link payment when workspaceKind is not graph_mindset', async () => {
@@ -192,6 +215,14 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
     const otherUser = await createTestUser();
     getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
+    // testUser has a PAID payment so the gate passes
+    await createTestFiatPayment({
+      userId: testUser.id,
+      status: 'PAID',
+      workspaceName: 'my-payment',
+      workspaceSlug: 'my-payment',
+    });
+
     const otherPayment = await createTestFiatPayment({
       userId: otherUser.id,
       status: 'PAID',
@@ -212,8 +243,102 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
     // Other user's payment stays unlinked
     const untouched = await db.fiatPayment.findUnique({ where: { id: otherPayment.id } });
     expect(untouched!.workspaceId).toBeNull();
+  });
 
-    const workspace = await db.workspace.findUnique({ where: { id: data.workspace.id } });
-    expect(workspace!.paymentStatus).toBe('PENDING');
+  test('returns 400 when repositoryUrl is not in ONBOARDING_FORK_REPOS', async () => {
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+    await createTestFiatPayment({
+      userId: testUser.id,
+      status: 'PAID',
+      workspaceName: 'repo-check',
+      workspaceSlug: 'repo-check',
+    });
+
+    vi.stubEnv('ONBOARDING_FORK_REPOS', 'https://github.com/allowed/repo');
+
+    const slug = generateUniqueSlug('graph-badrepo');
+    const request = createPostRequest('http://localhost:3000/api/workspaces', {
+      name: 'Bad Repo Graph',
+      slug,
+      workspaceKind: 'graph_mindset',
+      repositoryUrl: 'https://github.com/evil/repo',
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+
+    vi.unstubAllEnvs();
+  });
+
+  test('accepts repositoryUrl that matches ONBOARDING_FORK_REPOS', async () => {
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+    await createTestFiatPayment({
+      userId: testUser.id,
+      status: 'PAID',
+      workspaceName: 'repo-check-ok',
+      workspaceSlug: 'repo-check-ok',
+    });
+
+    vi.stubEnv('ONBOARDING_FORK_REPOS', 'https://github.com/allowed/repo');
+
+    const slug = generateUniqueSlug('graph-goodrepo');
+    const request = createPostRequest('http://localhost:3000/api/workspaces', {
+      name: 'Good Repo Graph',
+      slug,
+      workspaceKind: 'graph_mindset',
+      repositoryUrl: 'https://github.com/allowed/repo',
+    });
+
+    const response = await POST(request);
+    const data = await expectSuccess(response, 201);
+    expect(data.workspace.workspaceKind).toBe('graph_mindset');
+
+    vi.unstubAllEnvs();
+  });
+
+  test('concurrent POSTs with same PAID payment — only one workspace links it', async () => {
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+    await createTestFiatPayment({
+      userId: testUser.id,
+      status: 'PAID',
+      workspaceName: 'concurrent-graph',
+      workspaceSlug: 'concurrent-graph',
+    });
+
+    const slug1 = generateUniqueSlug('concurrent-a');
+    const slug2 = generateUniqueSlug('concurrent-b');
+
+    const [res1, res2] = await Promise.all([
+      POST(
+        createPostRequest('http://localhost:3000/api/workspaces', {
+          name: 'Concurrent Graph A',
+          slug: slug1,
+          workspaceKind: 'graph_mindset',
+        }),
+      ),
+      POST(
+        createPostRequest('http://localhost:3000/api/workspaces', {
+          name: 'Concurrent Graph B',
+          slug: slug2,
+          workspaceKind: 'graph_mindset',
+        }),
+      ),
+    ]);
+
+    const statuses = [res1.status, res2.status];
+
+    // Exactly one request wins the payment CAS (201); the other loses (402)
+    expect(statuses).toContain(201);
+    expect(statuses).toContain(402);
+
+    // Exactly one workspace was created and it has paymentStatus PAID
+    const workspaces = await db.workspace.findMany({
+      where: { slug: { in: [slug1, slug2] } },
+    });
+    expect(workspaces).toHaveLength(1);
+    expect(workspaces[0].paymentStatus).toBe('PAID');
   });
 });
