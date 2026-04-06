@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,6 @@ import {
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/ui/page-header";
 import { AgentLogsTable } from "@/components/agent-logs";
-import { LogDetailDialog } from "@/components/agent-logs/LogDetailDialog";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { AgentLogRecord, AgentLogsResponse } from "@/types/agent-logs";
 import { FileText, Search, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
@@ -82,14 +81,6 @@ export default function AgentLogsPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-
-  // Dialog state — initialise from URL so deep-links auto-open the modal
-  const [selectedLogId, setSelectedLogId] = useState<string | null>(
-    () => searchParams?.get("logId") ?? null
-  );
-  const [dialogOpen, setDialogOpen] = useState(
-    () => !!searchParams?.get("logId")
-  );
 
   // Mirror searchParams into a ref so goToPage can read the latest value
   // without listing searchParams as a reactive dep (which would cause a loop)
@@ -181,22 +172,7 @@ export default function AgentLogsPage() {
   }, [workspaceId, page, timeRange, debouncedSearch]);
 
   const handleRowClick = (logId: string) => {
-    setSelectedLogId(logId);
-    setDialogOpen(true);
-    const p = new URLSearchParams(searchParams?.toString() || "");
-    p.set("logId", logId);
-    router.replace(`${pathname}?${p.toString()}`, { scroll: false });
-  };
-
-  const handleDialogOpenChange = (open: boolean) => {
-    setDialogOpen(open);
-    if (!open) {
-      setSelectedLogId(null);
-      const p = new URLSearchParams(searchParams?.toString() || "");
-      p.delete("logId");
-      const newUrl = p.toString() ? `${pathname}?${p.toString()}` : pathname;
-      router.replace(newUrl, { scroll: false });
-    }
+    router.push(`/w/${slug}/agent-logs/${logId}`);
   };
 
   return (
@@ -367,11 +343,6 @@ export default function AgentLogsPage() {
         </CardContent>
       </Card>
 
-      <LogDetailDialog
-        open={dialogOpen}
-        onOpenChange={handleDialogOpenChange}
-        logId={selectedLogId}
-      />
     </div>
   );
 }
