@@ -59,8 +59,7 @@ vi.mock("lucide-react", () => ({
 
 // --- Import component after mocks ---
 import { LogDetailDialog } from "@/components/agent-logs/LogDetailDialog";
-// Also test the internal ToolCallItem by rendering it through MessageBubble via the dialog
-// (ToolCallItem is not exported, so we drive it via a full log payload)
+// ToolCallItem, MessageBubble, StatsBar are now in LogDetailContent and render through the dialog.
 
 // ---------------------------------------------------------------------------
 
@@ -425,6 +424,37 @@ describe("LogDetailDialog — Share button", () => {
     );
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith("Link copied to clipboard!");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("MessageBubble — newline rendering", () => {
+  test("user message bubble retains whitespace-pre-wrap for newline rendering", async () => {
+    const multilineContent = "Line one\nLine two\nLine three";
+    global.fetch = makeStatsFetch([
+      { role: "user", content: multilineContent },
+    ]);
+
+    render(<LogDetailDialog open logId="log-nl-1" onOpenChange={noop} />);
+
+    await waitFor(() => {
+      const p = document.querySelector("p.whitespace-pre-wrap");
+      expect(p).not.toBeNull();
+      expect(p?.textContent).toContain("Line one");
+      expect(p?.textContent).toContain("Line two");
+    });
+  });
+
+  test("user message bubble unescapes literal \\n sequences", async () => {
+    global.fetch = makeStatsFetch([{ role: "user", content: "Line one\\nLine two" }]);
+    render(<LogDetailDialog open logId="log-nl-2" onOpenChange={noop} />);
+    await waitFor(() => {
+      const p = document.querySelector("p.whitespace-pre-wrap");
+      expect(p?.textContent).toContain("Line one");
+      expect(p?.textContent).toContain("Line two");
+      expect(p?.textContent).not.toContain("\\n");
     });
   });
 });
