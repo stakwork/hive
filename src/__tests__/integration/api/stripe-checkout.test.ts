@@ -5,6 +5,7 @@ import {
   createPostRequest,
 } from '@/__tests__/support/helpers/request-builders';
 import { db } from '@/lib/db';
+import { upsertTestPlatformConfig } from '@/__tests__/support/factories';
 
 // Mock Stripe service so no real API calls are made
 vi.mock('@/services/stripe', () => ({
@@ -22,11 +23,11 @@ vi.mock('@/services/stripe', () => ({
 }));
 
 describe('Stripe Checkout API Integration Tests', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     vi.stubEnv('STRIPE_SUCCESS_URL', 'https://example.com/success');
     vi.stubEnv('STRIPE_CANCEL_URL', 'https://example.com/cancel');
-    vi.stubEnv('STRIPE_PRICE_ID', 'price_test_123');
+    await upsertTestPlatformConfig('hiveAmountUsd', '50');
   });
 
   afterEach(async () => {
@@ -157,6 +158,46 @@ describe('Stripe Checkout API Integration Tests', () => {
       expect(payments[0].workspaceName).toBe('My Graph');
       expect(payments[0].workspaceId).toBeNull();
       expect(payments[0].password).toBeTruthy();
+    });
+
+    test('uses price_data with unit_amount equal to hiveAmountUsd * 100 in Stripe session', async () => {
+      await upsertTestPlatformConfig('hiveAmountUsd', '75');
+
+      const req = createPostRequest('/api/stripe/checkout', {
+        workspaceName: 'My Hive',
+        workspaceSlug: 'my-hive',
+      });
+      const response = await POST(req);
+      expect(response.status).toBe(200);
+
+      const stripe = vi.mocked(getStripeClient).mock.results[0].value;
+      expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          line_items: [
+            expect.objectContaining({
+              price_data: expect.objectContaining({
+                currency: 'usd',
+                unit_amount: 7500,
+                product_data: { name: 'Hive Environment' },
+              }),
+              quantity: 1,
+            }),
+          ],
+        })
+      );
+    });
+
+    test('returns 503 when hiveAmountUsd PlatformConfig record is missing', async () => {
+      await db.platformConfig.deleteMany({ where: { key: 'hiveAmountUsd' } });
+
+      const req = createPostRequest('/api/stripe/checkout', {
+        workspaceName: 'My Hive',
+        workspaceSlug: 'my-hive',
+      });
+      const response = await POST(req);
+      expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.error).toBe('Payment price not configured');
     });
   });
 });
