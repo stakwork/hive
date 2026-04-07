@@ -15,7 +15,8 @@ import { OffscreenIndicators } from "@/graph-viz/components/OffscreenIndicators"
 import { PrevNodeIndicator } from "@/graph-viz/components/PrevNodeIndicator";
 import type { ViewState } from "@/graph-viz/graph/types";
 import { useRouter } from "next/navigation";
-import { useWorkspace } from "@/hooks/useWorkspace";
+import { useContext } from "react";
+import { WorkspaceContext } from "@/contexts/WorkspaceContext";
 import type { WorkspaceMember } from "@/hooks/useWorkspaceMembers";
 
 interface NodeMeta {
@@ -712,11 +713,17 @@ function GamepadController({
 const MINIMAP_SIZE = 180;
 const MINIMAP_CAM_HEIGHT = 200;
 
-export function GraphPortal() {
+interface GraphPortalProps {
+  workspaces?: WorkspaceSummary[];
+  embedded?: boolean;
+}
+
+export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphPortalProps = {}) {
   const router = useRouter();
-  const { workspaces } = useWorkspace();
+  const workspaceCtx = useContext(WorkspaceContext);
+  const workspaces = externalWorkspaces ?? workspaceCtx?.workspaces;
   const { data: allWsData, loading } = useAllWorkspacesData(workspaces);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(embedded ?? false);
   const [fading, setFading] = useState(false);
   const cameraRef = useRef<CameraControlsImpl>(null);
   const [viewState, setViewState] = useState<ViewState>({ mode: "overview" });
@@ -1090,13 +1097,14 @@ export function GraphPortal() {
   }, []);
 
   const handleCollapse = useCallback(() => {
+    if (embedded) return;
     setFading(true);
     setTimeout(() => {
       setExpanded(false);
       setViewState({ mode: "overview" });
     }, 250);
     setTimeout(() => setFading(false), 300);
-  }, []);
+  }, [embedded]);
 
   // Escape key
   useEffect(() => {
@@ -1147,7 +1155,15 @@ export function GraphPortal() {
     router.push(link);
   };
 
-  const containerStyle: React.CSSProperties = expanded
+  const containerStyle: React.CSSProperties = embedded
+    ? {
+        position: "relative",
+        width: "100%",
+        height: "calc(100vh - 200px)",
+        background: "rgba(5, 5, 10, 0.92)",
+        overflow: "hidden",
+      }
+    : expanded
     ? {
         position: "fixed",
         top: 0,
@@ -1425,7 +1441,7 @@ export function GraphPortal() {
           <button
             onClick={() => setFilterOpen(f => !f)}
             style={{
-              position: "absolute", top: 20, right: 62, zIndex: 20,
+              position: "absolute", top: 20, right: embedded ? 20 : 62, zIndex: 20,
               width: 36, height: 36, borderRadius: 8,
               border: filterOpen ? "1px solid rgba(77, 217, 232, 0.5)" : "1px solid rgba(255,255,255,0.1)",
               background: filterOpen ? "rgba(77, 217, 232, 0.12)" : "rgba(0,0,0,0.5)",
@@ -1441,20 +1457,22 @@ export function GraphPortal() {
             </svg>
           </button>
           {/* Close */}
-          <button
-            onClick={handleCollapse}
-            style={{
-              position: "absolute", top: 20, right: 20, zIndex: 20,
-              width: 36, height: 36, borderRadius: 8,
-              border: "1px solid rgba(255,255,255,0.1)",
-              background: "rgba(0,0,0,0.5)", color: "#aaa",
-              fontSize: 18, cursor: "pointer", pointerEvents: "auto",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              backdropFilter: "blur(4px)",
-            }}
-          >
-            {"\u2715"}
-          </button>
+          {!embedded && (
+            <button
+              onClick={handleCollapse}
+              style={{
+                position: "absolute", top: 20, right: 20, zIndex: 20,
+                width: 36, height: 36, borderRadius: 8,
+                border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(0,0,0,0.5)", color: "#aaa",
+                fontSize: 18, cursor: "pointer", pointerEvents: "auto",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              {"\u2715"}
+            </button>
+          )}
 
           {/* Filter panel */}
           {filterOpen && (
