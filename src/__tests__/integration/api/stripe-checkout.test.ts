@@ -22,12 +22,21 @@ vi.mock('@/services/stripe', () => ({
   constructStripeEvent: vi.fn(),
 }));
 
+vi.mock('@/lib/rate-limit', () => ({
+  getClientIp: vi.fn().mockReturnValue('1.2.3.4'),
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+}));
+
+import { checkRateLimit } from '@/lib/rate-limit';
+
 describe('Stripe Checkout API Integration Tests', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.stubEnv('STRIPE_SUCCESS_URL', 'https://example.com/success');
     vi.stubEnv('STRIPE_CANCEL_URL', 'https://example.com/cancel');
     await upsertTestPlatformConfig('hiveAmountUsd', '50');
+    // Default: rate limit allows requests
+    vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true });
   });
 
   afterEach(async () => {
@@ -198,6 +207,19 @@ describe('Stripe Checkout API Integration Tests', () => {
       expect(response.status).toBe(503);
       const data = await response.json();
       expect(data.error).toBe('Payment price not configured');
+    });
+
+    test('returns 429 when per-IP rate limit is exceeded', async () => {
+      vi.mocked(checkRateLimit).mockResolvedValueOnce({ allowed: false, retryAfter: 30 });
+
+      const req = createPostRequest('/api/stripe/checkout', {
+        workspaceName: 'My Graph',
+        workspaceSlug: 'my-graph',
+      });
+      const response = await POST(req);
+      expect(response.status).toBe(429);
+      const data = await response.json();
+      expect(data.error).toBe('Too many requests');
     });
   });
 });
