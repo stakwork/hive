@@ -4,6 +4,11 @@ import { db } from '@/lib/db';
 import { createPostRequest } from '@/__tests__/support/helpers/request-builders';
 import { upsertTestPlatformConfig } from '@/__tests__/support/factories';
 
+vi.mock('@/lib/rate-limit', () => ({
+  getClientIp: vi.fn().mockReturnValue('1.2.3.4'),
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+}));
+
 vi.mock('@/services/lightning', () => ({
   createLndInvoice: vi.fn().mockResolvedValue({
     payment_hash: 'mock_preauth_hash_abc',
@@ -24,12 +29,15 @@ vi.mock('@/lib/btc-price', () => ({
 // Expected sats: Math.round((50 / 100000) * 1e8) = 50000
 const EXPECTED_SATS = 50000;
 
+import { checkRateLimit } from '@/lib/rate-limit';
+
 describe('Lightning Pre-auth Invoice API Integration Tests', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     // Re-apply the default mock after clearAllMocks
     const { fetchBtcPriceUsd } = await import('@/lib/btc-price');
     vi.mocked(fetchBtcPriceUsd).mockResolvedValue(100000);
+    vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true });
 
     await upsertTestPlatformConfig('graphmindsetAmountUsd', '50');
   });
@@ -152,6 +160,19 @@ describe('Lightning Pre-auth Invoice API Integration Tests', () => {
       expect(placeholder).not.toBeNull();
       expect(placeholder!.invoice).toBe('');
       expect(placeholder!.status).toBe('UNPAID');
+    });
+
+    test('returns 429 when per-IP rate limit is exceeded', async () => {
+      vi.mocked(checkRateLimit).mockResolvedValueOnce({ allowed: false, retryAfter: 30 });
+
+      const req = createPostRequest('/api/lightning/invoice/preauth', {
+        workspaceName: 'My Graph',
+        workspaceSlug: 'my-graph',
+      });
+      const response = await POST(req);
+      expect(response.status).toBe(429);
+      const data = await response.json();
+      expect(data.error).toBe('Too many requests');
     });
   });
 });
