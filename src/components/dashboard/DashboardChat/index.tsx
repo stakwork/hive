@@ -34,7 +34,11 @@ interface Message {
   toolCalls?: ToolCall[];
 }
 
-export function DashboardChat() {
+interface DashboardChatProps {
+  defaultExtraWorkspaceSlugs?: string[];
+}
+
+export function DashboardChat({ defaultExtraWorkspaceSlugs }: DashboardChatProps = {}) {
   const { slug, workspace } = useWorkspace();
   const { data: session } = useSession();
   const router = useRouter();
@@ -51,7 +55,7 @@ export function DashboardChat() {
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
   const [provenanceData, setProvenanceData] = useState<ProvenanceData | null>(null);
   const [isProvenanceSidebarOpen, setIsProvenanceSidebarOpen] = useState(false);
-  const [extraWorkspaceSlugs, setExtraWorkspaceSlugs] = useState<string[]>([]);
+  const [extraWorkspaceSlugs, setExtraWorkspaceSlugs] = useState<string[]>(defaultExtraWorkspaceSlugs ?? []);
   const [_isSharing, setIsSharing] = useState(false);
   const hasReceivedContentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
