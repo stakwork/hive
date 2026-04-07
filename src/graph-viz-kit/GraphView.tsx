@@ -184,7 +184,7 @@ const _sphere = new THREE.Sphere();
 const _hitPoint = new THREE.Vector3();
 
 
-const SHOW_HELPERS = import.meta.env.VITE_SHOW_HELPERS === "true";
+const SHOW_HELPERS = process.env.NEXT_PUBLIC_SHOW_HELPERS === "true";
 
 export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNodeId, onExitWhiteboard, onDetailNavigate, searchMatches, pulses }: GraphViewProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -202,11 +202,6 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
   const [approachState, setApproachState] = useState<{ nodeId: number; progress: number }>({ nodeId: -1, progress: 0 });
 
   const nodeCount = graph.nodes.length;
-
-  const maxDegree = useMemo(
-    () => Math.max(1, ...graph.nodes.map((n) => n.degree)),
-    [graph]
-  );
 
   const hoveredRelated = useMemo<Set<number> | null>(() => {
     if (hovered === null) return null;
@@ -379,7 +374,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     }
 
     return { positions, scales, colors, alphas };
-  }, [graph, viewState, nodeCount, maxDegree]);
+  }, [graph, viewState, nodeCount]);
 
   const { treeEdges, crossEdges, targetEdges } = useMemo(() => {
     let allEdges: GraphEdge[];
@@ -505,7 +500,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         }
       }
     };
-  }, [nodeCount]);
+  }, [nodeCount, graph.nodes]);
 
 
   useFrame(({ camera, pointer }, delta) => {

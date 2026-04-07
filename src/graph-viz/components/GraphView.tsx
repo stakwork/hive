@@ -225,11 +225,6 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
   const expandedClusterRef = useRef(expandedClusterId);
   expandedClusterRef.current = expandedClusterId;
 
-  const maxDegree = useMemo(
-    () => Math.max(1, ...graph.nodes.map((n) => n.degree)),
-    [graph]
-  );
-
   const hoveredRelated = useMemo<Set<number> | null>(() => {
     if (hovered === null) return null;
     return new Set(graph.adj[hovered]);
@@ -475,7 +470,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
     }
 
     return { positions, scales, colors, alphas };
-  }, [graph, viewState, nodeCount, maxDegree, expandedClusterId]);
+  }, [graph, viewState, nodeCount, expandedClusterId]);
 
   const { treeEdges, crossEdges, targetEdges } = useMemo(() => {
     // Hide edges touching cloud members of COLLAPSED clusters.
@@ -608,8 +603,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
   if (!raycastFn.current) {
     let _raycastLogTimer = 0;
     raycastFn.current = function customRaycast(this: THREE.InstancedMesh, raycaster, intersects) {
-      const m = this; // `this` is the mesh R3F calls raycast on — always current
-      const count = Math.min(nodeCountRef.current, m.instanceMatrix.count);
+      const count = Math.min(nodeCountRef.current, this.instanceMatrix.count);
       const g = graphRef.current;
       const nodes = g.nodes;
       const alphas = currentAlpha.current;
@@ -629,7 +623,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
         if (clouds.has(i)) { _skippedCloud++; continue; }
         if (alphas[i] < 0.02) { _skippedAlpha++; continue; }
 
-        m.getMatrixAt(i, _mat4);
+        this.getMatrixAt(i, _mat4);
         _mat4.decompose(_pos, _quat, _scale);
         if (_scale.x < 0.01) { _skippedScale++; continue; }
 
@@ -653,7 +647,7 @@ export function GraphView({ graph, viewState, onNodeClick, minimap, whiteboardNo
               distance,
               point: _hitPoint.clone(),
               instanceId: i,
-              object: m,
+              object: this,
             } as THREE.Intersection);
           }
         }
