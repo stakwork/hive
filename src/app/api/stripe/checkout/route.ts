@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { db } from '@/lib/db';
 import { generateSecurePassword } from '@/lib/utils/password';
 import { EncryptionService } from '@/lib/encryption';
+import { getClientIp, checkRateLimit } from '@/lib/rate-limit';
 
 const checkoutBodySchema = z.object({
   workspaceName: z.string().min(1),
@@ -14,6 +15,10 @@ const checkoutBodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const rl = await checkRateLimit(`rl:stripe-checkout:${ip}`, 10, 60);
+  if (!rl.allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+
   let body: z.infer<typeof checkoutBodySchema>;
   try {
     const raw = await req.json();

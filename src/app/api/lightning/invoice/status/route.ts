@@ -4,8 +4,13 @@ import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { lookupLndInvoice } from '@/services/lightning';
 import { fetchBtcPriceUsd } from '@/lib/btc-price';
+import { getClientIp, checkRateLimit } from '@/lib/rate-limit';
 
 export async function GET(req: NextRequest) {
+  const ip = getClientIp(req);
+  const rl = await checkRateLimit(`rl:lightning-status:${ip}`, 30, 60);
+  if (!rl.allowed) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+
   const paymentHash = req.nextUrl.searchParams.get('paymentHash');
   if (!paymentHash) {
     return NextResponse.json({ error: 'paymentHash is required' }, { status: 400 });
