@@ -123,3 +123,18 @@ export interface GitHubUser {
   type: string;
   score: number;
 }
+
+export interface OrgResponse {
+  id: string;
+  githubLogin: string;
+  name: string | null;
+  avatarUrl: string | null;
+  type: 'ORG' | 'USER';
+}
+
+export interface OrgMemberResponse {
+  id: string;
+  name: string | null;
+  image: string | null;
+  githubUsername: string | null;
+}
