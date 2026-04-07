@@ -28,6 +28,11 @@ vi.mock('@/lib/btc-price', () => ({
   fetchBtcPriceUsd: vi.fn().mockResolvedValue(100000),
 }));
 
+vi.mock('@/lib/rate-limit', () => ({
+  getClientIp: vi.fn().mockReturnValue('1.2.3.4'),
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+}));
+
 describe('GraphMindset lightning chain: preauth → webhook settle → claim → payment lookup', () => {
   let testUser: Awaited<ReturnType<typeof createTestUser>>;
   const lndPaymentHash = `lnd_hash_${Date.now()}`;
