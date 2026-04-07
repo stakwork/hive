@@ -58,7 +58,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
         ]);
         if (cancelled) return;
         if (visibilityRes.status === "fulfilled") {
-          setIsPublic(visibilityRes.value?.isPublic ?? false);
+          setIsPublic(visibilityRes.value?.data?.isPublic ?? visibilityRes.value?.isPublic ?? false);
         } else {
           toast.error("Failed to load graph visibility");
         }
@@ -129,7 +129,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
         type: "Swarm",
         data: { cmd: "GetBoltwallAccessibility" },
       });
-      setIsPublic(confirmed?.isPublic ?? newValue);
+      setIsPublic(confirmed?.data?.isPublic ?? confirmed?.isPublic ?? newValue);
       toast.success("Graph visibility updated");
     } catch {
       setIsPublic(previous);
