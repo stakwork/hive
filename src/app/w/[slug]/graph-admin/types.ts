@@ -2,10 +2,10 @@
 
 export interface PaidEndpoint {
   id: number;
-  route: string;
-  method: string;
+  endpoint: string;
+  route_description: string;
   status: boolean;
-  fee: number;
+  price: number;
 }
 
 export interface BoltwallUser {
