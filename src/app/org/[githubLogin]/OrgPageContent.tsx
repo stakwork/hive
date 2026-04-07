@@ -45,7 +45,7 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
   const isGraph = activeTab === "graph";
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className={`bg-background flex flex-col ${isGraph ? "h-screen" : "min-h-screen"}`}>
       {/* Header + tab triggers always constrained */}
       <div className="max-w-4xl mx-auto px-4 pt-10 w-full">
         {/* Org Header */}
@@ -163,7 +163,7 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
         </div>
 
         {/* Graph Tab — full width/height */}
-        <TabsContent value="graph" className="flex-1">
+        <TabsContent value="graph" className="flex-1 flex flex-col min-h-0">
           {loadingWorkspaces ? (
             <div className="h-[calc(100vh-200px)] bg-muted animate-pulse" />
           ) : workspaces.length === 0 ? (
