@@ -429,7 +429,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
       vi.mocked(swarmCmdRequest).mockResolvedValue({
         ok: true,
         status: 200,
-        data: { invoice: "lnbc100n1pxyz..." },
+        data: { success: true, message: "invoice created", data: { bolt11: "lnbc100n1pxyz...", payment_hash: "abc123" } },
       });
 
       const response = await callRoute(workspace.slug, {
@@ -438,8 +438,8 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.invoice).toBe("lnbc100n1pxyz...");
-      expect(data.qrCodeDataUrl).toBe("data:image/png;base64,mockqr");
+      expect(data.bolt11).toBe("lnbc100n1pxyz...");
+      expect(data.qrCodeDataUrl).toMatch(/^data:image\/png/);
     });
   });
 
@@ -512,7 +512,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
           return {
             ok: true,
             status: 200,
-            data: { pubkey: "02superadmin000", name: "Super Admin" },
+            data: { success: true, data: { pubkey: "02superadmin000", name: "Super Admin" } },
           };
         }
         return { ok: true, status: 200, data: {} };
@@ -530,6 +530,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
       const ownerEntry = data.users.find((u: { role: string }) => u.role === "owner");
       expect(ownerEntry).toBeDefined();
       expect(ownerEntry.pubkey).toBe("02superadmin000");
+      expect(ownerEntry.name).toBe("Super Admin");
 
       // Member entry with hive enrichment
       const memberEntry = data.users.find((u: { pubkey: string }) => u.pubkey === TEST_PUBKEY);
@@ -599,7 +600,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
           return {
             ok: true,
             status: 200,
-            data: { pubkey: SUPER_ADMIN_PUBKEY, name: "Owner" },
+            data: { success: true, data: { pubkey: SUPER_ADMIN_PUBKEY, name: "Owner" } },
           };
         }
         return { ok: true, status: 200, data: {} };
