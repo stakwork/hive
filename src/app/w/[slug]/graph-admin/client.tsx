@@ -5,11 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { ExternalLink, Loader2, AlertCircle, RefreshCw, Zap, Plus } from "lucide-react";
+import { ExternalLink, Loader2, AlertCircle, RefreshCw, Zap, Plus, Pencil, Check } from "lucide-react";
 import { toast } from "sonner";
 import type { PaidEndpoint, BoltwallUser, GraphAdminClientProps } from "./types";
 import { postGraphAdminCmd } from "./utils";
@@ -24,6 +23,9 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
   const [initialLoading, setInitialLoading] = useState(true);
   const [visibilityLoading, setVisibilityLoading] = useState(false);
   const [endpointLoadingIds, setEndpointLoadingIds] = useState<Set<number>>(new Set());
+  const [endpointPriceLoadingIds, setEndpointPriceLoadingIds] = useState<Set<number>>(new Set());
+  const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState<string>("");
 
   // ── Bot state ──
   const [botBalance, setBotBalance] = useState<number | null>(null);
@@ -173,6 +175,32 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
     }
   }
 
+  // ── Endpoint price edit ──
+  async function handlePriceEdit(id: number, price: number) {
+    const previous = endpoints;
+    setEndpoints((prev) =>
+      prev ? prev.map((e) => (e.id === id ? { ...e, price } : e)) : prev,
+    );
+    setEndpointPriceLoadingIds((prev) => new Set(prev).add(id));
+    setEditingPriceId(null);
+    try {
+      await postGraphAdminCmd(workspaceSlug, {
+        type: "Swarm",
+        data: { cmd: "UpdateEndpointPrice", content: { id, price } },
+      });
+      toast.success("Price updated");
+    } catch {
+      setEndpoints(previous);
+      toast.error("Failed to update price");
+    } finally {
+      setEndpointPriceLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
+
   // ── Bot: generate invoice ──
   async function handleGenerateInvoice(e: React.FormEvent) {
     e.preventDefault();
@@ -184,7 +212,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
         type: "Swarm",
         data: { cmd: "CreateBotInvoice", content: { amt_msat: parseInt(invoiceSats) * 1000 } },
       });
-      const invoice = typeof res === "string" ? res : (res?.invoice ?? res?.payment_request ?? "");
+      const invoice = res?.bolt11 ?? "";
       const qrCodeDataUrl = res?.qrCodeDataUrl ?? "";
       setInvoiceResult({ invoice, qrCodeDataUrl });
       toast.success("Invoice generated");
@@ -308,7 +336,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
               {visibilityLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               ) : (
-                <span className="text-sm font-medium">{isPublic ? "Public" : "Private"}</span>
+                <span className="text-sm font-medium">Public</span>
               )}
             </div>
           )}
@@ -332,24 +360,64 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
           ) : (
             <ul className="divide-y">
               {endpoints.map((endpoint) => {
-                const isLoading = endpointLoadingIds.has(endpoint.id);
+                const isToggleLoading = endpointLoadingIds.has(endpoint.id);
+                const isPriceLoading = endpointPriceLoadingIds.has(endpoint.id);
+                const isEditingPrice = editingPriceId === endpoint.id;
                 return (
-                  <li key={endpoint.id} className="flex items-center justify-between py-3 gap-4">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Badge variant="outline" className="shrink-0 font-mono text-xs">
-                        {endpoint.method}
-                      </Badge>
-                      <span className="text-sm truncate">/{endpoint.route}</span>
+                  <li key={endpoint.id} className="flex items-start justify-between py-3 gap-4">
+                    <div className="flex flex-col min-w-0 gap-0.5">
+                      <span className="text-sm font-mono truncate">/{endpoint.endpoint}</span>
+                      {endpoint.route_description && (
+                        <span className="text-xs text-muted-foreground truncate">{endpoint.route_description}</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-xs text-muted-foreground">{endpoint.fee} sats</span>
-                      {isLoading ? (
+                      {isPriceLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      ) : isEditingPrice ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min={0}
+                            className="h-7 w-24 text-xs"
+                            value={editingPriceValue}
+                            onChange={(e) => setEditingPriceValue(e.target.value)}
+                            autoFocus
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7"
+                            disabled={editingPriceValue === "" || Number(editingPriceValue) === endpoint.price}
+                            onClick={() => handlePriceEdit(endpoint.id, Number(editingPriceValue))}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">{endpoint.price} sats</span>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setEditingPriceId(endpoint.id);
+                              setEditingPriceValue(String(endpoint.price));
+                            }}
+                            aria-label={`Edit price for /${endpoint.endpoint}`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
+                      {isToggleLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                       ) : (
                         <Switch
                           checked={endpoint.status}
                           onCheckedChange={() => handleEndpointToggle(endpoint)}
-                          aria-label={`Toggle ${endpoint.route}`}
+                          aria-label={`Toggle /${endpoint.endpoint}`}
                         />
                       )}
                     </div>
