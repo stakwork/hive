@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { renderMermaidToSvg } from "@/lib/diagrams/mermaid-renderer";
-import { ZoomIn, ZoomOut, Maximize, Minimize2 } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize, Minimize2, Copy, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 /* ── constants ─────────────────────────────────────────── */
 
@@ -88,6 +89,7 @@ export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
 
   const [svgHtml, setSvgHtml] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // mutable transform state — NOT React state, because
   // setState would re-render and dangerouslySetInnerHTML
@@ -423,6 +425,14 @@ export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
     pinchStart.current = null;
   }, []);
 
+  /* ── copy handler ────────────────────────────────────── */
+
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(body);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [body]);
+
   /* ── button handlers ─────────────────────────────────── */
 
   const vpCenter = (): [number, number] => {
@@ -462,6 +472,18 @@ export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
             {description || "Diagram"}
           </p>
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleCopy}
+          title={copied ? "Copied!" : "Copy diagram source"}
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-green-600" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </Button>
       </div>
 
       {/* Body */}
