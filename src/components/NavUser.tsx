@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ChevronsUpDown,
   LogOut,
@@ -8,6 +8,8 @@ import {
   Building2,
   Zap,
 } from "lucide-react";
+import Link from "next/link";
+import type { OrgResponse } from "@/types/workspace";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -42,6 +44,14 @@ export function NavUser({
   const { isMobile } = useSidebar();
   const { data: session } = useSession();
   const [showSphinxModal, setShowSphinxModal] = useState(false);
+  const [orgs, setOrgs] = useState<OrgResponse[]>([]);
+
+  useEffect(() => {
+    fetch("/api/orgs")
+      .then((res) => res.ok ? res.json() : [])
+      .then((data) => setOrgs(data))
+      .catch(() => {});
+  }, []);
   //const { workspace, switchWorkspace } = useWorkspace();
   const { workspace } = useWorkspace();
   //const router = useRouter();
@@ -118,6 +128,29 @@ export function NavUser({
                     <div className="font-medium text-sm truncate">{workspace.name}</div>
                   </div>
                 </DropdownMenuItem>
+              </>
+            )}
+
+            {/* Organizations Section */}
+            {orgs.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  Organizations
+                </DropdownMenuLabel>
+                {orgs.map((org) => (
+                  <DropdownMenuItem key={org.id} asChild>
+                    <Link href={`/org/${org.githubLogin}`} className="flex items-center gap-2">
+                      <Avatar className="h-4 w-4 rounded-sm">
+                        <AvatarImage src={org.avatarUrl ?? undefined} alt={org.name ?? org.githubLogin} />
+                        <AvatarFallback className="rounded-sm text-[10px]">
+                          {(org.name ?? org.githubLogin)[0].toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="truncate">{org.name ?? org.githubLogin}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
               </>
             )}
 
