@@ -1,5 +1,4 @@
 import { GraphAdminClient } from "./client";
-import { PageHeader } from "@/components/ui/page-header";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
@@ -32,9 +31,10 @@ export default async function GraphAdminPage({ params }: { params: Promise<{ slu
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Graph Admin" />
-      <GraphAdminClient swarmUrl={workspace.swarmUrl} workspaceSlug={slug} />
-    </div>
+    <GraphAdminClient
+      swarmUrl={workspace.swarmUrl}
+      workspaceSlug={slug}
+      workspaceName={workspace.name}
+    />
   );
 }

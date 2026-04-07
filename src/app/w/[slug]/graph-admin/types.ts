@@ -19,6 +19,7 @@ export interface BoltwallUser {
 export interface GraphAdminClientProps {
   swarmUrl: string | null;
   workspaceSlug: string;
+  workspaceName: string;
 }
 
 export interface UserFormDialogProps {
