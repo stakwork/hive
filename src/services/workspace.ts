@@ -24,6 +24,7 @@ import { mapWorkspaceMember, mapWorkspaceMembers } from "@/lib/mappers/workspace
 import { SwarmService } from "@/services/swarm";
 import {
   CreateWorkspaceRequest,
+  OrgResponse,
   UpdateWorkspaceRequest,
   WorkspaceAccessValidation,
   WorkspaceResponse,
@@ -1325,4 +1326,39 @@ export async function updateWorkspace(
     }
     throw error;
   }
+}
+
+/**
+ * Gets all organizations the user has access to via workspace membership or ownership.
+ * Returns deduplicated list of SourceControlOrg records.
+ */
+export async function getUserOrganizations(userId: string): Promise<OrgResponse[]> {
+  const orgs = await db.sourceControlOrg.findMany({
+    where: {
+      workspaces: {
+        some: {
+          deleted: false,
+          OR: [
+            { ownerId: userId },
+            { members: { some: { userId, leftAt: null } } },
+          ],
+        },
+      },
+    },
+    select: {
+      id: true,
+      githubLogin: true,
+      name: true,
+      avatarUrl: true,
+      type: true,
+    },
+  });
+
+  return orgs.map((org) => ({
+    id: org.id,
+    githubLogin: org.githubLogin,
+    name: org.name,
+    avatarUrl: org.avatarUrl,
+    type: org.type as 'ORG' | 'USER',
+  }));
 }
