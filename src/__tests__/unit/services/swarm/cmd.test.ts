@@ -4,7 +4,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-const { getSwarmCmdJwt } = await import("@/services/swarm/cmd");
+const { getSwarmCmdJwt, swarmCmdRequest } = await import("@/services/swarm/cmd");
 
 describe("getSwarmCmdJwt", () => {
   beforeEach(() => {
@@ -111,5 +111,102 @@ describe("getSwarmCmdJwt", () => {
     await expect(getSwarmCmdJwt(swarmUrl, swarmPassword)).rejects.toThrow(
       "Swarm login response did not include token/jwt"
     );
+  });
+});
+
+describe("swarmCmdRequest", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const swarmUrl = "https://swarm42.sphinx.chat";
+  const jwt = "test-jwt-token";
+  const cmd = { type: "Swarm" as const, data: { cmd: "GetBoltwallAccessibility" as const } };
+
+  test("parses normal (single-encoded) JSON correctly", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ isPublic: true }),
+    });
+
+    const result = await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual({ isPublic: true });
+    expect(result.rawText).toBeUndefined();
+  });
+
+  test("unwraps double-encoded JSON object (string wrapping a JSON object)", async () => {
+    // sphinx-swarm returns a JSON string whose value is another JSON string
+    const innerJson = JSON.stringify({ isPublic: false });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(innerJson), // double-encoded
+    });
+
+    const result = await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual({ isPublic: false });
+    expect(result.rawText).toBeUndefined();
+  });
+
+  test("unwraps double-encoded JSON array", async () => {
+    const innerJson = JSON.stringify([{ id: 1, route: "v2/search", status: true }]);
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(innerJson),
+    });
+
+    const listCmd = { type: "Swarm" as const, data: { cmd: "ListPaidEndpoint" as const } };
+    const result = await swarmCmdRequest({ swarmUrl, jwt, cmd: listCmd });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual([{ id: 1, route: "v2/search", status: true }]);
+  });
+
+  test("returns rawText when response is non-JSON text", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => "Internal Server Error",
+    });
+
+    const result = await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    expect(result.ok).toBe(false);
+    expect(result.data).toBeUndefined();
+    expect(result.rawText).toBe("Internal Server Error");
+  });
+
+  test("calls correct cmd endpoint URL with encoded query params", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({}),
+    });
+
+    await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    const [calledUrl] = mockFetch.mock.calls[0];
+    expect(calledUrl).toContain("https://swarm42.sphinx.chat:8800/api/cmd");
+    expect(calledUrl).toContain("txt=");
+    expect(calledUrl).toContain("tag=SWARM");
+  });
+
+  test("sends x-jwt header", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({}),
+    });
+
+    await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init.headers["x-jwt"]).toBe(jwt);
   });
 });

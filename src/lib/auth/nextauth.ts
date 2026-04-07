@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
-import { ensureMockWorkspaceForUser, ensureStakworkMockWorkspace } from "@/utils/mockSetup";
+import { ensureMockWorkspaceForUser, ensureStakworkMockWorkspace, ensureMockOrgData } from "@/utils/mockSetup";
 import { isSuperAdminUserId } from "@/config/env";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import axios from "axios";
@@ -259,6 +259,17 @@ export const authOptions: NextAuthOptions = {
               error
             );
             // Don't return false - authentication should continue even if stakwork workspace fails
+          }
+
+          // Seed mock org data (second org for org page testing) — non-fatal
+          try {
+            await ensureMockOrgData(user.id as string);
+          } catch (error) {
+            logger.authError(
+              "Failed to create mock org data - continuing authentication",
+              "SIGNIN_MOCK_ORG_FAILED",
+              error
+            );
           }
         } catch (error) {
           logger.authError("Failed to handle mock authentication", "SIGNIN_MOCK", error);
