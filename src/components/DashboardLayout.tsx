@@ -7,7 +7,6 @@ import { AlertTriangle } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "./GlobalSearch";
-import { GraphPortal } from "./GraphPortal";
 import { useEffect, useState } from "react";
 
 interface DashboardLayoutProps {
@@ -104,7 +103,6 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
     <div className="h-screen bg-background text-foreground flex flex-col">
       <Sidebar user={user} />
       <GlobalSearch />
-      <GraphPortal />
 
       {/* Main content */}
       <div className={`flex-1 flex flex-col overflow-hidden ${isFullscreenPage ? "md:pl-0" : "md:pl-64"}`}>
