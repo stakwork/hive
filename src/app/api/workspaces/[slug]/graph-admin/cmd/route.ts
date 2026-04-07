@@ -15,6 +15,7 @@ const ALLOWED_CMDS = new Set([
   "UpdateBoltwallAccessibility",
   "ListPaidEndpoint",
   "UpdatePaidEndpoint",
+  "UpdateEndpointPrice",
   "GetBotBalance",
   "CreateBotInvoice",
   "GetEnrichedBoltwallUsers",
@@ -115,12 +116,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         ? ((adminsResult.value.data as { admins?: unknown[] })?.admins ?? []) as Array<{ id: number; pubkey: string; name: string; role: string }>
         : [];
 
-    const superAdmin: { pubkey: string; name: string } | null =
+    const superAdminInner =
       superAdminResult.status === "fulfilled" && superAdminResult.value.ok
-        ? ((superAdminResult.value.data as { pubkey?: string; name?: string })?.pubkey
-            ? (superAdminResult.value.data as { pubkey: string; name: string })
-            : null)
-        : null;
+        ? (superAdminResult.value.data as { data?: { pubkey?: string; name?: string } })?.data
+        : undefined;
+    const superAdmin: { pubkey: string; name: string } | null =
+      superAdminInner?.pubkey ? (superAdminInner as { pubkey: string; name: string }) : null;
 
     // Build pubkey → Hive identity map from workspace members
     const members = await getActiveWorkspaceMembersWithSphinx(workspaceId);
@@ -169,8 +170,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   // 9. Post-process CreateBotInvoice: append QR code
   if (cmdName === "CreateBotInvoice") {
-    const resultData = result.data as { invoice?: string } | string | undefined;
-    const bolt11 = typeof resultData === "string" ? resultData : resultData?.invoice;
+    const inner = (result.data as { data?: { bolt11?: string } })?.data;
+    const bolt11 = inner?.bolt11;
     if (bolt11) {
       const qrCodeDataUrl = await QRCode.toDataURL(bolt11, {
         errorCorrectionLevel: "M",
@@ -178,8 +179,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         width: 300,
         margin: 2,
       });
-      const baseData = typeof resultData === "string" ? { invoice: bolt11 } : resultData;
-      return NextResponse.json({ ...baseData, qrCodeDataUrl });
+      return NextResponse.json({ bolt11, qrCodeDataUrl });
     }
   }
 
