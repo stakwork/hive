@@ -82,7 +82,7 @@ export function OffscreenIndicators({ graph, viewState, onNodeClick }: Props) {
   onNodeClickRef.current = onNodeClick;
   const hoveredIdx = useRef(-1);
   const groupDataRef = useRef<Map<number, OffscreenNode[]>>(new Map());
-  const { camera, size } = useThree();
+  const { camera, size, gl } = useThree();
 
   useEffect(() => {
     const container = document.createElement("div");
@@ -385,6 +385,9 @@ export function OffscreenIndicators({ graph, viewState, onNodeClick }: Props) {
 
     const w = size.width;
     const h = size.height;
+    const rect = gl.domElement.getBoundingClientRect();
+    const ox = rect.left;
+    const oy = rect.top;
     const selectedId = viewState.selectedNodeId;
     const depthMap = viewState.depthMap;
 
@@ -451,8 +454,8 @@ export function OffscreenIndicators({ graph, viewState, onNodeClick }: Props) {
       const el = indicators[groupIdx];
       (el as any).__nodeId = nearest.nodeId;
       el.style.display = "block";
-      el.style.left = `${avgX}px`;
-      el.style.top = `${avgY}px`;
+      el.style.left = `${avgX + ox}px`;
+      el.style.top = `${avgY + oy}px`;
 
       // chip > [dot, badge, sep, label]
       const chipEl = el.children[0] as HTMLElement;
