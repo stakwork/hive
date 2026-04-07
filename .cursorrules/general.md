@@ -31,4 +31,4 @@
 - Use React.memo for expensive components
 - Implement proper loading states
 - Optimize images and assets
-- Use Next.js built-in optimizations 
+- Use Next.js built-in optimizations
