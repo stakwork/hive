@@ -402,3 +402,120 @@ export async function ensureStakworkMockWorkspace(
 
   return workspace.slug;
 }
+
+/**
+ * Ensures a second "mock-org" SourceControlOrg (type=ORG) exists with 2 workspaces and 2 team
+ * members, giving the org page meaningful multi-workspace data.
+ * Idempotent — safe to call on every sign-in.
+ */
+export async function ensureMockOrgData(userId: string): Promise<void> {
+  const MOCK_ORG_LOGIN = "mock-org";
+  const MOCK_ORG_INSTALLATION_ID = 999001;
+
+  // Idempotency: if org already exists, nothing to do
+  const existing = await db.sourceControlOrg.findUnique({
+    where: { githubLogin: MOCK_ORG_LOGIN },
+  });
+  if (existing) return;
+
+  let encryptedPoolApiKey: string | null = null;
+  try {
+    const encryptionService = EncryptionService.getInstance();
+    encryptedPoolApiKey = JSON.stringify(
+      encryptionService.encryptField("poolApiKey", "mock-org-pool-api-key")
+    );
+  } catch {
+    // Encryption not required for mock
+  }
+
+  await db.$transaction(async (tx) => {
+    // 1. Create the org
+    const org = await tx.sourceControlOrg.create({
+      data: {
+        type: SourceControlOrgType.ORG,
+        githubLogin: MOCK_ORG_LOGIN,
+        githubInstallationId: MOCK_ORG_INSTALLATION_ID,
+        name: "Mock Organization",
+        avatarUrl: `https://avatars.githubusercontent.com/u/999001?v=4`,
+      },
+    });
+
+    // 2. Create two team-member User records
+    const member1 = await tx.user.create({
+      data: {
+        name: "Alice Dev",
+        email: "alice-mock-org@example.com",
+        emailVerified: new Date(),
+        image: "https://api.dicebear.com/7.x/identicons/svg?seed=alice-mock",
+      },
+    });
+    const member2 = await tx.user.create({
+      data: {
+        name: "Bob Dev",
+        email: "bob-mock-org@example.com",
+        emailVerified: new Date(),
+        image: "https://api.dicebear.com/7.x/identicons/svg?seed=bob-mock",
+      },
+    });
+
+    // Helper to create a workspace + swarm + repo + members under the org
+    const createOrgWorkspace = async (slug: string, name: string, memberIds: string[]) => {
+      const ws = await tx.workspace.create({
+        data: {
+          name,
+          description: `Mock workspace for ${MOCK_ORG_LOGIN}`,
+          slug,
+          ownerId: userId,
+          sourceControlOrgId: org.id,
+          logoUrl: `https://api.dicebear.com/7.x/identicons/svg?seed=${encodeURIComponent(slug)}`,
+        },
+      });
+
+      await tx.repository.create({
+        data: {
+          name: slug,
+          repositoryUrl: `https://github.com/${MOCK_ORG_LOGIN}/${slug}`,
+          branch: "main",
+          status: RepositoryStatus.SYNCED,
+          workspaceId: ws.id,
+          codeIngestionEnabled: true,
+          mocksEnabled: true,
+        },
+      });
+
+      await tx.swarm.create({
+        data: {
+          name: slugify(`${slug}-swarm`),
+          status: SwarmStatus.ACTIVE,
+          instanceType: "XL",
+          environmentVariables: [],
+          services: [],
+          workspaceId: ws.id,
+          swarmUrl: "http://localhost",
+          containerFilesSetUp: true,
+          poolState: PoolState.COMPLETE,
+          podState: PodState.COMPLETED,
+          poolName: `${slug}-pool`,
+          poolApiKey: encryptedPoolApiKey,
+        },
+      });
+
+      // Add team members as WorkspaceMember records
+      for (const memberId of memberIds) {
+        await tx.workspaceMember.create({
+          data: {
+            workspaceId: ws.id,
+            userId: memberId,
+            role: "DEVELOPER",
+            joinedAt: new Date(),
+          },
+        });
+      }
+
+      return ws;
+    };
+
+    await createOrgWorkspace("mock-org-frontend", "Mock Org Frontend", [member1.id, member2.id]);
+    await createOrgWorkspace("mock-org-backend", "Mock Org Backend", [member1.id]);
+  });
+}
