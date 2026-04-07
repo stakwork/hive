@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/config/env", () => ({
   env: {
@@ -244,5 +244,112 @@ describe("GET /api/mock/swarm-super-admin/api/cmd", () => {
 
     expect(res.status).toBe(400);
     expect(data).toMatchObject({ error: expect.stringContaining("Missing txt") });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Boltwall stateful commands
+// ---------------------------------------------------------------------------
+
+describe("Boltwall stateful mock commands", () => {
+  // Reset state before each test to ensure isolation
+  beforeEach(async () => {
+    const { resetMockBoltwallState } = await import(
+      "@/app/api/mock/swarm-super-admin/api/cmd/state"
+    );
+    resetMockBoltwallState();
+  });
+
+  async function cmdRequest(cmd: object) {
+    const { GET } = await import(
+      "@/app/api/mock/swarm-super-admin/api/cmd/route"
+    );
+    const txt = encodeURIComponent(JSON.stringify(cmd));
+    return GET(
+      makeRequest(
+        `http://localhost/api/mock/swarm-super-admin/api/cmd?txt=${txt}`,
+        { headers: { "x-jwt": "mock-jwt-token" } }
+      )
+    );
+  }
+
+  it("GetBoltwallAccessibility returns { isPublic: false } by default", async () => {
+    const res = await cmdRequest({ cmd: "GetBoltwallAccessibility" });
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(data).toEqual({ isPublic: false });
+  });
+
+  it("UpdateBoltwallAccessibility + GetBoltwallAccessibility round-trip", async () => {
+    // Set to true
+    const updateRes = await cmdRequest({
+      type: "Swarm",
+      data: { cmd: "UpdateBoltwallAccessibility", content: true },
+    });
+    expect(updateRes.status).toBe(200);
+    expect(await updateRes.json()).toEqual({ success: true });
+
+    // Confirm state persisted
+    const getRes = await cmdRequest({ cmd: "GetBoltwallAccessibility" });
+    expect(getRes.status).toBe(200);
+    expect(await getRes.json()).toEqual({ isPublic: true });
+  });
+
+  it("ListPaidEndpoint returns 2 endpoints by default", async () => {
+    const res = await cmdRequest({ cmd: "ListPaidEndpoint" });
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(data.endpoints).toHaveLength(2);
+    expect(data.endpoints[0]).toMatchObject({ id: 1, route: "v2/search" });
+    expect(data.endpoints[1]).toMatchObject({ id: 2, route: "node/content" });
+  });
+
+  it("UpdatePaidEndpoint mutates endpoint status", async () => {
+    // Disable endpoint id=1
+    const updateRes = await cmdRequest({
+      type: "Swarm",
+      data: { cmd: "UpdatePaidEndpoint", content: { id: 1, status: false } },
+    });
+    expect(updateRes.status).toBe(200);
+    expect(await updateRes.json()).toEqual({ success: true });
+
+    // Re-fetch and confirm
+    const listRes = await cmdRequest({ cmd: "ListPaidEndpoint" });
+    const data = await listRes.json();
+    const ep1 = data.endpoints.find((e: { id: number }) => e.id === 1);
+    expect(ep1.status).toBe(false);
+    // Other endpoint unchanged
+    const ep2 = data.endpoints.find((e: { id: number }) => e.id === 2);
+    expect(ep2.status).toBe(true);
+  });
+
+  it("GetBoltwallSuperAdmin returns { pubkey: null, name: null }", async () => {
+    const res = await cmdRequest({ cmd: "GetBoltwallSuperAdmin" });
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(data).toEqual({ pubkey: null, name: null });
+  });
+
+  it("GetBotBalance returns { balance: 0 }", async () => {
+    const res = await cmdRequest({ cmd: "GetBotBalance" });
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(data).toEqual({ balance: 0 });
+  });
+
+  it("CreateBotInvoice returns an invoice string", async () => {
+    const res = await cmdRequest({
+      type: "Swarm",
+      data: { cmd: "CreateBotInvoice", content: { amt_msat: 1000 } },
+    });
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(typeof data.invoice).toBe("string");
+  });
+
+  it("state resets between tests (isPublic is false again)", async () => {
+    const res = await cmdRequest({ cmd: "GetBoltwallAccessibility" });
+    const data = await res.json();
+    expect(data).toEqual({ isPublic: false });
   });
 });

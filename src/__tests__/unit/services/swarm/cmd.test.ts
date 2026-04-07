@@ -1,14 +1,27 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Mock fetch globally before importing
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-const { getSwarmCmdJwt } = await import("@/services/swarm/cmd");
+const { getSwarmCmdJwt, swarmCmdRequest } = await import("@/services/swarm/cmd");
 
 describe("getSwarmCmdJwt", () => {
+  let savedUseMocks: string | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Ensure production routing (no mocks) for getSwarmCmdJwt tests
+    savedUseMocks = process.env.USE_MOCKS;
+    delete process.env.USE_MOCKS;
+  });
+
+  afterEach(() => {
+    if (savedUseMocks !== undefined) {
+      process.env.USE_MOCKS = savedUseMocks;
+    } else {
+      delete process.env.USE_MOCKS;
+    }
   });
 
   const swarmUrl = "https://swarm42.sphinx.chat";
@@ -111,5 +124,114 @@ describe("getSwarmCmdJwt", () => {
     await expect(getSwarmCmdJwt(swarmUrl, swarmPassword)).rejects.toThrow(
       "Swarm login response did not include token/jwt"
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// swarmCmdRequest — USE_MOCKS routing + double-encoded JSON (handled in cmd.ts ticket)
+// ---------------------------------------------------------------------------
+
+describe("swarmCmdRequest", () => {
+  const swarmUrl = "https://swarm42.sphinx.chat";
+  const jwt = "test-jwt-token";
+  const cmd = { type: "Swarm" as const, data: { cmd: "GetBoltwallAccessibility" as const } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.USE_MOCKS;
+  });
+
+  afterEach(() => {
+    delete process.env.USE_MOCKS;
+  });
+
+  test("routes to host:8800 in production (no USE_MOCKS)", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ isPublic: false }),
+    });
+
+    await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain("swarm42.sphinx.chat:8800/api/cmd");
+  });
+
+  test("routes to NEXTAUTH_URL mock endpoint when USE_MOCKS=true", async () => {
+    process.env.USE_MOCKS = "true";
+    process.env.NEXTAUTH_URL = "http://localhost:3000";
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ isPublic: false }),
+    });
+
+    await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain("localhost:3000/api/mock/swarm-super-admin/api/cmd");
+  });
+
+  test("returns parsed object for single-encoded JSON response", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ isPublic: false }),
+    });
+
+    const result = await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual({ isPublic: false });
+    expect(result.rawText).toBeUndefined();
+  });
+
+  test("handles double-encoded JSON (string wrapping a JSON object)", async () => {
+    // sphinx-swarm returns: "\"{\\"isPublic\\":false}\"" — a string that is itself valid JSON
+    const inner = JSON.stringify({ isPublic: false });
+    const doubleEncoded = JSON.stringify(inner); // produces `"\"{\\"isPublic\\":false}\""`
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => doubleEncoded,
+    });
+
+    const result = await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual({ isPublic: false });
+  });
+
+  test("handles double-encoded JSON array", async () => {
+    const inner = JSON.stringify([{ id: 1, route: "v2/search" }]);
+    const doubleEncoded = JSON.stringify(inner);
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => doubleEncoded,
+    });
+
+    const result = await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual([{ id: 1, route: "v2/search" }]);
+  });
+
+  test("returns rawText when response is not valid JSON", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => "Service Unavailable",
+    });
+
+    const result = await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    expect(result.ok).toBe(false);
+    expect(result.rawText).toBe("Service Unavailable");
+    expect(result.data).toBeUndefined();
   });
 });

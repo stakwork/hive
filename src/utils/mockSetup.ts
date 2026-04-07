@@ -54,6 +54,7 @@ export async function ensureMockWorkspaceForUser(
   let encryptedPoolApiKey: string | null = null;
   let encryptedGitHubToken: string | null = null;
   let encryptedGitHubRefreshToken: string | null = null;
+  let encryptedSwarmPassword: string | null = null;
 
   try {
     const encryptionService = EncryptionService.getInstance();
@@ -65,6 +66,9 @@ export async function ensureMockWorkspaceForUser(
     );
     encryptedGitHubRefreshToken = JSON.stringify(
       encryptionService.encryptField("refresh_token", `ghr_mock_refresh_${mockGitHubUserId}`)
+    );
+    encryptedSwarmPassword = JSON.stringify(
+      encryptionService.encryptField("swarmPassword", "mock-swarm-password")
     );
   } catch {
     // Encryption not available (e.g., TOKEN_ENCRYPTION_KEY not set)
@@ -187,6 +191,7 @@ export async function ensureMockWorkspaceForUser(
         podState: PodState.COMPLETED, // Skip "Validating..." message for mock users
         poolName: "mock-pool",
         poolApiKey: encryptedPoolApiKey, // Mock pool API key for Pool Manager mock
+        swarmPassword: encryptedSwarmPassword, // Mock swarm password for cmd API
       },
     });
 
@@ -241,6 +246,7 @@ export async function ensureStakworkMockWorkspace(
   let encryptedPoolApiKey: string | null = null;
   let encryptedGitHubToken: string | null = null;
   let encryptedGitHubRefreshToken: string | null = null;
+  let encryptedSwarmPassword: string | null = null;
 
   try {
     const encryptionService = EncryptionService.getInstance();
@@ -252,6 +258,9 @@ export async function ensureStakworkMockWorkspace(
     );
     encryptedGitHubRefreshToken = JSON.stringify(
       encryptionService.encryptField("refresh_token", `ghr_mock_stakwork_refresh_${mockGitHubUserId}`)
+    );
+    encryptedSwarmPassword = JSON.stringify(
+      encryptionService.encryptField("swarmPassword", "mock-swarm-password")
     );
   } catch {
     // Encryption not available (e.g., TOKEN_ENCRYPTION_KEY not set)
@@ -385,6 +394,7 @@ export async function ensureStakworkMockWorkspace(
         podState: PodState.COMPLETED, // Skip "Validating..." message for mock users
         poolName: "mock-stakwork-pool",
         poolApiKey: encryptedPoolApiKey, // Mock pool API key for Pool Manager mock
+        swarmPassword: encryptedSwarmPassword, // Mock swarm password for cmd API
       },
     });
 
@@ -399,6 +409,85 @@ export async function ensureStakworkMockWorkspace(
     console.error("[MockSetup] Failed to seed stakwork mock data:", error);
     // Don't fail workspace creation if seeding fails
   }
+
+  return workspace.slug;
+}
+
+/**
+ * Ensures a graph_mindset workspace exists for a given user.
+ * This enables testing of /graph-admin features in mock mode.
+ * Returns the workspace slug.
+ */
+export async function ensureGraphMindsetMockWorkspace(
+  userId: string,
+): Promise<string> {
+  const GRAPH_MINDSET_SLUG = "mock-graph-mindset";
+
+  const existing = await db.workspace.findFirst({
+    where: { ownerId: userId, workspaceKind: "graph_mindset", deleted: false },
+    select: { id: true, slug: true },
+  });
+
+  if (existing?.slug) return existing.slug;
+
+  let encryptedSwarmPassword: string | null = null;
+  try {
+    const encryptionService = EncryptionService.getInstance();
+    encryptedSwarmPassword = JSON.stringify(
+      encryptionService.encryptField("swarmPassword", "mock-swarm-password")
+    );
+  } catch {
+    // Encryption not available — swarmPassword will be null
+  }
+
+  let slugCandidate = GRAPH_MINDSET_SLUG;
+  let suffix = 1;
+  while (await db.workspace.findUnique({ where: { slug: slugCandidate } })) {
+    slugCandidate = `${GRAPH_MINDSET_SLUG}-${++suffix}`;
+  }
+
+  const workspace = await db.$transaction(async (tx) => {
+    const workspace = await tx.workspace.create({
+      data: {
+        name: "Mock Graph Mindset",
+        description: "Development workspace for graph_mindset features (mock)",
+        slug: slugCandidate,
+        ownerId: userId,
+        workspaceKind: "graph_mindset",
+        logoUrl: `https://api.dicebear.com/7.x/identicons/svg?seed=${encodeURIComponent(slugCandidate)}`,
+        logoKey: null,
+      },
+      select: { id: true, slug: true },
+    });
+
+    await tx.workspaceMember.create({
+      data: {
+        workspaceId: workspace.id,
+        userId,
+        role: "OWNER",
+        joinedAt: new Date(),
+      },
+    });
+
+    await tx.swarm.create({
+      data: {
+        name: slugify(`${workspace.slug}-swarm`),
+        status: SwarmStatus.ACTIVE,
+        instanceType: "XL",
+        environmentVariables: [],
+        services: [],
+        workspaceId: workspace.id,
+        swarmUrl: "http://localhost",
+        containerFilesSetUp: true,
+        poolState: PoolState.COMPLETE,
+        podState: PodState.COMPLETED,
+        poolName: "mock-graph-mindset-pool",
+        swarmPassword: encryptedSwarmPassword,
+      },
+    });
+
+    return workspace;
+  });
 
   return workspace.slug;
 }
