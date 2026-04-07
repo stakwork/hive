@@ -49,7 +49,7 @@ interface UseWhiteboardCollaborationReturn {
   userColor: string;
 }
 
-const COLLABORATION_ENABLED = false &&
+const COLLABORATION_ENABLED =
   process.env.NEXT_PUBLIC_WHITEBOARD_COLLABORATION !== "false";
 
 export function useWhiteboardCollaboration({
