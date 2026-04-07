@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExternalLink } from "lucide-react";
 import { WorkspacesPageContent } from "@/components/WorkspacesPageContent";
+import { GraphPortal } from "@/components/GraphPortal";
 import { OrgChat } from "./OrgChat";
 import type { WorkspaceWithRole, OrgMemberResponse } from "@/types/workspace";
 
@@ -21,6 +22,7 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
   const [members, setMembers] = useState<OrgMemberResponse[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(true);
+  const [activeTab, setActiveTab] = useState("workspaces");
 
   useEffect(() => {
     fetch(`/api/orgs/${githubLogin}/workspaces`)
@@ -40,9 +42,12 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
   const slugs = workspaces.slice(0, MAX_CHAT_SLUGS).map((ws) => ws.slug);
   const hasMoreThanLimit = workspaces.length > MAX_CHAT_SLUGS;
 
+  const isGraph = activeTab === "graph";
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto px-4 py-10">
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Header + tab triggers always constrained */}
+      <div className="max-w-4xl mx-auto px-4 pt-10 w-full">
         {/* Org Header */}
         <div className="flex items-center gap-4 mb-8">
           <Avatar className="h-14 w-14 rounded-xl">
@@ -67,16 +72,21 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
             <p className="text-sm text-muted-foreground">@{githubLogin}</p>
           </div>
         </div>
+      </div>
 
-        {/* Tabs */}
-        <Tabs defaultValue="workspaces">
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className={isGraph ? "flex flex-col flex-1" : ""}>
+        <div className="max-w-4xl mx-auto px-4 w-full">
           <TabsList className="mb-6">
             <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
             <TabsTrigger value="chat">Chat</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
-            <TabsTrigger value="diagram">Diagram</TabsTrigger>
+            <TabsTrigger value="graph">Graph</TabsTrigger>
           </TabsList>
+        </div>
 
+        {/* Non-graph tabs stay constrained */}
+        <div className="max-w-4xl mx-auto px-4 pb-10 w-full">
           {/* Workspaces Tab */}
           <TabsContent value="workspaces">
             {loadingWorkspaces ? (
@@ -150,17 +160,30 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
               </div>
             )}
           </TabsContent>
+        </div>
 
-          {/* Diagram Tab */}
-          <TabsContent value="diagram">
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <p className="text-muted-foreground text-sm">
-                Organization Diagram — Coming soon
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
+        {/* Graph Tab — full width/height */}
+        <TabsContent value="graph" className="flex-1">
+          {loadingWorkspaces ? (
+            <div className="h-[calc(100vh-200px)] bg-muted animate-pulse" />
+          ) : workspaces.length === 0 ? (
+            <p className="text-muted-foreground text-center py-12">
+              No workspaces available to visualize.
+            </p>
+          ) : (
+            <GraphPortal
+              workspaces={workspaces.map((ws) => ({
+                id: ws.id,
+                name: ws.name,
+                slug: ws.slug,
+                userRole: ws.userRole,
+                memberCount: ws.memberCount,
+              }))}
+              embedded
+            />
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
