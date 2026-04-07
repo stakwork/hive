@@ -319,7 +319,8 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
           toast.error("Failed to load graph visibility");
         }
         if (endpointsRes.status === "fulfilled") {
-          setEndpoints(endpointsRes.value?.endpoints ?? []);
+          const res = endpointsRes.value;
+          setEndpoints(res?.endpoints ?? (Array.isArray(res) ? res : []));
         } else {
           toast.error("Failed to load payment routes");
         }
@@ -381,6 +382,12 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
         type: "Swarm",
         data: { cmd: "UpdateBoltwallAccessibility", content: newValue },
       });
+      // Re-fetch to confirm actual swarm state
+      const confirmed = await postGraphAdminCmd(workspaceSlug, {
+        type: "Swarm",
+        data: { cmd: "GetBoltwallAccessibility" },
+      });
+      setIsPublic(confirmed?.isPublic ?? newValue);
       toast.success("Graph visibility updated");
     } catch {
       setIsPublic(previous);
@@ -402,6 +409,13 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
         type: "Swarm",
         data: { cmd: "UpdatePaidEndpoint", content: { id: endpoint.id, status: newStatus } },
       });
+      // Re-fetch to confirm actual swarm state
+      const confirmed = await postGraphAdminCmd(workspaceSlug, {
+        type: "Swarm",
+        data: { cmd: "ListPaidEndpoint" },
+      });
+      const refreshed = confirmed?.endpoints ?? (Array.isArray(confirmed) ? confirmed : null);
+      if (refreshed) setEndpoints(refreshed);
       toast.success(`Payment route ${newStatus ? "enabled" : "disabled"}`);
     } catch {
       setEndpoints((prev) =>

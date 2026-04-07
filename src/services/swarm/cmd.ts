@@ -120,6 +120,10 @@ export async function swarmCmdRequest({
     let data: unknown = undefined;
     try {
       data = rawText ? JSON.parse(rawText) : undefined;
+      // Handle sphinx-swarm double-encoded JSON responses (string wrapping a JSON object)
+      if (typeof data === "string") {
+        try { data = JSON.parse(data); } catch { /* leave as-is */ }
+      }
     } catch {
       data = undefined;
     }
