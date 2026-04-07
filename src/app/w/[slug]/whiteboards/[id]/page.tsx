@@ -10,7 +10,7 @@ import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersio
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
-import { getInitialAppState } from "@/lib/excalidraw-config";
+import { getInitialAppState, normalizeElementStyles } from "@/lib/excalidraw-config";
 import { computeVersionChanges } from "@/lib/whiteboard/version-utils";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
@@ -71,6 +71,7 @@ export default function WhiteboardDetailPage() {
   const resolvedFilesRef = useRef<BinaryFiles>({});
   const lastSavedSnapshotRef = useRef<string>("");
   const savePausedRef = useRef(false);
+  const knownElementIdsRef = useRef<Set<string>>(new Set());
   const lastVersionSnapshotRef = useRef<Set<string>>(new Set());
 
   // Collaboration hook
@@ -254,7 +255,28 @@ export default function WhiteboardDetailPage() {
       // Skip programmatic updates (initial load, updateScene calls)
       if (programmaticUpdateCountRef.current > 0) {
         programmaticUpdateCountRef.current--;
+        // Seed known IDs on initial load so we can detect future pastes
+        knownElementIdsRef.current = new Set(elements.map((el) => el.id));
         return;
+      }
+
+      // Detect batch-added elements (mermaid paste, generation) and
+      // normalize their styles to match our architect defaults.
+      const currentIds = new Set(elements.map((el) => el.id));
+      const newIds = new Set(
+        [...currentIds].filter((id) => !knownElementIdsRef.current.has(id))
+      );
+      knownElementIdsRef.current = currentIds;
+
+      if (newIds.size > 1 && excalidrawAPI) {
+        const normalized = normalizeElementStyles(elements, newIds);
+        if (normalized) {
+          programmaticUpdateCountRef.current++;
+          excalidrawAPI.updateScene({
+            elements: normalized as readonly ExcalidrawElement[],
+          });
+          return;
+        }
       }
 
       // Broadcast immediately for real-time collaboration (100ms throttle in hook)
@@ -278,7 +300,7 @@ export default function WhiteboardDetailPage() {
         saveToDatabase(elements, appState, files);
       }, 2500);
     },
-    [broadcastElements, saveToDatabase]
+    [broadcastElements, saveToDatabase, excalidrawAPI]
   );
 
 
