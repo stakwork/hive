@@ -17,7 +17,7 @@ export function PrevNodeIndicator({ graph, viewState, onNodeClick }: Props) {
   const chevronRef = useRef<HTMLDivElement | null>(null);
   const onClickRef = useRef(onNodeClick);
   onClickRef.current = onNodeClick;
-  const { camera, size } = useThree();
+  const { camera, size, gl } = useThree();
 
   const navigationHistory = viewState.mode === "subgraph" ? viewState.navigationHistory : [];
   const prevNodeId = navigationHistory.length >= 2 ? navigationHistory[navigationHistory.length - 2] : null;
@@ -147,6 +147,9 @@ export function PrevNodeIndicator({ graph, viewState, onNodeClick }: Props) {
 
     const w = size.width;
     const h = size.height;
+    const rect = gl.domElement.getBoundingClientRect();
+    const ox = rect.left;
+    const oy = rect.top;
 
     // Project prev node
     _v3.set(prevNode.position.x, prevNode.position.y, prevNode.position.z).project(camera);
@@ -155,13 +158,13 @@ export function PrevNodeIndicator({ graph, viewState, onNodeClick }: Props) {
       chevron.style.display = "none";
       return;
     }
-    const prevSx = ((_v3.x + 1) / 2) * w;
-    const prevSy = ((-_v3.y + 1) / 2) * h;
+    const prevSx = ((_v3.x + 1) / 2) * w + ox;
+    const prevSy = ((-_v3.y + 1) / 2) * h + oy;
 
     // Project selected node
     _v3.set(selNode.position.x, selNode.position.y, selNode.position.z).project(camera);
-    const selSx = ((_v3.x + 1) / 2) * w;
-    const selSy = ((-_v3.y + 1) / 2) * h;
+    const selSx = ((_v3.x + 1) / 2) * w + ox;
+    const selSy = ((-_v3.y + 1) / 2) * h + oy;
 
     // --- Position bracket centered on prev node ---
     bracket.style.display = "block";
