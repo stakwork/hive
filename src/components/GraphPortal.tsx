@@ -705,7 +705,7 @@ function GamepadController({
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [expanded, graph, viewState, cameraRef, onNodeClick, onReset, onCollapse, actions, onAction, onNavigate, onPin, cursorId]);
+  }, [expanded, graph, viewState, cameraRef, onNodeClick, onReset, onCollapse, actions, onAction, onNavigate, onPin, cursorId, onCursorChange]);
 
   return null;
 }
@@ -868,8 +868,6 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
     let edges = allEdges;
 
     if (hasFilters) {
-      // Determine which workspaces are included
-      const includedSlugs = new Set(filteredWsData.map(ws => ws.slug));
       const prefix = (slug: string) => allWsData.length > 1 ? `${slug}-` : "";
 
       // Filter nodes
@@ -910,7 +908,6 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
     layoutEntityTree(entityTree, g, "radial");
     g.entityTree = entityTree;
     return g;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allWsData, hiddenTypes, hiddenWorkspaces]);
   // graphVersion triggers re-render only — graph is mutated in place by appendToGraph
   void graphVersion;
@@ -919,7 +916,6 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
   useEffect(() => {
     setViewState({ mode: "overview" });
     setPinStack([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hiddenTypes, hiddenWorkspaces]);
 
   // Pinned view: build a chain of radial layouts.
