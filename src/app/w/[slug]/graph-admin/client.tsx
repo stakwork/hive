@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { ExternalLink, Loader2, AlertCircle, RefreshCw, Zap, Plus, Pencil, Check } from "lucide-react";
+import { ExternalLink, Loader2, AlertCircle, RefreshCw, Zap, Plus, Pencil, Check, Globe, Lock } from "lucide-react";
 import { toast } from "sonner";
 import type { PaidEndpoint, BoltwallUser, GraphAdminClientProps } from "./types";
 import { postGraphAdminCmd } from "./utils";
 import { CopyButton, UserRow, UserFormDialog, SetOwnerDialog } from "./components";
 
-export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientProps) {
+export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: GraphAdminClientProps) {
   const hostname = swarmUrl ? new URL(swarmUrl).hostname : null;
 
   // ── Graph/Endpoints state ──
@@ -58,7 +58,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
         ]);
         if (cancelled) return;
         if (visibilityRes.status === "fulfilled") {
-          setIsPublic(visibilityRes.value?.isPublic ?? false);
+          setIsPublic(visibilityRes.value?.data?.isPublic ?? visibilityRes.value?.isPublic ?? false);
         } else {
           toast.error("Failed to load graph visibility");
         }
@@ -81,7 +81,6 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
     setBalanceLoading(true);
     try {
       const res = await postGraphAdminCmd(workspaceSlug, { type: "Swarm", data: { cmd: "GetBotBalance" } });
-      // Swarm returns msats; convert to sats
       const msats = typeof res === "number" ? res : (res?.balance ?? res?.msats ?? null);
       setBotBalance(msats !== null ? Math.floor(msats / 1000) : null);
     } catch {
@@ -126,12 +125,11 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
         type: "Swarm",
         data: { cmd: "UpdateBoltwallAccessibility", content: newValue },
       });
-      // Re-fetch to confirm actual swarm state
       const confirmed = await postGraphAdminCmd(workspaceSlug, {
         type: "Swarm",
         data: { cmd: "GetBoltwallAccessibility" },
       });
-      setIsPublic(confirmed?.isPublic ?? newValue);
+      setIsPublic(confirmed?.data?.isPublic ?? confirmed?.isPublic ?? newValue);
       toast.success("Graph visibility updated");
     } catch {
       setIsPublic(previous);
@@ -153,7 +151,6 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
         type: "Swarm",
         data: { cmd: "UpdatePaidEndpoint", content: { id: endpoint.id, status: newStatus } },
       });
-      // Re-fetch to confirm actual swarm state
       const confirmed = await postGraphAdminCmd(workspaceSlug, {
         type: "Swarm",
         data: { cmd: "ListPaidEndpoint" },
@@ -284,70 +281,185 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
   }
 
   return (
-    <div className="space-y-6">
-      {/* Quick Links */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Links</CardTitle>
-          <CardDescription>Open the graph viewer or swarm dashboard in a new tab.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
-          {hostname ? (
-            <>
-              <Button asChild variant="outline">
-                <a href={`https://${hostname}:8000`} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Graph Viewer
-                </a>
-              </Button>
-              <Button asChild variant="outline">
-                <a href={`https://${hostname}:8800`} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Swarm Dashboard
-                </a>
-              </Button>
-            </>
-          ) : (
-            <>
-              <Skeleton className="h-10 w-36" />
-              <Skeleton className="h-10 w-36" />
-            </>
-          )}
-        </CardContent>
-      </Card>
+    <div className="space-y-8">
+      {/* ── Identity Bar ── */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl font-bold tracking-tight">{workspaceName}</h1>
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
+            {hostname && <span className="font-mono text-xs">{hostname}</span>}
+            {isPublic !== null && !initialLoading && (
+              <>
+                <span className="text-border/60">·</span>
+                <span
+                  className={`inline-flex items-center gap-1 text-xs font-medium ${
+                    isPublic
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  {isPublic ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                  {isPublic ? "Public" : "Private"}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+        {hostname && (
+          <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
+            <a
+              href={`https://${hostname}:8000`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+            >
+              Viewer
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            <span className="text-border/40">·</span>
+            <a
+              href={`https://${hostname}:8800`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+            >
+              Dashboard
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        )}
+      </div>
 
-      {/* Graph Visibility */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Graph Visibility</CardTitle>
-          <CardDescription>Control whether your graph is publicly accessible.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {initialLoading ? (
-            <Skeleton className="h-6 w-48" />
-          ) : (
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={isPublic ?? false}
-                onCheckedChange={handleVisibilityToggle}
-                disabled={visibilityLoading}
-                aria-label="Toggle graph visibility"
-              />
-              {visibilityLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              ) : (
-                <span className="text-sm font-medium">Public</span>
-              )}
+      {/* ── Balance Hero ── */}
+      <div className="relative overflow-hidden rounded-xl border bg-card">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-amber-500/[0.04] via-transparent to-orange-500/[0.03] dark:from-amber-400/[0.06] dark:to-orange-400/[0.04]" />
+        <div className="relative px-6 py-10 text-center">
+          <div className="flex items-center justify-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 dark:bg-amber-400/10">
+              <Zap className="h-5 w-5 text-amber-500 dark:text-amber-400" />
             </div>
-          )}
-        </CardContent>
-      </Card>
+            {balanceLoading ? (
+              <Skeleton className="h-[3.5rem] w-52" />
+            ) : (
+              <span className="text-[3.5rem] font-bold leading-none tracking-tight tabular-nums">
+                {botBalance !== null ? botBalance.toLocaleString() : "—"}
+              </span>
+            )}
+          </div>
+          <p className="mt-2.5 text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+            sats
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchBotBalance}
+            disabled={balanceLoading}
+            className="mt-4 h-7 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className={`mr-1.5 h-3 w-3 ${balanceLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
+      </div>
 
-      {/* Payment Routes */}
+      {/* ── Grid: Access + Receive ── */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Access */}
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Access
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {initialLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{isPublic ? "Public" : "Private"}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {isPublic
+                      ? "Anyone can view your graph and its content"
+                      : "Only authorized members can access"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {visibilityLoading && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  )}
+                  <Switch
+                    checked={isPublic ?? false}
+                    onCheckedChange={handleVisibilityToggle}
+                    disabled={visibilityLoading}
+                    aria-label="Toggle graph visibility"
+                  />
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Receive */}
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Receive
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <form onSubmit={handleGenerateInvoice} className="flex items-end gap-2">
+              <div className="flex-1 space-y-1.5">
+                <Label htmlFor="invoice-sats" className="text-xs">
+                  Amount (sats)
+                </Label>
+                <Input
+                  id="invoice-sats"
+                  type="number"
+                  min={1}
+                  placeholder="0"
+                  value={invoiceSats}
+                  onChange={(e) => setInvoiceSats(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={!invoiceSats || invoiceLoading} className="h-9 shrink-0">
+                {invoiceLoading ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Zap className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Generate
+              </Button>
+            </form>
+
+            {invoiceResult && (
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+                {invoiceResult.qrCodeDataUrl && (
+                  <img
+                    src={invoiceResult.qrCodeDataUrl}
+                    alt="Lightning invoice QR"
+                    className="mx-auto h-40 w-40"
+                  />
+                )}
+                <div className="flex items-center gap-2">
+                  <p className="flex-1 truncate font-mono text-[11px] text-muted-foreground">
+                    {invoiceResult.invoice}
+                  </p>
+                  <CopyButton value={invoiceResult.invoice} label="Invoice" />
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Payment Routes ── */}
       <Card>
-        <CardHeader>
-          <CardTitle>Payment Routes</CardTitle>
-          <CardDescription>Enable or disable individual Lightning payment routes (boltwall).</CardDescription>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Payment Routes
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {initialLoading ? (
@@ -358,20 +470,27 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
           ) : !endpoints || endpoints.length === 0 ? (
             <p className="text-sm text-muted-foreground">No payment routes configured.</p>
           ) : (
-            <ul className="divide-y">
-              {endpoints.map((endpoint) => {
+            <div className="rounded-lg border">
+              {endpoints.map((endpoint, idx) => {
                 const isToggleLoading = endpointLoadingIds.has(endpoint.id);
                 const isPriceLoading = endpointPriceLoadingIds.has(endpoint.id);
                 const isEditingPrice = editingPriceId === endpoint.id;
                 return (
-                  <li key={endpoint.id} className="flex items-start justify-between py-3 gap-4">
-                    <div className="flex flex-col min-w-0 gap-0.5">
-                      <span className="text-sm font-mono truncate">/{endpoint.endpoint}</span>
+                  <div
+                    key={endpoint.id}
+                    className={`flex items-center justify-between gap-4 px-4 py-3 ${
+                      idx > 0 ? "border-t" : ""
+                    }`}
+                  >
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <span className="truncate font-mono text-sm font-medium">/{endpoint.endpoint}</span>
                       {endpoint.route_description && (
-                        <span className="text-xs text-muted-foreground truncate">{endpoint.route_description}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {endpoint.route_description}
+                        </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex shrink-0 items-center gap-3">
                       {isPriceLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                       ) : isEditingPrice ? (
@@ -396,7 +515,9 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
                         </div>
                       ) : (
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">{endpoint.price} sats</span>
+                          <span className="tabular-nums text-xs text-muted-foreground">
+                            {endpoint.price} sats
+                          </span>
                           <Button
                             size="icon"
                             variant="ghost"
@@ -421,100 +542,27 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
                         />
                       )}
                     </div>
-                  </li>
+                  </div>
                 );
               })}
-            </ul>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Bot */}
+      {/* ── Users ── */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="h-4 w-4" />
-            Bot
+        <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
+          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Users
           </CardTitle>
-          <CardDescription>View the bot&apos;s Lightning wallet balance and create invoices.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Balance */}
-          <div className="flex items-center gap-3">
-            {balanceLoading ? (
-              <Skeleton className="h-6 w-32" />
-            ) : (
-              <span className="text-sm font-medium">
-                {botBalance !== null ? `${botBalance.toLocaleString()} sats` : "—"}
-              </span>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={fetchBotBalance}
-              disabled={balanceLoading}
-              aria-label="Refresh balance"
-            >
-              <RefreshCw className={`h-4 w-4 ${balanceLoading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
-
-          {/* Invoice form */}
-          <form onSubmit={handleGenerateInvoice} className="flex items-end gap-3">
-            <div className="flex-1 space-y-1.5">
-              <Label htmlFor="invoice-sats">Amount (sats)</Label>
-              <Input
-                id="invoice-sats"
-                type="number"
-                min={1}
-                placeholder="Amount in sats"
-                value={invoiceSats}
-                onChange={(e) => setInvoiceSats(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={!invoiceSats || invoiceLoading}>
-              {invoiceLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Zap className="mr-2 h-4 w-4" />
-              )}
-              Generate Invoice
-            </Button>
-          </form>
-
-          {/* Invoice result */}
-          {invoiceResult && (
-            <div className="space-y-3 rounded-lg border p-4">
-              {invoiceResult.qrCodeDataUrl && (
-                <img
-                  src={invoiceResult.qrCodeDataUrl}
-                  alt="Lightning invoice QR"
-                  className="w-48 h-48 mx-auto"
-                />
-              )}
-              <div className="flex items-center gap-2">
-                <p className="font-mono text-xs truncate flex-1 text-muted-foreground">
-                  {invoiceResult.invoice}
-                </p>
-                <CopyButton value={invoiceResult.invoice} label="Invoice" />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Users */}
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div>
-            <CardTitle>Users</CardTitle>
-            <CardDescription>Manage boltwall users and their access roles.</CardDescription>
-          </div>
           <Button
             size="sm"
+            variant="outline"
             onClick={() => { setEditingUser(undefined); setUserFormOpen(true); }}
+            className="h-8 text-xs"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
             Add User
           </Button>
         </CardHeader>
@@ -528,17 +576,16 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
           ) : !users || users.length === 0 ? (
             <p className="text-sm text-muted-foreground">No boltwall users found.</p>
           ) : (
-            <div className="rounded-md border">
+            <div className="rounded-lg border">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Role</th>
-                    <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+                  <tr className="border-b bg-muted/40">
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">User</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Role</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Owner row first */}
                   {ownerUser !== null && (
                     <UserRow
                       user={ownerUser}
@@ -563,7 +610,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug }: GraphAdminClientPr
         </CardContent>
       </Card>
 
-      {/* Dialogs */}
+      {/* ── Dialogs ── */}
       <UserFormDialog
         open={userFormOpen}
         onOpenChange={(v) => { setUserFormOpen(v); if (!v) setEditingUser(undefined); }}
