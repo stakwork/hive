@@ -26,6 +26,11 @@ vi.mock('@/services/stripe', () => ({
   })),
 }));
 
+vi.mock('@/lib/rate-limit', () => ({
+  getClientIp: vi.fn().mockReturnValue('1.2.3.4'),
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+}));
+
 describe('GraphMindset checkout → claim round-trip', () => {
   let testUser: Awaited<ReturnType<typeof createTestUser>>;
   const sessionId = `cs_test_roundtrip_${Date.now()}`;
