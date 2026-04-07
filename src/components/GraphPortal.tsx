@@ -725,6 +725,7 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
   const { data: allWsData, loading } = useAllWorkspacesData(workspaces);
   const [expanded, setExpanded] = useState(embedded ?? false);
   const [fading, setFading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const cameraRef = useRef<CameraControlsImpl>(null);
   const [viewState, setViewState] = useState<ViewState>({ mode: "overview" });
   const [pulses, setPulses] = useState<Pulse[]>([]);
@@ -1155,9 +1156,9 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
     ? {
         position: "relative",
         width: "100%",
-        height: "calc(100vh - 200px)",
+        flex: 1,
+        minHeight: 0,
         background: "rgba(5, 5, 10, 0.92)",
-        overflow: "hidden",
       }
     : expanded
     ? {
@@ -1190,7 +1191,7 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
       };
 
   return (
-    <div style={containerStyle} onClick={expanded ? undefined : handleExpand}>
+    <div ref={containerRef} style={containerStyle} onClick={expanded ? undefined : handleExpand}>
       <Canvas
         camera={{ position: [0, MINIMAP_CAM_HEIGHT, 0.1], fov: 50, near: 0.1, far: 2000 }}
         gl={{ antialias: true, alpha: true }}
