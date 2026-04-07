@@ -1,36 +1,134 @@
+"use client";
+
 import { GitHubAuthModal } from "@/components/auth/GitHubAuthModal";
+import { GraphMindsetCard } from "@/components/onboarding/GraphMindsetCard";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { SupportedLanguages } from "@/lib/constants";
 import { extractRepoNameFromUrl, nextIndexedName } from "@/lib/utils/slug";
-import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
-import Image from "next/image";
+import { ArrowRight, AlertCircle, Code2, Cpu, Github, Hexagon, Loader2, X, Zap } from "lucide-react";
+import { motion } from "framer-motion";
 import { signOut, useSession } from "next-auth/react";
-import { redirect, useRouter } from "next/navigation";
-import React, { useState, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 
 interface WelcomeStepProps {
   onNext: (repositoryUrl?: string) => void;
 }
 
+const HIVE_FEATURES = [
+  { icon: Zap, label: "AI-powered task management" },
+  { icon: Code2, label: "Automated code quality janitors" },
+  { icon: Cpu, label: "Pod orchestration & repair" },
+  { icon: Github, label: "Deep GitHub App integration" },
+];
+
 export const WelcomeStep = ({}: WelcomeStepProps) => {
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [error, setError] = useState("");
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
+  const [hiveAmountUsd, setHiveAmountUsd] = useState<number | null>(null);
   const [creationStatus, setCreationStatus] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingRepoUrl, setPendingRepoUrl] = useState("");
-  const { data: session } = useSession();
+
+  // Payment return state
+  const [showCancelBanner, setShowCancelBanner] = useState(false);
+  const [claimError, setClaimError] = useState("");
+  const [isClaiming, setIsClaiming] = useState(false);
+
+  const { data: session, status: sessionStatus } = useSession();
   const { refreshWorkspaces, workspaces } = useWorkspace();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isCreatingRef = useRef(false);
+  const claimCalledRef = useRef(false);
+
+  const claimPayment = useCallback(
+    async (stripeSessionId?: string) => {
+      if (claimCalledRef.current) return;
+      claimCalledRef.current = true;
+
+      setIsClaiming(true);
+      try {
+        const res = await fetch("/api/stripe/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(stripeSessionId ? { sessionId: stripeSessionId } : {}),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          setClaimError(data?.error || "Failed to link payment. Please contact support.");
+          setIsClaiming(false);
+          return;
+        }
+
+        if (data?.payment) {
+          setIsClaiming(false);
+          const wType = data.workspaceType;
+          if (wType === "hive") {
+            const repoUrl = data.repositoryUrl || localStorage.getItem("repoUrl") || "";
+            if (repoUrl) {
+              createWorkspaceAutomatically(repoUrl);
+            } else {
+              setClaimError("No repository URL found. Please enter your GitHub repository URL below.");
+            }
+          } else {
+            router.push(data.redirect || "/onboarding/graphmindset");
+          }
+        } else {
+          setClaimError("Failed to confirm payment. Please contact support.");
+          setIsClaiming(false);
+        }
+      } catch {
+        setClaimError("Something went wrong linking your payment. Please contact support.");
+        setIsClaiming(false);
+      }
+    },
+    [router]
+  );
+
+  useEffect(() => {
+    fetch("/api/config/price?type=hive")
+      .then((r) => r.json())
+      .then((d) => { if (d?.amountUsd != null) setHiveAmountUsd(d.amountUsd); })
+      .catch(() => {});
+  }, []);
+
+  // Handle Stripe return on mount
+  useEffect(() => {
+    const paymentState = searchParams.get("payment");
+    const stripeSessionId = searchParams.get("session_id");
+
+    if (paymentState === "success") {
+      if (session?.user) {
+        claimPayment(stripeSessionId || undefined);
+      } else {
+        const returnUrl = `/onboarding/workspace?payment=success${stripeSessionId ? `&session_id=${stripeSessionId}` : ""}&workspace_type=${searchParams.get("workspace_type") ?? ""}`;
+        router.push(`/auth/signin?redirect=${encodeURIComponent(returnUrl)}`);
+      }
+    } else if (paymentState === "cancelled") {
+      setShowCancelBanner(true);
+    }
+
+  // Run once on mount; session is handled in the effect below
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When session loads asynchronously after mount, try to claim
+  useEffect(() => {
+    if (!session?.user) return;
+    const paymentState = searchParams.get("payment");
+    if (paymentState === "success") {
+      const stripeSessionId = searchParams.get("session_id");
+      claimPayment(stripeSessionId || undefined);
+    }
+  // Only re-run when session becomes available
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user]);
 
   const validateGitHubUrl = (url: string): boolean => {
-    // Basic GitHub URL validation
     const githubUrlPattern = /^https:\/\/github\.com\/[^\/]+\/[^\/]+(\/.*)?$/;
     return githubUrlPattern.test(url.trim());
   };
@@ -38,7 +136,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
   const handleRepositoryUrlChange = (value: string) => {
     setRepositoryUrl(value);
     localStorage.setItem("repoUrl", value);
-    setError(""); // Clear error when user types
+    setError("");
   };
 
   const createWorkspaceAutomatically = async (repoUrl: string) => {
@@ -49,273 +147,295 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
     isCreatingRef.current = true;
 
     try {
-      // Extract repo name and find available workspace name
       const repoName = extractRepoNameFromUrl(repoUrl);
-      if (!repoName) {
-        throw new Error("Could not extract repository name from URL");
-      }
+      if (!repoName) throw new Error("Could not extract repository name from URL");
 
       const base = repoName.toLowerCase();
       const pool = workspaces.map(w => w.slug.toLowerCase());
       let projectName = nextIndexedName(base, pool);
 
-      // Verify name is available via API
-      const slugResponse = await fetch(`/api/workspaces/slug-availability?slug=${encodeURIComponent(projectName)}`);
+      const slugResponse = await fetch(
+        `/api/workspaces/slug-availability?slug=${encodeURIComponent(projectName)}`
+      );
       const slugData = await slugResponse.json();
-
       if (!slugData.success || !slugData.data.isAvailable) {
-        // If still not available, add a timestamp suffix
         projectName = `${base}-${Date.now().toString().slice(-6)}`;
       }
 
-      // Create workspace
       const response = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: projectName,
-          description: '',
+          description: "",
           slug: projectName,
           repositoryUrl: repoUrl,
         }),
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create workspace");
-      }
+      if (!response.ok) throw new Error(data.error || "Failed to create workspace");
 
       if (data?.workspace?.slug && data?.workspace?.id) {
         await refreshWorkspaces();
+        fetch(`/api/workspaces/${data.workspace.slug}/access`, { method: "POST" }).catch(console.error);
 
-        // Update lastAccessedAt for the new workspace to ensure proper workspace selection
-        fetch(`/api/workspaces/${data.workspace.slug}/access`, {
-          method: "POST",
-        }).catch(console.error);
-
-        // Check GitHub App status for this workspace/repository
-        const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(repoUrl)}`);
+        const statusResponse = await fetch(
+          `/api/github/app/check?repositoryUrl=${encodeURIComponent(repoUrl)}`
+        );
         const statusData = await statusResponse.json();
 
         if (statusData.hasPushAccess) {
-          // GitHub App is already installed and has tokens, redirect to dashboard
           router.push(`/w/${data.workspace.slug}?github_setup_action=existing_installation`);
           return;
+        }
+
+        const installResponse = await fetch("/api/github/app/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceSlug: data.workspace.slug, repositoryUrl: repoUrl }),
+        });
+        const installData = await installResponse.json();
+
+        if (installData.success && installData.data?.link) {
+          window.location.href = installData.data.link;
         } else {
-          // GitHub App not installed or no tokens, proceed with installation
-          const installResponse = await fetch("/api/github/app/install", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              workspaceSlug: data.workspace.slug,
-              repositoryUrl: repoUrl
-            }),
-          });
-
-          const installData = await installResponse.json();
-
-          if (installData.success && installData.data?.link) {
-            // Navigate to GitHub App installation
-            window.location.href = installData.data.link;
-            return;
-          } else {
-            throw new Error(installData.message || "Failed to generate GitHub App installation link");
-          }
+          throw new Error(installData.message || "Failed to generate GitHub App installation link");
         }
       }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to create workspace");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create workspace");
       setIsCreatingWorkspace(false);
       isCreatingRef.current = false;
     }
   };
 
+  // Auto-resume workspace creation after OAuth sign-in redirect
+  useEffect(() => {
+    if (!session?.user) return;
+    if (searchParams.get("payment")) return; // don't interfere with payment flow
+    if (localStorage.getItem("pendingHiveCreate") !== "true") return;
+    localStorage.removeItem("pendingHiveCreate");
+    const repoUrl = localStorage.getItem("repoUrl");
+    if (repoUrl && validateGitHubUrl(repoUrl)) {
+      setRepositoryUrl(repoUrl);
+      createWorkspaceAutomatically(repoUrl);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user]);
+
   const handleNext = () => {
     const trimmedUrl = repositoryUrl.trim().replace(/\/$/, "");
-
-    if (!trimmedUrl) {
-      setError("Please enter a GitHub repository URL");
-      return;
-    }
-
+    if (!trimmedUrl) { setError("Please enter a GitHub repository URL"); return; }
     if (!validateGitHubUrl(trimmedUrl)) {
       setError("Please enter a valid GitHub repository URL (e.g., https://github.com/username/repo)");
       return;
     }
-
-    // Store in localStorage for backward compatibility
     localStorage.setItem("repoUrl", trimmedUrl);
-
-    // Check if user is authenticated
     if (!session?.user) {
-      // Not authenticated - show auth modal
+      localStorage.setItem("pendingHiveCreate", "true");
       setPendingRepoUrl(trimmedUrl);
       setShowAuthModal(true);
       return;
     }
-
-    // Already authenticated - create workspace immediately
     createWorkspaceAutomatically(trimmedUrl);
   };
 
   const handleAuthSuccess = () => {
-    // Auth completed, now create workspace with the pending URL
-    if (pendingRepoUrl) {
-      createWorkspaceAutomatically(pendingRepoUrl);
-      setPendingRepoUrl("");
-    }
+    if (pendingRepoUrl) { createWorkspaceAutomatically(pendingRepoUrl); setPendingRepoUrl(""); }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleNext();
-    }
+    if (e.key === "Enter") handleNext();
   };
 
-  const redirectToLogin = () => {
-    redirect("/auth/signin");
-  };
+  // Show loading while session is resolving (prevents flash after sign-in redirect)
+  const paymentState = searchParams.get("payment");
+  const isPaymentReturn = paymentState === "success" && !claimError;
 
-  const createAccountOnly = () => {
-    router.push("/auth/signin?redirect=/workspaces");
-  };
+  if (sessionStatus === "loading" || isClaiming || isPaymentReturn) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8 text-center space-y-4">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-400" />
+          <p className="text-sm text-zinc-400">
+            {isClaiming
+              ? "Linking your payment..."
+              : isPaymentReturn
+                ? "Completing payment..."
+                : "Loading..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-  const logoutAndRedirectToLogin = async () => {
-    await signOut({
-      callbackUrl: "/auth/signin",
-      redirect: true,
-    });
-  };
+  if (claimError) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8 text-center space-y-4">
+          <p className="text-red-400 font-medium">{claimError}</p>
+          <p className="text-sm text-zinc-400">
+            Please{" "}
+            <a href="mailto:support@stakwork.com" className="underline text-blue-400">
+              contact support
+            </a>
+            .
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <Card className="bg-card text-card-foreground">
-        <CardHeader className="text-center">
-          <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
-            {isCreatingWorkspace ? (
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-400" />
-            ) : (
-              <Image src="/apple-touch-icon.png" alt="Hive" width={40} height={40} />
-            )}
-          </div>
-          <CardTitle className="text-2xl">
-            {isCreatingWorkspace ? "Setting up your workspace..." : "Welcome to Hive"}
-          </CardTitle>
-          <CardDescription className="text-lg">
-            {isCreatingWorkspace ? "Please wait while we set things up" : "Paste your GitHub repository to get started"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-        {!isCreatingWorkspace ? (
-          <>
-            {/* Repository URL Input */}
-            <div className="max-w-md mx-auto">
-              <Input
-                id="repository-url"
-                type="url"
-                placeholder="https://github.com/username/repository"
-                value={repositoryUrl}
-                onChange={(e) => handleRepositoryUrlChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className={`pr-10 ${error ? "border-red-500 focus:border-red-500" : ""}`}
-                disabled={isCreatingWorkspace}
-              />
-              {error && (
-                <div className="flex items-center gap-2 mt-2 text-red-600 text-sm">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{error}</span>
-                </div>
+    <div className="space-y-6">
+      {/* Sign In link — visible only when no session */}
+      {!session?.user && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => router.push("/auth/signin?redirect=/workspaces")}
+            className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            Sign in to existing workspace
+          </button>
+        </div>
+      )}
+
+      {/* Cancel banner */}
+      {showCancelBanner && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-yellow-400/50 bg-yellow-950/30 px-4 py-3 text-sm text-yellow-300">
+          <span>Payment cancelled — you can try again below.</span>
+          <button
+            onClick={() => setShowCancelBanner(false)}
+            className="flex-shrink-0 hover:opacity-70 transition-opacity"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Two-column card grid */}
+      <div className="grid md:grid-cols-2 gap-8">
+        {/* Hive card */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur-sm p-8 flex flex-col gap-6"
+        >
+          {/* Icon */}
+          <div className="relative w-12 h-12">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+              {isCreatingWorkspace ? (
+                <Loader2 className="w-6 h-6 animate-spin text-white" />
+              ) : (
+                <Hexagon className="w-6 h-6 text-white" />
               )}
             </div>
+            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-white border-2 border-zinc-900" />
+          </div>
 
+          {/* Header */}
+          <div>
+            <h2 className="text-xl font-semibold text-white mb-1">Hive</h2>
+            <p className="text-zinc-400 text-sm leading-relaxed">
+              {isCreatingWorkspace
+                ? "Setting up your workspace..."
+                : "AI-first PM toolkit that automates janitor workflows, lifts test coverage, and hardens your codebase — all from a single GitHub repo."}
+            </p>
+          </div>
+
+          {/* Features */}
+          <ul className="space-y-2">
+            {HIVE_FEATURES.map(({ icon: Icon, label }) => (
+              <li key={label} className="flex items-center gap-3 text-sm text-zinc-300">
+                <Icon className="w-4 h-4 text-blue-400 shrink-0" />
+                {label}
+              </li>
+            ))}
+          </ul>
+
+          {/* Price */}
+          <p className="text-zinc-500 text-sm font-medium">
+            <span className="text-white text-lg font-bold">
+              {hiveAmountUsd !== null ? `$${hiveAmountUsd}` : "—"}
+            </span>{" "}
+            / environment
+          </p>
+
+          {/* Input + CTA */}
+          {!isCreatingWorkspace ? (
+            <>
+              <div className="space-y-1">
+                <Input
+                  id="repository-url"
+                  type="url"
+                  placeholder="https://github.com/username/repository"
+                  value={repositoryUrl}
+                  onChange={(e) => handleRepositoryUrlChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isCreatingWorkspace}
+                  className={`bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-blue-500 ${error ? "border-red-500 focus:border-red-500" : ""}`}
+                />
+                {error && (
+                  <div className="flex items-center gap-2 text-red-400 text-xs">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{error}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <Button
+                  onClick={handleNext}
+                  disabled={!repositoryUrl.trim() || isCreatingWorkspace}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white"
+                >
+                  Create Hive
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
+            </>
+          ) : (
             <div className="flex flex-col items-center gap-3">
-              <Button onClick={handleNext} className="px-8 py-3" disabled={!repositoryUrl.trim() || isCreatingWorkspace}>
-                Get Started
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400" />
+              <div className="text-sm text-zinc-400 text-center">{creationStatus}</div>
             </div>
-          </>
-        ) : (
-          <div className="flex flex-col items-center gap-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <div className="text-sm text-muted-foreground text-center">
-              {creationStatus}
-            </div>
-          </div>
-        )}
+          )}
+        </motion.div>
 
-        <Separator className="w-24 mx-auto" />
-
-        {/* Language Support - subtle at bottom */}
-        <TooltipProvider delayDuration={0}>
-          <div className="flex justify-center items-center gap-3">
-            {SupportedLanguages.map((language, index) => {
-              const IconComponent = language.icon;
-              return (
-                <Tooltip key={index}>
-                  <TooltipTrigger asChild>
-                    <div className="opacity-40 hover:opacity-70 transition-opacity">
-                      <IconComponent className={`w-4 h-4 ${language.color}`} />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{language.name}</p>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
-          </div>
-        </TooltipProvider>
-
-      </CardContent>
-    </Card>
-
-    {/* Account options below the card */}
-    {!session?.user ? (
-      <div className="flex items-center justify-center gap-4 mt-6 text-sm text-muted-foreground">
-        <button
-          onClick={redirectToLogin}
-          className="hover:text-primary transition-colors"
-        >
-          Sign in
-        </button>
-        <span>·</span>
-        <button
-          onClick={createAccountOnly}
-          className="hover:text-primary transition-colors"
-        >
-          Create account
-        </button>
+        {/* GraphMindset card */}
+        <GraphMindsetCard />
       </div>
-    ) : (
-      <div className="text-center mt-6">
-        <button
-          onClick={logoutAndRedirectToLogin}
-          className="text-sm text-muted-foreground hover:text-primary transition-colors"
-        >
-          Switch account
-        </button>
-      </div>
-    )}
 
-    {/* Go to my workspace button */}
-    {session?.user && workspaces.length > 0 && (
-      <div className="text-center mt-4">
-        <Button variant="outline" onClick={() => router.push("/")}>
-          Go to my workspace
-        </Button>
-      </div>
-    )}
+      {/* Authenticated user footer links */}
+      {session?.user && workspaces.length > 0 && (
+        <div className="text-center">
+          <Button
+            variant="outline"
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+            onClick={() => router.push("/")}
+          >
+            Go to my workspace
+          </Button>
+        </div>
+      )}
+      {session?.user && (
+        <div className="text-center">
+          <button
+            onClick={() => signOut({ callbackUrl: "/auth/signin", redirect: true })}
+            className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            Switch account
+          </button>
+        </div>
+      )}
 
-    {/* GitHub Auth Modal */}
-    <GitHubAuthModal
-      isOpen={showAuthModal}
-      onClose={() => setShowAuthModal(false)}
-      onAuthSuccess={handleAuthSuccess}
-    />
+      <GitHubAuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
     </div>
   );
 };

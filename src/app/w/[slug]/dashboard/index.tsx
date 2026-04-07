@@ -102,7 +102,7 @@ function DashboardInner() {
 
       {/* Dashboard Chat - only show when onboarding is complete */}
       {!isOnboarding && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-100" style={{ width: 'calc(100% - 340px)' }}>
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-100" style={{ width: 'calc(100% - 200px)' }}>
           <DashboardChat />
         </div>
       )}

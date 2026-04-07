@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { formatPRSummaryMessage, MergedPR, RepoPRs } from "@/lib/sphinx/daily-pr-summary";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { formatPRSummaryMessage, getMergedPRsForRepo, MergedPR, RepoPRs } from "@/lib/sphinx/daily-pr-summary";
 
 function makePR(index: number): MergedPR {
   return {
@@ -13,6 +13,48 @@ function makePR(index: number): MergedPR {
 function makePRs(count: number): MergedPR[] {
   return Array.from({ length: count }, (_, i) => makePR(i + 1));
 }
+
+describe("getMergedPRsForRepo", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("includes per_page=100 in the GitHub Search API request URL", async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ items: [] }),
+    } as Response);
+
+    await getMergedPRsForRepo("org/repo", "test-token");
+
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("per_page=100");
+  });
+
+  it("returns all 35 items when the API response contains 35 PRs", async () => {
+    const mockItems = Array.from({ length: 35 }, (_, i) => ({
+      number: i + 1,
+      title: `PR ${i + 1}`,
+      html_url: `https://github.com/org/repo/pull/${i + 1}`,
+      pull_request: { merged_at: "2026-04-01T10:00:00Z" },
+    }));
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ items: mockItems }),
+    } as Response);
+
+    const result = await getMergedPRsForRepo("org/repo", "test-token");
+
+    expect(result).toHaveLength(35);
+  });
+});
 
 describe("formatPRSummaryMessage", () => {
   it("shows all PRs when there are ≤ 3 (exactly 3)", () => {

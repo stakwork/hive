@@ -16,6 +16,7 @@ import {
   createTestUser,
   createTestWorkspaceScenario,
   createTestSwarm,
+  createTestTask,
 } from "@/__tests__/support/fixtures";
 import { EncryptionService } from "@/lib/encryption";
 import { db } from "@/lib/db";
@@ -322,6 +323,39 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       });
 
       await expectUnauthorized(response);
+    });
+  });
+
+  describe("Task pod guard", () => {
+    test("returns 409 when task already has a pod assigned", async () => {
+      const { owner, workspace, pods } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        withPods: true,
+        podCount: 1,
+      });
+
+      const task = await createTestTask({
+        workspaceId: workspace.id,
+        createdById: owner.id,
+      });
+
+      // Simulate task already having a pod assigned
+      await db.task.update({
+        where: { id: task.id },
+        data: { podId: pods[0].podId },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}?taskId=${task.id}`,
+        owner,
+        {},
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+
+      await expectError(response, "Task already has a pod assigned", 409);
     });
   });
 });

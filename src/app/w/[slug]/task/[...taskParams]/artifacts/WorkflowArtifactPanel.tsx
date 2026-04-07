@@ -22,9 +22,10 @@ interface WorkflowArtifactPanelProps {
   isActive: boolean;
   onStepSelect?: (step: WorkflowTransition) => void;
   onVersionChange?: (versionId: string) => void;
+  isSuperAdmin?: boolean;
 }
 
-export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange }: WorkflowArtifactPanelProps) {
+export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange, isSuperAdmin = false }: WorkflowArtifactPanelProps) {
   const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -201,7 +202,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
     return (
       <div className="h-full w-full flex flex-col overflow-hidden relative">
-        {projectId && (
+        {isSuperAdmin && projectId && (
           <div className="mb-2 self-start ml-2 mt-2">
             <StakworkRunDropdown
               projectId={projectId}
@@ -374,7 +375,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   return (
     <div className="h-full w-full flex flex-col overflow-hidden relative">
       <div className="overflow-y-auto flex-1">
-        {projectId && (
+        {isSuperAdmin && projectId && (
           <div className="px-4 pt-4">
             <StakworkRunDropdown
               projectId={projectId}

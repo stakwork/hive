@@ -3,12 +3,13 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
-import { POD_BASE_DOMAIN } from "@/lib/pods/queries";
+import { POD_BASE_DOMAIN, releasePodById } from "@/lib/pods/queries";
 import { requireAuthOrApiToken, validateApiToken } from "@/lib/auth/api-token";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
+  let claimedPodId: string | null = null;
   try {
     const { workspaceId } = await params;
 
@@ -126,6 +127,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: "Workspace has no swarm configured" }, { status: 400 });
     }
 
+    // Guard: reject if the task already has a pod assigned
+    if (taskId) {
+      const existingTask = await db.task.findUnique({
+        where: { id: taskId },
+        select: { podId: true },
+      });
+
+      if (existingTask?.podId) {
+        return NextResponse.json(
+          { success: false, error: "Task already has a pod assigned" },
+          { status: 409 },
+        );
+      }
+    }
+
     // Get services from swarm
     const services = workspace.swarm.services as
       | Array<{ name: string; port: number; scripts?: Record<string, string> }>
@@ -139,6 +155,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       userInfo,
       services || undefined,
     );
+    claimedPodId = podWorkspace.id;
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
@@ -204,6 +221,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
   } catch (error) {
     console.error("Error claiming pod:", error);
+
+    // Release the pod if one was claimed but subsequent setup failed
+    if (claimedPodId) {
+      try {
+        const released = await releasePodById(claimedPodId);
+        if (!released) {
+          console.error(`Rollback failed: pod ${claimedPodId} not found in database`);
+        } else {
+          console.log(`Released pod ${claimedPodId} after claim setup failure`);
+        }
+      } catch (releaseError) {
+        console.error(`Failed to release pod ${claimedPodId}:`, releaseError);
+      }
+    }
 
     // No pods available — capacity issue, not a server error
     if (error instanceof Error && error.message.includes("No available pods")) {

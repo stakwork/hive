@@ -1,17 +1,19 @@
+// @vitest-environment jsdom
 import React from "react";
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // --- Mocks ---
 
 const mockReplace = vi.fn();
+const mockPush = vi.fn();
 const mockSearchParamsGet = vi.fn();
 const mockSearchParamsToString = vi.fn(() => "");
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ slug: "test-workspace" }),
-  useRouter: () => ({ replace: mockReplace }),
+  useRouter: () => ({ replace: mockReplace, push: mockPush }),
   useSearchParams: () => ({
     get: mockSearchParamsGet,
     toString: mockSearchParamsToString,
@@ -28,29 +30,6 @@ vi.mock("@/components/agent-logs", () => ({
     <button data-testid="row" onClick={() => onRowClick("log-abc")}>
       Row
     </button>
-  ),
-}));
-
-vi.mock("@/components/agent-logs/LogDetailDialog", () => ({
-  LogDetailDialog: ({
-    open,
-    onOpenChange,
-    logId,
-  }: {
-    open: boolean;
-    onOpenChange: (v: boolean) => void;
-    logId: string | null;
-  }) => (
-    <div>
-      {open && (
-        <div data-testid="dialog">
-          <span data-testid="dialog-log-id">{logId}</span>
-          <button data-testid="close-dialog" onClick={() => onOpenChange(false)}>
-            Close
-          </button>
-        </div>
-      )}
-    </div>
   ),
 }));
 
@@ -128,29 +107,140 @@ beforeEach(() => {
 
 // ---------------------------------------------------------------------------
 
-describe("AgentLogsPage — URL param sync", () => {
-  test("initialises dialogOpen=false and selectedLogId=null when no logId param", async () => {
-    render(<AgentLogsPage />);
-
-    // Dialog should not be open
-    expect(screen.queryByTestId("dialog")).not.toBeInTheDocument();
+describe("AgentLogsPage — debounce pagination guard", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
   });
 
-  test("initialises dialogOpen=true and shows logId when searchParams has logId", async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("pagination stays on page 2 after 500ms with no search change", async () => {
+    // Simulate page=2 already in URL
     mockSearchParamsGet.mockImplementation((key: string) =>
-      key === "logId" ? "existing-log-id" : null
+      key === "page" ? "2" : null
     );
-    mockSearchParamsToString.mockReturnValue("logId=existing-log-id");
+    mockSearchParamsToString.mockReturnValue("page=2");
 
     render(<AgentLogsPage />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId("dialog")).toBeInTheDocument();
-      expect(screen.getByTestId("dialog-log-id")).toHaveTextContent("existing-log-id");
+    // Advance past the debounce timer — no search change should have occurred
+    vi.advanceTimersByTime(600);
+
+    // mockReplace should never have been called with page=1 or bare pathname
+    const replaceCallsWithPage1 = mockReplace.mock.calls.filter((args) => {
+      const url = args[0] as string;
+      return url.includes("page=1") || url === "/w/test-workspace/agent-logs";
     });
+    expect(replaceCallsWithPage1).toHaveLength(0);
   });
 
-  test("handleRowClick sets logId in URL and opens dialog", async () => {
+  test("typing in search resets to page 1", async () => {
+    mockSearchParamsGet.mockReturnValue(null);
+    mockSearchParamsToString.mockReturnValue("");
+
+    const { getByPlaceholderText } = render(<AgentLogsPage />);
+
+    // Advance past initial debounce (no keyword change → no reset)
+    vi.advanceTimersByTime(600);
+    mockReplace.mockClear();
+
+    // Type in the search input
+    const input = getByPlaceholderText("Search logs...");
+    // Simulate a change event
+    input.focus();
+    // Fire a React change event
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value"
+    )?.set;
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(input, "new-search");
+    }
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+
+    vi.advanceTimersByTime(600);
+
+    // Should have called replace without page param (i.e. page 1)
+    const replaceCallsToPage1 = mockReplace.mock.calls.filter((args) => {
+      const url = args[0] as string;
+      return !url.includes("page=") || url.includes("page=1");
+    });
+    expect(replaceCallsToPage1.length).toBeGreaterThan(0);
+  });
+
+  test("no page reset on mount — debounce does not fire goToPage(1) on initial render", async () => {
+    mockSearchParamsGet.mockReturnValue(null);
+    mockSearchParamsToString.mockReturnValue("");
+
+    render(<AgentLogsPage />);
+
+    // Advance past debounce
+    vi.advanceTimersByTime(600);
+
+    // mockReplace should not have been called with a bare pathname or page=1
+    const unwantedCalls = mockReplace.mock.calls.filter((args) => {
+      const url = args[0] as string;
+      return url === "/w/test-workspace/agent-logs" || url.includes("page=1");
+    });
+    expect(unwantedCalls).toHaveLength(0);
+  });
+});
+
+describe("AgentLogsPage — goToPage stable reference", () => {
+  test("goToPage does not snap back to page 1 when called sequentially", async () => {
+    mockSearchParamsGet.mockReturnValue(null);
+    mockSearchParamsToString.mockReturnValue("");
+
+    const user = userEvent.setup();
+
+    // Mock fetch to return 20 items (hasMore = true) so pagination buttons appear
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: Array.from({ length: 20 }, (_, i) => ({
+          id: `log-${i}`,
+          agent: "test-agent",
+          blobUrl: "http://example.com/blob",
+          stakworkRunId: null,
+          taskId: null,
+          featureId: null,
+          featureTitle: null,
+          createdAt: new Date().toISOString(),
+        })),
+        hasMore: true,
+      }),
+    });
+
+    render(<AgentLogsPage />);
+
+    // Wait for logs to load and Next button to appear
+    await waitFor(() => expect(screen.getByText("Next")).toBeInTheDocument());
+
+    // Simulate searchParams updating after goToPage(2) — as happens in the browser
+    mockSearchParamsToString.mockReturnValue("page=2");
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "page" ? "2" : null
+    );
+
+    // Click Next
+    await user.click(screen.getByText("Next"));
+
+    // router.replace should have been called with page=2
+    const calls = mockReplace.mock.calls.map((c) => c[0] as string);
+    expect(calls.some((url) => url.includes("page=2"))).toBe(true);
+
+    // Critically: replace should NOT have been called with bare pathname (page reset)
+    const resetCalls = calls.filter(
+      (url) => url === "/w/test-workspace/agent-logs"
+    );
+    expect(resetCalls).toHaveLength(0);
+  });
+});
+
+describe("AgentLogsPage — row click navigation", () => {
+  test("clicking a row navigates to the full-page detail route", async () => {
     const user = userEvent.setup();
     render(<AgentLogsPage />);
 
@@ -158,16 +248,10 @@ describe("AgentLogsPage — URL param sync", () => {
 
     await user.click(screen.getByTestId("row"));
 
-    expect(mockReplace).toHaveBeenCalledWith(
-      expect.stringContaining("logId=log-abc"),
-      { scroll: false }
-    );
-    expect(screen.getByTestId("dialog")).toBeInTheDocument();
-    expect(screen.getByTestId("dialog-log-id")).toHaveTextContent("log-abc");
+    expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/agent-logs/log-abc");
   });
 
-  test("handleRowClick preserves existing URL params alongside logId", async () => {
-    mockSearchParamsToString.mockReturnValue("page=3");
+  test("no dialog is rendered after row click", async () => {
     const user = userEvent.setup();
     render(<AgentLogsPage />);
 
@@ -175,67 +259,7 @@ describe("AgentLogsPage — URL param sync", () => {
 
     await user.click(screen.getByTestId("row"));
 
-    const calledUrl = mockReplace.mock.calls[0][0] as string;
-    expect(calledUrl).toContain("page=3");
-    expect(calledUrl).toContain("logId=log-abc");
-  });
-
-  test("handleDialogOpenChange(false) removes logId from URL", async () => {
-    const user = userEvent.setup();
-    // Start with logId already in URL so dialog is open
-    mockSearchParamsGet.mockImplementation((key: string) =>
-      key === "logId" ? "log-abc" : null
-    );
-    mockSearchParamsToString.mockReturnValue("logId=log-abc");
-
-    render(<AgentLogsPage />);
-
-    await waitFor(() => expect(screen.getByTestId("dialog")).toBeInTheDocument());
-
-    // Close the dialog
-    await user.click(screen.getByTestId("close-dialog"));
-
-    const lastCall = mockReplace.mock.calls[mockReplace.mock.calls.length - 1];
-    const calledUrl = lastCall[0] as string;
-    expect(calledUrl).not.toContain("logId");
+    // No dialog should be present — navigation happens instead
     expect(screen.queryByTestId("dialog")).not.toBeInTheDocument();
-  });
-
-  test("handleDialogOpenChange(false) preserves other params when removing logId", async () => {
-    const user = userEvent.setup();
-    mockSearchParamsGet.mockImplementation((key: string) => {
-      if (key === "logId") return "log-abc";
-      return null;
-    });
-    mockSearchParamsToString.mockReturnValue("page=2&logId=log-abc");
-
-    render(<AgentLogsPage />);
-
-    await waitFor(() => expect(screen.getByTestId("dialog")).toBeInTheDocument());
-
-    await user.click(screen.getByTestId("close-dialog"));
-
-    const lastCall = mockReplace.mock.calls[mockReplace.mock.calls.length - 1];
-    const calledUrl = lastCall[0] as string;
-    expect(calledUrl).toContain("page=2");
-    expect(calledUrl).not.toContain("logId");
-  });
-
-  test("handleDialogOpenChange(false) navigates to bare pathname when no params remain", async () => {
-    const user = userEvent.setup();
-    mockSearchParamsGet.mockImplementation((key: string) =>
-      key === "logId" ? "log-abc" : null
-    );
-    // Only logId in params — after deletion the string is empty
-    mockSearchParamsToString.mockReturnValue("logId=log-abc");
-
-    render(<AgentLogsPage />);
-
-    await waitFor(() => expect(screen.getByTestId("dialog")).toBeInTheDocument());
-
-    await user.click(screen.getByTestId("close-dialog"));
-
-    const lastCall = mockReplace.mock.calls[mockReplace.mock.calls.length - 1];
-    expect(lastCall[0]).toBe("/w/test-workspace/agent-logs");
   });
 });

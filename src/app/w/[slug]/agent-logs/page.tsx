@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,6 @@ import {
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/ui/page-header";
 import { AgentLogsTable } from "@/components/agent-logs";
-import { LogDetailDialog } from "@/components/agent-logs/LogDetailDialog";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { AgentLogRecord, AgentLogsResponse } from "@/types/agent-logs";
 import { FileText, Search, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
@@ -83,18 +82,20 @@ export default function AgentLogsPage() {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  // Dialog state — initialise from URL so deep-links auto-open the modal
-  const [selectedLogId, setSelectedLogId] = useState<string | null>(
-    () => searchParams?.get("logId") ?? null
-  );
-  const [dialogOpen, setDialogOpen] = useState(
-    () => !!searchParams?.get("logId")
-  );
+  // Mirror searchParams into a ref so goToPage can read the latest value
+  // without listing searchParams as a reactive dep (which would cause a loop)
+  const searchParamsRef = useRef(searchParams);
+  useEffect(() => {
+    searchParamsRef.current = searchParams;
+  }, [searchParams]);
 
   // Navigate to a specific page and update URL
+  // NOTE: searchParams intentionally removed from deps — read via ref to avoid
+  // a goToPage recreation loop (router.replace → new searchParams → goToPage
+  // recreated → debounce effect fires → goToPage(1) → snaps back to page 1)
   const goToPage = useCallback((n: number) => {
     setPage(n);
-    const params = new URLSearchParams(searchParams?.toString() || "");
+    const params = new URLSearchParams(searchParamsRef.current?.toString() || "");
     if (n <= 1) {
       params.delete("page");
     } else {
@@ -102,17 +103,29 @@ export default function AgentLogsPage() {
     }
     const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
     router.replace(newUrl, { scroll: false });
-  }, [pathname, router, searchParams]);
+  }, [pathname, router]); // searchParams intentionally omitted — use ref above
+
+  // Keep a ref to the latest goToPage to avoid it being a dep in the debounce effect
+  const goToPageRef = useRef(goToPage);
+  useEffect(() => {
+    goToPageRef.current = goToPage;
+  }); // no dep array — keeps ref current after every render
+
+  // Track previous search keyword so we only reset page when it actually changes
+  const prevSearchKeyword = useRef("");
 
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchKeyword);
-      goToPage(1); // Reset to first page on search
+      if (searchKeyword !== prevSearchKeyword.current) {
+        goToPageRef.current(1); // only reset page when search actually changed
+      }
+      prevSearchKeyword.current = searchKeyword;
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchKeyword, goToPage]);
+  }, [searchKeyword]); // goToPage intentionally omitted — accessed via ref
 
   // Fetch logs
   useEffect(() => {
@@ -159,22 +172,7 @@ export default function AgentLogsPage() {
   }, [workspaceId, page, timeRange, debouncedSearch]);
 
   const handleRowClick = (logId: string) => {
-    setSelectedLogId(logId);
-    setDialogOpen(true);
-    const p = new URLSearchParams(searchParams?.toString() || "");
-    p.set("logId", logId);
-    router.replace(`${pathname}?${p.toString()}`, { scroll: false });
-  };
-
-  const handleDialogOpenChange = (open: boolean) => {
-    setDialogOpen(open);
-    if (!open) {
-      setSelectedLogId(null);
-      const p = new URLSearchParams(searchParams?.toString() || "");
-      p.delete("logId");
-      const newUrl = p.toString() ? `${pathname}?${p.toString()}` : pathname;
-      router.replace(newUrl, { scroll: false });
-    }
+    router.push(`/w/${slug}/agent-logs/${logId}`);
   };
 
   return (
@@ -345,11 +343,6 @@ export default function AgentLogsPage() {
         </CardContent>
       </Card>
 
-      <LogDetailDialog
-        open={dialogOpen}
-        onOpenChange={handleDialogOpenChange}
-        logId={selectedLogId}
-      />
     </div>
   );
 }

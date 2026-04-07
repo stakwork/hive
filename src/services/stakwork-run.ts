@@ -29,9 +29,11 @@ import { EncryptionService } from "@/lib/encryption";
 import { createUserStory } from "@/services/roadmap/user-stories";
 import type { ParsedDiagram } from "@/services/excalidraw-layout";
 import { sanitiseDiagram } from "@/services/excalidraw-layout";
+import { tagElementsAsAi, mergeWhiteboardElements } from "@/services/whiteboard-elements";
 import { logger } from "@/lib/logger";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
+import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -559,7 +561,7 @@ export async function createDiagramStakworkRun(input: {
   }
 }
 
-const MAX_DIAGRAM_VERSIONS = 3;
+const MAX_DIAGRAM_VERSIONS = 10;
 
 /**
  * Merge existing whiteboard elements with newly AI-generated ones.
@@ -567,17 +569,7 @@ const MAX_DIAGRAM_VERSIONS = 3;
  * - Replaces all previously AI-generated elements (those WITH customData.source === "ai")
  *   with the new aiGenerated set
  */
-export function mergeWhiteboardElements(
-  existing: unknown[],
-  aiGenerated: unknown[]
-): unknown[] {
-  const userElements = existing.filter(
-    (el) =>
-      (el as Record<string, unknown> & { customData?: { source?: string } })
-        .customData?.source !== "ai"
-  );
-  return [...userElements, ...aiGenerated];
-}
+export { mergeWhiteboardElements, tagElementsAsAi } from "@/services/whiteboard-elements";
 
 /**
  * Snapshot the current whiteboard elements before an AI diagram generation overwrites them.
@@ -629,8 +621,15 @@ async function snapshotWhiteboardBeforeAiUpdate(whiteboardId: string): Promise<v
 
 /**
  * Extract diagram data (components + connections) from a Stakwork webhook result.
- * Stakwork may nest the diagram under `request_params.result`, so we check
- * multiple levels before giving up.
+ * Checks the following paths in order (most specific → least specific):
+ *
+ * 1. Top-level `components` (backward compat)
+ * 2. `request_params.result.components`
+ * 3. `request_params.components`
+ * 4. `.result.components`
+ * 5. `.result` (parsed as JSON string) `.components`
+ * 6. `artifacts[].content.components` — new Stakwork format where diagram data
+ *    is delivered as `{ artifacts: [{ type: "DIAGRAM", content: { components, connections } }] }`
  */
 function extractDiagramData(parsed: unknown): ParsedDiagram {
   logger.info("[diagram] extractDiagramData input", "stakwork-run", { type: typeof parsed });
@@ -690,6 +689,24 @@ function extractDiagramData(parsed: unknown): ParsedDiagram {
         }
       } catch {
         // Not valid JSON, ignore
+      }
+    }
+
+    // New Stakwork format: artifacts array with type === "DIAGRAM"
+    if (Array.isArray(obj.artifacts)) {
+      for (const artifact of obj.artifacts) {
+        if (
+          artifact &&
+          typeof artifact === "object" &&
+          (artifact as Record<string, unknown>).type === "DIAGRAM"
+        ) {
+          const content = (artifact as Record<string, unknown>).content;
+          if (content && typeof content === "object") {
+            logger.info("[diagram] Found components in artifacts[].content", "stakwork-run");
+            const extracted = tryExtract(content as Record<string, unknown>, "artifacts[].content");
+            if (extracted) return extracted;
+          }
+        }
       }
     }
 
@@ -882,25 +899,42 @@ export async function processStakworkRunWebhook(
         return { runId: run.id, status };
       }
 
-      const diagramData = extractDiagramData(parsedResult);
-      logger.info("[diagram] Extracted diagram", "stakwork-run", {
-        componentCount: diagramData.components.length,
-        connectionCount: diagramData.connections.length,
-        componentNames: diagramData.components.map((c: { name?: string }) => c.name).slice(0, 10),
-      });
+      const useStakworkPositioning = canAccessServerFeature(
+        FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING
+      );
 
-      if (diagramData.components.length === 0) {
-        throw new Error("Diagram has no components to layout");
+      let aiElements: unknown[];
+      let appStateForSave: { viewBackgroundColor: string; gridSize: number | null };
+
+      if (useStakworkPositioning && Array.isArray(parsedResult)) {
+        // Flag ON: use raw pre-positioned Excalidraw elements from Stakwork
+        logger.info("[diagram] Using Stakwork positioning (ELK skipped)", "stakwork-run");
+        aiElements = tagElementsAsAi(parsedResult);
+        appStateForSave = { viewBackgroundColor: "#ffffff", gridSize: null };
+      } else {
+        // Flag OFF (default): run extractDiagramData -> ELK relayoutDiagram as today
+        const diagramData = extractDiagramData(parsedResult);
+        logger.info("[diagram] Extracted diagram", "stakwork-run", {
+          componentCount: diagramData.components.length,
+          connectionCount: diagramData.connections.length,
+          componentNames: diagramData.components.map((c: { name?: string }) => c.name).slice(0, 10),
+        });
+
+        if (diagramData.components.length === 0) {
+          throw new Error("Diagram has no components to layout");
+        }
+
+        const validLayouts = ["layered", "force", "stress", "mrtree"] as const;
+        const layoutAlgo = validLayouts.includes(queryParams.layout as typeof validLayouts[number])
+          ? (queryParams.layout as typeof validLayouts[number])
+          : "layered";
+        logger.info("[diagram] Running ELK layout", "stakwork-run", { algorithm: layoutAlgo });
+
+        const layoutData = await relayoutDiagram(diagramData, layoutAlgo);
+        logger.info("[diagram] Layout complete", "stakwork-run", { elementCount: layoutData.elements.length });
+        aiElements = layoutData.elements as unknown[];
+        appStateForSave = layoutData.appState;
       }
-
-      const validLayouts = ["layered", "force", "stress", "mrtree"] as const;
-      const layoutAlgo = validLayouts.includes(queryParams.layout as typeof validLayouts[number])
-        ? (queryParams.layout as typeof validLayouts[number])
-        : "layered";
-      logger.info("[diagram] Running ELK layout", "stakwork-run", { algorithm: layoutAlgo });
-
-      const layoutData = await relayoutDiagram(diagramData, layoutAlgo);
-      logger.info("[diagram] Layout complete", "stakwork-run", { elementCount: layoutData.elements.length });
 
       let upsertedWhiteboard: { id: string } | null = null;
 
@@ -924,7 +958,7 @@ export async function processStakworkRunWebhook(
 
         // Offset AI elements to avoid overlapping user-created content
         const featureUserBbox = computeUserElementsBoundingBox(existingFeatureElements);
-        let featureAiElements = layoutData.elements as unknown[];
+        let featureAiElements = aiElements;
         if (featureUserBbox) {
           const aiMinX = Math.min(...featureAiElements.map((e: any) => typeof e.x === "number" ? e.x : Infinity));
           const aiMinY = Math.min(...featureAiElements.map((e: any) => typeof e.y === "number" ? e.y : Infinity));
@@ -939,17 +973,17 @@ export async function processStakworkRunWebhook(
           update: {
             elements: mergeWhiteboardElements(
               existingFeatureElements,
-              featureAiElements as typeof layoutData.elements
+              featureAiElements as unknown[]
             ) as unknown as Prisma.InputJsonValue,
-            appState: layoutData.appState as Prisma.InputJsonValue,
+            appState: appStateForSave as Prisma.InputJsonValue,
             version: { increment: 1 },
           },
           create: {
             name: `${feature?.title || "Feature"} - Architecture`,
             workspaceId: workspace_id,
             featureId: feature_id,
-            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
-            appState: layoutData.appState as Prisma.InputJsonValue,
+            elements: aiElements as unknown as Prisma.InputJsonValue,
+            appState: appStateForSave as Prisma.InputJsonValue,
             files: {},
           },
         });
@@ -972,7 +1006,7 @@ export async function processStakworkRunWebhook(
         // Offset AI elements to avoid overlapping user-created content
         const standaloneExistingElements = (existingWhiteboard?.elements as unknown[]) ?? [];
         const standaloneUserBbox = computeUserElementsBoundingBox(standaloneExistingElements);
-        let standaloneAiElements = layoutData.elements as unknown[];
+        let standaloneAiElements = aiElements;
         if (standaloneUserBbox) {
           const aiMinX = Math.min(...standaloneAiElements.map((e: any) => typeof e.x === "number" ? e.x : Infinity));
           const aiMinY = Math.min(...standaloneAiElements.map((e: any) => typeof e.y === "number" ? e.y : Infinity));
@@ -987,9 +1021,9 @@ export async function processStakworkRunWebhook(
           data: {
             elements: mergeWhiteboardElements(
               standaloneExistingElements,
-              standaloneAiElements as typeof layoutData.elements
+              standaloneAiElements
             ) as unknown as Prisma.InputJsonValue,
-            appState: layoutData.appState as Prisma.InputJsonValue,
+            appState: appStateForSave as Prisma.InputJsonValue,
             version: { increment: 1 },
           },
         });

@@ -149,8 +149,7 @@ export function InvitePopover({
 
   const sendButtonLabel = () => {
     if (isSending) return "Sending...";
-    if (selectedMemberIds.size === 1) return "Send Invite";
-    return `Send ${selectedMemberIds.size} Invites`;
+    return "Send Invite";
   };
 
   return (

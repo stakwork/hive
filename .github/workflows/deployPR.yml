@@ -58,8 +58,21 @@ jobs:
 
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git fetch origin
-          git push origin "$PR_SHA:refs/heads/$PREVIEW_BRANCH" --force
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin
+            if git push origin "$PR_SHA:refs/heads/$PREVIEW_BRANCH" --force; then
+              echo "Push succeeded on attempt $attempt"
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "Push failed after 5 attempts"
+              exit 1
+            fi
+            SLEEP=$((attempt * 10))
+            echo "Push failed (attempt $attempt), retrying in ${SLEEP}s..."
+            sleep $SLEEP
+          done
 
       ############################################################
       # 2b️⃣ Checkout preview branch so Vercel deploys as preview-1/2/3
@@ -293,6 +306,10 @@ jobs:
           }
 
           resolve_migration \
+            "20260218154809_add_swarm_description" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='swarms' AND column_name='description';"
+
+          resolve_migration \
             "20260301051356_add_voice_signature_to_user" \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='users' AND column_name='voice_signature_key';"
 
@@ -304,12 +321,47 @@ jobs:
             "20260227180738_add_feature_id_to_screenshots" \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='screenshots' AND column_name='feature_id';"
 
+          resolve_migration \
+            "20260313120000_fix_mocks_enabled_default" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='repositories' AND column_name='mocks_enabled' AND column_default='false';"
+
+          resolve_migration \
+            "20260228185557_default_ticket_sweep_enabled" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='janitor_configs' AND column_name='ticket_sweep_enabled' AND column_default='true';"
+
+          resolve_migration \
+            "20260319000000_add_created_by_id_to_whiteboards" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='whiteboards' AND column_name='created_by_id';"
+
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
-          npx prisma migrate deploy
+
+          # Always mark 20260401174012 as applied before every deploy attempt.
+          # This migration references swarm_payments which no longer exists (renamed to
+          # fiat_payments). It is safe to skip because its DDL was already applied on the
+          # base branch before the rename migration ran.
+          echo "Pre-resolving migration 20260401174012 as applied..."
+          npx prisma migrate resolve --applied "20260401174012" 2>&1 || true
+
+          # Retry prisma migrate deploy — Neon endpoint may sleep between steps
+          for attempt in 1 2 3 4 5; do
+            if npx prisma migrate deploy; then
+              echo "✅ Migrations deployed successfully (attempt $attempt)"
+              break
+            fi
+            if [ $attempt -eq 5 ]; then
+              echo "❌ prisma migrate deploy failed after 5 attempts"
+              exit 1
+            fi
+            echo "⚠️  Migration attempt $attempt failed, waiting 15s before retry..."
+            # Re-resolve before each retry in case the previous attempt re-failed it
+            npx prisma migrate resolve --applied "20260401174012" 2>&1 || true
+            sleep 15
+          done
+
           vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################

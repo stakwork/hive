@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, waitFor } from "@testing-library/react";
@@ -8,6 +9,7 @@ import type { WorkspaceWithAccess } from "@/types/workspace";
 import { TaskStatus } from "@prisma/client";
 import userEvent from "@testing-library/user-event";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { usePusherConnection } from "@/hooks/usePusherConnection";
 
 // Mock Next.js router
 const mockPush = vi.fn();
@@ -991,7 +993,7 @@ describe("CompactTasksList", () => {
       expect(screen.getByTestId("dependency-graph")).toBeInTheDocument();
     });
 
-    test("graphOpen initialises to false (collapsed) by default on desktop", () => {
+    test("graphOpen initialises to true (expanded) by default on desktop when multiple tasks exist", () => {
       (useIsMobile as any).mockReturnValue(false);
       const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
       const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
@@ -1007,14 +1009,32 @@ describe("CompactTasksList", () => {
       );
 
       const collapsible = screen.getByTestId("collapsible");
-      expect(collapsible).toHaveAttribute("data-open", "false");
+      expect(collapsible).toHaveAttribute("data-open", "true");
     });
 
-    test("graphOpen initialises to false (collapsed) by default on mobile", () => {
+    test("graphOpen initialises to true (expanded) by default on mobile when multiple tasks exist", () => {
       (useIsMobile as any).mockReturnValue(true);
       const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
       const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
       const feature = createMockFeature([task1, task2]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const collapsible = screen.getByTestId("collapsible");
+      expect(collapsible).toHaveAttribute("data-open", "true");
+    });
+
+    test("graphOpen initialises to false (collapsed) by default when only 1 task exists", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: ["some-other-task"] });
+      const feature = createMockFeature([task1]);
 
       render(
         <CompactTasksList
@@ -1065,6 +1085,102 @@ describe("CompactTasksList", () => {
 
       const graph = screen.getByTestId("dependency-graph");
       expect(graph.className).toContain("h-[380px]");
+    });
+  });
+
+  describe("Pusher feature channel subscription", () => {
+    test("subscribes to featureId channel with onFeatureUpdated callback", () => {
+      const task = createMockTask({ id: "task-1" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-42"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Should be called at least twice: once for workspace channel, once for feature channel
+      const calls = (usePusherConnection as ReturnType<typeof vi.fn>).mock.calls;
+      const featureChannelCall = calls.find((call: any[]) => call[0]?.featureId === "feature-42");
+      expect(featureChannelCall).toBeDefined();
+      expect(featureChannelCall[0].enabled).toBe(true);
+      expect(typeof featureChannelCall[0].onFeatureUpdated).toBe("function");
+    });
+
+    test("onFeatureUpdated fetches feature and calls onUpdate with result", async () => {
+      const task = createMockTask({ id: "task-1" });
+      const feature = createMockFeature([task]);
+      const onUpdate = vi.fn();
+
+      const updatedFeature = createMockFeature([
+        createMockTask({ id: "task-1" }),
+        createMockTask({ id: "task-2", title: "New Task" }),
+      ]);
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ success: true, data: updatedFeature }), { status: 200 })
+      );
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-42"
+          isGenerating={false}
+          onUpdate={onUpdate}
+        />
+      );
+
+      // Grab the onFeatureUpdated callback from the feature channel subscription
+      const calls = (usePusherConnection as ReturnType<typeof vi.fn>).mock.calls;
+      const featureChannelCall = calls.find((call: any[]) => call[0]?.featureId === "feature-42");
+      const onFeatureUpdated: () => Promise<void> = featureChannelCall[0].onFeatureUpdated;
+
+      // Simulate Pusher firing FEATURE_UPDATED
+      await onFeatureUpdated();
+
+      expect(fetchSpy).toHaveBeenCalledWith("/api/features/feature-42");
+      // onUpdate receives the parsed JSON (dates become strings), so check meaningful content
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      const receivedFeature = onUpdate.mock.calls[0][0];
+      const receivedTaskIds = receivedFeature.phases
+        .flatMap((p: any) => p.tasks)
+        .map((t: any) => t.id);
+      expect(receivedTaskIds).toContain("task-1");
+      expect(receivedTaskIds).toContain("task-2");
+
+      fetchSpy.mockRestore();
+    });
+
+    test("onFeatureUpdated does not call onUpdate when fetch fails", async () => {
+      const task = createMockTask({ id: "task-1" });
+      const feature = createMockFeature([task]);
+      const onUpdate = vi.fn();
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(null, { status: 500 })
+      );
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-42"
+          isGenerating={false}
+          onUpdate={onUpdate}
+        />
+      );
+
+      const calls = (usePusherConnection as ReturnType<typeof vi.fn>).mock.calls;
+      const featureChannelCall = calls.find((call: any[]) => call[0]?.featureId === "feature-42");
+      const onFeatureUpdated: () => Promise<void> = featureChannelCall[0].onFeatureUpdated;
+
+      await onFeatureUpdated();
+
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      fetchSpy.mockRestore();
     });
   });
 });

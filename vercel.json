@@ -6,8 +6,7 @@
       "*": false
     }
   },
-  "crons": [
-    {
+  "crons": [{
       "path": "/api/cron/janitors",
       "schedule": "0 * * * *"
     },

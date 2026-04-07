@@ -10,7 +10,7 @@ import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersio
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
-import { getInitialAppState } from "@/lib/excalidraw-config";
+import { getInitialAppState, normalizeElementStyles } from "@/lib/excalidraw-config";
 import { computeVersionChanges } from "@/lib/whiteboard/version-utils";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
@@ -71,6 +71,7 @@ export default function WhiteboardDetailPage() {
   const resolvedFilesRef = useRef<BinaryFiles>({});
   const lastSavedSnapshotRef = useRef<string>("");
   const savePausedRef = useRef(false);
+  const knownElementIdsRef = useRef<Set<string>>(new Set());
   const lastVersionSnapshotRef = useRef<Set<string>>(new Set());
 
   // Collaboration hook
@@ -254,11 +255,42 @@ export default function WhiteboardDetailPage() {
       // Skip programmatic updates (initial load, updateScene calls)
       if (programmaticUpdateCountRef.current > 0) {
         programmaticUpdateCountRef.current--;
+        // Seed known IDs on initial load so we can detect future pastes
+        knownElementIdsRef.current = new Set(elements.map((el) => el.id));
         return;
+      }
+
+      // Detect batch-added elements (mermaid paste, generation) and
+      // normalize their styles to match our architect defaults.
+      const currentIds = new Set(elements.map((el) => el.id));
+      const newIds = new Set(
+        [...currentIds].filter((id) => !knownElementIdsRef.current.has(id))
+      );
+      knownElementIdsRef.current = currentIds;
+
+      if (newIds.size > 1 && excalidrawAPI) {
+        const normalized = normalizeElementStyles(elements, newIds);
+        if (normalized) {
+          programmaticUpdateCountRef.current++;
+          excalidrawAPI.updateScene({
+            elements: normalized as readonly ExcalidrawElement[],
+          });
+          return;
+        }
       }
 
       // Broadcast immediately for real-time collaboration (100ms throttle in hook)
       broadcastElements(elements, appState);
+
+      // Skip save if only appState changed (scroll, pan, zoom) — elements/files unchanged
+      const snapshot = computeSnapshot(elements, files);
+      if (snapshot === lastSavedSnapshotRef.current) {
+        if (onChangeSaveTimeoutRef.current) {
+          clearTimeout(onChangeSaveTimeoutRef.current);
+          onChangeSaveTimeoutRef.current = null;
+        }
+        return;
+      }
 
       // Debounced save as fallback for keyboard-only edits (typing, copy/paste, undo/redo)
       if (onChangeSaveTimeoutRef.current) {
@@ -268,8 +300,9 @@ export default function WhiteboardDetailPage() {
         saveToDatabase(elements, appState, files);
       }, 2500);
     },
-    [broadcastElements, saveToDatabase]
+    [broadcastElements, saveToDatabase, excalidrawAPI]
   );
+
 
   // Save on user interaction (pointerup) — never fires from programmatic updateScene
   const handlePointerUp = useCallback(() => {
@@ -421,13 +454,32 @@ export default function WhiteboardDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [excalidrawAPI]);
 
+  // Auto-fit all content into view on initial load
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+    const hasElements = whiteboard?.elements?.some(
+      (el) => !(el as { isDeleted?: boolean }).isDeleted
+    );
+    if (!hasElements) return; // empty whiteboard — stay at 100%
+    const timer = setTimeout(() => {
+      excalidrawAPI.scrollToContent(undefined, {
+        fitToViewport: true,
+        viewportZoomFactor: 0.9,
+        animate: false,
+        duration: 0,
+      });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [excalidrawAPI, whiteboard?.elements]);
+
   // Update Excalidraw scene when whiteboard version changes (e.g. after diagram generation)
   useEffect(() => {
     if (whiteboard && excalidrawAPI && programmaticUpdateCountRef.current === 0) {
       programmaticUpdateCountRef.current++;
+      const { zoom: _zoom, ...safeAppState } = whiteboard.appState as Record<string, unknown>;
       excalidrawAPI.updateScene({
         elements: whiteboard.elements as readonly ExcalidrawElement[],
-        appState: whiteboard.appState as unknown as AppState,
+        appState: safeAppState as unknown as AppState,
       });
       setTimeout(() => {
         excalidrawAPI.scrollToContent(undefined, {
@@ -632,11 +684,15 @@ export default function WhiteboardDetailPage() {
           )}
           <Excalidraw
             excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
-            initialData={{
-              elements: whiteboard.elements as readonly ExcalidrawElement[],
-              appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
-              files: resolvedFilesRef.current,
-            }}
+            initialData={(() => {
+              // getInitialAppState always sets zoom: { value: 1 } — no hasElements guard needed
+              const initialAppState = getInitialAppState(whiteboard.appState as Partial<AppState>);
+              return {
+                elements: whiteboard.elements as readonly ExcalidrawElement[],
+                appState: initialAppState as Partial<AppState>,
+                files: resolvedFilesRef.current,
+              };
+            })()}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}
             isCollaborating={excalidrawCollaborators.size > 0}

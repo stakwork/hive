@@ -65,7 +65,8 @@ import { EncryptionService } from "@/lib/encryption";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
-import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
+import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodById } from "@/lib/pods";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -207,48 +208,63 @@ async function claimPodForTask(taskId: string, workspaceId: string): Promise<Pod
   // Claim pod from pool
   const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(swarmId, taskId, services || undefined);
 
-  const controlUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
+  try {
+    const controlUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
-  if (!controlUrl) {
-    throw new Error("Pod control port not available");
-  }
-
-  // Update repositories on new pod (non-fatal if fails)
-  if (workspace.repositories.length > 0) {
-    try {
-      await updatePodRepositories(
-        controlUrl,
-        podWorkspace.password,
-        workspace.repositories.map((r) => ({ url: r.repositoryUrl })),
-      );
-      console.log("[Agent] Updated repositories on pod");
-    } catch (repoError) {
-      console.error("[Agent] Error updating repositories (non-fatal):", repoError);
+    if (!controlUrl) {
+      throw new Error("Pod control port not available");
     }
-  }
 
-  // Store pod credentials on task
-  const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
-  await db.task.update({
-    where: { id: taskId },
-    data: {
+    // Update repositories on new pod (non-fatal if fails)
+    if (workspace.repositories.length > 0) {
+      try {
+        await updatePodRepositories(
+          controlUrl,
+          podWorkspace.password,
+          workspace.repositories.map((r) => ({ url: r.repositoryUrl })),
+        );
+        console.log("[Agent] Updated repositories on pod");
+      } catch (repoError) {
+        console.error("[Agent] Error updating repositories (non-fatal):", repoError);
+      }
+    }
+
+    // Store pod credentials on task
+    const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
+    await db.task.update({
+      where: { id: taskId },
+      data: {
+        podId: podWorkspace.id,
+        agentUrl: controlUrl,
+        agentPassword: JSON.stringify(encryptedPassword),
+      },
+    });
+
+    console.log("[Agent] Claimed pod:", podWorkspace.id, "for task:", taskId);
+
+    return {
       podId: podWorkspace.id,
-      agentUrl: controlUrl,
-      agentPassword: JSON.stringify(encryptedPassword),
-    },
-  });
-
-  console.log("[Agent] Claimed pod:", podWorkspace.id, "for task:", taskId);
-
-  return {
-    podId: podWorkspace.id,
-    frontend,
-    ide: podWorkspace.url || podWorkspace.portMappings["8080"] || "",
-    credentials: {
-      agentUrl: controlUrl,
-      agentPassword: podWorkspace.password,
-    },
-  };
+      frontend,
+      ide: podWorkspace.url || podWorkspace.portMappings["8080"] || "",
+      credentials: {
+        agentUrl: controlUrl,
+        agentPassword: podWorkspace.password,
+      },
+    };
+  } catch (error) {
+    // Release the pod if setup failed after claiming
+    try {
+      const released = await releasePodById(podWorkspace.id);
+      if (!released) {
+        console.error(`[Agent] Rollback failed: pod ${podWorkspace.id} not found in database`);
+      } else {
+        console.log(`[Agent] Released pod ${podWorkspace.id} after setup failure`);
+      }
+    } catch (releaseError) {
+      console.error(`[Agent] Failed to release pod ${podWorkspace.id}:`, releaseError);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -402,6 +418,11 @@ export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 1a. Gate agent mode behind feature flag
+  if (!canAccessServerFeature(FEATURE_FLAGS.TASK_AGENT_MODE)) {
+    return NextResponse.json({ error: "Agent mode is not enabled" }, { status: 403 });
   }
 
   if (!taskId) {

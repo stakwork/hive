@@ -6,6 +6,7 @@ export interface CreateWorkspaceRequest {
   slug: string;
   ownerId: string;
   repositoryUrl?: string;
+  workspaceKind?: string;
 }
 
 export interface WorkspaceResponse {
@@ -19,6 +20,7 @@ export interface WorkspaceResponse {
   nodeTypeOrder?: Array<{ type: string; value: number }> | null;
   createdAt: string;
   updatedAt: string;
+  workspaceKind?: string | null;
 }
 
 // Re-export WorkspaceRole for convenience
@@ -79,6 +81,7 @@ export interface WorkspaceMemberUser {
   email: string | null;
   image: string | null;
   lightningPubkey?: string;
+  decryptedLightningPubkey?: string | null;
   sphinxAlias?: string;
   github: {
     username: string;
@@ -119,4 +122,19 @@ export interface GitHubUser {
   html_url: string;
   type: string;
   score: number;
+}
+
+export interface OrgResponse {
+  id: string;
+  githubLogin: string;
+  name: string | null;
+  avatarUrl: string | null;
+  type: 'ORG' | 'USER';
+}
+
+export interface OrgMemberResponse {
+  id: string;
+  name: string | null;
+  image: string | null;
+  githubUsername: string | null;
 }

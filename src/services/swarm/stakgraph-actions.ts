@@ -22,7 +22,7 @@ export async function triggerSync(
   creds?: Creds,
   useLsp: boolean = false,
 ) {
-  console.log("===Trigger Sync was hit");
+  console.log(`[STAKGRAPH] triggerSync — swarmName: ${swarmName}, stakgraphUrl: https://${swarmName}:7799`);
   const stakgraphUrl = getStakgraphUrl(swarmName);
   const data: Record<string, string | boolean> = { repo_url: repoUrl, use_lsp: useLsp };
   if (creds?.username) data.username = creds.username;
@@ -46,7 +46,7 @@ export async function triggerAsyncSync(
   useLsp: boolean = false,
   options?: SyncOptions,
 ): Promise<AsyncSyncResult> {
-  console.log("===Trigger AsyncSync was hit");
+  console.log(`[STAKGRAPH] triggerAsyncSync — swarmHost: ${swarmHost}, stakgraphUrl: https://${swarmHost}:7799`);
   const stakgraphUrl = getStakgraphUrl(swarmHost);
   const data: Record<string, string | boolean> = { repo_url: repoUrl, use_lsp: useLsp };
   if (creds?.username) data.username = creds.username;
@@ -79,7 +79,7 @@ export async function triggerIngestAsync(
   useLsp: boolean = false,
   options?: SyncOptions,
 ) {
-  console.log("===Trigger IngestAsync was hit. useLsp:", useLsp);
+  console.log(`[STAKGRAPH] triggerIngestAsync — swarmName: ${swarmName}, stakgraphUrl: https://${swarmName}:7799, useLsp: ${useLsp}`);
   const stakgraphUrl = getStakgraphUrl(swarmName);
   const data: Record<string, string | boolean> = {
     repo_url: repoUrl,

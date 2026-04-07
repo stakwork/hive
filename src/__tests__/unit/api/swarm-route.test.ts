@@ -15,6 +15,33 @@ vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
 
+vi.mock("@/lib/encryption", () => {
+  const mockEncryptField = vi.fn().mockReturnValue({
+    data: "encrypted",
+    iv: "iv",
+    tag: "tag",
+    keyId: "default",
+    version: "1",
+    encryptedAt: new Date().toISOString(),
+  });
+  return {
+    EncryptionService: {
+      getInstance: vi.fn(() => ({ encryptField: mockEncryptField })),
+    },
+    __mockEncryptField: mockEncryptField,
+  };
+});
+
+const mockCreateCustomer = vi.fn();
+const mockCreateSecret = vi.fn();
+
+vi.mock("@/lib/service-factory", () => ({
+  stakworkService: vi.fn(() => ({
+    createCustomer: mockCreateCustomer,
+    createSecret: mockCreateSecret,
+  })),
+}));
+
 vi.mock("@/lib/utils/password", () => ({
   generateSecurePassword: vi.fn(),
 }));
@@ -109,7 +136,13 @@ describe("POST /api/swarm - Unit Tests", () => {
     mockGenerateSecurePassword.mockReturnValue("secure-test-password-123");
     mockRandomUUID.mockReturnValue("temp-uuid-123");
 
-    // Setup default database transaction mock
+    // Default Stakwork mocks
+    mockCreateCustomer.mockResolvedValue({
+      data: { id: 1, token: "stk-token", workflow_id: null },
+    });
+    mockCreateSecret.mockResolvedValue({ success: true });
+
+    // Setup default database transaction mock — returns placeholder directly (no { exists, swarm })
     mockDb.$transaction.mockImplementation(async (callback) => {
       return callback({
         swarm: mockDb.swarm,
@@ -133,7 +166,8 @@ describe("POST /api/swarm - Unit Tests", () => {
       sourceControlOrgId: "source-control-org-123",
     });
 
-    mockDb.swarm.findFirst.mockResolvedValue(null); // No existing swarm
+    // swarm.findFirst returns null = no existing swarm (pre-transaction check)
+    mockDb.swarm.findFirst.mockResolvedValue(null);
     mockDb.swarm.create.mockResolvedValue({
       id: "placeholder-swarm-123",
       workspaceId: "workspace-123",
@@ -322,6 +356,20 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(data.success).toBe(false);
       expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
     });
+
+    test("should reject requests with workspaceId only (no repositoryUrl)", async () => {
+      mockGetServerSession.mockResolvedValue({
+        user: { id: "user-123" },
+      });
+
+      const request = createMockRequest({ workspaceId: "workspace-123" });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Missing required fields: workspaceId, repositoryUrl");
+    });
   });
 
   describe("Sensitive Data Handling", () => {
@@ -335,13 +383,12 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      // Ensure transaction returns new swarm (not existing)
-      mockDb.$transaction.mockResolvedValue({
-        exists: false,
-        swarm: {
-          id: "placeholder-swarm-123",
-          status: SwarmStatus.PENDING,
-        },
+      // Ensure no existing swarm (pre-transaction findFirst returns null)
+      mockDb.swarm.findFirst.mockResolvedValue(null);
+      // Transaction returns placeholder swarm directly
+      mockDb.swarm.create.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        status: SwarmStatus.PENDING,
       });
     });
 
@@ -362,10 +409,12 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(mockGenerateSecurePassword).toHaveBeenCalledWith(20);
 
       // Verify password was used in swarm creation
-      expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalledWith({
-        instance_type: "m6i.xlarge",
-        password: "secure-test-password-123",
-      });
+      expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instance_type: "m6i.xlarge",
+          password: "secure-test-password-123",
+        })
+      );
     });
 
     test("should handle API key securely", async () => {
@@ -445,16 +494,13 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      // Mock existing swarm found in transaction
+      // Mock existing swarm found via pre-transaction findFirst
       const existingSwarm = {
         id: "existing-swarm-123",
         swarmId: "existing-swarm-id",
         status: SwarmStatus.ACTIVE,
       };
-      mockDb.$transaction.mockResolvedValue({
-        exists: true,
-        swarm: existingSwarm,
-      });
+      mockDb.swarm.findFirst.mockResolvedValue(existingSwarm);
 
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
@@ -471,6 +517,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       });
 
       // Should not call external service if swarm exists
+      expect(mockCreateCustomer).not.toHaveBeenCalled();
       expect(mockSwarmServiceInstance.createSwarm).not.toHaveBeenCalled();
     });
   });
@@ -486,13 +533,12 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      // Ensure transaction returns new swarm (not existing)
-      mockDb.$transaction.mockResolvedValue({
-        exists: false,
-        swarm: {
-          id: "placeholder-swarm-123",
-          status: SwarmStatus.PENDING,
-        },
+      // Ensure no existing swarm (pre-transaction findFirst returns null)
+      mockDb.swarm.findFirst.mockResolvedValue(null);
+      // Transaction returns placeholder swarm directly
+      mockDb.swarm.create.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        status: SwarmStatus.PENDING,
       });
     });
 
@@ -588,13 +634,12 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      // Ensure transaction returns new swarm (not existing)
-      mockDb.$transaction.mockResolvedValue({
-        exists: false,
-        swarm: {
-          id: "placeholder-swarm-123",
-          status: SwarmStatus.PENDING,
-        },
+      // Ensure no existing swarm (pre-transaction findFirst returns null)
+      mockDb.swarm.findFirst.mockResolvedValue(null);
+      // Transaction returns placeholder swarm directly
+      mockDb.swarm.create.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        status: SwarmStatus.PENDING,
       });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
@@ -662,7 +707,10 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       // Verify no linking attempted since workspace already linked
       expect(mockDb.sourceControlOrg.findUnique).not.toHaveBeenCalled();
-      expect(mockDb.workspace.update).not.toHaveBeenCalled();
+      // workspace.update IS called for stakworkApiKey (token), but NOT for sourceControlOrgId
+      expect(mockDb.workspace.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ sourceControlOrgId: expect.anything() }) })
+      );
     });
 
     test("should handle case where no SourceControlOrg exists for GitHub owner", async () => {
@@ -686,8 +734,10 @@ describe("POST /api/swarm - Unit Tests", () => {
         where: { githubLogin: "test" },
       });
 
-      // Verify no linking happened since no SourceControlOrg exists
-      expect(mockDb.workspace.update).not.toHaveBeenCalled();
+      // Verify no linking happened since no SourceControlOrg exists (but token update still runs)
+      expect(mockDb.workspace.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ sourceControlOrgId: expect.anything() }) })
+      );
     });
 
     test("should handle invalid GitHub repository URL", async () => {
@@ -710,7 +760,10 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       // Verify no GitHub owner lookup since URL is invalid
       expect(mockDb.sourceControlOrg.findUnique).not.toHaveBeenCalled();
-      expect(mockDb.workspace.update).not.toHaveBeenCalled();
+      // workspace.update IS called for stakworkApiKey, but NOT for sourceControlOrgId
+      expect(mockDb.workspace.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ sourceControlOrgId: expect.anything() }) })
+      );
     });
   });
 
@@ -725,13 +778,12 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      // Ensure transaction returns new swarm (not existing)
-      mockDb.$transaction.mockResolvedValue({
-        exists: false,
-        swarm: {
-          id: "placeholder-swarm-123",
-          status: SwarmStatus.PENDING,
-        },
+      // Ensure no existing swarm (pre-transaction findFirst returns null)
+      mockDb.swarm.findFirst.mockResolvedValue(null);
+      // Transaction returns placeholder swarm directly
+      mockDb.swarm.create.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        status: SwarmStatus.PENDING,
       });
     });
 
@@ -787,11 +839,10 @@ describe("POST /api/swarm - Unit Tests", () => {
 
       const request = createMockRequest(requestData);
 
-      // Setup transaction to verify repository creation
+      // Setup transaction to verify repository creation (findFirst now runs before tx)
       mockDb.$transaction.mockImplementation(async (callback: any) => {
         const mockTx = {
           swarm: {
-            findFirst: vi.fn().mockResolvedValue(null),
             create: vi.fn().mockResolvedValue({
               id: "placeholder-swarm-123",
               status: SwarmStatus.PENDING,
@@ -870,13 +921,12 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      // Ensure transaction returns new swarm (not existing)
-      mockDb.$transaction.mockResolvedValue({
-        exists: false,
-        swarm: {
-          id: "placeholder-swarm-123",
-          status: SwarmStatus.PENDING,
-        },
+      // Ensure no existing swarm (pre-transaction findFirst returns null)
+      mockDb.swarm.findFirst.mockResolvedValue(null);
+      // Transaction returns placeholder swarm directly
+      mockDb.swarm.create.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        status: SwarmStatus.PENDING,
       });
 
       mockSwarmServiceInstance.createSwarm.mockResolvedValue({
@@ -927,13 +977,12 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      // Ensure transaction returns new swarm (not existing)
-      mockDb.$transaction.mockResolvedValue({
-        exists: false,
-        swarm: {
-          id: "placeholder-swarm-123",
-          status: SwarmStatus.PENDING,
-        },
+      // Ensure no existing swarm (pre-transaction findFirst returns null)
+      mockDb.swarm.findFirst.mockResolvedValue(null);
+      // Transaction returns placeholder swarm directly
+      mockDb.swarm.create.mockResolvedValue({
+        id: "placeholder-swarm-123",
+        status: SwarmStatus.PENDING,
       });
     });
 
@@ -984,11 +1033,10 @@ describe("POST /api/swarm - Unit Tests", () => {
     test("should handle placeholder creation with UUID name", async () => {
       mockRandomUUID.mockReturnValue("custom-uuid-456");
 
-      // Setup transaction to capture what gets created
+      // Setup transaction to capture what gets created (findFirst now runs before tx)
       mockDb.$transaction.mockImplementation(async (callback: any) => {
         const mockTx = {
           swarm: {
-            findFirst: vi.fn().mockResolvedValue(null),
             create: vi.fn().mockResolvedValue({
               id: "placeholder-swarm-123",
               name: "custom-uuid-456",

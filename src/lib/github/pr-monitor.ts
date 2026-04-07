@@ -18,6 +18,7 @@ import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENT
 import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
 import { fetchCIStatus } from "./pr-ci";
 import { releaseTaskPod } from "@/lib/pods/utils";
@@ -573,10 +574,12 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       a.type = 'PULL_REQUEST'
       AND t.deleted = false
       AND t.archived = false
+      AND t.mode != 'agent'
       -- Only monitor workspaces with PR monitoring enabled
       AND COALESCE(jc.pr_monitor_enabled, false) = true
       -- Simple JSON checks (moderate)
       AND a.content->>'url' IS NOT NULL
+      AND a.content->>'url' LIKE 'https://github.com/%'
       AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
       -- Skip 'gave_up' permanently, but allow 'in_progress' to be re-checked after cooldown
       -- This prevents PRs from getting stuck if a fix attempt never completes
@@ -905,14 +908,12 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
           (result.state === "conflict" && pr.prMonitorConfig.prConflictFixEnabled) ||
           (result.state === "ci_failure" && pr.prMonitorConfig.prCiFailureFixEnabled);
 
-        // If pod is available, trigger an automatic fix
-        // The triggerFix function auto-detects whether to use agent mode or live mode
-        // Trigger if: fix enabled, pod available, cooldown elapsed, not gave_up,
+        // Trigger an automatic fix for live-mode tasks (agent-mode tasks are excluded at query time)
+        // Trigger if: fix enabled, cooldown elapsed, not gave_up,
         // and either state changed OR no existing resolution (stale was cleared / never dispatched)
         const canAttemptFix = stateChanged || !pr.progress?.resolution || isStaleInProgress;
         const shouldTriggerFix =
           isFixEnabledForState &&
-          pr.podId &&
           canAttemptFix &&
           cooldownElapsed &&
           progress.resolution?.status !== "gave_up";
@@ -946,13 +947,6 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             });
             // Don't set resolution — leave it unset so next cron run retries
           }
-        } else if (!pr.podId && (stateChanged || !pr.progress?.resolution)) {
-          // No pod available — just mark as notified
-          progress.resolution = {
-            status: "notified",
-            attempts: currentAttempts,
-            lastAttemptAt: lastAttemptAt,
-          };
         } else if (pr.podId && canAttemptFix && !isFixEnabledForState) {
           log.info("Skipping PR fix - fix type disabled for workspace", {
             taskId: pr.taskId,
@@ -1161,15 +1155,17 @@ export async function triggerLiveModeFix(
   prompt: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Load task to get workspace owner and workflow status
+    // 1. Load task to get task creator, workspace owner, and workflow status
     const task = await db.task.findUnique({
       where: { id: taskId },
       select: {
         mode: true,
         workflowStatus: true,
+        createdById: true,
         workspace: {
           select: {
             ownerId: true,
+            slug: true,
           },
         },
       },
@@ -1193,7 +1189,18 @@ export async function triggerLiveModeFix(
       return { success: false, error: `Workflow already in progress (status: ${task.workflowStatus})` };
     }
 
-    const userId = task.workspace.ownerId;
+    // Prefer task creator; fall back to workspace owner if they have no GitHub credentials
+    const creatorCredentials = await getGithubUsernameAndPAT(
+      task.createdById,
+      task.workspace.slug,
+    );
+    if (!creatorCredentials) {
+      log.info("Task creator has no GitHub credentials, falling back to workspace owner", {
+        taskId,
+        createdById: task.createdById,
+      });
+    }
+    const userId = creatorCredentials ? task.createdById : task.workspace.ownerId;
 
     // 2. Create the fix message with PR monitor context
     const message = `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${prompt}`;

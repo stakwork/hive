@@ -27,3 +27,12 @@ export * from "./graphFactory";
 
 // Whiteboard factories
 export * from "./whiteboard-message.factory";
+
+// Platform config factory
+export * from "./platform-config.factory";
+
+// LLM model factories
+export * from "./llm-model.factory";
+
+// Payment factories
+export * from "./workspace-transaction.factory";

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -96,13 +96,13 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
       const before = value.slice(0, cursor);
       const after = value.slice(cursor);
       const replaced = before.replace(/\B@[\w-]*$/, `@${slug}`);
-      const newValue = replaced + after;
+      const newValue = replaced + ' ' + after;
       setValue(newValue);
       setMentionQuery(null);
       setMentionIndex(0);
       requestAnimationFrame(() => {
         textarea.focus();
-        const pos = replaced.length;
+        const pos = replaced.length + 1;
         textarea.setSelectionRange(pos, pos);
       });
     },
@@ -112,13 +112,12 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
   const hasText = value.trim().length > 0;
 
   const handleSubmit = () => {
-    if (hasText) {
+    if (hasText && !isLoading) {
       if (isListening) {
         stopListening();
       }
       resetTranscript();
       onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId });
-      setValue("");
     }
   };
 
@@ -135,6 +134,11 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
         return;
       }
       if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        insertMention(filteredWorkspaces[mentionIndex].slug);
+        return;
+      }
+      if (e.key === "Tab") {
         e.preventDefault();
         insertMention(filteredWorkspaces[mentionIndex].slug);
         return;
@@ -157,17 +161,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
   return (
     <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
       <h1 className="text-4xl font-bold text-foreground mb-10 text-center">
-        <AnimatePresence mode="wait">
-          <motion.span
-            key={title}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            {title}
-          </motion.span>
-        </AnimatePresence>
+        {title}
       </h1>
       <div className="w-full max-w-2xl">
         <Card className="relative w-full p-0 bg-card rounded-3xl shadow-sm border-0 group">
@@ -220,6 +214,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
                   }
                 }}
                 onKeyDown={handleKeyDown}
+                disabled={isLoading}
                 className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
                 autoFocus
                 data-testid="plan-start-input"

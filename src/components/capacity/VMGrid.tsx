@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Circle, MoreVertical, Copy, ExternalLink, Trash2, Loader2 } from "lucide-react";
+import { Circle, MoreVertical, Copy, ExternalLink, Trash2, Loader2, User } from "lucide-react";
 import { VMData } from "@/types/pool-manager";
 import {
   DropdownMenu,
@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import Link from "next/link";
 import React, { useState } from "react";
 
 interface VMGridProps {
@@ -19,6 +21,7 @@ interface VMGridProps {
   metricsError?: boolean;
   isAdmin?: boolean;
   onDeletePod?: (vm: VMData) => void;
+  workspaceSlug?: string;
 }
 
 function getStatusIndicator(state: string, usage_status: string) {
@@ -40,12 +43,14 @@ function VMCard({
   metricsError,
   isAdmin,
   onDeletePod,
+  workspaceSlug,
 }: {
   vm: VMData;
   metricsLoading?: boolean;
   metricsError?: boolean;
   isAdmin?: boolean;
   onDeletePod?: (vm: VMData) => void;
+  workspaceSlug?: string;
 }) {
   const [copySuccess, setCopySuccess] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -135,8 +140,27 @@ function VMCard({
         {/* User or Pending Message */}
         {vm.state === "pending" ? (
           <p className="text-xs text-muted-foreground">Preparing your environment...</p>
-        ) : vm.usage_status === "used" && vm.user_info ? (
-          <p className="text-xs text-muted-foreground truncate">{vm.user_info}</p>
+        ) : vm.usage_status === "used" && vm.assignedTask ? (
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Avatar className="size-5 flex-shrink-0">
+              <AvatarImage src={vm.assignedTask.creator.image || undefined} />
+              <AvatarFallback className="text-xs">
+                <User className="w-3 h-3" />
+              </AvatarFallback>
+            </Avatar>
+            {workspaceSlug ? (
+              <Link
+                href={`/w/${workspaceSlug}/task/${vm.assignedTask.id}`}
+                className="text-xs text-muted-foreground truncate hover:underline"
+              >
+                {vm.assignedTask.title}
+              </Link>
+            ) : (
+              <span className="text-xs text-muted-foreground truncate">
+                {vm.assignedTask.title}
+              </span>
+            )}
+          </div>
         ) : null}
 
         {/* Resources */}
@@ -204,7 +228,7 @@ function VMCard({
   );
 }
 
-export function VMGrid({ vms, metricsLoading, metricsError, isAdmin, onDeletePod }: VMGridProps) {
+export function VMGrid({ vms, metricsLoading, metricsError, isAdmin, onDeletePod, workspaceSlug }: VMGridProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
       {vms.map((vm) => (
@@ -215,6 +239,7 @@ export function VMGrid({ vms, metricsLoading, metricsError, isAdmin, onDeletePod
           metricsError={metricsError}
           isAdmin={isAdmin}
           onDeletePod={onDeletePod}
+          workspaceSlug={workspaceSlug}
         />
       ))}
     </div>

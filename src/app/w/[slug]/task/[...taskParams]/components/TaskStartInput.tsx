@@ -41,6 +41,8 @@ import {
   ChevronsUpDown,
 } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { WorkflowNode } from "@/hooks/useWorkflowNodes";
@@ -150,6 +152,7 @@ export function TaskStartInput({
     useSpeechRecognition();
 
   const devMode = isDevelopmentMode();
+  const taskAgentModeEnabled = useFeatureFlag(FEATURE_FLAGS.TASK_AGENT_MODE);
   const isWorkflowMode = taskMode === "workflow_editor";
   const isProjectMode = taskMode === "project_debugger";
   const isPromptsMode = taskMode === "prompts";
@@ -558,36 +561,40 @@ export function TaskStartInput({
         <div className="w-full max-w-4xl relative">
           <PromptsPanel variant="fullpage" workspaceSlug={workspaceSlug} />
           <div className="absolute -bottom-12 left-0 z-10">
-            <Select value={taskMode} onValueChange={onModeChange}>
-              <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm bg-card">
-                <div className="flex items-center gap-2">
-                  <ModeIcon className="h-4 w-4" />
-                  <span>{modeConfig.label}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="live">
+            {(taskAgentModeEnabled || devMode) && (
+              <Select value={taskMode} onValueChange={onModeChange}>
+                <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm bg-card">
                   <div className="flex items-center gap-2">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span>Async</span>
+                    <ModeIcon className="h-4 w-4" />
+                    <span>{modeConfig.label}</span>
                   </div>
-                </SelectItem>
-                <SelectItem value="agent">
-                  <div className="flex items-center gap-2">
-                    <Bot className="h-3.5 w-3.5" />
-                    <span>Agent</span>
-                  </div>
-                </SelectItem>
-                {devMode && (
-                  <SelectItem value="test">
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="live">
                     <div className="flex items-center gap-2">
-                      <Beaker className="h-3.5 w-3.5" />
-                      <span>Test</span>
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>Async</span>
                     </div>
                   </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+                  {taskAgentModeEnabled && (
+                    <SelectItem value="agent">
+                      <div className="flex items-center gap-2">
+                        <Bot className="h-3.5 w-3.5" />
+                        <span>Agent</span>
+                      </div>
+                    </SelectItem>
+                  )}
+                  {devMode && (
+                    <SelectItem value="test">
+                      <div className="flex items-center gap-2">
+                        <Beaker className="h-3.5 w-3.5" />
+                        <span>Test</span>
+                      </div>
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
       ) : (
@@ -785,36 +792,40 @@ export function TaskStartInput({
               )}
             </AnimatePresence>
             <div className="absolute bottom-6 left-8 z-10 flex gap-2 max-w-[calc(100%-8rem)] overflow-hidden flex-nowrap">
-              <Select value={taskMode} onValueChange={onModeChange}>
-                <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <ModeIcon className="h-4 w-4" />
-                    <span>{modeConfig.label}</span>
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="live">
+              {(taskAgentModeEnabled || devMode) && (
+                <Select value={taskMode} onValueChange={onModeChange}>
+                  <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm">
                     <div className="flex items-center gap-2">
-                      <Clock className="h-3.5 w-3.5" />
-                      <span>Async</span>
+                      <ModeIcon className="h-4 w-4" />
+                      <span>{modeConfig.label}</span>
                     </div>
-                  </SelectItem>
-                  <SelectItem value="agent">
-                    <div className="flex items-center gap-2">
-                      <Bot className="h-3.5 w-3.5" />
-                      <span>Agent</span>
-                    </div>
-                  </SelectItem>
-                  {devMode && (
-                    <SelectItem value="test">
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="live">
                       <div className="flex items-center gap-2">
-                        <Beaker className="h-3.5 w-3.5" />
-                        <span>Test</span>
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>Async</span>
                       </div>
                     </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+                    {taskAgentModeEnabled && (
+                      <SelectItem value="agent">
+                        <div className="flex items-center gap-2">
+                          <Bot className="h-3.5 w-3.5" />
+                          <span>Agent</span>
+                        </div>
+                      </SelectItem>
+                    )}
+                    {devMode && (
+                      <SelectItem value="test">
+                        <div className="flex items-center gap-2">
+                          <Beaker className="h-3.5 w-3.5" />
+                          <span>Test</span>
+                        </div>
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
               {taskMode === "agent" && onModelChange && (
                 <Select value={selectedModel} onValueChange={(value) => onModelChange(value as ModelName)}>
                   <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm">

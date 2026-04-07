@@ -172,7 +172,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate hasMore
-    const hasMore = skip + limit < total;
+    // When search is active the results are blob-filtered (post-DB), so hasMore
+    // must be derived from the filtered count rather than the raw DB total.
+    // A full page returned implies there may be more matching results.
+    const hasMore = search
+      ? filteredLogs.length === limit
+      : skip + limit < total;
 
     return NextResponse.json(
       {

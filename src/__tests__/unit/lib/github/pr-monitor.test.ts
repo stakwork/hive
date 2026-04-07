@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix } from "@/lib/github/pr-monitor";
+import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix } from "@/lib/github/pr-monitor";
 import type { Octokit } from "@octokit/rest";
 import { ChatRole, ChatStatus } from "@prisma/client";
 
-// Mock dependencies for triggerAgentModeFix tests
+// Mock dependencies for all tests in this file
 vi.mock("@/lib/db", () => ({
   db: {
     task: {
@@ -13,29 +13,39 @@ vi.mock("@/lib/db", () => ({
     chatMessage: {
       create: vi.fn(),
     },
+    artifact: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
   },
 }));
 vi.mock("@/lib/pusher", () => ({
   pusherServer: {
-    trigger: vi.fn(),
+    trigger: vi.fn().mockResolvedValue(undefined),
   },
   getTaskChannelName: vi.fn((taskId: string) => `task-${taskId}`),
+  getWorkspaceChannelName: vi.fn((slug: string) => `workspace-${slug}`),
   PUSHER_EVENTS: {
     NEW_MESSAGE: "new-message",
+    PR_STATUS_CHANGE: "pr-status-change",
   },
 }));
-vi.mock("@/lib/encryption/field-encryption", () => ({
-  FieldEncryptionService: vi.fn().mockImplementation(() => ({
-    decryptField: vi.fn().mockReturnValue("decrypted-secret"),
-    encryptField: vi.fn().mockReturnValue({
-      data: "encrypted-data",
-      iv: "mock-iv",
-      tag: "mock-tag",
-      keyId: "mock-key-id",
-      version: 1,
-      encryptedAt: new Date().toISOString(),
-    }),
-  })),
+vi.mock("@/lib/encryption", () => ({
+  EncryptionService: {
+    getInstance: vi.fn(() => ({
+      decryptField: vi.fn().mockReturnValue("decrypted-secret"),
+      encryptField: vi.fn().mockReturnValue({
+        data: "encrypted-data",
+        iv: "mock-iv",
+        tag: "mock-tag",
+        keyId: "mock-key-id",
+        version: 1,
+        encryptedAt: new Date().toISOString(),
+      }),
+    })),
+  },
 }));
 vi.mock("jsonwebtoken", () => ({
   default: {
@@ -46,10 +56,39 @@ vi.mock("@/lib/auth/agent-jwt", () => ({
   createWebhookToken: vi.fn().mockResolvedValue("mock-webhook-token"),
   generateWebhookSecret: vi.fn().mockReturnValue("mock-webhook-secret"),
 }));
+vi.mock("@octokit/rest", () => ({
+  Octokit: vi.fn().mockImplementation(() => ({
+    pulls: { get: vi.fn() },
+  })),
+}));
+vi.mock("@/lib/githubApp", () => ({
+  getUserAppTokens: vi.fn().mockResolvedValue({ accessToken: "github-token" }),
+}));
+vi.mock("@/lib/pods/utils", () => ({
+  releaseTaskPod: vi.fn().mockResolvedValue({ success: true }),
+}));
+vi.mock("@/lib/github/pr-ci", () => ({
+  fetchCIStatus: vi.fn().mockResolvedValue({
+    status: "failure",
+    summary: "Tests failed",
+    failedChecks: ["test"],
+    failedCheckLogs: {},
+  }),
+}));
+vi.mock("@/services/task-workflow", () => ({
+  createChatMessageAndTriggerStakwork: vi.fn().mockResolvedValue({
+    stakworkData: { projectId: "proj-123" },
+  }),
+}));
+vi.mock("@/lib/auth/nextauth", () => ({
+  getGithubUsernameAndPAT: vi.fn(),
+}));
 
 // Import mocked modules after mocks are defined
 import { db } from "@/lib/db";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 describe("PR Monitor - Branch Update Operations", () => {
   let mockOctokit: Partial<Octokit>;
@@ -1144,5 +1183,277 @@ describe("PR Monitor - Branch Update Operations", () => {
         },
       });
     });
+  });
+});
+
+// ─── Zombie PR Fix Tests ──────────────────────────────────────────────────────
+// These tests require a fresh module scope with full monitorOpenPRs mocks.
+// We use a separate describe block with vi.mock hoisting at the top of the file.
+
+describe("PR Monitor - Zombie PR fixes", () => {
+  // We need to mock all dependencies used by monitorOpenPRs / findOpenPRArtifacts
+  // These mocks are separate from the triggerAgentModeFix mocks above.
+
+  const mockPullsGet = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Helper to build a minimal raw artifact row returned by db.$queryRaw
+  function makeArtifactRow(overrides: {
+    url?: string;
+    podId?: string | null;
+    prMonitorConfig?: Partial<{
+      pr_conflict_fix_enabled: boolean;
+      pr_ci_failure_fix_enabled: boolean;
+    }>;
+    progress?: Record<string, unknown>;
+  } = {}) {
+    return {
+      id: "artifact-1",
+      content: {
+        url: overrides.url ?? "https://github.com/org/repo/pull/1",
+        status: "IN_PROGRESS",
+        progress: overrides.progress ?? undefined,
+      },
+      task_id: "task-1",
+      pod_id: overrides.podId !== undefined ? overrides.podId : "pod-1",
+      workspace_id: "ws-1",
+      owner_id: "owner-1",
+      pr_monitor_enabled: true,
+      pr_conflict_fix_enabled: overrides.prMonitorConfig?.pr_conflict_fix_enabled ?? true,
+      pr_ci_failure_fix_enabled: overrides.prMonitorConfig?.pr_ci_failure_fix_enabled ?? false,
+      pr_out_of_date_fix_enabled: false,
+      pr_use_rebase_for_updates: false,
+    };
+  }
+
+  describe("findOpenPRArtifacts SQL filters", () => {
+    it("should include AND t.mode != 'agent' in the SQL query", async () => {
+      vi.mocked(db.$queryRaw).mockResolvedValue([]);
+
+      const { findOpenPRArtifacts } = await import("@/lib/github/pr-monitor");
+      await findOpenPRArtifacts(20);
+
+      expect(db.$queryRaw).toHaveBeenCalledTimes(1);
+      const callArgs = vi.mocked(db.$queryRaw).mock.calls[0];
+      // The first argument is a TemplateStringsArray from the tagged template literal
+      const sqlParts = (callArgs[0] as TemplateStringsArray).join("");
+      expect(sqlParts).toContain("t.mode != 'agent'");
+    });
+
+    it("should include LIKE 'https://github.com/%' filter in the SQL query", async () => {
+      vi.mocked(db.$queryRaw).mockResolvedValue([]);
+
+      const { findOpenPRArtifacts } = await import("@/lib/github/pr-monitor");
+      await findOpenPRArtifacts(20);
+
+      expect(db.$queryRaw).toHaveBeenCalledTimes(1);
+      const callArgs = vi.mocked(db.$queryRaw).mock.calls[0];
+      const sqlParts = (callArgs[0] as TemplateStringsArray).join("");
+      expect(sqlParts).toContain("LIKE 'https://github.com/%'");
+    });
+  });
+
+  describe("shouldTriggerFix without podId (live-mode tasks)", () => {
+    // Re-mock full dependency set for monitorOpenPRs
+    beforeEach(async () => {
+      // Configure the Octokit mock to use mockPullsGet for these tests
+      const { Octokit } = await import("@octokit/rest");
+      vi.mocked(Octokit).mockImplementation(() => ({
+        pulls: { get: mockPullsGet },
+      }) as any);
+
+      // PR returns ci_failure state
+      mockPullsGet.mockResolvedValue({
+        data: {
+          state: "open",
+          merged: false,
+          mergeable: true,
+          mergeable_state: "clean",
+          head: { ref: "feature/test", sha: "head-sha" },
+          base: { ref: "main", sha: "base-sha" },
+        },
+      });
+    });
+
+    it("calls triggerLiveModeFix and sets resolution to in_progress when podId is null", async () => {
+      // Live-mode task with NO pod
+      vi.mocked(db.$queryRaw).mockResolvedValue([
+        makeArtifactRow({
+          podId: null,
+          prMonitorConfig: { pr_ci_failure_fix_enabled: true },
+        }),
+      ]);
+
+      vi.mocked(db.artifact.findUnique).mockResolvedValue({
+        content: {
+          url: "https://github.com/org/repo/pull/1",
+          status: "IN_PROGRESS",
+        },
+      } as any);
+      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+
+      // triggerLiveModeFix calls db.task.findUnique then createChatMessageAndTriggerStakwork
+      vi.mocked(db.task.findUnique).mockResolvedValue({
+        id: "task-1",
+        mode: "live",
+        workflowStatus: "COMPLETED",
+        createdById: "creator-1",
+        workspace: { ownerId: "owner-1", slug: "test-workspace" },
+      } as any);
+      vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
+        username: "creator-gh",
+        pat: "creator-pat",
+      } as any);
+      vi.mocked(createChatMessageAndTriggerStakwork).mockResolvedValue({
+        stakworkData: { projectId: "proj-123" },
+      } as any);
+
+      const { monitorOpenPRs } = await import("@/lib/github/pr-monitor");
+      const stats = await monitorOpenPRs(20);
+
+      // Fix should have been triggered
+      expect(createChatMessageAndTriggerStakwork).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: "task-1", mode: "live" })
+      );
+      expect(stats.agentTriggered).toBe(1);
+
+      // Artifact progress should be updated with in_progress resolution
+      expect(db.artifact.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            content: expect.objectContaining({
+              progress: expect.objectContaining({
+                resolution: expect.objectContaining({
+                  status: "in_progress",
+                  attempts: 1,
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    it("sets resolution to gave_up after PR_FIX_MAX_ATTEMPTS (6) failed attempts", async () => {
+      // Simulate a task already at max attempts (6)
+      vi.mocked(db.$queryRaw).mockResolvedValue([
+        makeArtifactRow({
+          podId: null,
+          prMonitorConfig: { pr_ci_failure_fix_enabled: true },
+          progress: {
+            state: "ci_failure",
+            lastCheckedAt: new Date(Date.now() - 60000).toISOString(),
+            resolution: {
+              status: "in_progress",
+              attempts: 6,
+              lastAttemptAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2h ago (stale)
+            },
+          },
+        }),
+      ]);
+
+      vi.mocked(db.artifact.findUnique).mockResolvedValue({
+        content: {
+          url: "https://github.com/org/repo/pull/1",
+          status: "IN_PROGRESS",
+        },
+      } as any);
+      vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+      vi.mocked(db.task.findUnique).mockResolvedValue({
+        id: "task-1",
+        mode: "live",
+        workflowStatus: "COMPLETED",
+        createdById: "creator-1",
+        workspace: { ownerId: "owner-1", slug: "test-workspace" },
+      } as any);
+      vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
+        username: "creator-gh",
+        pat: "creator-pat",
+      } as any);
+
+      const { monitorOpenPRs } = await import("@/lib/github/pr-monitor");
+      await monitorOpenPRs(20);
+
+      // Should NOT trigger another fix
+      expect(createChatMessageAndTriggerStakwork).not.toHaveBeenCalled();
+
+      // Should have set resolution to gave_up
+      expect(db.artifact.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            content: expect.objectContaining({
+              progress: expect.objectContaining({
+                resolution: expect.objectContaining({
+                  status: "gave_up",
+                  attempts: 6,
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+  });
+});
+
+describe("triggerLiveModeFix - userId resolution", () => {
+  const taskId = "task-live-1";
+  const prompt = "Fix the CI failure";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(createChatMessageAndTriggerStakwork).mockResolvedValue({
+      stakworkData: { projectId: "proj-live-1" },
+    } as any);
+  });
+
+  it("uses task createdById when task creator has GitHub credentials", async () => {
+    vi.mocked(db.task.findUnique).mockResolvedValue({
+      id: taskId,
+      mode: "live",
+      workflowStatus: "COMPLETED",
+      createdById: "creator-user-1",
+      workspace: { ownerId: "owner-user-1", slug: "my-workspace" },
+    } as any);
+    vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
+      username: "creator-gh",
+      pat: "creator-pat",
+    } as any);
+
+    const result = await triggerLiveModeFix(taskId, prompt);
+
+    expect(result.success).toBe(true);
+    expect(getGithubUsernameAndPAT).toHaveBeenCalledWith("creator-user-1", "my-workspace");
+    expect(createChatMessageAndTriggerStakwork).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId, userId: "creator-user-1", mode: "live" })
+    );
+  });
+
+  it("falls back to workspace.ownerId and logs when task creator has no GitHub credentials", async () => {
+    vi.mocked(db.task.findUnique).mockResolvedValue({
+      id: taskId,
+      mode: "live",
+      workflowStatus: "COMPLETED",
+      createdById: "creator-user-2",
+      workspace: { ownerId: "owner-user-2", slug: "my-workspace" },
+    } as any);
+    vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
+
+    const logInfoSpy = vi.spyOn(console, "log");
+
+    const result = await triggerLiveModeFix(taskId, prompt);
+
+    expect(result.success).toBe(true);
+    expect(getGithubUsernameAndPAT).toHaveBeenCalledWith("creator-user-2", "my-workspace");
+    expect(createChatMessageAndTriggerStakwork).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId, userId: "owner-user-2", mode: "live" })
+    );
+    expect(logInfoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Task creator has no GitHub credentials, falling back to workspace owner"),
+      expect.stringContaining("creator-user-2")
+    );
   });
 });
