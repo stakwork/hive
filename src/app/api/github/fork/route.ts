@@ -71,6 +71,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "insufficient_scope" }, { status: 403 });
   }
 
+  if (githubResponse.status === 404) {
+    const body = await githubResponse.text();
+    console.error(`[FORK] GitHub returned 404 for user ${session.user.id}:`, body);
+    return NextResponse.json({ error: "insufficient_scope" }, { status: 403 });
+  }
+
   if (githubResponse.status === 202 || githubResponse.status === 200) {
     const data = await githubResponse.json();
     return NextResponse.json({ forkUrl: data.html_url });
