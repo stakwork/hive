@@ -16,6 +16,12 @@ export async function postGraphAdminCmd(workspaceSlug: string, cmd: SwarmCmd) {
   return res.json();
 }
 
+export function roleToNumber(role: string): number {
+  if (role === "admin" || role === "sub_admin") return 2;
+  if (role === "member") return 3;
+  return 3;
+}
+
 export function getRoleLabel(role: BoltwallUser["role"]): string {
   if (role === "owner") return "Owner";
   if (role === "admin" || role === "sub_admin") return "Admin";

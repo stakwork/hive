@@ -20,10 +20,10 @@ export type SwarmCmd =
   | { type: "Swarm"; data: { cmd: "CreateBotInvoice"; content: { amt_msat: number } } }
   | { type: "Swarm"; data: { cmd: "GetBoltwallSuperAdmin" } }
   | { type: "Swarm"; data: { cmd: "AddBoltwallAdminPubkey"; content: { pubkey: string; name: string } } }
-  | { type: "Swarm"; data: { cmd: "AddBoltwallUser"; content: { pubkey: string; name: string; role: string } } }
+  | { type: "Swarm"; data: { cmd: "AddBoltwallUser"; content: { pubkey: string; name: string; role: number } } }
   | { type: "Swarm"; data: { cmd: "ListAdmins" } }
   | { type: "Swarm"; data: { cmd: "DeleteSubAdmin"; content: string } }
-  | { type: "Swarm"; data: { cmd: "UpdateUser"; content: { id: number; pubkey: string; name: string; role: string } } }
+  | { type: "Swarm"; data: { cmd: "UpdateUser"; content: { id: number; pubkey: string; name: string; role: number } } }
   | { type: "Swarm"; data: { cmd: "GetEnrichedBoltwallUsers" } };
 
 export interface SwarmCmdResponse {
