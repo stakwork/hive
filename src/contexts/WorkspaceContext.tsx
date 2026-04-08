@@ -262,10 +262,16 @@ export function WorkspaceProvider({
   const role = workspace?.userRole || null;
   const isSuperAdmin = session?.user?.isSuperAdmin ?? false;
 
+  // Detect slug change synchronously to prevent "not found" flash
+  // between route navigation and the useEffect setting loading=true
+  const urlSlug = pathname.match(/^\/w\/([^\/]+)/)?.[1] || "";
+  const isSlugTransitioning = !!urlSlug && urlSlug !== currentLoadedSlug && !loading;
+  const effectiveLoading = loading || isSlugTransitioning;
+
   // Consider access granted if:
   // 1. Workspace is loaded, OR
   // 2. We're still loading (don't show error until load completes)
-  const hasAccess = !!workspace || loading;
+  const hasAccess = !!workspace || effectiveLoading;
 
   // Note: Permission checks have been moved to useWorkspaceAccess hook
 
@@ -285,7 +291,7 @@ export function WorkspaceProvider({
     notificationsLoading,
 
     // Loading and error states
-    loading,
+    loading: effectiveLoading,
     error,
 
     // Actions

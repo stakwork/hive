@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Loader2, Check, AlertCircle, Smartphone, GitFork, Network } from "lucide-react";
+import { Loader2, Check, AlertCircle, Smartphone } from "lucide-react";
 import { motion } from "framer-motion";
 
 const POLL_INTERVAL = 2000;
@@ -416,19 +416,11 @@ function ForkRepoStep({ onComplete }: ForkRepoStepProps) {
 
   return (
     <motion.div {...stepMotion}>
-      <div className={darkCard}>
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mb-2">
-            <GitFork className="w-8 h-8 text-blue-400" />
-          </div>
-          <h2 className="text-2xl font-bold text-zinc-100">Setting up your repository</h2>
-          <p className="text-zinc-400">
-            {isForking ? "Creating your fork..." : "Preparing..."}
-          </p>
-        </div>
-        <div className={loadingContainer}>
-          <Loader2 className="h-12 w-12 animate-spin text-zinc-500" />
-        </div>
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8 text-center space-y-4">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-400" />
+        <p className="text-sm text-zinc-400">
+          {isForking ? "Creating your fork..." : "Setting up your repository..."}
+        </p>
       </div>
     </motion.div>
   );
@@ -453,6 +445,10 @@ function ProvisionStep({ forkUrl }: ProvisionStepProps) {
     try {
       const paymentRes = await fetch("/api/graphmindset/payment");
       const paymentData = await paymentRes.json();
+      if (paymentData.alreadyProvisioned && paymentData.workspaceSlug) {
+        router.replace(`/w/${paymentData.workspaceSlug}`);
+        return;
+      }
       if (!paymentRes.ok) {
         router.push("/workspaces");
         return;
@@ -517,19 +513,9 @@ function ProvisionStep({ forkUrl }: ProvisionStepProps) {
 
   return (
     <motion.div {...stepMotion}>
-      <div className={darkCard}>
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mb-2">
-            <Network className="w-8 h-8 text-green-400" />
-          </div>
-          <h2 className="text-2xl font-bold text-zinc-100">Setting up your workspace</h2>
-          <p className="text-zinc-400">
-            Provisioning your workspace and knowledge graph...
-          </p>
-        </div>
-        <div className={loadingContainer}>
-          <Loader2 className="h-12 w-12 animate-spin text-zinc-500" />
-        </div>
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8 text-center space-y-4">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-400" />
+        <p className="text-sm text-zinc-400">Setting up your workspace...</p>
       </div>
     </motion.div>
   );
