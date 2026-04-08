@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useState, Suspense } from "react";
 import { motion } from "framer-motion";
+import { useSearchParams } from "next/navigation";
 import { WizardStepRenderer } from "./WizardStepRenderer";
 import { Loader2 } from "lucide-react";
 
@@ -12,6 +13,8 @@ export type TWizardStep = (typeof STEPS_ARRAY)[number];
 
 export default function WorkspaceWizard() {
   const [currentStep] = useState<string>("WELCOME");
+  const searchParams = useSearchParams();
+  const isPaymentReturn = searchParams.get("payment") === "success";
 
   const handleNext = useCallback(() => {
     // No-op since we only have one step now
@@ -37,7 +40,9 @@ export default function WorkspaceWizard() {
             Tools for the next <br /> generation of creators.
           </h1>
           <p className="text-zinc-400 text-lg max-w-xl mx-auto">
-            Pick the product that fits your workflow. Both run on your codebase and ship in minutes.
+            {isPaymentReturn
+              ? "Finishing setup — this will only take a moment."
+              : "Pick the product that fits your workflow. Both run on your codebase and ship in minutes."}
           </p>
         </motion.div>
         <Suspense fallback={<div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-zinc-500" /></div>}>
