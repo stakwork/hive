@@ -4,14 +4,23 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Check, AlertCircle, Smartphone, GitFork, Network } from "lucide-react";
+import { motion } from "framer-motion";
 
 const POLL_INTERVAL = 2000;
 const CHALLENGE_EXPIRATION = 5 * 60 * 1000; // 5 minutes
 
 type Step = "sphinx-link" | "fork-repo" | "provision";
+
+const stepMotion = {
+  initial: { opacity: 0, y: 24 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.5 },
+};
+
+const darkCard = "rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur-sm p-8 flex flex-col gap-6";
+const loadingContainer = "min-h-[320px] flex flex-col items-center justify-center gap-4";
 
 export function GraphMindsetOnboardingClient() {
   const { data: session, status, update } = useSession();
@@ -38,8 +47,8 @@ export function GraphMindsetOnboardingClient() {
 
   if (status === "loading") {
     return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className={loadingContainer}>
+        <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
       </div>
     );
   }
@@ -47,7 +56,7 @@ export function GraphMindsetOnboardingClient() {
   if (!session?.user) return null;
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
+    <div>
       {currentStep === "sphinx-link" && (
         <SphinxLinkStep
           isAlreadyLinked={isSphinxLinked}
@@ -195,80 +204,94 @@ function SphinxLinkStep({ isAlreadyLinked, onComplete, onSessionUpdate }: Sphinx
 
   if (isSuccess) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center py-12 gap-4">
-          <Check className="h-12 w-12 text-green-500" />
-          <p className="font-medium text-lg">Sphinx account linked</p>
-          <p className="text-sm text-muted-foreground">
-            You can now perform GitHub actions from the Sphinx mobile app.
-          </p>
-        </CardContent>
-      </Card>
+      <motion.div {...stepMotion}>
+        <div className={darkCard}>
+          <div className={loadingContainer}>
+            <Check className="h-12 w-12 text-green-500" />
+            <p className="font-medium text-lg text-zinc-100">Sphinx account linked</p>
+            <p className="text-sm text-zinc-400">
+              You can now perform GitHub actions from the Sphinx mobile app.
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (isLoading || isLinking) {
+    return (
+      <motion.div {...stepMotion}>
+        <div className={darkCard}>
+          <div className={loadingContainer}>
+            <Loader2 className="h-12 w-12 animate-spin text-zinc-400" />
+            <p className="text-sm text-zinc-400">
+              {isLinking ? "Linking your account..." : "Generating QR code..."}
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (error) {
+    return (
+      <motion.div {...stepMotion}>
+        <div className={darkCard}>
+          <div className={loadingContainer}>
+            <AlertCircle className="h-12 w-12 text-red-400" />
+            <p className="text-sm text-center text-red-400">{error}</p>
+            <Button onClick={handleRetry} variant="outline" className="border-zinc-700 text-zinc-100 hover:bg-zinc-800">
+              Try Again
+            </Button>
+          </div>
+        </div>
+      </motion.div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader className="text-center">
-        <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Smartphone className="w-8 h-8 text-purple-600 dark:text-purple-400" />
+    <motion.div {...stepMotion}>
+      <div className={darkCard}>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="w-16 h-16 bg-purple-500/20 rounded-full flex items-center justify-center mb-2">
+            <Smartphone className="w-8 h-8 text-purple-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-100">Link your Sphinx account</h2>
+          <p className="text-zinc-400 text-base">
+            Scan this QR code with your Sphinx app to link your account
+          </p>
         </div>
-        <CardTitle className="text-2xl">Link your Sphinx account</CardTitle>
-        <CardDescription className="text-lg">
-          Scan this QR code with your Sphinx app to link your account
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col items-center gap-4">
-        {isLoading && (
-          <div className="flex flex-col items-center gap-4 py-8">
-            <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Generating QR code...</p>
-          </div>
-        )}
 
-        {qrCode && !isVerified && !isExpired && !error && (
-          <div className="flex flex-col items-center gap-4">
-            <Image
-              src={qrCode}
-              alt="Sphinx QR Code"
-              width={300}
-              height={300}
-              className="border rounded-lg"
-              unoptimized
-            />
-            {deepLink && (
-              <a
-                href={deepLink}
-                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                Open in Sphinx app
-              </a>
-            )}
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <p className="text-sm text-muted-foreground">Waiting for Sphinx app...</p>
+        <div className={loadingContainer}>
+          {qrCode && !isVerified && !isExpired && !error ? (
+            <div className="flex flex-col items-center gap-4">
+              <Image
+                src={qrCode}
+                alt="Sphinx QR Code"
+                width={300}
+                height={300}
+                className="border border-zinc-700 rounded-lg"
+                unoptimized
+              />
+              {deepLink && (
+                <a
+                  href={deepLink}
+                  className="text-sm text-blue-400 hover:underline"
+                >
+                  Open in Sphinx app
+                </a>
+              )}
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
+                <p className="text-sm text-zinc-400">Waiting for Sphinx app...</p>
+              </div>
             </div>
-          </div>
-        )}
-
-        {isLinking && (
-          <div className="flex flex-col items-center gap-4 py-8">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Linking your account...</p>
-          </div>
-        )}
-
-        {error && (
-          <div className="flex flex-col items-center gap-4 py-8">
-            <AlertCircle className="h-12 w-12 text-destructive" />
-            <p className="text-sm text-center text-destructive">{error}</p>
-            <Button onClick={handleRetry} variant="outline">
-              Try Again
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          ) : (
+            <Loader2 className="h-12 w-12 animate-spin text-zinc-500" />
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -288,160 +311,126 @@ function ForkRepoStep({ onComplete }: ForkRepoStepProps) {
   const [needsReauth, setNeedsReauth] = useState(false);
   const forkCalledRef = useRef(false);
 
-  // Auto-fork on mount: fetch config then fork
+  const doFork = useCallback(async () => {
+    setIsForking(true);
+    setError(null);
+    setNeedsReauth(false);
+
+    try {
+      const configRes = await fetch("/api/github/fork/config");
+      const configData = await configRes.json();
+      const repoUrl = configData.repoUrl;
+
+      if (!repoUrl) {
+        setError("No repository configured for forking. Please contact support.");
+        return;
+      }
+
+      const res = await fetch("/api/github/fork", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repositoryUrl: repoUrl }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.error === "github_token_expired" || data.error === "insufficient_scope") {
+          setNeedsReauth(true);
+          setError("Your GitHub session has expired. Please re-authenticate to continue.");
+        } else {
+          setError(data.error || "Failed to fork repository");
+        }
+        return;
+      }
+
+      setForkUrl(data.forkUrl);
+      onComplete(data.forkUrl);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setIsForking(false);
+    }
+  }, [onComplete]);
+
+  // Auto-fork on mount
   useEffect(() => {
     if (forkCalledRef.current) return;
     forkCalledRef.current = true;
-
-    const forkRepo = async () => {
-      setIsForking(true);
-      setError(null);
-
-      try {
-        // Get configured repo URL
-        const configRes = await fetch("/api/github/fork/config");
-        const configData = await configRes.json();
-        const repoUrl = configData.repoUrl;
-
-        if (!repoUrl) {
-          setError("No repository configured for forking. Please contact support.");
-          setIsForking(false);
-          return;
-        }
-
-        // Fork it (or reuse existing fork)
-        const res = await fetch("/api/github/fork", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repositoryUrl: repoUrl }),
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-          if (data.error === "github_token_expired" || data.error === "insufficient_scope") {
-            setNeedsReauth(true);
-            setError("Your GitHub session has expired. Please re-authenticate to continue.");
-          } else {
-            setError(data.error || "Failed to fork repository");
-          }
-          return;
-        }
-
-        setForkUrl(data.forkUrl);
-        onComplete(data.forkUrl);
-      } catch {
-        setError("Something went wrong. Please try again.");
-      } finally {
-        setIsForking(false);
-      }
-    };
-
-    forkRepo();
-  }, [onComplete]);
+    doFork();
+  }, [doFork]);
 
   const handleRetry = () => {
     forkCalledRef.current = true;
-    setError(null);
-    setForkUrl(null);
-    setNeedsReauth(false);
-
-    const retry = async () => {
-      setIsForking(true);
-      setError(null);
-      try {
-        const configRes = await fetch("/api/github/fork/config");
-        const configData = await configRes.json();
-        const repoUrl = configData.repoUrl;
-        if (!repoUrl) {
-          setError("No repository configured for forking. Please contact support.");
-          return;
-        }
-        const res = await fetch("/api/github/fork", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repositoryUrl: repoUrl }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          if (data.error === "github_token_expired" || data.error === "insufficient_scope") {
-            setNeedsReauth(true);
-            setError("Your GitHub session has expired. Please re-authenticate to continue.");
-          } else {
-            setError(data.error || "Failed to fork repository");
-          }
-          return;
-        }
-        setForkUrl(data.forkUrl);
-        onComplete(data.forkUrl);
-      } catch {
-        setError("Something went wrong. Please try again.");
-      } finally {
-        setIsForking(false);
-      }
-    };
-    retry();
+    doFork();
   };
 
   if (forkUrl) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center py-12 gap-4">
-          <Check className="h-12 w-12 text-green-500" />
-          <p className="font-medium text-lg">Repository ready</p>
-          <a
-            href={forkUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            {forkUrl}
-          </a>
-        </CardContent>
-      </Card>
+      <motion.div {...stepMotion}>
+        <div className={darkCard}>
+          <div className={loadingContainer}>
+            <Check className="h-12 w-12 text-green-500" />
+            <p className="font-medium text-lg text-zinc-100">Repository ready</p>
+            <a
+              href={forkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-400 hover:underline"
+            >
+              {forkUrl}
+            </a>
+          </div>
+        </div>
+      </motion.div>
     );
   }
 
   if (error) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center py-12 gap-4">
-          <AlertCircle className="h-12 w-12 text-destructive" />
-          <p className="text-sm text-center text-destructive">{error}</p>
-          {needsReauth ? (
-            <Button
-              onClick={() =>
-                router.push(
-                  `/auth/signin?redirect=${encodeURIComponent("/onboarding/graphmindset")}`,
-                )
-              }
-            >
-              Re-authenticate with GitHub
-            </Button>
-          ) : (
-            <Button onClick={handleRetry} variant="outline">
-              Try Again
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+      <motion.div {...stepMotion}>
+        <div className={darkCard}>
+          <div className={loadingContainer}>
+            <AlertCircle className="h-12 w-12 text-red-400" />
+            <p className="text-sm text-center text-red-400">{error}</p>
+            {needsReauth ? (
+              <Button
+                onClick={() =>
+                  router.push(
+                    `/auth/signin?redirect=${encodeURIComponent("/onboarding/graphmindset")}`,
+                  )
+                }
+                className="bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700"
+              >
+                Re-authenticate with GitHub
+              </Button>
+            ) : (
+              <Button onClick={handleRetry} variant="outline" className="border-zinc-700 text-zinc-100 hover:bg-zinc-800">
+                Try Again
+              </Button>
+            )}
+          </div>
+        </div>
+      </motion.div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader className="text-center">
-        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
-          <GitFork className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+    <motion.div {...stepMotion}>
+      <div className={darkCard}>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mb-2">
+            <GitFork className="w-8 h-8 text-blue-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-100">Setting up your repository</h2>
+          <p className="text-zinc-400">
+            {isForking ? "Creating your fork..." : "Preparing..."}
+          </p>
         </div>
-        <CardTitle className="text-2xl">Setting up your repository</CardTitle>
-        <CardDescription>
-          {isForking ? "Creating your fork..." : "Preparing..."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex justify-center py-8">
-        <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-      </CardContent>
-    </Card>
+        <div className={loadingContainer}>
+          <Loader2 className="h-12 w-12 animate-spin text-zinc-500" />
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -462,7 +451,6 @@ function ProvisionStep({ forkUrl }: ProvisionStepProps) {
     setError(null);
 
     try {
-      // 1. Fetch payment record
       const paymentRes = await fetch("/api/graphmindset/payment");
       const paymentData = await paymentRes.json();
       if (!paymentRes.ok) {
@@ -476,7 +464,6 @@ function ProvisionStep({ forkUrl }: ProvisionStepProps) {
         return;
       }
 
-      // 2. Create workspace — passes forkUrl as repositoryUrl so repositoryDraft is set for SwarmSetupHandler
       const wsRes = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -494,7 +481,6 @@ function ProvisionStep({ forkUrl }: ProvisionStepProps) {
       }
       const { slug } = wsData.workspace;
 
-      // 3. Redirect — SwarmSetupHandler fires automatically on the workspace page
       router.push(`/w/${slug}`);
     } catch {
       setError("Something went wrong. Please try again.");
@@ -515,32 +501,36 @@ function ProvisionStep({ forkUrl }: ProvisionStepProps) {
 
   if (error) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center py-12 gap-4">
-          <AlertCircle className="h-12 w-12 text-destructive" />
-          <p className="text-sm text-center text-destructive">{error}</p>
-          <Button onClick={handleRetry} variant="outline">
-            Try Again
-          </Button>
-        </CardContent>
-      </Card>
+      <motion.div {...stepMotion}>
+        <div className={darkCard}>
+          <div className={loadingContainer}>
+            <AlertCircle className="h-12 w-12 text-red-400" />
+            <p className="text-sm text-center text-red-400">{error}</p>
+            <Button onClick={handleRetry} variant="outline" className="border-zinc-700 text-zinc-100 hover:bg-zinc-800">
+              Try Again
+            </Button>
+          </div>
+        </div>
+      </motion.div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader className="text-center">
-        <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Network className="w-8 h-8 text-green-600 dark:text-green-400" />
+    <motion.div {...stepMotion}>
+      <div className={darkCard}>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mb-2">
+            <Network className="w-8 h-8 text-green-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-100">Setting up your workspace</h2>
+          <p className="text-zinc-400">
+            Provisioning your workspace and knowledge graph...
+          </p>
         </div>
-        <CardTitle className="text-2xl">Setting up your workspace</CardTitle>
-        <CardDescription>
-          Provisioning your workspace and knowledge graph...
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex justify-center py-8">
-        <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-      </CardContent>
-    </Card>
+        <div className={loadingContainer}>
+          <Loader2 className="h-12 w-12 animate-spin text-zinc-500" />
+        </div>
+      </div>
+    </motion.div>
   );
 }
