@@ -113,7 +113,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const admins: Array<{ id: number; pubkey: string; name: string; role: string }> =
       adminsResult.status === "fulfilled" && adminsResult.value.ok
-        ? ((adminsResult.value.data as { admins?: unknown[] })?.admins ?? []) as Array<{ id: number; pubkey: string; name: string; role: string }>
+        ? (() => {
+            const raw = adminsResult.value.data as { data?: { admins?: unknown[] }; admins?: unknown[] };
+            return (raw?.data?.admins ?? raw?.admins ?? []) as Array<{ id: number; pubkey: string; name: string; role: string }>;
+          })()
         : [];
 
     const superAdminInner =
