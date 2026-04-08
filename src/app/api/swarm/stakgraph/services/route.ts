@@ -1,9 +1,11 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
+import { checkStakgraphAvailability } from "@/services/swarm/stakgraph-actions";
 import { fetchStakgraphServices } from "@/services/swarm/stakgraph-services";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
@@ -57,6 +59,14 @@ export async function GET(request: NextRequest) {
 
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
       return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
+    }
+
+    const isAvailable = await checkStakgraphAvailability(getSwarmVanityAddress(swarm.name));
+    if (!isAvailable) {
+      return NextResponse.json(
+        { success: false, message: "Stakgraph service is not available" },
+        { status: 503 },
+      );
     }
 
     // Check if services already exist in database (services defaults to [] in DB)

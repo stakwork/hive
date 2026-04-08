@@ -10,6 +10,13 @@ import {
   createGetRequest,
 } from "@/__tests__/support/helpers";
 
+vi.mock("@/services/swarm/stakgraph-actions", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/services/swarm/stakgraph-actions")>();
+  return { ...original, checkStakgraphAvailability: vi.fn() };
+});
+
+import { checkStakgraphAvailability } from "@/services/swarm/stakgraph-actions";
+
 describe("GET /api/swarm/stakgraph/services", () => {
   const enc = EncryptionService.getInstance();
   const PLAINTEXT_SWARM_API_KEY = "swarm_test_key_abc";
@@ -18,6 +25,7 @@ describe("GET /api/swarm/stakgraph/services", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    vi.mocked(checkStakgraphAvailability).mockResolvedValue(true);
     
     // Don't manually clean - let the global cleanup handle it
     // Use transaction to atomically create test data
@@ -78,23 +86,37 @@ describe("GET /api/swarm/stakgraph/services", () => {
         { workspaceId, swarmId }
       )
     );
-    
+
     const responseBody = await res.json();
     console.log("Swarm API Response status:", res.status);
     console.log("Swarm API Response body:", JSON.stringify(responseBody, null, 2));
 
     expect(res.status).toBe(200);
-    // Verify header used decrypted token
-    const firstCall = fetchSpy.mock.calls[0] as [
-      string,
-      { headers?: Record<string, string> },
-    ];
-    const headers = (firstCall?.[1]?.headers || {}) as Record<string, string>;
-    expect(Object.values(headers).join(" ")).toContain(PLAINTEXT_SWARM_API_KEY);
+    // Verify header used decrypted token (check all fetch calls for the API key)
+    const allHeaders = fetchSpy.mock.calls
+      .map((call) => (call[1] as { headers?: Record<string, string> })?.headers || {})
+      .map((h) => Object.values(h).join(" "))
+      .join(" ");
+    expect(allHeaders).toContain(PLAINTEXT_SWARM_API_KEY);
 
     // Verify DB is still encrypted (no plaintext present)
     const swarm = await db.swarm.findFirst({ where: { swarmId } });
     const stored = swarm?.swarmApiKey || "";
     expect(stored).not.toContain(PLAINTEXT_SWARM_API_KEY);
+  });
+
+  it("returns 503 when stakgraph busy check fails", async () => {
+    vi.mocked(checkStakgraphAvailability).mockResolvedValue(false);
+
+    const res = await GET(
+      createGetRequest(
+        "http://localhost:3000/api/swarm/stakgraph/services",
+        { workspaceId, swarmId }
+      )
+    );
+
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.message).toBe("Stakgraph service is not available");
   });
 });
