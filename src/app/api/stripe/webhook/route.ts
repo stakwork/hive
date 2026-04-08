@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     const failureMessage = intent.last_payment_error?.message ?? null;
 
     await db.fiatPayment.updateMany({
-      where: { stripePaymentIntentId: intent.id },
+      where: { stripePaymentIntentId: intent.id, status: { not: 'PAID' } },
       data: { status: 'FAILED', failureCode, failureMessage },
     });
   }

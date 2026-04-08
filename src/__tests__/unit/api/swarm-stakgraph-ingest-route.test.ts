@@ -11,6 +11,7 @@ vi.mock("@/lib/db", () => ({
     swarm: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     repository: {
       update: vi.fn(),
@@ -154,6 +155,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
     vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
     vi.mocked(db.swarm.update).mockResolvedValue(mockSwarm);
+    vi.mocked(db.swarm.updateMany).mockResolvedValue({ count: 1 });
     vi.mocked(getPrimaryRepository).mockResolvedValue(mockRepositoryInfo);
     vi.mocked(getAllRepositories).mockResolvedValue([mockRepositoryInfo]);
     vi.mocked(db.repository.update).mockResolvedValue(mockRepository);
@@ -200,10 +202,8 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   });
 
   test("should return 409 when ingest request already in progress", async () => {
-    vi.mocked(db.swarm.findUnique).mockResolvedValue({
-      ...mockSwarm,
-      ingestRequestInProgress: true,
-    });
+    // Simulate the CAS atomic update returning count=0 (another request already holds the flag)
+    vi.mocked(db.swarm.updateMany).mockResolvedValue({ count: 0 });
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
@@ -240,11 +240,12 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
       data: { status: RepositoryStatus.PENDING },
     });
 
-    // Verify saveOrUpdateSwarm is called to set and reset the flag
-    expect(saveOrUpdateSwarm).toHaveBeenCalledWith({
-      workspaceId: mockSwarm.workspaceId,
-      ingestRequestInProgress: true,
-    });
+    // The flag is set atomically via updateMany (CAS pattern), not saveOrUpdateSwarm
+    expect(db.swarm.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { ingestRequestInProgress: true } })
+    );
+
+    // The flag is reset via saveOrUpdateSwarm on successful completion
     expect(saveOrUpdateSwarm).toHaveBeenCalledWith({
       workspaceId: mockSwarm.workspaceId,
       ingestRequestInProgress: false,
