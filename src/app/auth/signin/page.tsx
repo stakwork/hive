@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GraphMindsetCard } from "@/components/onboarding/GraphMindsetCard";
+import { DarkWizardShell } from "@/components/onboarding/DarkWizardShell";
 import { ArrowLeft, Github, Loader2, UserCheck } from "lucide-react";
 import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
@@ -21,8 +22,11 @@ function SignInContent() {
   const [mockUsername, setMockUsername] = useState("");
   const [providers, setProviders] = useState<Record<string, ClientSafeProvider> | null>(null);
 
-  // Check if there's a redirect parameter
+  // Derive redirect path early — must be before any early returns so isGraphMindsetFlow is always available
   const redirectPath = searchParams.get("redirect");
+  const isGraphMindsetFlow =
+    redirectPath?.includes("/onboarding/graphmindset") ||
+    redirectPath?.includes("/onboarding/lightning-payment");
 
   // Fetch available providers
   useEffect(() => {
@@ -40,25 +44,29 @@ function SignInContent() {
     if (session?.user) {
       const user = session.user as { defaultWorkspaceSlug?: string };
 
-      // If there's a specific redirect path, use it
       if (redirectPath) {
         router.push(redirectPath);
       } else if (user.defaultWorkspaceSlug) {
-        // User has a default workspace, redirect to their workspace
         router.push(`/w/${user.defaultWorkspaceSlug}`);
       }
-      // Note: Users without workspaces are handled by root page's handleWorkspaceRedirect()
     }
   }, [session, router, redirectPath]);
 
   if (status === "loading") {
+    if (isGraphMindsetFlow) {
+      return (
+        <DarkWizardShell>
+          <div className="min-h-[320px] flex flex-col items-center justify-center gap-4">
+            <Loader2 className="animate-spin h-8 w-8 text-zinc-400" />
+          </div>
+        </DarkWizardShell>
+      );
+    }
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" />
-          <p className="text-muted-foreground">
-            {/* {redirecting ? "Redirecting to your workspace..." : "Loading..."} */}
-          </p>
+          <p className="text-muted-foreground" />
         </div>
       </div>
     );
@@ -68,16 +76,14 @@ function SignInContent() {
     try {
       setIsSigningIn(true);
       const result = await signIn("github", {
-        redirect: false, // Handle redirect manually for better UX
-        callbackUrl: redirectPath || "/", // Use redirect parameter if available
+        redirect: false,
+        callbackUrl: redirectPath || "/",
       });
 
       if (result?.error) {
         console.error("Sign in error:", result.error);
-        // Reset signing in state on error
         setIsSigningIn(false);
       }
-      // Note: On success, the useEffect will handle the redirect based on session
     } catch (error) {
       console.error("Unexpected sign in error:", error);
       setIsSigningIn(false);
@@ -97,13 +103,120 @@ function SignInContent() {
         console.error("Mock sign in error:", result.error);
         setIsMockSigningIn(false);
       }
-      // Note: On success, the useEffect will handle the redirect based on session
     } catch (error) {
       console.error("Unexpected mock sign in error:", error);
       setIsMockSigningIn(false);
     }
   };
 
+  // ---- GraphMindset dark flow ----
+  if (isGraphMindsetFlow) {
+    return (
+      <DarkWizardShell>
+        <div className="flex flex-col gap-6">
+          <Link
+            href="/"
+            className="inline-flex items-center text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Home
+          </Link>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 backdrop-blur-sm p-8 flex flex-col gap-6">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-zinc-100">Hive</h1>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              {providers?.github && (
+                <Button
+                  data-testid="github-signin-button"
+                  onClick={handleGitHubSignIn}
+                  disabled={isSigningIn || isMockSigningIn}
+                  className="w-full h-12 text-base font-medium bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 disabled:opacity-50"
+                >
+                  {isSigningIn ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-3 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    <>
+                      <Github className="w-5 h-5 mr-3" />
+                      Continue with GitHub
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {hasMockProvider && (
+                <>
+                  {providers?.github && (
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t border-zinc-700" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-zinc-900 px-2 text-zinc-500">Or for development</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="mock-username" className="text-zinc-300">Username (optional)</Label>
+                      <Input
+                        id="mock-username"
+                        type="text"
+                        placeholder="Enter username (defaults to 'dev-user')"
+                        value={mockUsername}
+                        onChange={(e) => setMockUsername(e.target.value)}
+                        disabled={isMockSigningIn || isSigningIn}
+                        className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500"
+                      />
+                    </div>
+                    <Button
+                      data-testid="mock-signin-button"
+                      onClick={handleMockSignIn}
+                      disabled={isMockSigningIn || isSigningIn}
+                      className="w-full h-12 text-base font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
+                    >
+                      {isMockSigningIn ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-3 animate-spin" />
+                          Signing in...
+                        </>
+                      ) : (
+                        <>
+                          <UserCheck className="w-5 h-5 mr-3" />
+                          Mock Sign In (Dev)
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              <div className="text-center">
+                <p className="text-sm text-zinc-400">
+                  By continuing, you agree to our{" "}
+                  <a href="#" className="text-blue-400 hover:underline">
+                    Terms of Service
+                  </a>{" "}
+                  and{" "}
+                  <a href="#" className="text-blue-400 hover:underline">
+                    Privacy Policy
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </DarkWizardShell>
+    );
+  }
+
+  // ---- Default (light) flow ----
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className={`w-full ${hasMockProvider ? "max-w-2xl" : "max-w-md"}`}>
@@ -223,14 +336,16 @@ function SignInContent() {
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading...</p>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
         </div>
-      </div>
-    }>
+      }
+    >
       <SignInContent />
     </Suspense>
   );
