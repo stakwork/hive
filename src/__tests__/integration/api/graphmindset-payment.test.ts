@@ -103,9 +103,10 @@ describe('GET /api/graphmindset/payment', () => {
 
     const response = await GET(buildGetRequest());
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.error).toBe('No pending payment found');
+    expect(data.alreadyProvisioned).toBe(true);
+    expect(data.workspaceSlug).toBe(workspace.slug);
   });
 
   test('falls back to lightning payment when no fiat payment exists (no type param)', async () => {
