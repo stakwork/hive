@@ -113,19 +113,19 @@ export async function POST(request: NextRequest) {
       console.log(`[SWARM_CREATE] Skipping SourceControlOrg linking — no repositoryUrl`);
     }
 
-    // Check for an already-existing swarm before doing any external work
+    // Pre-check: fast-path return for already-existing swarm (avoids unnecessary external API calls).
+    // A second in-transaction check handles true concurrent races between new requests.
     console.log(`[SWARM_CREATE] Checking for existing swarm for workspace ${workspaceId}`);
-    const existingSwarm = await db.swarm.findFirst({
+    const existingSwarmCheck = await db.swarm.findFirst({
       where: { workspaceId },
       orderBy: { createdAt: 'desc' },
     });
-
-    if (existingSwarm) {
-      console.log(`[SWARM_CREATE] Found existing swarm - ID: ${existingSwarm.id}, SwarmId: ${existingSwarm.swarmId}, Status: ${existingSwarm.status}`);
+    if (existingSwarmCheck) {
+      console.log(`[SWARM_CREATE] Found existing swarm - ID: ${existingSwarmCheck.id}, SwarmId: ${existingSwarmCheck.swarmId}, Status: ${existingSwarmCheck.status}`);
       return NextResponse.json({
         success: true,
         message: "Swarm already exists for this workspace",
-        data: { id: existingSwarm.id, swarmId: existingSwarm.swarmId },
+        data: { id: existingSwarmCheck.id, swarmId: existingSwarmCheck.swarmId },
       }, { status: 200 });
     }
 
@@ -169,8 +169,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Create placeholder swarm + repository in a single transaction
+    // The existingSwarm check is performed inside the transaction to prevent race conditions
+    // where two concurrent requests both see no swarm and both call createCustomer().
     console.log(`[SWARM_CREATE] Starting transaction to create placeholder swarm for workspace ${workspaceId}`);
-    const result = await db.$transaction(async (tx) => {
+    const txResult = await db.$transaction(async (tx) => {
+      // Re-check inside the transaction to prevent concurrent duplicate customer creation
+      const existingSwarm = await tx.swarm.findFirst({
+        where: { workspaceId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existingSwarm) {
+        console.log(`[SWARM_CREATE] Found existing swarm inside tx - ID: ${existingSwarm.id}, SwarmId: ${existingSwarm.swarmId}, Status: ${existingSwarm.status}`);
+        return { existing: existingSwarm };
+      }
       console.log(`[SWARM_CREATE] No existing swarm found, creating placeholder for workspace ${workspaceId}`);
       // Create placeholder swarm record immediately to reserve the workspace
       const placeholderSwarm = await tx.swarm.create({
@@ -207,8 +218,19 @@ export async function POST(request: NextRequest) {
         console.log(`[SWARM_CREATE] Created repository record - ID: ${createdRepo.id}, Name: ${repoName}`);
       }
 
-      return placeholderSwarm;
+      return { created: placeholderSwarm };
     });
+
+    // If a swarm already existed (found inside transaction), return early without calling external APIs
+    if ('existing' in txResult && txResult.existing) {
+      return NextResponse.json({
+        success: true,
+        message: "Swarm already exists for this workspace",
+        data: { id: txResult.existing.id, swarmId: txResult.existing.swarmId },
+      }, { status: 200 });
+    }
+
+    const result = txResult.created;
     console.log(`[SWARM_CREATE] Transaction completed - placeholder swarm ID: ${result.id}`);
 
     // Step 3: Make external API call with workspace already reserved
