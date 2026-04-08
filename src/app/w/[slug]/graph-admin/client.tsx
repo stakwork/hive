@@ -11,7 +11,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ExternalLink, Loader2, AlertCircle, RefreshCw, Zap, Plus, Pencil, Check, Globe, Lock } from "lucide-react";
 import { toast } from "sonner";
 import type { PaidEndpoint, BoltwallUser, GraphAdminClientProps } from "./types";
-import { postGraphAdminCmd } from "./utils";
+import { postGraphAdminCmd, roleToNumber } from "./utils";
 import { CopyButton, UserRow, UserFormDialog, SetOwnerDialog } from "./components";
 
 export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: GraphAdminClientProps) {
@@ -222,19 +222,20 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
 
   // ── Users: save (add/edit) ──
   async function handleSaveUser(data: { pubkey: string; name: string; role: string }) {
+    const roleNum = roleToNumber(data.role);
     if (editingUser) {
       await postGraphAdminCmd(workspaceSlug, {
         type: "Swarm",
         data: {
           cmd: "UpdateUser",
-          content: { id: editingUser.id!, pubkey: data.pubkey, name: data.name, role: data.role },
+          content: { id: editingUser.id!, pubkey: data.pubkey, name: data.name, role: roleNum },
         },
       });
       toast.success("User updated");
     } else {
       await postGraphAdminCmd(workspaceSlug, {
         type: "Swarm",
-        data: { cmd: "AddBoltwallUser", content: { pubkey: data.pubkey, name: data.name, role: data.role } },
+        data: { cmd: "AddBoltwallUser", content: { pubkey: data.pubkey, name: data.name, role: roleNum } },
       });
       toast.success("User added");
     }
