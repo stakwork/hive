@@ -186,11 +186,14 @@ describe('GraphMindset lightning chain: preauth → webhook settle → claim →
       data: { workspaceId: workspace.id },
     });
 
-    // Should no longer appear (workspaceId is no longer null)
+    // Should return alreadyProvisioned (workspaceId is no longer null)
     const afterRes = await paymentGET(
       new NextRequest('http://localhost/api/graphmindset/payment?type=lightning'),
     );
-    expect(afterRes.status).toBe(404);
+    expect(afterRes.status).toBe(200);
+    const afterData = await afterRes.json();
+    expect(afterData.alreadyProvisioned).toBe(true);
+    expect(afterData.workspaceSlug).toBe(workspace.slug);
   });
 
   test('preauth creates placeholder then updates with real LND hash', async () => {
