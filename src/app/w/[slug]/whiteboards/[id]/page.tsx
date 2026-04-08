@@ -65,6 +65,8 @@ export default function WhiteboardDetailPage() {
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const onChangeSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveInFlightRef = useRef(false);
+  const pendingSaveRef = useRef(false);
   const programmaticUpdateCountRef = useRef(1); // 1 for initial load
   const containerRef = useRef<HTMLDivElement>(null);
   const versionRef = useRef<number>(0);
@@ -139,6 +141,14 @@ export default function WhiteboardDetailPage() {
       // Skip save if nothing actually changed
       const snapshot = computeSnapshot(elements, files);
       if (snapshot === lastSavedSnapshotRef.current) return;
+
+      // Concurrency guard: if a save is already in flight, defer this save.
+      // The finally block will re-trigger with fresh canvas state after completion.
+      if (saveInFlightRef.current) {
+        pendingSaveRef.current = true;
+        return;
+      }
+      saveInFlightRef.current = true;
 
       // Clear any pending onChange save — a save is already in flight
       if (onChangeSaveTimeoutRef.current) {
@@ -215,6 +225,8 @@ export default function WhiteboardDetailPage() {
               if (retryResult.data?.version) {
                 versionRef.current = retryResult.data.version;
               }
+              lastSavedSnapshotRef.current = snapshot;
+              setWhiteboard((prev) => prev ? { ...prev, files: mergedFiles } : prev);
               setSaved(true);
               setTimeout(() => setSaved(false), 2000);
             } else {
@@ -238,6 +250,7 @@ export default function WhiteboardDetailPage() {
           versionRef.current = result.data.version;
         }
         lastSavedSnapshotRef.current = snapshot;
+        setWhiteboard((prev) => prev ? { ...prev, files: mergedFiles, version: result.data.version } : prev);
 
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
@@ -245,9 +258,17 @@ export default function WhiteboardDetailPage() {
         console.error("Error saving whiteboard:", error);
       } finally {
         setSaving(false);
+        saveInFlightRef.current = false;
+        if (pendingSaveRef.current && excalidrawAPI) {
+          pendingSaveRef.current = false;
+          const el = excalidrawAPI.getSceneElements();
+          const as = excalidrawAPI.getAppState();
+          const fi = excalidrawAPI.getFiles();
+          saveToDatabase(el, as, fi);
+        }
       }
     },
-    [whiteboard, senderId]
+    [whiteboard, senderId, excalidrawAPI]
   );
 
   const handleChange = useCallback(
