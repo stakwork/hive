@@ -48,13 +48,13 @@ function makeWorkspace(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("WorkspaceSetup - graph_mindset returns null when not ready", () => {
+describe("WorkspaceSetup - shows spinner when not ready", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
   });
 
-  it("returns null for graph_mindset workspace when swarmId is null", () => {
+  it("shows spinner for graph_mindset workspace when swarmId is null", () => {
     mockUseWorkspace.mockReturnValue({
       workspace: makeWorkspace({ workspaceKind: "graph_mindset", swarmId: null }),
       slug: "my-workspace",
@@ -63,14 +63,14 @@ describe("WorkspaceSetup - graph_mindset returns null when not ready", () => {
       refreshCurrentWorkspace: mockRefreshCurrentWorkspace,
     });
 
-    const { container } = render(
+    const { getByText } = render(
       <WorkspaceSetup repositoryUrl="https://github.com/org/repo" />
     );
 
-    expect(container.firstChild).toBeNull();
+    expect(getByText(/preparing environment/i)).toBeInTheDocument();
   });
 
-  it("returns null for graph_mindset workspace when hasKey is false", () => {
+  it("shows spinner for graph_mindset workspace when hasKey is false", () => {
     mockUseWorkspace.mockReturnValue({
       workspace: makeWorkspace({
         workspaceKind: "graph_mindset",
@@ -84,11 +84,11 @@ describe("WorkspaceSetup - graph_mindset returns null when not ready", () => {
       refreshCurrentWorkspace: mockRefreshCurrentWorkspace,
     });
 
-    const { container } = render(
+    const { getByText } = render(
       <WorkspaceSetup repositoryUrl="https://github.com/org/repo" />
     );
 
-    expect(container.firstChild).toBeNull();
+    expect(getByText(/preparing environment/i)).toBeInTheDocument();
   });
 
   it("shows spinner overlay for non-graph_mindset workspace when swarmId is null", () => {
@@ -107,7 +107,7 @@ describe("WorkspaceSetup - graph_mindset returns null when not ready", () => {
     expect(getByText(/preparing environment/i)).toBeInTheDocument();
   });
 
-  it("does NOT render DarkWizardShell overlay for graph_mindset (returns null instead)", () => {
+  it("renders spinner overlay for graph_mindset when not ready", () => {
     mockUseWorkspace.mockReturnValue({
       workspace: makeWorkspace({ workspaceKind: "graph_mindset", swarmId: null }),
       slug: "my-workspace",
@@ -116,11 +116,10 @@ describe("WorkspaceSetup - graph_mindset returns null when not ready", () => {
       refreshCurrentWorkspace: mockRefreshCurrentWorkspace,
     });
 
-    const { container, queryByText } = render(
+    const { getByText } = render(
       <WorkspaceSetup repositoryUrl="https://github.com/org/repo" />
     );
 
-    expect(container.firstChild).toBeNull();
-    expect(queryByText(/preparing environment/i)).not.toBeInTheDocument();
+    expect(getByText(/preparing environment/i)).toBeInTheDocument();
   });
 });
