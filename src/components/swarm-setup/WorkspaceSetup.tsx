@@ -330,9 +330,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
   // Show loading state during workspace setup
   if (!swarmId || !hasStakworkCustomer || !ingestRefId) {
-    if (workspace?.workspaceKind === "graph_mindset") {
-      return null;
-    }
     return (
       <div className="absolute inset-0 z-50 bg-background flex items-center justify-center">
         <div className="w-full h-full flex flex-col items-center justify-center">
