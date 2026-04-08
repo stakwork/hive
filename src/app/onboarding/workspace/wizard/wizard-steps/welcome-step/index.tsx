@@ -96,25 +96,23 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
       .catch(() => {});
   }, []);
 
-  // Handle Stripe return on mount
+  // Handle Stripe cancel on mount
   useEffect(() => {
-    const paymentState = searchParams.get("payment");
-    const stripeSessionId = searchParams.get("session_id");
-
-    if (paymentState === "success") {
-      if (session?.user) {
-        claimPayment(stripeSessionId || undefined);
-      } else if (sessionStatus === "unauthenticated") {
-        const returnUrl = `/onboarding/workspace?payment=success${stripeSessionId ? `&session_id=${stripeSessionId}` : ""}&workspace_type=${searchParams.get("workspace_type") ?? ""}`;
-        router.push(`/auth/signin?redirect=${encodeURIComponent(returnUrl)}`);
-      }
-    } else if (paymentState === "cancelled") {
+    if (searchParams.get("payment") === "cancelled") {
       setShowCancelBanner(true);
     }
-
-  // Run once on mount; session is handled in the effect below
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Redirect to sign-in when session resolves as unauthenticated during payment return
+  useEffect(() => {
+    if (sessionStatus !== "unauthenticated") return;
+    const paymentState = searchParams.get("payment");
+    if (paymentState !== "success") return;
+    const stripeSessionId = searchParams.get("session_id");
+    const returnUrl = `/onboarding/workspace?payment=success${stripeSessionId ? `&session_id=${stripeSessionId}` : ""}&workspace_type=${searchParams.get("workspace_type") ?? ""}`;
+    router.push(`/auth/signin?redirect=${encodeURIComponent(returnUrl)}`);
+  }, [sessionStatus, searchParams, router]);
 
   // When session loads asynchronously after mount, try to claim
   useEffect(() => {
