@@ -1,7 +1,7 @@
 "use client";
 
+import React from "react";
 import { PageHeader } from "@/components/ui/page-header";
-import { DarkWizardShell } from "@/components/onboarding/DarkWizardShell";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDataStore } from "@/stores/useStores";
 import { getRepositoryDefaultBranch } from "@/utils/getRepositoryDefaultBranch";
@@ -16,7 +16,6 @@ interface WorkspaceSetupProps {
 
 export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSetupProps) {
   const { workspace, slug, id: workspaceId, updateWorkspace, refreshCurrentWorkspace } = useWorkspace();
-  const isGraphMindset = workspace?.workspaceKind === "graph_mindset";
   const setIsOnboarding = useDataStore((s) => s.setIsOnboarding);
   const [error, setError] = useState<string | null>(null);
   const ingestRefId = workspace?.ingestRefId;
@@ -312,16 +311,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
   // Show error state first, before checking completion
   if (error) {
-    if (isGraphMindset) {
-      return (
-        <DarkWizardShell overlay>
-          <div className="min-h-[320px] flex flex-col items-center justify-center gap-4">
-            <p className="text-base font-semibold text-zinc-100">Setup Error</p>
-            <p className="text-sm text-red-400 text-center">{error}</p>
-          </div>
-        </DarkWizardShell>
-      );
-    }
     return (
       <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
         <div className="w-full h-full flex flex-col items-center justify-center">
@@ -341,15 +330,8 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
   // Show loading state during workspace setup
   if (!swarmId || !hasStakworkCustomer || !ingestRefId) {
-    if (isGraphMindset) {
-      return (
-        <DarkWizardShell overlay>
-          <div className="min-h-[320px] flex flex-col items-center justify-center gap-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
-            <div className="text-lg text-zinc-100">Preparing environment...</div>
-          </div>
-        </DarkWizardShell>
-      );
+    if (workspace?.workspaceKind === "graph_mindset") {
+      return null;
     }
     return (
       <div className="absolute inset-0 z-50 bg-background flex items-center justify-center">
