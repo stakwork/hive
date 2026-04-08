@@ -104,7 +104,7 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
     if (paymentState === "success") {
       if (session?.user) {
         claimPayment(stripeSessionId || undefined);
-      } else {
+      } else if (sessionStatus === "unauthenticated") {
         const returnUrl = `/onboarding/workspace?payment=success${stripeSessionId ? `&session_id=${stripeSessionId}` : ""}&workspace_type=${searchParams.get("workspace_type") ?? ""}`;
         router.push(`/auth/signin?redirect=${encodeURIComponent(returnUrl)}`);
       }
@@ -185,6 +185,8 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         const statusData = await statusResponse.json();
 
         if (statusData.hasPushAccess) {
+          localStorage.removeItem("repoUrl");
+          localStorage.removeItem("pendingHiveCreate");
           router.push(`/w/${data.workspace.slug}?github_setup_action=existing_installation`);
           return;
         }
@@ -197,6 +199,8 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         const installData = await installResponse.json();
 
         if (installData.success && installData.data?.link) {
+          localStorage.removeItem("repoUrl");
+          localStorage.removeItem("pendingHiveCreate");
           window.location.href = installData.data.link;
         } else {
           throw new Error(installData.message || "Failed to generate GitHub App installation link");
