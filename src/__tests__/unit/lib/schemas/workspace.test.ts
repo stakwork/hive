@@ -67,7 +67,7 @@ describe("updateWorkspaceSchema", () => {
       const validSlugs = [
         "my-workspace",
         "test123",
-        "a1",
+        "a1b",
         "workspace-with-many-hyphens",
         "123numbers",
         "work_space",
