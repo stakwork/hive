@@ -502,9 +502,11 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
             ok: true,
             status: 200,
             data: {
-              admins: [
-                { id: 1, pubkey: TEST_PUBKEY, name: "Alice", role: "member" },
-              ],
+              data: {
+                admins: [
+                  { id: 1, pubkey: TEST_PUBKEY, name: "Alice", role: "member" },
+                ],
+              },
             },
           };
         }
@@ -548,9 +550,11 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
             ok: true,
             status: 200,
             data: {
-              admins: [
-                { id: 2, pubkey: "02member111", name: "Bob", role: "member" },
-              ],
+              data: {
+                admins: [
+                  { id: 2, pubkey: "02member111", name: "Bob", role: "member" },
+                ],
+              },
             },
           };
         }
@@ -588,11 +592,13 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
             ok: true,
             status: 200,
             data: {
-              admins: [
-                // Super admin appears in both lists — should be deduplicated
-                { id: 1, pubkey: SUPER_ADMIN_PUBKEY, name: "Owner Also In List", role: "admin" },
-                { id: 2, pubkey: "02member222", name: "Carol", role: "member" },
-              ],
+              data: {
+                admins: [
+                  // Super admin appears in both lists — should be deduplicated
+                  { id: 1, pubkey: SUPER_ADMIN_PUBKEY, name: "Owner Also In List", role: "admin" },
+                  { id: 2, pubkey: "02member222", name: "Carol", role: "member" },
+                ],
+              },
             },
           };
         }
