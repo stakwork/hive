@@ -402,3 +402,128 @@ describe("WelcomeStep - Cancel banner", () => {
     expect(screen.queryByText(/payment cancelled/i)).not.toBeInTheDocument();
   });
 });
+
+describe("WelcomeStep - Session flash on payment return", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    mockFetch.mockReset();
+    setupDefaultFetch();
+    mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
+  });
+
+  it("does NOT redirect to signin when sessionStatus is 'loading' and payment=success", () => {
+    mockUseSession.mockReturnValue({ data: null, status: "loading" });
+    mockUseSearchParams.mockReturnValue({
+      get: (key: string) => {
+        if (key === "payment") return "success";
+        if (key === "session_id") return "cs_test_123";
+        return null;
+      },
+    });
+
+    render(<WelcomeStep onNext={vi.fn()} />);
+
+    expect(mockRouterPush).not.toHaveBeenCalledWith(
+      expect.stringContaining("/auth/signin")
+    );
+    // Should show the "Completing payment..." spinner instead
+    expect(screen.getByText(/completing payment/i)).toBeInTheDocument();
+  });
+
+  it("DOES redirect to signin when sessionStatus is 'unauthenticated' and payment=success", async () => {
+    mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
+    mockUseSearchParams.mockReturnValue({
+      get: (key: string) => {
+        if (key === "payment") return "success";
+        if (key === "session_id") return "cs_test_456";
+        if (key === "workspace_type") return "hive";
+        return null;
+      },
+    });
+
+    render(<WelcomeStep onNext={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(mockRouterPush).toHaveBeenCalledWith(
+        expect.stringContaining("/auth/signin")
+      );
+    });
+  });
+});
+
+describe("WelcomeStep - localStorage cleanup after workspace creation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    mockFetch.mockReset();
+    setupDefaultFetch();
+    mockUseWorkspace.mockReturnValue({ refreshWorkspaces: vi.fn(), workspaces: [] });
+    mockUseSession.mockReturnValue({
+      data: { user: { name: "Test User", id: "user-1" } },
+      status: "authenticated",
+    });
+    mockUseSearchParams.mockReturnValue({
+      get: (key: string) => {
+        if (key === "payment") return "success";
+        if (key === "session_id") return "cs_test_hive_clean";
+        return null;
+      },
+    });
+  });
+
+  it("removes repoUrl and pendingHiveCreate from localStorage before navigating (fast-path)", async () => {
+    localStorageMock.setItem("repoUrl", "https://github.com/org/repo");
+    localStorageMock.setItem("pendingHiveCreate", "true");
+
+    // Use URL-based routing to correctly handle fetch call order:
+    // 1. /api/config/price (price useEffect runs first)
+    // 2. /api/stripe/claim
+    // 3. /api/workspaces/slug-availability
+    // 4. /api/workspaces (POST create)
+    // 5. /api/workspaces/repo/access (fire-and-forget access call)
+    // 6. /api/github/app/check (push access check → fast-path)
+    mockFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.includes("/api/config/price")) {
+        return Promise.resolve({ ok: true, json: async () => ({ amountUsd: 50 }) });
+      }
+      if (url.includes("/api/stripe/claim")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            payment: { id: "pay_1", status: "PAID" },
+            workspaceType: "hive",
+            repositoryUrl: "https://github.com/org/repo",
+          }),
+        });
+      }
+      if (url.includes("/api/workspaces/slug-availability")) {
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { isAvailable: true } }) });
+      }
+      if (url.includes("/api/workspaces") && opts?.method === "POST" && !url.includes("/access")) {
+        return Promise.resolve({ ok: true, json: async () => ({ workspace: { slug: "repo", id: "ws-1" } }) });
+      }
+      if (url.includes("/api/github/app/check")) {
+        return Promise.resolve({ ok: true, json: async () => ({ hasPushAccess: true }) });
+      }
+      // access call and others
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    const removeItemSpy = vi.spyOn(localStorageMock, "removeItem");
+
+    render(<WelcomeStep onNext={vi.fn()} />);
+
+    await waitFor(
+      () => {
+        expect(mockRouterPush).toHaveBeenCalledWith(
+          expect.stringContaining("/w/repo")
+        );
+      },
+      { timeout: 3000 }
+    );
+
+    expect(removeItemSpy).toHaveBeenCalledWith("repoUrl");
+    expect(removeItemSpy).toHaveBeenCalledWith("pendingHiveCreate");
+  });
+});
