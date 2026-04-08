@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { fetchBtcPriceUsd } from '@/lib/btc-price';
@@ -26,22 +27,34 @@ export async function POST(req: NextRequest) {
     const btcPriceUsd = await fetchBtcPriceUsd();
     const amountUsd = btcPriceUsd ? (payment.amount / 100_000_000) * btcPriceUsd : null;
 
-    await db.$transaction([
-      db.lightningPayment.update({
-        where: { paymentHash: payment_hash },
-        data: { status: 'PAID' },
-      }),
-      db.workspaceTransaction.create({
-        data: {
-          workspaceId: payment.workspaceId ?? null,
-          type: 'LIGHTNING',
-          amountSats: payment.amount,
-          btcPriceUsd,
-          amountUsd,
-          lightningPaymentId: payment.id,
-        },
-      }),
-    ]);
+    try {
+      await db.$transaction([
+        db.lightningPayment.update({
+          where: { paymentHash: payment_hash },
+          data: { status: 'PAID' },
+        }),
+        db.workspaceTransaction.create({
+          data: {
+            workspaceId: payment.workspaceId ?? null,
+            type: 'LIGHTNING',
+            amountSats: payment.amount,
+            btcPriceUsd,
+            amountUsd,
+            lightningPaymentId: payment.id,
+          },
+        }),
+      ]);
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        logger.info(
+          'WorkspaceTransaction already exists for lightningPaymentId — idempotent skip',
+          'lightning-webhook',
+          { payment_hash },
+        );
+      } else {
+        throw err;
+      }
+    }
   } catch (err) {
     logger.error('Lightning webhook processing error', 'lightning-webhook', { err });
   }
