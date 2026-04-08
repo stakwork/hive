@@ -174,6 +174,27 @@ describe('Stripe Webhook Handler Integration Tests', () => {
       expect(updatedPayment!.failureMessage).toBe('Your card has insufficient funds.');
     });
 
+    test('payment_intent.payment_failed: does not downgrade a PAID FiatPayment to FAILED', async () => {
+      const { workspace } = await createTestWorkspaceScenario();
+      const payment = await createTestFiatPayment({
+        workspaceId: workspace.id,
+        stripePaymentIntentId: 'pi_test_already_paid',
+        status: 'PAID',
+      });
+
+      const event = buildPaymentFailedEvent('pi_test_already_paid');
+      mockConstructStripeEvent.mockReturnValue(event);
+
+      const req = buildWebhookRequest(JSON.stringify({}));
+      const response = await POST(req);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ received: true });
+
+      const unchanged = await db.fiatPayment.findUnique({ where: { id: payment.id } });
+      expect(unchanged!.status).toBe('PAID');
+    });
+
     test('payment_intent.payment_failed: no matching FiatPayment returns 200 with no DB writes', async () => {
       const event = buildPaymentFailedEvent('pi_unknown_intent_xyz');
       mockConstructStripeEvent.mockReturnValue(event);

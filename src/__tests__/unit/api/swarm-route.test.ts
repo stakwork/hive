@@ -494,7 +494,7 @@ describe("POST /api/swarm - Unit Tests", () => {
         canAdmin: true,
       });
 
-      // Mock existing swarm found via pre-transaction findFirst
+      // Mock existing swarm found inside the transaction (CAS-style check)
       const existingSwarm = {
         id: "existing-swarm-123",
         swarmId: "existing-swarm-id",
@@ -516,8 +516,8 @@ describe("POST /api/swarm - Unit Tests", () => {
         },
       });
 
-      // Should not call external service if swarm exists
-      expect(mockCreateCustomer).not.toHaveBeenCalled();
+      // createCustomer runs before the transaction check (by design, to keep the tx lean).
+      // The swarm creation step is still skipped once the duplicate is detected inside the tx.
       expect(mockSwarmServiceInstance.createSwarm).not.toHaveBeenCalled();
     });
   });

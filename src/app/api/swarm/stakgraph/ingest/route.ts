@@ -3,6 +3,7 @@ import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 import { getAllRepositories } from "@/lib/helpers/repository";
 import { getGithubWebhookCallbackUrl, getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { WebhookService } from "@/services/github/WebhookService";
@@ -176,21 +177,19 @@ export async function POST(request: NextRequest) {
     const finalRepoUrls = repositoriesToIngest.map(repo => repo.repositoryUrl).join(',');
     console.log(`[STAKGRAPH_INGEST] Repository URLs to ingest: ${finalRepoUrls}`);
 
-    // Check if ingest request is already in progress
-    if (swarm.ingestRequestInProgress) {
-      console.log(`[STAKGRAPH_INGEST] Ingest request already in progress for swarm: ${swarm.name}`);
+    // Atomically set ingestRequestInProgress=true only if it is currently false (CAS pattern).
+    // This prevents a TOCTOU race where two concurrent requests both read false, both proceed.
+    const flagResult = await db.swarm.updateMany({
+      where: { workspaceId: repoWorkspaceId, ingestRequestInProgress: false },
+      data: { ingestRequestInProgress: true },
+    });
+    if (flagResult.count === 0) {
+      logger.info('Ingest already in progress', 'stakgraph-ingest', { workspaceId: repoWorkspaceId });
       return NextResponse.json({
         success: false,
-        message: "Ingest request already in progress for this swarm"
+        message: "Ingest request already in progress for this swarm",
       }, { status: 409 });
     }
-
-    // Set ingest request in progress flag
-    console.log(`[STAKGRAPH_INGEST] Setting ingestRequestInProgress to true`);
-    await saveOrUpdateSwarm({
-      workspaceId: swarm.workspaceId,
-      ingestRequestInProgress: true,
-    });
     console.log(`[STAKGRAPH_INGEST] Ingest request marked as in progress`);
 
     // Update all repositories being ingested to PENDING status
