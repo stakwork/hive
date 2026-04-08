@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -454,7 +454,7 @@ function ProvisionStep({ forkUrl }: ProvisionStepProps) {
       const paymentRes = await fetch("/api/graphmindset/payment");
       const paymentData = await paymentRes.json();
       if (!paymentRes.ok) {
-        setError(paymentData.error || "No payment found. Please complete payment first.");
+        router.push("/workspaces");
         return;
       }
       const { workspaceName, workspaceSlug } = paymentData.payment;
