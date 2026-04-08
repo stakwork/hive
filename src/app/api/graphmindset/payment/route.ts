@@ -51,6 +51,33 @@ export async function GET(request: Request) {
   });
 
   if (!lightningPayment) {
+    // No unclaimed payment — check if workspace was already provisioned
+    const claimedFiat = await db.fiatPayment.findFirst({
+      where: { userId: session.user.id, status: 'PAID', workspaceId: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      include: { workspace: { select: { slug: true, deleted: true } } },
+    });
+
+    if (claimedFiat?.workspace && !claimedFiat.workspace.deleted) {
+      return NextResponse.json({
+        alreadyProvisioned: true,
+        workspaceSlug: claimedFiat.workspace.slug,
+      });
+    }
+
+    const claimedLightning = await db.lightningPayment.findFirst({
+      where: { userId: session.user.id, status: 'PAID', workspaceId: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      include: { workspace: { select: { slug: true, deleted: true } } },
+    });
+
+    if (claimedLightning?.workspace && !claimedLightning.workspace.deleted) {
+      return NextResponse.json({
+        alreadyProvisioned: true,
+        workspaceSlug: claimedLightning.workspace.slug,
+      });
+    }
+
     return NextResponse.json({ error: 'No pending payment found' }, { status: 404 });
   }
 
