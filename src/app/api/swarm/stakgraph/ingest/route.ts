@@ -9,7 +9,7 @@ import { getGithubWebhookCallbackUrl, getStakgraphWebhookCallbackUrl } from "@/l
 import { WebhookService } from "@/services/github/WebhookService";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
-import { triggerIngestAsync, SyncOptions } from "@/services/swarm/stakgraph-actions";
+import { triggerIngestAsync, checkStakgraphAvailability, SyncOptions } from "@/services/swarm/stakgraph-actions";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -176,6 +176,14 @@ export async function POST(request: NextRequest) {
 
     const finalRepoUrls = repositoriesToIngest.map(repo => repo.repositoryUrl).join(',');
     console.log(`[STAKGRAPH_INGEST] Repository URLs to ingest: ${finalRepoUrls}`);
+
+    const isAvailable = await checkStakgraphAvailability(getSwarmVanityAddress(swarm.name));
+    if (!isAvailable) {
+      return NextResponse.json(
+        { success: false, message: "Stakgraph service is not available" },
+        { status: 503 },
+      );
+    }
 
     // Atomically set ingestRequestInProgress=true only if it is currently false (CAS pattern).
     // This prevents a TOCTOU race where two concurrent requests both read false, both proceed.
