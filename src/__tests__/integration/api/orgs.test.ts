@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import {
   createAuthenticatedGetRequest,
   createGetRequest,
+  createAuthenticatedPatchRequest,
   generateUniqueId,
 } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/factories";
@@ -9,6 +10,7 @@ import { db } from "@/lib/db";
 import { GET as getOrgs } from "@/app/api/orgs/route";
 import { GET as getOrgWorkspaces } from "@/app/api/orgs/[githubLogin]/workspaces/route";
 import { GET as getOrgMembers } from "@/app/api/orgs/[githubLogin]/members/route";
+import { PATCH as patchOrgMember } from "@/app/api/orgs/[githubLogin]/members/[userId]/route";
 import type { NextResponse } from "next/server";
 
 async function expectJson<T = unknown>(res: NextResponse | Response, status = 200): Promise<T> {
@@ -60,6 +62,10 @@ async function addMember(workspaceId: string, userId: string) {
 
 function makeParams(githubLogin: string) {
   return Promise.resolve({ githubLogin });
+}
+
+function makeMemberParams(githubLogin: string, userId: string) {
+  return Promise.resolve({ githubLogin, userId });
 }
 
 // ─── cleanup tracking ───────────────────────────────────────────────────────
@@ -321,5 +327,123 @@ describe("GET /api/orgs/[githubLogin]/members", () => {
     const data = await expectJson<unknown[]>(res);
 
     expect(data).toHaveLength(0);
+  });
+});
+
+// ─── PATCH /api/orgs/[githubLogin]/members/[userId] ──────────────────────────
+
+describe("PATCH /api/orgs/[githubLogin]/members/[userId]", () => {
+  it("returns 401 for unauthenticated requests", async () => {
+    const req = createGetRequest("/api/orgs/some-org/members/some-user");
+    // Use a raw GET request (no auth headers) — patchOrgMember checks auth regardless of method
+    const res = await patchOrgMember(req as never, { params: makeMemberParams("some-org", "some-user") });
+    await expectJson(res, 401);
+  });
+
+  it("updates a member description and returns workspaceId + description", async () => {
+    const owner = await createTestUser({ email: `patch-owner-${generateUniqueId()}@example.com`, idempotent: false });
+    const member = await createTestUser({ email: `patch-member-${generateUniqueId()}@example.com`, idempotent: false });
+    createdUserIds.push(owner.id, member.id);
+
+    const login = `patch-desc-org-${generateUniqueId()}`;
+    const org = await createOrg(login);
+    createdOrgIds.push(org.id);
+
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+    await addMember(ws.id, member.id);
+
+    const req = createAuthenticatedPatchRequest(
+      `/api/orgs/${login}/members/${member.id}`,
+      { workspaceId: ws.id, description: "Great developer" },
+      owner
+    );
+    const res = await patchOrgMember(req, { params: makeMemberParams(login, member.id) });
+    const data = await expectJson<{ workspaceId: string; description: string | null }>(res);
+
+    expect(data.workspaceId).toBe(ws.id);
+    expect(data.description).toBe("Great developer");
+
+    // Verify the DB was actually updated
+    const record = await db.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: ws.id, userId: member.id } },
+      select: { description: true },
+    });
+    expect(record?.description).toBe("Great developer");
+  });
+
+  it("allows a non-owner member to update descriptions in the org", async () => {
+    const owner = await createTestUser({ email: `patch-o2-${generateUniqueId()}@example.com`, idempotent: false });
+    const editor = await createTestUser({ email: `patch-e2-${generateUniqueId()}@example.com`, idempotent: false });
+    const target = await createTestUser({ email: `patch-t2-${generateUniqueId()}@example.com`, idempotent: false });
+    createdUserIds.push(owner.id, editor.id, target.id);
+
+    const login = `patch-member-editor-${generateUniqueId()}`;
+    const org = await createOrg(login);
+    createdOrgIds.push(org.id);
+
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+    await addMember(ws.id, editor.id);
+    await addMember(ws.id, target.id);
+
+    // Editor (not owner) can still update descriptions
+    const req = createAuthenticatedPatchRequest(
+      `/api/orgs/${login}/members/${target.id}`,
+      { workspaceId: ws.id, description: "Edited by peer" },
+      editor
+    );
+    const res = await patchOrgMember(req, { params: makeMemberParams(login, target.id) });
+    await expectJson<{ description: string }>(res);
+
+    const record = await db.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: ws.id, userId: target.id } },
+      select: { description: true },
+    });
+    expect(record?.description).toBe("Edited by peer");
+  });
+
+  it("returns 403 when requester is not a member of the org", async () => {
+    const owner = await createTestUser({ email: `patch-fo-${generateUniqueId()}@example.com`, idempotent: false });
+    const outsider = await createTestUser({ email: `patch-fx-${generateUniqueId()}@example.com`, idempotent: false });
+    const target = await createTestUser({ email: `patch-ft-${generateUniqueId()}@example.com`, idempotent: false });
+    createdUserIds.push(owner.id, outsider.id, target.id);
+
+    const login = `patch-forbidden-${generateUniqueId()}`;
+    const org = await createOrg(login);
+    createdOrgIds.push(org.id);
+
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+    await addMember(ws.id, target.id);
+
+    const req = createAuthenticatedPatchRequest(
+      `/api/orgs/${login}/members/${target.id}`,
+      { workspaceId: ws.id, description: "Sneaky edit" },
+      outsider
+    );
+    const res = await patchOrgMember(req, { params: makeMemberParams(login, target.id) });
+    await expectJson(res, 403);
+  });
+
+  it("returns 404 when the WorkspaceMember record does not exist", async () => {
+    const owner = await createTestUser({ email: `patch-404-o-${generateUniqueId()}@example.com`, idempotent: false });
+    createdUserIds.push(owner.id);
+
+    const login = `patch-404-org-${generateUniqueId()}`;
+    const org = await createOrg(login);
+    createdOrgIds.push(org.id);
+
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+
+    // Owner requests update for a userId that has no membership record
+    const req = createAuthenticatedPatchRequest(
+      `/api/orgs/${login}/members/nonexistent-user-id`,
+      { workspaceId: ws.id, description: "Ghost edit" },
+      owner
+    );
+    const res = await patchOrgMember(req, { params: makeMemberParams(login, "nonexistent-user-id") });
+    await expectJson(res, 404);
   });
 });
