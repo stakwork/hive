@@ -70,6 +70,14 @@ export default function TaskChatPage() {
   const taskParams = params.taskParams as string[];
   const isNewTask = taskParams?.[0] === "new";
 
+  // Reset workspace-specific modes when navigating to a non-Stakwork workspace
+  useEffect(() => {
+    const restrictedModes = ["workflow_editor", "project_debugger"];
+    if (slug !== "stakwork" && restrictedModes.includes(taskMode)) {
+      setTaskMode("live");
+    }
+  }, [slug, taskMode, setTaskMode]);
+
   // Check pod availability when in agent mode on new task page
   const {
     poolStatus,

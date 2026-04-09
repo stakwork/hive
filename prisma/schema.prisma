@@ -147,6 +147,7 @@ model SourceControlOrg {
   name                 String?
   avatarUrl            String?              @map("avatar_url")
   description          String?
+  schematic            String?              @map("schematic")
   createdAt            DateTime             @default(now()) @map("created_at")
   updatedAt            DateTime             @updatedAt @map("updated_at")
   tokens               SourceControlToken[]
@@ -238,6 +239,7 @@ model WorkspaceMember {
   joinedAt       DateTime      @default(now()) @map("joined_at")
   leftAt         DateTime?     @map("left_at")
   lastAccessedAt DateTime?     @map("last_accessed_at")
+  description    String?       @map("description")
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
