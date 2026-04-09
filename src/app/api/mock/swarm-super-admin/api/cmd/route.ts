@@ -34,6 +34,7 @@ const MOCK_RESPONSES: Record<string, unknown> = {
     ],
   },
   UpdatePaidEndpoint: { success: true },
+  GetBotBalance: { success: true, message: "bot balance retrieved", data: { msat: 30000 } },
 };
 
 /**
