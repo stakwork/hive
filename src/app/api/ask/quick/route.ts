@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
       const concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
       features = (concepts.features as Record<string, unknown>[]) || [];
 
-      prefixMessages = getQuickAskPrefixMessages(features, ws.repoUrls, []);
+      prefixMessages = getQuickAskPrefixMessages(features, ws.repoUrls, [], ws.description);
       primarySwarmUrl = ws.swarmUrl;
       primarySwarmApiKey = ws.swarmApiKey;
     }
