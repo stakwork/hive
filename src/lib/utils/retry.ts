@@ -4,9 +4,9 @@
 export async function retryWithExponentialBackoff<T>(
   fn: () => Promise<T>,
   {
-    maxAttempts = 6,
+    maxAttempts = 8,
     baseDelayMs = 1000,
-    maxDelayMs = 10000,
+    maxDelayMs = 90000,
   }: { maxAttempts?: number; baseDelayMs?: number; maxDelayMs?: number } = {},
 ): Promise<T> {
   let lastError: unknown;
