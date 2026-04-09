@@ -59,7 +59,7 @@ export function useWhiteboardCollaboration({
 }: UseWhiteboardCollaborationOptions): UseWhiteboardCollaborationReturn {
   const { data: session } = useSession();
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
-  const [cursorPositions, setCursorPositions] = useState<Map<string, { x: number; y: number; color: string; username?: string }>>(new Map());
+  const [cursorPositions, setCursorPositions] = useState<Map<string, { x: number; y: number; color: string; username?: string; lastUpdated: number }>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
 
   // Generate a unique sender ID for this session
@@ -92,7 +92,7 @@ export function useWhiteboardCollaboration({
         pointer: {
           x: cursor.x,
           y: cursor.y,
-          tool: "laser",
+          tool: "pointer",
         },
         color: {
           background: cursor.color,
@@ -221,9 +221,42 @@ export function useWhiteboardCollaboration({
     [whiteboardId]
   );
 
+  // Refs for presence rebroadcast (following usePlanPresence pattern)
+  const hasSentJoinRef = useRef(false);
+  const knownUserIdsRef = useRef(new Set<string>());
+
+  // Stable ref for session so the effect doesn't re-run on token refreshes
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const onRemoteUpdateRef = useRef(onRemoteUpdate);
+  onRemoteUpdateRef.current = onRemoteUpdate;
+
+  // Derive a stable primitive for the dependency array
+  const userId = session?.user?.id;
+
   // Subscribe to Pusher channel
   useEffect(() => {
-    if (!COLLABORATION_ENABLED || !whiteboardId) return;
+    if (!COLLABORATION_ENABLED || !whiteboardId || !userId) return;
+
+    const collaborationUrl = `/api/whiteboards/${whiteboardId}/collaboration`;
+
+    const buildUserPayload = () => ({
+      odinguserId: userId,
+      name: sessionRef.current?.user?.name || "Anonymous",
+      image: sessionRef.current?.user?.image || null,
+      color: userColorRef.current,
+      joinedAt: Date.now(),
+    });
+
+    const sendJoin = () => {
+      if (hasSentJoinRef.current) return;
+      fetch(collaborationUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "join", user: buildUserPayload() }),
+      }).catch(console.error);
+      hasSentJoinRef.current = true;
+    };
 
     let pusher: ReturnType<typeof getPusherClient> | null = null;
     let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null = null;
@@ -236,38 +269,17 @@ export function useWhiteboardCollaboration({
 
       channel.bind("pusher:subscription_succeeded", () => {
         setIsConnected(true);
-
-        // Announce join
-        if (session?.user) {
-          fetch(`/api/whiteboards/${whiteboardId}/collaboration`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "join",
-              user: {
-                odinguserId: session.user.id,
-                name: session.user.name || "Anonymous",
-                image: session.user.image || null,
-                color: userColorRef.current,
-                joinedAt: Date.now(),
-              },
-            }),
-          }).catch(console.error);
-        }
       });
 
       // Handle remote element updates
       channel.bind(
         PUSHER_EVENTS.WHITEBOARD_ELEMENTS_UPDATE,
         (data: WhiteboardElementsUpdateEvent) => {
-          // Ignore our own updates
           if (data.senderId === senderIdRef.current) return;
 
           if (excalidrawAPI) {
             const currentElements = excalidrawAPI.getSceneElements();
             const remoteElements = data.elements as ExcalidrawElement[];
-
-            // Merge elements: remote elements take precedence for conflicts
             const mergedElements = mergeElements(currentElements, remoteElements);
 
             excalidrawAPI.updateScene({
@@ -275,12 +287,12 @@ export function useWhiteboardCollaboration({
               appState: data.appState as any,
             });
 
-            onRemoteUpdate?.();
+            onRemoteUpdateRef.current?.();
           }
         }
       );
 
-      // Handle cursor updates
+      // Handle cursor updates — persist until explicit leave, sweep stale after 60s
       channel.bind(
         PUSHER_EVENTS.WHITEBOARD_CURSOR_UPDATE,
         (data: WhiteboardCursorUpdateEvent) => {
@@ -293,38 +305,38 @@ export function useWhiteboardCollaboration({
               y: data.cursor.y,
               color: data.color,
               username: data.username,
+              lastUpdated: Date.now(),
             });
             return next;
           });
-
-          // Remove stale cursor after 3 seconds of inactivity
-          setTimeout(() => {
-            setCursorPositions((prev) => {
-              const next = new Map(prev);
-              const cursor = next.get(data.senderId);
-              if (cursor && cursor.x === data.cursor.x && cursor.y === data.cursor.y) {
-                next.delete(data.senderId);
-              }
-              return next;
-            });
-          }, 3000);
         }
       );
 
-      // Handle user join
+      // Handle user join with rebroadcast for late joiners
       channel.bind(
         PUSHER_EVENTS.WHITEBOARD_USER_JOIN,
         (data: WhiteboardUserJoinEvent) => {
+          if (data.user.odinguserId === userId) return;
+
+          const isNew = !knownUserIdsRef.current.has(data.user.odinguserId);
+
           setCollaborators((prev) => {
-            // Don't add ourselves or duplicates
-            if (
-              data.user.odinguserId === session?.user?.id ||
-              prev.some((c) => c.odinguserId === data.user.odinguserId)
-            ) {
-              return prev;
-            }
+            if (prev.some((c) => c.odinguserId === data.user.odinguserId)) return prev;
             return [...prev, data.user];
           });
+
+          if (isNew) {
+            knownUserIdsRef.current.add(data.user.odinguserId);
+          }
+
+          // Re-broadcast our presence so the new joiner sees us
+          if (hasSentJoinRef.current && isNew && !data.rebroadcast) {
+            fetch(collaborationUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ type: "join", user: buildUserPayload(), rebroadcast: true }),
+            }).catch(console.error);
+          }
         }
       );
 
@@ -332,12 +344,12 @@ export function useWhiteboardCollaboration({
       channel.bind(
         PUSHER_EVENTS.WHITEBOARD_USER_LEAVE,
         (data: WhiteboardUserLeaveEvent) => {
+          knownUserIdsRef.current.delete(data.userId);
           setCollaborators((prev) =>
             prev.filter((c) => c.odinguserId !== data.userId)
           );
           setCursorPositions((prev) => {
             const next = new Map(prev);
-            // Remove cursor for any sender ID starting with the leaving user's ID
             for (const key of next.keys()) {
               if (key.startsWith(data.userId)) {
                 next.delete(key);
@@ -347,32 +359,54 @@ export function useWhiteboardCollaboration({
           });
         }
       );
+
+      // Announce our presence
+      sendJoin();
     } catch {
       // Pusher not configured in this environment
       return;
     }
 
+    // Sweep stale cursors every 30s (safety net for missed leave events)
+    const sweepInterval = setInterval(() => {
+      setCursorPositions((prev) => {
+        const now = Date.now();
+        let changed = false;
+        const next = new Map(prev);
+        for (const [key, cursor] of next) {
+          if (now - cursor.lastUpdated > 60_000) {
+            next.delete(key);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 30_000);
+
+    // Reliable leave via sendBeacon (survives tab close)
+    const sendLeaveBeacon = () => {
+      navigator.sendBeacon(
+        collaborationUrl,
+        new Blob([JSON.stringify({ type: "leave" })], { type: "application/json" }),
+      );
+    };
+
+    window.addEventListener("beforeunload", sendLeaveBeacon);
+
     // Cleanup on unmount
     return () => {
-      // Announce leave
-      if (session?.user) {
-        fetch(`/api/whiteboards/${whiteboardId}/collaboration`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "leave",
-            user: { odinguserId: session.user.id },
-          }),
-        }).catch(console.error);
-      }
-
+      window.removeEventListener("beforeunload", sendLeaveBeacon);
+      clearInterval(sweepInterval);
       channel?.unbind_all();
       if (pusher && channelName) {
         pusher.unsubscribe(channelName);
       }
+      sendLeaveBeacon();
+      hasSentJoinRef.current = false;
+      knownUserIdsRef.current.clear();
       setIsConnected(false);
     };
-  }, [whiteboardId, excalidrawAPI, session, onRemoteUpdate]);
+  }, [whiteboardId, excalidrawAPI, userId]);
 
   return {
     collaborators,
