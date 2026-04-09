@@ -330,11 +330,11 @@ describe("Boltwall stateful mock commands", () => {
     expect(data).toEqual({ pubkey: null, name: null });
   });
 
-  it("GetBotBalance returns { balance: 0 }", async () => {
+  it("GetBotBalance returns { success: true, data: { msat } }", async () => {
     const res = await cmdRequest({ cmd: "GetBotBalance" });
     const data = await res.json();
     expect(res.status).toBe(200);
-    expect(data).toEqual({ balance: 0 });
+    expect(data).toEqual({ success: true, message: "bot balance retrieved", data: { msat: 30000 } });
   });
 
   it("CreateBotInvoice returns an invoice string", async () => {
