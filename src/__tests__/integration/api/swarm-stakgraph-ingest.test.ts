@@ -13,6 +13,7 @@ import {
 // Mock external API calls
 vi.mock("@/services/swarm/stakgraph-actions", () => ({
   triggerIngestAsync: vi.fn(),
+  checkStakgraphAvailability: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("@/services/swarm/api/swarm", () => ({

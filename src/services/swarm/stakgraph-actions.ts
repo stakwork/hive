@@ -1,5 +1,6 @@
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
+import { retryWithExponentialBackoff } from "@/lib/utils/retry";
 
 type Creds = { username?: string; pat?: string };
 
@@ -13,6 +14,28 @@ export interface AsyncSyncResult {
   ok: boolean;
   status: number;
   data?: { request_id?: string; [k: string]: unknown };
+}
+
+export async function checkStakgraphAvailability(swarmName: string): Promise<boolean> {
+  const stakgraphUrl = getStakgraphUrl(swarmName);
+  try {
+    await retryWithExponentialBackoff(
+      async () => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        try {
+          const response = await fetch(`${stakgraphUrl}/busy`, { signal: controller.signal });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        } finally {
+          clearTimeout(timeout);
+        }
+      },
+      { maxAttempts: 6, baseDelayMs: 1000, maxDelayMs: 10000 },
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function triggerSync(

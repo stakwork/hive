@@ -11,6 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -67,6 +74,7 @@ export default function SwarmsTable() {
   const [isActing, setIsActing] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [stateFilter, setStateFilter] = useState<"all" | "running" | "stopped">("all");
   const [sortState, setSortState] = useState<{ field: SortField; direction: SortDirection }>({
     field: "launchTime",
     direction: "desc",
@@ -195,6 +203,7 @@ export default function SwarmsTable() {
 
   const filteredAndSorted = instances
     .filter((inst) => inst.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter((inst) => stateFilter === "all" || inst.state === stateFilter)
     .sort((a, b) => {
       let comparison = 0;
       if (sortState.field === "name") {
@@ -244,14 +253,26 @@ export default function SwarmsTable() {
     <>
       {createButton}
       {createDialog}
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Filter by name…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex gap-2 mb-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter by name…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={stateFilter} onValueChange={(v) => setStateFilter(v as "all" | "running" | "stopped")}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="All states" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All states</SelectItem>
+            <SelectItem value="running">Running</SelectItem>
+            <SelectItem value="stopped">Stopped</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <Table>
@@ -353,8 +374,8 @@ export default function SwarmsTable() {
         </TableBody>
       </Table>
 
-      {filteredAndSorted.length === 0 && searchQuery && (
-        <div className="py-8 text-center text-muted-foreground">No instances match &quot;{searchQuery}&quot;.</div>
+      {filteredAndSorted.length === 0 && (searchQuery || stateFilter !== "all") && (
+        <div className="py-8 text-center text-muted-foreground">No instances match the current filters.</div>
       )}
 
       <Dialog
