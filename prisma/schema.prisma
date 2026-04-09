@@ -147,6 +147,7 @@ model SourceControlOrg {
   name                 String?
   avatarUrl            String?              @map("avatar_url")
   description          String?
+  schematic            String?              @map("schematic")
   createdAt            DateTime             @default(now()) @map("created_at")
   updatedAt            DateTime             @updatedAt @map("updated_at")
   tokens               SourceControlToken[]
