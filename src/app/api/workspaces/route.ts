@@ -56,8 +56,8 @@ export async function GET(request: NextRequest) {
 /**
  * Create a graph_mindset workspace atomically with payment claiming.
  *
- * The entire operation — workspace row creation, payment link (CAS), paymentStatus update,
- * and WorkspaceMember creation — runs in a single db.$transaction. The payment CAS uses
+ * The entire operation — workspace row creation, payment link (CAS), and paymentStatus update —
+ * runs in a single db.$transaction. The payment CAS uses
  * `updateMany WHERE workspaceId IS NULL`, which returns count=0 if another concurrent
  * transaction already claimed the payment (causing this transaction to throw and roll back
  * the workspace creation too). This guarantees one payment → at most one workspace.
@@ -134,16 +134,10 @@ async function createGraphMindsetWorkspace(
     throw new Error("PAYMENT_REQUIRED");
   }
 
-  // Mark workspace as paid and create the owner WorkspaceMember record
+  // Mark workspace as paid
   await tx.workspace.update({
     where: { id: workspace.id },
     data: { paymentStatus: "PAID" },
-  });
-
-  await tx.workspaceMember.upsert({
-    where: { workspaceId_userId: { workspaceId: workspace.id, userId: ownerId } },
-    update: {},
-    create: { workspaceId: workspace.id, userId: ownerId, role: "OWNER" },
   });
 
   return {
