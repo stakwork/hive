@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
+import type { OrgMemberResponse } from "@/types/workspace";
 
 export async function GET(
   request: NextRequest,
@@ -14,7 +15,7 @@ export async function GET(
   const userId = userOrResponse.id;
 
   try {
-    // First get workspace IDs in this org accessible to the user
+    // Get workspace IDs in this org accessible to the user
     const accessibleWorkspaces = await db.workspace.findMany({
       where: {
         deleted: false,
@@ -33,7 +34,7 @@ export async function GET(
       return NextResponse.json([]);
     }
 
-    // Get all members across those workspaces
+    // Get all memberships across those workspaces, including description and workspace name
     const memberships = await db.workspaceMember.findMany({
       where: {
         workspaceId: { in: workspaceIds },
@@ -41,6 +42,11 @@ export async function GET(
       },
       select: {
         userId: true,
+        workspaceId: true,
+        description: true,
+        workspace: {
+          select: { name: true },
+        },
         user: {
           select: {
             id: true,
@@ -54,22 +60,31 @@ export async function GET(
       },
     });
 
-    // Deduplicate by userId
-    const seen = new Set<string>();
-    const members = memberships
-      .filter((m) => {
-        if (seen.has(m.userId)) return false;
-        seen.add(m.userId);
-        return true;
-      })
-      .map((m) => ({
-        id: m.user.id,
-        name: m.user.name,
-        image: m.user.image,
-        githubUsername: m.user.githubAuth?.githubUsername ?? null,
-      }));
+    // Group all memberships by userId
+    const memberMap = new Map<string, OrgMemberResponse>();
 
-    return NextResponse.json(members);
+    for (const m of memberships) {
+      const existing = memberMap.get(m.userId);
+      const wsDesc = {
+        workspaceId: m.workspaceId,
+        workspaceName: m.workspace.name,
+        description: m.description,
+      };
+
+      if (existing) {
+        existing.workspaceDescriptions.push(wsDesc);
+      } else {
+        memberMap.set(m.userId, {
+          id: m.user.id,
+          name: m.user.name,
+          image: m.user.image,
+          githubUsername: m.user.githubAuth?.githubUsername ?? null,
+          workspaceDescriptions: [wsDesc],
+        });
+      }
+    }
+
+    return NextResponse.json(Array.from(memberMap.values()));
   } catch (error) {
     console.error("[GET /api/orgs/[githubLogin]/members] Error:", error);
     return NextResponse.json({ error: "Failed to fetch org members" }, { status: 500 });

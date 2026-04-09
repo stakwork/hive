@@ -132,9 +132,16 @@ export interface OrgResponse {
   type: 'ORG' | 'USER';
 }
 
+export interface OrgMemberWorkspaceDescription {
+  workspaceId: string;
+  workspaceName: string;
+  description: string | null;
+}
+
 export interface OrgMemberResponse {
   id: string;
   name: string | null;
   image: string | null;
   githubUsername: string | null;
+  workspaceDescriptions: OrgMemberWorkspaceDescription[];
 }
