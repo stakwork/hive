@@ -75,6 +75,32 @@ vi.mock("@/components/ui/input", () => ({
   ),
 }));
 
+vi.mock("@/components/ui/select", () => ({
+  Select: ({
+    children,
+    value,
+    onValueChange,
+  }: {
+    children: React.ReactNode;
+    value: string;
+    onValueChange: (v: string) => void;
+  }) => (
+    <select
+      data-testid="state-filter"
+      value={value}
+      onChange={(e) => onValueChange(e.target.value)}
+    >
+      {children}
+    </select>
+  ),
+  SelectTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectValue: ({ placeholder }: { placeholder?: string }) => <option value="">{placeholder}</option>,
+  SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
+    <option value={value}>{children}</option>
+  ),
+}));
+
 vi.mock("@/components/ui/table", () => ({
   Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
   TableBody: ({ children }: { children: React.ReactNode }) => <tbody>{children}</tbody>,
@@ -309,6 +335,113 @@ describe("SwarmsTable", () => {
       fireEvent.click(screen.getByRole("button", { name: "Start" }));
 
       expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+  });
+
+  describe("state filter", () => {
+    it("renders the state filter with All states, Running, Stopped options", async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeFetchResponse([makeInstance({ state: "running" })])
+      );
+
+      render(<SwarmsTable />);
+
+      await waitFor(() => expect(screen.getByText("test-instance")).toBeInTheDocument());
+
+      const select = screen.getByTestId("state-filter") as HTMLSelectElement;
+      const options = Array.from(select.options).map((o) => o.value);
+      expect(options).toContain("all");
+      expect(options).toContain("running");
+      expect(options).toContain("stopped");
+    });
+
+    it("shows all instances when 'all' is selected (default)", async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeFetchResponse([
+          makeInstance({ instanceId: "i-1", name: "instance-1", state: "running" }),
+          makeInstance({ instanceId: "i-2", name: "instance-2", state: "stopped" }),
+        ])
+      );
+
+      render(<SwarmsTable />);
+
+      await waitFor(() => expect(screen.getByText("instance-1")).toBeInTheDocument());
+      expect(screen.getByText("instance-2")).toBeInTheDocument();
+    });
+
+    it("filters to only running instances when 'running' is selected", async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeFetchResponse([
+          makeInstance({ instanceId: "i-1", name: "instance-running", state: "running" }),
+          makeInstance({ instanceId: "i-2", name: "instance-stopped", state: "stopped" }),
+        ])
+      );
+
+      render(<SwarmsTable />);
+
+      await waitFor(() => expect(screen.getByText("instance-running")).toBeInTheDocument());
+
+      fireEvent.change(screen.getByTestId("state-filter"), { target: { value: "running" } });
+
+      expect(screen.getByText("instance-running")).toBeInTheDocument();
+      expect(screen.queryByText("instance-stopped")).toBeNull();
+    });
+
+    it("filters to only stopped instances when 'stopped' is selected", async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeFetchResponse([
+          makeInstance({ instanceId: "i-1", name: "instance-running", state: "running" }),
+          makeInstance({ instanceId: "i-2", name: "instance-stopped", state: "stopped" }),
+        ])
+      );
+
+      render(<SwarmsTable />);
+
+      await waitFor(() => expect(screen.getByText("instance-running")).toBeInTheDocument());
+
+      fireEvent.change(screen.getByTestId("state-filter"), { target: { value: "stopped" } });
+
+      expect(screen.queryByText("instance-running")).toBeNull();
+      expect(screen.getByText("instance-stopped")).toBeInTheDocument();
+    });
+
+    it("applies name search and state filter together", async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeFetchResponse([
+          makeInstance({ instanceId: "i-1", name: "alpha-running", state: "running" }),
+          makeInstance({ instanceId: "i-2", name: "alpha-stopped", state: "stopped" }),
+          makeInstance({ instanceId: "i-3", name: "beta-running", state: "running" }),
+        ])
+      );
+
+      render(<SwarmsTable />);
+
+      await waitFor(() => expect(screen.getByText("alpha-running")).toBeInTheDocument());
+
+      fireEvent.change(screen.getByPlaceholderText("Filter by name…"), {
+        target: { value: "alpha" },
+      });
+      fireEvent.change(screen.getByTestId("state-filter"), { target: { value: "running" } });
+
+      expect(screen.getByText("alpha-running")).toBeInTheDocument();
+      expect(screen.queryByText("alpha-stopped")).toBeNull();
+      expect(screen.queryByText("beta-running")).toBeNull();
+    });
+
+    it("shows empty state message when combined filters yield no results", async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeFetchResponse([
+          makeInstance({ instanceId: "i-1", name: "my-instance", state: "running" }),
+        ])
+      );
+
+      render(<SwarmsTable />);
+
+      await waitFor(() => expect(screen.getByText("my-instance")).toBeInTheDocument());
+
+      fireEvent.change(screen.getByTestId("state-filter"), { target: { value: "stopped" } });
+
+      expect(screen.getByText("No instances match the current filters.")).toBeInTheDocument();
     });
   });
 
