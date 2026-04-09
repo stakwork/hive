@@ -1,0 +1,236 @@
+import { authOptions } from "@/lib/auth/nextauth";
+import { getServerSession } from "next-auth/next";
+import { redirect, notFound } from "next/navigation";
+import { ChatMessage } from "@/components/dashboard/DashboardChat/ChatMessage";
+import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
+import { db } from "@/lib/db";
+import { SharedConversationData } from "@/types/shared-conversation";
+import { Badge } from "@/components/ui/badge";
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+  imageData?: string;
+  toolCalls?: Array<{
+    id: string;
+    toolName: string;
+    input?: unknown;
+    status: string;
+    output?: unknown;
+    errorText?: string;
+  }>;
+}
+
+interface OrgSharedConversationPageProps {
+  params: Promise<{
+    githubLogin: string;
+    shareId: string;
+  }>;
+}
+
+async function getOrgSharedConversation(
+  githubLogin: string,
+  shareId: string,
+  userId: string
+): Promise<{ data?: SharedConversationData; error?: string; status: number }> {
+  try {
+    // Find org
+    const org = await db.sourceControlOrg.findFirst({
+      where: { githubLogin },
+    });
+
+    if (!org) {
+      return { error: "Organization not found", status: 404 };
+    }
+
+    // Check if user has access to this org
+    const token = await db.sourceControlToken.findFirst({
+      where: { userId, sourceControlOrgId: org.id },
+    });
+
+    if (!token) {
+      return {
+        error: "Access denied. You must be an organization member to view shared conversations.",
+        status: 403,
+      };
+    }
+
+    // Fetch the shared conversation
+    const sharedConversation = await db.sharedConversation.findUnique({
+      where: { id: shareId },
+      select: {
+        id: true,
+        workspaceId: true,
+        sourceControlOrgId: true,
+        userId: true,
+        title: true,
+        messages: true,
+        provenanceData: true,
+        followUpQuestions: true,
+        isShared: true,
+        lastMessageAt: true,
+        source: true,
+        createdAt: true,
+        updatedAt: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (!sharedConversation) {
+      return { error: "Shared conversation not found", status: 404 };
+    }
+
+    // Verify the shared conversation belongs to this org
+    if (sharedConversation.sourceControlOrgId !== org.id) {
+      return { error: "Shared conversation not found", status: 404 };
+    }
+
+    const data: SharedConversationData = {
+      id: sharedConversation.id,
+      workspaceId: sharedConversation.workspaceId || "",
+      userId: sharedConversation.userId,
+      title: sharedConversation.title,
+      messages: sharedConversation.messages,
+      provenanceData: sharedConversation.provenanceData,
+      followUpQuestions: sharedConversation.followUpQuestions,
+      isShared: sharedConversation.isShared,
+      lastMessageAt: sharedConversation.lastMessageAt?.toISOString() ?? null,
+      source: sharedConversation.source,
+      createdAt: sharedConversation.createdAt.toISOString(),
+      updatedAt: sharedConversation.updatedAt.toISOString(),
+      createdBy: {
+        id: sharedConversation.user.id,
+        name: sharedConversation.user.name,
+        email: sharedConversation.user.email,
+      },
+    };
+
+    return { data, status: 200 };
+  } catch (error) {
+    console.error("Failed to fetch org shared conversation:", error);
+    return { error: "Failed to fetch shared conversation", status: 500 };
+  }
+}
+
+export default async function OrgSharedConversationPage({ params }: OrgSharedConversationPageProps) {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user) {
+    redirect("/auth/signin");
+  }
+
+  const userId = (session.user as { id?: string }).id;
+  if (!userId) {
+    redirect("/auth/signin");
+  }
+
+  const { githubLogin, shareId } = await params;
+
+  try {
+    const result = await getOrgSharedConversation(githubLogin, shareId, userId);
+
+    if (result.status === 404) {
+      notFound();
+    }
+
+    if (result.status === 403) {
+      return (
+        <div className="flex items-center justify-center min-h-screen p-4">
+          <div className="max-w-md w-full bg-background border border-border rounded-lg p-8 text-center">
+            <h1 className="text-2xl font-bold mb-4">Access Denied</h1>
+            <p className="text-muted-foreground mb-4">
+              You do not have access to this organization.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Please request access from an organization administrator.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!result.data) {
+      throw new Error(result.error || "Failed to load shared conversation");
+    }
+
+    const data = result.data;
+
+    const messages: Message[] = (data.messages as any[]).map((msg: any) => ({
+      ...msg,
+      timestamp: new Date(msg.timestamp),
+    }));
+
+    const creatorName = data.createdBy?.name || data.createdBy?.email || "Unknown";
+    const createdDate = new Date(data.createdAt).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+
+    return (
+      <div className="min-h-screen bg-background">
+        {/* Banner */}
+        <div className="bg-muted/30 border-b border-border">
+          <div className="max-w-4xl mx-auto px-6 py-4">
+            <div className="flex items-center gap-2 mb-1">
+              <h1 className="text-xl font-semibold">Shared Conversation (Read-only)</h1>
+              {data.source === "logs-agent" && (
+                <Badge variant="secondary">Logs Agent</Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Shared by {creatorName} on {createdDate}
+            </p>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="max-w-4xl mx-auto px-6 py-8">
+          <div className="space-y-4">
+            {messages.map((message) => {
+              if (message.toolCalls && message.toolCalls.length > 0 && !message.content) {
+                return (
+                  <div key={message.id}>
+                    <ToolCallIndicator toolCalls={message.toolCalls} />
+                  </div>
+                );
+              }
+
+              if (message.content) {
+                return <ChatMessage key={message.id} message={message} isStreaming={false} />;
+              }
+
+              return null;
+            })}
+
+            {messages.length === 0 && (
+              <div className="text-center text-muted-foreground py-8">
+                No messages in this conversation.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  } catch (error) {
+    console.error("Error loading org shared conversation:", error);
+    return (
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <div className="max-w-md w-full bg-background border border-border rounded-lg p-8 text-center">
+          <h1 className="text-2xl font-bold mb-4">Error</h1>
+          <p className="text-muted-foreground">
+            Failed to load shared conversation. Please try again later.
+          </p>
+        </div>
+      </div>
+    );
+  }
+}
