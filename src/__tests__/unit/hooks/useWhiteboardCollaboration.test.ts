@@ -47,6 +47,7 @@ vi.mock("@/lib/pusher", () => ({
 }));
 
 global.fetch = vi.fn();
+navigator.sendBeacon = vi.fn();
 
 describe("useWhiteboardCollaboration", () => {
   const whiteboardId = "whiteboard-123";
