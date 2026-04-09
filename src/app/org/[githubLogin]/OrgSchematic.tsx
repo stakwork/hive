@@ -91,7 +91,7 @@ export function OrgSchematic({ githubLogin }: OrgSchematicProps) {
   }
 
   return (
-    <div className="relative" style={{ height: "60vh" }}>
+    <div className="relative flex-1 min-h-0">
       <Button
         size="sm"
         variant="outline"
@@ -100,7 +100,7 @@ export function OrgSchematic({ githubLogin }: OrgSchematicProps) {
       >
         Edit
       </Button>
-      <DiagramViewer name="Org Schematic" body={schematic} />
+      <DiagramViewer name="Org Schematic" body={schematic} hideHeader={true} />
     </div>
   );
 }
