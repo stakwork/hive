@@ -53,7 +53,8 @@ export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[]): st
   const workspaceList = workspaces
     .map((ws) => {
       const repos = ws.repoUrls.join(", ");
-      return `- **${ws.slug}**: ${repos}`;
+      const desc = ws.description ? ` — ${ws.description}` : "";
+      return `- **${ws.slug}**${desc}: ${repos}`;
     })
     .join("\n");
 
@@ -67,12 +68,14 @@ ${workspaceList}
 
 ## Tool Naming Convention
 Tools are prefixed with workspace slugs. For each workspace you have:
-- \`{workspace}__list_concepts\` - List features/concepts from that codebase
+- \`{workspace}__list_concepts\` - List features/concepts from that codebase (if you only have concept IDs, re-run this tool to get full descriptions)
 - \`{workspace}__learn_concept\` - Fetch detailed documentation for a feature by ID
 - \`{workspace}__recent_commits\` - Query recent commits
 - \`{workspace}__recent_contributions\` - Query PRs by a contributor
 - \`{workspace}__search_logs\` - Search application logs (Lucene query syntax)
-- \`{workspace}__repo_agent\` - Deep code analysis (use as LAST RESORT)
+- \`{workspace}__repo_agent\` - Deep code analysis (if you can't find the answer with the other tools)
+
+Use the repo_agent tool if the user asks about specific code in a specific repository. Otherwise, use the other tools to answer the question.
 
 If you think information about concepts might help answer the user's question, use these tools to fetch relevant data. When comparing implementations or answering questions that span multiple projects, query the relevant workspaces. Always cite which workspace information came from.
 
@@ -89,8 +92,13 @@ export function getMultiWorkspacePrefixMessages(
   // Build pre-filled tool calls for each workspace's concepts
   const toolCalls: ModelMessage[] = [];
 
+  const trimToIds = workspaces.length > 2;
+
   for (const ws of workspaces) {
     const concepts = conceptsByWorkspace[ws.slug] || [];
+    const output = trimToIds
+      ? concepts.map((c) => c.id)
+      : concepts;
     toolCalls.push({
       role: "assistant",
       content: [
@@ -112,7 +120,7 @@ export function getMultiWorkspacePrefixMessages(
           output: {
             type: "json",
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            value: concepts as any,
+            value: output as any,
           },
         },
       ],
