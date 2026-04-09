@@ -100,8 +100,8 @@ export async function POST(request: NextRequest) {
     if (slugs.length === 0) {
       throw validationError("Missing required parameter: workspaceSlug or workspaceSlugs");
     }
-    if (slugs.length > 5) {
-      throw validationError("Maximum 5 workspaces allowed per session");
+    if (slugs.length > 20) {
+      throw validationError("Maximum 20 workspaces allowed per session");
     }
 
     const isMultiWorkspace = slugs.length > 1;
@@ -370,6 +370,7 @@ async function buildWorkspaceConfigs(
 
     configs.push({
       slug,
+      description: access.workspace.description ?? undefined,
       swarmUrl: baseSwarmUrl,
       swarmApiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || ""),
       repoUrls: repositories.map((r) => r.repositoryUrl),
