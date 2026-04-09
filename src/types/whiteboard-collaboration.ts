@@ -50,6 +50,7 @@ export interface WhiteboardCursorUpdateEvent {
  */
 export interface WhiteboardUserJoinEvent {
   user: CollaboratorInfo;
+  rebroadcast?: boolean;
 }
 
 /**
@@ -68,6 +69,7 @@ export interface CollaborationEventPayload {
   cursor?: { x: number; y: number };
   color?: string;
   user?: CollaboratorInfo;
+  rebroadcast?: boolean;
 }
 
 /**
