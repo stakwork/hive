@@ -7,14 +7,15 @@ import {
 import { authOptions } from "@/lib/auth/nextauth";
 import { handleWorkspaceRedirect } from "@/lib/auth/workspace-resolver";
 import { getServerSession } from "next-auth/next";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 export default async function HomePage() {
   const session = await getServerSession(authOptions);
 
   if (session?.user) {
-    await handleWorkspaceRedirect(session);
+    const referer = (await headers()).get('referer') ?? undefined;
+    await handleWorkspaceRedirect(session, referer);
     return null;
   }
 

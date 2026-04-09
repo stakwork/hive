@@ -1,6 +1,7 @@
 import { mockData } from "@/__tests__/utils/test-helpers";
 import {
   resolveUserWorkspaceRedirect,
+  WORKSPACE_FREE_ROUTES,
 } from "@/lib/auth/workspace-resolver";
 import {
   getDefaultWorkspaceForUser,
@@ -257,6 +258,94 @@ describe("resolveUserWorkspaceRedirect", () => {
         expect.any(Error)
       );
 
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe("WORKSPACE_FREE_ROUTES — requestedPath exemptions", () => {
+    test("WORKSPACE_FREE_ROUTES contains /settings", () => {
+      expect(WORKSPACE_FREE_ROUTES).toContain('/settings');
+    });
+
+    test("should NOT redirect when requestedPath is /settings and user has no workspaces", async () => {
+      const session = mockData.session("user1");
+      mockedGetUserWorkspaces.mockResolvedValue([]);
+
+      const result = await resolveUserWorkspaceRedirect(session, '/settings');
+
+      expect(result).toEqual({ shouldRedirect: false, workspaceCount: 0 });
+    });
+
+    test("should NOT redirect when requestedPath starts with /settings (sub-path) and user has no workspaces", async () => {
+      const session = mockData.session("user1");
+      mockedGetUserWorkspaces.mockResolvedValue([]);
+
+      const result = await resolveUserWorkspaceRedirect(session, '/settings/profile');
+
+      expect(result).toEqual({ shouldRedirect: false, workspaceCount: 0 });
+    });
+
+    test("should NOT redirect when requestedPath is /settings and POD_URL is set", async () => {
+      process.env.POD_URL = "https://pod.example.com";
+      const session = mockData.session("user1");
+      mockedGetUserWorkspaces.mockResolvedValue([]);
+
+      const result = await resolveUserWorkspaceRedirect(session, '/settings');
+
+      expect(result).toEqual({ shouldRedirect: false, workspaceCount: 0 });
+    });
+
+    test("should still redirect to onboarding when requestedPath is undefined and user has no workspaces", async () => {
+      const session = mockData.session("user1");
+      mockedGetUserWorkspaces.mockResolvedValue([]);
+
+      const result = await resolveUserWorkspaceRedirect(session, undefined);
+
+      expect(result).toEqual({
+        shouldRedirect: true,
+        redirectUrl: "/onboarding/workspace",
+        workspaceCount: 0,
+      });
+    });
+
+    test("should still apply workspace redirect normally when requestedPath is /settings but user has workspaces", async () => {
+      const session = mockData.session("user1");
+      const mockWorkspace = mockData.workspaceResponse({ slug: "my-workspace", ownerId: "user1" });
+      mockedGetUserWorkspaces.mockResolvedValue([mockWorkspace]);
+
+      const result = await resolveUserWorkspaceRedirect(session, '/settings');
+
+      expect(result).toEqual({
+        shouldRedirect: true,
+        redirectUrl: "/w/my-workspace",
+        workspaceCount: 1,
+        defaultWorkspaceSlug: "my-workspace",
+      });
+    });
+
+    test("should NOT redirect on error when requestedPath is /settings", async () => {
+      const session = mockData.session("user1");
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockedGetUserWorkspaces.mockRejectedValue(new Error("DB error"));
+
+      const result = await resolveUserWorkspaceRedirect(session, '/settings');
+
+      expect(result).toEqual({ shouldRedirect: false, workspaceCount: 0 });
+      consoleErrorSpy.mockRestore();
+    });
+
+    test("should redirect to onboarding on error when requestedPath is not a free route", async () => {
+      const session = mockData.session("user1");
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockedGetUserWorkspaces.mockRejectedValue(new Error("DB error"));
+
+      const result = await resolveUserWorkspaceRedirect(session, '/some-other-page');
+
+      expect(result).toEqual({
+        shouldRedirect: true,
+        redirectUrl: "/onboarding/workspace",
+        workspaceCount: 0,
+      });
       consoleErrorSpy.mockRestore();
     });
   });
