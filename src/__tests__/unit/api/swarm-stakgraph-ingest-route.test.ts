@@ -56,7 +56,7 @@ vi.mock("@/lib/url", () => ({
 import { db } from "@/lib/db";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getPrimaryRepository, getAllRepositories } from "@/lib/helpers/repository";
-import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
+import { triggerIngestAsync, checkStakgraphAvailability } from "@/services/swarm/stakgraph-actions";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 
@@ -162,6 +162,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
     vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace);
     vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(mockGithubProfile);
     vi.mocked(triggerIngestAsync).mockResolvedValue({ ok: true, status: 200, data: { request_id: "req-123" } });
+    vi.mocked(checkStakgraphAvailability).mockResolvedValue(true);
     vi.mocked(saveOrUpdateSwarm).mockResolvedValue(mockSwarm as any);
   });
 
@@ -216,6 +217,21 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
     const responseData = await response.json();
     expect(responseData.success).toBe(false);
     expect(responseData.message).toBe("Ingest request already in progress for this swarm");
+  });
+
+  test("returns 503 and does not mutate DB when stakgraph is unavailable", async () => {
+    vi.mocked(checkStakgraphAvailability).mockResolvedValue(false);
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
+    });
+
+    const res = await POST(request);
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.message).toBe("Stakgraph service is not available");
+    expect(vi.mocked(db.swarm.updateMany)).not.toHaveBeenCalled();
   });
 
   test("should successfully trigger ingest", async () => {
