@@ -37,7 +37,7 @@ const MOCK_RESPONSES: Record<string, unknown> = {
   // Boltwall admin
   GetBoltwallSuperAdmin: { pubkey: null, name: null },
   ListAdmins: { admins: [] },
-  GetBotBalance: { balance: 0 },
+  GetBotBalance: { success: true, message: "bot balance retrieved", data: { msat: 30000 } },
   CreateBotInvoice: { invoice: "lnbcrt1mock000000000" },
   AddBoltwallUser: { success: true },
   AddBoltwallAdminPubkey: { success: true },
@@ -46,6 +46,15 @@ const MOCK_RESPONSES: Record<string, unknown> = {
   GetEnrichedBoltwallUsers: { users: [] },
   UpdateNeo4jConfig: { success: true },
   UpdateEnv: { success: true },
+  GetBoltwallAccessibility: { isPublic: false },
+  UpdateBoltwallAccessibility: { success: true },
+  ListPaidEndpoint: {
+    endpoints: [
+      { id: 1, route: "v2/search", method: "GET", status: true, fee: 10 },
+      { id: 2, route: "node/content", method: "POST", status: true, fee: 10 },
+    ],
+  },
+  UpdatePaidEndpoint: { success: true },
 };
 
 /**
