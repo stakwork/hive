@@ -69,6 +69,7 @@ interface DiagramViewerProps {
   name: string;
   body: string;
   description?: string | null;
+  hideHeader?: boolean;
 }
 
 /**
@@ -81,7 +82,7 @@ interface DiagramViewerProps {
  * Pan is applied via `transform: translate(panX, panY)` on
  * the canvas div. Pan values are in screen pixels.
  */
-export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
+export function DiagramViewer({ name, body, description, hideHeader = false }: DiagramViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -299,38 +300,28 @@ export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── wheel: scroll = pan, ctrl/cmd+scroll = zoom ─────── */
+  /* ── wheel: scroll = zoom ────────────────────────────── */
 
   useEffect(() => {
     const vp = viewportRef.current;
     if (!vp) return;
     const handler = (e: WheelEvent) => {
       if (!svgW.current) return;
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const rect = vp.getBoundingClientRect();
-        const factor =
-          e.deltaY < 0 ? 1 + ZOOM_STEP : 1 / (1 + ZOOM_STEP);
-        zoomAround(factor, e.clientX - rect.left, e.clientY - rect.top);
-        return;
-      }
-      if (canPan()) {
-        e.preventDefault();
-        panX.current -= e.deltaX;
-        panY.current -= e.deltaY;
-        flush();
-      }
+      e.preventDefault();
+      const rect = vp.getBoundingClientRect();
+      const factor =
+        e.deltaY < 0 ? 1 + ZOOM_STEP : 1 / (1 + ZOOM_STEP);
+      zoomAround(factor, e.clientX - rect.left, e.clientY - rect.top);
     };
     vp.addEventListener("wheel", handler, { passive: false });
     return () => vp.removeEventListener("wheel", handler);
-  }, [zoomAround, canPan, flush]);
+  }, [zoomAround, flush]);
 
   /* ── mouse drag ──────────────────────────────────────── */
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if ((e.target as HTMLElement).closest("[data-zoom-controls]")) return;
-      if (!canPan()) return;
       e.preventDefault();
       containerRef.current?.classList.add("cursor-grabbing");
       containerRef.current?.classList.remove("cursor-grab");
@@ -341,7 +332,7 @@ export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
         py: panY.current,
       };
     },
-    [canPan]
+    []
   );
 
   useEffect(() => {
@@ -465,26 +456,28 @@ export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between border-b p-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{name}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {description || "Diagram"}
-          </p>
+      {!hideHeader && (
+        <div className="flex items-center justify-between border-b p-4">
+          <div>
+            <h1 className="text-2xl font-semibold">{name}</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {description || "Diagram"}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleCopy}
+            title={copied ? "Copied!" : "Copy diagram source"}
+          >
+            {copied ? (
+              <Check className="h-4 w-4 text-green-600" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleCopy}
-          title={copied ? "Copied!" : "Copy diagram source"}
-        >
-          {copied ? (
-            <Check className="h-4 w-4 text-green-600" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
+      )}
 
       {/* Body */}
       <div className="flex-1 overflow-hidden p-6">
@@ -542,8 +535,7 @@ export function DiagramViewer({ name, body, description }: DiagramViewerProps) {
 
             {/* Hint */}
             <p className="absolute bottom-2 left-2 z-10 text-[10px] font-mono text-muted-foreground/50 select-none pointer-events-none">
-              Scroll to pan · Ctrl+wheel to zoom · Drag to pan ·
-              Double-click to fit
+              Scroll to zoom · Drag to pan · Double-click to fit
             </p>
 
             {/* Viewport */}

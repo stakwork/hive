@@ -354,10 +354,11 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
   const displayName = orgName ?? githubLogin;
   const slugs = workspaces.slice(0, MAX_CHAT_SLUGS).map((ws) => ws.slug);
   const hasMoreThanLimit = workspaces.length > MAX_CHAT_SLUGS;
-  const isGraph = activeTab === "graph";
+
+  const isExpanded = activeTab === "graph" || activeTab === "schematic";
 
   return (
-    <div className={`bg-background flex flex-col ${isGraph ? "h-screen" : "min-h-screen"}`}>
+    <div className={`bg-background flex flex-col ${isExpanded ? "h-screen" : "min-h-screen"}`}>
       {/* Header */}
       <div className="max-w-4xl mx-auto px-4 pt-10 w-full">
         <div className="flex items-center gap-4 mb-8">
@@ -386,11 +387,7 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
       </div>
 
       {/* Tabs */}
-      <Tabs
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className={isGraph ? "flex flex-col flex-1" : ""}
-      >
+      <Tabs value={activeTab} onValueChange={setActiveTab} className={isExpanded ? "flex flex-col flex-1" : ""}>
         <div className="max-w-4xl mx-auto px-4 w-full">
           <TabsList className="mb-6">
             <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
@@ -479,11 +476,12 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
             )}
           </TabsContent>
 
-          {/* Schematic Tab */}
-          <TabsContent value="schematic">
-            <OrgSchematic githubLogin={githubLogin} />
-          </TabsContent>
         </div>
+
+        {/* Schematic Tab — full width/height */}
+        <TabsContent value="schematic" className="flex-1 flex flex-col min-h-0">
+          <OrgSchematic githubLogin={githubLogin} />
+        </TabsContent>
 
         {/* Graph Tab — full width/height */}
         <TabsContent value="graph" className="flex-1 flex flex-col min-h-0">
