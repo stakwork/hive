@@ -12,12 +12,16 @@ export interface WorkspaceResolutionResult {
   defaultWorkspaceSlug?: string;
 }
 
+/** Routes that workspace-less authenticated users may access without onboarding redirect. */
+export const WORKSPACE_FREE_ROUTES = ['/settings'];
+
 /**
  * Resolves where a user should be redirected based on their workspace access
  * This function handles the post-authentication routing logic
  */
 export async function resolveUserWorkspaceRedirect(
   session: Session,
+  requestedPath?: string,
 ): Promise<WorkspaceResolutionResult> {
   const userId = (session.user as { id: string }).id;
 
@@ -26,6 +30,10 @@ export async function resolveUserWorkspaceRedirect(
     const userWorkspaces = await getUserWorkspaces(userId);
 
     if (process.env.POD_URL && userWorkspaces.length === 0) {
+      const isFreeRoute = WORKSPACE_FREE_ROUTES.some(r => requestedPath?.startsWith(r));
+      if (isFreeRoute) {
+        return { shouldRedirect: false, workspaceCount: 0 };
+      }
       return {
         shouldRedirect: true,
         redirectUrl: "/auth/signin",
@@ -34,6 +42,10 @@ export async function resolveUserWorkspaceRedirect(
     }
 
     if (userWorkspaces.length === 0) {
+      const isFreeRoute = WORKSPACE_FREE_ROUTES.some(r => requestedPath?.startsWith(r));
+      if (isFreeRoute) {
+        return { shouldRedirect: false, workspaceCount: 0 };
+      }
       // User has no workspaces - redirect to onboarding
       return {
         shouldRedirect: true,
@@ -76,7 +88,11 @@ export async function resolveUserWorkspaceRedirect(
   } catch (error) {
     console.error("Error resolving workspace redirect:", error);
 
-    // On error, redirect to onboarding to be safe
+    // On error, allow free routes through; otherwise redirect to onboarding to be safe
+    const isFreeRoute = WORKSPACE_FREE_ROUTES.some(r => requestedPath?.startsWith(r));
+    if (isFreeRoute) {
+      return { shouldRedirect: false, workspaceCount: 0 };
+    }
     return {
       shouldRedirect: true,
       redirectUrl: "/onboarding/workspace",
@@ -89,8 +105,8 @@ export async function resolveUserWorkspaceRedirect(
  * Handles workspace redirection for server components
  * This is a convenience function that calls resolveUserWorkspaceRedirect and performs the redirect
  */
-export async function handleWorkspaceRedirect(session: Session): Promise<void> {
-  const result = await resolveUserWorkspaceRedirect(session);
+export async function handleWorkspaceRedirect(session: Session, requestedPath?: string): Promise<void> {
+  const result = await resolveUserWorkspaceRedirect(session, requestedPath);
 
   if (result.shouldRedirect && result.redirectUrl) {
     redirect(result.redirectUrl);

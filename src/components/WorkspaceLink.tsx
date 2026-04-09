@@ -62,6 +62,7 @@ export function WorkspaceLink({
       "/api/",
       "/login",
       "/signup",
+      "/settings",
     ];
     if (specialPages.some((page) => href.startsWith(page))) {
       return href;
@@ -123,6 +124,7 @@ export function useWorkspaceUrl() {
       "/api/",
       "/login",
       "/signup",
+      "/settings",
     ];
     if (specialPages.some((page) => path.startsWith(page))) {
       return path;
