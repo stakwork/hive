@@ -442,7 +442,7 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
                     limit).
                   </p>
                 )}
-                <OrgChat workspaceSlugs={slugs} />
+                <OrgChat workspaceSlugs={slugs} githubLogin={githubLogin} />
               </div>
             )}
           </TabsContent>

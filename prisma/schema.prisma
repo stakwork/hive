@@ -152,6 +152,7 @@ model SourceControlOrg {
   updatedAt            DateTime             @updatedAt @map("updated_at")
   tokens               SourceControlToken[]
   workspaces           Workspace[]
+  sharedConversations  SharedConversation[]
 
   @@index([githubLogin])
   @@index([githubInstallationId])
@@ -453,23 +454,26 @@ model Task {
 }
 
 model SharedConversation {
-  id                String    @id @default(cuid())
-  workspaceId       String    @map("workspace_id")
-  userId            String    @map("user_id")
-  title             String?
-  messages          Json
-  provenanceData    Json?     @map("provenance_data")
-  followUpQuestions Json      @map("follow_up_questions")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  isShared          Boolean   @default(false) @map("is_shared")
-  lastMessageAt     DateTime? @map("last_message_at")
-  source            String?
-  settings          Json?     @default("{}")
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id                 String            @id @default(cuid())
+  workspaceId        String?           @map("workspace_id")
+  sourceControlOrgId String?           @map("source_control_org_id")
+  userId             String            @map("user_id")
+  title              String?
+  messages           Json
+  provenanceData     Json?             @map("provenance_data")
+  followUpQuestions  Json              @map("follow_up_questions")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  isShared           Boolean           @default(false) @map("is_shared")
+  lastMessageAt      DateTime?         @map("last_message_at")
+  source             String?
+  settings           Json?             @default("{}")
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([sourceControlOrgId])
   @@index([userId])
   @@index([userId, workspaceId, lastMessageAt])
   @@map("shared_conversations")
