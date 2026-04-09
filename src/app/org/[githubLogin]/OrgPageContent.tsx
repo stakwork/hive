@@ -7,6 +7,7 @@ import { ExternalLink } from "lucide-react";
 import { WorkspacesPageContent } from "@/components/WorkspacesPageContent";
 import { GraphPortal } from "@/components/GraphPortal";
 import { OrgChat } from "./OrgChat";
+import { OrgSchematic } from "./OrgSchematic";
 import type { WorkspaceWithRole, OrgMemberResponse } from "@/types/workspace";
 
 const MAX_CHAT_SLUGS = 5;
@@ -81,6 +82,7 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
             <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
             <TabsTrigger value="chat">Chat</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
+            <TabsTrigger value="schematic">Schematic</TabsTrigger>
             <TabsTrigger value="graph">Graph</TabsTrigger>
           </TabsList>
         </div>
@@ -159,6 +161,11 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
                 })}
               </div>
             )}
+          </TabsContent>
+
+          {/* Schematic Tab */}
+          <TabsContent value="schematic">
+            <OrgSchematic githubLogin={githubLogin} />
           </TabsContent>
         </div>
 
