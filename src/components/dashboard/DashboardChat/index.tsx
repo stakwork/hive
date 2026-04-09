@@ -268,7 +268,7 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs }: DashboardChatProps
             }),
           ...(extraWorkspaceSlugs.length === 0
             ? { workspaceSlug: slug }
-            : { workspaceSlugs: [slug, ...extraWorkspaceSlugs] }),
+            : { workspaceSlugs: [slug, ...extraWorkspaceSlugs].filter(Boolean) }),
         }),
       });
 
