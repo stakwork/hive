@@ -81,7 +81,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
     setBalanceLoading(true);
     try {
       const res = await postGraphAdminCmd(workspaceSlug, { type: "Swarm", data: { cmd: "GetBotBalance" } });
-      const msats = typeof res === "number" ? res : (res?.balance ?? res?.msats ?? null);
+      const msats = typeof res === "number" ? res : (res?.data?.msat ?? null);
       setBotBalance(msats !== null ? Math.floor(msats / 1000) : null);
     } catch {
       toast.error("Failed to load bot balance");
@@ -309,7 +309,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
         {hostname && (
           <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
             <a
-              href={`https://${hostname}:8000`}
+              href={`https://${hostname}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
