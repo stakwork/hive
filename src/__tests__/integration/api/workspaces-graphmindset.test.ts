@@ -50,12 +50,11 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
     const updatedPayment = await db.fiatPayment.findUnique({ where: { id: payment.id } });
     expect(updatedPayment!.workspaceId).toBe(data.workspace.id);
 
-    // Owner WorkspaceMember record created
+    // Owner is expressed via ownerId, no WorkspaceMember record created
     const member = await db.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId: data.workspace.id, userId: testUser.id } },
     });
-    expect(member).not.toBeNull();
-    expect(member!.role).toBe('OWNER');
+    expect(member).toBeNull();
   });
 
   test('falls back to lightning payment when no fiat payment exists', async () => {
@@ -84,12 +83,11 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
     const updatedPayment = await db.lightningPayment.findUnique({ where: { id: lightning.id } });
     expect(updatedPayment!.workspaceId).toBe(data.workspace.id);
 
-    // Owner WorkspaceMember record created
+    // Owner is expressed via ownerId, no WorkspaceMember record created
     const member = await db.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId: data.workspace.id, userId: testUser.id } },
     });
-    expect(member).not.toBeNull();
-    expect(member!.role).toBe('OWNER');
+    expect(member).toBeNull();
   });
 
   test('prefers fiat over lightning when both exist', async () => {
@@ -126,12 +124,11 @@ describe('POST /api/workspaces — graph_mindset payment linking', () => {
     const updatedLightning = await db.lightningPayment.findUnique({ where: { id: lightning.id } });
     expect(updatedLightning!.workspaceId).toBeNull();
 
-    // Owner WorkspaceMember record created
+    // Owner is expressed via ownerId, no WorkspaceMember record created
     const member = await db.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId: data.workspace.id, userId: testUser.id } },
     });
-    expect(member).not.toBeNull();
-    expect(member!.role).toBe('OWNER');
+    expect(member).toBeNull();
   });
 
   test('returns 402 when no PAID payment exists for graph_mindset workspace', async () => {
