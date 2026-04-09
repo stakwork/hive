@@ -384,7 +384,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
       vi.mocked(swarmCmdRequest).mockResolvedValue({
         ok: true,
         status: 200,
-        data: { balance: 50000 },
+        data: { success: true, message: "bot balance retrieved", data: { msat: 50000 } },
       });
 
       const response = await callRoute(workspace.slug, {
@@ -393,7 +393,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.balance).toBe(50000);
+      expect(data).toEqual({ success: true, message: "bot balance retrieved", data: { msat: 50000 } });
     });
 
     test("AddBoltwallUser returns 200", async () => {
