@@ -422,6 +422,16 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
           </Button>
         </div>
       )}
+      {session?.user && paymentState !== 'success' && (
+        <div className="text-center">
+          <a
+            href="/settings"
+            className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            Manage account
+          </a>
+        </div>
+      )}
       {session?.user && (
         <div className="text-center">
           <button
