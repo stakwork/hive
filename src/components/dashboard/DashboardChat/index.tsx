@@ -36,9 +36,10 @@ interface Message {
 
 interface DashboardChatProps {
   defaultExtraWorkspaceSlugs?: string[];
+  orgSlug?: string;
 }
 
-export function DashboardChat({ defaultExtraWorkspaceSlugs }: DashboardChatProps = {}) {
+export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug }: DashboardChatProps = {}) {
   const { slug, workspace } = useWorkspace();
   const { data: session } = useSession();
   const router = useRouter();
@@ -644,7 +645,7 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs }: DashboardChatProps
   };
 
   const handleShare = async () => {
-    if (!slug || messages.length === 0) return;
+    if ((!slug && !orgSlug) || messages.length === 0) return;
 
     setIsSharing(true);
 
@@ -655,7 +656,11 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs }: DashboardChatProps
         ? firstUserMessage.content.slice(0, 50) + (firstUserMessage.content.length > 50 ? "..." : "")
         : "Shared Conversation";
 
-      const response = await fetch(`/api/workspaces/${slug}/chat/share`, {
+      const shareEndpoint = orgSlug
+        ? `/api/org/${orgSlug}/chat/share`
+        : `/api/workspaces/${slug}/chat/share`;
+
+      const response = await fetch(shareEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
