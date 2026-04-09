@@ -21,6 +21,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { getServerSession } from "next-auth/next";
+import { headers } from "next/headers";
 import Link from "next/link";
 
 export default async function HomePage() {
@@ -29,7 +30,8 @@ export default async function HomePage() {
 
   if (session?.user) {
     // User is authenticated - redirect them to their appropriate workspace or onboarding
-    await handleWorkspaceRedirect(session);
+    const referer = (await headers()).get('referer') ?? undefined;
+    await handleWorkspaceRedirect(session, referer);
     // This redirect prevents the rest of the page from rendering
     return null;
   }
