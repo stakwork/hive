@@ -76,6 +76,7 @@ export async function POST(
               name: userOrResponse.name || body.user.name,
               image: body.user.image,
             },
+            ...(body.rebroadcast && { rebroadcast: true }),
           });
         }
         break;
