@@ -5,8 +5,13 @@ import { OrgSchematic } from "@/app/org/[githubLogin]/OrgSchematic";
 
 // Mock DiagramViewer so we don't need mermaid rendering
 vi.mock("@/app/w/[slug]/learn/components/DiagramViewer", () => ({
-  DiagramViewer: ({ name, body }: { name: string; body: string }) => (
-    <div data-testid="diagram-viewer" data-name={name} data-body={body} />
+  DiagramViewer: ({ name, body, hideHeader }: { name: string; body: string; hideHeader?: boolean }) => (
+    <div
+      data-testid="diagram-viewer"
+      data-name={name}
+      data-body={body}
+      data-hide-header={String(hideHeader ?? false)}
+    />
   ),
 }));
 
@@ -176,5 +181,38 @@ describe("OrgSchematic", () => {
     // Returns to view state without PUT
     expect(screen.getByTestId("diagram-viewer")).toHaveAttribute("data-body", existing);
     expect(mockFetch).toHaveBeenCalledTimes(1); // only the initial GET
+  });
+
+  it("passes hideHeader={true} to DiagramViewer", async () => {
+    const body = "graph TD\n  A --> B";
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ schematic: body }),
+    });
+
+    render(<OrgSchematic githubLogin="test-org" />);
+
+    await waitFor(() => screen.getByTestId("diagram-viewer"));
+
+    const viewer = screen.getByTestId("diagram-viewer");
+    expect(viewer).toHaveAttribute("data-hide-header", "true");
+  });
+
+  it("wrapper has flex-1 min-h-0 classes and no inline height style", async () => {
+    const body = "graph TD\n  A --> B";
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ schematic: body }),
+    });
+
+    const { container } = render(<OrgSchematic githubLogin="test-org" />);
+
+    await waitFor(() => screen.getByTestId("diagram-viewer"));
+
+    // The wrapper div wrapping DiagramViewer should have flex-1 min-h-0
+    const wrapper = container.querySelector(".flex-1.min-h-0");
+    expect(wrapper).not.toBeNull();
+    // Should have no inline height style (no 60vh)
+    expect((wrapper as HTMLElement).style.height).toBe("");
   });
 });
