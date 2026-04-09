@@ -30,7 +30,7 @@ export async function checkStakgraphAvailability(swarmName: string): Promise<boo
           clearTimeout(timeout);
         }
       },
-      { maxAttempts: 6, baseDelayMs: 1000, maxDelayMs: 10000 },
+      { maxAttempts: 8, baseDelayMs: 1000, maxDelayMs: 90000 },
     );
     return true;
   } catch {
