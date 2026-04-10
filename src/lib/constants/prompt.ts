@@ -1,5 +1,5 @@
 import { ModelMessage } from "ai";
-import { WorkspaceConfig } from "@/lib/ai/types";
+import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
 
 // System prompt for the quick ask learning assistant
 export function getQuickAskSystemPrompt(repoUrls: string[], description?: string): string {
@@ -49,6 +49,54 @@ export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], r
   ];
 }
 
+/**
+ * Build a deduplicated member roster across all workspaces.
+ * Groups by github username (or name as fallback key), showing which
+ * workspaces each person belongs to and their role/description.
+ */
+function buildMemberRoster(workspaces: WorkspaceConfig[]): string {
+  // key → aggregated info
+  const roster = new Map<string, {
+    name: string | null;
+    githubUsername: string | null;
+    entries: { slug: string; role: string; description: string | null }[];
+  }>();
+
+  for (const ws of workspaces) {
+    for (const m of ws.members) {
+      const key = m.githubUsername?.toLowerCase() || m.name?.toLowerCase() || "unknown";
+      const existing = roster.get(key);
+      const entry = { slug: ws.slug, role: m.role, description: m.description };
+      if (existing) {
+        existing.entries.push(entry);
+      } else {
+        roster.set(key, {
+          name: m.name,
+          githubUsername: m.githubUsername,
+          entries: [entry],
+        });
+      }
+    }
+  }
+
+  if (roster.size === 0) return "";
+
+  const lines: string[] = [];
+  for (const person of roster.values()) {
+    const display = person.name || person.githubUsername || "Unknown";
+    const gh = person.githubUsername ? ` (@${person.githubUsername})` : "";
+    const workspaceInfo = person.entries
+      .map((e) => {
+        const desc = e.description ? ` — ${e.description}` : "";
+        return `${e.slug} (${e.role}${desc})`;
+      })
+      .join(", ");
+    lines.push(`- **${display}**${gh}: ${workspaceInfo}`);
+  }
+
+  return `\n## Team Members\n${lines.join("\n")}\n`;
+}
+
 // Multi-workspace system prompt
 export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[]): string {
   const workspaceList = workspaces
@@ -59,6 +107,8 @@ export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[]): st
     })
     .join("\n");
 
+  const memberRoster = buildMemberRoster(workspaces);
+
   return `
 You are a source code learning assistant with access to multiple codebases. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand — a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
 
@@ -66,6 +116,7 @@ Try to match the tone of the user. If the question is highly technical (mentioni
 
 ## Available Workspaces & Repositories
 ${workspaceList}
+${memberRoster}
 
 ## Tool Naming Convention
 Tools are prefixed with workspace slugs. For each workspace you have:
@@ -75,8 +126,13 @@ Tools are prefixed with workspace slugs. For each workspace you have:
 - \`{workspace}__recent_contributions\` - Query PRs by a contributor
 - \`{workspace}__search_logs\` - Search application logs (Lucene query syntax)
 - \`{workspace}__repo_agent\` - Deep code analysis (if you can't find the answer with the other tools)
+- \`{workspace}__list_features\` - List roadmap features (planning items) for a workspace
+- \`{workspace}__read_feature\` - Read a feature's details, brief, requirements, architecture, and chat history
+- \`{workspace}__list_tasks\` - List tasks for a workspace
+- \`{workspace}__read_task\` - Read a task's details, status, and chat history
+- \`{workspace}__check_status\` - Quick status check of active features and tasks (optionally filtered by user)
 
-Use the repo_agent tool if the user asks about specific code in a specific repository. Otherwise, use the other tools to answer the question.
+Use the repo_agent tool if the user asks about specific code in a specific repository. Use the feature/task tools when the user asks about project status, roadmap, planning, what's being worked on, or task progress. Otherwise, use the other tools to answer the question.
 
 If you think information about concepts might help answer the user's question, use these tools to fetch relevant data. When comparing implementations or answering questions that span multiple projects, query the relevant workspaces. Always cite which workspace information came from.
 

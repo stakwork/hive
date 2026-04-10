@@ -362,6 +362,21 @@ async function buildWorkspaceConfigs(
       throw notFoundError(`GitHub PAT not found for workspace: ${slug}`);
     }
 
+    // Fetch workspace members (name, github username, role, description)
+    const memberships = await db.workspaceMember.findMany({
+      where: { workspaceId: access.workspace.id, leftAt: null },
+      select: {
+        role: true,
+        description: true,
+        user: {
+          select: {
+            name: true,
+            githubAuth: { select: { githubUsername: true } },
+          },
+        },
+      },
+    });
+
     const swarmUrlObj = new URL(swarm.swarmUrl);
     let baseSwarmUrl = `https://${swarmUrlObj.hostname}:3355`;
     if (swarm.swarmUrl.includes("localhost")) {
@@ -375,6 +390,14 @@ async function buildWorkspaceConfigs(
       swarmApiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || ""),
       repoUrls: repositories.map((r) => r.repositoryUrl),
       pat: githubProfile.token,
+      workspaceId: access.workspace.id,
+      userId,
+      members: memberships.map((m) => ({
+        name: m.user.name,
+        githubUsername: m.user.githubAuth?.githubUsername ?? null,
+        role: m.role,
+        description: m.description,
+      })),
     });
   }
 
