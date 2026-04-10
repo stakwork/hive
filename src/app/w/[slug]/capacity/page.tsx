@@ -9,6 +9,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { AlertCircle, Server, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import React, { useEffect, useState, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 
 import { CapacityControls } from "@/components/capacity/CapacityControls";
@@ -20,6 +21,7 @@ import { mergeMetricsIntoVmData } from "@/lib/pods/capacity-utils";
 
 export default function CapacityPage() {
   const { workspace, slug, isAdmin, isOwner } = useWorkspace();
+  const pathname = usePathname();
   const isPoolActive = workspace?.poolState === "COMPLETE";
   const { poolStatus, error: statusError, refetch } = usePoolStatus(slug, isPoolActive);
 
@@ -267,6 +269,7 @@ export default function CapacityPage() {
               isAdmin={isAdmin || isOwner}
               onDeletePod={handleDeletePod}
               workspaceSlug={slug}
+              currentPath={pathname}
             />
           )}
         </>
