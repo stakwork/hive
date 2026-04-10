@@ -2,8 +2,17 @@ import { StopCondition, tool, ToolSet, ModelMessage } from "ai";
 import { z } from "zod";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
-import {  getProviderTool} from "@/lib/ai/provider";
+import { getProviderTool } from "@/lib/ai/provider";
 import { createMCPClient } from "@ai-sdk/mcp";
+import {
+  mcpListFeatures,
+  mcpReadFeature,
+  mcpListTasks,
+  mcpReadTask,
+  mcpCheckStatus,
+  findWorkspaceUser,
+  type WorkspaceAuth,
+} from "@/lib/mcp/mcpTools";
 
 export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
   const r = await fetch(`${swarmUrl}/gitree/features`, {
@@ -109,7 +118,7 @@ function resolveRepo(
   return { owner: repoMap[0].owner, repo: repoMap[0].repo };
 }
 
-export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string) {
+export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string, workspaceAuth?: WorkspaceAuth) {
   // Build a map of repo URLs to their parsed owner/repo for multi-repo support
   const repoMap = repoUrls.map((url) => ({
     url,
@@ -118,7 +127,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
   const isMultiRepo = repoUrls.length > 1;
 
   const web_search = getProviderTool("anthropic", apiKey, "webSearch");
-  return {
+  const baseTools = {
     list_concepts: tool({
       description:
         "Fetch a list of features/concepts from the codebase knowledge base. Returns features with metadata including name, description, PR/commit counts, last updated time, and whether documentation exists.",
@@ -273,11 +282,94 @@ Example queries:
       },
     }),
     web_search,
-    // final_answer: tool({
-    //   description: "Provide the final answer to the user. YOU **MUST** CALL THIS TOOL",
-    //   inputSchema: z.object({ answer: z.string() }),
-    //   execute: async ({ answer }: { answer: string }) => answer,
-    // }),
+  };
+  return { ...baseTools, ...buildWorkspaceTools(workspaceAuth) };
+}
+
+/** Extract text from an McpToolResult for use as a tool return value. */
+function mcpText(result: { content: { type: string; text: string }[] }): string {
+  return result.content.map((c) => c.text).join("\n");
+}
+
+/**
+ * Build feature/task read-only tools when workspace auth is available.
+ */
+function buildWorkspaceTools(auth?: WorkspaceAuth): ToolSet {
+  if (!auth) return {};
+  return {
+    list_features: tool({
+      description: "List roadmap features for this workspace (up to 40, most recently updated first).",
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          return mcpText(await mcpListFeatures(auth));
+        } catch (e) {
+          console.error("Error listing features:", e);
+          return "Could not list features";
+        }
+      },
+    }),
+    read_feature: tool({
+      description: "Read a feature's details, brief, requirements, architecture, and chat history.",
+      inputSchema: z.object({
+        featureId: z.string().describe("The ID of the feature to read"),
+      }),
+      execute: async ({ featureId }: { featureId: string }) => {
+        try {
+          return mcpText(await mcpReadFeature(auth, featureId));
+        } catch (e) {
+          console.error("Error reading feature:", e);
+          return "Could not read feature";
+        }
+      },
+    }),
+    list_tasks: tool({
+      description: "List tasks for this workspace (up to 40, most recently updated first).",
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          return mcpText(await mcpListTasks(auth));
+        } catch (e) {
+          console.error("Error listing tasks:", e);
+          return "Could not list tasks";
+        }
+      },
+    }),
+    read_task: tool({
+      description: "Read a task's details, status, and chat history.",
+      inputSchema: z.object({
+        taskId: z.string().describe("The ID of the task to read"),
+      }),
+      execute: async ({ taskId }: { taskId: string }) => {
+        try {
+          return mcpText(await mcpReadTask(auth, taskId));
+        } catch (e) {
+          console.error("Error reading task:", e);
+          return "Could not read task";
+        }
+      },
+    }),
+    check_status: tool({
+      description: "Check the status of active features and tasks (updated in the last 7 days, items needing attention first).",
+      inputSchema: z.object({
+        user: z
+          .string()
+          .optional()
+          .describe("Optional user name to filter by (fuzzy matched against workspace members)"),
+      }),
+      execute: async ({ user }: { user?: string }) => {
+        try {
+          let filterUserId: string | undefined;
+          if (user) {
+            filterUserId = await findWorkspaceUser(auth.workspaceId, user);
+          }
+          return mcpText(await mcpCheckStatus(auth, filterUserId));
+        } catch (e) {
+          console.error("Error checking status:", e);
+          return "Could not check status";
+        }
+      },
+    }),
   };
 }
 
