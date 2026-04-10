@@ -5,7 +5,6 @@ import { validateWorkspaceAccess } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getSwarmCmdJwt, swarmCmdRequest, SwarmCmd } from "@/services/swarm/cmd";
-import { getActiveWorkspaceMembersWithSphinx } from "@/lib/helpers/workspace-member-queries";
 import QRCode from "qrcode";
 
 export const runtime = "nodejs";
@@ -126,27 +125,64 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const superAdmin: { pubkey: string; name: string } | null =
       superAdminInner?.pubkey ? (superAdminInner as { pubkey: string; name: string }) : null;
 
-    // Build pubkey → Hive identity map from workspace members
-    const members = await getActiveWorkspaceMembersWithSphinx(workspaceId);
+    // Build pubkey → Hive identity map using direct db.user queries
+
+    // Part 1: Owner — fetch directly by ownerId (already in scope via access.workspace)
+    const ownerUserId = access.workspace?.ownerId;
+    const ownerUser = ownerUserId
+      ? await db.user.findUnique({
+          where: { id: ownerUserId },
+          select: { name: true, image: true, lightningPubkey: true },
+        })
+      : null;
+
+    // Part 2: Admins/members — scan db.user by lightningPubkey
+    const adminPubkeys = admins.map((a) => a.pubkey);
+    const usersWithPubkey =
+      adminPubkeys.length > 0
+        ? await db.user.findMany({
+            where: { lightningPubkey: { not: null } },
+            select: { name: true, image: true, lightningPubkey: true },
+          })
+        : [];
+
     const hiveMap = new Map<string, { name: string | null; image: string | null }>();
-    for (const member of members) {
-      const rawPubkey = member.user?.lightningPubkey;
-      if (!rawPubkey) continue;
+
+    // Owner: try to match their stored lightningPubkey to the boltwall superAdmin pubkey
+    const superAdminPubkey = superAdmin?.pubkey ?? null;
+    if (ownerUser?.lightningPubkey && superAdminPubkey) {
       try {
-        const decrypted = encryptionService.decryptField("lightningPubkey", rawPubkey);
-        hiveMap.set(decrypted, { name: member.user.name ?? null, image: member.user.image ?? null });
+        const decrypted = encryptionService.decryptField("lightningPubkey", ownerUser.lightningPubkey);
+        if (decrypted === superAdminPubkey) {
+          hiveMap.set(superAdminPubkey, { name: ownerUser.name ?? null, image: ownerUser.image ?? null });
+        }
       } catch {
-        // skip members whose pubkey cannot be decrypted
+        // skip if pubkey cannot be decrypted
+      }
+    }
+
+    // Admins: decrypt and match against boltwall pubkeys
+    for (const user of usersWithPubkey) {
+      try {
+        const decrypted = encryptionService.decryptField("lightningPubkey", user.lightningPubkey!);
+        if (adminPubkeys.includes(decrypted)) {
+          hiveMap.set(decrypted, { name: user.name ?? null, image: user.image ?? null });
+        }
+      } catch {
+        // skip users whose pubkey cannot be decrypted
       }
     }
 
     // Build enriched list: owner first, then admins/members (deduplicating super admin)
-    const superAdminPubkey = superAdmin?.pubkey ?? null;
     const ownerEntry = {
       pubkey: superAdminPubkey,
       name: superAdmin?.name ?? null,
       role: "owner" as const,
-      hive: superAdminPubkey ? (hiveMap.get(superAdminPubkey) ?? null) : null,
+      hive: superAdminPubkey
+        ? (hiveMap.get(superAdminPubkey) ?? null)
+        : ownerUser
+          ? { name: ownerUser.name ?? null, image: ownerUser.image ?? null }
+          : null,
     };
 
     const enrichedAdmins = admins
