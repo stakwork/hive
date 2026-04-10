@@ -46,6 +46,8 @@ export async function getPhase(phaseId: string, userId: string): Promise<PhaseWi
           workspaceId: true,
           bountyCode: true,
           autoMerge: true,
+          runBuild: true,
+          runTestSuite: true,
           dependsOnTaskIds: true,
           deploymentStatus: true,
           deployedToStagingAt: true,
