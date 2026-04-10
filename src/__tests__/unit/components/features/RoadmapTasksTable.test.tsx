@@ -10,6 +10,7 @@ import { TaskStatus, Priority } from "@prisma/client";
 // Mock Next.js router
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(),
+  usePathname: vi.fn(() => "/w/test-workspace/plan/test-feature"),
 }));
 
 // Mock hooks
@@ -316,7 +317,7 @@ describe("RoadmapTasksTable", () => {
         await userEvent.click(viewTaskButton);
         
         await waitFor(() => {
-          expect(mockRouter.push).toHaveBeenCalledWith("/w/test-workspace/task/task-456");
+          expect(mockRouter.push).toHaveBeenCalledWith("/w/test-workspace/task/task-456?from=%2Fw%2Ftest-workspace%2Fplan%2Ffeature-123");
         });
       }
     });
