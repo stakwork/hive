@@ -1,25 +1,40 @@
 import { ModelMessage } from "ai";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
 
+/**
+ * Format a flat list of members for the single-workspace prompt.
+ */
+function formatMemberList(members: WorkspaceMemberInfo[]): string {
+  if (members.length === 0) return "";
+  const lines = members.map((m) => {
+    const display = m.name || m.githubUsername || "Unknown";
+    const gh = m.githubUsername ? ` (@${m.githubUsername})` : "";
+    const desc = m.description ? ` — ${m.description}` : "";
+    return `- **${display}**${gh}: ${m.role}${desc}`;
+  });
+  return `\n## Team Members\n${lines.join("\n")}\n`;
+}
+
 // System prompt for the quick ask learning assistant
-export function getQuickAskSystemPrompt(repoUrls: string[], description?: string): string {
+export function getQuickAskSystemPrompt(repoUrls: string[], description?: string, members?: WorkspaceMemberInfo[]): string {
   const repoDescription =
     repoUrls.length === 1 ? `the repository ${repoUrls[0]}` : `the repositories: ${repoUrls.join(", ")}`;
   const descSuffix = description ? ` — ${description}` : "";
+  const memberSection = members ? formatMemberList(members) : "";
 
   return `
 You are a source code learning assistant for ${repoDescription}${descSuffix}. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand —- a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
 
 Try to match the tone of the user. If the question is highly technical (mentioning specific things in the code), then you can answer with more technical language and examples (or function names, endpoints names, etc). But the the user prompt is not technical, then you should answer in clear, plain language.
-
+${memberSection}
 You have access to tools called list_concepts and learn_concept. list_concepts fetches a list of concepts from the codebase knowledge base. learn_concept fetches detailed documentation for a specific concept by ID. If you think information about concepts might help answer the user's question, use these tools to fetch relevant data. You might also get a list of clues from the search_relevant_clues tool, which may or may not be relevant. If you really can't find anything useful, or you truly do not know the answer, simply reply something like: "Sorry, I don't know the answer to that question, I'll look into it."
 
 When you are done print "[END_OF_ANSWER]"`;
 }
 
-export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], repoUrls: string[], clueMsgs: ModelMessage[] | null, description?: string): ModelMessage[] {
+export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], repoUrls: string[], clueMsgs: ModelMessage[] | null, description?: string, members?: WorkspaceMemberInfo[]): ModelMessage[] {
   return [
-    { role: "system", content: getQuickAskSystemPrompt(repoUrls, description) },
+    { role: "system", content: getQuickAskSystemPrompt(repoUrls, description, members) },
     {
       role: "assistant",
       content: [
@@ -126,9 +141,9 @@ Tools are prefixed with workspace slugs. For each workspace you have:
 - \`{workspace}__recent_contributions\` - Query PRs by a contributor
 - \`{workspace}__search_logs\` - Search application logs (Lucene query syntax)
 - \`{workspace}__repo_agent\` - Deep code analysis (if you can't find the answer with the other tools)
-- \`{workspace}__list_features\` - List roadmap features (planning items) for a workspace
+- \`{workspace}__list_features\` - List roadmap features/plans for a workspace. Use this if the user asks about features, plans, roadmap, or what's being worked on.
 - \`{workspace}__read_feature\` - Read a feature's details, brief, requirements, architecture, and chat history
-- \`{workspace}__list_tasks\` - List tasks for a workspace
+- \`{workspace}__list_tasks\` - List tasks for a workspace. Use this if the user asks about tasks or tickets.
 - \`{workspace}__read_task\` - Read a task's details, status, and chat history
 - \`{workspace}__check_status\` - Quick status check of active features and tasks (optionally filtered by user)
 

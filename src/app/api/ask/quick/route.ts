@@ -155,12 +155,16 @@ export async function POST(request: NextRequest) {
       const config = await buildWorkspaceConfigs(slugs, userOrResponse.id);
       const ws = config[0];
 
-      tools = askTools(ws.swarmUrl, ws.swarmApiKey, ws.repoUrls, ws.pat, apiKey);
+      tools = askTools(ws.swarmUrl, ws.swarmApiKey, ws.repoUrls, ws.pat, apiKey, {
+        workspaceId: ws.workspaceId,
+        workspaceSlug: ws.slug,
+        userId: ws.userId,
+      });
 
       const concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
       features = (concepts.features as Record<string, unknown>[]) || [];
 
-      prefixMessages = getQuickAskPrefixMessages(features, ws.repoUrls, [], ws.description);
+      prefixMessages = getQuickAskPrefixMessages(features, ws.repoUrls, [], ws.description, ws.members);
       primarySwarmUrl = ws.swarmUrl;
       primarySwarmApiKey = ws.swarmApiKey;
     }
