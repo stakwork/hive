@@ -65,7 +65,7 @@ interface PendingImage {
 }
 
 interface TaskStartInputProps {
-  onStart: (task: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string) => void;
+  onStart: (task: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string, runBuild?: boolean, runTestSuite?: boolean) => void;
   taskMode: string;
   onModeChange: (mode: string) => void;
   isLoading?: boolean;
@@ -111,6 +111,8 @@ export function TaskStartInput({
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [autoMerge, setAutoMerge] = useState(true);
+  const [runBuild, setRunBuild] = useState(true);
+  const [runTestSuite, setRunTestSuite] = useState(true);
   
   // Project debugger state
   const [projectIdValue, setProjectIdValue] = useState("");
@@ -404,6 +406,8 @@ export function TaskStartInput({
         imageFiles.length > 0 ? imageFiles : undefined,
         selectedRepositoryId || undefined,
         selectedBranch || undefined,
+        runBuild,
+        runTestSuite,
       );
       
       // Clear state
@@ -991,30 +995,74 @@ export function TaskStartInput({
         </div>
       )}
 
-      {/* Auto-merge checkbox for agent mode */}
+      {/* Auto-merge, run build, run tests checkboxes for agent mode */}
       {isAgentMode && (
         <div className="w-full max-w-2xl mt-3">
           <TooltipProvider>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="auto-merge-task-start"
-                checked={autoMerge}
-                onCheckedChange={(checked) => setAutoMerge(checked === true)}
-                data-testid="auto-merge-checkbox"
-              />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <label
-                    htmlFor="auto-merge-task-start"
-                    className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                  >
-                    Auto-merge PR when CI passes
-                  </label>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Automatically merge the pull request when all CI checks pass</p>
-                </TooltipContent>
-              </Tooltip>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="auto-merge-task-start"
+                  checked={autoMerge}
+                  onCheckedChange={(checked) => setAutoMerge(checked === true)}
+                  data-testid="auto-merge-checkbox"
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <label
+                      htmlFor="auto-merge-task-start"
+                      className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                    >
+                      Auto-merge PR when CI passes
+                    </label>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Automatically merge the pull request when all CI checks pass</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="run-build-task-start"
+                  checked={runBuild}
+                  onCheckedChange={(checked) => setRunBuild(checked === true)}
+                  data-testid="run-build-checkbox"
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <label
+                      htmlFor="run-build-task-start"
+                      className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                    >
+                      Run build
+                    </label>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Run the build step in the workflow</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="run-tests-task-start"
+                  checked={runTestSuite}
+                  onCheckedChange={(checked) => setRunTestSuite(checked === true)}
+                  data-testid="run-tests-checkbox"
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <label
+                      htmlFor="run-tests-task-start"
+                      className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                    >
+                      Run tests
+                    </label>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Run the test suite in the workflow</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             </div>
           </TooltipProvider>
         </div>

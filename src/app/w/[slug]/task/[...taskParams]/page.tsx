@@ -911,7 +911,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string) => {
+  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string, runBuild?: boolean, runTestSuite?: boolean) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
 
@@ -938,6 +938,8 @@ export default function TaskChatPage() {
             autoMerge: autoMerge || false, // Save auto-merge preference
             repositoryId: repositoryId, // Pass repository ID for multi-repo workspaces
             branch: branch || null, // Pass selected branch
+            runBuild: runBuild ?? true,
+            runTestSuite: runTestSuite ?? true,
           }),
         });
 
