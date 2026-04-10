@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge, FlaskConical } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -28,11 +29,12 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
   const [isUpdating, setIsUpdating] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const { isSuperAdmin } = useWorkspace();
+  const pathname = usePathname();
 
   // Derive task href from conditional logic
   const taskHref = task.status === "TODO" && task.featureId
     ? `/w/${workspaceSlug}/plan/${task.featureId}?tab=tasks`
-    : `/w/${workspaceSlug}/task/${task.id}`;
+    : `/w/${workspaceSlug}/task/${task.id}?from=${encodeURIComponent(pathname)}`;
 
   const handleArchiveToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();

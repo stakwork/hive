@@ -12,7 +12,7 @@ import { WorkflowTransition } from "@/types/stakwork/workflow";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, FlaskConical, Loader2, Monitor, Pencil, Server, ServerOff, UserPlus } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./ChatInput";
 import type { StreamContext } from "./WorkflowStatusBadge";
@@ -107,6 +107,7 @@ export function ChatArea({
   const [titleDraft, setTitleDraft] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isMobile = useIsMobile();
 
   // Check if any message has a PULL_REQUEST artifact
@@ -180,6 +181,11 @@ export function ChatArea({
   };
 
   const handleBackToTasks = () => {
+    const fromParam = searchParams.get("from");
+    if (fromParam) {
+      router.push(decodeURIComponent(fromParam));
+      return;
+    }
     if (isPlanChat) {
       router.push(`/w/${workspaceSlug}/plan`);
     } else if (workspaceSlug) {
