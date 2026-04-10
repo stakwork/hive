@@ -44,6 +44,27 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
 
     await poolManagerService().deletePodFromPool(swarm.id, workspaceId, swarm.poolApiKey);
 
+    // Best-effort: atomically clear pod refs from any task that still references this pod.
+    // Follows the SELECT FOR UPDATE pattern from claimAvailablePod in queries.ts.
+    try {
+      await db.$transaction(async (tx) => {
+        // Lock the pod row to prevent concurrent stale reads
+        await tx.$queryRaw`
+          SELECT id FROM pods
+          WHERE pod_id = ${workspaceId}
+          FOR UPDATE
+        `;
+        const updated = await tx.task.updateMany({
+          where: { podId: workspaceId },
+          data: { podId: null, agentPassword: null, agentUrl: null },
+        });
+        console.log(`[DeletePod] Cleared podId refs from ${updated.count} tasks for pod ${workspaceId}`);
+      });
+    } catch (err) {
+      // Best-effort: pod is already deleted, cron will catch any misses
+      console.error(`[DeletePod] Failed to clear task pod refs for ${workspaceId}:`, err);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error in delete pod endpoint:", error);
