@@ -6,6 +6,7 @@ vi.mock("@/lib/db", () => ({
     task: {
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     workspace: {
       findFirst: vi.fn(),
@@ -18,14 +19,30 @@ vi.mock("@/lib/pods", () => ({
   releaseTaskPod: vi.fn(),
 }));
 
+// Mock getPodDetails
+vi.mock("@/lib/pods/queries", () => ({
+  getPodDetails: vi.fn(),
+}));
+
 const { db: mockDb } = await import("@/lib/db");
 const { releaseTaskPod: mockReleaseTaskPod } = await import("@/lib/pods");
+const { getPodDetails: mockGetPodDetails } = await import("@/lib/pods/queries");
 const { releaseStaleTaskPods, haltTask } = await import("@/services/task-coordinator-cron");
 
 describe("releaseStaleTaskPods", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    // Default: findMany returns [] (covers both orphan sweep and stale sweep calls)
+    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+    vi.mocked(mockDb.task.updateMany).mockResolvedValue({ count: 0 } as any);
+    // Default: getPodDetails returns a valid pod — orphan sweep skips all tasks by default.
+    // Individual tests that need to exercise orphan clearing override this explicitly.
+    vi.mocked(mockGetPodDetails).mockResolvedValue({
+      podId: "some-pod",
+      password: null,
+      portMappings: null,
+    });
   });
 
   test("should find and release pods from tasks that have been stale for more than 24 hours", async () => {
@@ -279,7 +296,8 @@ describe("releaseStaleTaskPods", () => {
 
     await releaseStaleTaskPods();
 
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    // calls[0] is orphan sweep; calls[1] is the stale sweep
+    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[1][0];
     // Should use OR clause to find both:
     // 1. Tasks with pods (any status)
     // 2. Stale IN_PROGRESS tasks without pods
@@ -351,7 +369,8 @@ describe("releaseStaleTaskPods", () => {
 
     await releaseStaleTaskPods();
 
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    // calls[0] is orphan sweep; calls[1] is the stale sweep
+    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[1][0];
     expect(findManyCall?.where?.deleted).toBe(false);
 
     vi.useRealTimers();
@@ -365,7 +384,8 @@ describe("releaseStaleTaskPods", () => {
 
     await releaseStaleTaskPods();
 
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    // calls[0] is orphan sweep; calls[1] is the stale sweep
+    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[1][0];
     expect(findManyCall?.where?.updatedAt).toBeDefined();
     expect(findManyCall?.where?.updatedAt?.lt).toBeInstanceOf(Date);
 
@@ -421,7 +441,8 @@ describe("releaseStaleTaskPods", () => {
 
     await releaseStaleTaskPods();
 
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    // calls[0] is orphan sweep; calls[1] is the stale sweep
+    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[1][0];
     const threshold = findManyCall?.where?.updatedAt?.lt as Date;
 
     // Should be 48 hours ago
@@ -559,6 +580,114 @@ describe("releaseStaleTaskPods", () => {
     expect(result.success).toBe(true);
     expect(result.podsReleased).toBe(0);
     expect(result.tasksHalted).toBe(0);
+
+    vi.useRealTimers();
+  });
+
+  // ── Orphan sweep tests ──────────────────────────────────────────────────────
+
+  test("should clear podId/agentPassword/agentUrl when getPodDetails returns null (soft-deleted pod)", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const tasksWithPod = [{ id: "task-orphan", podId: "deleted-pod-1" }];
+
+    // First findMany (orphan sweep) returns a task with a pod
+    vi.mocked(mockDb.task.findMany)
+      .mockResolvedValueOnce(tasksWithPod as any) // orphan sweep
+      .mockResolvedValueOnce([]); // stale sweep
+
+    // getPodDetails returns null → pod is gone / soft-deleted
+    vi.mocked(mockGetPodDetails).mockResolvedValue(null);
+    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+
+    const result = await releaseStaleTaskPods();
+
+    expect(mockGetPodDetails).toHaveBeenCalledWith("deleted-pod-1");
+    expect(mockDb.task.update).toHaveBeenCalledWith({
+      where: { id: "task-orphan" },
+      data: { podId: null, agentPassword: null, agentUrl: null },
+    });
+    expect(result.orphanedPodsCleared).toBe(1);
+    expect(result.success).toBe(true);
+
+    vi.useRealTimers();
+  });
+
+  test("should NOT clear fields when getPodDetails returns a valid pod", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const tasksWithPod = [{ id: "task-healthy", podId: "healthy-pod-1" }];
+
+    vi.mocked(mockDb.task.findMany)
+      .mockResolvedValueOnce(tasksWithPod as any) // orphan sweep
+      .mockResolvedValueOnce([]); // stale sweep
+
+    // getPodDetails returns a real pod
+    vi.mocked(mockGetPodDetails).mockResolvedValue({
+      podId: "healthy-pod-1",
+      password: "secret",
+      portMappings: null,
+    });
+
+    const result = await releaseStaleTaskPods();
+
+    expect(mockGetPodDetails).toHaveBeenCalledWith("healthy-pod-1");
+    expect(mockDb.task.updateMany).not.toHaveBeenCalled();
+    expect(result.orphanedPodsCleared).toBe(0);
+    expect(result.success).toBe(true);
+
+    vi.useRealTimers();
+  });
+
+  test("orphan sweep should not change workflowStatus", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const tasksWithPod = [{ id: "task-orphan-2", podId: "deleted-pod-2" }];
+
+    vi.mocked(mockDb.task.findMany)
+      .mockResolvedValueOnce(tasksWithPod as any)
+      .mockResolvedValueOnce([]);
+
+    vi.mocked(mockGetPodDetails).mockResolvedValue(null);
+    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+
+    await releaseStaleTaskPods();
+
+    // update should only touch pod fields — no workflowStatus change
+    expect(mockDb.task.update).toHaveBeenCalledWith({
+      where: { id: "task-orphan-2" },
+      data: { podId: null, agentPassword: null, agentUrl: null },
+    });
+    const updateCall = vi.mocked(mockDb.task.update).mock.calls[0][0];
+    expect(updateCall?.data).not.toHaveProperty("workflowStatus");
+
+    vi.useRealTimers();
+  });
+
+  test("orphan sweep runs regardless of task age (not time-gated)", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const tasksWithPod = [{ id: "task-recent", podId: "orphan-pod-recent" }];
+
+    vi.mocked(mockDb.task.findMany)
+      .mockResolvedValueOnce(tasksWithPod as any)
+      .mockResolvedValueOnce([]);
+
+    vi.mocked(mockGetPodDetails).mockResolvedValue(null);
+    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+
+    const result = await releaseStaleTaskPods();
+
+    // The orphan sweep findMany call must NOT have an updatedAt filter
+    const orphanSweepCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    expect(orphanSweepCall?.where).not.toHaveProperty("updatedAt");
+    expect(orphanSweepCall?.where?.podId).toEqual({ not: null });
+    expect(orphanSweepCall?.where?.deleted).toBe(false);
+    expect(result.orphanedPodsCleared).toBe(1);
 
     vi.useRealTimers();
   });
