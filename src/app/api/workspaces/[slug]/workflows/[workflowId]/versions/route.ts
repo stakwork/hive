@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -29,13 +30,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const session = await getServerSession(authOptions);
     const { slug, workflowId } = await params;
 
-    if (!session?.user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    let userId = (session?.user as { id?: string })?.id ?? null;
+
+    if (!userId) {
+      const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET! });
+      if (token?.id && typeof token.id === "string") {
+        userId = token.id;
+      }
     }
 
-    const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json({ success: false, error: "Invalid user session" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
     const workspace = await db.workspace.findFirst({
