@@ -233,6 +233,8 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
             workspaceId: true;
             bountyCode: true;
             autoMerge: true;
+            runBuild: true;
+            runTestSuite: true;
             dependsOnTaskIds: true;
             deploymentStatus: true;
             deployedToStagingAt: true;
@@ -458,6 +460,8 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
         workspaceId: true;
         bountyCode: true;
         autoMerge: true;
+        runBuild: true;
+        runTestSuite: true;
         dependsOnTaskIds: true;
         deploymentStatus: true;
         deployedToStagingAt: true;
@@ -530,6 +534,8 @@ type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
     workspaceId: true;
     bountyCode: true;
     autoMerge: true;
+    runBuild: true;
+    runTestSuite: true;
     dependsOnTaskIds: true;
     deploymentStatus: true;
     deployedToStagingAt: true;

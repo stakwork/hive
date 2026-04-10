@@ -79,6 +79,8 @@ export async function GET(request: NextRequest) {
             workspaceId: true,
             bountyCode: true,
             autoMerge: true,
+            runBuild: true,
+            runTestSuite: true,
             deploymentStatus: true,
             deployedToStagingAt: true,
             deployedToProductionAt: true,

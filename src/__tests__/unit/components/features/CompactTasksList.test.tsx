@@ -38,9 +38,10 @@ vi.mock("@/hooks/useTicketMutations", () => ({
   }),
 }));
 
+const mockRoadmapUpdateTicket = vi.fn().mockResolvedValue(null);
 vi.mock("@/hooks/useRoadmapTaskMutations", () => ({
   useRoadmapTaskMutations: () => ({
-    updateTicket: vi.fn().mockResolvedValue({}),
+    updateTicket: mockRoadmapUpdateTicket,
   }),
 }));
 
@@ -200,6 +201,8 @@ describe("CompactTasksList", () => {
     assignee: null,
     repository: null,
     autoMerge: false,
+    runBuild: true,
+    runTestSuite: true,
     prArtifact: null,
     deploymentStatus: null,
     deployedToStagingAt: null,
@@ -1181,6 +1184,146 @@ describe("CompactTasksList", () => {
       expect(onUpdate).not.toHaveBeenCalled();
 
       fetchSpy.mockRestore();
+    });
+  });
+
+  describe("Run Build and Run Tests toggles", () => {
+    beforeEach(() => {
+      mockRoadmapUpdateTicket.mockClear();
+    });
+
+    test("renders run build and run tests toggles for each task", () => {
+      const task = createMockTask({ id: "task-1", runBuild: true, runTestSuite: true });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText("run build")).toBeInTheDocument();
+      expect(screen.getByText("run tests")).toBeInTheDocument();
+    });
+
+    test("run build toggle defaults to true (checked) when runBuild is undefined", () => {
+      const task = createMockTask({ id: "task-1", runBuild: undefined });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // 3 toggles per task: autoMerge (index 0), runBuild (index 1), runTestSuite (index 2)
+      const toggles = screen.getAllByTestId("mini-toggle");
+      expect(toggles[1]).toBeChecked();
+    });
+
+    test("run tests toggle defaults to true (checked) when runTestSuite is undefined", () => {
+      const task = createMockTask({ id: "task-1", runTestSuite: undefined });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const toggles = screen.getAllByTestId("mini-toggle");
+      expect(toggles[2]).toBeChecked();
+    });
+
+    test("clicking run build toggle calls updateTicket with { runBuild: false }", async () => {
+      const user = userEvent.setup();
+      const task = createMockTask({ id: "task-toggle", status: "TODO", runBuild: true });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const toggles = screen.getAllByTestId("mini-toggle");
+      await user.click(toggles[1]); // runBuild
+
+      expect(mockRoadmapUpdateTicket).toHaveBeenCalledWith({
+        taskId: "task-toggle",
+        updates: { runBuild: false },
+      });
+    });
+
+    test("clicking run tests toggle calls updateTicket with { runTestSuite: false }", async () => {
+      const user = userEvent.setup();
+      const task = createMockTask({ id: "task-toggle", status: "TODO", runTestSuite: true });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const toggles = screen.getAllByTestId("mini-toggle");
+      await user.click(toggles[2]); // runTestSuite
+
+      expect(mockRoadmapUpdateTicket).toHaveBeenCalledWith({
+        taskId: "task-toggle",
+        updates: { runTestSuite: false },
+      });
+    });
+
+    test("run build and run tests toggles are disabled when task status is not TODO", () => {
+      const task = createMockTask({ id: "task-1", status: "IN_PROGRESS", runBuild: true, runTestSuite: true });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const toggles = screen.getAllByTestId("mini-toggle");
+      expect(toggles[1]).toBeDisabled(); // runBuild
+      expect(toggles[2]).toBeDisabled(); // runTestSuite
+    });
+
+    test("run build and run tests toggles are enabled when task status is TODO", () => {
+      const task = createMockTask({ id: "task-1", status: "TODO", runBuild: true, runTestSuite: true });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const toggles = screen.getAllByTestId("mini-toggle");
+      expect(toggles[1]).not.toBeDisabled(); // runBuild
+      expect(toggles[2]).not.toBeDisabled(); // runTestSuite
     });
   });
 });
