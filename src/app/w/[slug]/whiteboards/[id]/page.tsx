@@ -11,6 +11,7 @@ import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState, normalizeElementStyles } from "@/lib/excalidraw-config";
+import { mergeElementsByVersion } from "@/lib/whiteboard/merge-elements";
 import { computeVersionChanges } from "@/lib/whiteboard/version-utils";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
@@ -210,9 +211,41 @@ export default function WhiteboardDetailPage() {
           }
 
           if (body.stale && body.currentVersion != null) {
-            // Version conflict — update version and retry once (files already uploaded)
+            // Version conflict — fetch the latest server state, merge with our
+            // local canvas (so concurrent edits from another client are not
+            // lost), apply the merged result back to the canvas, and retry
+            // once with the new version. This is a single retry with a real
+            // merge — not a blind overwrite — but it is still last-write-wins
+            // per element. True conflict-free merging would require a CRDT.
             versionRef.current = body.currentVersion;
-            const retryData = { ...data, expectedVersion: body.currentVersion };
+
+            let mergedElements: readonly ExcalidrawElement[] = elements;
+            try {
+              const latestRes = await fetch(`/api/whiteboards/${whiteboard.id}`);
+              if (latestRes.ok) {
+                const latestBody = await latestRes.json();
+                const serverElements = (latestBody?.data?.elements ?? []) as ExcalidrawElement[];
+                mergedElements = mergeElementsByVersion(elements, serverElements);
+
+                // Reflect the merged state on the canvas so the user sees the
+                // other client's changes. Mark this as a programmatic update
+                // so handleChange does not re-broadcast / re-save it.
+                if (excalidrawAPI && mergedElements !== elements) {
+                  programmaticUpdateCountRef.current++;
+                  excalidrawAPI.updateScene({
+                    elements: mergedElements as readonly ExcalidrawElement[],
+                  });
+                }
+              }
+            } catch (mergeErr) {
+              console.warn("Conflict-merge fetch failed, retrying with local state:", mergeErr);
+            }
+
+            const retryData = {
+              ...data,
+              elements: mergedElements,
+              expectedVersion: body.currentVersion,
+            };
             const retryRes = await fetch(`/api/whiteboards/${whiteboard.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
@@ -224,12 +257,14 @@ export default function WhiteboardDetailPage() {
               if (retryResult.data?.version) {
                 versionRef.current = retryResult.data.version;
               }
-              lastSavedSnapshotRef.current = snapshot;
+              lastSavedSnapshotRef.current = computeSnapshot(mergedElements, files);
               setWhiteboard((prev) => prev ? { ...prev, files: mergedFiles } : prev);
               setSaved(true);
               setTimeout(() => setSaved(false), 2000);
             } else {
-              toast.error("Could not save — please try again.");
+              // If we 409 again, another client raced us — let the next save
+              // attempt handle it. Don't keep retrying in a loop.
+              toast.error("Could not save — another collaborator just saved. Your changes are preserved locally.");
             }
             return;
           }
@@ -272,9 +307,15 @@ export default function WhiteboardDetailPage() {
 
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-      // Skip programmatic updates (initial load, updateScene calls)
+      // Skip programmatic updates (initial load, updateScene calls).
+      // Clamp at 0 so any extra onChange callbacks Excalidraw fires per
+      // updateScene call don't drive the counter negative and silently
+      // swallow subsequent legitimate user edits.
       if (programmaticUpdateCountRef.current > 0) {
-        programmaticUpdateCountRef.current--;
+        programmaticUpdateCountRef.current = Math.max(
+          0,
+          programmaticUpdateCountRef.current - 1,
+        );
         // Seed known IDs on initial load so we can detect future pastes
         knownElementIdsRef.current = new Set(elements.map((el) => el.id));
         return;

@@ -165,7 +165,7 @@ function BoardInner({ features, slug }: BoardInnerProps) {
 
   const onNavigateTask = useCallback(
     (taskId: string) => {
-      router.push(`/w/${slug}/task/${taskId}`);
+      router.push(`/w/${slug}/task/${taskId}?from=${encodeURIComponent(window.location.pathname + window.location.search)}`);
     },
     [router, slug],
   );

@@ -14,7 +14,7 @@ import { GraphView, type Pulse } from "@/graph-viz/components/GraphView";
 import { OffscreenIndicators } from "@/graph-viz/components/OffscreenIndicators";
 import { PrevNodeIndicator } from "@/graph-viz/components/PrevNodeIndicator";
 import type { ViewState } from "@/graph-viz/graph/types";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useContext } from "react";
 import { WorkspaceContext } from "@/contexts/WorkspaceContext";
 import type { WorkspaceMember } from "@/hooks/useWorkspaceMembers";
@@ -181,7 +181,7 @@ function createRepoCodeLoader(slug: string, prefix: string): NodeLoader {
   };
 }
 
-function createRepoPRLoader(tasks: TaskSummary[], slug: string, prefix: string): NodeLoader {
+function createRepoPRLoader(tasks: TaskSummary[], slug: string, prefix: string, fromPath?: string): NodeLoader {
   return async () => {
     const nodes: RawNode[] = [];
     const edges: RawEdge[] = [];
@@ -203,7 +203,7 @@ function createRepoPRLoader(tasks: TaskSummary[], slug: string, prefix: string):
         label: prLabel,
         status: PR_STATUS[pr.status || ""] || "idle",
         content: pr.status || "unknown",
-        link: `/w/${slug}/task/${task.id}`,
+        link: `/w/${slug}/task/${task.id}${fromPath ? `?from=${encodeURIComponent(fromPath)}` : ""}`,
       });
       edges.push({ source: `${prefix}repo-prs`, target: prNodeId });
     }
@@ -720,6 +720,7 @@ interface GraphPortalProps {
 
 export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphPortalProps = {}) {
   const router = useRouter();
+  const pathname = usePathname();
   const workspaceCtx = useContext(WorkspaceContext);
   const workspaces = externalWorkspaces ?? workspaceCtx?.workspaces;
   const { data: allWsData, loading } = useAllWorkspacesData(workspaces);
@@ -751,7 +752,7 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
     for (const ws of allWsData) {
       const p = allWsData.length > 1 ? `${ws.slug}-` : "";
       map[`${p}repo-code`] = createRepoCodeLoader(ws.slug, p);
-      map[`${p}repo-prs`] = createRepoPRLoader(ws.tasks, ws.slug, p);
+      map[`${p}repo-prs`] = createRepoPRLoader(ws.tasks, ws.slug, p, pathname);
       map[`${p}infra-pods`] = createInfraLoader(ws.slug, p);
     }
     return map;

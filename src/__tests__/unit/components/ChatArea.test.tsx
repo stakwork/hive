@@ -10,6 +10,7 @@ import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 // Mock Next.js router
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(),
+  useSearchParams: vi.fn(() => ({ get: vi.fn(() => null) })),
 }));
 
 // Mock framer-motion
