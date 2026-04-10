@@ -27,6 +27,8 @@ interface UpdateRoadmapTaskParams {
     repositoryId?: string | null;
     dependsOnTaskIds?: string[];
     autoMerge?: boolean;
+    runBuild?: boolean;
+    runTestSuite?: boolean;
   };
 }
 
