@@ -54,6 +54,9 @@ export const PUSHER_EVENTS = {
   WHITEBOARD_CURSOR_UPDATE: "whiteboard-cursor-update",
   WHITEBOARD_USER_JOIN: "whiteboard-user-join",
   WHITEBOARD_USER_LEAVE: "whiteboard-user-leave",
+  // Sent when an element broadcast exceeds Pusher's 10KB cap. Receivers
+  // fetch the latest whiteboard from the DB and merge it into their canvas.
+  WHITEBOARD_REFETCH: "whiteboard-refetch",
   WHITEBOARD_CHAT_MESSAGE: "whiteboard-chat-message",
   FEATURE_UPDATED: "feature-updated",
   // Plan presence events
