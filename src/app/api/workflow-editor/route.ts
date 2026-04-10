@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { getToken } from "next-auth/jwt";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
@@ -35,13 +36,17 @@ interface WorkflowEditorRequest {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    let userId = (session?.user as { id?: string })?.id ?? null;
+
+    if (!userId) {
+      const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET! });
+      if (token?.id && typeof token.id === "string") {
+        userId = token.id;
+      }
     }
 
-    const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = (await request.json()) as WorkflowEditorRequest;
