@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth/nextauth";
 import { config } from "@/config/env";
 
@@ -15,8 +16,16 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions);
+    let userId = (session?.user as { id?: string })?.id ?? null;
 
-    if (!session?.user) {
+    if (!userId) {
+      const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET! });
+      if (token?.id && typeof token.id === "string") {
+        userId = token.id;
+      }
+    }
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

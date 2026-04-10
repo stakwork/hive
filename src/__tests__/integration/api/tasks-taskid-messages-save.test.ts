@@ -143,7 +143,7 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
 
       expect(response?.status).toBe(401);
       const data = await response?.json();
-      expect(data.error).toBe("Invalid user session");
+      expect(data.error).toBe("Unauthorized");
     });
   });
 
