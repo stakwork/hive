@@ -11,7 +11,7 @@ import type {
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, Collaborator, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { useSession } from "next-auth/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // Generate a consistent color based on user ID
 function generateUserColor(userId: string): string {
@@ -35,8 +35,6 @@ interface UseWhiteboardCollaborationOptions {
 
 interface UseWhiteboardCollaborationReturn {
   collaborators: CollaboratorInfo[];
-  /** Collaborators in Excalidraw's expected format for cursor rendering */
-  excalidrawCollaborators: Map<string, Collaborator>;
   isConnected: boolean;
   /** Broadcast elements to other users immediately (no DB save) */
   broadcastElements: (
@@ -59,8 +57,14 @@ export function useWhiteboardCollaboration({
 }: UseWhiteboardCollaborationOptions): UseWhiteboardCollaborationReturn {
   const { data: session } = useSession();
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
-  const [cursorPositions, setCursorPositions] = useState<Map<string, { x: number; y: number; color: string; username?: string; lastUpdated: number }>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
+
+  // Use a ref for cursor positions to avoid React re-renders on every cursor event
+  const cursorPositionsRef = useRef<Map<string, { x: number; y: number; color: string; username?: string; lastUpdated: number }>>(new Map());
+
+  // Stable ref for excalidrawAPI to avoid stale closures in Pusher callbacks
+  const excalidrawAPIRef = useRef(excalidrawAPI);
+  excalidrawAPIRef.current = excalidrawAPI;
 
   // Generate a unique sender ID for this session
   const senderIdRef = useRef<string>(
@@ -83,25 +87,20 @@ export function useWhiteboardCollaboration({
   // Track last broadcast state for delta computation
   const lastBroadcastedElementsRef = useRef<Map<string, { version: number; isDeleted?: boolean }>>(new Map());
 
-  // Convert cursor positions to Excalidraw's collaborator format
-  const excalidrawCollaborators = useMemo(() => {
+  // Push current cursor ref contents into Excalidraw's scene imperatively
+  const flushCursorsToScene = useCallback(() => {
+    const api = excalidrawAPIRef.current;
+    if (!api) return;
     const map = new Map<string, Collaborator>();
-    cursorPositions.forEach((cursor, odinguserId) => {
-      map.set(odinguserId, {
+    cursorPositionsRef.current.forEach((cursor, senderId) => {
+      map.set(senderId, {
         username: cursor.username || "Collaborator",
-        pointer: {
-          x: cursor.x,
-          y: cursor.y,
-          tool: "pointer",
-        },
-        color: {
-          background: cursor.color,
-          stroke: cursor.color,
-        },
+        pointer: { x: cursor.x, y: cursor.y, tool: "pointer" },
+        color: { background: cursor.color, stroke: cursor.color },
       });
     });
-    return map;
-  }, [cursorPositions]);
+    (api as any).updateScene({ collaborators: map });
+  }, []);
 
   // Compute delta between current elements and last broadcasted state
   const computeElementsDelta = useCallback(
@@ -298,17 +297,14 @@ export function useWhiteboardCollaboration({
         (data: WhiteboardCursorUpdateEvent) => {
           if (data.senderId === senderIdRef.current) return;
 
-          setCursorPositions((prev) => {
-            const next = new Map(prev);
-            next.set(data.senderId, {
-              x: data.cursor.x,
-              y: data.cursor.y,
-              color: data.color,
-              username: data.username,
-              lastUpdated: Date.now(),
-            });
-            return next;
+          cursorPositionsRef.current.set(data.senderId, {
+            x: data.cursor.x,
+            y: data.cursor.y,
+            color: data.color,
+            username: data.username,
+            lastUpdated: Date.now(),
           });
+          flushCursorsToScene();
         }
       );
 
@@ -348,15 +344,12 @@ export function useWhiteboardCollaboration({
           setCollaborators((prev) =>
             prev.filter((c) => c.odinguserId !== data.userId)
           );
-          setCursorPositions((prev) => {
-            const next = new Map(prev);
-            for (const key of next.keys()) {
-              if (key.startsWith(data.userId)) {
-                next.delete(key);
-              }
+          for (const key of cursorPositionsRef.current.keys()) {
+            if (key.startsWith(data.userId)) {
+              cursorPositionsRef.current.delete(key);
             }
-            return next;
-          });
+          }
+          flushCursorsToScene();
         }
       );
 
@@ -369,18 +362,15 @@ export function useWhiteboardCollaboration({
 
     // Sweep stale cursors every 30s (safety net for missed leave events)
     const sweepInterval = setInterval(() => {
-      setCursorPositions((prev) => {
-        const now = Date.now();
-        let changed = false;
-        const next = new Map(prev);
-        for (const [key, cursor] of next) {
-          if (now - cursor.lastUpdated > 60_000) {
-            next.delete(key);
-            changed = true;
-          }
+      const now = Date.now();
+      let changed = false;
+      for (const [key, cursor] of cursorPositionsRef.current) {
+        if (now - cursor.lastUpdated > 60_000) {
+          cursorPositionsRef.current.delete(key);
+          changed = true;
         }
-        return changed ? next : prev;
-      });
+      }
+      if (changed) flushCursorsToScene();
     }, 30_000);
 
     // Reliable leave via sendBeacon (survives tab close)
@@ -410,7 +400,6 @@ export function useWhiteboardCollaboration({
 
   return {
     collaborators,
-    excalidrawCollaborators,
     isConnected,
     broadcastElements,
     broadcastCursor,
