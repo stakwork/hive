@@ -702,6 +702,8 @@ export async function reorderTickets(
       workspaceId: true,
       bountyCode: true,
       autoMerge: true,
+      runBuild: true,
+      runTestSuite: true,
       dependsOnTaskIds: true,
       deploymentStatus: true,
       deployedToStagingAt: true,
