@@ -34,6 +34,10 @@ vi.mock("@/lib/pods", () => ({
   releaseTaskPod: vi.fn().mockResolvedValue({ success: true, podDropped: false, taskCleared: false }),
 }));
 
+vi.mock("@/lib/pods/queries", () => ({
+  getPodDetails: vi.fn().mockResolvedValue({ podId: "pod-1", password: null, portMappings: null }),
+}));
+
 vi.mock("@/lib/helpers/workflow-status", () => ({
   updateTaskWorkflowStatus: vi.fn().mockResolvedValue(undefined),
 }));
@@ -965,8 +969,9 @@ describe("executeTaskCoordinatorRuns", () => {
 
       // 5 eligible candidate tasks (no deps)
       const candidates = Array.from({ length: 5 }, () => createCandidateTask());
-      // findMany called twice: first for stale tasks (returns []), then for ticket sweep candidates
+      // findMany called 3 times: orphan sweep ([]), stale tasks ([]), ticket sweep candidates
       vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([]) // orphan sweep (new)
         .mockResolvedValueOnce([]) // stale tasks query
         .mockResolvedValueOnce(candidates as any); // ticket sweep candidates
 
@@ -986,6 +991,7 @@ describe("executeTaskCoordinatorRuns", () => {
       // Only 2 eligible candidates
       const candidates = Array.from({ length: 2 }, () => createCandidateTask());
       vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([]) // orphan sweep
         .mockResolvedValueOnce([]) // stale tasks query
         .mockResolvedValueOnce(candidates as any);
 
@@ -1004,7 +1010,8 @@ describe("executeTaskCoordinatorRuns", () => {
 
       const candidates = Array.from({ length: 3 }, () => createCandidateTask());
       vi.mocked(mockDb.task.findMany)
-        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]) // orphan sweep
+        .mockResolvedValueOnce([]) // stale tasks
         .mockResolvedValueOnce(candidates as any);
 
       TestHelpers.setupRecommendations([]);
@@ -1032,6 +1039,7 @@ describe("executeTaskCoordinatorRuns", () => {
       const ws1Candidates = Array.from({ length: 3 }, () => createCandidateTask());
       const ws2Candidates = Array.from({ length: 2 }, () => createCandidateTask());
       vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([])          // orphan sweep
         .mockResolvedValueOnce([])          // stale tasks
         .mockResolvedValueOnce(ws1Candidates as any) // ws-1 ticket sweep
         .mockResolvedValueOnce(ws2Candidates as any); // ws-2 ticket sweep
@@ -1052,7 +1060,8 @@ describe("executeTaskCoordinatorRuns", () => {
 
       const candidates = Array.from({ length: 2 }, () => createCandidateTask());
       vi.mocked(mockDb.task.findMany)
-        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]) // orphan sweep
+        .mockResolvedValueOnce([]) // stale tasks
         .mockResolvedValueOnce(candidates as any);
 
       TestHelpers.setupRecommendations([]);
@@ -1073,7 +1082,8 @@ describe("executeTaskCoordinatorRuns", () => {
 
       const candidates = [createCandidateTask()];
       vi.mocked(mockDb.task.findMany)
-        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]) // orphan sweep
+        .mockResolvedValueOnce([]) // stale tasks
         .mockResolvedValueOnce(candidates as any);
 
       const recommendation = JanitorTestDataFactory.createPendingRecommendation("HIGH");
