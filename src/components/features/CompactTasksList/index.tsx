@@ -59,6 +59,7 @@ function MiniToggle({
       role="switch"
       aria-checked={checked}
       disabled={disabled}
+      data-testid="mini-toggle"
       onClick={(e) => {
         e.stopPropagation();
         if (!disabled) onChange(!checked);
@@ -221,7 +222,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
 
   const handleUpdateTask = async (
     taskId: string,
-    updates: { status?: TaskStatus; autoMerge?: boolean; repositoryId?: string | null }
+    updates: { status?: TaskStatus; autoMerge?: boolean; runBuild?: boolean; runTestSuite?: boolean; repositoryId?: string | null }
   ) => {
     const updatedTask = await updateTicket({ taskId, updates });
     if (updatedTask && defaultPhase) {
@@ -633,6 +634,28 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                     disabled={task.status !== "TODO"}
                   />
                   <span>auto-merge</span>
+                </div>
+                <div
+                  className="flex items-center gap-1.5"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MiniToggle
+                    checked={task.runBuild ?? true}
+                    onChange={(runBuild) => handleUpdateTask(task.id, { runBuild })}
+                    disabled={task.status !== "TODO"}
+                  />
+                  <span>run build</span>
+                </div>
+                <div
+                  className="flex items-center gap-1.5"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MiniToggle
+                    checked={task.runTestSuite ?? true}
+                    onChange={(runTestSuite) => handleUpdateTask(task.id, { runTestSuite })}
+                    disabled={task.status !== "TODO"}
+                  />
+                  <span>run tests</span>
                 </div>
               </div>
             </div>
