@@ -79,7 +79,6 @@ export default function WhiteboardDetailPage() {
   // Collaboration hook
   const {
     collaborators,
-    excalidrawCollaborators,
     isConnected,
     broadcastElements,
     broadcastCursor,
@@ -716,9 +715,7 @@ export default function WhiteboardDetailPage() {
             })()}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}
-            isCollaborating={excalidrawCollaborators.size > 0}
-            // @ts-expect-error - collaborators prop exists at runtime but not in types for v0.18
-            collaborators={excalidrawCollaborators}
+            isCollaborating={collaborators.length > 0}
           />
         </div>
         {!isFullscreen && (
