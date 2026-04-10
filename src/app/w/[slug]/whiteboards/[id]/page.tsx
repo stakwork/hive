@@ -284,7 +284,14 @@ export default function WhiteboardDetailPage() {
           versionRef.current = result.data.version;
         }
         lastSavedSnapshotRef.current = snapshot;
-        setWhiteboard((prev) => prev ? { ...prev, files: mergedFiles, version: result.data.version } : prev);
+        // IMPORTANT: do not bump `whiteboard.version` in local state here.
+        // The "scene reload" effect below depends on `whiteboard.version` and
+        // is only meant to fire when an *external* change replaces the
+        // whiteboard via loadWhiteboard() (e.g. diagram generation). Bumping
+        // it on every successful user save would cause the canvas to scroll
+        // back to fit-view on every edit. The optimistic-locking expectedVersion
+        // is tracked in `versionRef.current`, which we updated above.
+        setWhiteboard((prev) => prev ? { ...prev, files: mergedFiles } : prev);
 
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
