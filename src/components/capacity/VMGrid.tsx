@@ -22,6 +22,7 @@ interface VMGridProps {
   isAdmin?: boolean;
   onDeletePod?: (vm: VMData) => void;
   workspaceSlug?: string;
+  currentPath?: string;
 }
 
 function getStatusIndicator(state: string, usage_status: string) {
@@ -44,6 +45,7 @@ function VMCard({
   isAdmin,
   onDeletePod,
   workspaceSlug,
+  currentPath,
 }: {
   vm: VMData;
   metricsLoading?: boolean;
@@ -51,6 +53,7 @@ function VMCard({
   isAdmin?: boolean;
   onDeletePod?: (vm: VMData) => void;
   workspaceSlug?: string;
+  currentPath?: string;
 }) {
   const [copySuccess, setCopySuccess] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -150,7 +153,7 @@ function VMCard({
             </Avatar>
             {workspaceSlug ? (
               <Link
-                href={`/w/${workspaceSlug}/task/${vm.assignedTask.id}`}
+                href={`/w/${workspaceSlug}/task/${vm.assignedTask.id}${currentPath ? `?from=${encodeURIComponent(currentPath)}` : ""}`}
                 className="text-xs text-muted-foreground truncate hover:underline"
               >
                 {vm.assignedTask.title}
@@ -228,7 +231,7 @@ function VMCard({
   );
 }
 
-export function VMGrid({ vms, metricsLoading, metricsError, isAdmin, onDeletePod, workspaceSlug }: VMGridProps) {
+export function VMGrid({ vms, metricsLoading, metricsError, isAdmin, onDeletePod, workspaceSlug, currentPath }: VMGridProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
       {vms.map((vm) => (
@@ -240,6 +243,7 @@ export function VMGrid({ vms, metricsLoading, metricsError, isAdmin, onDeletePod
           isAdmin={isAdmin}
           onDeletePod={onDeletePod}
           workspaceSlug={workspaceSlug}
+          currentPath={currentPath}
         />
       ))}
     </div>
