@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
       tasksCreated: result.tasksCreated,
       errorCount: result.errors.length,
       errors: result.errors,
+      orphanedPodsCleared: result.orphanedPodsCleared,
       timestamp: result.timestamp
     });
 
