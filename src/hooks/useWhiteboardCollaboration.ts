@@ -6,6 +6,7 @@ import type {
   CollaboratorInfo,
   WhiteboardCursorUpdateEvent,
   WhiteboardElementsUpdateEvent,
+  WhiteboardRefetchEvent,
   WhiteboardUserJoinEvent,
   WhiteboardUserLeaveEvent,
 } from "@/types/whiteboard-collaboration";
@@ -105,6 +106,11 @@ export function useWhiteboardCollaboration({
   // One-shot warning flag for oversized real-time payloads.
   const hasWarnedOversizedRef = useRef(false);
 
+  // Debounce timer for WHITEBOARD_REFETCH events. When several oversized
+  // broadcasts happen in quick succession we collapse them into a single
+  // database fetch instead of stampeding the API.
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Push current cursor ref contents into Excalidraw's scene imperatively
   const flushCursorsToScene = useCallback(() => {
     const api = excalidrawAPIRef.current;
@@ -179,24 +185,25 @@ export function useWhiteboardCollaboration({
             senderId: senderIdRef.current,
           }),
         })
-          .then((res) => {
-            // Surface oversized payloads so the user knows the change won't be
-            // visible to collaborators until the debounced DB save lands.
-            if (res.status === 413) {
-              if (!hasWarnedOversizedRef.current) {
-                hasWarnedOversizedRef.current = true;
-                console.warn(
-                  "[whiteboard] Real-time broadcast skipped: payload exceeds Pusher limit. " +
-                  "Changes will sync via the next database save.",
-                );
-              }
-              // Reset delta tracking so the next broadcast resends these
-              // elements (they were never delivered).
+          .then(async (res) => {
+            if (!res.ok) return;
+            // When the payload is too large for Pusher (10KB cap), the server
+            // broadcasts a tiny WHITEBOARD_REFETCH event instead of the inline
+            // delta and tells us so via `refetchTriggered`. Reset delta
+            // tracking for these elements so a future smaller change will
+            // resend them through the normal path.
+            const body = await res.json().catch(() => null);
+            if (body?.refetchTriggered) {
               for (const el of changedElements) {
                 lastBroadcastedElementsRef.current.delete(el.id);
               }
-            } else if (res.ok) {
-              hasWarnedOversizedRef.current = false;
+              if (!hasWarnedOversizedRef.current) {
+                hasWarnedOversizedRef.current = true;
+                console.info(
+                  "[whiteboard] Broadcast exceeded Pusher payload cap; " +
+                    "collaborators will refetch from the database.",
+                );
+              }
             }
           })
           .catch(console.error);
@@ -381,6 +388,41 @@ export function useWhiteboardCollaboration({
         }
       );
 
+      // Handle refetch fallback (oversized broadcast). Pull the latest scene
+      // from the server and merge it into the local canvas. Debounced 300ms
+      // so a burst of refetch events only triggers one DB fetch.
+      channel.bind(
+        PUSHER_EVENTS.WHITEBOARD_REFETCH,
+        (data: WhiteboardRefetchEvent) => {
+          if (data.senderId === senderIdRef.current) return;
+
+          if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+          refetchTimerRef.current = setTimeout(() => {
+            refetchTimerRef.current = null;
+            const api = excalidrawAPIRef.current;
+            if (!api) return;
+            fetch(`/api/whiteboards/${whiteboardId}`)
+              .then((res) => (res.ok ? res.json() : null))
+              .then((body) => {
+                const remoteElements = body?.data?.elements as
+                  | ExcalidrawElement[]
+                  | undefined;
+                if (!remoteElements) return;
+                const currentElements = api.getSceneElements();
+                const merged = mergeElementsByVersion(
+                  currentElements,
+                  remoteElements,
+                );
+                api.updateScene({ elements: merged });
+                onRemoteUpdateRef.current?.();
+              })
+              .catch((err) => {
+                console.error("[whiteboard] Refetch fallback failed:", err);
+              });
+          }, 300);
+        },
+      );
+
       // Handle user leave
       channel.bind(
         PUSHER_EVENTS.WHITEBOARD_USER_LEAVE,
@@ -481,6 +523,10 @@ export function useWhiteboardCollaboration({
       pendingElementsRef.current = null;
       lastBroadcastedElements.clear();
       hasWarnedOversizedRef.current = false;
+      if (refetchTimerRef.current) {
+        clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = null;
+      }
       setIsConnected(false);
     };
   }, [whiteboardId, excalidrawAPI, userId, flushCursorsToScene]);

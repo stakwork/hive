@@ -43,6 +43,7 @@ vi.mock("@/lib/pusher", () => ({
     WHITEBOARD_CURSOR_UPDATE: "whiteboard-cursor-update",
     WHITEBOARD_USER_JOIN: "whiteboard-user-join",
     WHITEBOARD_USER_LEAVE: "whiteboard-user-leave",
+    WHITEBOARD_REFETCH: "whiteboard-refetch",
   },
 }));
 
@@ -315,6 +316,125 @@ describe("useWhiteboardCollaboration", () => {
       const collaboratorsMap = call.collaborators as Map<string, unknown>;
       expect(collaboratorsMap.has(leavingSenderId)).toBe(false);
       expect(collaboratorsMap.has(stayingSenderId)).toBe(true);
+    });
+  });
+
+  describe("WHITEBOARD_REFETCH fallback", () => {
+    it("debounces refetch events and merges fetched elements into the canvas", async () => {
+      vi.useFakeTimers();
+      vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
+
+      const pusher = await import("@/lib/pusher");
+      vi.mocked(pusher.getPusherClient).mockReturnValue(mockPusherClient as any);
+
+      const handlers: Record<string, (data: unknown) => void> = {};
+      vi.mocked(mockChannel.bind).mockImplementation(
+        (event: string, handler: (data: unknown) => void) => {
+          handlers[event] = handler;
+          return mockChannel;
+        },
+      );
+
+      // Pre-existing local element on the canvas
+      const localElement = { id: "el-local", version: 1 };
+      (mockExcalidrawAPI.getSceneElements as ReturnType<typeof vi.fn>).mockReturnValue([
+        localElement,
+      ]);
+
+      // Server response for the refetch fetch — includes a remote element
+      const remoteElement = { id: "el-remote", version: 5 };
+      vi.mocked(global.fetch).mockImplementation(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        // First call is the GET-presence-on-mount; later call is the refetch
+        if (url.endsWith(`/api/whiteboards/${whiteboardId}`)) {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              data: { elements: [remoteElement] },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      renderHook(() =>
+        useWhiteboardCollaboration({
+          whiteboardId,
+          excalidrawAPI: mockExcalidrawAPI as any,
+        }),
+      );
+
+      mockExcalidrawAPI.updateScene.mockClear();
+
+      // Fire two refetch events in quick succession
+      await act(async () => {
+        handlers["whiteboard-refetch"]?.({
+          senderId: "other-user-1700-aaa",
+          reason: "payload_too_large",
+        });
+        handlers["whiteboard-refetch"]?.({
+          senderId: "other-user-1700-bbb",
+          reason: "payload_too_large",
+        });
+      });
+
+      // Before debounce fires: no fetch for the whiteboard yet
+      expect(mockExcalidrawAPI.updateScene).not.toHaveBeenCalled();
+
+      // Advance debounce
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+
+      // updateScene called once with the merged result containing both elements
+      expect(mockExcalidrawAPI.updateScene).toHaveBeenCalledTimes(1);
+      const sceneArg = mockExcalidrawAPI.updateScene.mock.calls[0][0];
+      const ids = (sceneArg.elements as Array<{ id: string }>).map((e) => e.id);
+      expect(ids).toContain("el-local");
+      expect(ids).toContain("el-remote");
+
+      vi.useRealTimers();
+    });
+
+    it("ignores refetch events triggered by the current user", async () => {
+      vi.useFakeTimers();
+      vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
+
+      const pusher = await import("@/lib/pusher");
+      vi.mocked(pusher.getPusherClient).mockReturnValue(mockPusherClient as any);
+
+      const handlers: Record<string, (data: unknown) => void> = {};
+      vi.mocked(mockChannel.bind).mockImplementation(
+        (event: string, handler: (data: unknown) => void) => {
+          handlers[event] = handler;
+          return mockChannel;
+        },
+      );
+
+      const { result } = renderHook(() =>
+        useWhiteboardCollaboration({
+          whiteboardId,
+          excalidrawAPI: mockExcalidrawAPI as any,
+        }),
+      );
+
+      mockExcalidrawAPI.updateScene.mockClear();
+
+      await act(async () => {
+        handlers["whiteboard-refetch"]?.({
+          senderId: result.current.senderId,
+          reason: "payload_too_large",
+        });
+        await vi.advanceTimersByTimeAsync(350);
+      });
+
+      // Self-originated refetch must not trigger a scene update
+      expect(mockExcalidrawAPI.updateScene).not.toHaveBeenCalled();
+      vi.useRealTimers();
     });
   });
 
