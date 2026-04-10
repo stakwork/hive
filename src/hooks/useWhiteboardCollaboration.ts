@@ -1,6 +1,7 @@
 "use client";
 
 import { getPusherClient, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { mergeElementsByVersion } from "@/lib/whiteboard/merge-elements";
 import type {
   CollaboratorInfo,
   WhiteboardCursorUpdateEvent,
@@ -12,6 +13,20 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, Collaborator, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+/**
+ * Extract the userId from a senderId of the form `<userId>-<timestamp>-<random>`.
+ * The timestamp and random suffix never contain hyphens (digits and base-36
+ * lowercase respectively), so the userId is everything before the last two
+ * dash-separated segments. Returns `null` if the senderId is malformed.
+ */
+function extractUserIdFromSenderId(senderId: string): string | null {
+  const lastDash = senderId.lastIndexOf("-");
+  if (lastDash <= 0) return null;
+  const secondLastDash = senderId.lastIndexOf("-", lastDash - 1);
+  if (secondLastDash <= 0) return null;
+  return senderId.slice(0, secondLastDash);
+}
 
 // Generate a consistent color based on user ID
 function generateUserColor(userId: string): string {
@@ -87,6 +102,9 @@ export function useWhiteboardCollaboration({
   // Track last broadcast state for delta computation
   const lastBroadcastedElementsRef = useRef<Map<string, { version: number; isDeleted?: boolean }>>(new Map());
 
+  // One-shot warning flag for oversized real-time payloads.
+  const hasWarnedOversizedRef = useRef(false);
+
   // Push current cursor ref contents into Excalidraw's scene imperatively
   const flushCursorsToScene = useCallback(() => {
     const api = excalidrawAPIRef.current;
@@ -160,7 +178,28 @@ export function useWhiteboardCollaboration({
             },
             senderId: senderIdRef.current,
           }),
-        }).catch(console.error);
+        })
+          .then((res) => {
+            // Surface oversized payloads so the user knows the change won't be
+            // visible to collaborators until the debounced DB save lands.
+            if (res.status === 413) {
+              if (!hasWarnedOversizedRef.current) {
+                hasWarnedOversizedRef.current = true;
+                console.warn(
+                  "[whiteboard] Real-time broadcast skipped: payload exceeds Pusher limit. " +
+                  "Changes will sync via the next database save.",
+                );
+              }
+              // Reset delta tracking so the next broadcast resends these
+              // elements (they were never delivered).
+              for (const el of changedElements) {
+                lastBroadcastedElementsRef.current.delete(el.id);
+              }
+            } else if (res.ok) {
+              hasWarnedOversizedRef.current = false;
+            }
+          })
+          .catch(console.error);
       };
 
       if (timeSinceLastBroadcast >= 100) {
@@ -237,6 +276,12 @@ export function useWhiteboardCollaboration({
   useEffect(() => {
     if (!COLLABORATION_ENABLED || !whiteboardId || !userId) return;
 
+    // Capture ref values once so the cleanup function operates on the same
+    // Maps/Sets the effect body uses (and to satisfy react-hooks/exhaustive-deps).
+    const cursorPositions = cursorPositionsRef.current;
+    const knownUserIds = knownUserIdsRef.current;
+    const lastBroadcastedElements = lastBroadcastedElementsRef.current;
+
     const collaborationUrl = `/api/whiteboards/${whiteboardId}/collaboration`;
 
     const buildUserPayload = () => ({
@@ -279,7 +324,7 @@ export function useWhiteboardCollaboration({
           if (excalidrawAPI) {
             const currentElements = excalidrawAPI.getSceneElements();
             const remoteElements = data.elements as ExcalidrawElement[];
-            const mergedElements = mergeElements(currentElements, remoteElements);
+            const mergedElements = mergeElementsByVersion(currentElements, remoteElements);
 
             excalidrawAPI.updateScene({
               elements: mergedElements,
@@ -344,8 +389,11 @@ export function useWhiteboardCollaboration({
           setCollaborators((prev) =>
             prev.filter((c) => c.odinguserId !== data.userId)
           );
+          // Match senderIds whose embedded userId is exactly `data.userId`.
+          // Using `startsWith` here would incorrectly remove cursors of users
+          // with similar IDs (e.g. "user-12" would also match "user-123").
           for (const key of cursorPositionsRef.current.keys()) {
-            if (key.startsWith(data.userId)) {
+            if (extractUserIdFromSenderId(key) === data.userId) {
               cursorPositionsRef.current.delete(key);
             }
           }
@@ -355,6 +403,32 @@ export function useWhiteboardCollaboration({
 
       // Announce our presence
       sendJoin();
+
+      // Pull the current collaborator list from the server so late joiners
+      // see everyone who is already in the room — not just whoever happens
+      // to rebroadcast in response to our join event. Best-effort: failures
+      // (network, multi-instance gap) fall back to the rebroadcast pattern.
+      fetch(collaborationUrl)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((body) => {
+          const initial = body?.collaborators as CollaboratorInfo[] | undefined;
+          if (!initial || initial.length === 0) return;
+          setCollaborators((prev) => {
+            const merged = [...prev];
+            const seen = new Set(prev.map((c) => c.odinguserId));
+            for (const c of initial) {
+              if (c.odinguserId === userId) continue;
+              if (seen.has(c.odinguserId)) continue;
+              merged.push(c);
+              knownUserIdsRef.current.add(c.odinguserId);
+              seen.add(c.odinguserId);
+            }
+            return merged;
+          });
+        })
+        .catch(() => {
+          // Silently ignore — rebroadcast handler will fill in.
+        });
     } catch {
       // Pusher not configured in this environment
       return;
@@ -387,16 +461,29 @@ export function useWhiteboardCollaboration({
     return () => {
       window.removeEventListener("beforeunload", sendLeaveBeacon);
       clearInterval(sweepInterval);
-      channel?.unbind_all();
-      if (pusher && channelName) {
-        pusher.unsubscribe(channelName);
+      try {
+        channel?.unbind_all();
+      } catch (err) {
+        console.error("[whiteboard] Failed to unbind Pusher channel:", err);
+      }
+      try {
+        if (pusher && channelName) {
+          pusher.unsubscribe(channelName);
+        }
+      } catch (err) {
+        console.error("[whiteboard] Failed to unsubscribe from Pusher channel:", err);
       }
       sendLeaveBeacon();
       hasSentJoinRef.current = false;
-      knownUserIdsRef.current.clear();
+      knownUserIds.clear();
+      cursorPositions.clear();
+      pendingCursorRef.current = null;
+      pendingElementsRef.current = null;
+      lastBroadcastedElements.clear();
+      hasWarnedOversizedRef.current = false;
       setIsConnected(false);
     };
-  }, [whiteboardId, excalidrawAPI, userId]);
+  }, [whiteboardId, excalidrawAPI, userId, flushCursorsToScene]);
 
   return {
     collaborators,
@@ -408,44 +495,3 @@ export function useWhiteboardCollaboration({
   };
 }
 
-/**
- * Merge local and remote elements using element-level versioning
- * Remote elements take precedence when there's a conflict
- */
-function mergeElements(
-  localElements: readonly ExcalidrawElement[],
-  remoteElements: ExcalidrawElement[]
-): ExcalidrawElement[] {
-  const localMap = new Map(localElements.map((el) => [el.id, el]));
-  const remoteMap = new Map(remoteElements.map((el) => [el.id, el]));
-  const mergedMap = new Map<string, ExcalidrawElement>();
-
-  // Add all local elements first
-  for (const [id, el] of localMap) {
-    mergedMap.set(id, el);
-  }
-
-  // Override with remote elements (they have newer data from the server)
-  for (const [id, remoteEl] of remoteMap) {
-    const localEl = localMap.get(id);
-    if (!localEl) {
-      // New element from remote
-      mergedMap.set(id, remoteEl);
-    } else {
-      // Use the element with the higher version
-      if (remoteEl.version >= localEl.version) {
-        mergedMap.set(id, remoteEl);
-      }
-    }
-  }
-
-  // Remove elements that were deleted remotely (not in remote but were in local)
-  // Only if they haven't been locally modified since
-  for (const [id, localEl] of localMap) {
-    if (!remoteMap.has(id) && localEl.isDeleted) {
-      mergedMap.delete(id);
-    }
-  }
-
-  return Array.from(mergedMap.values());
-}
