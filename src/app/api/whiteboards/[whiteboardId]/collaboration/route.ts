@@ -67,21 +67,24 @@ export async function POST(
           version: 0,
         };
 
-        // Pusher rejects messages over ~10KB. Surface this to the client so it
-        // can fall back to the debounced DB save path (and warn the user that
-        // their last change won't appear instantly for collaborators).
+        // Pusher rejects messages over ~10KB. Instead of dropping the update,
+        // broadcast a tiny WHITEBOARD_REFETCH event — receiving clients will
+        // pull the latest state from the database and merge it into their
+        // canvas. The originating client's debounced save then becomes the
+        // source of truth for that update.
         const payloadSize = new TextEncoder().encode(JSON.stringify(payload)).length;
         if (payloadSize > PUSHER_MAX_PAYLOAD_BYTES) {
-          return NextResponse.json(
-            {
-              error: "Payload too large for real-time broadcast",
-              skipped: true,
-              reason: "payload_too_large",
-              maxBytes: PUSHER_MAX_PAYLOAD_BYTES,
-              payloadBytes: payloadSize,
-            },
-            { status: 413 },
-          );
+          await pusherServer.trigger(channelName, PUSHER_EVENTS.WHITEBOARD_REFETCH, {
+            senderId: body.senderId,
+            reason: "payload_too_large",
+          });
+          return NextResponse.json({
+            success: true,
+            refetchTriggered: true,
+            reason: "payload_too_large",
+            payloadBytes: payloadSize,
+            maxBytes: PUSHER_MAX_PAYLOAD_BYTES,
+          });
         }
 
         await pusherServer.trigger(channelName, PUSHER_EVENTS.WHITEBOARD_ELEMENTS_UPDATE, payload);
