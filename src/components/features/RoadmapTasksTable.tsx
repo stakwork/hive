@@ -34,7 +34,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import type { Priority, TaskStatus } from "@prisma/client";
 import { ExternalLink, GripVertical, Play, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
 interface WorkspaceRepo {
   id: string;
@@ -83,6 +83,7 @@ function SortableTableRow({
   onStartTask: () => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const {
     attributes,
     listeners,
@@ -115,7 +116,7 @@ function SortableTableRow({
             label: "View Task",
             icon: ExternalLink,
             variant: "default" as const,
-            onClick: () => router.push(`/w/${workspaceSlug}/task/${task.id}`),
+            onClick: () => router.push(`/w/${workspaceSlug}/task/${task.id}?from=${encodeURIComponent(window.location.pathname + window.location.search)}`),
           },
         ]
       : []),
@@ -165,7 +166,7 @@ function SortableTableRow({
       </TableCell>
       <TableCell className="w-[300px] font-medium">
         <Link
-          href={`/w/${workspaceSlug}/task/${task.id}`}
+          href={`/w/${workspaceSlug}/task/${task.id}?from=${encodeURIComponent(pathname)}`}
           className="absolute inset-0"
           aria-label={task.title}
         />

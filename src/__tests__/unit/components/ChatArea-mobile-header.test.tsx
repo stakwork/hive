@@ -16,6 +16,7 @@ vi.mock("next/navigation", () => ({
     push: vi.fn(),
     back: vi.fn(),
   }),
+  useSearchParams: () => ({ get: vi.fn(() => null) }),
 }));
 
 vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatMessage", () => ({
