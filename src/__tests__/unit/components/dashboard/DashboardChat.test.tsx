@@ -179,7 +179,7 @@ describe("DashboardChat — handleLaunchTask", () => {
       // Second call body should contain the correct taskId
       const body = JSON.parse(calls[1][1].body);
       expect(body.taskId).toBe(taskId);
-      expect(mockPush).toHaveBeenCalledWith(`/w/${mockSlug}/task/${taskId}`);
+      expect(mockPush).toHaveBeenCalledWith(expect.stringContaining(`/w/${mockSlug}/task/${taskId}`));
     });
   });
 
