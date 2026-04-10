@@ -634,7 +634,7 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug }: Dashboard
 
       // 3. Navigate into Task
       setShowFeatureModal(false);
-      router.push(`/w/${slug}/task/${task.id}`);
+      router.push(`/w/${slug}/task/${task.id}?from=${encodeURIComponent(window.location.pathname + window.location.search)}`);
     } catch (error) {
       toast.error("Failed to launch task", {
         description: error instanceof Error ? error.message : "Unknown error",
