@@ -4,6 +4,7 @@ import { startTaskWorkflow } from "@/services/task-workflow";
 import { releaseTaskPod } from "@/lib/pods";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
+import { getPodDetails } from "@/lib/pods/queries";
 
 export type DependencyCheckResult = "SATISFIED" | "PENDING" | "PERMANENTLY_BLOCKED";
 
@@ -16,6 +17,7 @@ export interface TaskCoordinatorExecutionResult {
     workspaceSlug: string;
     error: string;
   }>;
+  orphanedPodsCleared?: number;
   timestamp: string;
 }
 
@@ -256,17 +258,40 @@ export async function releaseStaleTaskPods(): Promise<{
   success: boolean;
   tasksHalted: number;
   podsReleased: number;
+  orphanedPodsCleared: number;
   errors: Array<{ taskId: string; error: string }>;
   timestamp: string;
 }> {
   const errors: Array<{ taskId: string; error: string }> = [];
   let tasksHalted = 0;
   let podsReleased = 0;
+  let orphanedPodsCleared = 0;
 
   try {
     // Configurable stale task threshold (default: 24 hours)
     const staleHours = parseInt(process.env.STALE_TASK_HOURS || "24", 10);
     console.log(`[ReleaseStaleTaskPods] Starting execution (threshold: ${staleHours} hours)`);
+
+    // Orphan sweep: find tasks pointing at non-existent or soft-deleted pods (not time-gated)
+    const tasksWithPods = await db.task.findMany({
+      where: { podId: { not: null }, deleted: false },
+      select: { id: true, podId: true },
+    });
+
+    for (const task of tasksWithPods) {
+      const podDetails = await getPodDetails(task.podId!);
+      if (podDetails === null) {
+        await db.task.update({
+          where: { id: task.id },
+          data: { podId: null, agentPassword: null, agentUrl: null },
+        });
+        orphanedPodsCleared++;
+        console.log(
+          `[ReleaseStaleTaskPods] Cleared orphaned pod ref from task ${task.id} (podId: ${task.podId})`
+        );
+      }
+    }
+    console.log(`[ReleaseStaleTaskPods] Cleared ${orphanedPodsCleared} orphaned pod refs`);
 
     // Calculate the threshold timestamp
     const staleThreshold = new Date();
@@ -387,13 +412,14 @@ export async function releaseStaleTaskPods(): Promise<{
     }
 
     console.log(
-      `[ReleaseStaleTaskPods] Execution completed. Released ${podsReleased} pods, halted ${tasksHalted} IN_PROGRESS tasks, ${errors.length} errors`
+      `[ReleaseStaleTaskPods] Execution completed. Released ${podsReleased} pods, halted ${tasksHalted} IN_PROGRESS tasks, cleared ${orphanedPodsCleared} orphaned pod refs, ${errors.length} errors`
     );
 
     return {
       success: errors.length === 0,
       tasksHalted,
       podsReleased,
+      orphanedPodsCleared,
       errors,
       timestamp: new Date().toISOString(),
     };
@@ -405,6 +431,7 @@ export async function releaseStaleTaskPods(): Promise<{
       success: false,
       tasksHalted,
       podsReleased,
+      orphanedPodsCleared,
       errors: [
         ...errors,
         {
@@ -425,6 +452,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
   const errors: Array<{ workspaceSlug: string; error: string }> = [];
   let workspacesProcessed = 0;
   let tasksCreated = 0;
+  let orphanedPodsCleared = 0;
 
   try {
     console.log("[TaskCoordinator] Starting execution at", startTime.toISOString());
@@ -432,7 +460,8 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
     // First, release stale pods and halt any stuck IN_PROGRESS tasks
     try {
       const haltResult = await releaseStaleTaskPods();
-      console.log(`[TaskCoordinator] Released ${haltResult.podsReleased} stale pods, halted ${haltResult.tasksHalted} tasks`);
+      orphanedPodsCleared = haltResult.orphanedPodsCleared;
+      console.log(`[TaskCoordinator] Released ${haltResult.podsReleased} stale pods, halted ${haltResult.tasksHalted} tasks, cleared ${haltResult.orphanedPodsCleared} orphaned pod refs`);
       if (!haltResult.success) {
         haltResult.errors.forEach(error => {
           errors.push({
@@ -615,6 +644,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
       tasksCreated,
       errorCount: errors.length,
       errors,
+      orphanedPodsCleared,
       timestamp: endTime.toISOString()
     };
 
@@ -634,6 +664,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
           error: `Critical execution error: ${errorMessage}`
         }
       ],
+      orphanedPodsCleared,
       timestamp: new Date().toISOString()
     };
   }
