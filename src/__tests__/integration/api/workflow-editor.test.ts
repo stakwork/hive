@@ -52,9 +52,11 @@ vi.mock("@/lib/pusher", () => ({
 // Import mocked functions
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { config } from "@/config/env";
+import { pusherServer, getTaskChannelName } from "@/lib/pusher";
 
 const mockGetGithubUsernameAndPAT = vi.mocked(getGithubUsernameAndPAT);
 const mockFetch = global.fetch as vi.MockedFunction<typeof global.fetch>;
+const mockPusherTrigger = vi.mocked(pusherServer.trigger);
 
 describe("POST /api/workflow-editor Integration Tests", () => {
   // Helper to create complete test data with all required relationships
@@ -746,6 +748,87 @@ describe("POST /api/workflow-editor Integration Tests", () => {
     });
   });
 
+  describe("Pusher NEW_MESSAGE Tests", () => {
+    test("fires Pusher NEW_MESSAGE for user message after saving to DB", async () => {
+      const { user, task } = await createTestDataWithStakworkWorkspace();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
+        taskId: task.id,
+        message: "Test pusher trigger",
+        workflowId: 100,
+        workflowRefId: "workflow-ref-pusher",
+      });
+
+      await POST(request);
+
+      // Should be called twice: once for user message, once for WORKFLOW artifact
+      expect(mockPusherTrigger).toHaveBeenCalledTimes(2);
+
+      const firstCall = mockPusherTrigger.mock.calls[0];
+      expect(firstCall[0]).toBe(`task-${task.id}`);
+      expect(firstCall[1]).toBe("new-message");
+      // chatMessage.id — a string
+      expect(typeof firstCall[2]).toBe("string");
+      // No sourceWebsocketID — fourth arg should be empty object
+      expect(firstCall[3]).toEqual({});
+    });
+
+    test("passes socket_id in Pusher trigger when sourceWebsocketID is provided", async () => {
+      const { user, task } = await createTestDataWithStakworkWorkspace();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const socketId = "test-socket-id-123";
+
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
+        taskId: task.id,
+        message: "Test pusher with socket id",
+        workflowId: 100,
+        workflowRefId: "workflow-ref-socket",
+        sourceWebsocketID: socketId,
+      });
+
+      await POST(request);
+
+      expect(mockPusherTrigger).toHaveBeenCalledTimes(2);
+
+      const firstCall = mockPusherTrigger.mock.calls[0];
+      expect(firstCall[0]).toBe(`task-${task.id}`);
+      expect(firstCall[1]).toBe("new-message");
+      // Fourth arg should include socket_id to exclude sender
+      expect(firstCall[3]).toEqual({ socket_id: socketId });
+    });
+
+    test("second Pusher call fires for WORKFLOW artifact message", async () => {
+      const { user, task } = await createTestDataWithStakworkWorkspace();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: { project_id: 55555 } }),
+        statusText: "OK",
+      } as Response);
+
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
+        taskId: task.id,
+        message: "Test second pusher call",
+        workflowId: 100,
+      });
+
+      await POST(request);
+
+      expect(mockPusherTrigger).toHaveBeenCalledTimes(2);
+
+      // Second call is for the WORKFLOW artifact assistant message — no socket exclusion
+      const secondCall = mockPusherTrigger.mock.calls[1];
+      expect(secondCall[0]).toBe(`task-${task.id}`);
+      expect(secondCall[1]).toBe("new-message");
+      expect(typeof secondCall[2]).toBe("string");
+      // Workflow artifact trigger has no fourth arg (socket exclusion)
+      expect(secondCall[3]).toBeUndefined();
+    });
+  });
+
   describe("Edge Cases and Integration Tests", () => {
     test("handles workflow with all optional fields populated", async () => {
       const { user, task } = await createTestDataWithStakworkWorkspace();
@@ -860,6 +943,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       // Verify database state (1 USER + 1 ASSISTANT with WORKFLOW artifact)
       const messages = await db.chatMessage.findMany({
         where: { taskId: task.id },
+        orderBy: { createdAt: "asc" },
       });
       expect(messages).toHaveLength(2);
 
@@ -869,6 +953,22 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         stakworkProjectId: stakworkProjectId,
       });
       expect(updatedTask?.workflowStartedAt).toBeDefined();
+
+      // Verify Pusher triggered twice: once for user message, once for WORKFLOW artifact
+      expect(mockPusherTrigger).toHaveBeenCalledTimes(2);
+      expect(mockPusherTrigger).toHaveBeenNthCalledWith(
+        1,
+        getTaskChannelName(task.id),
+        "new-message",
+        messages[0].id,
+        {},
+      );
+      expect(mockPusherTrigger).toHaveBeenNthCalledWith(
+        2,
+        getTaskChannelName(task.id),
+        "new-message",
+        messages[1].id,
+      );
     });
   });
 });
