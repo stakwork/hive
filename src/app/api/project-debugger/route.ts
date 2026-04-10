@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { getToken } from "next-auth/jwt";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
@@ -16,8 +17,16 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+    let userId = (session?.user as { id?: string })?.id ?? null;
 
-    if (!session?.user) {
+    if (!userId) {
+      const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET! });
+      if (token?.id && typeof token.id === "string") {
+        userId = token.id;
+      }
+    }
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -37,7 +46,7 @@ export async function POST(request: NextRequest) {
           include: {
             members: {
               where: {
-                userId: session.user.id,
+                userId,
               },
             },
             owner: true,
@@ -51,7 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is owner or member
-    const isOwner = task.workspace.owner.id === session.user.id;
+    const isOwner = task.workspace.owner.id === userId;
     const isMember = task.workspace.members.length > 0;
 
     if (!isOwner && !isMember) {
@@ -106,7 +115,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Get GitHub credentials for the user
-    const githubProfile = await getGithubUsernameAndPAT(session.user.id, task.workspace.slug);
+    const githubProfile = await getGithubUsernameAndPAT(userId, task.workspace.slug);
 
     // Build workflow variables object with project data
     const workflowVars = {

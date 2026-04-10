@@ -161,7 +161,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({ error: "Invalid user session" });
+      expect(await response.json()).toEqual({ error: "Unauthorized" });
     });
   });
 
