@@ -139,6 +139,131 @@ describe("useWhiteboardCollaboration", () => {
     });
   });
 
+  describe("WHITEBOARD_CURSOR_UPDATE", () => {
+    it("should call updateScene with collaborators Map on cursor event", async () => {
+      vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
+
+      const pusher = await import("@/lib/pusher");
+      vi.mocked(pusher.getPusherClient).mockReturnValue(mockPusherClient as any);
+
+      // Capture bound event handlers
+      const handlers: Record<string, (data: unknown) => void> = {};
+      vi.mocked(mockChannel.bind).mockImplementation((event: string, handler: (data: unknown) => void) => {
+        handlers[event] = handler;
+        return mockChannel;
+      });
+
+      renderHook(() =>
+        useWhiteboardCollaboration({
+          whiteboardId,
+          excalidrawAPI: mockExcalidrawAPI as any,
+        })
+      );
+
+      // Simulate a WHITEBOARD_CURSOR_UPDATE event from another user
+      act(() => {
+        handlers["whiteboard-cursor-update"]?.({
+          senderId: "other-user-abc",
+          cursor: { x: 150, y: 250 },
+          color: "#FF6B6B",
+          username: "Alice",
+        });
+      });
+
+      expect(mockExcalidrawAPI.updateScene).toHaveBeenCalled();
+      const call = mockExcalidrawAPI.updateScene.mock.calls[mockExcalidrawAPI.updateScene.mock.calls.length - 1][0];
+      expect(call).toHaveProperty("collaborators");
+      const collaboratorsMap = call.collaborators as Map<string, unknown>;
+      expect(collaboratorsMap).toBeInstanceOf(Map);
+      expect(collaboratorsMap.has("other-user-abc")).toBe(true);
+      const entry = collaboratorsMap.get("other-user-abc") as { username: string; pointer: { x: number; y: number; tool: string }; color: { background: string; stroke: string } };
+      expect(entry.username).toBe("Alice");
+      expect(entry.pointer).toEqual({ x: 150, y: 250, tool: "pointer" });
+      expect(entry.color).toEqual({ background: "#FF6B6B", stroke: "#FF6B6B" });
+    });
+
+    it("should ignore cursor events from the current user (senderId match)", async () => {
+      vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
+
+      const pusher = await import("@/lib/pusher");
+      vi.mocked(pusher.getPusherClient).mockReturnValue(mockPusherClient as any);
+
+      const handlers: Record<string, (data: unknown) => void> = {};
+      vi.mocked(mockChannel.bind).mockImplementation((event: string, handler: (data: unknown) => void) => {
+        handlers[event] = handler;
+        return mockChannel;
+      });
+
+      const { result } = renderHook(() =>
+        useWhiteboardCollaboration({
+          whiteboardId,
+          excalidrawAPI: mockExcalidrawAPI as any,
+        })
+      );
+
+      const ownSenderId = result.current.senderId;
+
+      act(() => {
+        handlers["whiteboard-cursor-update"]?.({
+          senderId: ownSenderId,
+          cursor: { x: 10, y: 20 },
+          color: "#FF6B6B",
+          username: "Self",
+        });
+      });
+
+      // updateScene should not have been called for own cursor events
+      expect(mockExcalidrawAPI.updateScene).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("WHITEBOARD_USER_LEAVE clears cursor", () => {
+    it("should remove departing user's cursor and call updateScene with empty collaborators", async () => {
+      vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
+
+      const pusher = await import("@/lib/pusher");
+      vi.mocked(pusher.getPusherClient).mockReturnValue(mockPusherClient as any);
+
+      const handlers: Record<string, (data: unknown) => void> = {};
+      vi.mocked(mockChannel.bind).mockImplementation((event: string, handler: (data: unknown) => void) => {
+        handlers[event] = handler;
+        return mockChannel;
+      });
+
+      renderHook(() =>
+        useWhiteboardCollaboration({
+          whiteboardId,
+          excalidrawAPI: mockExcalidrawAPI as any,
+        })
+      );
+
+      // First, add a cursor for the user
+      act(() => {
+        handlers["whiteboard-cursor-update"]?.({
+          senderId: "leaving-user-xyz",
+          cursor: { x: 100, y: 200 },
+          color: "#4ECDC4",
+          username: "Bob",
+        });
+      });
+
+      mockExcalidrawAPI.updateScene.mockClear();
+
+      // Now simulate the user leaving
+      act(() => {
+        handlers["whiteboard-user-leave"]?.({ userId: "leaving-user" });
+      });
+
+      // updateScene should have been called to clear cursors
+      expect(mockExcalidrawAPI.updateScene).toHaveBeenCalled();
+      const call = mockExcalidrawAPI.updateScene.mock.calls[mockExcalidrawAPI.updateScene.mock.calls.length - 1][0];
+      const collaboratorsMap = call.collaborators as Map<string, unknown>;
+      expect(collaboratorsMap).toBeInstanceOf(Map);
+      // "leaving-user-xyz" starts with "leaving-user" so it should be removed
+      expect(collaboratorsMap.has("leaving-user-xyz")).toBe(false);
+    });
+  });
+
   describe("error handling", () => {
     it("should handle getPusherClient throwing error gracefully", async () => {
       vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
