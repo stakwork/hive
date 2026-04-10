@@ -6,9 +6,23 @@ import { listConcepts, repoAgent } from "./askTools";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import { getProviderTool } from "@/lib/ai/provider";
+import {
+  mcpListFeatures,
+  mcpReadFeature,
+  mcpListTasks,
+  mcpReadTask,
+  mcpCheckStatus,
+  findWorkspaceUser,
+  type WorkspaceAuth,
+} from "@/lib/mcp/mcpTools";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any>;
+
+/** Extract text from an McpToolResult for use as a tool return value. */
+function mcpText(result: { content: { type: string; text: string }[] }): string {
+  return result.content.map((c) => c.text).join("\n");
+}
 
 export function askToolsMulti(
   workspaces: WorkspaceConfig[],
@@ -191,6 +205,98 @@ export function askToolsMulti(
           return `Could not search logs for ${ws.slug}`;
         } finally {
           if (mcpClient) await mcpClient.close();
+        }
+      },
+    });
+
+    // ------------------------------------------------------------------
+    // Feature & Task tools (read-only, DB-direct via mcpTools)
+    // ------------------------------------------------------------------
+    const auth: WorkspaceAuth = {
+      workspaceId: ws.workspaceId,
+      workspaceSlug: ws.slug,
+      userId: ws.userId,
+    };
+
+    // list_features
+    allTools[`${prefix}__list_features`] = tool({
+      description: `[${ws.slug}] List roadmap features for the ${ws.slug} workspace (up to 40, most recently updated first).`,
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          return mcpText(await mcpListFeatures(auth));
+        } catch (e) {
+          console.error(`Error listing features for ${ws.slug}:`, e);
+          return `Could not list features for ${ws.slug}`;
+        }
+      },
+    });
+
+    // read_feature
+    allTools[`${prefix}__read_feature`] = tool({
+      description: `[${ws.slug}] Read a feature's details, brief, requirements, architecture, and chat history for ${ws.slug}.`,
+      inputSchema: z.object({
+        featureId: z.string().describe("The ID of the feature to read"),
+      }),
+      execute: async ({ featureId }: { featureId: string }) => {
+        try {
+          return mcpText(await mcpReadFeature(auth, featureId));
+        } catch (e) {
+          console.error(`Error reading feature for ${ws.slug}:`, e);
+          return `Could not read feature for ${ws.slug}`;
+        }
+      },
+    });
+
+    // list_tasks
+    allTools[`${prefix}__list_tasks`] = tool({
+      description: `[${ws.slug}] List tasks for the ${ws.slug} workspace (up to 40, most recently updated first).`,
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          return mcpText(await mcpListTasks(auth));
+        } catch (e) {
+          console.error(`Error listing tasks for ${ws.slug}:`, e);
+          return `Could not list tasks for ${ws.slug}`;
+        }
+      },
+    });
+
+    // read_task
+    allTools[`${prefix}__read_task`] = tool({
+      description: `[${ws.slug}] Read a task's details, status, and chat history for ${ws.slug}.`,
+      inputSchema: z.object({
+        taskId: z.string().describe("The ID of the task to read"),
+      }),
+      execute: async ({ taskId }: { taskId: string }) => {
+        try {
+          return mcpText(await mcpReadTask(auth, taskId));
+        } catch (e) {
+          console.error(`Error reading task for ${ws.slug}:`, e);
+          return `Could not read task for ${ws.slug}`;
+        }
+      },
+    });
+
+    // check_status
+    allTools[`${prefix}__check_status`] = tool({
+      description: `[${ws.slug}] Check the status of active features and tasks in ${ws.slug} (updated in the last 7 days, items needing attention first).`,
+      inputSchema: z.object({
+        user: z
+          .string()
+          .optional()
+          .describe("Optional user name to filter by (fuzzy matched against workspace members)"),
+      }),
+      execute: async ({ user }: { user?: string }) => {
+        try {
+          let filterUserId: string | undefined;
+          if (user) {
+            filterUserId = await findWorkspaceUser(ws.workspaceId, user);
+          }
+          return mcpText(await mcpCheckStatus(auth, filterUserId));
+        } catch (e) {
+          console.error(`Error checking status for ${ws.slug}:`, e);
+          return `Could not check status for ${ws.slug}`;
         }
       },
     });
