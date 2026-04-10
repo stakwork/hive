@@ -24,6 +24,8 @@ const TASK_SELECT = {
   dependsOnTaskIds: true,
   bountyCode: true,
   autoMerge: true,
+  runBuild: true,
+  runTestSuite: true,
   deploymentStatus: true,
   deployedToStagingAt: true,
   deployedToProductionAt: true,
