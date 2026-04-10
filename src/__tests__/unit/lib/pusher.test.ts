@@ -287,6 +287,7 @@ describe("pusher.ts", () => {
         WHITEBOARD_CHAT_MESSAGE: "whiteboard-chat-message",
         WHITEBOARD_USER_JOIN: "whiteboard-user-join",
         WHITEBOARD_USER_LEAVE: "whiteboard-user-leave",
+        WHITEBOARD_REFETCH: "whiteboard-refetch",
         PLAN_USER_JOIN: "plan-user-join",
         PLAN_USER_LEAVE: "plan-user-leave",
         FEATURE_UPDATED: "feature-updated",
