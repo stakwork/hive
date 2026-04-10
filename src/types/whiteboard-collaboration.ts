@@ -61,6 +61,19 @@ export interface WhiteboardUserLeaveEvent {
 }
 
 /**
+ * Sent when an element broadcast exceeds the Pusher payload limit. Receivers
+ * pull the latest whiteboard state from the database and merge it into their
+ * local canvas instead of consuming the (dropped) inline element delta.
+ */
+export interface WhiteboardRefetchEvent {
+  senderId: string;
+  /** Server-side version after the originating save, if known. */
+  version?: number;
+  /** Reason the refetch was triggered (for diagnostics / future use). */
+  reason: "payload_too_large" | "manual";
+}
+
+/**
  * Payload for collaboration API requests
  */
 export interface CollaborationEventPayload {
