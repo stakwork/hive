@@ -476,7 +476,8 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
     });
 
     test("returns enriched list with hive name when pubkey matches workspace member", async () => {
-      // Create a workspace member with an encrypted lightningPubkey matching the boltwall user
+      // Create a db.user with an encrypted lightningPubkey matching the boltwall user
+      // (no WorkspaceMember row needed — enrichment now uses db.user scan directly)
       const { EncryptionService } = await import("@/lib/encryption");
       const encryptionService = EncryptionService.getInstance();
       const encryptedPubkey = JSON.stringify(encryptionService.encryptField("lightningPubkey", TEST_PUBKEY));
@@ -487,12 +488,6 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
         lightningPubkey: encryptedPubkey,
       });
       createdEntityIds.userIds.push(hiveUser.id);
-
-      await createTestMembership({
-        workspaceId: workspace.id,
-        userId: hiveUser.id,
-        role: "DEVELOPER",
-      });
 
       const { swarmCmdRequest } = await import("@/services/swarm/cmd");
       vi.mocked(swarmCmdRequest).mockImplementation(async ({ cmd }) => {
@@ -579,6 +574,94 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
       // The member entry should still be present
       const memberEntry = data.users.find((u: { pubkey: string }) => u.pubkey === "02member111");
       expect(memberEntry).toBeDefined();
+    });
+
+    test("enriches owner entry using ownerId when lightningPubkey matches superAdmin pubkey", async () => {
+      const { EncryptionService } = await import("@/lib/encryption");
+      const encryptionService = EncryptionService.getInstance();
+      const SUPER_ADMIN_PUBKEY = "02superadminfull0000000000000000000000000000000000000000000000000001";
+      const encryptedOwnerPubkey = JSON.stringify(
+        encryptionService.encryptField("lightningPubkey", SUPER_ADMIN_PUBKEY),
+      );
+
+      // Set the owner's lightningPubkey to the encrypted superAdmin pubkey
+      await db.user.update({
+        where: { id: owner.id },
+        data: { lightningPubkey: encryptedOwnerPubkey, image: "https://example.com/owner.png" },
+      });
+
+      const { swarmCmdRequest } = await import("@/services/swarm/cmd");
+      vi.mocked(swarmCmdRequest).mockImplementation(async ({ cmd }) => {
+        const cmdName = (cmd as { data: { cmd: string } }).data.cmd;
+        if (cmdName === "ListAdmins") {
+          return { ok: true, status: 200, data: { data: { admins: [] } } };
+        }
+        if (cmdName === "GetBoltwallSuperAdmin") {
+          return {
+            ok: true,
+            status: 200,
+            data: { success: true, data: { pubkey: SUPER_ADMIN_PUBKEY, name: "Super Owner" } },
+          };
+        }
+        return { ok: true, status: 200, data: {} };
+      });
+
+      const response = await callRoute(workspace.slug, {
+        cmd: { type: "Swarm", data: { cmd: "GetEnrichedBoltwallUsers" } },
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const ownerEntry = data.users.find((u: { role: string }) => u.role === "owner");
+      expect(ownerEntry).toBeDefined();
+      expect(ownerEntry.pubkey).toBe(SUPER_ADMIN_PUBKEY);
+      expect(ownerEntry.hive).not.toBeNull();
+      expect(ownerEntry.hive.name).toBe(owner.name);
+      expect(ownerEntry.hive.image).toBe("https://example.com/owner.png");
+
+      // Cleanup
+      await db.user.update({
+        where: { id: owner.id },
+        data: { lightningPubkey: null, image: null },
+      });
+    });
+
+    test("returns hive null for boltwall-only user with no matching Hive account", async () => {
+      const UNMATCHED_PUBKEY = "02nomatch0000000000000000000000000000000000000000000000000000000001";
+
+      const { swarmCmdRequest } = await import("@/services/swarm/cmd");
+      vi.mocked(swarmCmdRequest).mockImplementation(async ({ cmd }) => {
+        const cmdName = (cmd as { data: { cmd: string } }).data.cmd;
+        if (cmdName === "ListAdmins") {
+          return {
+            ok: true,
+            status: 200,
+            data: {
+              data: {
+                admins: [{ id: 99, pubkey: UNMATCHED_PUBKEY, name: "Ghost User", role: "member" }],
+              },
+            },
+          };
+        }
+        if (cmdName === "GetBoltwallSuperAdmin") {
+          return {
+            ok: true,
+            status: 200,
+            data: { success: true, data: { pubkey: "02superadminX", name: "Super Admin X" } },
+          };
+        }
+        return { ok: true, status: 200, data: {} };
+      });
+
+      const response = await callRoute(workspace.slug, {
+        cmd: { type: "Swarm", data: { cmd: "GetEnrichedBoltwallUsers" } },
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const memberEntry = data.users.find((u: { pubkey: string }) => u.pubkey === UNMATCHED_PUBKEY);
+      expect(memberEntry).toBeDefined();
+      expect(memberEntry.hive).toBeNull();
     });
 
     test("deduplicates super admin pubkey from ListAdmins results", async () => {
