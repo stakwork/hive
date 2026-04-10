@@ -218,7 +218,7 @@ describe("useWhiteboardCollaboration", () => {
   });
 
   describe("WHITEBOARD_USER_LEAVE clears cursor", () => {
-    it("should remove departing user's cursor and call updateScene with empty collaborators", async () => {
+    it("should remove the departing user's cursor when their userId matches", async () => {
       vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
 
       const pusher = await import("@/lib/pusher");
@@ -237,10 +237,14 @@ describe("useWhiteboardCollaboration", () => {
         })
       );
 
+      // senderId follows the `<userId>-<timestamp>-<random>` format used by
+      // the production hook.
+      const senderId = "leaving-user-1700000000-abc1234";
+
       // First, add a cursor for the user
       act(() => {
         handlers["whiteboard-cursor-update"]?.({
-          senderId: "leaving-user-xyz",
+          senderId,
           cursor: { x: 100, y: 200 },
           color: "#4ECDC4",
           username: "Bob",
@@ -254,13 +258,63 @@ describe("useWhiteboardCollaboration", () => {
         handlers["whiteboard-user-leave"]?.({ userId: "leaving-user" });
       });
 
-      // updateScene should have been called to clear cursors
+      // updateScene should have been called to clear the departed user's cursor
       expect(mockExcalidrawAPI.updateScene).toHaveBeenCalled();
       const call = mockExcalidrawAPI.updateScene.mock.calls[mockExcalidrawAPI.updateScene.mock.calls.length - 1][0];
       const collaboratorsMap = call.collaborators as Map<string, unknown>;
       expect(collaboratorsMap).toBeInstanceOf(Map);
-      // "leaving-user-xyz" starts with "leaving-user" so it should be removed
-      expect(collaboratorsMap.has("leaving-user-xyz")).toBe(false);
+      expect(collaboratorsMap.has(senderId)).toBe(false);
+    });
+
+    it("should NOT remove cursors of users with similar but different IDs (regression: startsWith bug)", async () => {
+      vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
+
+      const pusher = await import("@/lib/pusher");
+      vi.mocked(pusher.getPusherClient).mockReturnValue(mockPusherClient as any);
+
+      const handlers: Record<string, (data: unknown) => void> = {};
+      vi.mocked(mockChannel.bind).mockImplementation((event: string, handler: (data: unknown) => void) => {
+        handlers[event] = handler;
+        return mockChannel;
+      });
+
+      renderHook(() =>
+        useWhiteboardCollaboration({
+          whiteboardId,
+          excalidrawAPI: mockExcalidrawAPI as any,
+        })
+      );
+
+      // Two users whose IDs share a prefix: "user-12" and "user-123".
+      const leavingSenderId = "user-12-1700000000-abc1234";
+      const stayingSenderId = "user-123-1700000001-def5678";
+
+      act(() => {
+        handlers["whiteboard-cursor-update"]?.({
+          senderId: leavingSenderId,
+          cursor: { x: 10, y: 20 },
+          color: "#4ECDC4",
+          username: "User12",
+        });
+        handlers["whiteboard-cursor-update"]?.({
+          senderId: stayingSenderId,
+          cursor: { x: 30, y: 40 },
+          color: "#FF6B6B",
+          username: "User123",
+        });
+      });
+
+      mockExcalidrawAPI.updateScene.mockClear();
+
+      // "user-12" leaves — "user-123" must remain.
+      act(() => {
+        handlers["whiteboard-user-leave"]?.({ userId: "user-12" });
+      });
+
+      const call = mockExcalidrawAPI.updateScene.mock.calls[mockExcalidrawAPI.updateScene.mock.calls.length - 1][0];
+      const collaboratorsMap = call.collaborators as Map<string, unknown>;
+      expect(collaboratorsMap.has(leavingSenderId)).toBe(false);
+      expect(collaboratorsMap.has(stayingSenderId)).toBe(true);
     });
   });
 
