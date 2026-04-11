@@ -27,7 +27,7 @@ You are a source code learning assistant for ${repoDescription}${descSuffix}. Yo
 
 Try to match the tone of the user. If the question is highly technical (mentioning specific things in the code), then you can answer with more technical language and examples (or function names, endpoints names, etc). But the the user prompt is not technical, then you should answer in clear, plain language.
 ${memberSection}
-You have access to tools called list_concepts and learn_concept. list_concepts fetches a list of concepts from the codebase knowledge base. learn_concept fetches detailed documentation for a specific concept by ID. If you think information about concepts might help answer the user's question, use these tools to fetch relevant data. You might also get a list of clues from the search_relevant_clues tool, which may or may not be relevant. If you really can't find anything useful, or you truly do not know the answer, simply reply something like: "Sorry, I don't know the answer to that question, I'll look into it."
+You have access to tools called list_concepts and learn_concept. list_concepts fetches a list of concepts from the codebase knowledge base. learn_concept fetches detailed documentation for a specific concept by ID. If you think information about concepts might help answer the user's question, use these tools to fetch relevant data. You can also do a deep code analysis with the repo_agent tool. If you really can't find anything useful, or you truly do not know the answer, simply reply something like: "Sorry, I don't know the answer to that question, I'll look into it."
 
 When you are done print "[END_OF_ANSWER]"`;
 }
@@ -156,10 +156,28 @@ If you really can't find anything useful, or you truly do not know the answer, s
 When you are done print "[END_OF_ANSWER]"`;
 }
 
+export function getConnectionPromptSuffix(): string {
+  return `
+
+## Connection Tools
+You also have access to tools for creating **Connections** — documents that describe how two or more systems/workspaces work together:
+- \`save_connection\` — Create a new Connection with a name and summary. Returns a connectionId you must use for subsequent updates.
+- \`update_connection\` — Update an existing Connection with a mermaid diagram and/or OpenAPI spec.
+
+When a user asks you to create a connection between systems:
+1. Research the relevant concepts and code across the involved workspaces using list_concepts, learn_concept, and repo_agent
+2. Ask clarifying questions if the scope is unclear — e.g. which specific integration points to focus on
+3. Write a clear, detailed summary of how the systems connect, then call save_connection with a name and the summary
+4. Generate a mermaid diagram showing the integration architecture, then call update_connection with the diagram
+5. Generate an OpenAPI spec documenting the relevant API endpoints, then call update_connection with the openApiSpec
+6. Each step should be visible to the user — stream your summary text before saving, explain what you're generating next`;
+}
+
 export function getMultiWorkspacePrefixMessages(
   workspaces: WorkspaceConfig[],
   conceptsByWorkspace: Record<string, Record<string, unknown>[]>,
-  clueMsgs: ModelMessage[] | null
+  clueMsgs: ModelMessage[] | null,
+  orgId?: string
 ): ModelMessage[] {
   // Build pre-filled tool calls for each workspace's concepts
   const toolCalls: ModelMessage[] = [];
@@ -199,8 +217,12 @@ export function getMultiWorkspacePrefixMessages(
     });
   }
 
+  const systemPrompt = orgId
+    ? getMultiWorkspaceSystemPrompt(workspaces) + getConnectionPromptSuffix()
+    : getMultiWorkspaceSystemPrompt(workspaces);
+
   return [
-    { role: "system", content: getMultiWorkspaceSystemPrompt(workspaces) },
+    { role: "system", content: systemPrompt },
     ...toolCalls,
     ...(clueMsgs || []),
   ];
