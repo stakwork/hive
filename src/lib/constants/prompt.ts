@@ -169,10 +169,55 @@ The slug should be a short kebab-case identifier describing the systems involved
 When a user asks you to create a connection between systems:
 1. **Research first** — immediately use list_concepts, learn_concept, and repo_agent across the involved workspaces to understand how they integrate. Do NOT ask broad clarifying questions before researching. Only ask targeted questions after you've done initial research and found genuine ambiguity.
 2. **Overview** — write a brief overview (1-2 sentences and/or a few bullet points) of the connection, then call save_connection with a slug, name, and the overview
-3. **Diagram** — generate a mermaid diagram showing the integration flow, then call update_connection with the slug and diagram
-4. **Architecture** — write a detailed architecture document explaining how the systems work together (data flow, protocols, auth, error handling, etc.), then call update_connection with the slug and architecture
-5. **API Docs** — generate an OpenAPI spec documenting the relevant endpoints, then call update_connection with the slug and openApiSpec
-6. Each step should be visible to the user — stream your text before saving, explain what you're generating next`;
+3. **Diagram** — generate a simple, high-level mermaid flowchart showing how the pieces interact. Keep it minimal! Follow the mermaid style guide below. Call update_connection with the slug and diagram
+4. **Architecture** — write a high-level architecture summary. Focus on cross-cutting concerns: auth flow, communication protocols, data ownership, error handling patterns. Do NOT go deep into individual endpoints (that's what the API docs are for). Keep it concise. Call update_connection with the slug and architecture
+5. **API Docs** — generate an OpenAPI spec documenting the actual endpoints/procedures involved in the integration. Call update_connection with the slug and openApiSpec
+6. Each step should be visible to the user — stream your text before saving, explain what you're generating next
+
+## Mermaid Diagram Style Guide
+
+When generating mermaid diagrams, follow these rules:
+
+### Structure
+- Use \`graph TD\` (top-down) for system/architecture diagrams
+- Group related nodes with \`subgraph Name["Label"]\`
+- Use cylinder syntax \`[("label")]\` for databases/stores
+- Use descriptive edge labels: \`-->|"verb phrase"|\`
+
+### Color Classes
+Always end the diagram with classDef definitions and class assignments.
+Use this palette (dark-mode optimized, muted fills, bright borders):
+
+\`\`\`
+classDef client    fill:#1e3a5f,stroke:#5b9cf6,color:#c7e2ff
+classDef gateway   fill:#431c0d,stroke:#fb923c,color:#ffe4cc
+classDef service   fill:#2e1a4a,stroke:#a78bfa,color:#ede9fe
+classDef data      fill:#2a1040,stroke:#c084fc,color:#f3e8ff
+classDef external  fill:#3b1030,stroke:#f472b6,color:#fce7f3
+classDef observe   fill:#0d3328,stroke:#34d399,color:#d1fae5
+\`\`\`
+
+Assign every node to a class. No unstyled nodes.
+
+### Grouping Rules
+- Only create a subgraph when there are 2+ related nodes that benefit from grouping
+- Let the content dictate the shape — don't force layers that aren't there
+- Keep it simple: a connection between 2 systems might only need 4-6 nodes total
+
+### Edge Labels
+- Keep labels short: 2-3 words (\`read/write\`, \`publish event\`, \`HTTPS\`)
+- Use \`-->\` for sync, \`-.->\` for async/optional
+
+### Syntax Rules
+- Every \`subgraph\` MUST have a matching \`end\` keyword on its own line
+- Every edge must have exactly one source and one target
+- Every node referenced in an edge or \`class\` assignment must be defined first
+- Do not nest subgraphs
+
+### Avoid
+- Don't use \`style\` on individual nodes — only \`classDef\` + \`class\`
+- Don't exceed ~15 nodes for a connection diagram (keep it high-level!)
+- Don't leave subgraphs with only 1 node`;
 }
 
 export function getMultiWorkspacePrefixMessages(
