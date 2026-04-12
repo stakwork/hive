@@ -3,6 +3,26 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getOrgChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 
+async function notifyConnectionUpdate(orgId: string, slug: string, action: string, fields?: string[]) {
+  try {
+    const org = await db.sourceControlOrg.findUnique({
+      where: { id: orgId },
+      select: { githubLogin: true },
+    });
+    if (org) {
+      const channelName = getOrgChannelName(org.githubLogin);
+      await pusherServer.trigger(channelName, PUSHER_EVENTS.CONNECTION_UPDATED, {
+        slug,
+        action,
+        ...(fields ? { fields } : {}),
+        timestamp: Date.now(),
+      });
+    }
+  } catch (e) {
+    console.error("Error sending connection update notification:", e);
+  }
+}
+
 /**
  * Build connection tools for creating/updating Connection documents.
  * These are merged into the multi-workspace toolset when an orgId is provided.
@@ -13,15 +33,17 @@ export function buildConnectionTools(orgId: string, userId: string): ToolSet {
       description:
         "Create a new Connection document that describes how two or more systems/workspaces integrate. " +
         "Call this after you have researched the relevant concepts and written a brief overview. " +
-        "Returns the connectionId needed for subsequent update_connection calls.",
+        "Returns the slug needed for subsequent update_connection calls.",
       inputSchema: z.object({
-        name: z.string().describe("Short name for the connection, e.g. 'Checkout ↔ Payments API'"),
+        slug: z.string().describe("A short kebab-case identifier like 'sphinx-hive' or 'frontend-backend-api'"),
+        name: z.string().describe("Short human-readable name for the connection"),
         summary: z.string().describe("Brief overview: 1-2 sentences and/or a few bullet points"),
       }),
-      execute: async ({ name, summary }: { name: string; summary: string }) => {
+      execute: async ({ slug, name, summary }: { slug: string; name: string; summary: string }) => {
         try {
           const connection = await db.connection.create({
             data: {
+              slug,
               name,
               summary,
               createdBy: userId,
@@ -29,21 +51,9 @@ export function buildConnectionTools(orgId: string, userId: string): ToolSet {
             },
           });
 
-          // Notify sidebar to refresh
-          const org = await db.sourceControlOrg.findUnique({
-            where: { id: orgId },
-            select: { githubLogin: true },
-          });
-          if (org) {
-            const channelName = getOrgChannelName(org.githubLogin);
-            await pusherServer.trigger(channelName, PUSHER_EVENTS.CONNECTION_UPDATED, {
-              connectionId: connection.id,
-              action: "created",
-              timestamp: Date.now(),
-            });
-          }
+          await notifyConnectionUpdate(orgId, slug, "created");
 
-          return { connectionId: connection.id, status: "created" };
+          return { slug: connection.slug, status: "created" };
         } catch (e) {
           console.error("Error saving connection:", e);
           return { error: "Failed to save connection" };
@@ -54,10 +64,10 @@ export function buildConnectionTools(orgId: string, userId: string): ToolSet {
     update_connection: tool({
       description:
         "Update an existing Connection with a diagram, architecture write-up, and/or OpenAPI spec. " +
-        "Call this after save_connection, using the connectionId it returned. " +
+        "Call this after save_connection, using the slug it returned. " +
         "You can call this multiple times — once per field.",
       inputSchema: z.object({
-        connectionId: z.string().describe("The ID returned by save_connection"),
+        slug: z.string().describe("The slug of the connection to update"),
         diagram: z
           .string()
           .optional()
@@ -72,12 +82,12 @@ export function buildConnectionTools(orgId: string, userId: string): ToolSet {
           .describe("OpenAPI 3.x specification in YAML format"),
       }),
       execute: async ({
-        connectionId,
+        slug,
         diagram,
         architecture,
         openApiSpec,
       }: {
-        connectionId: string;
+        slug: string;
         diagram?: string;
         architecture?: string;
         openApiSpec?: string;
@@ -93,32 +103,13 @@ export function buildConnectionTools(orgId: string, userId: string): ToolSet {
           }
 
           await db.connection.update({
-            where: { id: connectionId },
+            where: { orgId_slug: { orgId, slug } },
             data,
           });
 
-          // Notify sidebar to refresh
-          const connection = await db.connection.findUnique({
-            where: { id: connectionId },
-            select: { orgId: true },
-          });
-          if (connection) {
-            const org = await db.sourceControlOrg.findUnique({
-              where: { id: connection.orgId },
-              select: { githubLogin: true },
-            });
-            if (org) {
-              const channelName = getOrgChannelName(org.githubLogin);
-              await pusherServer.trigger(channelName, PUSHER_EVENTS.CONNECTION_UPDATED, {
-                connectionId,
-                action: "updated",
-                fields: Object.keys(data),
-                timestamp: Date.now(),
-              });
-            }
-          }
+          await notifyConnectionUpdate(orgId, slug, "updated", Object.keys(data));
 
-          return { connectionId, status: "updated", fields: Object.keys(data) };
+          return { slug, status: "updated", fields: Object.keys(data) };
         } catch (e) {
           console.error("Error updating connection:", e);
           return { error: "Failed to update connection" };

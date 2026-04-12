@@ -431,7 +431,7 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
     // Encryption not required for mock
   }
 
-  await db.$transaction(async (tx) => {
+  const orgId = await db.$transaction(async (tx) => {
     // 1. Create the org
     const org = await tx.sourceControlOrg.create({
       data: {
@@ -521,16 +521,21 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
     await createOrgWorkspace("mock-org-frontend", "Mock Org Frontend", [member1.id, member2.id]);
     await createOrgWorkspace("mock-org-backend", "Mock Org Backend", [member1.id]);
 
-    await ensureMockConnectionData(org.id, userId);
+    return org.id;
   });
+
+  await ensureMockConnectionData(orgId, userId);
 }
 
 async function ensureMockConnectionData(orgId: string, userId: string): Promise<void> {
-  const existing = await db.connection.findFirst({ where: { orgId } });
+  const existing = await db.connection.findFirst({
+    where: { orgId, slug: "frontend-backend-api" },
+  });
   if (existing) return;
 
   await db.connection.create({
     data: {
+      slug: "frontend-backend-api",
       name: "Frontend ↔ Backend API",
       summary:
         "The frontend Next.js app communicates with the backend service via a REST API. " +

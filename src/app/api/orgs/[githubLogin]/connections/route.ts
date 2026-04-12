@@ -27,6 +27,7 @@ export async function GET(
       orderBy: { updatedAt: "desc" },
       select: {
         id: true,
+        slug: true,
         name: true,
         summary: true,
         diagram: true,

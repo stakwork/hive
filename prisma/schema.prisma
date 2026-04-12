@@ -1351,6 +1351,7 @@ enum WorkspaceTransactionType {
 
 model Connection {
   id           String           @id @default(cuid())
+  slug         String
   name         String
   summary      String           @db.Text
   diagram      String?          @db.Text
@@ -1363,6 +1364,7 @@ model Connection {
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
 
+  @@unique([orgId, slug])
   @@index([orgId])
   @@map("connections")
 }

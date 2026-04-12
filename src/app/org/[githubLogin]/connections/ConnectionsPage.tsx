@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { OrgChat } from "../OrgChat";
 import { ConnectionsSidebar } from "./ConnectionsSidebar";
 import { ConnectionViewer } from "./ConnectionViewer";
 
 export interface ConnectionData {
   id: string;
+  slug: string;
   name: string;
   summary: string;
   diagram: string | null;
@@ -23,11 +25,26 @@ interface ConnectionsPageProps {
 }
 
 export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPageProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [workspaceSlugs, setWorkspaceSlugs] = useState<string[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
   const [connections, setConnections] = useState<ConnectionData[]>([]);
   const [loadingConnections, setLoadingConnections] = useState(true);
   const [activeConnection, setActiveConnection] = useState<ConnectionData | null>(null);
+
+  const setUrlSlug = useCallback(
+    (slug: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (slug) {
+        params.set("c", slug);
+      } else {
+        params.delete("c");
+      }
+      router.replace(`/org/${githubLogin}/connections?${params.toString()}`, { scroll: false });
+    },
+    [router, githubLogin, searchParams]
+  );
 
   // Fetch workspace slugs for the org
   useEffect(() => {
@@ -42,27 +59,43 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
   }, [githubLogin]);
 
   // Fetch connections for the org
-  const fetchConnections = async () => {
+  const fetchConnections = useCallback(async () => {
     try {
       const res = await fetch(`/api/orgs/${githubLogin}/connections`);
       if (res.ok) {
         const data = await res.json();
-        setConnections(Array.isArray(data) ? data : []);
+        const list: ConnectionData[] = Array.isArray(data) ? data : [];
+        setConnections(list);
+        return list;
       }
     } catch (error) {
       console.error("Failed to fetch connections:", error);
     } finally {
       setLoadingConnections(false);
     }
-  };
+    return [];
+  }, [githubLogin]);
 
+  // Initial load: fetch connections then resolve URL slug
   useEffect(() => {
-    fetchConnections();
+    fetchConnections().then((list) => {
+      const slug = searchParams.get("c");
+      if (slug && list.length > 0) {
+        const match = list.find((c) => c.slug === slug);
+        if (match) setActiveConnection(match);
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [githubLogin]);
 
   const handleConnectionClick = (connection: ConnectionData) => {
     setActiveConnection(connection);
+    setUrlSlug(connection.slug);
+  };
+
+  const handleBack = () => {
+    setActiveConnection(null);
+    setUrlSlug(null);
   };
 
   const handleConnectionCreated = () => {
@@ -73,6 +106,7 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
     setConnections((prev) => prev.filter((c) => c.id !== connectionId));
     if (activeConnection?.id === connectionId) {
       setActiveConnection(null);
+      setUrlSlug(null);
     }
   };
 
@@ -83,7 +117,7 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
         {activeConnection ? (
           <ConnectionViewer
             connection={activeConnection}
-            onBack={() => setActiveConnection(null)}
+            onBack={handleBack}
           />
         ) : loadingWorkspaces ? (
           <div className="flex-1 flex items-center justify-center">

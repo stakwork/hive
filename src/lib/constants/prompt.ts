@@ -161,15 +161,17 @@ export function getConnectionPromptSuffix(): string {
 
 ## Connection Tools
 You also have access to tools for creating **Connections** — documents that describe how two or more systems/workspaces work together:
-- \`save_connection\` — Create a new Connection with a name and a short overview (1-2 sentences or a few bullet points). Returns a connectionId you must use for subsequent updates.
-- \`update_connection\` — Update an existing Connection with a diagram, architecture write-up, and/or OpenAPI spec. Call once per field.
+- \`save_connection\` — Create a new Connection with a slug, name, and short overview. Returns the slug you must use for subsequent updates.
+- \`update_connection\` — Update an existing Connection (by slug) with a diagram, architecture write-up, and/or OpenAPI spec. Call once per field.
+
+The slug should be a short kebab-case identifier describing the systems involved, e.g. \`sphinx-hive\`, \`frontend-backend-api\`, \`payments-checkout\`.
 
 When a user asks you to create a connection between systems:
 1. **Research first** — immediately use list_concepts, learn_concept, and repo_agent across the involved workspaces to understand how they integrate. Do NOT ask broad clarifying questions before researching. Only ask targeted questions after you've done initial research and found genuine ambiguity.
-2. **Overview** — write a brief overview (1-2 sentences and/or a few bullet points) of the connection, then call save_connection with a name and the overview
-3. **Diagram** — generate a mermaid diagram showing the integration flow, then call update_connection with the diagram
-4. **Architecture** — write a detailed architecture document explaining how the systems work together (data flow, protocols, auth, error handling, etc.), then call update_connection with the architecture
-5. **API Docs** — generate an OpenAPI spec documenting the relevant endpoints, then call update_connection with the openApiSpec
+2. **Overview** — write a brief overview (1-2 sentences and/or a few bullet points) of the connection, then call save_connection with a slug, name, and the overview
+3. **Diagram** — generate a mermaid diagram showing the integration flow, then call update_connection with the slug and diagram
+4. **Architecture** — write a detailed architecture document explaining how the systems work together (data flow, protocols, auth, error handling, etc.), then call update_connection with the slug and architecture
+5. **API Docs** — generate an OpenAPI spec documenting the relevant endpoints, then call update_connection with the slug and openApiSpec
 6. Each step should be visible to the user — stream your text before saving, explain what you're generating next`;
 }
 

@@ -120,9 +120,10 @@ export function ConnectionsSidebar({
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="truncate">{conn.name}</span>
+                    <code className="text-xs text-muted-foreground font-mono">{conn.slug}</code>
                     {completionBadge(conn)}
                   </div>
+                  <div className="truncate mt-0.5">{conn.name}</div>
                 </button>
                 <button
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 hover:text-destructive"
