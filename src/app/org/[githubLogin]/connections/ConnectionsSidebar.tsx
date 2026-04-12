@@ -65,11 +65,11 @@ export function ConnectionsSidebar({
   };
 
   const completionBadge = (conn: ConnectionData) => {
-    const parts = [conn.summary, conn.diagram, conn.openApiSpec].filter(Boolean).length;
-    if (parts >= 3) return null; // Fully complete
+    const parts = [conn.summary, conn.diagram, conn.architecture, conn.openApiSpec].filter(Boolean).length;
+    if (parts >= 4) return null; // Fully complete
     return (
       <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-        {parts}/3
+        {parts}/4
       </Badge>
     );
   };
@@ -120,9 +120,10 @@ export function ConnectionsSidebar({
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="truncate">{conn.name}</span>
+                    <code className="text-xs text-muted-foreground font-mono">{conn.slug}</code>
                     {completionBadge(conn)}
                   </div>
+                  <div className="truncate mt-0.5">{conn.name}</div>
                 </button>
                 <button
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 hover:text-destructive"
