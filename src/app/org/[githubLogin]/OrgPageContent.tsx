@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Building2, Calendar, ExternalLink, Pencil, Users } from "lucide-react";
+import { Building2, Calendar, ExternalLink, Link2, Pencil, Users } from "lucide-react";
 import Link from "next/link";
 import { GraphPortal } from "@/components/GraphPortal";
 import { OrgChat } from "./OrgChat";
@@ -389,13 +389,22 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className={isExpanded ? "flex flex-col flex-1" : ""}>
         <div className="max-w-4xl mx-auto px-4 w-full">
-          <TabsList className="mb-6">
-            <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
-            <TabsTrigger value="chat">Chat</TabsTrigger>
-            <TabsTrigger value="members">Members</TabsTrigger>
-            <TabsTrigger value="schematic">Schematic</TabsTrigger>
-            <TabsTrigger value="graph">Graph</TabsTrigger>
-          </TabsList>
+          <div className="flex items-center gap-3 mb-6">
+            <TabsList>
+              <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
+              <TabsTrigger value="chat">Chat</TabsTrigger>
+              <TabsTrigger value="members">Members</TabsTrigger>
+              <TabsTrigger value="schematic">Schematic</TabsTrigger>
+              <TabsTrigger value="graph">Graph</TabsTrigger>
+            </TabsList>
+            <Link
+              href={`/org/${githubLogin}/connections`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-border bg-background hover:bg-muted transition-colors"
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              Connections
+            </Link>
+          </div>
         </div>
 
         <div className="max-w-4xl mx-auto px-4 pb-10 w-full">
