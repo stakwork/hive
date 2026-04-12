@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowLeft, FileText, GitBranch, Code2, Loader2 } from "lucide-react";
+import { useMemo } from "react";
+import { ArrowLeft, FileText, GitBranch, BookOpen, Code2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DiagramViewer } from "@/app/w/[slug]/learn/components/DiagramViewer";
 import ReactMarkdown from "react-markdown";
@@ -11,7 +12,35 @@ interface ConnectionViewerProps {
   onBack: () => void;
 }
 
+function buildScalarSrcdoc(spec: string): string {
+  const escaped = spec
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/<\/script/gi, "<\\/script");
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>body { margin: 0; background: transparent; }</style>
+</head>
+<body>
+  <script
+    id="api-reference"
+    type="application/yaml"
+    data-configuration='{"theme":"purple","darkMode":true}'>\n${escaped}
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>`;
+}
+
 export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) {
+  const scalarSrcdoc = useMemo(
+    () => (connection.openApiSpec ? buildScalarSrcdoc(connection.openApiSpec) : null),
+    [connection.openApiSpec]
+  );
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -25,12 +54,12 @@ export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) 
 
       {/* Stacked sections */}
       <div className="flex-1 overflow-y-auto">
-        {/* Summary Section */}
+        {/* Overview Section */}
         <section className="border-b">
           <div className="flex items-center gap-2 px-6 pt-6 pb-3">
             <FileText className="h-4 w-4 text-muted-foreground" />
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-              Summary
+              Overview
             </h2>
           </div>
           <div className="px-6 pb-6 prose prose-sm dark:prose-invert max-w-none">
@@ -43,7 +72,7 @@ export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) 
           <div className="flex items-center gap-2 px-6 pt-6 pb-3">
             <GitBranch className="h-4 w-4 text-muted-foreground" />
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-              Integration Diagram
+              Diagram
             </h2>
           </div>
           {connection.diagram ? (
@@ -57,7 +86,27 @@ export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) 
           ) : (
             <div className="px-6 pb-6 flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Diagram pending — the agent will generate this next</span>
+              <span>Diagram pending</span>
+            </div>
+          )}
+        </section>
+
+        {/* Architecture Section */}
+        <section className="border-b">
+          <div className="flex items-center gap-2 px-6 pt-6 pb-3">
+            <BookOpen className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+              Architecture
+            </h2>
+          </div>
+          {connection.architecture ? (
+            <div className="px-6 pb-6 prose prose-sm dark:prose-invert max-w-none">
+              <ReactMarkdown>{connection.architecture}</ReactMarkdown>
+            </div>
+          ) : (
+            <div className="px-6 pb-6 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Architecture pending</span>
             </div>
           )}
         </section>
@@ -70,16 +119,20 @@ export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) 
               API Documentation
             </h2>
           </div>
-          {connection.openApiSpec ? (
+          {scalarSrcdoc ? (
             <div className="px-6 pb-6">
-              <pre className="text-xs bg-muted/30 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap">
-                {connection.openApiSpec}
-              </pre>
+              <iframe
+                srcDoc={scalarSrcdoc}
+                className="w-full border rounded-lg"
+                style={{ height: "700px" }}
+                sandbox="allow-scripts allow-same-origin"
+                title="API Documentation"
+              />
             </div>
           ) : (
             <div className="px-6 pb-6 flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>API docs pending — the agent will generate this next</span>
+              <span>API docs pending</span>
             </div>
           )}
         </section>
