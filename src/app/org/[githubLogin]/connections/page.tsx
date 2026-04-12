@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { redirect, notFound } from "next/navigation";
@@ -27,10 +28,12 @@ export default async function OrgConnectionsPage({ params }: ConnectionsPageProp
   }
 
   return (
-    <ConnectionsPage
-      githubLogin={githubLogin}
-      orgId={org.id}
-      orgName={org.name}
-    />
+    <Suspense>
+      <ConnectionsPage
+        githubLogin={githubLogin}
+        orgId={org.id}
+        orgName={org.name}
+      />
+    </Suspense>
   );
 }
