@@ -280,6 +280,7 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId }: Da
       }
 
       const messageId = (Date.now() + 1).toString();
+      const loggedToolCalls = new Set<string>();
 
       await processStream(response, messageId, (updatedMessage) => {
         // Turn off loading as soon as we get the first content
@@ -324,14 +325,18 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId }: Da
 
             // Debug logging: on /connections pages or when window.DEBUG is set
             if (typeof window !== "undefined" && (window.location.pathname.includes("/connections") || (window as any).DEBUG)) {
-              if (toolCall.status === "call") {
-                console.log(`%c[TOOL CALL] ${toolCall.toolName}`, "color: #4fc3f7; font-weight: bold", toolCall.input);
-              }
-              if (toolCall.output !== undefined) {
-                console.log(`%c[TOOL RESULT] ${toolCall.toolName}`, "color: #81c784; font-weight: bold", toolCall.output);
-              }
-              if (toolCall.status === "output-error") {
-                console.log(`%c[TOOL ERROR] ${toolCall.toolName}`, "color: #e57373; font-weight: bold", toolCall.output);
+              const callKey = `${toolCall.id}-${toolCall.status}`;
+              if (!loggedToolCalls.has(callKey)) {
+                loggedToolCalls.add(callKey);
+                if (toolCall.status === "call") {
+                  console.log(`%c[TOOL CALL] ${toolCall.toolName}`, "color: #4fc3f7; font-weight: bold", JSON.stringify(toolCall.input));
+                }
+                if (toolCall.output !== undefined) {
+                  console.log(`%c[TOOL RESULT] ${toolCall.toolName}`, "color: #81c784; font-weight: bold", JSON.stringify(toolCall.output));
+                }
+                if (toolCall.status === "output-error") {
+                  console.log(`%c[TOOL ERROR] ${toolCall.toolName}`, "color: #e57373; font-weight: bold", JSON.stringify(toolCall.output));
+                }
               }
             }
 
