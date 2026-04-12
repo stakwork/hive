@@ -412,11 +412,14 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
   const MOCK_ORG_LOGIN = "mock-org";
   const MOCK_ORG_INSTALLATION_ID = 999001;
 
-  // Idempotency: if org already exists, nothing to do
+  // Idempotency: if org already exists, just ensure connections are seeded
   const existing = await db.sourceControlOrg.findUnique({
     where: { githubLogin: MOCK_ORG_LOGIN },
   });
-  if (existing) return;
+  if (existing) {
+    await ensureMockConnectionData(existing.id, userId);
+    return;
+  }
 
   let encryptedPoolApiKey: string | null = null;
   try {
@@ -517,5 +520,123 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
 
     await createOrgWorkspace("mock-org-frontend", "Mock Org Frontend", [member1.id, member2.id]);
     await createOrgWorkspace("mock-org-backend", "Mock Org Backend", [member1.id]);
+
+    await ensureMockConnectionData(org.id, userId);
+  });
+}
+
+async function ensureMockConnectionData(orgId: string, userId: string): Promise<void> {
+  const existing = await db.connection.findFirst({ where: { orgId } });
+  if (existing) return;
+
+  await db.connection.create({
+    data: {
+      name: "Frontend ↔ Backend API",
+      summary:
+        "The frontend Next.js app communicates with the backend service via a REST API. " +
+        "Auth tokens are passed as Bearer headers. WebSocket is used for real-time updates.",
+      diagram: [
+        "graph LR",
+        "  FE[Frontend Next.js] -->|REST API| GW[API Gateway]",
+        "  GW -->|Auth Check| AUTH[Auth Service]",
+        "  GW -->|Route| BE[Backend Service]",
+        "  BE -->|Query| DB[(PostgreSQL)]",
+        "  BE -->|Publish| WS[WebSocket Server]",
+        "  WS -->|Push| FE",
+      ].join("\n"),
+      architecture:
+        "## Data Flow\n\n" +
+        "1. The frontend makes REST calls to `/api/*` endpoints on the backend\n" +
+        "2. The API gateway validates the JWT Bearer token against the Auth Service\n" +
+        "3. Validated requests are routed to the appropriate backend handler\n" +
+        "4. The backend reads/writes to PostgreSQL via Prisma ORM\n" +
+        "5. For real-time features, the backend publishes events to a WebSocket server\n" +
+        "6. The frontend subscribes to WebSocket channels for live updates\n\n" +
+        "## Authentication\n\n" +
+        "- OAuth 2.0 with GitHub as the identity provider\n" +
+        "- JWTs issued by the Auth Service, 1-hour expiry\n" +
+        "- Refresh tokens stored in HTTP-only cookies\n\n" +
+        "## Error Handling\n\n" +
+        "- Backend returns standard JSON error envelopes: `{ error, kind, details }`\n" +
+        "- Frontend uses a global error boundary plus per-request toast notifications",
+      openApiSpec:
+        "openapi: '3.0.3'\n" +
+        "info:\n" +
+        "  title: Mock Org Backend API\n" +
+        "  version: 1.0.0\n" +
+        "  description: REST API for the mock org backend service\n" +
+        "paths:\n" +
+        "  /api/tasks:\n" +
+        "    get:\n" +
+        "      summary: List tasks\n" +
+        "      parameters:\n" +
+        "        - name: status\n" +
+        "          in: query\n" +
+        "          schema:\n" +
+        "            type: string\n" +
+        "            enum: [open, closed, in_progress]\n" +
+        "      responses:\n" +
+        "        '200':\n" +
+        "          description: A list of tasks\n" +
+        "          content:\n" +
+        "            application/json:\n" +
+        "              schema:\n" +
+        "                type: array\n" +
+        "                items:\n" +
+        "                  $ref: '#/components/schemas/Task'\n" +
+        "    post:\n" +
+        "      summary: Create a task\n" +
+        "      requestBody:\n" +
+        "        required: true\n" +
+        "        content:\n" +
+        "          application/json:\n" +
+        "            schema:\n" +
+        "              $ref: '#/components/schemas/CreateTaskInput'\n" +
+        "      responses:\n" +
+        "        '201':\n" +
+        "          description: Task created\n" +
+        "  /api/tasks/{id}:\n" +
+        "    get:\n" +
+        "      summary: Get a task by ID\n" +
+        "      parameters:\n" +
+        "        - name: id\n" +
+        "          in: path\n" +
+        "          required: true\n" +
+        "          schema:\n" +
+        "            type: string\n" +
+        "      responses:\n" +
+        "        '200':\n" +
+        "          description: Task details\n" +
+        "        '404':\n" +
+        "          description: Task not found\n" +
+        "components:\n" +
+        "  schemas:\n" +
+        "    Task:\n" +
+        "      type: object\n" +
+        "      properties:\n" +
+        "        id:\n" +
+        "          type: string\n" +
+        "        title:\n" +
+        "          type: string\n" +
+        "        status:\n" +
+        "          type: string\n" +
+        "          enum: [open, closed, in_progress]\n" +
+        "        assignee:\n" +
+        "          type: string\n" +
+        "          nullable: true\n" +
+        "        createdAt:\n" +
+        "          type: string\n" +
+        "          format: date-time\n" +
+        "    CreateTaskInput:\n" +
+        "      type: object\n" +
+        "      required: [title]\n" +
+        "      properties:\n" +
+        "        title:\n" +
+        "          type: string\n" +
+        "        assignee:\n" +
+        "          type: string",
+      createdBy: userId,
+      orgId,
+    },
   });
 }

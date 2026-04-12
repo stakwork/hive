@@ -13,7 +13,6 @@ interface ConnectionViewerProps {
 }
 
 function buildScalarSrcdoc(spec: string): string {
-  // Escape for safe embedding in srcdoc: replace & < > " so HTML doesn't break
   const escaped = spec
     .replace(/\\/g, "\\\\")
     .replace(/`/g, "\\`")
@@ -26,15 +25,12 @@ function buildScalarSrcdoc(spec: string): string {
   <style>body { margin: 0; background: transparent; }</style>
 </head>
 <body>
-  <div id="api-reference"></div>
-  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-  <script>
-    Scalar.createApiReference('#api-reference', {
-      spec: { content: \`${escaped}\` },
-      theme: 'purple',
-      showSidebar: true,
-    })
+  <script
+    id="api-reference"
+    type="application/yaml"
+    data-configuration='{"theme":"purple","darkMode":true}'>\n${escaped}
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
 </body>
 </html>`;
 }
