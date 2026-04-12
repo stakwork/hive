@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { ArrowLeft, FileText, GitBranch, BookOpen, Code2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DiagramViewer } from "@/app/w/[slug]/learn/components/DiagramViewer";
@@ -11,7 +12,39 @@ interface ConnectionViewerProps {
   onBack: () => void;
 }
 
+function buildScalarSrcdoc(spec: string): string {
+  // Escape for safe embedding in srcdoc: replace & < > " so HTML doesn't break
+  const escaped = spec
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/<\/script/gi, "<\\/script");
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>body { margin: 0; background: transparent; }</style>
+</head>
+<body>
+  <div id="api-reference"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  <script>
+    Scalar.createApiReference('#api-reference', {
+      spec: { content: \`${escaped}\` },
+      theme: 'purple',
+      showSidebar: true,
+    })
+  </script>
+</body>
+</html>`;
+}
+
 export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) {
+  const scalarSrcdoc = useMemo(
+    () => (connection.openApiSpec ? buildScalarSrcdoc(connection.openApiSpec) : null),
+    [connection.openApiSpec]
+  );
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -90,11 +123,15 @@ export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) 
               API Documentation
             </h2>
           </div>
-          {connection.openApiSpec ? (
+          {scalarSrcdoc ? (
             <div className="px-6 pb-6">
-              <pre className="text-xs bg-muted/30 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap">
-                {connection.openApiSpec}
-              </pre>
+              <iframe
+                srcDoc={scalarSrcdoc}
+                className="w-full border rounded-lg"
+                style={{ height: "700px" }}
+                sandbox="allow-scripts allow-same-origin"
+                title="API Documentation"
+              />
             </div>
           ) : (
             <div className="px-6 pb-6 flex items-center gap-2 text-sm text-muted-foreground">
