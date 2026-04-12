@@ -77,8 +77,8 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
 
   return (
     <div className="flex h-screen w-full">
-      {/* Main content area */}
-      <div className="flex-1 pr-80 flex flex-col">
+      {/* Main content area — fills height, right-margin for sidebar */}
+      <div className="flex-1 mr-80 flex flex-col h-full">
         {activeConnection ? (
           <ConnectionViewer
             connection={activeConnection}
@@ -93,11 +93,13 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
             No workspaces available.
           </div>
         ) : (
-          <OrgChat
-            workspaceSlugs={workspaceSlugs}
-            githubLogin={githubLogin}
-            orgId={orgId}
-          />
+          <div className="flex-1 flex flex-col justify-end pb-4">
+            <OrgChat
+              workspaceSlugs={workspaceSlugs}
+              githubLogin={githubLogin}
+              orgId={orgId}
+            />
+          </div>
         )}
       </div>
 
