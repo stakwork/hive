@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { validationError, notFoundError, serverError, forbiddenError, isApiError } from "@/types/errors";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
-import { validateWorkspaceAccess } from "@/services/workspace";
+import { validationError, serverError, isApiError } from "@/types/errors";
 import { getQuickAskPrefixMessages, getMultiWorkspacePrefixMessages } from "@/lib/constants/prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
-import { WorkspaceConfig } from "@/lib/ai/types";
+import { buildWorkspaceConfigs, fetchConceptsForWorkspaces } from "@/lib/ai/workspaceConfig";
+import { buildConnectionTools } from "@/lib/ai/connectionTools";
 import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 import { z } from "zod";
@@ -88,7 +85,7 @@ export async function POST(request: NextRequest) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { messages, workspaceSlug, workspaceSlugs } = body;
+    const { messages, workspaceSlug, workspaceSlugs, orgId } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       throw validationError("Missing required parameter: messages (must be a non-empty array)");
@@ -141,6 +138,11 @@ export async function POST(request: NextRequest) {
       const workspaceConfigs = await buildWorkspaceConfigs(slugs, userOrResponse.id);
       tools = askToolsMulti(workspaceConfigs, apiKey);
 
+      // Merge connection tools when orgId is provided
+      if (orgId) {
+        tools = { ...tools, ...buildConnectionTools(orgId, userOrResponse.id) };
+      }
+
       const conceptsByWorkspace = await fetchConceptsForWorkspaces(workspaceConfigs);
 
       features = [];
@@ -148,7 +150,7 @@ export async function POST(request: NextRequest) {
         features.push(...(conceptsByWorkspace[ws.slug] || []));
       }
 
-      prefixMessages = getMultiWorkspacePrefixMessages(workspaceConfigs, conceptsByWorkspace, []);
+      prefixMessages = getMultiWorkspacePrefixMessages(workspaceConfigs, conceptsByWorkspace, [], orgId);
       primarySwarmUrl = workspaceConfigs[0].swarmUrl;
       primarySwarmApiKey = workspaceConfigs[0].swarmApiKey;
     } else {
@@ -328,105 +330,4 @@ function logStep(contents: unknown) {
   }
 }
 
-/**
- * Build WorkspaceConfig[] by validating access, fetching swarm credentials,
- * repositories, and GitHub PAT for each workspace.
- * Works for both single and multi-workspace — always takes an array of slugs.
- */
-async function buildWorkspaceConfigs(
-  slugs: string[],
-  userId: string
-): Promise<WorkspaceConfig[]> {
-  const encryptionService = EncryptionService.getInstance();
-  const configs: WorkspaceConfig[] = [];
 
-  for (const slug of slugs) {
-    const access = await validateWorkspaceAccess(slug, userId, true);
-    if (!access.hasAccess || !access.workspace) {
-      throw forbiddenError(`Access denied for workspace: ${slug}`);
-    }
-
-    const swarm = await db.swarm.findFirst({
-      where: { workspaceId: access.workspace.id },
-    });
-    if (!swarm?.swarmUrl) {
-      throw notFoundError(`Swarm not configured for workspace: ${slug}`);
-    }
-
-    const repositories = await db.repository.findMany({
-      where: { workspaceId: access.workspace.id },
-      orderBy: { createdAt: "asc" },
-    });
-    if (repositories.length === 0) {
-      throw notFoundError(`No repositories for workspace: ${slug}`);
-    }
-
-    const githubProfile = await getGithubUsernameAndPAT(userId, slug);
-    if (!githubProfile?.token) {
-      throw notFoundError(`GitHub PAT not found for workspace: ${slug}`);
-    }
-
-    // Fetch workspace members (name, github username, role, description)
-    const memberships = await db.workspaceMember.findMany({
-      where: { workspaceId: access.workspace.id, leftAt: null },
-      select: {
-        role: true,
-        description: true,
-        user: {
-          select: {
-            name: true,
-            githubAuth: { select: { githubUsername: true } },
-          },
-        },
-      },
-    });
-
-    const swarmUrlObj = new URL(swarm.swarmUrl);
-    let baseSwarmUrl = `https://${swarmUrlObj.hostname}:3355`;
-    if (swarm.swarmUrl.includes("localhost")) {
-      baseSwarmUrl = "http://localhost:3355";
-    }
-
-    configs.push({
-      slug,
-      description: access.workspace.description ?? undefined,
-      swarmUrl: baseSwarmUrl,
-      swarmApiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || ""),
-      repoUrls: repositories.map((r) => r.repositoryUrl),
-      pat: githubProfile.token,
-      workspaceId: access.workspace.id,
-      userId,
-      members: memberships.map((m) => ({
-        name: m.user.name,
-        githubUsername: m.user.githubAuth?.githubUsername ?? null,
-        role: m.role,
-        description: m.description,
-      })),
-    });
-  }
-
-  return configs;
-}
-
-/**
- * Fetch concepts for all workspaces in parallel.
- */
-async function fetchConceptsForWorkspaces(
-  configs: WorkspaceConfig[]
-): Promise<Record<string, Record<string, unknown>[]>> {
-  const conceptsByWorkspace: Record<string, Record<string, unknown>[]> = {};
-
-  await Promise.all(
-    configs.map(async (ws) => {
-      try {
-        const concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
-        conceptsByWorkspace[ws.slug] = (concepts.features as Record<string, unknown>[]) || [];
-      } catch (e) {
-        console.error(`Failed to fetch concepts for ${ws.slug}:`, e);
-        conceptsByWorkspace[ws.slug] = [];
-      }
-    })
-  );
-
-  return conceptsByWorkspace;
-}
