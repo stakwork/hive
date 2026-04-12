@@ -1081,6 +1081,7 @@ export default function TaskChatPage() {
             workflowId: currentWorkflowContext.workflowId,
             workflowName: currentWorkflowContext.workflowName,
             workflowRefId: currentWorkflowContext.workflowRefId,
+            sourceWebsocketID: getPusherClient().connection.socket_id,
             // Include latest workflow version ID if tracked
             ...(currentWorkflowContext.workflowVersionId && { workflowVersionId: currentWorkflowContext.workflowVersionId }),
             // Include webhook if available for continuing existing workflow
@@ -1660,6 +1661,7 @@ Plan and implement the real feature from this branch.`;
             workflowId: currentWorkflowContext.workflowId,
             workflowName: currentWorkflowContext.workflowName,
             workflowRefId: currentWorkflowContext.workflowRefId,
+            sourceWebsocketID: getPusherClient().connection.socket_id,
             ...(currentWorkflowContext.workflowVersionId && {
               workflowVersionId: currentWorkflowContext.workflowVersionId,
             }),
