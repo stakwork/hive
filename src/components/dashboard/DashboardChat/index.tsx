@@ -37,9 +37,10 @@ interface Message {
 interface DashboardChatProps {
   defaultExtraWorkspaceSlugs?: string[];
   orgSlug?: string;
+  orgId?: string;
 }
 
-export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug }: DashboardChatProps = {}) {
+export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId }: DashboardChatProps = {}) {
   const { slug, workspace } = useWorkspace();
   const { data: session } = useSession();
   const router = useRouter();
@@ -270,6 +271,7 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug }: Dashboard
           ...(extraWorkspaceSlugs.length === 0
             ? { workspaceSlug: slug }
             : { workspaceSlugs: [slug, ...extraWorkspaceSlugs].filter(Boolean) }),
+          ...(orgId ? { orgId } : {}),
         }),
       });
 

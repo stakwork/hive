@@ -31,6 +31,7 @@ export const getTaskChannelName = (taskId: string) => `task-${taskId}`;
 export const getWorkspaceChannelName = (workspaceSlug: string) => `workspace-${workspaceSlug}`;
 export const getFeatureChannelName = (featureId: string) => `feature-${featureId}`;
 export const getWhiteboardChannelName = (whiteboardId: string) => `whiteboard-${whiteboardId}`;
+export const getOrgChannelName = (githubLogin: string) => `org-${githubLogin}`;
 
 // Event names
 export const PUSHER_EVENTS = {
@@ -62,4 +63,6 @@ export const PUSHER_EVENTS = {
   // Plan presence events
   PLAN_USER_JOIN: "plan-user-join",
   PLAN_USER_LEAVE: "plan-user-leave",
+  // Connection events
+  CONNECTION_UPDATED: "connection-updated",
 } as const;
