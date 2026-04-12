@@ -321,6 +321,20 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId }: Da
               output?: unknown;
               status: string;
             };
+
+            // Debug logging: on /connections pages or when window.DEBUG is set
+            if (typeof window !== "undefined" && (window.location.pathname.includes("/connections") || (window as any).DEBUG)) {
+              if (toolCall.status === "call") {
+                console.log(`%c[TOOL CALL] ${toolCall.toolName}`, "color: #4fc3f7; font-weight: bold", toolCall.input);
+              }
+              if (toolCall.output !== undefined) {
+                console.log(`%c[TOOL RESULT] ${toolCall.toolName}`, "color: #81c784; font-weight: bold", toolCall.output);
+              }
+              if (toolCall.status === "output-error") {
+                console.log(`%c[TOOL ERROR] ${toolCall.toolName}`, "color: #e57373; font-weight: bold", toolCall.output);
+              }
+            }
+
             currentToolCalls.push({
               id: toolCall.id,
               toolName: toolCall.toolName,
