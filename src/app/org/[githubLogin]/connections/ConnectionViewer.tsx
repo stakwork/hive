@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, FileText, GitBranch, Code2, Loader2 } from "lucide-react";
+import { ArrowLeft, FileText, GitBranch, BookOpen, Code2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DiagramViewer } from "@/app/w/[slug]/learn/components/DiagramViewer";
 import ReactMarkdown from "react-markdown";
@@ -25,12 +25,12 @@ export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) 
 
       {/* Stacked sections */}
       <div className="flex-1 overflow-y-auto">
-        {/* Summary Section */}
+        {/* Overview Section */}
         <section className="border-b">
           <div className="flex items-center gap-2 px-6 pt-6 pb-3">
             <FileText className="h-4 w-4 text-muted-foreground" />
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-              Summary
+              Overview
             </h2>
           </div>
           <div className="px-6 pb-6 prose prose-sm dark:prose-invert max-w-none">
@@ -43,7 +43,7 @@ export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) 
           <div className="flex items-center gap-2 px-6 pt-6 pb-3">
             <GitBranch className="h-4 w-4 text-muted-foreground" />
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-              Integration Diagram
+              Diagram
             </h2>
           </div>
           {connection.diagram ? (
@@ -57,7 +57,27 @@ export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) 
           ) : (
             <div className="px-6 pb-6 flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Diagram pending — the agent will generate this next</span>
+              <span>Diagram pending</span>
+            </div>
+          )}
+        </section>
+
+        {/* Architecture Section */}
+        <section className="border-b">
+          <div className="flex items-center gap-2 px-6 pt-6 pb-3">
+            <BookOpen className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+              Architecture
+            </h2>
+          </div>
+          {connection.architecture ? (
+            <div className="px-6 pb-6 prose prose-sm dark:prose-invert max-w-none">
+              <ReactMarkdown>{connection.architecture}</ReactMarkdown>
+            </div>
+          ) : (
+            <div className="px-6 pb-6 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Architecture pending</span>
             </div>
           )}
         </section>
@@ -79,7 +99,7 @@ export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) 
           ) : (
             <div className="px-6 pb-6 flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>API docs pending — the agent will generate this next</span>
+              <span>API docs pending</span>
             </div>
           )}
         </section>

@@ -30,6 +30,7 @@ export async function GET(
         name: true,
         summary: true,
         diagram: true,
+        architecture: true,
         openApiSpec: true,
         createdAt: true,
         updatedAt: true,

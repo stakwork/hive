@@ -12,11 +12,11 @@ export function buildConnectionTools(orgId: string, userId: string): ToolSet {
     save_connection: tool({
       description:
         "Create a new Connection document that describes how two or more systems/workspaces integrate. " +
-        "Call this after you have researched the relevant concepts and written a summary. " +
+        "Call this after you have researched the relevant concepts and written a brief overview. " +
         "Returns the connectionId needed for subsequent update_connection calls.",
       inputSchema: z.object({
         name: z.string().describe("Short name for the connection, e.g. 'Checkout ↔ Payments API'"),
-        summary: z.string().describe("Detailed markdown summary of how the systems connect"),
+        summary: z.string().describe("Brief overview: 1-2 sentences and/or a few bullet points"),
       }),
       execute: async ({ name, summary }: { name: string; summary: string }) => {
         try {
@@ -53,15 +53,19 @@ export function buildConnectionTools(orgId: string, userId: string): ToolSet {
 
     update_connection: tool({
       description:
-        "Update an existing Connection with a mermaid diagram and/or OpenAPI spec. " +
+        "Update an existing Connection with a diagram, architecture write-up, and/or OpenAPI spec. " +
         "Call this after save_connection, using the connectionId it returned. " +
-        "You can call this multiple times — once for the diagram, once for the OpenAPI spec.",
+        "You can call this multiple times — once per field.",
       inputSchema: z.object({
         connectionId: z.string().describe("The ID returned by save_connection"),
         diagram: z
           .string()
           .optional()
           .describe("Mermaid diagram source code (without ```mermaid fences)"),
+        architecture: z
+          .string()
+          .optional()
+          .describe("Detailed markdown architecture write-up of how the systems integrate"),
         openApiSpec: z
           .string()
           .optional()
@@ -70,19 +74,22 @@ export function buildConnectionTools(orgId: string, userId: string): ToolSet {
       execute: async ({
         connectionId,
         diagram,
+        architecture,
         openApiSpec,
       }: {
         connectionId: string;
         diagram?: string;
+        architecture?: string;
         openApiSpec?: string;
       }) => {
         try {
           const data: Record<string, string> = {};
           if (diagram !== undefined) data.diagram = diagram;
+          if (architecture !== undefined) data.architecture = architecture;
           if (openApiSpec !== undefined) data.openApiSpec = openApiSpec;
 
           if (Object.keys(data).length === 0) {
-            return { error: "Provide at least one of: diagram, openApiSpec" };
+            return { error: "Provide at least one of: diagram, architecture, openApiSpec" };
           }
 
           await db.connection.update({

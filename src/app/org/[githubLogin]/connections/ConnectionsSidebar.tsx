@@ -65,11 +65,11 @@ export function ConnectionsSidebar({
   };
 
   const completionBadge = (conn: ConnectionData) => {
-    const parts = [conn.summary, conn.diagram, conn.openApiSpec].filter(Boolean).length;
-    if (parts >= 3) return null; // Fully complete
+    const parts = [conn.summary, conn.diagram, conn.architecture, conn.openApiSpec].filter(Boolean).length;
+    if (parts >= 4) return null; // Fully complete
     return (
       <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-        {parts}/3
+        {parts}/4
       </Badge>
     );
   };

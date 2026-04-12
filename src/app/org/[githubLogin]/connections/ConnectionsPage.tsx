@@ -10,6 +10,7 @@ export interface ConnectionData {
   name: string;
   summary: string;
   diagram: string | null;
+  architecture: string | null;
   openApiSpec: string | null;
   createdAt: string;
   updatedAt: string;
