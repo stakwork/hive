@@ -1350,18 +1350,21 @@ enum WorkspaceTransactionType {
 }
 
 model Connection {
-  id          String           @id @default(cuid())
-  name        String
-  summary     String           @db.Text
-  diagram     String?          @db.Text
-  openApiSpec String?          @map("open_api_spec") @db.Text
-  prompt      String?          @db.Text
-  createdBy   String           @map("created_by")
-  orgId       String           @map("org_id")
-  org         SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
+  id           String           @id @default(cuid())
+  slug         String
+  name         String
+  summary      String           @db.Text
+  diagram      String?          @db.Text
+  architecture String?          @db.Text
+  openApiSpec  String?          @map("open_api_spec") @db.Text
+  prompt       String?          @db.Text
+  createdBy    String           @map("created_by")
+  orgId        String           @map("org_id")
+  org          SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
 
+  @@unique([orgId, slug])
   @@index([orgId])
   @@map("connections")
 }
