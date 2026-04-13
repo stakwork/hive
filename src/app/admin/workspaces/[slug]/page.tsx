@@ -52,6 +52,7 @@ export default async function AdminWorkspaceDetailPage({
           podState: true,
           swarmPassword: true,
           minimumVms: true,
+          minimumPods: true,
           poolApiKey: true,
         },
       },
@@ -168,6 +169,7 @@ export default async function AdminWorkspaceDetailPage({
                 <AdminPodScaleControl
                   slug={slug}
                   initialMinimumVms={workspace.swarm.minimumVms ?? 2}
+                  initialMinimumPods={workspace.swarm.minimumPods ?? null}
                 />
               </div>
             )}

@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
       },
       select: {
         workspaceId: true,
+        workflowStatus: true,
         workspace: {
           select: {
             slug: true,
@@ -128,6 +129,13 @@ export async function POST(request: NextRequest) {
 
     if (!isOwner && !isMember) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+
+    if (task.workflowStatus === WorkflowStatus.IN_PROGRESS) {
+      return NextResponse.json(
+        { error: "A workflow is already in progress for this task" },
+        { status: 400 },
+      );
     }
 
     // Restrict workflow editor to stakwork workspace only
