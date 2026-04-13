@@ -351,7 +351,7 @@ describe("sendFeatureChatMessage — taskModel forwarding", () => {
     expect(callArg.taskModel).toBeUndefined();
   });
 
-  test.each(["sonnet", "kimi", "gemini", "gpt", "codex"] as const)(
+  test.each(["sonnet", "haiku", "kimi", "gemini", "gpt"] as const)(
     "forwards model '%s' as taskModel to callStakworkAPI",
     async (model) => {
       await sendFeatureChatMessage({
