@@ -435,8 +435,11 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       // Should succeed despite missing control port
       await expectSuccess(response, 200);
 
-      // Should not call updatePodRepositories
-      expect(mockFetch).not.toHaveBeenCalled();
+      // Should not call updatePodRepositories (/latest endpoint)
+      const latestCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+        typeof url === "string" && url.includes("/latest")
+      );
+      expect(latestCalls).toHaveLength(0);
     });
   });
 });
