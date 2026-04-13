@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
         phaseId: true,
         sourceType: true,
         model: true,
+        workflowStatus: true,
         repository: {
           select: {
             name: true,
@@ -180,6 +181,13 @@ export async function POST(request: NextRequest) {
 
     if (!isOwner && !isMember) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+
+    if (task.workflowStatus === WorkflowStatus.IN_PROGRESS) {
+      return NextResponse.json(
+        { error: "A workflow is already in progress for this task" },
+        { status: 400 },
+      );
     }
 
     // Create the chat message
