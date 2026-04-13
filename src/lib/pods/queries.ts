@@ -8,6 +8,7 @@
 import { db } from "@/lib/db";
 import { PodStatus, PodUsageStatus } from "@prisma/client";
 import type { Pod } from "@prisma/client";
+import { markPodAsUnused } from "./karpenter";
 
 /**
  * Find all non-deleted pods for a swarm
@@ -269,7 +270,7 @@ export async function getPodDetails(
  * @returns The released pod or null if not found
  */
 export async function releasePodById(podId: string): Promise<Pod | null> {
-  return db.$transaction(async (tx) => {
+  const released = await db.$transaction(async (tx) => {
     // First, find the pod to ensure it exists
     const existingPod = await tx.pod.findFirst({
       where: {
@@ -309,6 +310,19 @@ export async function releasePodById(podId: string): Promise<Pod | null> {
 
     return updatedPod;
   });
+
+  // Fire-and-forget: allow Karpenter to consolidate node after release
+  if (released) {
+    const swarm = await db.swarm.findUnique({
+      where: { id: released.swarmId },
+      select: { poolName: true, poolApiKey: true },
+    });
+    if (swarm?.poolName && swarm?.poolApiKey) {
+      markPodAsUnused(released.podId, swarm.poolName, swarm.poolApiKey).catch(() => {});
+    }
+  }
+
+  return released;
 }
 
 /**
