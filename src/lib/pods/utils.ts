@@ -123,14 +123,19 @@ export async function claimPodAndGetFrontend(
   console.log(">>> claimed pod", pod.podId);
 
   // Fire-and-forget: protect pod from Karpenter disruption (non-blocking)
-  db.swarm
-    .findUnique({ where: { id: swarmId }, select: { poolName: true, poolApiKey: true } })
-    .then((swarm) => {
+  void (async () => {
+    try {
+      const swarm = await db.swarm.findUnique({
+        where: { id: swarmId },
+        select: { poolName: true, poolApiKey: true },
+      });
       if (swarm?.poolName && swarm?.poolApiKey) {
         markPodAsUsed(pod.podId, swarm.poolName, swarm.poolApiKey).catch(() => {});
       }
-    })
-    .catch(() => {});
+    } catch {
+      // non-blocking
+    }
+  })();
 
   try {
     // Password is already decrypted from the database
