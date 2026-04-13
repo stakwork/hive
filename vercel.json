@@ -29,6 +29,10 @@
     {
       "path": "/api/cron/notification-dispatcher",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/pod-scaler",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -85,6 +85,8 @@ export const select = {
   ingestRequestInProgress: true,
   autoLearnEnabled: true,
   minimumVms: true,
+  minimumPods: true,
+  deployedPods: true,
   webhookUrl: true,
   pendingRepairTrigger: true,
   description: true,
