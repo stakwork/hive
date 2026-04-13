@@ -4,6 +4,8 @@ import { EncryptionService } from "@/lib/encryption";
 
 const encryptionService = EncryptionService.getInstance();
 
+const LOG_PREFIX = "[PodScalerCron]";
+
 export interface PodScalerResult {
   success: boolean;
   swarmsProcessed: number;
@@ -23,6 +25,7 @@ export interface PodScalerResult {
  */
 export async function executePodScalerRuns(): Promise<PodScalerResult> {
   const timestamp = new Date().toISOString();
+  console.log(`${LOG_PREFIX} Starting execution at ${timestamp}`);
   const errors: Array<{ swarmId: string; error: string }> = [];
   let swarmsProcessed = 0;
   let swarmsScaled = 0;
@@ -38,6 +41,7 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
       workspaceId: true,
     },
   });
+  console.log(`${LOG_PREFIX} Found ${swarms.length} swarms with pool configured`);
 
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
@@ -73,6 +77,14 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
         data: { minimumVms: targetVms, deployedPods: targetVms },
       });
 
+      if (targetVms > swarm.minimumVms) {
+        console.log(`${LOG_PREFIX} Scaling UP swarm ${swarm.id}: ${overQueuedCount} over-queued tasks → targetVms=${targetVms}`);
+      } else if (targetVms < swarm.minimumVms) {
+        console.log(`${LOG_PREFIX} Scaling DOWN swarm ${swarm.id}: no over-queued tasks → targetVms=${targetVms}`);
+      } else {
+        console.log(`${LOG_PREFIX} No change for swarm ${swarm.id}: targetVms=${targetVms} unchanged`);
+      }
+
       if (targetVms !== swarm.minimumVms) {
         swarmsScaled++;
         const decryptedKey = encryptionService.decryptField(
@@ -95,9 +107,11 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
             `Pool Manager scale failed (${response.status}): ${text}`
           );
         }
+        console.log(`${LOG_PREFIX} Pool Manager scale confirmed for swarm ${swarm.id}`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      console.error(`${LOG_PREFIX} Error processing swarm ${swarm.id}:`, message);
       errors.push({ swarmId: swarm.id, error: message });
     }
   }
