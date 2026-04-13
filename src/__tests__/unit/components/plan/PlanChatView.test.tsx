@@ -1363,4 +1363,159 @@ describe("PlanChatView", () => {
       expect(postCalls).toHaveLength(0);
     });
   });
+
+  describe("Model selector dropdown", () => {
+    let capturedChatAreaProps: any = null;
+
+    beforeEach(() => {
+      capturedChatAreaProps = null;
+    });
+
+    it("passes selectedModel='sonnet' (default), onModelChange, and hasMessages=false to ChatArea when no messages", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      expect(capturedChatAreaProps?.selectedModel).toBe("sonnet");
+      expect(typeof capturedChatAreaProps?.onModelChange).toBe("function");
+      expect(capturedChatAreaProps?.hasMessages).toBe(false);
+    });
+
+    it("passes hasMessages=true to ChatArea when messages exist", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [
+            {
+              id: "msg-1",
+              message: "Hello",
+              role: ChatRole.USER,
+              status: ChatStatus.SENT,
+              createdAt: new Date().toISOString(),
+              artifacts: [],
+            },
+          ],
+        }),
+      });
+
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(capturedChatAreaProps?.hasMessages).toBe(true);
+      });
+    });
+
+    it("includes selectedModel in POST body when sending a message", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({ ok: false }) // Sphinx fetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            message: {
+              id: "msg-new",
+              message: "Test message",
+              role: ChatRole.USER,
+              status: ChatStatus.SENT,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        });
+
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // Change model to "opus"
+      act(() => {
+        capturedChatAreaProps?.onModelChange("opus");
+      });
+
+      // Send a message
+      await act(async () => {
+        await capturedChatAreaProps?.onSend("Test message");
+      });
+
+      const postCall = mockFetch.mock.calls.find(
+        (call) => call[0] === "/api/features/feature-123/chat" && call[1]?.method === "POST"
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.model).toBe("opus");
+    });
+
+    it("sends default 'sonnet' model when no model change is made", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({ ok: false }) // Sphinx fetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            message: {
+              id: "msg-new",
+              message: "Hello",
+              role: ChatRole.USER,
+              status: ChatStatus.SENT,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        });
+
+      const chatModule = await import("@/components/chat");
+      vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
+        capturedChatAreaProps = props;
+        return <div data-testid="chat-area" />;
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        await capturedChatAreaProps?.onSend("Hello");
+      });
+
+      const postCall = mockFetch.mock.calls.find(
+        (call) => call[0] === "/api/features/feature-123/chat" && call[1]?.method === "POST"
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.model).toBe("sonnet");
+    });
+  });
 });

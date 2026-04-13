@@ -269,3 +269,49 @@ describe("POST /api/features/[featureId]/chat — isPrototype flag", () => {
     expect(callArg.isPrototype).toBeFalsy();
   });
 });
+
+describe("POST /api/features/[featureId]/chat — model forwarding", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.feature.findUnique).mockResolvedValue(makeFeature() as any);
+    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
+    vi.mocked(db.feature.update).mockResolvedValue({} as any);
+    vi.mocked(db.chatMessage.create).mockResolvedValue(makeChatMessage() as any);
+    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+  });
+
+  it("forwards model from request body to callStakworkAPI as taskModel", async () => {
+    const request = createChatRequest({ message: "Plan this feature", model: "opus" });
+
+    const response = await POST(request, { params: featureParams });
+    expect(response.status).toBe(201);
+
+    expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
+    const callArg = mockCallStakworkAPI.mock.calls[0][0];
+    expect(callArg.taskModel).toBe("opus");
+  });
+
+  it("passes undefined taskModel to callStakworkAPI when model is not in request body", async () => {
+    const request = createChatRequest({ message: "Plan this feature" });
+
+    const response = await POST(request, { params: featureParams });
+    expect(response.status).toBe(201);
+
+    expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
+    const callArg = mockCallStakworkAPI.mock.calls[0][0];
+    expect(callArg.taskModel).toBeUndefined();
+  });
+
+  it.each(["sonnet", "opus", "kimi", "gemini", "gpt", "codex"] as const)(
+    "forwards model '%s' correctly",
+    async (model) => {
+      const request = createChatRequest({ message: "Test", model });
+
+      const response = await POST(request, { params: featureParams });
+      expect(response.status).toBe(201);
+
+      const callArg = mockCallStakworkAPI.mock.calls[0][0];
+      expect(callArg.taskModel).toBe(model);
+    }
+  );
+});
