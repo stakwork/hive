@@ -4,6 +4,8 @@ import { EncryptionService } from "@/lib/encryption";
 
 const encryptionService = EncryptionService.getInstance();
 
+const LOG_PREFIX = "[PodScalerCron]";
+
 export interface PodScalerResult {
   success: boolean;
   swarmsProcessed: number;
@@ -17,12 +19,14 @@ export interface PodScalerResult {
  * Runs every 5 minutes via /api/cron/pod-scaler.
  *
  * - Over-queued tasks: TODO + TASK_COORDINATOR, not deleted/archived, createdAt > 5 min ago
- * - Scale up:   minimum_vms = max(minimumPods, overQueuedCount + 2)
+ * - Scale up:   minimum_vms = max(minimumPods, overQueuedCount + 2), capped at 20
  * - Scale down: minimum_vms = minimumPods
  * - minimumPods is never mutated by this cron.
+ * - Hard ceiling: targetVms is always capped at 20 pods maximum.
  */
 export async function executePodScalerRuns(): Promise<PodScalerResult> {
   const timestamp = new Date().toISOString();
+  console.log(`${LOG_PREFIX} Starting execution at ${timestamp}`);
   const errors: Array<{ swarmId: string; error: string }> = [];
   let swarmsProcessed = 0;
   let swarmsScaled = 0;
@@ -38,6 +42,7 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
       workspaceId: true,
     },
   });
+  console.log(`${LOG_PREFIX} Found ${swarms.length} swarms with pool configured`);
 
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
@@ -62,16 +67,26 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
       });
 
       const floor = swarm.minimumPods ?? swarm.minimumVms;
-      const targetVms =
+      const targetVms = Math.min(
         overQueuedCount > 0
           ? Math.max(floor, overQueuedCount + 2)
-          : floor;
+          : floor,
+        20
+      );
 
       // Always record the check result in deployedPods
       await db.swarm.update({
         where: { id: swarm.id },
         data: { minimumVms: targetVms, deployedPods: targetVms },
       });
+
+      if (targetVms > swarm.minimumVms) {
+        console.log(`${LOG_PREFIX} Scaling UP swarm ${swarm.id}: ${overQueuedCount} over-queued tasks → targetVms=${targetVms}`);
+      } else if (targetVms < swarm.minimumVms) {
+        console.log(`${LOG_PREFIX} Scaling DOWN swarm ${swarm.id}: no over-queued tasks → targetVms=${targetVms}`);
+      } else {
+        console.log(`${LOG_PREFIX} No change for swarm ${swarm.id}: targetVms=${targetVms} unchanged`);
+      }
 
       if (targetVms !== swarm.minimumVms) {
         swarmsScaled++;
@@ -95,9 +110,11 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
             `Pool Manager scale failed (${response.status}): ${text}`
           );
         }
+        console.log(`${LOG_PREFIX} Pool Manager scale confirmed for swarm ${swarm.id}`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      console.error(`${LOG_PREFIX} Error processing swarm ${swarm.id}:`, message);
       errors.push({ swarmId: swarm.id, error: message });
     }
   }
