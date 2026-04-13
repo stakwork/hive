@@ -117,6 +117,7 @@ describe("Pool Config API", () => {
         success: true,
         data: {
           minimumVms: 3,
+          minimumPods: null,
           isSuperAdmin: false,
         },
       });
@@ -144,6 +145,7 @@ describe("Pool Config API", () => {
         success: true,
         data: {
           minimumVms: 3,
+          minimumPods: null,
           isSuperAdmin: true,
         },
       });
@@ -162,6 +164,33 @@ describe("Pool Config API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.data.minimumVms).toBe(3);
+    });
+
+    it("should return minimumPods in response data", async () => {
+      // Set a minimumPods value on the swarm
+      await db.swarm.update({
+        where: { id: swarm.id },
+        data: { minimumPods: 5 },
+      });
+
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+      getMockedCheckIsSuperAdmin.mockResolvedValue(true);
+
+      const request = createAuthenticatedGetRequest(
+        `/api/w/${workspace.slug}/pool/config`,
+        superadminUser
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.data.minimumPods).toBe(5);
     });
 
     it("should return 200 with minimumVms for superadmin on unowned workspace", async () => {
@@ -203,6 +232,7 @@ describe("Pool Config API", () => {
         success: true,
         data: {
           minimumVms: 4,
+          minimumPods: null,
           isSuperAdmin: true,
         },
       });
@@ -304,6 +334,31 @@ describe("Pool Config API", () => {
       const data = await response.json();
       expect(data.success).toBe(false);
       expect(data.message).toContain("Forbidden");
+    });
+
+    it("should return 400 if neither minimumVms nor minimumPods is provided", async () => {
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.success).toBe(false);
     });
 
     it("should return 400 for minimumVms < 1", async () => {
@@ -489,6 +544,169 @@ describe("Pool Config API", () => {
         select: { minimumVms: true },
       });
       expect(updatedSwarm?.minimumVms).toBe(6);
+    });
+
+    it("should update DB with minimumPods and include minimum_pods in Pool Manager PUT body", async () => {
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minimumPods: 5 }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Verify DB was updated
+      const updatedSwarm = await db.swarm.findUnique({
+        where: { id: swarm.id },
+        select: { minimumPods: true },
+      });
+      expect(updatedSwarm?.minimumPods).toBe(5);
+
+      // Verify Pool Manager was called with minimum_pods
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`/pools/${encodeURIComponent(swarm.id)}`),
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ minimum_pods: 5 }),
+        })
+      );
+    });
+
+    it("should return 400 for minimumPods > 20", async () => {
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minimumPods: 21 }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.success).toBe(false);
+      expect(data.message).toContain("Invalid minimumPods");
+    });
+
+    it("should return 400 for minimumPods = 0", async () => {
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minimumPods: 0 }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.success).toBe(false);
+      expect(data.message).toContain("Invalid minimumPods");
+    });
+
+    it("should succeed with only minimumVms provided (no minimumPods)", async () => {
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minimumVms: 4 }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      const updatedSwarm = await db.swarm.findUnique({
+        where: { id: swarm.id },
+        select: { minimumVms: true },
+      });
+      expect(updatedSwarm?.minimumVms).toBe(4);
+
+      // Pool Manager called without minimum_pods
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify({ minimum_vms: 4 }),
+        })
+      );
+    });
+
+    it("should succeed with only minimumPods provided (no minimumVms)", async () => {
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minimumPods: 3 }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      const updatedSwarm = await db.swarm.findUnique({
+        where: { id: swarm.id },
+        select: { minimumPods: true },
+      });
+      expect(updatedSwarm?.minimumPods).toBe(3);
     });
 
     it("should return 404 when pool not configured", async () => {

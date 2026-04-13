@@ -13,12 +13,14 @@ export async function GET(request: NextRequest) {
     }
 
     if (process.env.POD_SCALER_CRON_ENABLED !== "true") {
+      console.log("[PodScalerCron] Pod scaler cron is disabled via POD_SCALER_CRON_ENABLED");
       return NextResponse.json({
         success: true,
         message: "Pod scaler cron is disabled",
       });
     }
 
+    console.log("[PodScalerCron] Starting pod scaler execution");
     const result = await executePodScalerRuns();
 
     if (result.success) {
