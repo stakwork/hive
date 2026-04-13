@@ -27,6 +27,13 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { UsageDisplay } from "./UsageDisplay";
 import { CreateFeatureModal } from "./CreateFeatureModal";
 import { formatRelativeOrDate } from "@/lib/date-utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 
 interface Doc {
   repoName: string;
@@ -108,8 +115,13 @@ export function LearnSidebar({
   const [autoLearnEnabled, setAutoLearnEnabled] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isLearningDoc, setIsLearningDoc] = useState(false);
 
   const processLabel = repositories.length > 1 ? "Process Repositories" : "Process Repository";
+
+  const unlearnedRepos = repositories.filter(
+    (repo) => !docs.some((doc) => doc.repoName === repo.name)
+  );
 
   // Seed new repo groups (default to expanded), preserve existing toggle state
   useEffect(() => {
@@ -249,6 +261,24 @@ export function LearnSidebar({
     }
   };
 
+  const handleLearnDoc = async (repo: { name: string; repositoryUrl: string }) => {
+    if (isLearningDoc) return;
+    setIsLearningDoc(true);
+    try {
+      const res = await fetch("/api/learnings/docs/learn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace: workspaceSlug, repo_url: repo.repositoryUrl }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Documentation learning triggered — reload the page to see it.");
+    } catch {
+      toast.error("Failed to trigger documentation learning.");
+    } finally {
+      setIsLearningDoc(false);
+    }
+  };
+
   const handleFeatureCreated = () => {
     onConceptCreated?.();
   };
@@ -269,6 +299,36 @@ export function LearnSidebar({
               <Badge variant="secondary" className="ml-1">
                 {docs.length}
               </Badge>
+              {!isDocsLoading && unlearnedRepos.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={(e) => e.stopPropagation()}
+                      disabled={isLearningDoc}
+                      className="ml-1 h-5 w-5 flex items-center justify-center rounded hover:bg-muted transition-colors"
+                      title="Learn docs for a repo"
+                      data-testid="learn-doc-button"
+                    >
+                      {isLearningDoc ? (
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Plus className="h-3 w-3" />
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {unlearnedRepos.map((repo) => (
+                      <DropdownMenuItem
+                        key={repo.id}
+                        onClick={() => handleLearnDoc(repo)}
+                      >
+                        {repo.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
             <ChevronDown
               className={cn(
