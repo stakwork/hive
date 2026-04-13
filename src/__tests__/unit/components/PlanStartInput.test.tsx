@@ -226,6 +226,7 @@ describe("PlanStartInput", () => {
       expect(onSubmit).toHaveBeenCalledOnce();
       expect(onSubmit).toHaveBeenCalledWith("My feature idea", {
         isPrototype: false,
+        model: "sonnet",
         selectedRepoId: null,
       });
     });
@@ -240,6 +241,7 @@ describe("PlanStartInput", () => {
       expect(onSubmit).toHaveBeenCalledOnce();
       expect(onSubmit).toHaveBeenCalledWith("My feature idea", {
         isPrototype: false,
+        model: "sonnet",
         selectedRepoId: null,
       });
     });
