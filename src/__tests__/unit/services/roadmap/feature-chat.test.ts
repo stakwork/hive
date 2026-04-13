@@ -1,39 +1,54 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { ArtifactType } from "@/lib/chat";
+import { ArtifactType, ChatRole, ChatStatus } from "@/lib/chat";
 
 // Mock dependencies before imports
 vi.mock("@/lib/db", () => ({
   db: {
     chatMessage: {
       findMany: vi.fn(),
+      create: vi.fn(),
+    },
+    feature: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    artifact: {
+      findFirst: vi.fn(),
     },
   },
 }));
 
 vi.mock("@/config/env", () => ({
   config: {
-    stakworkApiKey: "test-key",
-    stakworkApiUrl: "https://test.stakwork.com",
+    STAKWORK_API_KEY: "test-key",
+    STAKWORK_BASE_URL: "https://test.stakwork.com",
+    STAKWORK_WORKFLOW_ID: "workflow-123",
   },
 }));
 
-vi.mock("@/services/s3", () => ({ getS3Service: vi.fn() }));
-vi.mock("@/services/task-workflow", () => ({ callStakworkAPI: vi.fn() }));
-vi.mock("@/services/task-coordinator", () => ({ buildFeatureContext: vi.fn() }));
-vi.mock("@/lib/pusher", () => ({
-  pusherServer: { trigger: vi.fn() },
-  getFeatureChannelName: vi.fn(),
-  PUSHER_EVENTS: {},
+vi.mock("@/services/s3", () => ({
+  getS3Service: vi.fn(() => ({
+    generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://s3.example.com/file"),
+  })),
 }));
-vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: vi.fn() }));
-vi.mock("@/lib/helpers/repository", () => ({ joinRepoUrls: vi.fn() }));
-vi.mock("@/lib/utils/swarm", () => ({ transformSwarmUrlToRepo2Graph: vi.fn() }));
-vi.mock("@/lib/encryption", () => ({ EncryptionService: vi.fn() }));
+vi.mock("@/services/task-workflow", () => ({ callStakworkAPI: vi.fn().mockResolvedValue(null) }));
+vi.mock("@/services/task-coordinator", () => ({ buildFeatureContext: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/pusher", () => ({
+  pusherServer: { trigger: vi.fn().mockResolvedValue(undefined) },
+  getFeatureChannelName: vi.fn().mockReturnValue("feature-channel"),
+  PUSHER_EVENTS: { NEW_MESSAGE: "new-message", WORKFLOW_STATUS_UPDATE: "workflow-status" },
+}));
+vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: vi.fn().mockResolvedValue(null) }));
+vi.mock("@/lib/helpers/repository", () => ({ joinRepoUrls: vi.fn().mockReturnValue("") }));
+vi.mock("@/lib/utils/swarm", () => ({ transformSwarmUrlToRepo2Graph: vi.fn().mockReturnValue("") }));
+vi.mock("@/lib/encryption", () => ({ EncryptionService: { getInstance: vi.fn(() => ({ decryptField: vi.fn().mockReturnValue("api-key") })) } }));
 
 import { db } from "@/lib/db";
-import { fetchFeatureChatHistory } from "@/services/roadmap/feature-chat";
+import { callStakworkAPI } from "@/services/task-workflow";
+import { fetchFeatureChatHistory, sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 
 const mockFindMany = db.chatMessage.findMany as ReturnType<typeof vi.fn>;
+const mockCallStakworkAPI = vi.mocked(callStakworkAPI);
 
 const makeMsg = (
   id: string,
@@ -252,4 +267,102 @@ describe("filteredHistory logic", () => {
     expect(filtered).toHaveLength(0);
     expect(filtered.length === 0).toBe(true);
   });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests for sendFeatureChatMessage — model (taskModel) forwarding
+// ──────────────────────────────────────────────────────────────────────────────
+
+function makeFeature() {
+  return {
+    id: "feature-123",
+    workspaceId: "workspace-1",
+    planUpdatedAt: null,
+    workflowStatus: "PENDING",
+    phases: [],
+    workspace: {
+      slug: "test-workspace",
+      ownerId: "user-123",
+      swarm: {
+        swarmUrl: "https://swarm.test.com/api",
+        swarmSecretAlias: "alias",
+        poolName: "pool-1",
+        id: "swarm-id",
+        swarmApiKey: null,
+      },
+      members: [],
+      repositories: [],
+    },
+  };
+}
+
+function makeChatMsg() {
+  return {
+    id: "msg-new",
+    featureId: "feature-123",
+    userId: "user-123",
+    message: "Test message",
+    role: ChatRole.USER,
+    status: ChatStatus.SENT,
+    contextTags: "[]",
+    sourceWebsocketID: null,
+    replyId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    artifacts: [],
+    attachments: [],
+    createdBy: { id: "user-123", name: "Test", email: "test@test.com", image: null },
+  };
+}
+
+describe("sendFeatureChatMessage — taskModel forwarding", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.feature.findUnique).mockResolvedValue(makeFeature() as any);
+    vi.mocked(db.chatMessage.create).mockResolvedValue(makeChatMsg() as any);
+    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
+    vi.mocked(db.feature.update).mockResolvedValue({} as any);
+    mockCallStakworkAPI.mockResolvedValue({ error: "mock - no stakwork in tests" });
+  });
+
+  test("passes taskModel to callStakworkAPI when model param is provided", async () => {
+    await sendFeatureChatMessage({
+      featureId: "feature-123",
+      userId: "user-123",
+      message: "Hello",
+      model: "opus",
+    });
+
+    expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
+    const callArg = mockCallStakworkAPI.mock.calls[0][0];
+    expect(callArg.taskModel).toBe("opus");
+  });
+
+  test("passes undefined taskModel when model param is omitted", async () => {
+    await sendFeatureChatMessage({
+      featureId: "feature-123",
+      userId: "user-123",
+      message: "Hello",
+    });
+
+    expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
+    const callArg = mockCallStakworkAPI.mock.calls[0][0];
+    expect(callArg.taskModel).toBeUndefined();
+  });
+
+  test.each(["sonnet", "haiku", "kimi", "gemini", "gpt"] as const)(
+    "forwards model '%s' as taskModel to callStakworkAPI",
+    async (model) => {
+      await sendFeatureChatMessage({
+        featureId: "feature-123",
+        userId: "user-123",
+        message: "Hello",
+        model,
+      });
+
+      const callArg = mockCallStakworkAPI.mock.calls[0][0];
+      expect(callArg.taskModel).toBe(model);
+    }
+  );
 });
