@@ -32,7 +32,10 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
   let swarmsScaled = 0;
 
   const swarms = await db.swarm.findMany({
-    where: { poolApiKey: { not: null } },
+    where: {
+      poolApiKey: { not: null },
+      workspace: { deleted: false },
+    },
     select: {
       id: true,
       minimumVms: true,
@@ -45,6 +48,7 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
   console.log(`${LOG_PREFIX} Found ${swarms.length} swarms with pool configured`);
 
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const oneMonthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   for (const swarm of swarms) {
     swarmsProcessed++;
@@ -63,6 +67,7 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
             { feature: { status: { not: "CANCELLED" } } },
           ],
           createdAt: { lt: fiveMinutesAgo },
+          updatedAt: { gte: oneMonthAgo },
         },
       });
 
