@@ -41,13 +41,14 @@ export async function GET(
     // Get swarm config
     const swarm = await db.swarm.findFirst({
       where: { workspaceId: workspace.id },
-      select: { minimumVms: true },
+      select: { minimumVms: true, minimumPods: true },
     });
 
     return NextResponse.json({
       success: true,
       data: {
         minimumVms: swarm?.minimumVms ?? 2,
+        minimumPods: swarm?.minimumPods ?? null,
         isSuperAdmin: userIsSuperAdmin,
       },
     });
@@ -103,14 +104,34 @@ export async function PATCH(
 
     // Parse request body
     const body = await request.json();
-    const { minimumVms } = body;
+    const { minimumVms, minimumPods } = body;
 
-    // Validate minimumVms
-    if (typeof minimumVms !== "number" || minimumVms < 1) {
+    // Require at least one field
+    if (minimumVms === undefined && minimumPods === undefined) {
       return NextResponse.json(
-        { success: false, message: "Invalid minimumVms: must be a number >= 1" },
+        { success: false, message: "At least one of minimumVms or minimumPods must be provided" },
         { status: 400 }
       );
+    }
+
+    // Validate minimumVms when present
+    if (minimumVms !== undefined) {
+      if (typeof minimumVms !== "number" || minimumVms < 1) {
+        return NextResponse.json(
+          { success: false, message: "Invalid minimumVms: must be a number >= 1" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate minimumPods when present
+    if (minimumPods !== undefined) {
+      if (typeof minimumPods !== "number" || minimumPods < 1 || minimumPods > 20) {
+        return NextResponse.json(
+          { success: false, message: "Invalid minimumPods: must be a number >= 1 and <= 20" },
+          { status: 400 }
+        );
+      }
     }
 
     // Get swarm including pool details
@@ -136,10 +157,15 @@ export async function PATCH(
       );
     }
 
+    // Build update data with only provided fields
+    const updateData: { minimumVms?: number; minimumPods?: number } = {};
+    if (minimumVms !== undefined) updateData.minimumVms = minimumVms;
+    if (minimumPods !== undefined) updateData.minimumPods = minimumPods;
+
     // Update DB
     await db.swarm.update({
       where: { id: swarm.id },
-      data: { minimumVms },
+      data: updateData,
     });
 
     // Forward to Pool Manager
@@ -147,13 +173,17 @@ export async function PATCH(
       const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
       const poolManagerUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(swarm.id)}`;
 
+      const poolManagerBody: { minimum_vms?: number; minimum_pods?: number } = {};
+      if (minimumVms !== undefined) poolManagerBody.minimum_vms = minimumVms;
+      if (minimumPods !== undefined) poolManagerBody.minimum_pods = minimumPods;
+
       const response = await fetch(poolManagerUrl, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${decryptedApiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ minimum_vms: minimumVms }),
+        body: JSON.stringify(poolManagerBody),
       });
 
       if (!response.ok) {
