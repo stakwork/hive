@@ -7,6 +7,7 @@ import { buildFeatureContext } from "@/services/task-coordinator";
 import { EncryptionService } from "@/lib/encryption";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
+import { getApiKeyForModel } from "@/lib/ai/models";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 
 const encryptionService = EncryptionService.getInstance();
@@ -256,6 +257,7 @@ export async function startTaskWorkflow(params: {
       runBuild: true,
       runTestSuite: true,
       autoMerge: true,
+      model: true,
       podId: true,
       agentPassword: true,
       repository: {
@@ -348,6 +350,7 @@ export async function startTaskWorkflow(params: {
     autoMergePr: task.autoMerge,
     history,
     featureId: task.featureId,
+    taskModel: task.model ?? undefined,
   });
 }
 
@@ -368,8 +371,9 @@ export async function createChatMessageAndTriggerStakwork(params: {
   autoMergePr?: boolean;
   history?: Record<string, unknown>[];
   featureId?: string | null;
+  taskModel?: string;
 }) {
-  const { taskId, message, userId, task: providedTask, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr, history = [], featureId = null } = params;
+  const { taskId, message, userId, task: providedTask, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr, history = [], featureId = null, taskModel } = params;
 
   // Fetch task if not provided
   let task = providedTask;
@@ -483,6 +487,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
       autoMergePr,
       history,
       featureId,
+      taskModel,
     });
 
     if (stakworkData.projectId) {
@@ -667,6 +672,8 @@ export async function callStakworkAPI(params: {
   }
   if (taskModel) {
     vars.model = taskModel;
+    const resolvedApiKey = getApiKeyForModel(taskModel);
+    if (resolvedApiKey) vars.apiKey = resolvedApiKey;
   }
 
   // Get workflow ID (replicating workflow selection logic)
