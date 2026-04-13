@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getServerSession } from "next-auth/next";
 import { getToken } from "next-auth/jwt";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
@@ -65,6 +65,13 @@ export async function POST(request: NextRequest) {
 
     if (!isOwner && !isMember) {
       return NextResponse.json({ error: "Unauthorized: Not a workspace member" }, { status: 403 });
+    }
+
+    if (task.workflowStatus === WorkflowStatus.IN_PROGRESS) {
+      return NextResponse.json(
+        { error: "A workflow is already in progress for this task" },
+        { status: 400 },
+      );
     }
 
     // In production, restrict to stakwork workspace only
