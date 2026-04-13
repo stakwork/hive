@@ -29,6 +29,7 @@ interface UpdateRoadmapTaskParams {
     autoMerge?: boolean;
     runBuild?: boolean;
     runTestSuite?: boolean;
+    model?: string | null;
   };
 }
 
