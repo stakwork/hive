@@ -203,6 +203,30 @@ describe("executePodScalerRuns", () => {
     });
   });
 
+  it("caps targetVms at 20 when overQueuedCount is very large", async () => {
+    // 50 over-queued tasks would normally give targetVms = max(2, 52) = 52; must be capped at 20
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count.mockResolvedValue(50);
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(1);
+
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 20, deployedPods: 20 },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: JSON.stringify({ minimum_vms: 20 }),
+      })
+    );
+  });
+
   it("returns correct timestamp in result", async () => {
     mockedDb.swarm.findMany.mockResolvedValue([] as never);
 
