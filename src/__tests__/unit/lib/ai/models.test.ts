@@ -9,8 +9,8 @@ describe("models", () => {
       }
     });
 
-    test("returns true for codex", () => {
-      expect(isValidModel("codex")).toBe(true);
+    test("returns true for haiku", () => {
+      expect(isValidModel("haiku")).toBe(true);
     });
 
     test("returns false for unknown model", () => {
@@ -35,9 +35,9 @@ describe("models", () => {
       process.env = originalEnv;
     });
 
-    test("returns OPENAI_API_KEY for codex", () => {
-      process.env.OPENAI_API_KEY = "test-openai-key";
-      expect(getApiKeyForModel("codex")).toBe("test-openai-key");
+    test("returns ANTHROPIC_API_KEY for haiku", () => {
+      process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+      expect(getApiKeyForModel("haiku")).toBe("test-anthropic-key");
     });
 
     test("returns ANTHROPIC_API_KEY for sonnet", () => {
@@ -51,8 +51,8 @@ describe("models", () => {
     });
 
     test("returns undefined when env var is not set", () => {
-      delete process.env.OPENAI_API_KEY;
-      expect(getApiKeyForModel("codex")).toBeUndefined();
+      delete process.env.ANTHROPIC_API_KEY;
+      expect(getApiKeyForModel("haiku")).toBeUndefined();
     });
   });
 });

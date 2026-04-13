@@ -302,7 +302,7 @@ describe("POST /api/features/[featureId]/chat — model forwarding", () => {
     expect(callArg.taskModel).toBeUndefined();
   });
 
-  it.each(["sonnet", "opus", "kimi", "gemini", "gpt", "codex"] as const)(
+  it.each(["sonnet", "opus", "haiku", "kimi", "gemini", "gpt"] as const)(
     "forwards model '%s' correctly",
     async (model) => {
       const request = createChatRequest({ message: "Test", model });
