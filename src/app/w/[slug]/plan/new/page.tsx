@@ -13,7 +13,7 @@ export default function NewPlanPage() {
 
   const handleSubmit = async (
     message: string,
-    options?: { isPrototype: boolean; selectedRepoId: string | null },
+    options?: { isPrototype: boolean; selectedRepoId: string | null; model?: string },
   ) => {
     setIsLoading(true);
     try {
@@ -74,7 +74,7 @@ export default function NewPlanPage() {
       const chatRes = await fetch(`/api/features/${feature.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, model: options?.model }),
       });
 
       if (!chatRes.ok) {
