@@ -25,9 +25,11 @@ export async function GET(
     }
 
     const { db } = await import("@/lib/db");
-    const { checkIsSuperAdmin } = await import("@/lib/middleware/utils");
-    
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
+
+    // Check if user is superadmin before workspace lookup so bypass can be applied
+    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
+
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
 
     if (!workspace) {
       return NextResponse.json(
@@ -35,9 +37,6 @@ export async function GET(
         { status: 404 }
       );
     }
-
-    // Check if user is superadmin
-    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
 
     // Get swarm config
     const swarm = await db.swarm.findFirst({
@@ -93,7 +92,7 @@ export async function PATCH(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id, { isSuperAdmin: true });
 
     if (!workspace) {
       return NextResponse.json(
