@@ -346,10 +346,7 @@ async function createAgentSession(
     searchApiKey: process.env.EXA_API_KEY,
   };
 
-  if (effectiveModel === "codex") {
-    sessionPayload.agent_name = "codex";
-    sessionPayload.model = "codex";
-  } else if (effectiveModel) {
+  if (effectiveModel) {
     sessionPayload.model = effectiveModel;
   }
 
