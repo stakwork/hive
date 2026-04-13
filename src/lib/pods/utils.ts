@@ -2,6 +2,7 @@ import { parsePM2Content } from "@/utils/devContainerUtils";
 import { db } from "@/lib/db";
 import { JlistProcess } from "@/types/pod-repair";
 import { claimAvailablePod, getPodDetails, releasePodById, getPodUsageStatus, buildPodUrl } from "./queries";
+import { markPodAsUsed } from "./karpenter";
 
 // Re-export constants for external use
 export { POD_PORTS, PROCESS_NAMES } from "./constants";
@@ -120,6 +121,15 @@ export async function claimPodAndGetFrontend(
   }
 
   console.log(">>> claimed pod", pod.podId);
+
+  // Fire-and-forget: protect pod from Karpenter disruption
+  const swarmForKarpenter = await db.swarm.findUnique({
+    where: { id: swarmId },
+    select: { poolName: true, poolApiKey: true },
+  });
+  if (swarmForKarpenter?.poolName && swarmForKarpenter?.poolApiKey) {
+    markPodAsUsed(pod.podId, swarmForKarpenter.poolName, swarmForKarpenter.poolApiKey).catch(() => {});
+  }
 
   try {
     // Password is already decrypted from the database
