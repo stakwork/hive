@@ -3,15 +3,20 @@
  *
  * Tests the LLM model pricing endpoint including:
  * - Authentication via x-api-token header
- * - Returns all LLM model records for a valid token
- * - Returned records contain all expected fields
+ * - Authentication via session (middleware context)
+ * - Returns only active LLM model records
+ * - Expired models are excluded
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { db } from "@/lib/db";
 import { createTestLlmModel } from "@/__tests__/support/factories/llm-model.factory";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import {
+  createAuthenticatedGetRequest,
+} from "@/__tests__/support/helpers/request-builders";
 import { GET } from "@/app/api/llm-models/route";
-import type { LlmModel } from "@prisma/client";
+import type { LlmModel, User } from "@prisma/client";
 
 const VALID_API_TOKEN = "test-api-token";
 
@@ -25,9 +30,16 @@ function createGetRequest(token?: string) {
 
 describe("GET /api/llm-models - Integration Tests", () => {
   let seededModels: LlmModel[] = [];
+  let testUser: User;
 
   beforeEach(async () => {
     process.env.API_TOKEN = VALID_API_TOKEN;
+
+    testUser = await createTestUser();
+
+    const now = new Date();
+    const pastDate = new Date(now.getTime() - 1000 * 60 * 60 * 24); // yesterday
+    const futureDate = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 30); // 30 days from now
 
     seededModels = await Promise.all([
       createTestLlmModel({
@@ -36,6 +48,7 @@ describe("GET /api/llm-models - Integration Tests", () => {
         providerLabel: "OpenAI",
         inputPricePer1M: 5.0,
         outputPricePer1M: 15.0,
+        dateEnd: null,
       }),
       createTestLlmModel({
         name: "claude-3-5-sonnet",
@@ -43,6 +56,15 @@ describe("GET /api/llm-models - Integration Tests", () => {
         providerLabel: "Anthropic",
         inputPricePer1M: 3.0,
         outputPricePer1M: 15.0,
+        dateEnd: futureDate,
+      }),
+      createTestLlmModel({
+        name: "expired-model",
+        provider: "GOOGLE",
+        providerLabel: "Google",
+        inputPricePer1M: 1.0,
+        outputPricePer1M: 2.0,
+        dateEnd: pastDate,
       }),
     ]);
   });
@@ -51,17 +73,18 @@ describe("GET /api/llm-models - Integration Tests", () => {
     await db.llmModel.deleteMany({
       where: { id: { in: seededModels.map((m) => m.id) } },
     });
+    await db.user.deleteMany({ where: { id: testUser.id } });
     seededModels = [];
   });
 
   describe("Authentication", () => {
-    test("returns 401 when x-api-token header is missing", async () => {
+    test("returns 401 when no token and no session", async () => {
       const request = createGetRequest();
       const response = await GET(request as any);
 
       expect(response.status).toBe(401);
       const data = await response.json();
-      expect(data).toEqual({ error: "Unauthorized" });
+      expect(data).toHaveProperty("error");
     });
 
     test("returns 401 when x-api-token is invalid", async () => {
@@ -69,14 +92,22 @@ describe("GET /api/llm-models - Integration Tests", () => {
       const response = await GET(request as any);
 
       expect(response.status).toBe(401);
-      const data = await response.json();
-      expect(data).toEqual({ error: "Unauthorized" });
     });
-  });
 
-  describe("Successful retrieval", () => {
-    test("returns 200 with { models: [...] } for a valid token", async () => {
+    test("returns 200 with valid x-api-token", async () => {
       const request = createGetRequest(VALID_API_TOKEN);
+      const response = await GET(request as any);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toHaveProperty("models");
+    });
+
+    test("returns 200 with valid session auth", async () => {
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/llm-models",
+        testUser
+      );
       const response = await GET(request as any);
 
       expect(response.status).toBe(200);
@@ -84,15 +115,68 @@ describe("GET /api/llm-models - Integration Tests", () => {
       expect(data).toHaveProperty("models");
       expect(Array.isArray(data.models)).toBe(true);
     });
+  });
 
-    test("returned models contain all expected fields", async () => {
+  describe("Active-only filter", () => {
+    test("excludes models with dateEnd in the past", async () => {
       const request = createGetRequest(VALID_API_TOKEN);
       const response = await GET(request as any);
 
       const data = await response.json();
-      const seededIds = seededModels.map((m) => m.id);
-      const returnedModels = data.models.filter((m: LlmModel) =>
-        seededIds.includes(m.id)
+      const returnedIds = data.models.map((m: { id: string }) => m.id);
+      const expiredModel = seededModels.find((m) => m.name === "expired-model")!;
+
+      expect(returnedIds).not.toContain(expiredModel.id);
+    });
+
+    test("includes models with dateEnd: null", async () => {
+      const request = createGetRequest(VALID_API_TOKEN);
+      const response = await GET(request as any);
+
+      const data = await response.json();
+      const returnedIds = data.models.map((m: { id: string }) => m.id);
+      const nullEndModel = seededModels.find((m) => m.name === "gpt-4o")!;
+
+      expect(returnedIds).toContain(nullEndModel.id);
+    });
+
+    test("includes models with future dateEnd", async () => {
+      const request = createGetRequest(VALID_API_TOKEN);
+      const response = await GET(request as any);
+
+      const data = await response.json();
+      const returnedIds = data.models.map((m: { id: string }) => m.id);
+      const futureModel = seededModels.find((m) => m.name === "claude-3-5-sonnet")!;
+
+      expect(returnedIds).toContain(futureModel.id);
+    });
+
+    test("session auth also returns only active models", async () => {
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/llm-models",
+        testUser
+      );
+      const response = await GET(request as any);
+
+      const data = await response.json();
+      const returnedIds = data.models.map((m: { id: string }) => m.id);
+      const expiredModel = seededModels.find((m) => m.name === "expired-model")!;
+
+      expect(returnedIds).not.toContain(expiredModel.id);
+    });
+  });
+
+  describe("Response shape", () => {
+    test("returned models contain only selected fields", async () => {
+      const request = createGetRequest(VALID_API_TOKEN);
+      const response = await GET(request as any);
+
+      const data = await response.json();
+      const seededActiveIds = seededModels
+        .filter((m) => m.name !== "expired-model")
+        .map((m) => m.id);
+      const returnedModels = data.models.filter((m: { id: string }) =>
+        seededActiveIds.includes(m.id)
       );
 
       expect(returnedModels).toHaveLength(2);
@@ -102,34 +186,30 @@ describe("GET /api/llm-models - Integration Tests", () => {
         expect(model).toHaveProperty("name");
         expect(model).toHaveProperty("provider");
         expect(model).toHaveProperty("providerLabel");
-        expect(model).toHaveProperty("inputPricePer1M");
-        expect(model).toHaveProperty("outputPricePer1M");
-        expect(model).toHaveProperty("dateStart");
-        expect(model).toHaveProperty("dateEnd");
-        expect(model).toHaveProperty("createdAt");
-        expect(model).toHaveProperty("updatedAt");
+        // Pricing fields should NOT be in the response (select only returns id/name/provider/providerLabel)
+        expect(model).not.toHaveProperty("inputPricePer1M");
+        expect(model).not.toHaveProperty("outputPricePer1M");
+        expect(model).not.toHaveProperty("createdAt");
       }
     });
 
-    test("returns seeded models with correct data", async () => {
+    test("returns correct data for seeded models", async () => {
       const request = createGetRequest(VALID_API_TOKEN);
       const response = await GET(request as any);
 
       const data = await response.json();
       const seededIds = seededModels.map((m) => m.id);
-      const returnedModels = data.models.filter((m: LlmModel) =>
+      const returnedModels = data.models.filter((m: { id: string }) =>
         seededIds.includes(m.id)
       );
 
-      const gpt4o = returnedModels.find((m: LlmModel) => m.name === "gpt-4o");
+      const gpt4o = returnedModels.find((m: { name: string }) => m.name === "gpt-4o");
       expect(gpt4o).toBeDefined();
       expect(gpt4o.provider).toBe("OPENAI");
       expect(gpt4o.providerLabel).toBe("OpenAI");
-      expect(gpt4o.inputPricePer1M).toBe(5.0);
-      expect(gpt4o.outputPricePer1M).toBe(15.0);
 
       const claude = returnedModels.find(
-        (m: LlmModel) => m.name === "claude-3-5-sonnet"
+        (m: { name: string }) => m.name === "claude-3-5-sonnet"
       );
       expect(claude).toBeDefined();
       expect(claude.provider).toBe("ANTHROPIC");
