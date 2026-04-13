@@ -164,6 +164,74 @@ describe("Pool Config API", () => {
       expect(data.data.minimumVms).toBe(3);
     });
 
+    it("should return 200 with minimumVms for superadmin on unowned workspace", async () => {
+      // Create a separate workspace owned by a different user
+      const otherScenario = await createTestWorkspaceScenario({
+        owner: { name: "Other Owner" },
+      });
+      const otherSwarm = await createTestSwarm({
+        workspaceId: otherScenario.workspace.id,
+        name: `other-swarm-${generateUniqueId("swarm")}`,
+        status: "ACTIVE",
+        poolName: `other-pool-${generateUniqueId("pool")}`,
+        poolApiKey: "other-api-key",
+      });
+      await db.swarm.update({
+        where: { id: otherSwarm.id },
+        data: { minimumVms: 4 },
+      });
+
+      // superadminUser is NOT a member of otherScenario.workspace
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+      getMockedCheckIsSuperAdmin.mockResolvedValue(true);
+
+      const request = createAuthenticatedGetRequest(
+        `/api/w/${otherScenario.workspace.slug}/pool/config`,
+        superadminUser
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: otherScenario.workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({
+        success: true,
+        data: {
+          minimumVms: 4,
+          isSuperAdmin: true,
+        },
+      });
+    });
+
+    it("should return 404 for non-admin user on unowned workspace", async () => {
+      const otherScenario = await createTestWorkspaceScenario({
+        owner: { name: "Another Owner" },
+      });
+
+      // regularUser is NOT a member of otherScenario.workspace
+      getMockedRequireAuth.mockReturnValue({
+        id: regularUser.id,
+        email: regularUser.email!,
+        name: regularUser.name!,
+      });
+      getMockedCheckIsSuperAdmin.mockResolvedValue(false);
+
+      const request = createAuthenticatedGetRequest(
+        `/api/w/${otherScenario.workspace.slug}/pool/config`,
+        regularUser
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: otherScenario.workspace.slug }),
+      });
+
+      expect(response.status).toBe(404);
+    });
+
     it("should return 404 when workspace has no swarm", async () => {
       // Create workspace without swarm
       const newScenario = await createTestWorkspaceScenario({
@@ -372,6 +440,55 @@ describe("Pool Config API", () => {
         select: { minimumVms: true },
       });
       expect(updatedSwarm?.minimumVms).toBe(7);
+    });
+
+    it("should update minimumVms for superadmin on unowned workspace", async () => {
+      // Create a workspace the superadmin does NOT belong to
+      const otherScenario = await createTestWorkspaceScenario({
+        owner: { name: "Unowned Workspace Owner" },
+      });
+      const otherSwarm = await createTestSwarm({
+        workspaceId: otherScenario.workspace.id,
+        name: `unowned-swarm-${generateUniqueId("swarm")}`,
+        status: "ACTIVE",
+        poolName: `unowned-pool-${generateUniqueId("pool")}`,
+        poolApiKey: "unowned-api-key",
+      });
+      await db.swarm.update({
+        where: { id: otherSwarm.id },
+        data: { minimumVms: 2 },
+      });
+
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+      getMockedCheckIsSuperAdmin.mockResolvedValue(true);
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${otherScenario.workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minimumVms: 6 }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: otherScenario.workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Verify DB was updated
+      const updatedSwarm = await db.swarm.findUnique({
+        where: { id: otherSwarm.id },
+        select: { minimumVms: true },
+      });
+      expect(updatedSwarm?.minimumVms).toBe(6);
     });
 
     it("should return 404 when pool not configured", async () => {

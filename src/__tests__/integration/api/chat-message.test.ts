@@ -179,6 +179,39 @@ describe("POST /api/chat/message Integration Tests", () => {
     });
   });
 
+  describe("Workflow Guard Tests", () => {
+    test("should return 400 when task workflow is IN_PROGRESS", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
+
+      // Create a task with IN_PROGRESS workflow status
+      const inProgressTask = await db.task.create({
+        data: {
+          title: "In-Progress Task",
+          status: "TODO",
+          workspaceId: testWorkspace.id,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+        },
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/chat/message", testUser, {
+        taskId: inProgressTask.id,
+        message: "Test message",
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("A workflow is already in progress for this task");
+
+      // Verify no chat message was created
+      const messages = await db.chatMessage.findMany({ where: { taskId: inProgressTask.id } });
+      expect(messages).toHaveLength(0);
+    });
+  });
+
   describe("Database Access Control Tests", () => {
     test("should return 404 for non-existent task", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();

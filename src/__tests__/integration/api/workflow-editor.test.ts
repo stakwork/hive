@@ -387,6 +387,33 @@ describe("POST /api/workflow-editor Integration Tests", () => {
     });
   });
 
+  describe("Workflow Guard Tests", () => {
+    test("returns 400 when task workflow is IN_PROGRESS", async () => {
+      const { user, workspace } = await createTestDataWithStakworkWorkspace();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const task = await createTestTask({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+      });
+
+      const request = createPostRequest("http://localhost:3000/api/workflow-editor", {
+        taskId: task.id,
+        message: "Test message",
+        workflowId: 100,
+      });
+
+      const response = await POST(request);
+      await expectError(response, "A workflow is already in progress for this task", 400);
+
+      // Verify no chatMessage was created and no Stakwork fetch was made
+      const messages = await db.chatMessage.findMany({ where: { taskId: task.id } });
+      expect(messages).toHaveLength(0);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
   describe("Configuration Tests", () => {
     test("returns 500 when STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID is not configured", async () => {
       const { user, task } = await createTestDataWithStakworkWorkspace();
