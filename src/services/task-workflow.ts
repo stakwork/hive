@@ -665,10 +665,7 @@ export async function callStakworkAPI(params: {
   if (mode === "plan_mode" && process.env.PLAN_MODE_MODEL) {
     vars.model = process.env.PLAN_MODE_MODEL;
   }
-  if (taskModel === "codex") {
-    vars.agent_name = "codex";
-    vars.model = "codex";
-  } else if (taskModel) {
+  if (taskModel) {
     vars.model = taskModel;
   }
 

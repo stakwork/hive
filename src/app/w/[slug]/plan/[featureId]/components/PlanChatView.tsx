@@ -1,6 +1,7 @@
 "use client";
 
 import { ArtifactsPanel, ChatArea } from "@/components/chat";
+import type { ModelName } from "@/lib/ai/models";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -101,6 +102,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [sphinxReady, setSphinxReady] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
   const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
 
   // Project log WebSocket for live thinking logs
@@ -354,7 +356,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const res = await fetch(`/api/features/${featureId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: messageText, attachments, sourceWebsocketID: getPusherClient().connection.socket_id }),
+          body: JSON.stringify({ message: messageText, attachments, sourceWebsocketID: getPusherClient().connection.socket_id, model: selectedModel }),
         });
 
         if (res.ok) {
@@ -508,6 +510,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     }
   }, [isRetrying, messages, sendMessage]);
 
+  const hasMessages = initialLoadDone && messages.length > 0;
+
   const chatAreaProps = {
     messages,
     onSend: sendMessage,
@@ -529,6 +533,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     isRetrying,
     streamContext,
     isSuperAdmin,
+    selectedModel,
+    onModelChange: setSelectedModel,
+    hasMessages,
   };
 
   const artifactsPanelProps = {
