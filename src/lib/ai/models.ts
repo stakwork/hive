@@ -5,9 +5,9 @@
  */
 
 // Valid model names that can be passed from frontend
-export type ModelName = "sonnet" | "opus" | "kimi" | "gemini" | "gpt" | "codex";
+export type ModelName = "sonnet" | "opus" | "haiku" | "kimi" | "gemini" | "gpt";
 
-export const VALID_MODELS: ModelName[] = ["sonnet", "opus", "kimi", "gemini", "gpt", "codex"];
+export const VALID_MODELS: ModelName[] = ["sonnet", "opus", "haiku", "kimi", "gemini", "gpt"];
 
 // Map model names to their API key environment variables
 export const API_KEY_ENV_VARS: Record<ModelName, string> = {
