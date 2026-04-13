@@ -23,7 +23,21 @@ export function isValidModel(model: unknown): model is ModelName {
   return typeof model === "string" && VALID_MODELS.includes(model as ModelName);
 }
 
-export function getApiKeyForModel(model: ModelName): string | undefined {
-  const envVar = API_KEY_ENV_VARS[model];
-  return process.env[envVar];
+// Map LlmProvider enum values to their API key environment variables
+export const PROVIDER_API_KEY_ENV_VARS: Record<string, string | null> = {
+  ANTHROPIC: "ANTHROPIC_API_KEY",
+  OPENAI: "OPENAI_API_KEY",
+  GOOGLE: "GOOGLE_API_KEY",
+  AWS_BEDROCK: "AWS_BEDROCK_API_KEY",
+  OTHER: null,
+};
+
+export function getApiKeyForModel(model: ModelName | string): string | undefined {
+  if (model.includes("/")) {
+    const provider = model.split("/")[0].toUpperCase();
+    const envVar = PROVIDER_API_KEY_ENV_VARS[provider];
+    return envVar ? process.env[envVar] : undefined;
+  }
+  const envVar = API_KEY_ENV_VARS[model as ModelName];
+  return envVar ? process.env[envVar] : undefined;
 }
