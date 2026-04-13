@@ -6,7 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw } from "lucide-react";
+import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
@@ -56,6 +58,9 @@ interface ChatInputProps {
   currentWorkspaceSlug?: string;
   streamContext?: StreamContext | null;
   isSuperAdmin?: boolean;
+  selectedModel?: ModelName;
+  onModelChange?: (m: ModelName) => void;
+  hasMessages?: boolean;
 }
 
 export function ChatInput({
@@ -80,6 +85,9 @@ export function ChatInput({
   currentWorkspaceSlug,
   streamContext = null,
   isSuperAdmin = false,
+  selectedModel,
+  onModelChange,
+  hasMessages,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -677,6 +685,23 @@ export function ChatInput({
           data-testid="chat-message-input"
         />
         <div className="flex gap-2 shrink-0">
+          {isPlanChat && !hasMessages && onModelChange && (
+            <Select value={selectedModel} onValueChange={(v) => onModelChange(v as ModelName)}>
+              <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  <span>{selectedModel}</span>
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {VALID_MODELS.map((model) => (
+                  <SelectItem key={model} value={model}>
+                    <span>{model}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {isImageUploadEnabled && (
             <TooltipProvider>
               <Tooltip>
