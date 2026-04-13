@@ -34,11 +34,16 @@ const mockedDb = vi.mocked(db);
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
+let consoleSpy: ReturnType<typeof vi.spyOn>;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   vi.clearAllMocks();
   fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => "" });
   global.fetch = fetchMock;
   mockedDb.swarm.update.mockResolvedValue({} as never);
+  consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 function makeSwarm(overrides: Partial<{
@@ -90,6 +95,11 @@ describe("executePodScalerRuns", () => {
         }),
       })
     );
+
+    const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
+    expect(logCalls.some((m) => m.includes("Starting execution"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("Found"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("Scaling UP") && m.includes("swarm-001"))).toBe(true);
   });
 
   it("scales down to minimumPods when no over-queued tasks and minimumVms differs", async () => {
@@ -108,6 +118,11 @@ describe("executePodScalerRuns", () => {
     });
 
     expect(fetchMock).toHaveBeenCalled(); // minimumVms changed 5→2
+
+    const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
+    expect(logCalls.some((m) => m.includes("Starting execution"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("Found"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("Scaling DOWN") && m.includes("swarm-001"))).toBe(true);
   });
 
   it("no-op: updates deployedPods in DB but skips Pool Manager when targetVms equals minimumVms", async () => {
@@ -127,6 +142,11 @@ describe("executePodScalerRuns", () => {
     });
 
     expect(fetchMock).not.toHaveBeenCalled(); // no Pool Manager call when value unchanged
+
+    const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
+    expect(logCalls.some((m) => m.includes("Starting execution"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("Found"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("No change") && m.includes("swarm-001"))).toBe(true);
   });
 
   it("skips swarms with no poolApiKey", async () => {
@@ -160,6 +180,9 @@ describe("executePodScalerRuns", () => {
       error: "Network failure",
     });
     expect(result.success).toBe(false);
+
+    const errorCalls = consoleErrorSpy.mock.calls.map((c) => c[0] as string);
+    expect(errorCalls.some((m) => m.includes("Error processing swarm") && m.includes("swarm-001"))).toBe(true);
   });
 
   it("falls back to minimumVms as floor when minimumPods is null", async () => {
