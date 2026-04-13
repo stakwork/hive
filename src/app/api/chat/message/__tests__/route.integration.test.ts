@@ -113,6 +113,42 @@ describe("POST /api/chat/message Integration Tests", () => {
       expect(response.status).toBe(400);
       expect(data.error).toBe("taskId is required");
     });
+
+    it("should return 400 when task workflow is IN_PROGRESS", async () => {
+      const mockTask = {
+        workspaceId: mockWorkspaceId,
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        workspace: {
+          ownerId: mockUserId,
+          members: [],
+          swarm: null,
+          repositories: [],
+        },
+      };
+
+      const mockUser = {
+        id: mockUserId,
+        name: "Test User",
+      };
+
+      mockDb.task.findFirst.mockResolvedValue(mockTask as any);
+      mockDb.user.findUnique.mockResolvedValue(mockUser as any);
+
+      const request = new NextRequest("http://localhost/api/chat/message", {
+        method: "POST",
+        body: JSON.stringify({
+          taskId: mockTaskId,
+          message: "Test message",
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("A workflow is already in progress for this task");
+      expect(mockDb.chatMessage.create).not.toHaveBeenCalled();
+    });
   });
 
   describe("Database Operations", () => {
