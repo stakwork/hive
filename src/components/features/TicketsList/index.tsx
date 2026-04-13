@@ -164,7 +164,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hide
 
       onUpdate({
         ...feature,
-        phases: updatedPhases,
+        phases: updatedPhases as typeof feature.phases,
       });
     },
     [feature, onUpdate]
@@ -302,7 +302,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hide
 
       onUpdate({
         ...feature,
-        phases: updatedPhases,
+        phases: updatedPhases as typeof feature.phases,
       });
 
       if (newTicketAssigneeId === "system:task-coordinator") {
@@ -381,7 +381,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hide
 
     onUpdate({
       ...feature,
-      phases: updatedPhases,
+      phases: updatedPhases as typeof feature.phases,
     });
   };
 
@@ -402,7 +402,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade, hide
 
     onUpdate({
       ...feature,
-      phases: updatedPhases,
+      phases: updatedPhases as typeof feature.phases,
     });
   };
 
