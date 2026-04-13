@@ -182,6 +182,7 @@ export async function sendFeatureChatMessage({
   history: bodyHistory,
   isPrototype,
   attachments,
+  model,
 }: {
   featureId: string;
   userId: string;
@@ -193,6 +194,7 @@ export async function sendFeatureChatMessage({
   history?: Record<string, unknown>[];
   isPrototype?: boolean;
   attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>;
+  model?: string;
 }) {
   const feature = await db.feature.findUnique({
     where: { id: featureId },
@@ -365,6 +367,7 @@ export async function sendFeatureChatMessage({
       isPrototype: isPrototype && isFirstMessage,
       subAgents: extraSwarms,
       attachments: attachmentUrls,
+      taskModel: model,
     });
 
     // Only update workflow status when Stakwork confirms a project was created
