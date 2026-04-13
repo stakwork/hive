@@ -256,7 +256,11 @@ export function ClarifyingQuestionsPreview({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && hasCurrentAnswer && !isLoading) {
+    if (e.key !== "Enter" || e.shiftKey || isLoading) return;
+    // Let native button elements handle their own Enter/Space
+    const target = e.target as HTMLElement;
+    if (target.tagName === "BUTTON") return;
+    if (showReview || hasCurrentAnswer) {
       e.preventDefault();
       handleNext();
     }
@@ -274,7 +278,7 @@ export function ClarifyingQuestionsPreview({
   };
 
   return (
-    <div className="relative rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300">
+    <div className="relative rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300" onKeyDown={handleKeyDown}>
       <div className="p-4 pb-[80px]">
         <div className="flex items-start gap-3 mb-4">
           <HelpCircle className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
@@ -387,7 +391,6 @@ export function ClarifyingQuestionsPreview({
                 placeholder="Add additional context or type a custom answer..."
                 value={currentAnswer.text}
                 onChange={(e) => updateAnswer({ text: e.target.value })}
-                onKeyDown={handleKeyDown}
                 disabled={isLoading}
                 rows={3}
                 className="resize-none"
@@ -488,7 +491,6 @@ export function ClarifyingQuestionsPreview({
               }
               value={currentAnswer.text}
               onChange={(e) => updateAnswer({ text: e.target.value })}
-              onKeyDown={handleKeyDown}
               disabled={isLoading}
               rows={currentQuestion.type === "text" ? undefined : 3}
               className={cn(
