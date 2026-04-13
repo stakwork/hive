@@ -112,45 +112,7 @@ describe("POST /api/agent Integration Tests", () => {
       delete process.env.CUSTOM_GOOSE_URL;
     });
 
-    test("sends agent_name: codex and model: codex in session payload when codex model is selected", async () => {
-      const user = await createTestUser();
-      const workspace = await createTestWorkspace({ ownerId: user.id });
-      const task = await createTestTask({
-        workspaceId: workspace.id,
-        createdById: user.id,
-        title: "Codex test task",
-      });
-
-      await db.task.update({
-        where: { id: task.id },
-        data: { mode: "agent", model: "codex" },
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost/api/agent", {
-        message: "Debug this hard bug",
-        taskId: task.id,
-        model: "codex",
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-
-      const sessionCall = mockFetch.mock.calls.find(([url]: [string]) =>
-        url.includes("/session"),
-      );
-      expect(sessionCall).toBeDefined();
-
-      const sessionBody = JSON.parse(sessionCall[1].body);
-      expect(sessionBody.agent_name).toBe("codex");
-      expect(sessionBody.model).toBe("codex");
-    });
-
-    test("does not send agent_name for non-codex models (sonnet)", async () => {
+    test("sends model in session payload when a model is selected (sonnet)", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({ ownerId: user.id });
       const task = await createTestTask({

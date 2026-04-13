@@ -10,20 +10,22 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
-import { ArrowUp, Mic, MicOff, Loader2, FolderOpen } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Loader2, FolderOpen, Sparkles } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
+import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
 
 interface PlanStartInputProps {
-  onSubmit: (message: string, options?: { isPrototype: boolean; selectedRepoId: string | null }) => void;
+  onSubmit: (message: string, options?: { isPrototype: boolean; selectedRepoId: string | null; model: ModelName }) => void;
   isLoading?: boolean;
 }
 
 export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputProps) {
   const [value, setValue] = useState("");
   const [isPrototype, setIsPrototype] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const initialValueRef = useRef("");
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
@@ -117,7 +119,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
         stopListening();
       }
       resetTranscript();
-      onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId });
+      onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId, model: selectedModel });
     }
   };
 
@@ -262,6 +264,22 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
                 </SelectContent>
               </Select>
             )}
+
+            <Select value={selectedModel} onValueChange={(v) => setSelectedModel(v as ModelName)}>
+              <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm" data-testid="model-selector">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  <span>{selectedModel}</span>
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {VALID_MODELS.map((model) => (
+                  <SelectItem key={model} value={model}>
+                    {model}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             <div className="ml-auto flex gap-2">
               {isSupported && (
