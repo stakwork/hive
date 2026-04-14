@@ -1,5 +1,7 @@
 import { executePodScalerRuns } from "@/services/pod-scaler-cron";
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { POD_SCALER_CONFIG_KEYS } from "@/lib/constants/pod-scaler";
 
 /**
  * GET endpoint for Vercel cron execution
@@ -12,8 +14,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (process.env.POD_SCALER_CRON_ENABLED !== "true") {
-      console.log("[PodScalerCron] Pod scaler cron is disabled via POD_SCALER_CRON_ENABLED");
+    const cronEnabledRecord = await db.platformConfig.findUnique({
+      where: { key: POD_SCALER_CONFIG_KEYS.cronEnabled },
+    });
+
+    if (cronEnabledRecord?.value === "0") {
+      console.log("[PodScalerCron] Pod scaler cron is disabled via admin settings");
       return NextResponse.json({
         success: true,
         message: "Pod scaler cron is disabled",
