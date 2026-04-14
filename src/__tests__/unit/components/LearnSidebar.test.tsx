@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
 import { LearnSidebar } from "@/app/w/[slug]/learn/components/LearnSidebar";
+import { toast } from "sonner";
 
 // Mock workspace hook
 const mockUseWorkspace = vi.fn(() => ({
@@ -58,6 +59,30 @@ vi.mock("@/components/ui/select", () => ({
   SelectItem: ({ children }: any) => <div>{children}</div>,
   SelectTrigger: ({ children }: any) => <div>{children}</div>,
   SelectValue: () => null,
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children, asChild }: { children: React.ReactNode; asChild?: boolean }) => (
+    <div>{children}</div>
+  ),
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="dropdown-content">{children}</div>
+  ),
+  DropdownMenuItem: ({
+    children,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+  }) => <div onClick={onClick}>{children}</div>,
 }));
 
 vi.mock("lucide-react", () => ({
@@ -293,5 +318,144 @@ describe("LearnSidebar — edit diagram icon", () => {
       diagram.description
     );
     expect(defaultProps.onEditDiagram).not.toHaveBeenCalled();
+  });
+});
+
+describe("LearnSidebar — Docs + button (learn_docs)", () => {
+  const repoWithUrl = { id: "r1", name: "my-repo", repositoryUrl: "https://github.com/org/my-repo" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn().mockResolvedValue({ ok: false });
+  });
+
+  it("shows + button when workspace has a repo not represented in docs", () => {
+    mockUseWorkspace.mockReturnValue({
+      workspace: { repositories: [repoWithUrl] },
+    });
+    render(<LearnSidebar {...defaultProps} docs={[]} isDocsLoading={false} />);
+    expect(screen.getByTestId("learn-doc-button")).toBeTruthy();
+  });
+
+  it("hides + button when all repos are already documented", () => {
+    mockUseWorkspace.mockReturnValue({
+      workspace: { repositories: [repoWithUrl] },
+    });
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        docs={[{ repoName: "my-repo", content: "docs here" }]}
+        isDocsLoading={false}
+      />
+    );
+    expect(screen.queryByTestId("learn-doc-button")).toBeNull();
+  });
+
+  it("hides + button while docs are loading", () => {
+    mockUseWorkspace.mockReturnValue({
+      workspace: { repositories: [repoWithUrl] },
+    });
+    render(<LearnSidebar {...defaultProps} docs={[]} isDocsLoading={true} />);
+    expect(screen.queryByTestId("learn-doc-button")).toBeNull();
+  });
+
+  it("dropdown lists only unlearned repo names", () => {
+    const repos = [
+      { id: "r1", name: "repo-a", repositoryUrl: "https://github.com/org/repo-a" },
+      { id: "r2", name: "repo-b", repositoryUrl: "https://github.com/org/repo-b" },
+    ];
+    mockUseWorkspace.mockReturnValue({ workspace: { repositories: repos } });
+    render(
+      <LearnSidebar
+        {...defaultProps}
+        docs={[{ repoName: "repo-a", content: "some docs" }]}
+        isDocsLoading={false}
+      />
+    );
+    // repo-b is unlearned, repo-a is learned
+    const dropdownContent = screen.getByTestId("dropdown-content");
+    expect(dropdownContent.textContent).toContain("repo-b");
+    expect(dropdownContent.textContent).not.toContain("repo-a");
+  });
+
+  it("clicking a repo item calls fetch with the correct repo_url", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+    mockUseWorkspace.mockReturnValue({
+      workspace: { repositories: [repoWithUrl] },
+    });
+    render(<LearnSidebar {...defaultProps} docs={[]} isDocsLoading={false} />);
+
+    const dropdownContent = screen.getByTestId("dropdown-content");
+    fireEvent.click(dropdownContent.firstElementChild!);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/learnings/docs/learn",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            workspace: "test-workspace",
+            repo_url: repoWithUrl.repositoryUrl,
+          }),
+        })
+      );
+    });
+  });
+
+  it("shows spinner and disables button while request is in flight", async () => {
+    let resolveRequest!: (value: { ok: boolean }) => void;
+    global.fetch = vi.fn(
+      () => new Promise<{ ok: boolean }>((resolve) => { resolveRequest = resolve; })
+    );
+    mockUseWorkspace.mockReturnValue({
+      workspace: { repositories: [repoWithUrl] },
+    });
+    render(<LearnSidebar {...defaultProps} docs={[]} isDocsLoading={false} />);
+
+    const dropdownContent = screen.getByTestId("dropdown-content");
+    fireEvent.click(dropdownContent.firstElementChild!);
+
+    await waitFor(() => {
+      const btn = screen.getByTestId("learn-doc-button");
+      expect(btn).toHaveAttribute("disabled");
+      expect(screen.getByTestId("refresh-icon")).toBeTruthy();
+    });
+
+    // resolve so the component cleans up
+    resolveRequest({ ok: true });
+  });
+
+  it("shows toast.success on successful fetch", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+    mockUseWorkspace.mockReturnValue({
+      workspace: { repositories: [repoWithUrl] },
+    });
+    render(<LearnSidebar {...defaultProps} docs={[]} isDocsLoading={false} />);
+
+    const dropdownContent = screen.getByTestId("dropdown-content");
+    fireEvent.click(dropdownContent.firstElementChild!);
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        "Documentation learning triggered — reload the page to see it."
+      );
+    });
+  });
+
+  it("shows toast.error on failed fetch", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false });
+    mockUseWorkspace.mockReturnValue({
+      workspace: { repositories: [repoWithUrl] },
+    });
+    render(<LearnSidebar {...defaultProps} docs={[]} isDocsLoading={false} />);
+
+    const dropdownContent = screen.getByTestId("dropdown-content");
+    fireEvent.click(dropdownContent.firstElementChild!);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "Failed to trigger documentation learning."
+      );
+    });
   });
 });
