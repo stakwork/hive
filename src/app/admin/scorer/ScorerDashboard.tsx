@@ -13,6 +13,10 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DEFAULT_PATTERN_DETECTION_PROMPT,
+  DEFAULT_SINGLE_SESSION_PROMPT,
+} from "@/lib/scorer/prompts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -105,26 +109,31 @@ export function ScorerDashboard({
     "pattern" | "single" | null
   >(null);
   const [promptDraft, setPromptDraft] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalFeatures, setTotalFeatures] = useState(0);
 
-  // Fetch metrics when workspace changes
+  // Fetch metrics when workspace or page changes
   const fetchMetrics = useCallback(async () => {
     if (!selectedWs) return;
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/admin/scorer/metrics?workspaceId=${selectedWs.id}`
+        `/api/admin/scorer/metrics?workspaceId=${selectedWs.id}&page=${page}`
       );
       if (!res.ok) throw new Error("Failed to fetch metrics");
       const data = await res.json();
       setAggregate(data.aggregate);
       setFeatures(data.features);
+      setTotalPages(data.pagination?.totalPages || 1);
+      setTotalFeatures(data.pagination?.totalFeatures || data.features.length);
     } catch (err) {
       toast.error("Failed to load metrics");
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [selectedWs]);
+  }, [selectedWs, page]);
 
   const fetchInsights = useCallback(async () => {
     if (!selectedWs) return;
@@ -307,15 +316,16 @@ export function ScorerDashboard({
       {/* Main content */}
       <div className="flex-1 min-w-0">
         {/* Workspace tabs */}
-        <div className="flex gap-px mb-5">
+        <div className="flex gap-px mb-5 overflow-x-auto pb-1 scrollbar-thin">
           {workspaces.map((ws) => (
             <button
               key={ws.id}
               onClick={() => {
                 setSelectedWs(ws);
                 setExpandedFeature(null);
+                setPage(1);
               }}
-              className={`px-3 py-1.5 text-xs font-mono border transition-colors ${
+              className={`px-3 py-1.5 text-xs font-mono border transition-colors whitespace-nowrap shrink-0 ${
                 ws.id === selectedWs.id
                   ? "bg-accent/10 text-foreground border-border"
                   : "bg-card text-muted-foreground border-border hover:text-foreground"
@@ -540,6 +550,38 @@ export function ScorerDashboard({
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+              <span>
+                {totalFeatures} feature{totalFeatures !== 1 ? "s" : ""} total
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-7 px-2"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  Prev
+                </Button>
+                <span>
+                  {page} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-7 px-2"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -570,10 +612,13 @@ export function ScorerDashboard({
           <PromptBlock
             label="Pattern detection"
             value={selectedWs.scorerPatternPrompt}
+            defaultValue={DEFAULT_PATTERN_DETECTION_PROMPT}
             isEditing={editingPrompt === "pattern"}
             onEdit={() => {
               setEditingPrompt("pattern");
-              setPromptDraft(selectedWs.scorerPatternPrompt || "");
+              setPromptDraft(
+                selectedWs.scorerPatternPrompt || DEFAULT_PATTERN_DETECTION_PROMPT
+              );
             }}
             onSave={savePrompt}
             onCancel={() => setEditingPrompt(null)}
@@ -584,10 +629,13 @@ export function ScorerDashboard({
           <PromptBlock
             label="Single session"
             value={selectedWs.scorerSinglePrompt}
+            defaultValue={DEFAULT_SINGLE_SESSION_PROMPT}
             isEditing={editingPrompt === "single"}
             onEdit={() => {
               setEditingPrompt("single");
-              setPromptDraft(selectedWs.scorerSinglePrompt || "");
+              setPromptDraft(
+                selectedWs.scorerSinglePrompt || DEFAULT_SINGLE_SESSION_PROMPT
+              );
             }}
             onSave={savePrompt}
             onCancel={() => setEditingPrompt(null)}
@@ -885,6 +933,7 @@ function TaskCard({
 function PromptBlock({
   label,
   value,
+  defaultValue,
   isEditing,
   onEdit,
   onSave,
@@ -894,6 +943,7 @@ function PromptBlock({
 }: {
   label: string;
   value: string | null;
+  defaultValue: string;
   isEditing: boolean;
   onEdit: () => void;
   onSave: () => void;
@@ -901,12 +951,22 @@ function PromptBlock({
   draft: string;
   onDraftChange: (v: string) => void;
 }) {
+  const displayText = value || defaultValue;
+  const isDefault = !value;
+
   return (
     <div className="border rounded p-2.5 bg-background mb-2">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
-          {label}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
+            {label}
+          </span>
+          {isDefault && (
+            <span className="text-[8px] text-muted-foreground/50">
+              (default)
+            </span>
+          )}
+        </div>
         {!isEditing && (
           <button
             onClick={onEdit}
@@ -921,8 +981,7 @@ function PromptBlock({
           <textarea
             value={draft}
             onChange={(e) => onDraftChange(e.target.value)}
-            className="w-full h-32 text-[10px] bg-card border rounded p-2 text-foreground resize-y font-mono"
-            placeholder="Leave empty for global default..."
+            className="w-full h-48 text-[10px] bg-card border rounded p-2 text-foreground resize-y font-mono"
           />
           <div className="flex gap-1 mt-1">
             <Button size="sm" variant="outline" className="text-[9px] h-6" onClick={onSave}>
@@ -939,11 +998,9 @@ function PromptBlock({
           </div>
         </div>
       ) : (
-        <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-3">
-          {value
-            ? `"${value.slice(0, 100)}..."`
-            : '"Using global default prompt..."'}
-        </p>
+        <pre className="text-[9px] text-muted-foreground leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto font-mono">
+          {displayText}
+        </pre>
       )}
     </div>
   );
