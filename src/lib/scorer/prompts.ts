@@ -4,21 +4,48 @@
  */
 
 export const DEFAULT_SINGLE_SESSION_PROMPT = `You are analyzing a single agent coding session from our AI development platform.
-The session shows the full journey: the human's request, the plan agent's exploration,
-and each coding agent's execution through to the PR.
+The session shows the full journey from human request through planning, task generation,
+coding, building, testing, and PR creation.
 
-Identify specific issues in this session:
-- Where did the agent waste time or go in the wrong direction?
-- Did the agent misunderstand the human's intent? What words or concepts caused confusion?
-- Were there files or modules the agent should have found faster?
-- What could we change in our prompts, context, or tooling to improve this specific case?
+## Agent types in the transcript
 
-Be specific — reference exact tool calls, search queries, and file paths from the transcript.
+Our system uses multiple specialized agents, each labeled in the transcript:
+
+- **plan-agent-{featureId}** — Explores the codebase and produces the implementation plan
+  (brief, architecture, user stories). Runs first. Has access to search and read tools.
+- **TASK_GENERATION-agent-{featureId}** — Takes the plan and generates actionable dev tickets.
+  May re-explore the codebase to verify the plan's claims and get exact signatures/interfaces.
+  Runs after the plan agent. Shares the same tool set.
+- **coding-agent-{taskId}** — Implements the code changes for a single task. Has shell, edit,
+  and file tools. Produces a PR.
+- **build-agent-{taskId}** — Runs the project build and fixes any build errors.
+- **test-agent-{taskId}** — Determines which tests to run, runs them, and fixes failures.
+- **browser-agent-{taskId}** — Takes screenshots and validates UI changes in the browser.
+
+Each agent runs as a separate LLM session with its own conversation history. The plan-agent
+and TASK_GENERATION-agent are part of the planning phase. The coding/build/test/browser agents
+are part of the execution phase and run per-task.
+
+IMPORTANT: Each agent session accumulates tokens cumulatively — every tool call iteration
+sends the full conversation history so far. When two agents explore the same files, the
+token cost of that exploration is paid twice. This is a key cost consideration.
+
+## What to look for
+
+- Where did a specific agent (name it) waste time or go in the wrong direction?
+- Did the TASK_GENERATION-agent redundantly re-explore files the plan-agent already read?
+  If so, quantify the overlap (how many identical tool calls).
+- Did the coding-agent misunderstand the task? What in the task description caused confusion?
+- Were there files or modules a specific agent should have found faster?
+- Did the build/test agents have to fix issues the coding-agent should have caught?
+- What could we change in our prompts, context passing, or tooling to improve this case?
+
+Be specific — name the exact agent, reference exact tool calls, search queries, and file paths.
 
 Return your findings as a JSON array. Each element must have these fields:
 - "severity": "HIGH" | "MEDIUM" | "LOW"
 - "pattern": short label (under 80 chars)
-- "description": full explanation
+- "description": full explanation. Always name the specific agent(s) involved.
 - "featureIds": array of feature IDs mentioned (use the ones from the session)
 - "suggestion": what to change
 

@@ -198,9 +198,19 @@ export async function assembleFullSession(
     },
   });
 
-  // Fetch all agent logs for this feature (plan agent logs)
+  // Fetch only plan-related agent logs for this feature.
+  // Other agents (coding, build, test, browser) also have taskId=null
+  // in the DB, so we filter by agent name prefix to avoid polluting
+  // the plan transcript with execution-phase conversations.
   const featureLogs = await db.agentLog.findMany({
-    where: { featureId, taskId: null },
+    where: {
+      featureId,
+      taskId: null,
+      OR: [
+        { agent: { startsWith: "plan-agent" } },
+        { agent: { startsWith: "TASK_GENERATION-agent" } },
+      ],
+    },
     orderBy: { createdAt: "asc" },
     select: { agent: true, blobUrl: true, createdAt: true },
   });
