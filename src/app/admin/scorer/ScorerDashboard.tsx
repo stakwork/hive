@@ -44,13 +44,16 @@ interface AggregateMetrics {
 interface TaskMetrics {
   taskId: string;
   taskTitle: string;
+  taskDescription: string | null;
   messageCount: number;
   correctionCount: number;
+  correctionMessages: string[];
   ciPassedFirstAttempt: boolean | null;
   prStatus: string | null;
   prUrl: string | null;
   durationMinutes: number | null;
   filesTouched: Array<{ file: string; action: string }>;
+  agentRuns: Array<{ agent: string; count: number }>;
 }
 
 interface FeatureMetrics {
@@ -858,11 +861,15 @@ function TaskCard({
   filesPlanned: string[];
   formatDuration: (min: number | null) => string;
 }) {
+  const [filesExpanded, setFilesExpanded] = useState(false);
   const plannedSet = new Set(filesPlanned);
   const statusColor =
     task.prStatus === "DONE"
       ? "bg-green-500/10 text-green-400"
       : "bg-blue-500/10 text-blue-400";
+
+  const created = task.filesTouched.filter((f) => f.action === "create").length;
+  const modified = task.filesTouched.length - created;
 
   return (
     <div className="border rounded-md p-3 bg-card">
@@ -885,26 +892,68 @@ function TaskCard({
           {task.correctionCount} correction{task.correctionCount !== 1 ? "s" : ""}
         </span>
         <span>{formatDuration(task.durationMinutes)}</span>
+        {task.agentRuns.length > 0 && (
+          <span>
+            {task.agentRuns.map((r) => `${r.agent}: ${r.count}`).join(", ")}
+          </span>
+        )}
       </div>
 
-      {/* File chips */}
+      {/* Description */}
+      {task.taskDescription && (
+        <div className="text-[10px] text-muted-foreground/70 mb-2 line-clamp-2">
+          {task.taskDescription}
+        </div>
+      )}
+
+      {/* Correction messages (collapsible) */}
+      {task.correctionMessages.length > 0 && (
+        <CorrectionMessages messages={task.correctionMessages} />
+      )}
+
+      {/* Files summary (collapsible) */}
       {task.filesTouched.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
-          {task.filesTouched.map((f) => {
-            const isPlanned = plannedSet.has(f.file);
-            return (
-              <span
-                key={f.file}
-                className={`text-[9px] px-1.5 py-0.5 rounded border ${
-                  isPlanned
-                    ? "border-green-500/30 text-green-400"
-                    : "border-orange-500/30 text-orange-400"
-                }`}
-              >
-                {f.file}
-              </span>
-            );
-          })}
+        <div className="mb-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setFilesExpanded(!filesExpanded);
+            }}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {filesExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+            <span>
+              {task.filesTouched.length} file{task.filesTouched.length !== 1 ? "s" : ""}
+              {created > 0 && modified > 0
+                ? ` (${created} created, ${modified} modified)`
+                : created > 0
+                  ? ` (${created} created)`
+                  : ` (${modified} modified)`}
+            </span>
+          </button>
+          {filesExpanded && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {task.filesTouched.map((f) => {
+                const isPlanned = plannedSet.has(f.file);
+                return (
+                  <span
+                    key={f.file}
+                    className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                      isPlanned
+                        ? "border-green-500/30 text-green-400"
+                        : "border-orange-500/30 text-orange-400"
+                    }`}
+                  >
+                    {f.file}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -935,6 +984,43 @@ function TaskCard({
               CI: {task.ciPassedFirstAttempt ? "passed 1st try" : "failed 1st try"}
             </span>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CorrectionMessages({ messages }: { messages: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="mb-2">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded(!expanded);
+        }}
+        className="flex items-center gap-1 text-[10px] text-orange-400 hover:text-orange-300 transition-colors"
+      >
+        {expanded ? (
+          <ChevronDown className="w-3 h-3" />
+        ) : (
+          <ChevronRight className="w-3 h-3" />
+        )}
+        <span>
+          {messages.length} correction{messages.length !== 1 ? "s" : ""}
+        </span>
+      </button>
+      {expanded && (
+        <div className="flex flex-col gap-1.5 mt-1.5 ml-4">
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              className="text-[10px] text-orange-400/80 bg-orange-500/5 rounded p-2 leading-relaxed border-l-2 border-l-orange-500/30"
+            >
+              {msg}
+            </div>
+          ))}
         </div>
       )}
     </div>
