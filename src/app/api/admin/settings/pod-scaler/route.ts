@@ -7,6 +7,7 @@ import {
   POD_SCALER_STALENESS_WINDOW_DAYS,
   POD_SCALER_SCALE_UP_BUFFER,
   POD_SCALER_MAX_VM_CEILING,
+  POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES,
 } from "@/lib/constants/pod-scaler";
 
 type PodScalerKey = keyof typeof POD_SCALER_CONFIG_KEYS;
@@ -16,6 +17,7 @@ const DEFAULTS: Record<PodScalerKey, number> = {
   stalenessWindowDays: POD_SCALER_STALENESS_WINDOW_DAYS,
   scaleUpBuffer: POD_SCALER_SCALE_UP_BUFFER,
   maxVmCeiling: POD_SCALER_MAX_VM_CEILING,
+  scaleDownCooldownMinutes: POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES,
 };
 
 const DB_KEYS = Object.values(POD_SCALER_CONFIG_KEYS);
