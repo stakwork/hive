@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
       name: true,
       provider: true,
       providerLabel: true,
+      isPlanDefault: true,
+      isTaskDefault: true,
     },
     orderBy: { createdAt: "desc" },
   });

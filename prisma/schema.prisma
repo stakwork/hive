@@ -675,6 +675,7 @@ model Feature {
   workflowStatus      WorkflowStatus?       @default(PENDING) @map("workflow_status")
   isFastTrack         Boolean               @default(false) @map("is_fast_track")
   planUpdatedAt       DateTime?             @map("plan_updated_at")
+  model               String?
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
   assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])
@@ -1301,6 +1302,8 @@ model LlmModel {
   outputPricePer1M Float       @map("output_price_per_1m")
   dateStart        DateTime?   @map("date_start")
   dateEnd          DateTime?   @map("date_end")
+  isPlanDefault    Boolean     @default(false) @map("is_plan_default")
+  isTaskDefault    Boolean     @default(false) @map("is_task_default")
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
 
