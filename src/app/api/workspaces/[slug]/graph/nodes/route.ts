@@ -151,6 +151,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       apiParams.limit_mode = limitMode;
     }
 
+    const repoUrl = searchParams.get("repo_url");
+    if (repoUrl) {
+      apiParams.repo_url = repoUrl;
+    }
+
     apiParams.edges = 'true';
 
     // Filter out null and undefined values from apiParams
