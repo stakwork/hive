@@ -89,7 +89,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const output = searchParams.get("output") || "json";
     const limit = searchParams.get("limit") || "100";
     const limitMode = searchParams.get("limit_mode") || "per_type";
-
+    const repoUrl = searchParams.get("repo_url");
 
     // Get swarm for this workspace
     const swarm = await db.swarm.findUnique({
@@ -149,6 +149,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     if (limitMode) {
       apiParams.limit_mode = limitMode;
+    }
+
+    if (repoUrl) {
+      apiParams.repo_url = repoUrl;
     }
 
     apiParams.edges = 'true';
