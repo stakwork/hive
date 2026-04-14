@@ -346,6 +346,10 @@ export async function updateTicket(
     updateData.autoMerge = data.autoMerge;
   }
 
+  if (data.model !== undefined) {
+    updateData.model = data.model ?? null;
+  }
+
   if (data.repositoryId !== undefined) {
     if (data.repositoryId !== null) {
       const repository = await db.repository.findFirst({
