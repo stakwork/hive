@@ -87,7 +87,7 @@ export async function PATCH(
         {
           success: true,
           task: updatedTask,
-          workflow: workflowResult.stakworkData,
+          workflow: workflowResult?.stakworkData,
         },
         { status: 200 }
       );
@@ -121,7 +121,7 @@ export async function PATCH(
         {
           success: true,
           task: updatedTask,
-          workflow: workflowResult.stakworkData,
+          workflow: workflowResult?.stakworkData,
         },
         { status: 200 }
       );

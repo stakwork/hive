@@ -189,6 +189,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
     priority: true;
     workflowStatus: true;
     stakworkProjectId: true;
+    model: true;
     createdAt: true;
     updatedAt: true;
     assignee: {
@@ -373,6 +374,7 @@ export interface CreateFeatureRequest {
   priority?: FeaturePriority;
   assigneeId?: string;
   isFastTrack?: boolean;
+  model?: string | null;
 }
 
 export interface UpdateFeatureRequest {

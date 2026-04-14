@@ -9,6 +9,7 @@ vi.mock("@/lib/db", () => ({
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     user: {
       findUnique: vi.fn(),
@@ -326,6 +327,8 @@ const MockSetup = {
     mockConfig.STAKWORK_API_KEY = "test-api-key";
     mockConfig.STAKWORK_BASE_URL = "https://test-stakwork.com";
     mockConfig.STAKWORK_WORKFLOW_ID = "123,456,789";
+    // Default: atomic claim succeeds (count: 1) so existing startTaskWorkflow tests pass unchanged
+    mockDb.task.updateMany.mockResolvedValue({ count: 1 } as any);
   },
 
   setupSuccessfulWorkflow: (projectId = 123) => {
@@ -4845,5 +4848,127 @@ describe("startTaskWorkflow - featureId forwarding", () => {
     const vars = payload.workflow_params.set_var.attributes.vars;
 
     expect(vars).not.toHaveProperty("featureId");
+  });
+});
+
+// ============================================================================
+// startTaskWorkflow — Atomic Claim (Idempotency Guard) Tests
+// ============================================================================
+
+describe("startTaskWorkflow - atomic claim guard", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("returns null when updateMany returns count: 0 (task already claimed)", async () => {
+    // Simulate concurrent invocation already claimed the task
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 0 } as any);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    const result = await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    expect(result).toBeNull();
+  });
+
+  test("makes no Stakwork API call when updateMany returns count: 0", async () => {
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 0 } as any);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test("creates no chat message when updateMany returns count: 0", async () => {
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 0 } as any);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    expect(mockDb.chatMessage.create).not.toHaveBeenCalled();
+  });
+
+  test("proceeds normally when updateMany returns count: 1 (claim succeeded)", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+    // updateMany already returns count:1 by default from MockSetup.reset()
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    const result = await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    expect(result).not.toBeNull();
+    expect(mockDb.chatMessage.create).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("atomic claim uses correct where clause (PENDING workflowStatus and null stakworkProjectId)", async () => {
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 0 } as any);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    expect(mockDb.task.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "test-task-id",
+          deleted: false,
+          workflowStatus: { in: ["PENDING"] },
+          stakworkProjectId: null,
+        }),
+        data: expect.objectContaining({
+          workflowStatus: "IN_PROGRESS",
+        }),
+      })
+    );
+  });
+
+  test("rolls back workflowStatus to PENDING when createChatMessageAndTriggerStakwork throws after claim", async () => {
+    // Claim succeeds
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
+    // findFirst throws (simulates a DB error after the atomic claim)
+    mockDb.task.findFirst.mockRejectedValueOnce(new Error("DB connection lost"));
+    // updateMany for rollback
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    await expect(
+      startTaskWorkflow({ taskId: "test-task-id", userId: "test-user-id" })
+    ).rejects.toThrow("DB connection lost");
+
+    // Second updateMany call should be the rollback
+    expect(mockDb.task.updateMany).toHaveBeenCalledTimes(2);
+    const rollbackCall = (mockDb.task.updateMany as any).mock.calls[1];
+    expect(rollbackCall[0]).toMatchObject({
+      where: expect.objectContaining({
+        id: "test-task-id",
+        workflowStatus: "IN_PROGRESS",
+        stakworkProjectId: null,
+      }),
+      data: { workflowStatus: "PENDING" },
+    });
   });
 });

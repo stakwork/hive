@@ -1,6 +1,13 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
+import {
+  POD_SCALER_QUEUE_WAIT_MINUTES,
+  POD_SCALER_STALENESS_WINDOW_DAYS,
+  POD_SCALER_SCALE_UP_BUFFER,
+  POD_SCALER_MAX_VM_CEILING,
+  POD_SCALER_CONFIG_KEYS,
+} from "@/lib/constants/pod-scaler";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -18,11 +25,11 @@ export interface PodScalerResult {
  * Auto-scaler cron: scales minimum_vms up/down based on over-queued task demand.
  * Runs every 5 minutes via /api/cron/pod-scaler.
  *
- * - Over-queued tasks: TODO + TASK_COORDINATOR, not deleted/archived, createdAt > 5 min ago
- * - Scale up:   minimum_vms = max(minimumPods, overQueuedCount + 2), capped at 20
+ * - Over-queued tasks: TODO + TASK_COORDINATOR, not deleted/archived, createdAt > queueWaitMinutes ago
+ * - Scale up:   minimum_vms = max(minimumPods, overQueuedCount + scaleUpBuffer), capped at maxVmCeiling
  * - Scale down: minimum_vms = minimumPods
  * - minimumPods is never mutated by this cron.
- * - Hard ceiling: targetVms is always capped at 20 pods maximum.
+ * - Hard ceiling: targetVms is always capped at maxVmCeiling pods maximum.
  */
 export async function executePodScalerRuns(): Promise<PodScalerResult> {
   const timestamp = new Date().toISOString();
@@ -30,6 +37,38 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
   const errors: Array<{ swarmId: string; error: string }> = [];
   let swarmsProcessed = 0;
   let swarmsScaled = 0;
+
+  // Fetch runtime config from platformConfig, fall back to hard-coded defaults
+  const configRecords = await db.platformConfig.findMany({
+    where: {
+      key: { in: Object.values(POD_SCALER_CONFIG_KEYS) },
+    },
+  });
+  const configMap = Object.fromEntries(configRecords.map((r) => [r.key, r.value]));
+
+  const parseIntOrDefault = (key: string, defaultVal: number): number => {
+    const raw = configMap[key];
+    if (raw === undefined || raw === null) return defaultVal;
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultVal;
+  };
+
+  const queueWaitMinutes = parseIntOrDefault(
+    POD_SCALER_CONFIG_KEYS.queueWaitMinutes,
+    POD_SCALER_QUEUE_WAIT_MINUTES
+  );
+  const stalenessWindowDays = parseIntOrDefault(
+    POD_SCALER_CONFIG_KEYS.stalenessWindowDays,
+    POD_SCALER_STALENESS_WINDOW_DAYS
+  );
+  const scaleUpBuffer = parseIntOrDefault(
+    POD_SCALER_CONFIG_KEYS.scaleUpBuffer,
+    POD_SCALER_SCALE_UP_BUFFER
+  );
+  const maxVmCeiling = parseIntOrDefault(
+    POD_SCALER_CONFIG_KEYS.maxVmCeiling,
+    POD_SCALER_MAX_VM_CEILING
+  );
 
   const swarms = await db.swarm.findMany({
     where: {
@@ -47,8 +86,8 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
   });
   console.log(`${LOG_PREFIX} Found ${swarms.length} swarms with pool configured`);
 
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-  const oneMonthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const queueWaitAgo = new Date(Date.now() - queueWaitMinutes * 60 * 1000);
+  const stalenessAgo = new Date(Date.now() - stalenessWindowDays * 24 * 60 * 60 * 1000);
 
   for (const swarm of swarms) {
     swarmsProcessed++;
@@ -66,17 +105,17 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
             { featureId: null },
             { feature: { status: { not: "CANCELLED" } } },
           ],
-          createdAt: { lt: fiveMinutesAgo },
-          updatedAt: { gte: oneMonthAgo },
+          createdAt: { lt: queueWaitAgo },
+          updatedAt: { gte: stalenessAgo },
         },
       });
 
       const floor = swarm.minimumPods ?? swarm.minimumVms;
       const targetVms = Math.min(
         overQueuedCount > 0
-          ? Math.max(floor, overQueuedCount + 2)
+          ? Math.max(floor, overQueuedCount + scaleUpBuffer)
           : floor,
-        20
+        maxVmCeiling
       );
 
       // Always record the check result in deployedPods
