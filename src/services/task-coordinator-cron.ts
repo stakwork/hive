@@ -141,7 +141,7 @@ export async function processTicketSweep(
         { status: "TODO" },
         { systemAssigneeType: "TASK_COORDINATOR" },
         { deleted: false },
-        { workflowStatus: { in: [WorkflowStatus.PENDING, null as unknown as WorkflowStatus] } },
+        { OR: [{ workflowStatus: WorkflowStatus.PENDING }, { workflowStatus: null }] },
         { stakworkProjectId: null },
         { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
       ],

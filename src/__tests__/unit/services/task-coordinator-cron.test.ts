@@ -1379,7 +1379,7 @@ describe("processTicketSweep", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           AND: expect.arrayContaining([
-            { workflowStatus: { in: ["PENDING", null] } },
+            { OR: [{ workflowStatus: "PENDING" }, { workflowStatus: null }] },
             { stakworkProjectId: null },
           ]),
         }),
