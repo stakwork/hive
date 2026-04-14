@@ -510,9 +510,12 @@ async function computeMetricsBulk(
     };
   });
 
+  // Exclude features with no tasks — they have no meaningful metrics
+  const filteredFeatures = featureMetrics.filter((f) => f.taskCount > 0);
+
   // Aggregate
-  const allTasks = featureMetrics.flatMap((f) => f.tasks);
-  const featureCount = featureMetrics.length;
+  const allTasks = filteredFeatures.flatMap((f) => f.tasks);
+  const featureCount = filteredFeatures.length;
   const taskCount = allTasks.length;
 
   const avgMessagesPerTask =
@@ -574,7 +577,7 @@ async function computeMetricsBulk(
       avgPlanRecall,
       prMergeRate,
     },
-    features: featureMetrics,
+    features: filteredFeatures,
   };
 }
 
