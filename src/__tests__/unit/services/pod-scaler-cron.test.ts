@@ -348,6 +348,25 @@ describe("executePodScalerRuns", () => {
     );
   });
 
+  it("excludes tasks with dependencies from overQueuedCount", async () => {
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    // Simulate all queued tasks being blocked (count returns 0 after filter)
+    mockedDb.task.count.mockResolvedValue(0);
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // Assert the filter was included in the query
+    const countCall = mockedDb.task.count.mock.calls[0][0] as {
+      where: { dependsOnTaskIds: { isEmpty: boolean } };
+    };
+    expect(countCall.where.dependsOnTaskIds).toEqual({ isEmpty: true });
+  });
+
   it("uses custom queueWaitMinutes (10) for the createdAt filter", async () => {
     mockedDb.platformConfig.findMany.mockResolvedValue([
       makePlatformConfig("podScalerQueueWaitMinutes", "10"),
