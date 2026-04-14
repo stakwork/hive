@@ -723,25 +723,35 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
 
         // Update task status to DONE if PR was merged
         if (result.merged) {
-          const updatedTask = await db.task.update({
+          await db.task.update({
             where: { id: pr.taskId },
             data: { status: TaskStatus.DONE },
-            select: { id: true, featureId: true },
           });
           log.info("Updated task status to DONE for merged PR", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
           });
 
-          // Scorer pipeline: check if feature is complete
-          if (updatedTask.featureId) {
-            import("@/lib/scorer/pipeline")
-              .then(({ checkAndTriggerFeatureCompletion }) =>
-                checkAndTriggerFeatureCompletion(updatedTask.featureId!)
-              )
-              .catch((err) =>
+          // Scorer pipeline: check if feature is complete (fire-and-forget)
+          try {
+            void db.task
+              .findUnique({
+                where: { id: pr.taskId },
+                select: { featureId: true },
+              })
+              ?.then((task) => {
+                if (task?.featureId) {
+                  return import("@/lib/scorer/pipeline").then(
+                    ({ checkAndTriggerFeatureCompletion }) =>
+                      checkAndTriggerFeatureCompletion(task.featureId!)
+                  );
+                }
+              })
+              ?.catch((err: unknown) =>
                 log.error("Scorer pipeline error", { error: String(err) })
               );
+          } catch {
+            // Scorer hook must never disrupt PR monitor flow
           }
 
           if (pr.podId) {
