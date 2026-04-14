@@ -8,7 +8,7 @@ import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Mic, MicOff, ArrowUp, Image as ImageIcon, X, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
+import type { ModelName } from "@/lib/ai/models";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
@@ -58,8 +58,9 @@ interface ChatInputProps {
   currentWorkspaceSlug?: string;
   streamContext?: StreamContext | null;
   isSuperAdmin?: boolean;
-  selectedModel?: ModelName;
-  onModelChange?: (m: ModelName) => void;
+  selectedModel?: string;
+  onModelChange?: (m: string) => void;
+  llmModels?: { id: string; name: string; provider: string; providerLabel: string | null }[];
   hasMessages?: boolean;
 }
 
@@ -87,6 +88,7 @@ export function ChatInput({
   isSuperAdmin = false,
   selectedModel,
   onModelChange,
+  llmModels = [],
   hasMessages,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
@@ -685,18 +687,18 @@ export function ChatInput({
           data-testid="chat-message-input"
         />
         <div className="flex gap-2 shrink-0">
-          {isPlanChat && !hasMessages && onModelChange && (
-            <Select value={selectedModel} onValueChange={(v) => onModelChange(v as ModelName)}>
+          {isPlanChat && !hasMessages && onModelChange && llmModels.length > 0 && (
+            <Select value={selectedModel} onValueChange={(v) => onModelChange(v)}>
               <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4" />
-                  <span>{selectedModel}</span>
+                  <span>{selectedModel ? (llmModels.find(m => `${m.provider.toLowerCase()}/${m.name}` === selectedModel)?.providerLabel || selectedModel) : "Model"}</span>
                 </div>
               </SelectTrigger>
               <SelectContent>
-                {VALID_MODELS.map((model) => (
-                  <SelectItem key={model} value={model}>
-                    <span>{model}</span>
+                {llmModels.map((m) => (
+                  <SelectItem key={m.id} value={`${m.provider.toLowerCase()}/${m.name}`}>
+                    <span>{m.providerLabel || m.name}</span>
                   </SelectItem>
                 ))}
               </SelectContent>

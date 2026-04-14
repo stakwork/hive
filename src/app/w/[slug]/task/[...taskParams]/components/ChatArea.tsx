@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Artifact, ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
-import type { ModelName } from "@/lib/ai/models";
+
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
@@ -58,8 +58,9 @@ interface ChatAreaProps {
   onSaveAndPlan?: () => void;
   streamContext?: StreamContext | null;
   isSuperAdmin?: boolean;
-  selectedModel?: ModelName;
-  onModelChange?: (m: ModelName) => void;
+  selectedModel?: string;
+  onModelChange?: (m: string) => void;
+  llmModels?: { id: string; name: string; provider: string; providerLabel: string | null }[];
   hasMessages?: boolean;
 }
 
@@ -103,6 +104,7 @@ export function ChatArea({
   isSuperAdmin = false,
   selectedModel,
   onModelChange,
+  llmModels,
   hasMessages,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -406,6 +408,7 @@ export function ChatArea({
         isSuperAdmin={isSuperAdmin}
         selectedModel={selectedModel}
         onModelChange={onModelChange}
+        llmModels={llmModels}
         hasMessages={hasMessages}
       />
 
