@@ -39,15 +39,23 @@ function isAffirmation(msg: string): boolean {
 export interface TaskMetrics {
   taskId: string;
   taskTitle: string;
+  taskDescription: string | null;
   featureId: string | null;
   messageCount: number;
   correctionCount: number;
+  correctionMessages: string[];
   ciPassedFirstAttempt: boolean | null;
   prStatus: string | null;
   prUrl: string | null;
   durationMinutes: number | null;
   haltRetryAttempted: boolean;
   filesTouched: FileAction[];
+  agentRuns: AgentRunSummary[];
+}
+
+export interface AgentRunSummary {
+  agent: string;
+  count: number;
 }
 
 export interface FileAction {
@@ -262,11 +270,11 @@ export async function loadCachedMetrics(
   const totalPages = Math.max(1, Math.ceil(totalFeatures / pageSize));
   const skip = (page - 1) * pageSize;
 
-  // Paginated read of feature metrics from digest rows
+  // Paginated read of feature metrics from digest rows, sorted by feature date
   const digests = await db.scorerDigest.findMany({
     where: { workspaceId },
     select: { metadata: true },
-    orderBy: { createdAt: "desc" },
+    orderBy: { feature: { createdAt: "desc" } },
     skip,
     take: pageSize,
   });
@@ -320,6 +328,7 @@ async function computeMetricsBulk(
         select: {
           id: true,
           title: true,
+          description: true,
           featureId: true,
           workflowStartedAt: true,
           workflowCompletedAt: true,
@@ -366,6 +375,25 @@ async function computeMetricsBulk(
     artifactsByTask.set(taskId, list);
   }
 
+  // Single query: agent logs grouped by task + agent
+  const allAgentLogs =
+    allTaskIds.length > 0
+      ? await db.agentLog.groupBy({
+          by: ["taskId", "agent"],
+          where: { taskId: { in: allTaskIds } },
+          _count: true,
+        })
+      : [];
+
+  // Index agent logs by taskId
+  const agentLogsByTask = new Map<string, AgentRunSummary[]>();
+  for (const log of allAgentLogs) {
+    if (!log.taskId) continue;
+    const list = agentLogsByTask.get(log.taskId) || [];
+    list.push({ agent: log.agent, count: log._count });
+    agentLogsByTask.set(log.taskId, list);
+  }
+
   // Compute metrics in memory
   const featureMetrics: FeatureMetrics[] = features.map((feature) => {
     const taskMetrics: TaskMetrics[] = feature.tasks.map((task) => {
@@ -377,12 +405,14 @@ async function computeMetricsBulk(
       const prInfo = extractPrInfo(prArtifacts);
 
       const messageCount = task.chatMessages.length;
-      const correctionCount =
+      const corrections =
         messageCount <= 1
-          ? 0
+          ? []
           : task.chatMessages
               .slice(1)
-              .filter((m) => !isAffirmation(m.message)).length;
+              .filter((m) => !isAffirmation(m.message));
+      const correctionCount = corrections.length;
+      const correctionMessages = corrections.map((m) => m.message);
 
       const ciPassedFirstAttempt =
         prInfo.status === "DONE" ? !task.haltRetryAttempted : null;
@@ -396,18 +426,23 @@ async function computeMetricsBulk(
             )
           : null;
 
+      const agentRuns = agentLogsByTask.get(task.id) || [];
+
       return {
         taskId: task.id,
         taskTitle: task.title,
+        taskDescription: task.description,
         featureId: task.featureId,
         messageCount,
         correctionCount,
+        correctionMessages,
         ciPassedFirstAttempt,
         prStatus: prInfo.status,
         prUrl: prInfo.url,
         durationMinutes,
         haltRetryAttempted: task.haltRetryAttempted,
         filesTouched,
+        agentRuns,
       };
     });
 
@@ -475,9 +510,12 @@ async function computeMetricsBulk(
     };
   });
 
+  // Exclude features with no tasks — they have no meaningful metrics
+  const filteredFeatures = featureMetrics.filter((f) => f.taskCount > 0);
+
   // Aggregate
-  const allTasks = featureMetrics.flatMap((f) => f.tasks);
-  const featureCount = featureMetrics.length;
+  const allTasks = filteredFeatures.flatMap((f) => f.tasks);
+  const featureCount = filteredFeatures.length;
   const taskCount = allTasks.length;
 
   const avgMessagesPerTask =
@@ -539,7 +577,7 @@ async function computeMetricsBulk(
       avgPlanRecall,
       prMergeRate,
     },
-    features: featureMetrics,
+    features: filteredFeatures,
   };
 }
 
