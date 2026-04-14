@@ -1,7 +1,6 @@
 "use client";
 
 import { ArtifactsPanel, ChatArea } from "@/components/chat";
-import type { ModelName } from "@/lib/ai/models";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -102,7 +101,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [sphinxReady, setSphinxReady] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
+  const [llmModels, setLlmModels] = useState<{ id: string; name: string; provider: string; providerLabel: string | null }[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("");
   const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
 
   // Project log WebSocket for live thinking logs
@@ -273,6 +273,26 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
     fetchSphinxStatus();
   }, [workspaceSlug]);
+
+  // Fetch active LLM models for plan mode selector
+  useEffect(() => {
+    const fetchLlmModels = async () => {
+      try {
+        const response = await fetch("/api/llm-models");
+        if (response.ok) {
+          const data = await response.json();
+          const models = data.models ?? [];
+          setLlmModels(models);
+          if (models.length > 0) {
+            setSelectedModel(`${models[0].provider.toLowerCase()}/${models[0].name}`);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching LLM models:", error);
+      }
+    };
+    fetchLlmModels();
+  }, []);
 
   // Refetch on tab visibility change
   useEffect(() => {
@@ -535,6 +555,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     isSuperAdmin,
     selectedModel,
     onModelChange: setSelectedModel,
+    llmModels,
     hasMessages,
   };
 
