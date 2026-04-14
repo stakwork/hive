@@ -78,7 +78,7 @@ describe("executePodScalerRuns", () => {
   it("scales up when over-queued tasks exist", async () => {
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(3); // 3 over-queued → targetVms = max(2, 5) = 5
+    mockedDb.task.count.mockResolvedValue(3); // 3 over-queued → targetVms = 2 + 3 + 2 = 7
 
     const result = await executePodScalerRuns();
 
@@ -89,14 +89,14 @@ describe("executePodScalerRuns", () => {
 
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 5, deployedPods: 5 },
+      data: { minimumVms: 7, deployedPods: 7 },
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://pool.example.com/api/pools/swarm-001/scale",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ minimum_vms: 5 }),
+        body: JSON.stringify({ minimum_vms: 7 }),
         headers: expect.objectContaining({
           Authorization: "Bearer decrypted-enc-key-abc",
         }),
@@ -195,23 +195,22 @@ describe("executePodScalerRuns", () => {
   it("falls back to minimumVms as floor when minimumPods is null", async () => {
     const swarm = makeSwarm({ minimumVms: 3, minimumPods: null });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(1); // 1 over-queued → targetVms = max(3, 3) = 3
+    mockedDb.task.count.mockResolvedValue(1); // 1 over-queued → targetVms = 3 + 1 + 2 = 6
 
     const result = await executePodScalerRuns();
 
     expect(result.swarmsProcessed).toBe(1);
-    // targetVms (3) === minimumVms (3) → no scale, no Pool Manager call
-    expect(result.swarmsScaled).toBe(0);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.swarmsScaled).toBe(1);
+    expect(fetchMock).toHaveBeenCalled();
 
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 3, deployedPods: 3 },
+      data: { minimumVms: 6, deployedPods: 6 },
     });
   });
 
   it("caps targetVms at 20 when overQueuedCount is very large (default ceiling)", async () => {
-    // 50 over-queued tasks would normally give targetVms = max(2, 52) = 52; must be capped at 20
+    // 50 over-queued tasks → targetVms = 2 + 50 + 2 = 54, capped at 20
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count.mockResolvedValue(50);
@@ -255,7 +254,7 @@ describe("executePodScalerRuns", () => {
 
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(50); // would be 52 without ceiling
+    mockedDb.task.count.mockResolvedValue(50); // 2 + 50 + 2 = 54, capped at 10
 
     const result = await executePodScalerRuns();
 
