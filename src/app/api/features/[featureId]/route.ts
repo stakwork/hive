@@ -26,6 +26,7 @@ const TASK_SELECT = {
   autoMerge: true,
   runBuild: true,
   runTestSuite: true,
+  model: true,
   deploymentStatus: true,
   deployedToStagingAt: true,
   deployedToProductionAt: true,

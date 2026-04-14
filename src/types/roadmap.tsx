@@ -235,6 +235,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
             autoMerge: true;
             runBuild: true;
             runTestSuite: true;
+            model: true;
             dependsOnTaskIds: true;
             deploymentStatus: true;
             deployedToStagingAt: true;
@@ -675,6 +676,7 @@ export interface UpdateRoadmapTaskRequest {
   runBuild?: boolean;
   runTestSuite?: boolean;
   autoMerge?: boolean;
+  model?: string | null;
 }
 
 export interface ReorderRoadmapTasksRequest {
