@@ -684,7 +684,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                 {llmModels.length > 0 && (
                   <div onClick={(e) => e.stopPropagation()}>
                     <Select
-                      value={task.model ?? ""}
+                      value={displayTask.model ?? ""}
                       onValueChange={(value) =>
                         handleUpdateTask(task.id, { model: value || null })
                       }
