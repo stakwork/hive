@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import type { LlmModel, LlmProvider } from "@prisma/client";
 
 const PROVIDERS: LlmProvider[] = ["GOOGLE", "ANTHROPIC", "OPENAI", "AWS_BEDROCK", "OTHER"];
@@ -54,6 +55,8 @@ interface FormState {
   outputPricePer1M: string;
   dateStart: string;
   dateEnd: string;
+  isPlanDefault: boolean;
+  isTaskDefault: boolean;
 }
 
 const emptyForm: FormState = {
@@ -64,6 +67,8 @@ const emptyForm: FormState = {
   outputPricePer1M: "",
   dateStart: "",
   dateEnd: "",
+  isPlanDefault: false,
+  isTaskDefault: false,
 };
 
 function modelToForm(model: LlmModel): FormState {
@@ -79,6 +84,8 @@ function modelToForm(model: LlmModel): FormState {
     dateEnd: model.dateEnd
       ? new Date(model.dateEnd).toISOString().split("T")[0]
       : "",
+    isPlanDefault: model.isPlanDefault,
+    isTaskDefault: model.isTaskDefault,
   };
 }
 
@@ -133,6 +140,8 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
         outputPricePer1M: parseFloat(form.outputPricePer1M),
         dateStart: form.dateStart || null,
         dateEnd: form.dateEnd || null,
+        isPlanDefault: form.isPlanDefault,
+        isTaskDefault: form.isTaskDefault,
       };
 
       const url = editingModel
@@ -195,6 +204,7 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
               <th className="pb-3 pr-4 font-medium">Output / 1M</th>
               <th className="pb-3 pr-4 font-medium">Date Start</th>
               <th className="pb-3 pr-4 font-medium">Date End</th>
+              <th className="pb-3 pr-4 font-medium">Defaults</th>
               <th className="pb-3 pr-4 font-medium">Status</th>
               <th className="pb-3 font-medium">Actions</th>
             </tr>
@@ -202,7 +212,7 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
           <tbody>
             {models.length === 0 && (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-muted-foreground">
+                <td colSpan={9} className="py-8 text-center text-muted-foreground">
                   No LLM models found. Add one to get started.
                 </td>
               </tr>
@@ -219,6 +229,16 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
                 <td className="py-3 pr-4">{formatPrice(model.outputPricePer1M)}</td>
                 <td className="py-3 pr-4">{formatDate(model.dateStart)}</td>
                 <td className="py-3 pr-4">{formatDate(model.dateEnd)}</td>
+                <td className="py-3 pr-4">
+                  <div className="flex gap-1">
+                    {model.isPlanDefault && (
+                      <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Plan</Badge>
+                    )}
+                    {model.isTaskDefault && (
+                      <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">Task</Badge>
+                    )}
+                  </div>
+                </td>
                 <td className="py-3 pr-4">
                   {isActive(model.dateEnd) ? (
                     <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>
@@ -344,6 +364,24 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
                   value={form.dateEnd}
                   onChange={(e) => setForm((f) => ({ ...f, dateEnd: e.target.value }))}
                 />
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="llm-plan-default"
+                  checked={form.isPlanDefault}
+                  onCheckedChange={(checked) => setForm((f) => ({ ...f, isPlanDefault: checked }))}
+                />
+                <Label htmlFor="llm-plan-default">Plan default</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="llm-task-default"
+                  checked={form.isTaskDefault}
+                  onCheckedChange={(checked) => setForm((f) => ({ ...f, isTaskDefault: checked }))}
+                />
+                <Label htmlFor="llm-task-default">Task default</Label>
               </div>
             </div>
           </div>
