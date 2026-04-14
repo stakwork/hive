@@ -5,7 +5,7 @@
  * actual Feature.architecture text and DIFF artifact content.
  *
  * Usage:
- *   npx dotenv-cli -e .env.prod -- npx tsx scripts/scorer-debug.ts hive
+ *   npx dotenv-cli -e .env.prod -- npx tsx scripts/scorer/debug-metrics.ts hive
  *
  * Reads DATABASE_URL from .env.prod (read-only queries only).
  */

@@ -494,7 +494,14 @@ export function ScorerDashboard({
                     <button
                       onClick={() => {
                         const fId = insight.featureIds[0];
-                        if (fId) setExpandedFeature(fId);
+                        if (!fId) return;
+                        setExpandedFeature(fId);
+                        // Scroll after React re-renders the expanded row
+                        setTimeout(() => {
+                          document
+                            .getElementById(`scorer-feature-${fId}`)
+                            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }, 100);
                       }}
                       className="text-purple-400 hover:underline"
                     >
@@ -748,6 +755,7 @@ function FeatureRow({
   return (
     <>
       <tr
+        id={`scorer-feature-${f.featureId}`}
         onClick={onToggle}
         className="border-b hover:bg-card/50 cursor-pointer transition-colors"
       >
@@ -871,6 +879,8 @@ function TaskCard({
 }) {
   const [filesExpanded, setFilesExpanded] = useState(false);
   const plannedSet = new Set(filesPlanned);
+  const correctionMessages = task.correctionMessages || [];
+  const agentRuns = task.agentRuns || [];
   const statusColor =
     task.prStatus === "DONE"
       ? "bg-green-500/10 text-green-400"
@@ -900,9 +910,9 @@ function TaskCard({
           {task.correctionCount} correction{task.correctionCount !== 1 ? "s" : ""}
         </span>
         <span>{formatDuration(task.durationMinutes)}</span>
-        {task.agentRuns.length > 0 && (
+        {agentRuns.length > 0 && (
           <span>
-            {task.agentRuns.map((r) => `${r.agent}: ${r.count}`).join(", ")}
+            {agentRuns.map((r) => `${r.agent}: ${r.count}`).join(", ")}
           </span>
         )}
       </div>
@@ -915,8 +925,8 @@ function TaskCard({
       )}
 
       {/* Correction messages (collapsible) */}
-      {task.correctionMessages.length > 0 && (
-        <CorrectionMessages messages={task.correctionMessages} />
+      {correctionMessages.length > 0 && (
+        <CorrectionMessages messages={correctionMessages} />
       )}
 
       {/* Files summary (collapsible) */}
