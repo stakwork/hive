@@ -119,6 +119,17 @@ export async function softDeletePod(podId: string): Promise<Pod> {
 }
 
 /**
+ * Soft-delete a pod by its external podId (workspace identifier)
+ * @param podId - The pod's external workspace identifier (not the DB primary key)
+ */
+export async function softDeletePodByPodId(podId: string): Promise<void> {
+  await db.pod.updateMany({
+    where: { podId },
+    data: { deletedAt: new Date() },
+  });
+}
+
+/**
  * Find soft-deleted pods for a swarm (for admin/audit purposes)
  * @param swarmId - The swarm ID to query
  * @returns Array of soft-deleted pods
