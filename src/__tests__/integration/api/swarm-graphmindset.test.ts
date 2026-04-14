@@ -16,6 +16,14 @@ const mockCreateSwarm = vi.fn();
 const mockCreateCustomer = vi.fn();
 const mockCreateSecret = vi.fn();
 
+const { mockSetGraphTitle } = vi.hoisted(() => ({
+  mockSetGraphTitle: vi.fn(),
+}));
+
+vi.mock('@/services/swarm/graph-title', () => ({
+  setGraphTitle: mockSetGraphTitle,
+}));
+
 vi.mock('@/lib/runtime', () => ({
   isSwarmFakeModeEnabled: vi.fn(() => false),
   isDevelopmentMode: vi.fn(() => false),
@@ -83,6 +91,7 @@ describe('POST /api/swarm — graph_mindset', () => {
 
     mockCreateSwarm.mockResolvedValue(defaultSwarmResponse());
     mockCreateSecret.mockResolvedValue({ success: true });
+    mockSetGraphTitle.mockResolvedValue(undefined);
   });
 
   // ── Happy path: full DB state after successful graph_mindset creation ──
@@ -345,5 +354,74 @@ describe('POST /api/swarm — graph_mindset', () => {
     }));
 
     expect(response.status).toBe(400);
+  });
+
+  // ── setGraphTitle fire-and-forget ─────────────────────────────────────────
+
+  test('calls setGraphTitle fire-and-forget for graph_mindset workspace', async () => {
+    mockSession(testUser);
+    mockCreateCustomer.mockResolvedValue({
+      data: { id: 42, token: 'stk-token', workflow_id: 99 },
+    });
+
+    const response = await POST(buildRequest({
+      workspaceId: workspace.id,
+      repositoryUrl: 'https://github.com/user/my-repo',
+      vanity_address: 'my-graph.sphinx.chat',
+      workspace_type: 'graph_mindset',
+    }));
+
+    expect(response.status).toBe(200);
+
+    // Allow fire-and-forget microtask to run
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockSetGraphTitle).toHaveBeenCalledTimes(1);
+    expect(mockSetGraphTitle).toHaveBeenCalledWith(
+      'https://my-graph.sphinx.chat/api',
+      expect.any(String), // swarmPassword (generated)
+      'my-graph', // vanity_address with .sphinx.chat stripped
+    );
+  });
+
+  test('uses swarm_id as slug when no vanity_address provided', async () => {
+    mockSession(testUser);
+    mockCreateCustomer.mockResolvedValue({
+      data: { id: 42, token: 'stk-token', workflow_id: 99 },
+    });
+
+    const response = await POST(buildRequest({
+      workspaceId: workspace.id,
+      repositoryUrl: 'https://github.com/user/my-repo',
+      workspace_type: 'graph_mindset',
+      // no vanity_address
+    }));
+
+    expect(response.status).toBe(200);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockSetGraphTitle).toHaveBeenCalledTimes(1);
+    const [, , slug] = mockSetGraphTitle.mock.calls[0];
+    expect(slug).toBe('swarm-abc123'); // defaultSwarmResponse swarm_id
+  });
+
+  test('does NOT call setGraphTitle for non-graph_mindset workspace type', async () => {
+    mockSession(testUser);
+    mockCreateCustomer.mockResolvedValue({
+      data: { id: 1, token: 'stk-token', workflow_id: null },
+    });
+
+    const response = await POST(buildRequest({
+      workspaceId: workspace.id,
+      repositoryUrl: 'https://github.com/user/repo',
+      // no workspace_type (standard workspace)
+    }));
+
+    expect(response.status).toBe(200);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockSetGraphTitle).not.toHaveBeenCalled();
   });
 });

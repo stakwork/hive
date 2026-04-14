@@ -708,4 +708,59 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
       expect(ownerEntries[0].role).toBe("owner");
     });
   });
+
+  // ── GetSecondBrainAboutDetails and UpdateSecondBrainAbout ─────────────────
+
+  describe("SecondBrain about cmds", () => {
+    let swarm: Awaited<ReturnType<typeof createTestSwarm>>;
+
+    beforeEach(async () => {
+      swarm = await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmUrl: `https://${workspace.slug}.sphinx.chat`,
+        swarmPassword: "test-password-123",
+      });
+      createdEntityIds.swarmIds.push(swarm.id);
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+
+      const { getSwarmCmdJwt, swarmCmdRequest } = await import("@/services/swarm/cmd");
+      vi.mocked(getSwarmCmdJwt).mockResolvedValue("mock-jwt-token");
+      vi.mocked(swarmCmdRequest).mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: { title: "test-graph", description: "" },
+      });
+    });
+
+    test("GetSecondBrainAboutDetails returns 200 with about data", async () => {
+      const response = await callRoute(workspace.slug, {
+        cmd: { type: "Swarm", data: { cmd: "GetSecondBrainAboutDetails" } },
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({ title: "test-graph", description: "" });
+    });
+
+    test("UpdateSecondBrainAbout returns 200", async () => {
+      const { swarmCmdRequest } = await import("@/services/swarm/cmd");
+      vi.mocked(swarmCmdRequest).mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: { success: true },
+      });
+
+      const response = await callRoute(workspace.slug, {
+        cmd: {
+          type: "Swarm",
+          data: { cmd: "UpdateSecondBrainAbout", content: { title: "test-title", description: "" } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({ success: true });
+    });
+  });
 });
