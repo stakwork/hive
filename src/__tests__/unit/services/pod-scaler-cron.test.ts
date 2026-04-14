@@ -278,6 +278,76 @@ describe("executePodScalerRuns", () => {
     );
   });
 
+  // ── Scale-down cooldown tests ─────────────────────────────────────────────
+
+  it("skips scale-down when a task completed within cooldown window", async () => {
+    // minimumVms=5, minimumPods=2, overQueuedCount=0 → targetVms=2 (would scale down)
+    // but recentlyCompletedCount=1 → skip
+    const swarm = makeSwarm({ minimumVms: 5, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // overQueuedCount
+      .mockResolvedValueOnce(1); // recentlyCompletedCount
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockedDb.swarm.update).not.toHaveBeenCalled();
+
+    const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
+    expect(logCalls.some((m) => m.includes("Skipping scale-down") && m.includes("swarm-001"))).toBe(true);
+  });
+
+  it("scales down when no task completed within cooldown window", async () => {
+    // minimumVms=5, minimumPods=2, overQueuedCount=0 → targetVms=2
+    // recentlyCompletedCount=0 → scale-down proceeds
+    const swarm = makeSwarm({ minimumVms: 5, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // overQueuedCount
+      .mockResolvedValueOnce(0); // recentlyCompletedCount
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://pool.example.com/api/pools/swarm-001/scale",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ minimum_vms: 2 }),
+      })
+    );
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 2, deployedPods: 2 },
+    });
+  });
+
+  it("cooldown does not block scale-up", async () => {
+    // overQueuedCount=3 → scale-up; recentlyCompletedCount should never be queried
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(3)  // overQueuedCount → targetVms = 2+3+2=7
+      .mockResolvedValueOnce(5); // recentlyCompletedCount (should NOT be called)
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(1);
+    // Only one task.count call (overQueuedCount), cooldown query skipped
+    expect(mockedDb.task.count).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://pool.example.com/api/pools/swarm-001/scale",
+      expect.objectContaining({
+        body: JSON.stringify({ minimum_vms: 7 }),
+      })
+    );
+  });
+
   it("uses custom queueWaitMinutes (10) for the createdAt filter", async () => {
     mockedDb.platformConfig.findMany.mockResolvedValue([
       makePlatformConfig("podScalerQueueWaitMinutes", "10"),
