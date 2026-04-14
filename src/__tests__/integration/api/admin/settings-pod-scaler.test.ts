@@ -28,10 +28,11 @@ describe("Admin Settings Pod Scaler API", () => {
     await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.scaleUpBuffer, "2");
     await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.maxVmCeiling, "20");
     await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.scaleDownCooldownMinutes, "30");
+    await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.cronEnabled, "1");
   });
 
   describe("GET /api/admin/settings/pod-scaler", () => {
-    it("should return all four settings with defaults for super-admin", async () => {
+    it("should return all six settings with defaults for super-admin", async () => {
       const request = createAuthenticatedGetRequest(
         "/api/admin/settings/pod-scaler",
         superAdminUser
@@ -42,7 +43,7 @@ describe("Admin Settings Pod Scaler API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(Array.isArray(data.settings)).toBe(true);
-      expect(data.settings).toHaveLength(5);
+      expect(data.settings).toHaveLength(6);
 
       const keys = data.settings.map((s: { key: string }) => s.key);
       expect(keys).toContain("queueWaitMinutes");
@@ -50,6 +51,7 @@ describe("Admin Settings Pod Scaler API", () => {
       expect(keys).toContain("scaleUpBuffer");
       expect(keys).toContain("maxVmCeiling");
       expect(keys).toContain("scaleDownCooldownMinutes");
+      expect(keys).toContain("cronEnabled");
     });
 
     it("should return 403 for regular user", async () => {
@@ -136,6 +138,68 @@ describe("Admin Settings Pod Scaler API", () => {
       const request = createAuthenticatedPatchRequest(
         "/api/admin/settings/pod-scaler",
         { key: "queueWaitMinutes", value: 1.5 },
+        superAdminUser
+      );
+      const { PATCH } = await import("@/app/api/admin/settings/pod-scaler/route");
+      const response = await PATCH(request);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should accept cronEnabled value of 0", async () => {
+      const request = createAuthenticatedPatchRequest(
+        "/api/admin/settings/pod-scaler",
+        { key: "cronEnabled", value: 0 },
+        superAdminUser
+      );
+      const { PATCH } = await import("@/app/api/admin/settings/pod-scaler/route");
+      const response = await PATCH(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({ key: "cronEnabled", value: 0 });
+
+      const record = await db.platformConfig.findUnique({
+        where: { key: POD_SCALER_CONFIG_KEYS.cronEnabled },
+      });
+      expect(record?.value).toBe("0");
+    });
+
+    it("should accept cronEnabled value of 1", async () => {
+      const request = createAuthenticatedPatchRequest(
+        "/api/admin/settings/pod-scaler",
+        { key: "cronEnabled", value: 1 },
+        superAdminUser
+      );
+      const { PATCH } = await import("@/app/api/admin/settings/pod-scaler/route");
+      const response = await PATCH(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({ key: "cronEnabled", value: 1 });
+
+      const record = await db.platformConfig.findUnique({
+        where: { key: POD_SCALER_CONFIG_KEYS.cronEnabled },
+      });
+      expect(record?.value).toBe("1");
+    });
+
+    it("should return 400 for cronEnabled value other than 0 or 1", async () => {
+      const request = createAuthenticatedPatchRequest(
+        "/api/admin/settings/pod-scaler",
+        { key: "cronEnabled", value: 5 },
+        superAdminUser
+      );
+      const { PATCH } = await import("@/app/api/admin/settings/pod-scaler/route");
+      const response = await PATCH(request);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should return 400 for zero value on numeric keys (queueWaitMinutes)", async () => {
+      const request = createAuthenticatedPatchRequest(
+        "/api/admin/settings/pod-scaler",
+        { key: "queueWaitMinutes", value: 0 },
         superAdminUser
       );
       const { PATCH } = await import("@/app/api/admin/settings/pod-scaler/route");
