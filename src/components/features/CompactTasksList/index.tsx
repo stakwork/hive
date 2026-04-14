@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, FolderOpen, Copy } from "lucide-react";
+import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, FolderOpen, Copy, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
@@ -80,6 +80,13 @@ function MiniToggle({
   );
 }
 
+interface LlmModelOption {
+  id: string;
+  name: string;
+  provider: string;
+  providerLabel: string | null;
+}
+
 export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }: CompactTasksListProps) {
   const router = useRouter();
   const { slug: workspaceSlug, workspace } = useWorkspace();
@@ -91,6 +98,16 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
   const [duplicatingTaskId, setDuplicatingTaskId] = useState<string | null>(null);
   const [queueStats, setQueueStats] = useState<{ queuedCount: number; unusedVms: number } | null>(null);
+  const [llmModels, setLlmModels] = useState<LlmModelOption[]>([]);
+
+  useEffect(() => {
+    fetch("/api/llm-models")
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.models) setLlmModels(data.models);
+      })
+      .catch(() => {/* silently ignore */});
+  }, []);
 
   const defaultPhase = feature.phases?.[0];
 
@@ -223,7 +240,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
 
   const handleUpdateTask = async (
     taskId: string,
-    updates: { status?: TaskStatus; autoMerge?: boolean; runBuild?: boolean; runTestSuite?: boolean; repositoryId?: string | null }
+    updates: { status?: TaskStatus; autoMerge?: boolean; runBuild?: boolean; runTestSuite?: boolean; repositoryId?: string | null; model?: string | null }
   ) => {
     // Optimistically apply the update immediately
     setOptimisticUpdates(prev => ({ ...prev, [taskId]: { ...prev[taskId], ...updates } }));
@@ -669,6 +686,33 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   />
                   <span>run tests</span>
                 </div>
+                {llmModels.length > 0 && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <Select
+                      value={task.model ?? ""}
+                      onValueChange={(value) =>
+                        handleUpdateTask(task.id, { model: value || null })
+                      }
+                      disabled={task.status !== "TODO"}
+                    >
+                      <SelectTrigger className="h-5 text-[10px] px-1.5 py-0 w-auto max-w-[140px] border-muted bg-muted/50 gap-1 [&>svg]:h-3 [&>svg]:w-3">
+                        <div className="flex items-center gap-1 overflow-hidden min-w-0">
+                          <Sparkles className="h-3 w-3 shrink-0" />
+                          <span className="truncate min-w-0 block">
+                            <SelectValue placeholder="Model" />
+                          </span>
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {llmModels.map((m) => (
+                          <SelectItem key={m.id} value={`${m.provider.toLowerCase()}/${m.name}`} className="text-xs">
+                            {m.providerLabel || m.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             </div>
           );
