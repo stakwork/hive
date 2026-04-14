@@ -231,127 +231,160 @@ export async function sendMessageToStakwork(params: {
  * Start Stakwork workflow for an existing task
  * Used by: Task Coordinator cron, "Start Task" button, PATCH /api/tasks/[taskId]
  * Automatically uses task description as message and builds feature context
+ *
+ * Returns null if the task was already claimed by a concurrent invocation (idempotency guard).
  */
 export async function startTaskWorkflow(params: {
   taskId: string;
   userId: string;
   mode?: string;
   includeHistory?: boolean;
-}) {
+}): Promise<{ chatMessage: any; stakworkData: any } | null> {
   const { taskId, userId, mode = "live", includeHistory = false } = params;
 
-  // Get task with workspace and swarm details
-  const task = await db.task.findFirst({
+  // Atomic claim: only one concurrent invocation can proceed per task.
+  // updateMany is conditional — it only updates if workflowStatus is still PENDING (or null)
+  // AND no stakworkProjectId has been assigned yet.
+  const claimed = await db.task.updateMany({
     where: {
       id: taskId,
       deleted: false,
+      workflowStatus: { in: [WorkflowStatus.PENDING] },
+      stakworkProjectId: null,
     },
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      branch: true,
-      featureId: true,
-      phaseId: true,
-      sourceType: true,
-      runBuild: true,
-      runTestSuite: true,
-      autoMerge: true,
-      model: true,
-      podId: true,
-      agentPassword: true,
-      repository: {
-        select: {
-          name: true,
-          repositoryUrl: true,
-          branch: true,
-        },
-      },
-      workspace: {
-        select: {
-          id: true,
-          slug: true,
-          swarm: {
-            select: {
-              swarmUrl: true,
-              swarmSecretAlias: true,
-              poolName: true,
-              name: true,
-              id: true,
-            },
-          },
-          repositories: {
-            take: 1,
-            orderBy: { createdAt: "asc" },
-            select: {
-              name: true,
-              repositoryUrl: true,
-              branch: true,
-            },
-          },
-        },
-      },
+    data: {
+      workflowStatus: WorkflowStatus.IN_PROGRESS,
+      workflowStartedAt: new Date(),
     },
   });
 
-  if (!task) {
-    throw new Error("Task not found");
+  if (claimed.count === 0) {
+    console.log(`[startTaskWorkflow] Task ${taskId} already claimed — bailing`);
+    return null;
   }
 
-  // Build message from task title and description (may be overridden by last USER message when includeHistory is true)
-  let message = `${task.title}\n\n${task.description || ""}`.trim();
+  try {
+    // Get task with workspace and swarm details
+    const task = await db.task.findFirst({
+      where: {
+        id: taskId,
+        deleted: false,
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        branch: true,
+        featureId: true,
+        phaseId: true,
+        sourceType: true,
+        runBuild: true,
+        runTestSuite: true,
+        autoMerge: true,
+        model: true,
+        podId: true,
+        agentPassword: true,
+        repository: {
+          select: {
+            name: true,
+            repositoryUrl: true,
+            branch: true,
+          },
+        },
+        workspace: {
+          select: {
+            id: true,
+            slug: true,
+            swarm: {
+              select: {
+                swarmUrl: true,
+                swarmSecretAlias: true,
+                poolName: true,
+                name: true,
+                id: true,
+              },
+            },
+            repositories: {
+              take: 1,
+              orderBy: { createdAt: "asc" },
+              select: {
+                name: true,
+                repositoryUrl: true,
+                branch: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
-  // Build feature context if task is linked to a feature and phase
-  let featureContext;
-  if (task.featureId && task.phaseId) {
-    try {
-      featureContext = await buildFeatureContext(task.featureId, task.phaseId);
-    } catch (error) {
-      console.error("Error building feature context:", error);
-      // Continue without feature context if it fails
+    if (!task) {
+      throw new Error("Task not found");
     }
-  }
 
-  // Fetch chat history if includeHistory is true
-  let history: Record<string, unknown>[] = [];
-  if (includeHistory) {
-    try {
-      const fetchedHistory = await fetchChatHistory(taskId);
-      const allHistory = fetchedHistory || [];
+    // Build message from task title and description (may be overridden by last USER message when includeHistory is true)
+    let message = `${task.title}\n\n${task.description || ""}`.trim();
 
-      // Find the last USER message to use as the outgoing message
-      const lastUserMessage = [...allHistory].reverse().find(
-        (msg) => (msg.role as string) === "USER"
-      ) as (Record<string, unknown> & { id: string; message: string }) | undefined;
-
-      if (lastUserMessage) {
-        // Use last user message text as the outgoing message
-        message = lastUserMessage.message;
-        // Re-fetch history excluding the last user message (it will be re-sent as the new message)
-        history = (await fetchChatHistory(taskId, lastUserMessage.id)) || [];
+    // Build feature context if task is linked to a feature and phase
+    let featureContext;
+    if (task.featureId && task.phaseId) {
+      try {
+        featureContext = await buildFeatureContext(task.featureId, task.phaseId);
+      } catch (error) {
+        console.error("Error building feature context:", error);
+        // Continue without feature context if it fails
       }
-      // If no USER message found, fall back to task.title + task.description with empty history
-    } catch (error) {
-      console.error("Error fetching chat history:", error);
-      // Continue without history if it fails
     }
-  }
 
-  return await createChatMessageAndTriggerStakwork({
-    taskId,
-    message,
-    userId,
-    task,
-    contextTags: [],
-    attachments: [],
-    mode,
-    generateChatTitle: false, // Don't generate title - task already has one
-    featureContext,
-    autoMergePr: task.autoMerge,
-    history,
-    featureId: task.featureId,
-    taskModel: task.model ?? undefined,
-  });
+    // Fetch chat history if includeHistory is true
+    let history: Record<string, unknown>[] = [];
+    if (includeHistory) {
+      try {
+        const fetchedHistory = await fetchChatHistory(taskId);
+        const allHistory = fetchedHistory || [];
+
+        // Find the last USER message to use as the outgoing message
+        const lastUserMessage = [...allHistory].reverse().find(
+          (msg) => (msg.role as string) === "USER"
+        ) as (Record<string, unknown> & { id: string; message: string }) | undefined;
+
+        if (lastUserMessage) {
+          // Use last user message text as the outgoing message
+          message = lastUserMessage.message;
+          // Re-fetch history excluding the last user message (it will be re-sent as the new message)
+          history = (await fetchChatHistory(taskId, lastUserMessage.id)) || [];
+        }
+        // If no USER message found, fall back to task.title + task.description with empty history
+      } catch (error) {
+        console.error("Error fetching chat history:", error);
+        // Continue without history if it fails
+      }
+    }
+
+    return await createChatMessageAndTriggerStakwork({
+      taskId,
+      message,
+      userId,
+      task,
+      contextTags: [],
+      attachments: [],
+      mode,
+      generateChatTitle: false, // Don't generate title - task already has one
+      featureContext,
+      autoMergePr: task.autoMerge,
+      history,
+      featureId: task.featureId,
+      taskModel: task.model ?? undefined,
+    });
+  } catch (error) {
+    // Roll back the claim so the task becomes eligible again on the next sweep
+    console.error(`[startTaskWorkflow] Error dispatching task ${taskId}, rolling back claim:`, error);
+    await db.task.updateMany({
+      where: { id: taskId, workflowStatus: WorkflowStatus.IN_PROGRESS, stakworkProjectId: null },
+      data: { workflowStatus: WorkflowStatus.PENDING },
+    });
+    throw error;
+  }
 }
 
 /**
