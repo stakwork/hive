@@ -12,6 +12,8 @@ import {
   POD_SCALER_STALENESS_WINDOW_DAYS,
   POD_SCALER_SCALE_UP_BUFFER,
   POD_SCALER_MAX_VM_CEILING,
+  POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES,
+  POD_SCALER_CRON_ENABLED_DEFAULT,
 } from "@/lib/constants/pod-scaler";
 import { PodScalerConfigPanel } from "./PodScalerConfigPanel";
 
@@ -30,6 +32,8 @@ export default async function SettingsPage() {
     stalenessWindowDays: getValue("stalenessWindowDays", POD_SCALER_STALENESS_WINDOW_DAYS),
     scaleUpBuffer: getValue("scaleUpBuffer", POD_SCALER_SCALE_UP_BUFFER),
     maxVmCeiling: getValue("maxVmCeiling", POD_SCALER_MAX_VM_CEILING),
+    scaleDownCooldownMinutes: getValue("scaleDownCooldownMinutes", POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES),
+    cronEnabled: getValue("cronEnabled", POD_SCALER_CRON_ENABLED_DEFAULT ? 1 : 0),
   };
 
   return (
