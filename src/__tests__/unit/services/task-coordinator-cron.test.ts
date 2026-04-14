@@ -14,6 +14,7 @@ vi.mock("@/lib/db", () => ({
     task: {
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));
@@ -192,6 +193,7 @@ const MockSetup = {
     // Mock empty task list by default (no stale tasks)
     vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
     vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+    vi.mocked(mockDb.task.updateMany).mockResolvedValue({ count: 0 } as any);
     vi.mocked(mockStartTaskWorkflow).mockResolvedValue(undefined as any);
   },
 
@@ -1366,5 +1368,51 @@ describe("processTicketSweep", () => {
     expect(mockDb.task.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ take: 30 })
     );
+  });
+
+  test("candidate query includes workflowStatus and stakworkProjectId filters to exclude already-dispatched tasks", async () => {
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([] as any);
+
+    await processTicketSweep("ws-1", "workspace-1", 5);
+
+    expect(mockDb.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            { workflowStatus: { in: ["PENDING", null] } },
+            { stakworkProjectId: null },
+          ]),
+        }),
+      })
+    );
+  });
+
+  test("null return from startTaskWorkflow is skipped — dispatched not incremented", async () => {
+    const candidates = Array.from({ length: 3 }, () => createCandidateTask());
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce(candidates as any);
+
+    // Second task returns null (already claimed by concurrent invocation)
+    vi.mocked(mockStartTaskWorkflow)
+      .mockResolvedValueOnce({ chatMessage: {}, stakworkData: {} } as any)
+      .mockResolvedValueOnce(null as any)
+      .mockResolvedValueOnce({ chatMessage: {}, stakworkData: {} } as any);
+
+    const result = await processTicketSweep("ws-1", "workspace-1", 5);
+
+    // Only 2 dispatched despite 3 candidates — null return was skipped
+    expect(result).toBe(2);
+    expect(mockStartTaskWorkflow).toHaveBeenCalledTimes(3);
+  });
+
+  test("all tasks return null from startTaskWorkflow → dispatched is 0", async () => {
+    const candidates = Array.from({ length: 3 }, () => createCandidateTask());
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce(candidates as any);
+
+    vi.mocked(mockStartTaskWorkflow).mockResolvedValue(null as any);
+
+    const result = await processTicketSweep("ws-1", "workspace-1", 5);
+
+    expect(result).toBe(0);
+    expect(mockStartTaskWorkflow).toHaveBeenCalledTimes(3);
   });
 });
