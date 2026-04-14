@@ -40,6 +40,7 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockedDb.task.count.mockReset();
   fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => "" });
   global.fetch = fetchMock;
   mockedDb.swarm.update.mockResolvedValue({} as never);
@@ -346,6 +347,25 @@ describe("executePodScalerRuns", () => {
         body: JSON.stringify({ minimum_vms: 7 }),
       })
     );
+  });
+
+  it("excludes tasks with dependencies from overQueuedCount", async () => {
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    // Simulate all queued tasks being blocked (count returns 0 after filter)
+    mockedDb.task.count.mockResolvedValue(0);
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // Assert the filter was included in the query
+    const countCall = mockedDb.task.count.mock.calls[0][0] as {
+      where: { dependsOnTaskIds: { isEmpty: boolean } };
+    };
+    expect(countCall.where.dependsOnTaskIds).toEqual({ isEmpty: true });
   });
 
   it("uses custom queueWaitMinutes (10) for the createdAt filter", async () => {
