@@ -2,7 +2,13 @@
  * Layer 1: Automated Metrics
  *
  * Pure computation from existing DB data. No LLM calls.
- * Computes per-task, per-feature, and aggregate metrics.
+ * Uses bulk queries to avoid connection pool exhaustion.
+ *
+ * Caching strategy:
+ *  - Per-feature metrics cached in ScorerDigest.metadata (JSON)
+ *  - Aggregate metrics cached in Workspace.scorerAggregateCache (JSON)
+ *  - Both written by computeAndCacheMetrics(), read by loadCachedMetrics()
+ *  - 1-hour TTL based on aggregate cache timestamp
  */
 
 import { db } from "@/lib/db";
@@ -12,39 +18,11 @@ import { db } from "@/lib/db";
 // ---------------------------------------------------------------------------
 
 const AFFIRMATIONS = new Set([
-  "yes",
-  "ok",
-  "y",
-  "go",
-  "sure",
-  "do it",
-  "looks good",
-  "proceed",
-  "continue",
-  "approved",
-  "lgtm",
-  "next",
-  "go ahead",
-  "yep",
-  "yup",
-  "yeah",
-  "correct",
-  "right",
-  "perfect",
-  "great",
-  "good",
-  "fine",
-  "agreed",
-  "confirmed",
-  "ship it",
-  "merge it",
-  "thanks",
-  "thank you",
-  "cool",
-  "nice",
-  "done",
-  "k",
-  "okay",
+  "yes", "ok", "y", "go", "sure", "do it", "looks good", "proceed",
+  "continue", "approved", "lgtm", "next", "go ahead", "yep", "yup",
+  "yeah", "correct", "right", "perfect", "great", "good", "fine",
+  "agreed", "confirmed", "ship it", "merge it", "thanks", "thank you",
+  "cool", "nice", "done", "k", "okay",
 ]);
 
 function isAffirmation(msg: string): boolean {
@@ -65,7 +43,7 @@ export interface TaskMetrics {
   messageCount: number;
   correctionCount: number;
   ciPassedFirstAttempt: boolean | null;
-  prStatus: string | null; // "DONE" | "CANCELLED" | "OPEN" | null
+  prStatus: string | null;
   prUrl: string | null;
   durationMinutes: number | null;
   haltRetryAttempted: boolean;
@@ -83,11 +61,11 @@ export interface FeatureMetrics {
   featureStatus: string;
   workspaceId: string;
   taskCount: number;
-  taskCompletionRate: number; // % of tasks with merged PRs
+  taskCompletionRate: number;
   totalMessages: number;
   totalCorrections: number;
-  planPrecision: number | null; // % of touched files that were planned
-  planRecall: number | null; // % of planned files that were touched
+  planPrecision: number | null;
+  planRecall: number | null;
   filesPlanned: string[];
   filesTouched: string[];
   tasks: TaskMetrics[];
@@ -96,10 +74,16 @@ export interface FeatureMetrics {
 export interface AggregateMetrics {
   featureCount: number;
   avgMessagesPerTask: number;
-  ciPassRate: number; // %
-  avgPlanPrecision: number; // %
-  avgPlanRecall: number; // %
-  prMergeRate: number; // %
+  ciPassRate: number;
+  avgPlanPrecision: number;
+  avgPlanRecall: number;
+  prMergeRate: number;
+}
+
+interface AggregateCache {
+  aggregate: AggregateMetrics;
+  cachedAt: string; // ISO timestamp
+  totalFeatures: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,13 +103,12 @@ function extractFilePaths(text: string | null): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Extract files from DIFF artifacts
+// Helpers for artifact parsing
 // ---------------------------------------------------------------------------
 
 interface DiffActionResult {
   file?: string;
   action?: string;
-  repoName?: string;
 }
 
 function extractFilesFromDiffs(
@@ -147,14 +130,9 @@ function extractFilesFromDiffs(
   }));
 }
 
-// ---------------------------------------------------------------------------
-// Extract PR info from PULL_REQUEST artifacts
-// ---------------------------------------------------------------------------
-
 interface PrArtifactContent {
   url?: string;
   status?: string;
-  repo?: string;
 }
 
 function extractPrInfo(
@@ -170,90 +148,135 @@ function extractPrInfo(
 }
 
 // ---------------------------------------------------------------------------
-// Compute per-task metrics
+// Bulk compute + cache
 // ---------------------------------------------------------------------------
 
-export async function computeTaskMetrics(taskId: string): Promise<TaskMetrics> {
-  const task = await db.task.findUniqueOrThrow({
-    where: { id: taskId },
-    select: {
-      id: true,
-      title: true,
-      featureId: true,
-      workflowStartedAt: true,
-      workflowCompletedAt: true,
-      haltRetryAttempted: true,
-      chatMessages: {
-        where: { role: "USER" },
-        select: { message: true },
-        orderBy: { timestamp: "asc" },
-      },
-    },
+/**
+ * Compute all metrics for a workspace in bulk (2 DB queries),
+ * then cache: per-feature in ScorerDigest.metadata, aggregate
+ * in Workspace.scorerAggregateCache.
+ */
+export async function computeAndCacheMetrics(
+  workspaceId: string,
+  since?: Date
+): Promise<{ aggregate: AggregateMetrics; features: FeatureMetrics[] }> {
+  const result = await computeAggregateMetrics(workspaceId, since);
+
+  // Cache per-feature metrics into ScorerDigest rows
+  if (result.features.length > 0) {
+    await db.$transaction(
+      result.features.map((f) =>
+        db.scorerDigest.upsert({
+          where: { featureId: f.featureId },
+          create: {
+            featureId: f.featureId,
+            workspaceId,
+            metadata: JSON.parse(JSON.stringify(f)),
+          },
+          update: {
+            metadata: JSON.parse(JSON.stringify(f)),
+          },
+        })
+      )
+    );
+  }
+
+  // Cache aggregate on workspace
+  const cache: AggregateCache = {
+    aggregate: result.aggregate,
+    cachedAt: new Date().toISOString(),
+    totalFeatures: result.features.length,
+  };
+  await db.workspace.update({
+    where: { id: workspaceId },
+    data: { scorerAggregateCache: JSON.parse(JSON.stringify(cache)) },
   });
 
-  // Message count = all USER messages
-  const messageCount = task.chatMessages.length;
+  return result;
+}
 
-  // Correction count = USER messages after initial, minus affirmations
-  const corrections =
-    messageCount <= 1
-      ? 0
-      : task.chatMessages.slice(1).filter((m) => !isAffirmation(m.message))
-          .length;
+// ---------------------------------------------------------------------------
+// Load from cache (paginated)
+// ---------------------------------------------------------------------------
 
-  // Artifacts: DIFF + PULL_REQUEST
-  const artifacts = await db.artifact.findMany({
-    where: {
-      message: { taskId },
-    },
-    select: { type: true, content: true },
+const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours
+
+/**
+ * Load cached aggregate from Workspace + paginated feature metrics
+ * from ScorerDigest rows. Returns null on cache miss or staleness.
+ */
+export async function loadCachedMetrics(
+  workspaceId: string,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<{
+  aggregate: AggregateMetrics;
+  features: FeatureMetrics[];
+  totalFeatures: number;
+  totalPages: number;
+} | null> {
+  // Read aggregate cache from workspace
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { scorerAggregateCache: true },
   });
 
-  const diffArtifacts = artifacts.filter((a) => a.type === "DIFF");
-  const prArtifacts = artifacts.filter((a) => a.type === "PULL_REQUEST");
+  const raw = workspace?.scorerAggregateCache as AggregateCache | null;
+  if (!raw?.cachedAt) return null;
 
-  const filesTouched = extractFilesFromDiffs(diffArtifacts);
-  const prInfo = extractPrInfo(prArtifacts);
+  // Check staleness
+  if (Date.now() - new Date(raw.cachedAt).getTime() > CACHE_TTL) return null;
 
-  // CI: check if first PR artifact had passing CI (heuristic: status became DONE without retry)
-  // We simplify: ciPassedFirstAttempt is true if PR is DONE and haltRetryAttempted is false
-  const ciPassedFirstAttempt =
-    prInfo.status === "DONE" ? !task.haltRetryAttempted : null;
+  const totalFeatures = raw.totalFeatures || 0;
+  const totalPages = Math.max(1, Math.ceil(totalFeatures / pageSize));
+  const skip = (page - 1) * pageSize;
 
-  // Duration
-  const durationMinutes =
-    task.workflowStartedAt && task.workflowCompletedAt
-      ? Math.round(
-          (task.workflowCompletedAt.getTime() -
-            task.workflowStartedAt.getTime()) /
-            60000
-        )
-      : null;
+  // Paginated read of feature metrics from digest rows
+  const digests = await db.scorerDigest.findMany({
+    where: { workspaceId },
+    select: { metadata: true },
+    orderBy: { createdAt: "desc" },
+    skip,
+    take: pageSize,
+  });
+
+  const features: FeatureMetrics[] = [];
+  for (const d of digests) {
+    const m = d.metadata as Record<string, unknown> | null;
+    if (m?.featureId) {
+      features.push(m as unknown as FeatureMetrics);
+    }
+  }
 
   return {
-    taskId: task.id,
-    taskTitle: task.title,
-    featureId: task.featureId,
-    messageCount,
-    correctionCount: corrections,
-    ciPassedFirstAttempt,
-    prStatus: prInfo.status,
-    prUrl: prInfo.url,
-    durationMinutes,
-    haltRetryAttempted: task.haltRetryAttempted,
-    filesTouched,
+    aggregate: raw.aggregate,
+    features,
+    totalFeatures,
+    totalPages,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Compute per-feature metrics
+// Raw compute (no caching, used internally)
 // ---------------------------------------------------------------------------
 
-export async function computeFeatureMetrics(
-  featureId: string
-): Promise<FeatureMetrics> {
-  const feature = await db.feature.findUniqueOrThrow({
-    where: { id: featureId },
+function computeAggregateMetrics(
+  workspaceId: string,
+  since?: Date
+): Promise<{ aggregate: AggregateMetrics; features: FeatureMetrics[] }> {
+  return computeMetricsBulk(workspaceId, since);
+}
+
+async function computeMetricsBulk(
+  workspaceId: string,
+  since?: Date
+): Promise<{ aggregate: AggregateMetrics; features: FeatureMetrics[] }> {
+  const dateFilter = since ? { createdAt: { gte: since } } : {};
+
+  // Single query: all features with their tasks and user messages
+  const features = await db.feature.findMany({
+    where: { workspaceId, deleted: false, ...dateFilter },
+    orderBy: { createdAt: "desc" },
     select: {
       id: true,
       title: true,
@@ -262,98 +285,166 @@ export async function computeFeatureMetrics(
       architecture: true,
       tasks: {
         where: { deleted: false },
-        select: { id: true },
         orderBy: { order: "asc" },
+        select: {
+          id: true,
+          title: true,
+          featureId: true,
+          workflowStartedAt: true,
+          workflowCompletedAt: true,
+          haltRetryAttempted: true,
+          chatMessages: {
+            where: { role: "USER" },
+            select: { message: true },
+            orderBy: { timestamp: "asc" },
+          },
+        },
       },
     },
   });
 
-  const taskMetrics = await Promise.all(
-    feature.tasks.map((t) => computeTaskMetrics(t.id))
-  );
+  // Collect all task IDs for a single bulk artifact query
+  const allTaskIds = features.flatMap((f) => f.tasks.map((t) => t.id));
 
-  const totalMessages = taskMetrics.reduce(
-    (sum, t) => sum + t.messageCount,
-    0
-  );
-  const totalCorrections = taskMetrics.reduce(
-    (sum, t) => sum + t.correctionCount,
-    0
-  );
+  // Single query: all artifacts for all tasks (DIFF + PULL_REQUEST only)
+  const allArtifacts =
+    allTaskIds.length > 0
+      ? await db.artifact.findMany({
+          where: {
+            message: { taskId: { in: allTaskIds } },
+            type: { in: ["DIFF", "PULL_REQUEST"] },
+          },
+          select: {
+            type: true,
+            content: true,
+            message: { select: { taskId: true } },
+          },
+        })
+      : [];
 
-  // Task completion rate: tasks with merged PRs / total tasks
-  const mergedCount = taskMetrics.filter(
-    (t) => t.prStatus === "DONE"
-  ).length;
-  const taskCompletionRate =
-    feature.tasks.length > 0
-      ? Math.round((mergedCount / feature.tasks.length) * 100)
-      : 0;
-
-  // Plan precision/recall
-  const filesPlanned = extractFilePaths(feature.architecture);
-  const allTouchedFiles = [
-    ...new Set(taskMetrics.flatMap((t) => t.filesTouched.map((f) => f.file))),
-  ];
-
-  let planPrecision: number | null = null;
-  let planRecall: number | null = null;
-
-  if (filesPlanned.length > 0 || allTouchedFiles.length > 0) {
-    const plannedSet = new Set(filesPlanned);
-    const touchedSet = new Set(allTouchedFiles);
-
-    if (touchedSet.size > 0) {
-      const touchedAndPlanned = allTouchedFiles.filter((f) =>
-        plannedSet.has(f)
-      ).length;
-      planPrecision = Math.round((touchedAndPlanned / touchedSet.size) * 100);
-    }
-    if (plannedSet.size > 0) {
-      const plannedAndTouched = filesPlanned.filter((f) =>
-        touchedSet.has(f)
-      ).length;
-      planRecall = Math.round((plannedAndTouched / plannedSet.size) * 100);
-    }
+  // Index artifacts by taskId
+  const artifactsByTask = new Map<
+    string,
+    Array<{ type: string; content: unknown }>
+  >();
+  for (const a of allArtifacts) {
+    const taskId = a.message.taskId;
+    if (!taskId) continue;
+    const list = artifactsByTask.get(taskId) || [];
+    list.push({ type: a.type, content: a.content });
+    artifactsByTask.set(taskId, list);
   }
 
-  return {
-    featureId: feature.id,
-    featureTitle: feature.title,
-    featureStatus: feature.status,
-    workspaceId: feature.workspaceId,
-    taskCount: feature.tasks.length,
-    taskCompletionRate,
-    totalMessages,
-    totalCorrections,
-    planPrecision,
-    planRecall,
-    filesPlanned,
-    filesTouched: allTouchedFiles,
-    tasks: taskMetrics,
-  };
-}
+  // Compute metrics in memory
+  const featureMetrics: FeatureMetrics[] = features.map((feature) => {
+    const taskMetrics: TaskMetrics[] = feature.tasks.map((task) => {
+      const artifacts = artifactsByTask.get(task.id) || [];
+      const diffArtifacts = artifacts.filter((a) => a.type === "DIFF");
+      const prArtifacts = artifacts.filter((a) => a.type === "PULL_REQUEST");
 
-// ---------------------------------------------------------------------------
-// Compute aggregate metrics for a workspace
-// ---------------------------------------------------------------------------
+      const filesTouched = extractFilesFromDiffs(diffArtifacts);
+      const prInfo = extractPrInfo(prArtifacts);
 
-export async function computeAggregateMetrics(
-  workspaceId: string,
-  since?: Date
-): Promise<{ aggregate: AggregateMetrics; features: FeatureMetrics[] }> {
-  const dateFilter = since ? { createdAt: { gte: since } } : {};
+      const messageCount = task.chatMessages.length;
+      const correctionCount =
+        messageCount <= 1
+          ? 0
+          : task.chatMessages
+              .slice(1)
+              .filter((m) => !isAffirmation(m.message)).length;
 
-  const features = await db.feature.findMany({
-    where: { workspaceId, deleted: false, ...dateFilter },
-    select: { id: true },
-    orderBy: { createdAt: "desc" },
+      const ciPassedFirstAttempt =
+        prInfo.status === "DONE" ? !task.haltRetryAttempted : null;
+
+      const durationMinutes =
+        task.workflowStartedAt && task.workflowCompletedAt
+          ? Math.round(
+              (task.workflowCompletedAt.getTime() -
+                task.workflowStartedAt.getTime()) /
+                60000
+            )
+          : null;
+
+      return {
+        taskId: task.id,
+        taskTitle: task.title,
+        featureId: task.featureId,
+        messageCount,
+        correctionCount,
+        ciPassedFirstAttempt,
+        prStatus: prInfo.status,
+        prUrl: prInfo.url,
+        durationMinutes,
+        haltRetryAttempted: task.haltRetryAttempted,
+        filesTouched,
+      };
+    });
+
+    const totalMessages = taskMetrics.reduce(
+      (sum, t) => sum + t.messageCount,
+      0
+    );
+    const totalCorrections = taskMetrics.reduce(
+      (sum, t) => sum + t.correctionCount,
+      0
+    );
+    const mergedCount = taskMetrics.filter(
+      (t) => t.prStatus === "DONE"
+    ).length;
+    const taskCompletionRate =
+      feature.tasks.length > 0
+        ? Math.round((mergedCount / feature.tasks.length) * 100)
+        : 0;
+
+    const filesPlanned = extractFilePaths(feature.architecture);
+    const allTouchedFiles = [
+      ...new Set(
+        taskMetrics.flatMap((t) => t.filesTouched.map((f) => f.file))
+      ),
+    ];
+
+    let planPrecision: number | null = null;
+    let planRecall: number | null = null;
+
+    if (filesPlanned.length > 0 || allTouchedFiles.length > 0) {
+      const plannedSet = new Set(filesPlanned);
+      const touchedSet = new Set(allTouchedFiles);
+      if (touchedSet.size > 0) {
+        const touchedAndPlanned = allTouchedFiles.filter((f) =>
+          plannedSet.has(f)
+        ).length;
+        planPrecision = Math.round(
+          (touchedAndPlanned / touchedSet.size) * 100
+        );
+      }
+      if (plannedSet.size > 0) {
+        const plannedAndTouched = filesPlanned.filter((f) =>
+          touchedSet.has(f)
+        ).length;
+        planRecall = Math.round(
+          (plannedAndTouched / plannedSet.size) * 100
+        );
+      }
+    }
+
+    return {
+      featureId: feature.id,
+      featureTitle: feature.title,
+      featureStatus: feature.status,
+      workspaceId: feature.workspaceId,
+      taskCount: feature.tasks.length,
+      taskCompletionRate,
+      totalMessages,
+      totalCorrections,
+      planPrecision,
+      planRecall,
+      filesPlanned,
+      filesTouched: allTouchedFiles,
+      tasks: taskMetrics,
+    };
   });
 
-  const featureMetrics = await Promise.all(
-    features.map((f) => computeFeatureMetrics(f.id))
-  );
-
+  // Aggregate
   const allTasks = featureMetrics.flatMap((f) => f.tasks);
   const featureCount = featureMetrics.length;
   const taskCount = allTasks.length;
@@ -378,7 +469,9 @@ export async function computeAggregateMetrics(
   const precisionFeatures = featureMetrics.filter(
     (f) => f.planPrecision !== null
   );
-  const recallFeatures = featureMetrics.filter((f) => f.planRecall !== null);
+  const recallFeatures = featureMetrics.filter(
+    (f) => f.planRecall !== null
+  );
 
   const avgPlanPrecision =
     precisionFeatures.length > 0
@@ -417,4 +510,24 @@ export async function computeAggregateMetrics(
     },
     features: featureMetrics,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Single-feature metrics (used by session/digest/pipeline)
+// ---------------------------------------------------------------------------
+
+export async function computeFeatureMetrics(
+  featureId: string
+): Promise<FeatureMetrics> {
+  const feature = await db.feature.findUniqueOrThrow({
+    where: { id: featureId },
+    select: { workspaceId: true },
+  });
+
+  const { features } = await computeMetricsBulk(feature.workspaceId);
+  const match = features.find((f) => f.featureId === featureId);
+  if (!match) {
+    throw new Error(`Feature ${featureId} not found in metrics`);
+  }
+  return match;
 }

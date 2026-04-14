@@ -2,7 +2,11 @@
  * Layer 3: Session Digest Generation
  *
  * Compresses a full session (Layer 2) into a ~50-100 line summary
- * using an LLM call. Cached in ScorerDigest table.
+ * using an LLM call. Stored in ScorerDigest.content.
+ *
+ * The same ScorerDigest row also holds cached metrics in its metadata
+ * field (written by computeAndCacheMetrics). This module only touches
+ * the `content` field so it doesn't clobber cached metrics.
  */
 
 import { generateText } from "ai";
@@ -13,7 +17,7 @@ import { DIGEST_COMPRESSION_PROMPT } from "./prompts";
 
 /**
  * Generate (or regenerate) a digest for a feature.
- * Returns the digest content string.
+ * Only writes the `content` field — preserves existing metadata.
  */
 export async function generateDigest(featureId: string): Promise<string> {
   const session = await assembleFullSession(featureId);
@@ -32,37 +36,22 @@ export async function generateDigest(featureId: string): Promise<string> {
 
   const digestContent = result.text.trim();
 
-  // Upsert into DB
+  const feature = await db.feature.findUniqueOrThrow({
+    where: { id: featureId },
+    select: { workspaceId: true },
+  });
+
+  // Upsert: only set content. On create, metadata starts null
+  // (will be filled by computeAndCacheMetrics separately).
   await db.scorerDigest.upsert({
     where: { featureId },
     create: {
       featureId,
-      workspaceId: session.workspaceName
-        ? (
-            await db.feature.findUniqueOrThrow({
-              where: { id: featureId },
-              select: { workspaceId: true },
-            })
-          ).workspaceId
-        : "",
+      workspaceId: feature.workspaceId,
       content: digestContent,
-      metadata: {
-        taskCount: session.execution.flatMap((p) => p.tasks).length,
-        totalMessages: session.metrics.totalMessages,
-        totalCorrections: session.metrics.totalCorrections,
-        planPrecision: session.metrics.planPrecision,
-        planRecall: session.metrics.planRecall,
-      },
     },
     update: {
       content: digestContent,
-      metadata: {
-        taskCount: session.execution.flatMap((p) => p.tasks).length,
-        totalMessages: session.metrics.totalMessages,
-        totalCorrections: session.metrics.totalCorrections,
-        planPrecision: session.metrics.planPrecision,
-        planRecall: session.metrics.planRecall,
-      },
     },
   });
 
@@ -74,7 +63,7 @@ export async function generateDigest(featureId: string): Promise<string> {
  */
 export async function getDigest(
   featureId: string
-): Promise<{ content: string; metadata: unknown; updatedAt: Date } | null> {
+): Promise<{ content: string | null; metadata: unknown; updatedAt: Date } | null> {
   return db.scorerDigest.findUnique({
     where: { featureId },
     select: { content: true, metadata: true, updatedAt: true },
