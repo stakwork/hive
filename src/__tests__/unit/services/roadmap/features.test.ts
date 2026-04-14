@@ -647,6 +647,7 @@ describe("createFeature", () => {
           priority: FeaturePriority.LOW,
           assigneeId: null,
           isFastTrack: false,
+          model: null,
           createdById: mockUserId,
           updatedById: mockUserId,
           phases: {
