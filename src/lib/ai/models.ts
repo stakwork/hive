@@ -54,6 +54,24 @@ export function getModelValue(m: LlmModelOption): string {
   return `${m.provider.toLowerCase()}/${m.name}`;
 }
 
+/**
+ * Look up the admin-configured default model for plan or task mode.
+ * Returns the model value string (e.g. "anthropic/claude-sonnet-4-6") or null.
+ */
+export async function getDefaultModel(type: "plan" | "task"): Promise<string | null> {
+  const { db } = await import("@/lib/db");
+  const where = type === "plan" ? { isPlanDefault: true } : { isTaskDefault: true };
+  const model = await db.llmModel.findFirst({
+    where: {
+      ...where,
+      OR: [{ dateEnd: null }, { dateEnd: { gt: new Date() } }],
+    },
+    select: { name: true, provider: true, providerLabel: true, isPlanDefault: true, isTaskDefault: true, id: true },
+  });
+  if (!model) return null;
+  return getModelValue(model);
+}
+
 export function getApiKeyForModel(model: ModelName | string): string | undefined {
   if (model.includes("/")) {
     const provider = model.split("/")[0].toUpperCase();

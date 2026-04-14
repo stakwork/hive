@@ -703,9 +703,10 @@ export async function callStakworkAPI(params: {
   if (mode === "plan_mode" && process.env.PLAN_MODE_MODEL) {
     vars.model = process.env.PLAN_MODE_MODEL;
   }
-  if (taskModel) {
-    vars.model = taskModel;
-    const resolvedApiKey = getApiKeyForModel(taskModel);
+  const effectiveModel = taskModel || await getDefaultModel(mode === "plan_mode" ? "plan" : "task");
+  if (effectiveModel) {
+    vars.model = effectiveModel;
+    const resolvedApiKey = getApiKeyForModel(effectiveModel);
     if (resolvedApiKey) vars.apiKey = resolvedApiKey;
   }
 
