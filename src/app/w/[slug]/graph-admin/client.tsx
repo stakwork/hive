@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ExternalLink, Loader2, AlertCircle, RefreshCw, Zap, Plus, Pencil, Check, Globe, Lock } from "lucide-react";
 import { toast } from "sonner";
-import type { PaidEndpoint, BoltwallUser, GraphAdminClientProps } from "./types";
+import type { PaidEndpoint, BoltwallUser, GraphAdminClientProps, SecondBrainAbout } from "./types";
 import { postGraphAdminCmd, roleToNumber } from "./utils";
 import { CopyButton, UserRow, UserFormDialog, SetOwnerDialog } from "./components";
 
@@ -42,19 +42,29 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
   const [setOwnerOpen, setSetOwnerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BoltwallUser | null>(null);
 
+  // ── Graph title state ──
+  const [graphTitle, setGraphTitle] = useState<string | null>(null);
+  const [titleLoading, setTitleLoading] = useState(true);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [cachedAbout, setCachedAbout] = useState<SecondBrainAbout | null>(null);
+  const [titleSaving, setTitleSaving] = useState(false);
+
   // ── Load graph/endpoints on mount ──
   useEffect(() => {
     if (!swarmUrl) {
       setInitialLoading(false);
+      setTitleLoading(false);
       return;
     }
 
     let cancelled = false;
     async function loadInitialState() {
       try {
-        const [visibilityRes, endpointsRes] = await Promise.allSettled([
+        const [visibilityRes, endpointsRes, aboutRes] = await Promise.allSettled([
           postGraphAdminCmd(workspaceSlug, { type: "Swarm", data: { cmd: "GetBoltwallAccessibility" } }),
           postGraphAdminCmd(workspaceSlug, { type: "Swarm", data: { cmd: "ListPaidEndpoint" } }),
+          postGraphAdminCmd(workspaceSlug, { type: "Swarm", data: { cmd: "GetSecondBrainAboutDetails" } }),
         ]);
         if (cancelled) return;
         if (visibilityRes.status === "fulfilled") {
@@ -68,8 +78,16 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
         } else {
           toast.error("Failed to load payment routes");
         }
+        if (aboutRes.status === "fulfilled") {
+          const about = aboutRes.value as SecondBrainAbout;
+          setCachedAbout(about);
+          setGraphTitle(about?.title ?? null);
+        }
       } finally {
-        if (!cancelled) setInitialLoading(false);
+        if (!cancelled) {
+          setInitialLoading(false);
+          setTitleLoading(false);
+        }
       }
     }
     loadInitialState();
@@ -136,6 +154,32 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
       toast.error("Failed to update visibility");
     } finally {
       setVisibilityLoading(false);
+    }
+  }
+
+  // ── Graph title save ──
+  async function handleSaveTitle() {
+    if (!titleDraft.trim() || titleSaving) return;
+    setTitleSaving(true);
+    const previous = { graphTitle, cachedAbout };
+    setGraphTitle(titleDraft);
+    setIsEditingTitle(false);
+    try {
+      await postGraphAdminCmd(workspaceSlug, {
+        type: "Swarm",
+        data: {
+          cmd: "UpdateSecondBrainAbout",
+          content: { ...(cachedAbout ?? { description: "" }), title: titleDraft },
+        },
+      });
+      setCachedAbout((prev) => (prev ? { ...prev, title: titleDraft } : prev));
+      toast.success("Graph title updated");
+    } catch {
+      setGraphTitle(previous.graphTitle);
+      setCachedAbout(previous.cachedAbout);
+      toast.error("Failed to update graph title");
+    } finally {
+      setTitleSaving(false);
     }
   }
 
@@ -286,7 +330,51 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
       {/* ── Identity Bar ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1.5">
-          <h1 className="text-2xl font-bold tracking-tight">{workspaceName}</h1>
+          <div className="flex items-center gap-2">
+            {titleLoading ? (
+              <Skeleton className="h-8 w-48" />
+            ) : isEditingTitle ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  className="h-8 text-xl font-bold"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveTitle();
+                    if (e.key === "Escape") setIsEditingTitle(false);
+                  }}
+                  autoFocus
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  disabled={!titleDraft.trim() || titleSaving}
+                  onClick={handleSaveTitle}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold tracking-tight">
+                  {graphTitle ?? workspaceName}
+                </h1>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={() => {
+                    setTitleDraft(graphTitle ?? workspaceName);
+                    setIsEditingTitle(true);
+                  }}
+                  aria-label="Edit graph title"
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+              </>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
             {hostname && <span className="font-mono text-xs">{hostname}</span>}
             {isPublic !== null && !initialLoading && (
