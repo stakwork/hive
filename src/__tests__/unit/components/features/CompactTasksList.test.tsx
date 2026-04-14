@@ -1652,4 +1652,156 @@ describe("CompactTasksList", () => {
       });
     });
   });
+
+  describe("Optimistic updates", () => {
+    beforeEach(() => {
+      mockRoadmapUpdateTicket.mockClear();
+    });
+
+    test("auto-merge toggle reflects new value immediately before updateTicket resolves", async () => {
+      const user = userEvent.setup();
+      // Never-resolving promise simulates slow network
+      let resolveTicket!: (v: any) => void;
+      const pendingPromise = new Promise<any>((res) => { resolveTicket = res; });
+      mockRoadmapUpdateTicket.mockReturnValueOnce(pendingPromise);
+
+      const task = createMockTask({ id: "task-opt", status: "TODO", autoMerge: false });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const toggles = screen.getAllByTestId("mini-toggle");
+      const autoMergeToggle = toggles[0];
+      expect(autoMergeToggle).not.toBeChecked();
+
+      await user.click(autoMergeToggle);
+
+      // Toggle should flip immediately, before the promise resolves
+      expect(autoMergeToggle).toBeChecked();
+
+      // Clean up
+      resolveTicket(null);
+    });
+
+    test("run build toggle reflects new value immediately before updateTicket resolves", async () => {
+      const user = userEvent.setup();
+      let resolveTicket!: (v: any) => void;
+      const pendingPromise = new Promise<any>((res) => { resolveTicket = res; });
+      mockRoadmapUpdateTicket.mockReturnValueOnce(pendingPromise);
+
+      const task = createMockTask({ id: "task-opt", status: "TODO", runBuild: true });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const toggles = screen.getAllByTestId("mini-toggle");
+      const runBuildToggle = toggles[1];
+      expect(runBuildToggle).toBeChecked();
+
+      await user.click(runBuildToggle);
+
+      // Should flip immediately
+      expect(runBuildToggle).not.toBeChecked();
+
+      resolveTicket(null);
+    });
+
+    test("run tests toggle reflects new value immediately before updateTicket resolves", async () => {
+      const user = userEvent.setup();
+      let resolveTicket!: (v: any) => void;
+      const pendingPromise = new Promise<any>((res) => { resolveTicket = res; });
+      mockRoadmapUpdateTicket.mockReturnValueOnce(pendingPromise);
+
+      const task = createMockTask({ id: "task-opt", status: "TODO", runTestSuite: true });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const toggles = screen.getAllByTestId("mini-toggle");
+      const runTestsToggle = toggles[2];
+      expect(runTestsToggle).toBeChecked();
+
+      await user.click(runTestsToggle);
+
+      expect(runTestsToggle).not.toBeChecked();
+
+      resolveTicket(null);
+    });
+
+    test("toggle reverts to original value when updateTicket rejects", async () => {
+      const user = userEvent.setup();
+      mockRoadmapUpdateTicket.mockRejectedValueOnce(new Error("Network error"));
+
+      const task = createMockTask({ id: "task-revert", status: "TODO", autoMerge: false });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const toggles = screen.getAllByTestId("mini-toggle");
+      const autoMergeToggle = toggles[0];
+      expect(autoMergeToggle).not.toBeChecked();
+
+      await user.click(autoMergeToggle);
+
+      // After rejection, toggle should revert
+      await waitFor(() => {
+        expect(autoMergeToggle).not.toBeChecked();
+      });
+    });
+
+    test("run build toggle reverts when updateTicket rejects", async () => {
+      const user = userEvent.setup();
+      mockRoadmapUpdateTicket.mockRejectedValueOnce(new Error("Network error"));
+
+      const task = createMockTask({ id: "task-revert", status: "TODO", runBuild: true });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const toggles = screen.getAllByTestId("mini-toggle");
+      const runBuildToggle = toggles[1];
+      expect(runBuildToggle).toBeChecked();
+
+      await user.click(runBuildToggle);
+
+      await waitFor(() => {
+        expect(runBuildToggle).toBeChecked();
+      });
+    });
+  });
 });
