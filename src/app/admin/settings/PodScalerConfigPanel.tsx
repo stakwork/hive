@@ -5,8 +5,15 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
-type PodScalerKey = "queueWaitMinutes" | "stalenessWindowDays" | "scaleUpBuffer" | "maxVmCeiling";
+type PodScalerKey =
+  | "queueWaitMinutes"
+  | "stalenessWindowDays"
+  | "scaleUpBuffer"
+  | "maxVmCeiling"
+  | "scaleDownCooldownMinutes"
+  | "cronEnabled";
 
 interface SettingRowProps {
   label: string;
@@ -70,6 +77,51 @@ function SettingRow({ label, description, settingKey, initialValue }: SettingRow
   );
 }
 
+interface CronEnabledToggleProps {
+  initialValue: number;
+}
+
+function CronEnabledToggle({ initialValue }: CronEnabledToggleProps) {
+  const [enabled, setEnabled] = useState(initialValue === 1);
+  const [saving, setSaving] = useState(false);
+
+  const handleChange = async (checked: boolean) => {
+    setEnabled(checked);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/settings/pod-scaler", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "cronEnabled", value: checked ? 1 : 0 }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `Request failed (${res.status})`);
+      }
+
+      toast.success("Pod Scaler Enabled updated.");
+    } catch (err) {
+      setEnabled(!checked); // revert on error
+      toast.error(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-start gap-4 pb-6 border-b">
+      <div className="w-64 shrink-0">
+        <Label className="text-sm font-medium">Pod Scaler Enabled</Label>
+        <p className="text-xs text-muted-foreground mt-1">
+          Enable or disable the automated pod scaler cron
+        </p>
+      </div>
+      <Switch checked={enabled} onCheckedChange={handleChange} disabled={saving} />
+    </div>
+  );
+}
+
 interface Props {
   initialValues: Record<PodScalerKey, number>;
 }
@@ -96,10 +148,16 @@ export function PodScalerConfigPanel({ initialValues }: Props) {
       label: "Max VM Ceiling",
       description: "Hard maximum number of VMs the scaler will ever set",
     },
+    {
+      key: "scaleDownCooldownMinutes",
+      label: "Scale-Down Cooldown",
+      description: "Minutes the scaler must wait after a scale-down before scaling down again",
+    },
   ];
 
   return (
     <div className="space-y-6">
+      <CronEnabledToggle initialValue={initialValues.cronEnabled} />
       {rows.map((row) => (
         <SettingRow
           key={row.key}
