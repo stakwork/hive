@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { poolManagerService } from "@/lib/service-factory";
+import { softDeletePodByPodId } from "@/lib/pods/queries";
 import { NextRequest, NextResponse } from "next/server";
 
 interface RouteContext {
@@ -42,6 +43,10 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: "Pool not configured for this workspace" }, { status: 404 });
     }
 
+    // Step 1: Mark deleted in DB first
+    await softDeletePodByPodId(workspaceId);
+
+    // Step 2: Delete from pool manager
     await poolManagerService().deletePodFromPool(swarm.id, workspaceId, swarm.poolApiKey);
 
     // Best-effort: atomically clear pod refs from any task that still references this pod.
