@@ -390,16 +390,41 @@ interface DiffActionResult {
   action?: string;
 }
 
+function normalizeFilePath(path: string): string {
+  const firstSlash = path.indexOf("/");
+  if (firstSlash > 0) {
+    const firstSegment = path.slice(0, firstSlash);
+    if (!firstSegment.includes(".")) {
+      return path.slice(firstSlash + 1);
+    }
+  }
+  return path;
+}
+
 function extractFilesFromDiffs(
   artifacts: Array<{ content: unknown }>
 ): FileAction[] {
   const fileMap = new Map<string, string>();
   for (const artifact of artifacts) {
-    const content = artifact.content;
-    if (!content || !Array.isArray(content)) continue;
-    for (const item of content as DiffActionResult[]) {
+    const raw = artifact.content;
+    if (!raw) continue;
+
+    let items: DiffActionResult[];
+    if (Array.isArray(raw)) {
+      items = raw;
+    } else if (
+      typeof raw === "object" &&
+      Array.isArray((raw as Record<string, unknown>).diffs)
+    ) {
+      items = (raw as Record<string, unknown>).diffs as DiffActionResult[];
+    } else {
+      continue;
+    }
+
+    for (const item of items) {
       if (item.file) {
-        fileMap.set(item.file, item.action || "modify");
+        const normalized = normalizeFilePath(item.file);
+        fileMap.set(normalized, item.action || "modify");
       }
     }
   }
