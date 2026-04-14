@@ -15,14 +15,7 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
-
-
-interface LlmModelOption {
-  id: string;
-  name: string;
-  provider: string;
-  providerLabel: string | null;
-}
+import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 
 interface PlanStartInputProps {
   onSubmit: (message: string, options?: { isPrototype: boolean; selectedRepoId: string | null; model: string }) => void;
@@ -78,7 +71,8 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
           const models: LlmModelOption[] = data.models ?? [];
           setLlmModels(models);
           if (models.length > 0) {
-            setSelectedModel(`${models[0].provider.toLowerCase()}/${models[0].name}`);
+            const defaultModel = models.find((m: { isPlanDefault: boolean }) => m.isPlanDefault);
+            setSelectedModel(getModelValue(defaultModel ?? models[0]));
           }
         }
       } catch (error) {
@@ -294,16 +288,16 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
 
             {llmModels.length > 0 && (
               <Select value={selectedModel} onValueChange={(v) => setSelectedModel(v)}>
-                <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm" data-testid="model-selector">
+                <SelectTrigger className="w-auto h-8 text-xs rounded-lg shadow-sm whitespace-nowrap" data-testid="model-selector">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4" />
-                    <span>{selectedModel ? (llmModels.find(m => `${m.provider.toLowerCase()}/${m.name}` === selectedModel)?.providerLabel || selectedModel) : "Model"}</span>
+                    <Sparkles className="h-4 w-4 shrink-0" />
+                    <span>{selectedModel ? (llmModels.find(m => getModelValue(m) === selectedModel)?.name || selectedModel) : "Model"}</span>
                   </div>
                 </SelectTrigger>
                 <SelectContent>
                   {llmModels.map((m) => (
-                    <SelectItem key={m.id} value={`${m.provider.toLowerCase()}/${m.name}`}>
-                      {m.providerLabel || m.name}
+                    <SelectItem key={m.id} value={getModelValue(m)}>
+                      {m.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

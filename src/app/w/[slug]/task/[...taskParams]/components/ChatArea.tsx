@@ -60,7 +60,7 @@ interface ChatAreaProps {
   isSuperAdmin?: boolean;
   selectedModel?: string;
   onModelChange?: (m: string) => void;
-  llmModels?: { id: string; name: string; provider: string; providerLabel: string | null }[];
+  llmModels?: { id: string; name: string; provider: string; providerLabel: string | null; isPlanDefault: boolean; isTaskDefault: boolean }[];
   hasMessages?: boolean;
 }
 
