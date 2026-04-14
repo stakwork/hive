@@ -15,17 +15,25 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
-import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
+
+
+interface LlmModelOption {
+  id: string;
+  name: string;
+  provider: string;
+  providerLabel: string | null;
+}
 
 interface PlanStartInputProps {
-  onSubmit: (message: string, options?: { isPrototype: boolean; selectedRepoId: string | null; model: ModelName }) => void;
+  onSubmit: (message: string, options?: { isPrototype: boolean; selectedRepoId: string | null; model: string }) => void;
   isLoading?: boolean;
 }
 
 export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputProps) {
   const [value, setValue] = useState("");
   const [isPrototype, setIsPrototype] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
+  const [llmModels, setLlmModels] = useState<LlmModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const initialValueRef = useRef("");
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
@@ -59,6 +67,25 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
 
   useEffect(() => {
     textareaRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const fetchLlmModels = async () => {
+      try {
+        const response = await fetch("/api/llm-models");
+        if (response.ok) {
+          const data = await response.json();
+          const models: LlmModelOption[] = data.models ?? [];
+          setLlmModels(models);
+          if (models.length > 0) {
+            setSelectedModel(`${models[0].provider.toLowerCase()}/${models[0].name}`);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching LLM models:", error);
+      }
+    };
+    fetchLlmModels();
   }, []);
 
   useEffect(() => {
@@ -265,21 +292,23 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
               </Select>
             )}
 
-            <Select value={selectedModel} onValueChange={(v) => setSelectedModel(v as ModelName)}>
-              <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm" data-testid="model-selector">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  <span>{selectedModel}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {VALID_MODELS.map((model) => (
-                  <SelectItem key={model} value={model}>
-                    {model}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {llmModels.length > 0 && (
+              <Select value={selectedModel} onValueChange={(v) => setSelectedModel(v)}>
+                <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm" data-testid="model-selector">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    <span>{selectedModel ? (llmModels.find(m => `${m.provider.toLowerCase()}/${m.name}` === selectedModel)?.providerLabel || selectedModel) : "Model"}</span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {llmModels.map((m) => (
+                    <SelectItem key={m.id} value={`${m.provider.toLowerCase()}/${m.name}`}>
+                      {m.providerLabel || m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
 
             <div className="ml-auto flex gap-2">
               {isSupported && (
