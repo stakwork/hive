@@ -110,12 +110,20 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
         },
       });
 
+      console.log(
+        `${LOG_PREFIX} Swarm ${swarm.id} queue info: overQueuedCount=${overQueuedCount}, queueWaitMinutes=${queueWaitMinutes}, stalenessWindowDays=${stalenessWindowDays}, scaleUpBuffer=${scaleUpBuffer}, maxVmCeiling=${maxVmCeiling}`
+      );
+
       const floor = swarm.minimumPods ?? swarm.minimumVms;
       const targetVms = Math.min(
         overQueuedCount > 0
           ? Math.max(floor, overQueuedCount + scaleUpBuffer)
           : floor,
         maxVmCeiling
+      );
+
+      console.log(
+        `${LOG_PREFIX} Swarm ${swarm.id} scaling calc: floor=${floor}, targetVms=${targetVms}, currentMinimumVms=${swarm.minimumVms}`
       );
 
       // Always record the check result in deployedPods

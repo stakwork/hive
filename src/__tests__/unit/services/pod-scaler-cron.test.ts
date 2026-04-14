@@ -106,6 +106,8 @@ describe("executePodScalerRuns", () => {
     const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
     expect(logCalls.some((m) => m.includes("Starting execution"))).toBe(true);
     expect(logCalls.some((m) => m.includes("Found"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("queue info") && m.includes("swarm-001"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("scaling calc") && m.includes("swarm-001"))).toBe(true);
     expect(logCalls.some((m) => m.includes("Scaling UP") && m.includes("swarm-001"))).toBe(true);
   });
 
@@ -129,6 +131,8 @@ describe("executePodScalerRuns", () => {
     const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
     expect(logCalls.some((m) => m.includes("Starting execution"))).toBe(true);
     expect(logCalls.some((m) => m.includes("Found"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("queue info") && m.includes("swarm-001"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("scaling calc") && m.includes("swarm-001"))).toBe(true);
     expect(logCalls.some((m) => m.includes("Scaling DOWN") && m.includes("swarm-001"))).toBe(true);
   });
 
@@ -153,6 +157,8 @@ describe("executePodScalerRuns", () => {
     const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
     expect(logCalls.some((m) => m.includes("Starting execution"))).toBe(true);
     expect(logCalls.some((m) => m.includes("Found"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("queue info") && m.includes("swarm-001"))).toBe(true);
+    expect(logCalls.some((m) => m.includes("scaling calc") && m.includes("swarm-001"))).toBe(true);
     expect(logCalls.some((m) => m.includes("No change") && m.includes("swarm-001"))).toBe(true);
   });
 
