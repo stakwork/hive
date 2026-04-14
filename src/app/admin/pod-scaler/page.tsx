@@ -17,7 +17,7 @@ import {
 } from "@/lib/constants/pod-scaler";
 import { PodScalerConfigPanel } from "./PodScalerConfigPanel";
 
-export default async function SettingsPage() {
+export default async function PodScalerPage() {
   const configs = await db.platformConfig.findMany({
     where: { key: { in: Object.values(POD_SCALER_CONFIG_KEYS) } },
   });
