@@ -87,6 +87,7 @@ const TestHelpers = {
   expectWorkspaceQueryCalled: () => {
     expect(mockDb.workspace.findMany).toHaveBeenCalledWith({
       where: {
+        deleted: false,
         janitorConfig: {
           OR: [
             { recommendationSweepEnabled: true },
@@ -293,6 +294,80 @@ describe("executeTaskCoordinatorRuns", () => {
       expect(result.workspacesProcessed).toBe(0);
       expect(result.tasksCreated).toBe(0);
       expect(result.success).toBe(true);
+    });
+
+    test("should include deleted: false in workspace query where clause", async () => {
+      MockSetup.setupSuccessfulExecution();
+
+      await executeTaskCoordinatorRuns();
+
+      expect(mockDb.workspace.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            deleted: false,
+          }),
+        })
+      );
+    });
+
+    test("when one workspace processWorkspace rejects, other workspaces still resolve and contribute to aggregated metrics", async () => {
+      const workspace1 = JanitorTestDataFactory.createValidWorkspace({ id: "ws-1", slug: "workspace-1" });
+      const workspace2 = JanitorTestDataFactory.createValidWorkspace({ id: "ws-2", slug: "workspace-2" });
+      TestHelpers.setupWorkspaceWithConfig([workspace1, workspace2]);
+
+      // First workspace pool check throws (causes processWorkspace to reject), second succeeds
+      vi.mocked(mockGetPoolStatusFromPods)
+        .mockRejectedValueOnce(new Error("Pool API error"))
+        .mockResolvedValueOnce({
+          unusedVms: 3,
+          runningVms: 3,
+          pendingVms: 0,
+          failedVms: 0,
+          usedVms: 0,
+          lastCheck: new Date().toISOString(),
+          queuedCount: 0,
+        });
+
+      TestHelpers.setupRecommendations([]);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      // Both workspaces counted despite one failure
+      expect(result.workspacesProcessed).toBe(2);
+      // The failing workspace contributes an error with workspaceSlug "UNKNOWN" (Promise rejection)
+      expect(result.errorCount).toBeGreaterThanOrEqual(1);
+    });
+
+    test("tasksCreated and errors are correctly summed across all settled workspace results", async () => {
+      const workspace1 = JanitorTestDataFactory.createValidWorkspace({ id: "ws-1", slug: "workspace-1" });
+      const workspace2 = JanitorTestDataFactory.createValidWorkspace({ id: "ws-2", slug: "workspace-2" });
+      TestHelpers.setupWorkspaceWithConfig([workspace1, workspace2]);
+
+      vi.mocked(mockGetPoolStatusFromPods).mockResolvedValue({
+        unusedVms: 3,
+        runningVms: 3,
+        pendingVms: 0,
+        failedVms: 0,
+        usedVms: 0,
+        lastCheck: new Date().toISOString(),
+        queuedCount: 0,
+      });
+
+      const recommendation1 = JanitorTestDataFactory.createPendingRecommendation("HIGH");
+      const recommendation2 = JanitorTestDataFactory.createPendingRecommendation("MEDIUM");
+      // Return different recommendations per workspace call
+      vi.mocked(mockDb.janitorRecommendation.findMany)
+        .mockResolvedValueOnce([recommendation1] as any)
+        .mockResolvedValueOnce([recommendation2] as any);
+
+      TestHelpers.setupAcceptRecommendationSuccess();
+
+      const result = await executeTaskCoordinatorRuns();
+
+      // Both workspaces processed and tasks summed
+      expect(result.workspacesProcessed).toBe(2);
+      expect(result.tasksCreated).toBe(2);
+      expect(result.errorCount).toBe(0);
     });
   });
 
@@ -633,7 +708,7 @@ describe("executeTaskCoordinatorRuns", () => {
       const workspace2 = JanitorTestDataFactory.createValidWorkspace({ id: "ws-2", slug: "workspace-2" });
       TestHelpers.setupWorkspaceWithConfig([workspace1, workspace2]);
 
-      // First workspace pool check fails, second succeeds
+      // First workspace pool check rejects (processWorkspace rejects), second succeeds
       vi.mocked(mockGetPoolStatusFromPods)
         .mockRejectedValueOnce(new Error("Pool API error"))
         .mockResolvedValueOnce({
@@ -650,11 +725,13 @@ describe("executeTaskCoordinatorRuns", () => {
 
       const result = await executeTaskCoordinatorRuns();
 
+      // Both workspaces are counted (Promise.allSettled always settles all)
       expect(result.workspacesProcessed).toBe(2);
       expect(result.errorCount).toBe(1);
       expect(result.errors).toHaveLength(1);
+      // Unhandled rejections produce workspaceSlug: "UNKNOWN"
       expect(result.errors[0]).toEqual({
-        workspaceSlug: workspace1.slug,
+        workspaceSlug: "UNKNOWN",
         error: expect.stringContaining("Pool API error"),
       });
     });
@@ -668,14 +745,14 @@ describe("executeTaskCoordinatorRuns", () => {
       await executeTaskCoordinatorRuns();
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`Error processing workspace ${workspace.slug}:`),
+        expect.stringContaining("Unexpected error processing workspace:"),
         expect.stringContaining("Pool connection timeout")
       );
 
       consoleErrorSpy.mockRestore();
     });
 
-    test("should include workspace slug in error object", async () => {
+    test("should include error details in error object", async () => {
       const workspace = JanitorTestDataFactory.createValidWorkspace();
       TestHelpers.setupWorkspaceWithConfig([workspace]);
       vi.mocked(mockGetPoolStatusFromPods).mockRejectedValue(new Error("Test error"));
@@ -683,8 +760,8 @@ describe("executeTaskCoordinatorRuns", () => {
       const result = await executeTaskCoordinatorRuns();
 
       expect(result.errors[0]).toEqual({
-        workspaceSlug: workspace.slug,
-        error: expect.any(String),
+        workspaceSlug: "UNKNOWN",
+        error: expect.stringContaining("Test error"),
       });
     });
   });
@@ -861,7 +938,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toEqual({
-        workspaceSlug: workspace.slug,
+        workspaceSlug: "UNKNOWN",
         error: expect.stringContaining("Test error message"),
       });
     });
