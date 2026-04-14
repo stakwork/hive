@@ -1,0 +1,47 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSwarmConfig } from "../../utils";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+
+export async function POST(request: NextRequest) {
+  try {
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+
+    const body = await request.json();
+    const { workspace, repo_url } = body;
+
+    if (!workspace || !repo_url) {
+      return NextResponse.json(
+        { error: "Missing required parameters: workspace, repo_url" },
+        { status: 400 }
+      );
+    }
+
+    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id);
+    if ("error" in swarmConfig) {
+      return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
+    }
+
+    const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
+
+    const response = await fetch(`${baseSwarmUrl}/learn_docs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-token": decryptedSwarmApiKey,
+      },
+      body: JSON.stringify({ repo_url }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Swarm server error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Learn docs API proxy error:", error);
+    return NextResponse.json({ error: "Failed to trigger documentation learning" }, { status: 500 });
+  }
+}
