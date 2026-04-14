@@ -11,6 +11,7 @@ import {
   EyeOff,
   Play,
   Zap,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -114,19 +115,23 @@ export function ScorerDashboard({
   const [totalFeatures, setTotalFeatures] = useState(0);
 
   // Fetch metrics when workspace or page changes
-  const fetchMetrics = useCallback(async () => {
+  const fetchMetrics = useCallback(async (refresh?: boolean) => {
     if (!selectedWs) return;
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/admin/scorer/metrics?workspaceId=${selectedWs.id}&page=${page}`
-      );
+      const params = new URLSearchParams({
+        workspaceId: selectedWs.id,
+        page: String(page),
+      });
+      if (refresh) params.set("refresh", "true");
+      const res = await fetch(`/api/admin/scorer/metrics?${params}`);
       if (!res.ok) throw new Error("Failed to fetch metrics");
       const data = await res.json();
       setAggregate(data.aggregate);
       setFeatures(data.features);
       setTotalPages(data.pagination?.totalPages || 1);
       setTotalFeatures(data.pagination?.totalFeatures || data.features.length);
+      if (refresh) toast.success("Metrics refreshed");
     } catch (err) {
       toast.error("Failed to load metrics");
       console.error(err);
@@ -346,7 +351,7 @@ export function ScorerDashboard({
             <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
           </div>
         ) : aggregate ? (
-          <div className="flex gap-6 p-3 px-4 border rounded-md bg-card mb-5">
+          <div className="flex items-center gap-6 p-3 px-4 border rounded-md bg-card mb-5">
             <MetricItem
               label="Features"
               value={aggregate.featureCount}
@@ -393,6 +398,14 @@ export function ScorerDashboard({
                 warn: 60,
               })}
             />
+            <button
+              onClick={() => fetchMetrics(true)}
+              disabled={loading}
+              className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
+              title="Refresh metrics (skip cache)"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            </button>
           </div>
         ) : null}
 
@@ -777,38 +790,36 @@ function FeatureRow({
         <tr>
           <td colSpan={7} className="p-0">
             <div className="border-t bg-background">
-              {/* Digest */}
-              <div className="p-4 border-b">
-                <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Digest
-                </div>
-                {digest ? (
+              {/* Digest (only if content exists) */}
+              {digest?.content && (
+                <div className="p-4 border-b">
+                  <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Digest
+                  </div>
                   <div className="text-[11px] text-muted-foreground leading-relaxed p-3 bg-card rounded border-l-2 border-l-purple-500 whitespace-pre-wrap font-mono">
                     {digest.content}
                   </div>
-                ) : (
-                  <div className="text-[11px] text-muted-foreground italic">
-                    No digest generated yet.
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
 
-              {/* Task cards */}
-              <div className="p-4 border-b">
-                <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Tasks
+              {/* Task cards (only if tasks exist) */}
+              {f.tasks.length > 0 && (
+                <div className="p-4 border-b">
+                  <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Tasks
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {f.tasks.map((task) => (
+                      <TaskCard
+                        key={task.taskId}
+                        task={task}
+                        filesPlanned={f.filesPlanned}
+                        formatDuration={formatDuration}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-2">
-                  {f.tasks.map((task) => (
-                    <TaskCard
-                      key={task.taskId}
-                      task={task}
-                      filesPlanned={f.filesPlanned}
-                      formatDuration={formatDuration}
-                    />
-                  ))}
-                </div>
-              </div>
+              )}
 
               {/* Analyze button */}
               <div className="p-3 flex justify-end">
