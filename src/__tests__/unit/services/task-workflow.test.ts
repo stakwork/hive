@@ -4945,13 +4945,11 @@ describe("startTaskWorkflow - atomic claim guard", () => {
     );
   });
 
-  test("rolls back workflowStatus to PENDING when createChatMessageAndTriggerStakwork throws after claim", async () => {
+  test("propagates error when dispatch fails after claim (no rollback — stale halter handles cleanup)", async () => {
     // Claim succeeds
     mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
     // findFirst throws (simulates a DB error after the atomic claim)
     mockDb.task.findFirst.mockRejectedValueOnce(new Error("DB connection lost"));
-    // updateMany for rollback
-    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
 
     const { startTaskWorkflow } = await import("@/services/task-workflow");
 
@@ -4959,16 +4957,7 @@ describe("startTaskWorkflow - atomic claim guard", () => {
       startTaskWorkflow({ taskId: "test-task-id", userId: "test-user-id" })
     ).rejects.toThrow("DB connection lost");
 
-    // Second updateMany call should be the rollback
-    expect(mockDb.task.updateMany).toHaveBeenCalledTimes(2);
-    const rollbackCall = (mockDb.task.updateMany as any).mock.calls[1];
-    expect(rollbackCall[0]).toMatchObject({
-      where: expect.objectContaining({
-        id: "test-task-id",
-        workflowStatus: "IN_PROGRESS",
-        stakworkProjectId: null,
-      }),
-      data: { workflowStatus: "PENDING" },
-    });
+    // Only one updateMany call (the claim) — no rollback
+    expect(mockDb.task.updateMany).toHaveBeenCalledTimes(1);
   });
 });
