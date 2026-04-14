@@ -24,6 +24,7 @@ import { ClipboardList } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getModelValue } from "@/lib/ai/models";
 import { DiffToken, PlanData, PlanSection, SectionHighlights } from "./PlanArtifact";
 
 function generateUniqueId(): string {
@@ -101,7 +102,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [sphinxReady, setSphinxReady] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
-  const [llmModels, setLlmModels] = useState<{ id: string; name: string; provider: string; providerLabel: string | null }[]>([]);
+  const [llmModels, setLlmModels] = useState<{ id: string; name: string; provider: string; providerLabel: string | null; isPlanDefault: boolean; isTaskDefault: boolean }[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
 
@@ -283,8 +284,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           const data = await response.json();
           const models = data.models ?? [];
           setLlmModels(models);
-          if (models.length > 0) {
-            setSelectedModel(`${models[0].provider.toLowerCase()}/${models[0].name}`);
+          if (!selectedModel && models.length > 0) {
+            const defaultModel = models.find((m: { isPlanDefault: boolean }) => m.isPlanDefault);
+            setSelectedModel(getModelValue(defaultModel ?? models[0]));
           }
         }
       } catch (error) {
@@ -292,7 +294,14 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       }
     };
     fetchLlmModels();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Initialize selectedModel from persisted feature.model
+  useEffect(() => {
+    if (feature?.model && !selectedModel) {
+      setSelectedModel(feature.model);
+    }
+  }, [feature?.model]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refetch on tab visibility change
   useEffect(() => {
@@ -405,7 +414,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         setIsLoading(false);
       }
     },
-    [featureId, session, clearLogs],
+    [featureId, session, clearLogs, selectedModel],
   );
 
   const handleArtifactAction = useCallback(
@@ -437,6 +446,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
           body: JSON.stringify({
             message: action.optionResponse,
             replyId: messageId,
+            model: selectedModel,
           }),
         });
 
@@ -466,7 +476,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         setIsLoading(false);
       }
     },
-    [featureId, session, clearLogs],
+    [featureId, session, clearLogs, selectedModel],
   );
 
   const allArtifacts = useMemo(() => (Array.isArray(messages) ? messages.flatMap((m) => m.artifacts || []) : []), [messages]);
@@ -554,7 +564,14 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     streamContext,
     isSuperAdmin,
     selectedModel,
-    onModelChange: setSelectedModel,
+    onModelChange: (model: string) => {
+      setSelectedModel(model);
+      fetch(`/api/features/${featureId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      }).catch(() => {});
+    },
     llmModels,
     hasMessages,
   };
