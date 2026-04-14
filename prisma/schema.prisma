@@ -210,6 +210,7 @@ model Workspace {
   scorerEnabled          Boolean                 @default(false) @map("scorer_enabled")
   scorerPatternPrompt    String?                 @map("scorer_pattern_prompt")
   scorerSinglePrompt     String?                 @map("scorer_single_prompt")
+  scorerAggregateCache   Json?                   @map("scorer_aggregate_cache")
   agentLogs              AgentLog[]
   diagrams               DiagramWorkspace[]
   features               Feature[]
@@ -1403,7 +1404,7 @@ model ScorerDigest {
   id          String   @id @default(cuid())
   featureId   String   @unique @map("feature_id")
   workspaceId String   @map("workspace_id")
-  content     String   @db.Text
+  content     String?  @db.Text
   metadata    Json?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
