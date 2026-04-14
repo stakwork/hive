@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // Hoist mocks so they are available before module resolution
-const { mockSpeechRecognitionState, mockUseSpeechRecognition, mockUseControlKeyHold } =
+const { mockSpeechRecognitionState, mockUseSpeechRecognition, mockUseControlKeyHold, mockFetch } =
   vi.hoisted(() => {
     const state = {
       isListening: false,
@@ -18,10 +18,26 @@ const { mockSpeechRecognitionState, mockUseSpeechRecognition, mockUseControlKeyH
     const mockFn = vi.fn(() => ({ ...state }));
     const mockControlKey = vi.fn();
 
+    const mockLlmFetch = vi.fn((url: string) => {
+      if (url === "/api/llm-models") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            models: [
+              { id: "1", name: "claude-sonnet-4", provider: "ANTHROPIC", providerLabel: "Claude Sonnet 4" },
+              { id: "2", name: "gpt-4o", provider: "OPENAI", providerLabel: "GPT-4o" },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
     return {
       mockSpeechRecognitionState: state,
       mockUseSpeechRecognition: mockFn,
       mockUseControlKeyHold: mockControlKey,
+      mockFetch: mockLlmFetch,
     };
   });
 
@@ -92,6 +108,7 @@ describe("PlanStartInput", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    global.fetch = mockFetch as unknown as typeof fetch;
     mockSpeechRecognitionState.isListening = false;
     mockSpeechRecognitionState.transcript = "";
     mockSpeechRecognitionState.isSupported = false;
@@ -216,8 +233,15 @@ describe("PlanStartInput", () => {
 
   describe("submit behaviour", () => {
     test("onSubmit is called immediately when submit button is clicked with text", async () => {
+      const { waitFor: localWaitFor } = await import("@testing-library/react");
       render(<PlanStartInput onSubmit={onSubmit} />);
       const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+
+      // Wait for llm-models to load so selectedModel is set
+      await localWaitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith("/api/llm-models");
+      });
+
       await userEvent.type(textarea, "My feature idea");
 
       const submitBtn = screen.getByTestId("plan-start-submit");
@@ -226,14 +250,21 @@ describe("PlanStartInput", () => {
       expect(onSubmit).toHaveBeenCalledOnce();
       expect(onSubmit).toHaveBeenCalledWith("My feature idea", {
         isPrototype: false,
-        model: "sonnet",
+        model: "anthropic/claude-sonnet-4",
         selectedRepoId: null,
       });
     });
 
     test("onSubmit is called immediately when Enter is pressed with text", async () => {
+      const { waitFor: localWaitFor } = await import("@testing-library/react");
       render(<PlanStartInput onSubmit={onSubmit} />);
       const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+
+      // Wait for llm-models to load
+      await localWaitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith("/api/llm-models");
+      });
+
       await userEvent.type(textarea, "My feature idea");
 
       fireEvent.keyDown(textarea, { key: "Enter" });
@@ -241,7 +272,7 @@ describe("PlanStartInput", () => {
       expect(onSubmit).toHaveBeenCalledOnce();
       expect(onSubmit).toHaveBeenCalledWith("My feature idea", {
         isPrototype: false,
-        model: "sonnet",
+        model: "anthropic/claude-sonnet-4",
         selectedRepoId: null,
       });
     });
