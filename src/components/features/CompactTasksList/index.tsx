@@ -85,6 +85,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   const { slug: workspaceSlug, workspace } = useWorkspace();
   const { updateTicket } = useRoadmapTaskMutations();
   const isMobile = useIsMobile();
+  const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, Partial<TaskWithPrArtifact>>>({});
   const [assigningTasks, setAssigningTasks] = useState(false);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
@@ -224,20 +225,30 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
     taskId: string,
     updates: { status?: TaskStatus; autoMerge?: boolean; runBuild?: boolean; runTestSuite?: boolean; repositoryId?: string | null }
   ) => {
-    const updatedTask = await updateTicket({ taskId, updates });
-    if (updatedTask && defaultPhase) {
-      const updatedPhases = feature.phases.map((phase) => {
-        if (phase.id === defaultPhase.id) {
-          return {
-            ...phase,
-            tasks: phase.tasks.map((task) =>
-              task.id === taskId ? { ...task, ...updatedTask } : task
-            ),
-          };
-        }
-        return phase;
-      });
-      onUpdate({ ...feature, phases: updatedPhases });
+    // Optimistically apply the update immediately
+    setOptimisticUpdates(prev => ({ ...prev, [taskId]: { ...prev[taskId], ...updates } }));
+    try {
+      const updatedTask = await updateTicket({ taskId, updates });
+      // Clear optimistic state — server state now in sync via onUpdate
+      setOptimisticUpdates(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+      if (updatedTask && defaultPhase) {
+        const updatedPhases = feature.phases.map((phase) => {
+          if (phase.id === defaultPhase.id) {
+            return {
+              ...phase,
+              tasks: phase.tasks.map((task) =>
+                task.id === taskId ? { ...task, ...updatedTask } : task
+              ),
+            };
+          }
+          return phase;
+        });
+        onUpdate({ ...feature, phases: updatedPhases });
+      }
+    } catch {
+      // Revert optimistic update on failure
+      setOptimisticUpdates(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+      toast.error("Failed to update task");
     }
   };
 
@@ -493,6 +504,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
 
       <div className="space-y-1.5">
         {tasks.map((task) => {
+          const displayTask = { ...task, ...optimisticUpdates[task.id] };
           const prArtifact = task.prArtifact;
           const isDimmed = task.status === "DONE" || task.status === "CANCELLED";
           const isQueued = task.status === "TODO" && task.systemAssigneeType === "TASK_COORDINATOR";
@@ -629,7 +641,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MiniToggle
-                    checked={task.autoMerge ?? false}
+                    checked={displayTask.autoMerge ?? false}
                     onChange={(autoMerge) => handleUpdateTask(task.id, { autoMerge })}
                     disabled={task.status !== "TODO"}
                   />
@@ -640,7 +652,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MiniToggle
-                    checked={task.runBuild ?? true}
+                    checked={displayTask.runBuild ?? true}
                     onChange={(runBuild) => handleUpdateTask(task.id, { runBuild })}
                     disabled={task.status !== "TODO"}
                   />
@@ -651,7 +663,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MiniToggle
-                    checked={task.runTestSuite ?? true}
+                    checked={displayTask.runTestSuite ?? true}
                     onChange={(runTestSuite) => handleUpdateTask(task.id, { runTestSuite })}
                     disabled={task.status !== "TODO"}
                   />

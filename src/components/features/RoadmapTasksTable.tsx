@@ -35,6 +35,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Priority, TaskStatus } from "@prisma/client";
 import { ExternalLink, GripVertical, Play, Trash2 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
+import { toast } from "sonner";
 
 interface WorkspaceRepo {
   id: string;
@@ -267,6 +268,7 @@ function SortableTableRow({
 export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReordered, onTaskUpdate }: RoadmapTasksTableProps) {
   const router = useRouter();
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
+  const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, Partial<TicketListItem>>>({});
   const { workspace } = useWorkspace();
 
   const workspaceRepos: WorkspaceRepo[] = (workspace?.repositories || []).map((r) => ({
@@ -316,9 +318,19 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
   };
 
   const handleUpdateTask = async (taskId: string, updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; repositoryId?: string | null; dependsOnTaskIds?: string[]; autoMerge?: boolean }) => {
-    const updatedTask = await updateTicket({ taskId, updates });
-    if (updatedTask && onTaskUpdate) {
-      onTaskUpdate(taskId, updatedTask);
+    // Optimistically apply the update immediately
+    setOptimisticUpdates(prev => ({ ...prev, [taskId]: { ...prev[taskId], ...updates } }));
+    try {
+      const updatedTask = await updateTicket({ taskId, updates });
+      // Clear optimistic state — server state now in sync
+      setOptimisticUpdates(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+      if (updatedTask && onTaskUpdate) {
+        onTaskUpdate(taskId, updatedTask);
+      }
+    } catch {
+      // Revert optimistic update on failure
+      setOptimisticUpdates(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+      toast.error("Failed to update task");
     }
   };
 
@@ -376,10 +388,12 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
             <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
               {tasks
                 .sort((a, b) => a.order - b.order)
-                .map((task) => (
+                .map((task) => {
+                  const displayTask = { ...task, ...optimisticUpdates[task.id] };
+                  return (
                   <SortableTableRow
                     key={task.id}
-                    task={task}
+                    task={displayTask}
                     workspaceSlug={workspaceSlug}
                     phaseId={phaseId}
                     allTasks={tasks}
@@ -393,7 +407,8 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
                     onDelete={() => handleDeleteTask(task.id)}
                     onStartTask={() => handleStartTask(task)}
                   />
-                ))}
+                  );
+                })}
             </SortableContext>
           </TableBody>
         </Table>
