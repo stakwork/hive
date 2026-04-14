@@ -23,9 +23,10 @@ vi.mock("@/hooks/useReorderRoadmapTasks", () => ({
   }),
 }));
 
+const mockUpdateTicket = vi.fn();
 vi.mock("@/hooks/useRoadmapTaskMutations", () => ({
   useRoadmapTaskMutations: () => ({
-    updateTicket: vi.fn(),
+    updateTicket: mockUpdateTicket,
   }),
 }));
 
@@ -113,6 +114,7 @@ describe("RoadmapTasksTable", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUpdateTicket.mockResolvedValue(null);
     (useRouter as any).mockReturnValue(mockRouter);
     // Mock window.location for currentPath
     Object.defineProperty(window, "location", {
@@ -579,6 +581,62 @@ describe("RoadmapTasksTable", () => {
       expect(badges).toHaveLength(2);
       expect(badges[0]).toHaveTextContent("staging");
       expect(badges[1]).toHaveTextContent("production");
+    });
+  });
+
+  describe("Optimistic updates for Auto-Merge switch", () => {
+    test("auto-merge switch reflects new value immediately before updateTicket resolves", async () => {
+      const user = userEvent.setup();
+      // Never-resolving promise simulates slow network
+      let resolveTicket!: (v: any) => void;
+      const pendingPromise = new Promise<any>((res) => { resolveTicket = res; });
+      mockUpdateTicket.mockReturnValueOnce(pendingPromise);
+
+      const task = createMockTask({ id: "task-opt", status: "TODO", autoMerge: false });
+
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      const switchEl = screen.getByRole("switch");
+      expect(switchEl).toHaveAttribute("data-state", "unchecked");
+
+      await user.click(switchEl);
+
+      // Should flip immediately, before the promise resolves
+      expect(switchEl).toHaveAttribute("data-state", "checked");
+
+      // Clean up
+      resolveTicket(null);
+    });
+
+    test("auto-merge switch reverts to original value when updateTicket rejects", async () => {
+      const user = userEvent.setup();
+      mockUpdateTicket.mockRejectedValueOnce(new Error("Network error"));
+
+      const task = createMockTask({ id: "task-revert", status: "TODO", autoMerge: false });
+
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      const switchEl = screen.getByRole("switch");
+      expect(switchEl).toHaveAttribute("data-state", "unchecked");
+
+      await user.click(switchEl);
+
+      // After rejection, switch should revert to original unchecked state
+      await waitFor(() => {
+        expect(switchEl).toHaveAttribute("data-state", "unchecked");
+      });
     });
   });
 });
