@@ -63,6 +63,12 @@ export default async function AdminLayout({
                 >
                   Pod Scaler
                 </Link>
+                <Link
+                  href="/admin/scorer"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Scorer
+                </Link>
               </nav>
             </div>
             <Link
