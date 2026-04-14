@@ -732,6 +732,28 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             prNumber: result.prNumber,
           });
 
+          // Scorer pipeline: check if feature is complete (fire-and-forget)
+          try {
+            void db.task
+              .findUnique({
+                where: { id: pr.taskId },
+                select: { featureId: true },
+              })
+              ?.then((task) => {
+                if (task?.featureId) {
+                  return import("@/lib/scorer/pipeline").then(
+                    ({ checkAndTriggerFeatureCompletion }) =>
+                      checkAndTriggerFeatureCompletion(task.featureId!)
+                  );
+                }
+              })
+              ?.catch((err: unknown) =>
+                log.error("Scorer pipeline error", { error: String(err) })
+              );
+          } catch {
+            // Scorer hook must never disrupt PR monitor flow
+          }
+
           if (pr.podId) {
             const releaseResult = await releaseTaskPod({
               taskId: pr.taskId,
