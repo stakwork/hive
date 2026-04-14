@@ -8,6 +8,8 @@ import {
   createTestWorkspace,
   createTestSwarm,
 } from "@/__tests__/support/fixtures";
+import { upsertTestPlatformConfig } from "@/__tests__/support/factories";
+import { POD_SCALER_CONFIG_KEYS } from "@/lib/constants/pod-scaler";
 
 /**
  * Integration tests for GET /api/cron/pod-scaler endpoint
@@ -36,20 +38,17 @@ function createMockRequest(authHeader?: string): NextRequest {
 
 describe("GET /api/cron/pod-scaler", () => {
   let originalCronSecret: string | undefined;
-  let originalCronEnabled: string | undefined;
   let originalEncryptionKey: string | undefined;
   let originalEncryptionKeyId: string | undefined;
   let originalPoolManagerUrl: string | undefined;
 
   beforeEach(async () => {
     originalCronSecret = process.env.CRON_SECRET;
-    originalCronEnabled = process.env.POD_SCALER_CRON_ENABLED;
     originalEncryptionKey = process.env.TOKEN_ENCRYPTION_KEY;
     originalEncryptionKeyId = process.env.TOKEN_ENCRYPTION_KEY_ID;
     originalPoolManagerUrl = process.env.POOL_MANAGER_BASE_URL;
 
     process.env.CRON_SECRET = "test-scaler-secret";
-    process.env.POD_SCALER_CRON_ENABLED = "true";
     process.env.TOKEN_ENCRYPTION_KEY =
       "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
     process.env.TOKEN_ENCRYPTION_KEY_ID = "k-test";
@@ -72,11 +71,6 @@ describe("GET /api/cron/pod-scaler", () => {
       process.env.CRON_SECRET = originalCronSecret;
     } else {
       delete process.env.CRON_SECRET;
-    }
-    if (originalCronEnabled !== undefined) {
-      process.env.POD_SCALER_CRON_ENABLED = originalCronEnabled;
-    } else {
-      delete process.env.POD_SCALER_CRON_ENABLED;
     }
     if (originalEncryptionKey !== undefined) {
       process.env.TOKEN_ENCRYPTION_KEY = originalEncryptionKey;
@@ -123,14 +117,34 @@ describe("GET /api/cron/pod-scaler", () => {
   });
 
   describe("Feature flag", () => {
-    it("should return disabled message when POD_SCALER_CRON_ENABLED is not true", async () => {
-      process.env.POD_SCALER_CRON_ENABLED = "false";
+    it("should return disabled message when cronEnabled is set to 0 in DB", async () => {
+      await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.cronEnabled, "0");
       const request = createMockRequest("Bearer test-scaler-secret");
       const response = await GET(request);
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.success).toBe(true);
       expect(body.message).toBe("Pod scaler cron is disabled");
+    });
+
+    it("should proceed normally when cronEnabled is set to 1 in DB", async () => {
+      await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.cronEnabled, "1");
+      const request = createMockRequest("Bearer test-scaler-secret");
+      const response = await GET(request);
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toHaveProperty("success");
+      expect(body).toHaveProperty("swarmsProcessed");
+    });
+
+    it("should proceed normally when no cronEnabled record exists (default enabled)", async () => {
+      // No DB record → default enabled
+      const request = createMockRequest("Bearer test-scaler-secret");
+      const response = await GET(request);
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toHaveProperty("success");
+      expect(body).toHaveProperty("swarmsProcessed");
     });
   });
 
