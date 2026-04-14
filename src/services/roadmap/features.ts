@@ -256,6 +256,7 @@ export async function createFeature(
     architecture?: string;
     personas?: string[];
     isFastTrack?: boolean;
+    model?: string | null;
   }
 ) {
   const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
@@ -303,6 +304,7 @@ export async function createFeature(
       priority: data.priority || FeaturePriority.LOW,
       assigneeId: data.assigneeId || null,
       isFastTrack: data.isFastTrack ?? false,
+      model: data.model ?? null,
       createdById: userId,
       updatedById: userId,
       phases: {
@@ -354,6 +356,7 @@ export async function updateFeature(
     requirements?: string | null;
     architecture?: string | null;
     personas?: string[];
+    model?: string | null;
   }
 ) {
   // Validates access and throws specific "Feature not found" or "Access denied" errors
@@ -409,6 +412,9 @@ export async function updateFeature(
     } else {
       updateData.assignee = { connect: { id: data.assigneeId } };
     }
+  }
+  if (data.model !== undefined) {
+    updateData.model = data.model;
   }
 
   // Stamp planUpdatedAt only when user explicitly edits plan content

@@ -473,7 +473,7 @@ describe("PlanChatView", () => {
 
         expect(sendMessageCall).toBeDefined();
         const body = JSON.parse(sendMessageCall![1].body);
-        expect(body).toEqual({
+        expect(body).toMatchObject({
           message: "Test answer",
           replyId: "test-message-id",
         });

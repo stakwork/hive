@@ -29,8 +29,30 @@ export const PROVIDER_API_KEY_ENV_VARS: Record<string, string | null> = {
   OPENAI: "OPENAI_API_KEY",
   GOOGLE: "GOOGLE_API_KEY",
   AWS_BEDROCK: "AWS_BEDROCK_API_KEY",
+  OPENROUTER: "OPENROUTER_API_KEY",
   OTHER: null,
 };
+
+export interface LlmModelOption {
+  id: string;
+  name: string;
+  provider: string;
+  providerLabel: string | null;
+  isPlanDefault: boolean;
+  isTaskDefault: boolean;
+}
+
+/**
+ * Build the model value string sent to Stakwork.
+ * For OTHER providers with a providerLabel, uses the label as prefix.
+ * For standard providers, uses the enum lowercase.
+ */
+export function getModelValue(m: LlmModelOption): string {
+  if (m.provider === "OTHER" && m.providerLabel) {
+    return `${m.providerLabel.toLowerCase().replace(/\s+/g, "")}/${m.name}`;
+  }
+  return `${m.provider.toLowerCase()}/${m.name}`;
+}
 
 export function getApiKeyForModel(model: ModelName | string): string | undefined {
   if (model.includes("/")) {
