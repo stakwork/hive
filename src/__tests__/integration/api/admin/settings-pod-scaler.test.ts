@@ -27,6 +27,7 @@ describe("Admin Settings Pod Scaler API", () => {
     await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.stalenessWindowDays, "30");
     await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.scaleUpBuffer, "2");
     await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.maxVmCeiling, "20");
+    await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.scaleDownCooldownMinutes, "30");
   });
 
   describe("GET /api/admin/settings/pod-scaler", () => {
@@ -41,13 +42,14 @@ describe("Admin Settings Pod Scaler API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(Array.isArray(data.settings)).toBe(true);
-      expect(data.settings).toHaveLength(4);
+      expect(data.settings).toHaveLength(5);
 
       const keys = data.settings.map((s: { key: string }) => s.key);
       expect(keys).toContain("queueWaitMinutes");
       expect(keys).toContain("stalenessWindowDays");
       expect(keys).toContain("scaleUpBuffer");
       expect(keys).toContain("maxVmCeiling");
+      expect(keys).toContain("scaleDownCooldownMinutes");
     });
 
     it("should return 403 for regular user", async () => {
