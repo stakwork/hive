@@ -138,6 +138,13 @@ describe("PlanChatView", () => {
   const mockFetch = vi.fn();
   let localStorageMock: Record<string, string> = {};
 
+  const mockLlmModelsResponse = {
+    models: [
+      { id: "1", name: "claude-sonnet-4", provider: "ANTHROPIC", providerLabel: "Claude Sonnet 4" },
+      { id: "2", name: "gpt-4o", provider: "OPENAI", providerLabel: "GPT-4o" },
+    ],
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = mockFetch;
@@ -160,10 +167,18 @@ describe("PlanChatView", () => {
       writable: true,
     });
 
-    // Default mock for fetch
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [] }),
+    // Default mock for fetch — handles messages, sphinx, and llm-models
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/llm-models") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => mockLlmModelsResponse,
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
     });
 
     // Reset URL param mock
@@ -1371,12 +1386,7 @@ describe("PlanChatView", () => {
       capturedChatAreaProps = null;
     });
 
-    it("passes selectedModel='sonnet' (default), onModelChange, and hasMessages=false to ChatArea when no messages", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: [] }),
-      });
-
+    it("passes selectedModel defaulting to first llm-model (provider/name format), onModelChange, and hasMessages=false to ChatArea when no messages", async () => {
       const chatModule = await import("@/components/chat");
       vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
         capturedChatAreaProps = props;
@@ -1389,7 +1399,10 @@ describe("PlanChatView", () => {
         expect(screen.getByTestId("chat-area")).toBeInTheDocument();
       });
 
-      expect(capturedChatAreaProps?.selectedModel).toBe("sonnet");
+      // After llm-models fetch, default model is first model in provider/name format
+      await waitFor(() => {
+        expect(capturedChatAreaProps?.selectedModel).toBe("anthropic/claude-sonnet-4");
+      });
       expect(typeof capturedChatAreaProps?.onModelChange).toBe("function");
       expect(capturedChatAreaProps?.hasMessages).toBe(false);
     });
@@ -1424,30 +1437,32 @@ describe("PlanChatView", () => {
       });
     });
 
-    it("includes selectedModel in POST body when sending a message", async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: [] }),
-        })
-        .mockResolvedValueOnce({ ok: false }) // Sphinx fetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            message: {
-              id: "msg-new",
-              message: "Test message",
-              role: ChatRole.USER,
-              status: ChatStatus.SENT,
-              createdAt: new Date().toISOString(),
-            },
-          }),
-        });
-
+    it("includes selectedModel in POST body when sending a message (provider/name format)", async () => {
       const chatModule = await import("@/components/chat");
       vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
         capturedChatAreaProps = props;
         return <div data-testid="chat-area" />;
+      });
+
+      mockFetch.mockImplementation((url: string, options?: RequestInit) => {
+        if (url === "/api/llm-models") {
+          return Promise.resolve({ ok: true, json: async () => mockLlmModelsResponse });
+        }
+        if (url === "/api/features/feature-123/chat" && options?.method === "POST") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              message: {
+                id: "msg-new",
+                message: "Test message",
+                role: ChatRole.USER,
+                status: ChatStatus.SENT,
+                createdAt: new Date().toISOString(),
+              },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ data: [] }) });
       });
 
       render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
@@ -1456,9 +1471,14 @@ describe("PlanChatView", () => {
         expect(screen.getByTestId("chat-area")).toBeInTheDocument();
       });
 
-      // Change model to "opus"
+      // Wait for llm-models to load and set selectedModel
+      await waitFor(() => {
+        expect(capturedChatAreaProps?.selectedModel).toBe("anthropic/claude-sonnet-4");
+      });
+
+      // Change model to openai/gpt-4o
       act(() => {
-        capturedChatAreaProps?.onModelChange("opus");
+        capturedChatAreaProps?.onModelChange("openai/gpt-4o");
       });
 
       // Send a message
@@ -1471,39 +1491,46 @@ describe("PlanChatView", () => {
       );
       expect(postCall).toBeDefined();
       const body = JSON.parse(postCall![1].body);
-      expect(body.model).toBe("opus");
+      expect(body.model).toBe("openai/gpt-4o");
     });
 
-    it("sends default 'sonnet' model when no model change is made", async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: [] }),
-        })
-        .mockResolvedValueOnce({ ok: false }) // Sphinx fetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            message: {
-              id: "msg-new",
-              message: "Hello",
-              role: ChatRole.USER,
-              status: ChatStatus.SENT,
-              createdAt: new Date().toISOString(),
-            },
-          }),
-        });
-
+    it("sends default model (first from llm-models) when no model change is made", async () => {
       const chatModule = await import("@/components/chat");
       vi.spyOn(chatModule, "ChatArea").mockImplementation((props: any) => {
         capturedChatAreaProps = props;
         return <div data-testid="chat-area" />;
       });
 
+      mockFetch.mockImplementation((url: string, options?: RequestInit) => {
+        if (url === "/api/llm-models") {
+          return Promise.resolve({ ok: true, json: async () => mockLlmModelsResponse });
+        }
+        if (url === "/api/features/feature-123/chat" && options?.method === "POST") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              message: {
+                id: "msg-new",
+                message: "Hello",
+                role: ChatRole.USER,
+                status: ChatStatus.SENT,
+                createdAt: new Date().toISOString(),
+              },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({ data: [] }) });
+      });
+
       render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
 
       await waitFor(() => {
         expect(screen.getByTestId("chat-area")).toBeInTheDocument();
+      });
+
+      // Wait for llm-models to load
+      await waitFor(() => {
+        expect(capturedChatAreaProps?.selectedModel).toBe("anthropic/claude-sonnet-4");
       });
 
       await act(async () => {
@@ -1515,7 +1542,7 @@ describe("PlanChatView", () => {
       );
       expect(postCall).toBeDefined();
       const body = JSON.parse(postCall![1].body);
-      expect(body.model).toBe("sonnet");
+      expect(body.model).toBe("anthropic/claude-sonnet-4");
     });
   });
 });
