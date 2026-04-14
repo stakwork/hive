@@ -40,6 +40,7 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockedDb.task.count.mockReset();
   fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => "" });
   global.fetch = fetchMock;
   mockedDb.swarm.update.mockResolvedValue({} as never);
