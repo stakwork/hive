@@ -8,6 +8,7 @@ import {
   POD_SCALER_SCALE_UP_BUFFER,
   POD_SCALER_MAX_VM_CEILING,
   POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES,
+  POD_SCALER_CRON_ENABLED_DEFAULT,
 } from "@/lib/constants/pod-scaler";
 
 type PodScalerKey = keyof typeof POD_SCALER_CONFIG_KEYS;
@@ -18,6 +19,7 @@ const DEFAULTS: Record<PodScalerKey, number> = {
   scaleUpBuffer: POD_SCALER_SCALE_UP_BUFFER,
   maxVmCeiling: POD_SCALER_MAX_VM_CEILING,
   scaleDownCooldownMinutes: POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES,
+  cronEnabled: POD_SCALER_CRON_ENABLED_DEFAULT ? 1 : 0,
 };
 
 const DB_KEYS = Object.values(POD_SCALER_CONFIG_KEYS);
@@ -58,11 +60,28 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+  if (typeof value !== "number" || !Number.isInteger(value)) {
     return NextResponse.json(
-      { error: "value must be a positive integer" },
+      { error: "value must be an integer" },
       { status: 400 }
     );
+  }
+
+  // cronEnabled only accepts 0 or 1; all other keys must be positive integers
+  if (key === "cronEnabled") {
+    if (value !== 0 && value !== 1) {
+      return NextResponse.json(
+        { error: "cronEnabled value must be 0 or 1" },
+        { status: 400 }
+      );
+    }
+  } else {
+    if (value <= 0) {
+      return NextResponse.json(
+        { error: "value must be a positive integer" },
+        { status: 400 }
+      );
+    }
   }
 
   const dbKey = POD_SCALER_CONFIG_KEYS[key as PodScalerKey];
