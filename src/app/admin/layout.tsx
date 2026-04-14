@@ -61,7 +61,7 @@ export default async function AdminLayout({
                   href="/admin/settings"
                   className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Settings
+                  Pod Scaler
                 </Link>
               </nav>
             </div>
