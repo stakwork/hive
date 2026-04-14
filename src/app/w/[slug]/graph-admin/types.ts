@@ -1,5 +1,10 @@
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export interface SecondBrainAbout {
+  title: string;
+  description: string;
+}
+
 export interface PaidEndpoint {
   id: number;
   endpoint: string;
