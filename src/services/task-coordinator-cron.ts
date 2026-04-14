@@ -141,6 +141,8 @@ export async function processTicketSweep(
         { status: "TODO" },
         { systemAssigneeType: "TASK_COORDINATOR" },
         { deleted: false },
+        { OR: [{ workflowStatus: WorkflowStatus.PENDING }, { workflowStatus: null }] },
+        { stakworkProjectId: null },
         { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
       ],
     },
@@ -206,11 +208,15 @@ export async function processTicketSweep(
 
     try {
       const userId = candidateTask.createdById ?? candidateTask.feature?.createdById;
-      await startTaskWorkflow({
+      const result = await startTaskWorkflow({
         taskId: candidateTask.id,
         userId,
         mode: "live",
       });
+      if (result === null) {
+        console.log(`[TaskCoordinator] Skipping task ${candidateTask.id} - already claimed by concurrent invocation`);
+        continue;
+      }
       dispatched++;
       console.log(`[TaskCoordinator] Successfully processed ticket ${candidateTask.id} (${dispatched}/${slotsAvailable})`);
     } catch (error) {
