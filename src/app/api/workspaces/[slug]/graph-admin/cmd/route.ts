@@ -23,6 +23,8 @@ const ALLOWED_CMDS = new Set([
   "ListAdmins",
   "DeleteSubAdmin",
   "UpdateUser",
+  "GetSecondBrainAboutDetails",
+  "UpdateSecondBrainAbout",
 ]);
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
