@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scorer — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0c0e;
+    --bg-raised: #141418;
+    --bg-hover: #1a1a20;
+    --border: #222228;
+    --text: #e2e2e8;
+    --text-muted: #6e6e7a;
+    --text-dim: #4a4a56;
+    --accent: #c8a2ff;
+    --accent-dim: #c8a2ff14;
+    --red: #ff6b6b;
+    --red-dim: #ff6b6b12;
+    --orange: #ffaa5c;
+    --orange-dim: #ffaa5c12;
+    --green: #5ce4a0;
+    --blue: #5caeff;
+    --blue-dim: #5caeff12;
+    --mono: 'JetBrains Mono', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .topnav {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .topnav-brand { font-weight: 700; font-size: 13px; margin-right: 8px; }
+  .topnav a { color: var(--text-dim); text-decoration: none; }
+  .topnav a.active { color: var(--accent); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    min-height: calc(100vh - 41px);
+  }
+  .main { padding: 24px; }
+  .sidebar {
+    border-left: 1px solid var(--border);
+    padding: 20px;
+    font-size: 11px;
+  }
+
+  .ws-tabs { display: flex; gap: 1px; margin-bottom: 20px; }
+  .ws-tab {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 4px 12px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .ws-tab:first-child { border-radius: 4px 0 0 4px; }
+  .ws-tab:last-child { border-radius: 0 4px 4px 0; }
+  .ws-tab.active { color: var(--text); background: var(--bg-hover); }
+
+  .metrics-bar {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+    padding: 12px 16px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .metric-item .label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+  }
+  .metric-item .val { font-size: 16px; font-weight: 700; }
+  .c-good { color: var(--green); }
+  .c-warn { color: var(--orange); }
+  .c-bad { color: var(--red); }
+  .c-muted { color: var(--text-muted); }
+
+  .slabel {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  /* Insights */
+  .insights { display: flex; flex-direction: column; gap: 8px; margin-bottom: 32px; }
+  .insight {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px 14px 20px;
+    position: relative;
+  }
+  .insight::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0; width: 3px;
+    border-radius: 6px 0 0 6px;
+  }
+  .insight.high::before { background: var(--red); }
+  .insight.med::before { background: var(--orange); }
+  .insight.low::before { background: var(--blue); }
+
+  .insight-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .sev {
+    font-size: 8px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; padding: 1px 5px; border-radius: 2px;
+  }
+  .sev.high { background: var(--red-dim); color: var(--red); }
+  .sev.med { background: var(--orange-dim); color: var(--orange); }
+  .sev.low { background: var(--blue-dim); color: var(--blue); }
+  .insight-title { font-weight: 600; font-size: 12px; }
+  .insight-body { color: var(--text-muted); font-size: 11px; line-height: 1.7; margin-bottom: 8px; }
+  .insight-fix {
+    padding: 8px 12px;
+    background: var(--accent-dim);
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--accent);
+    line-height: 1.6;
+  }
+  .insight-foot {
+    margin-top: 8px; font-size: 10px; color: var(--text-dim);
+    display: flex; gap: 12px;
+  }
+  .insight-foot a { color: var(--accent); text-decoration: none; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    font-size: 9px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--text-dim);
+    text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 11px;
+  }
+  tbody tr.row:hover { background: var(--bg-raised); cursor: pointer; }
+  .fname { font-weight: 500; }
+  .dot {
+    display: inline-block; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--red);
+    margin-left: 5px; vertical-align: middle;
+  }
+  .badge {
+    font-size: 9px; font-weight: 600; padding: 1px 5px;
+    border-radius: 2px; text-transform: uppercase;
+  }
+  .badge.done { background: #5ce4a012; color: var(--green); }
+  .badge.wip { background: var(--blue-dim); color: var(--blue); }
+
+  /* Expanded feature */
+  .expanded-row td { padding: 0; background: var(--bg); }
+  .expanded {
+    border: 1px solid var(--border);
+    border-radius: 0;
+    margin: 0;
+  }
+  .exp-section {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .exp-section:last-child { border-bottom: none; }
+  .exp-label {
+    font-size: 9px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 8px;
+  }
+
+  /* Digest block */
+  .digest-block {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.7;
+    padding: 10px 14px;
+    background: var(--bg-raised);
+    border-radius: 4px;
+    border-left: 2px solid var(--accent);
+  }
+
+  /* Task cards inside expanded */
+  .task-card {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 12px 14px;
+    margin-bottom: 6px;
+  }
+  .task-card:last-child { margin-bottom: 0; }
+  .task-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+  }
+  .task-name { font-weight: 600; font-size: 11px; }
+  .task-metrics {
+    display: flex; gap: 10px; font-size: 10px; color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  /* Agent pills */
+  .agents-row {
+    display: flex; gap: 4px; margin-bottom: 8px;
+  }
+  .agent-pill {
+    font-size: 9px; font-weight: 600;
+    padding: 2px 8px; border-radius: 3px;
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  .agent-pill.ok { border-color: #5ce4a030; color: var(--green); }
+  .agent-pill.warn { border-color: #ffaa5c30; color: var(--orange); }
+  .agent-pill.fail { border-color: #ff6b6b30; color: var(--red); }
+
+  /* File chips */
+  .files-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .fchip {
+    font-size: 9px; padding: 2px 6px; border-radius: 2px;
+    border: 1px solid var(--border); color: var(--text-dim);
+  }
+  .fchip.planned { border-color: #5ce4a030; color: var(--green); }
+  .fchip.unplanned { border-color: #ffaa5c30; color: var(--orange); }
+
+  .pr-row {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; color: var(--text-dim); margin-top: 8px;
+  }
+  .pr-row a { color: var(--accent); text-decoration: none; }
+
+  /* Sidebar */
+  .sb-section { margin-bottom: 24px; }
+  .sb-title { font-size: 11px; font-weight: 600; margin-bottom: 10px; }
+  .sb-toggle {
+    display: flex; justify-content: space-between; align-items: center; padding: 6px 0;
+  }
+  .pill {
+    width: 28px; height: 15px; border-radius: 8px; position: relative; cursor: pointer;
+  }
+  .pill.on { background: var(--accent); }
+  .pill.off { background: var(--border); }
+  .pill::after {
+    content: ''; position: absolute; top: 2px;
+    width: 11px; height: 11px; border-radius: 50%; background: #fff;
+  }
+  .pill.on::after { left: 15px; }
+  .pill.off::after { left: 2px; }
+
+  .prompt-block {
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 8px;
+  }
+  .prompt-block .plabel {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-dim); margin-bottom: 4px;
+  }
+  .prompt-block .ptext {
+    font-size: 10px; color: var(--text-muted); line-height: 1.6;
+  }
+  .edit-link {
+    font-size: 9px; color: var(--accent); text-decoration: none;
+    cursor: pointer;
+  }
+
+  .btn {
+    font-family: var(--mono); font-size: 10px; padding: 5px 12px;
+    border-radius: 4px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text-muted); cursor: pointer; width: 100%;
+  }
+  .btn:hover { color: var(--text); background: var(--bg-hover); }
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <span class="topnav-brand">HIVE</span>
+  <a href="#">Workspaces</a>
+  <a href="#">Users</a>
+  <a href="#">Swarms</a>
+  <a href="#">LLM Models</a>
+  <a href="#">Payments</a>
+  <a href="#" class="active">Scorer</a>
+</nav>
+
+<div class="layout">
+<div class="main">
+
+  <div class="ws-tabs">
+    <button class="ws-tab active">acme-app</button>
+    <button class="ws-tab">sphinx-internal</button>
+    <button class="ws-tab">client-demo</button>
+  </div>
+
+  <div class="metrics-bar">
+    <div class="metric-item"><div class="label">Features</div><div class="val c-muted">47</div></div>
+    <div class="metric-item"><div class="label">Avg msgs/task</div><div class="val c-good">4.2</div></div>
+    <div class="metric-item"><div class="label">CI pass</div><div class="val c-good">81%</div></div>
+    <div class="metric-item"><div class="label">Plan precision</div><div class="val c-warn">62%</div></div>
+    <div class="metric-item"><div class="label">Plan recall</div><div class="val c-good">78%</div></div>
+    <div class="metric-item"><div class="label">PR merge</div><div class="val c-good">89%</div></div>
+  </div>
+
+  <!-- INSIGHTS -->
+  <div class="slabel" style="display: flex; align-items: center; gap: 8px;">
+    Insights
+    <span style="font-size: 10px; font-weight: 700; background: var(--red-dim); color: var(--red); padding: 1px 7px; border-radius: 10px; letter-spacing: 0;">4</span>
+  </div>
+  <div class="insights">
+    <div class="insight high">
+      <div class="insight-top" style="justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="sev high">High</span>
+          <span class="insight-title">Agent confuses "auth" with "session" — 6 features</span>
+        </div>
+        <span style="font-size: 14px; color: var(--text-dim); cursor: pointer; line-height: 1;" title="Dismiss">&times;</span>
+      </div>
+      <div class="insight-body">
+        Coding agent consistently reads src/lib/auth.ts when users mean session management,
+        then spends 3-5 extra tool calls finding SessionProvider. AGENTS.md uses "auth" without
+        distinguishing authentication from session state.
+      </div>
+      <div class="insight-fix">
+        Add a glossary to AGENTS.md — "auth" = login/OAuth in src/lib/auth/, "session" = session state in src/providers/SessionProvider.tsx
+      </div>
+      <div class="insight-foot">
+        <span>Pattern</span>
+        <span>2h ago</span>
+        <a href="#">6 features</a>
+      </div>
+    </div>
+
+    <div class="insight med">
+      <div class="insight-top" style="justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="sev med">Med</span>
+          <span class="insight-title">Test agent fails on stale imports after file moves</span>
+        </div>
+        <span style="font-size: 14px; color: var(--text-dim); cursor: pointer; line-height: 1;" title="Dismiss">&times;</span>
+      </div>
+        <span style="font-size: 14px; color: var(--text-dim); cursor: pointer; line-height: 1;" title="Dismiss">&times;</span>
+      </div>
+      <div class="insight-body">
+        Architecture consistently misses src/config/middleware.ts on features that add API routes.
+        Coding agent wastes 2-3 exploration cycles finding it.
+      </div>
+      <div class="insight-fix">
+        Update plan agent prompt to check whether new API routes need middleware policy updates.
+      </div>
+      <div class="insight-foot">
+        <span>Pattern</span>
+        <span>5h ago</span>
+        <a href="#">8 features</a>
+      </div>
+    </div>
+
+    <div class="insight low">
+      <div class="insight-top" style="justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="sev low">Low</span>
+          <span class="insight-title">User "evanf" says "pod manager" — means swarm config</span>
+        </div>
+        <span style="font-size: 14px; color: var(--text-dim); cursor: pointer; line-height: 1;" title="Dismiss">&times;</span>
+      </div>
+      <div class="insight-body">
+        3 features by evanf use "pod manager" but the codebase has no such concept.
+        Agent searches src/lib/pods/ before finding src/services/swarm.ts.
+      </div>
+      <div class="insight-fix">
+        Add alias comment in swarm service: "Also known as: pod manager, pod config"
+      </div>
+      <div class="insight-foot">
+        <span>Pattern</span>
+        <span>2d ago</span>
+        <a href="#">3 features</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- FEATURES TABLE -->
+  <div class="slabel">Features</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th>Status</th>
+        <th>Tasks</th>
+        <th>Msgs</th>
+        <th>Corrections</th>
+        <th>CI</th>
+        <th>Precision</th>
+        <th>Recall</th>
+        <th>Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <!-- Collapsed row -->
+      <tr class="row">
+        <td><span class="fname">Add dark mode toggle<span class="dot"></span></span></td>
+        <td><span class="badge done">Done</span></td>
+        <td class="c-muted">3</td>
+        <td class="c-bad">14</td>
+        <td class="c-bad">4</td>
+        <td class="c-warn">2nd</td>
+        <td class="c-warn">55%</td>
+        <td class="c-good">90%</td>
+        <td class="c-warn">47m</td>
+      </tr>
+
+      <!-- Expanded row -->
+      <tr class="expanded-row">
+        <td colspan="9">
+          <div class="expanded">
+
+            <!-- Digest -->
+            <div class="exp-section">
+              <div class="exp-label">Digest</div>
+              <div class="digest-block">
+                Plan accuracy: 55% precision, 90% recall<br>
+                3 tasks, 1 phase. 14 messages total, 4 corrections.<br><br>
+                Key moments:<br>
+                — Agent initially targeted src/components/Settings.tsx<br>
+                — User corrected: "not Settings, the ThemeContext provider"<br>
+                — Agent pivoted to src/providers/ThemeContext.tsx<br>
+                — Test agent fixed 2 broken imports on retry
+              </div>
+            </div>
+
+            <!-- Tasks -->
+            <div class="exp-section">
+              <div class="exp-label">Tasks</div>
+
+              <div class="task-card">
+                <div class="task-head">
+                  <span class="task-name">Create ThemeContext provider</span>
+                  <span class="badge done">Done</span>
+                </div>
+                <div class="task-metrics">
+                  <span>6 msgs</span>
+                  <span class="c-bad">2 corrections</span>
+                  <span>22 min</span>
+                </div>
+                <div class="agents-row">
+                  <span class="agent-pill warn">coding — 18 tool calls</span>
+                  <span class="agent-pill ok">test — 4 tool calls</span>
+                  <span class="agent-pill ok">build — passed</span>
+                </div>
+                <div class="files-row">
+                  <span class="fchip unplanned">src/components/Settings.tsx</span>
+                  <span class="fchip planned">src/providers/ThemeContext.tsx</span>
+                  <span class="fchip planned">src/providers/theme-provider.tsx</span>
+                  <span class="fchip planned">src/app/layout.tsx</span>
+                </div>
+                <div class="pr-row">
+                  PR: <a href="#">#142</a>
+                  <span class="badge done">merged</span>
+                  <span>CI: passed 2nd try</span>
+                </div>
+              </div>
+
+              <div class="task-card">
+                <div class="task-head">
+                  <span class="task-name">Add toggle to settings page</span>
+                  <span class="badge done">Done</span>
+                </div>
+                <div class="task-metrics">
+                  <span>4 msgs</span>
+                  <span class="c-warn">1 correction</span>
+                  <span>12 min</span>
+                </div>
+                <div class="agents-row">
+                  <span class="agent-pill ok">coding — 8 tool calls</span>
+                  <span class="agent-pill ok">test — 2 tool calls</span>
+                  <span class="agent-pill ok">build — passed</span>
+                </div>
+                <div class="files-row">
+                  <span class="fchip planned">src/app/settings/page.tsx</span>
+                  <span class="fchip planned">src/components/ui/toggle.tsx</span>
+                </div>
+                <div class="pr-row">
+                  PR: <a href="#">#143</a>
+                  <span class="badge done">merged</span>
+                  <span>CI: passed 1st try</span>
+                </div>
+              </div>
+
+              <div class="task-card">
+                <div class="task-head">
+                  <span class="task-name">Persist theme to localStorage</span>
+                  <span class="badge done">Done</span>
+                </div>
+                <div class="task-metrics">
+                  <span>4 msgs</span>
+                  <span class="c-warn">1 correction</span>
+                  <span>13 min</span>
+                </div>
+                <div class="agents-row">
+                  <span class="agent-pill ok">coding — 6 tool calls</span>
+                  <span class="agent-pill ok">test — 3 tool calls</span>
+                  <span class="agent-pill ok">build — passed</span>
+                </div>
+                <div class="files-row">
+                  <span class="fchip planned">src/providers/ThemeContext.tsx</span>
+                  <span class="fchip unplanned">src/hooks/useLocalStorage.ts</span>
+                </div>
+                <div class="pr-row">
+                  PR: <a href="#">#144</a>
+                  <span class="badge done">merged</span>
+                  <span>CI: passed 1st try</span>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="exp-section" style="display: flex; justify-content: flex-end;">
+              <button class="btn" style="width: auto; padding: 5px 16px;">Analyze</button>
+            </div>
+
+          </div>
+        </td>
+      </tr>
+
+      <!-- Other rows -->
+      <tr class="row">
+        <td><span class="fname">Migrate user service<span class="dot"></span></span></td>
+        <td><span class="badge done">Done</span></td>
+        <td class="c-muted">5</td>
+        <td class="c-bad">22</td>
+        <td class="c-bad">6</td>
+        <td class="c-bad">3rd</td>
+        <td class="c-bad">42%</td>
+        <td class="c-warn">65%</td>
+        <td class="c-bad">1h23m</td>
+      </tr>
+      <tr class="row">
+        <td><span class="fname">Add webhook retry logic</span></td>
+        <td><span class="badge done">Done</span></td>
+        <td class="c-muted">2</td>
+        <td class="c-good">3</td>
+        <td class="c-good">0</td>
+        <td class="c-good">1st</td>
+        <td class="c-good">88%</td>
+        <td class="c-good">100%</td>
+        <td class="c-good">8m</td>
+      </tr>
+      <tr class="row">
+        <td><span class="fname">Workspace API keys</span></td>
+        <td><span class="badge done">Done</span></td>
+        <td class="c-muted">4</td>
+        <td class="c-muted">7</td>
+        <td class="c-muted">1</td>
+        <td class="c-good">1st</td>
+        <td class="c-good">75%</td>
+        <td class="c-good">82%</td>
+        <td class="c-muted">31m</td>
+      </tr>
+      <tr class="row">
+        <td><span class="fname">PR monitoring cron<span class="dot"></span></span></td>
+        <td><span class="badge wip">WIP</span></td>
+        <td class="c-muted">3</td>
+        <td class="c-warn">11</td>
+        <td class="c-warn">3</td>
+        <td class="c-warn">2nd</td>
+        <td class="c-warn">50%</td>
+        <td class="c-warn">60%</td>
+        <td class="c-muted">—</td>
+      </tr>
+
+    </tbody>
+  </table>
+
+</div>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+
+  <div class="sb-section">
+    <div class="sb-title">Workspace</div>
+    <div class="sb-toggle">
+      <span style="color: var(--text-muted);">Scorer enabled</span>
+      <div class="pill on"></div>
+    </div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-title">Active Prompts</div>
+
+    <div class="prompt-block">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span class="plabel">Pattern detection</span>
+        <a class="edit-link">edit</a>
+      </div>
+      <div class="ptext">
+        "Identify the highest-priority issues... Focus on patterns across multiple sessions..."
+      </div>
+    </div>
+
+    <div class="prompt-block">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span class="plabel">Single session</span>
+        <a class="edit-link">edit</a>
+      </div>
+      <div class="ptext">
+        "Analyze this session... Where did the agent waste time or misunderstand intent..."
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+</body>
+</html>
