@@ -20,7 +20,7 @@ import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
-import { getModelValue } from "@/lib/ai/models";
+import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import { usePusherConnection, type TaskTitleUpdateEvent, type DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
 import type { FeatureDetail, PrArtifact } from "@/types/roadmap";
 import type { TaskStatus, WorkflowStatus } from "@prisma/client";
@@ -81,12 +81,6 @@ function MiniToggle({
   );
 }
 
-interface LlmModelOption {
-  id: string;
-  name: string;
-  provider: string;
-  providerLabel: string | null;
-}
 
 export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }: CompactTasksListProps) {
   const router = useRouter();
