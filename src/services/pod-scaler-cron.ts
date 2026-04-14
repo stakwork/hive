@@ -26,7 +26,7 @@ export interface PodScalerResult {
  * Runs every 5 minutes via /api/cron/pod-scaler.
  *
  * - Over-queued tasks: TODO + TASK_COORDINATOR, not deleted/archived, createdAt > queueWaitMinutes ago
- * - Scale up:   minimum_vms = max(minimumPods, overQueuedCount + scaleUpBuffer), capped at maxVmCeiling
+ * - Scale up:   minimum_vms = floor + overQueuedCount + scaleUpBuffer, capped at maxVmCeiling
  * - Scale down: minimum_vms = minimumPods
  * - minimumPods is never mutated by this cron.
  * - Hard ceiling: targetVms is always capped at maxVmCeiling pods maximum.
@@ -117,7 +117,7 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
       const floor = swarm.minimumPods ?? swarm.minimumVms;
       const targetVms = Math.min(
         overQueuedCount > 0
-          ? Math.max(floor, overQueuedCount + scaleUpBuffer)
+          ? floor + overQueuedCount + scaleUpBuffer
           : floor,
         maxVmCeiling
       );
