@@ -6,6 +6,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     swarm: { findMany: vi.fn(), update: vi.fn() },
     task: { count: vi.fn() },
+    platformConfig: { findMany: vi.fn() },
   },
 }));
 
@@ -42,6 +43,8 @@ beforeEach(() => {
   fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => "" });
   global.fetch = fetchMock;
   mockedDb.swarm.update.mockResolvedValue({} as never);
+  // Default: no platformConfig overrides (use hardcoded defaults)
+  mockedDb.platformConfig.findMany.mockResolvedValue([] as never);
   consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -63,6 +66,10 @@ function makeSwarm(overrides: Partial<{
     workspaceId: "ws-001",
     ...overrides,
   };
+}
+
+function makePlatformConfig(key: string, value: string) {
+  return { key, value, id: key, createdAt: new Date(), updatedAt: new Date() };
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -203,7 +210,7 @@ describe("executePodScalerRuns", () => {
     });
   });
 
-  it("caps targetVms at 20 when overQueuedCount is very large", async () => {
+  it("caps targetVms at 20 when overQueuedCount is very large (default ceiling)", async () => {
     // 50 over-queued tasks would normally give targetVms = max(2, 52) = 52; must be capped at 20
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
@@ -237,5 +244,58 @@ describe("executePodScalerRuns", () => {
     const ts = new Date(result.timestamp).getTime();
     expect(ts).toBeGreaterThanOrEqual(before);
     expect(ts).toBeLessThanOrEqual(after);
+  });
+
+  // ── platformConfig override tests ─────────────────────────────────────────
+
+  it("caps targetVms at custom maxVmCeiling (10) when overQueuedCount is very large", async () => {
+    mockedDb.platformConfig.findMany.mockResolvedValue([
+      makePlatformConfig("podScalerMaxVmCeiling", "10"),
+    ] as never);
+
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count.mockResolvedValue(50); // would be 52 without ceiling
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsScaled).toBe(1);
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 10, deployedPods: 10 },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: JSON.stringify({ minimum_vms: 10 }),
+      })
+    );
+  });
+
+  it("uses custom queueWaitMinutes (10) for the createdAt filter", async () => {
+    mockedDb.platformConfig.findMany.mockResolvedValue([
+      makePlatformConfig("podScalerQueueWaitMinutes", "10"),
+    ] as never);
+
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count.mockResolvedValue(0);
+
+    const before = Date.now();
+    await executePodScalerRuns();
+    const after = Date.now();
+
+    // The `createdAt: { lt: ... }` argument passed to task.count should reflect a ~10-min window
+    const countCall = mockedDb.task.count.mock.calls[0][0] as {
+      where: { createdAt: { lt: Date } };
+    };
+    const cutoff = countCall.where.createdAt.lt.getTime();
+
+    const expectedMin = before - 10 * 60 * 1000;
+    const expectedMax = after - 10 * 60 * 1000;
+
+    expect(cutoff).toBeGreaterThanOrEqual(expectedMin);
+    expect(cutoff).toBeLessThanOrEqual(expectedMax);
   });
 });
