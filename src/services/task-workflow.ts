@@ -377,12 +377,7 @@ export async function startTaskWorkflow(params: {
       taskModel: task.model ?? undefined,
     });
   } catch (error) {
-    // Roll back the claim so the task becomes eligible again on the next sweep
-    console.error(`[startTaskWorkflow] Error dispatching task ${taskId}, rolling back claim:`, error);
-    await db.task.updateMany({
-      where: { id: taskId, workflowStatus: WorkflowStatus.IN_PROGRESS, stakworkProjectId: null },
-      data: { workflowStatus: WorkflowStatus.PENDING },
-    });
+    console.error(`[startTaskWorkflow] Error dispatching task ${taskId}:`, error);
     throw error;
   }
 }
