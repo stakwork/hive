@@ -57,6 +57,12 @@ export default async function AdminLayout({
                 >
                   Payments
                 </Link>
+                <Link
+                  href="/admin/settings"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Settings
+                </Link>
               </nav>
             </div>
             <Link
