@@ -61,7 +61,7 @@ export default function NewPlanPage() {
       const featureRes = await fetch("/api/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: message.slice(0, 100), workspaceId }),
+        body: JSON.stringify({ title: message.slice(0, 100), workspaceId, model: options?.model }),
       });
 
       if (!featureRes.ok) {
