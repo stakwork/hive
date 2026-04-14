@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   ChevronDown,
@@ -98,9 +99,15 @@ export function ScorerDashboard({
 }: {
   workspaces: Workspace[];
 }) {
-  const [selectedWs, setSelectedWs] = useState<Workspace | null>(
-    workspaces[0] || null
-  );
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const initialWs =
+    workspaces.find((ws) => ws.slug === searchParams.get("w")) ||
+    workspaces[0] ||
+    null;
+
+  const [selectedWs, setSelectedWs] = useState<Workspace | null>(initialWs);
   const [aggregate, setAggregate] = useState<AggregateMetrics | null>(null);
   const [features, setFeatures] = useState<FeatureMetrics[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
@@ -332,6 +339,7 @@ export function ScorerDashboard({
                 setSelectedWs(ws);
                 setExpandedFeature(null);
                 setPage(1);
+                router.replace(`?w=${ws.slug}`, { scroll: false });
               }}
               className={`px-3 py-1.5 text-xs font-mono border transition-colors whitespace-nowrap shrink-0 ${
                 ws.id === selectedWs.id
