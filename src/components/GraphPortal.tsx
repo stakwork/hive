@@ -44,6 +44,12 @@ interface FeatureSummary {
   createdBy: { id: string };
 }
 
+interface RepoSummary {
+  id: string;
+  name: string;
+  repositoryUrl: string;
+}
+
 interface TaskSummary {
   id: string;
   title: string;
@@ -52,6 +58,7 @@ interface TaskSummary {
   assignee: { id: string } | null;
   createdBy: { id: string };
   feature: { id: string } | null;
+  repository?: { repositoryUrl: string } | null;
   prArtifact?: { content?: { url?: string; status?: string; repo?: string } } | null;
 }
 
@@ -70,6 +77,7 @@ interface WorkspaceData {
   features: FeatureSummary[];
   tasks: TaskSummary[];
   whiteboards: WhiteboardSummary[];
+  repositories: RepoSummary[];
 }
 
 function useAllWorkspacesData(workspaces: WorkspaceSummary[] | undefined) {
@@ -84,17 +92,24 @@ function useAllWorkspacesData(workspaces: WorkspaceSummary[] | undefined) {
       try {
         const results = await Promise.all(
           workspaces.map(async (ws) => {
-            const [membersRes, featuresRes, tasksRes, wbRes] = await Promise.all([
+            const [membersRes, featuresRes, tasksRes, wbRes, stakgraphRes] = await Promise.all([
               fetch(`/api/workspaces/${ws.slug}/members`).then(r => r.ok ? r.json() : null).catch(() => null),
               fetch(`/api/features?workspaceId=${ws.id}&limit=100`).then(r => r.ok ? r.json() : null).catch(() => null),
               fetch(`/api/tasks?workspaceId=${ws.id}&limit=100&showAllStatuses=true&includeLatestMessage=true`).then(r => r.ok ? r.json() : null).catch(() => null),
               fetch(`/api/whiteboards?workspaceId=${ws.id}`).then(r => r.ok ? r.json() : null).catch(() => null),
+              fetch(`/api/workspaces/${ws.slug}/stakgraph`).then(r => r.ok ? r.json() : null).catch(() => null),
             ]);
 
             const members: WorkspaceMember[] = [
               ...(membersRes?.owner ? [membersRes.owner] : []),
               ...(membersRes?.members || []),
             ];
+
+            const rawRepos: Array<{ id: string; name: string; repositoryUrl?: string }> =
+              stakgraphRes?.data?.repositories ?? [];
+            const repositories: RepoSummary[] = rawRepos
+              .filter(r => r.id && r.name)
+              .map(r => ({ id: r.id, name: r.name, repositoryUrl: r.repositoryUrl ?? "" }));
 
             return {
               slug: ws.slug,
@@ -104,6 +119,7 @@ function useAllWorkspacesData(workspaces: WorkspaceSummary[] | undefined) {
               features: featuresRes?.data || [],
               tasks: tasksRes?.data || [],
               whiteboards: wbRes?.data || [],
+              repositories,
             };
           })
         );
@@ -122,11 +138,13 @@ function useAllWorkspacesData(workspaces: WorkspaceSummary[] | undefined) {
 
 type NodeLoader = () => Promise<{ nodes: RawNode[]; edges: RawEdge[] }>;
 
-function createRepoCodeLoader(slug: string, prefix: string): NodeLoader {
+function createRepoCodeLoader(slug: string, prefix: string, repoId: string, repositoryUrl: string): NodeLoader {
   return async () => {
     const nodeTypes = JSON.stringify(["Function", "Endpoint", "File", "Page", "Datamodel"]);
+    const codeNodeId = repoId ? `${prefix}repo-${repoId}-code` : `${prefix}repo-code`;
+    const repoUrlParam = repositoryUrl ? `&repo_url=${encodeURIComponent(repositoryUrl)}` : "";
     const res = await fetch(
-      `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(nodeTypes)}&limit=100&limit_mode=per_type`
+      `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(nodeTypes)}&limit=100&limit_mode=per_type${repoUrlParam}`
     );
     if (!res.ok) return { nodes: [], edges: [] };
     const json = await res.json();
@@ -152,28 +170,30 @@ function createRepoCodeLoader(slug: string, prefix: string): NodeLoader {
 
     const nodes: RawNode[] = [];
     const edges: RawEdge[] = [];
+    const nodeIdPrefix = repoId ? `${prefix}repo-${repoId}` : `${prefix}repo`;
+    const typeGroupPrefix = repoId ? `${prefix}repo-${repoId}-type` : `${prefix}repo-type`;
 
     for (const [nodeType, groupNodes] of typeGroups) {
-      const typeGroupId = `${prefix}repo-type-${nodeType}`;
+      const typeGroupId = `${typeGroupPrefix}-${nodeType}`;
       nodes.push({ id: typeGroupId, label: nodeType });
-      edges.push({ source: `${prefix}repo-code`, target: typeGroupId });
+      edges.push({ source: codeNodeId, target: typeGroupId });
       for (const n of groupNodes) {
         const name = (n.properties as Record<string, unknown>)?.name as string || n.name as string || n.ref_id as string;
-        nodes.push({ id: `${prefix}repo-${n.ref_id}`, label: truncLabel(name), content: n.node_type as string });
-        edges.push({ source: typeGroupId, target: `${prefix}repo-${n.ref_id}` });
+        nodes.push({ id: `${nodeIdPrefix}-${n.ref_id}`, label: truncLabel(name), content: n.node_type as string });
+        edges.push({ source: typeGroupId, target: `${nodeIdPrefix}-${n.ref_id}` });
       }
     }
 
     for (const n of rawNodes) {
       if (hasParent.has(n.ref_id as string)) {
         const name = (n.properties as Record<string, unknown>)?.name as string || n.name as string || n.ref_id as string;
-        nodes.push({ id: `${prefix}repo-${n.ref_id}`, label: truncLabel(name), content: n.node_type as string });
+        nodes.push({ id: `${nodeIdPrefix}-${n.ref_id}`, label: truncLabel(name), content: n.node_type as string });
       }
     }
 
     for (const e of rawEdges) {
       if (refIdSet.has(e.source as string) && refIdSet.has(e.target as string)) {
-        edges.push({ source: `${prefix}repo-${e.source}`, target: `${prefix}repo-${e.target}` });
+        edges.push({ source: `${nodeIdPrefix}-${e.source}`, target: `${nodeIdPrefix}-${e.target}` });
       }
     }
 
@@ -181,10 +201,11 @@ function createRepoCodeLoader(slug: string, prefix: string): NodeLoader {
   };
 }
 
-function createRepoPRLoader(tasks: TaskSummary[], slug: string, prefix: string, fromPath?: string): NodeLoader {
+function createRepoPRLoader(tasks: TaskSummary[], slug: string, prefix: string, repoId: string, repositoryUrl: string, fromPath?: string): NodeLoader {
   return async () => {
     const nodes: RawNode[] = [];
     const edges: RawEdge[] = [];
+    const prsNodeId = repoId ? `${prefix}repo-${repoId}-prs` : `${prefix}repo-prs`;
 
     const PR_STATUS: Record<string, "executing" | "done" | "idle"> = {
       IN_PROGRESS: "executing",
@@ -192,12 +213,16 @@ function createRepoPRLoader(tasks: TaskSummary[], slug: string, prefix: string, 
       CANCELLED: "idle",
     };
 
-    for (const task of tasks) {
+    const filteredTasks = repositoryUrl
+      ? tasks.filter(t => t.repository?.repositoryUrl === repositoryUrl)
+      : tasks;
+
+    for (const task of filteredTasks) {
       const pr = task.prArtifact?.content;
       if (!pr?.url) continue;
       const match = pr.url.match(/\/pull\/(\d+)/);
       const prLabel = match ? `#${match[1]}` : truncLabel(task.title);
-      const prNodeId = `${prefix}pr-${task.id}`;
+      const prNodeId = repoId ? `${prefix}repo-${repoId}-pr-${task.id}` : `${prefix}pr-${task.id}`;
       nodes.push({
         id: prNodeId,
         label: prLabel,
@@ -205,7 +230,7 @@ function createRepoPRLoader(tasks: TaskSummary[], slug: string, prefix: string, 
         content: pr.status || "unknown",
         link: `/w/${slug}/task/${task.id}${fromPath ? `?from=${encodeURIComponent(fromPath)}` : ""}`,
       });
-      edges.push({ source: `${prefix}repo-prs`, target: prNodeId });
+      edges.push({ source: prsNodeId, target: prNodeId });
     }
 
     return { nodes, edges };
@@ -294,13 +319,36 @@ function buildWorkspaceGraph(
     edges.push({ source: wsId, target: `${prefix}group-members` });
     edges.push({ source: wsId, target: `${prefix}group-features` });
 
-    // Repository — loadable
-    nodes.push({ id: `${prefix}group-repo`, label: "Repository", nodeType: "group" });
-    edges.push({ source: wsId, target: `${prefix}group-repo` });
-    nodes.push({ id: `${prefix}repo-code`, label: "Code", loaderId: `${prefix}repo-code`, nodeType: "repo" });
-    edges.push({ source: `${prefix}group-repo`, target: `${prefix}repo-code` });
-    nodes.push({ id: `${prefix}repo-prs`, label: "Pull Requests", loaderId: `${prefix}repo-prs`, nodeType: "repo" });
-    edges.push({ source: `${prefix}group-repo`, target: `${prefix}repo-prs` });
+    // Repositories — per-repo nodes with scoped Code + Pull Requests children
+    if (ws.repositories.length > 0) {
+      const groupReposId = `${prefix}group-repos`;
+      nodes.push({ id: groupReposId, label: "Repositories", nodeType: "group" });
+      meta(groupReposId, ws.slug, "group");
+      edges.push({ source: wsId, target: groupReposId });
+      for (const repo of ws.repositories) {
+        const repoNodeId = `${prefix}repo-${repo.id}`;
+        nodes.push({ id: repoNodeId, label: repo.name, nodeType: "group" });
+        meta(repoNodeId, ws.slug, "group");
+        edges.push({ source: groupReposId, target: repoNodeId });
+        nodes.push({ id: `${repoNodeId}-code`, label: "Code", loaderId: `${repoNodeId}-code`, nodeType: "repo" });
+        meta(`${repoNodeId}-code`, ws.slug, "repo");
+        edges.push({ source: repoNodeId, target: `${repoNodeId}-code` });
+        nodes.push({ id: `${repoNodeId}-prs`, label: "Pull Requests", loaderId: `${repoNodeId}-prs`, nodeType: "repo" });
+        meta(`${repoNodeId}-prs`, ws.slug, "repo");
+        edges.push({ source: repoNodeId, target: `${repoNodeId}-prs` });
+      }
+    } else {
+      // Fallback: preserve original single-repo structure for workspaces with no configured repos
+      nodes.push({ id: `${prefix}group-repo`, label: "Repository", nodeType: "group" });
+      meta(`${prefix}group-repo`, ws.slug, "group");
+      edges.push({ source: wsId, target: `${prefix}group-repo` });
+      nodes.push({ id: `${prefix}repo-code`, label: "Code", loaderId: `${prefix}repo-code`, nodeType: "repo" });
+      meta(`${prefix}repo-code`, ws.slug, "repo");
+      edges.push({ source: `${prefix}group-repo`, target: `${prefix}repo-code` });
+      nodes.push({ id: `${prefix}repo-prs`, label: "Pull Requests", loaderId: `${prefix}repo-prs`, nodeType: "repo" });
+      meta(`${prefix}repo-prs`, ws.slug, "repo");
+      edges.push({ source: `${prefix}group-repo`, target: `${prefix}repo-prs` });
+    }
 
     // Infrastructure — loadable
     nodes.push({ id: `${prefix}group-infra`, label: "Infrastructure", nodeType: "group" });
@@ -751,8 +799,16 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
     const map: Record<string, NodeLoader> = {};
     for (const ws of allWsData) {
       const p = allWsData.length > 1 ? `${ws.slug}-` : "";
-      map[`${p}repo-code`] = createRepoCodeLoader(ws.slug, p);
-      map[`${p}repo-prs`] = createRepoPRLoader(ws.tasks, ws.slug, p, pathname);
+      if (ws.repositories.length > 0) {
+        for (const repo of ws.repositories) {
+          map[`${p}repo-${repo.id}-code`] = createRepoCodeLoader(ws.slug, p, repo.id, repo.repositoryUrl);
+          map[`${p}repo-${repo.id}-prs`] = createRepoPRLoader(ws.tasks, ws.slug, p, repo.id, repo.repositoryUrl, pathname);
+        }
+      } else {
+        // fallback for workspaces with no configured repos
+        map[`${p}repo-code`] = createRepoCodeLoader(ws.slug, p, "", "");
+        map[`${p}repo-prs`] = createRepoPRLoader(ws.tasks, ws.slug, p, "", "", pathname);
+      }
       map[`${p}infra-pods`] = createInfraLoader(ws.slug, p);
     }
     return map;
@@ -839,6 +895,7 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
   const allNodeIdsRef = useRef<string[]>([]);
   const [queryMatches, setQueryMatches] = useState<Set<number> | null>(null);
   const [gamepadCursor, setGamepadCursor] = useState<number | null>(null);
+  const [searchText, setSearchText] = useState("");
 
   // Merge query matches and gamepad cursor into one searchMatches set
   const searchMatches = useMemo(() => {
@@ -1024,7 +1081,25 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
     setQueryMatches(prev => prev === matches ? null : matches);
   }, []);
 
-  const clearQuery = useCallback(() => setQueryMatches(null), []);
+  const clearQuery = useCallback(() => {
+    setQueryMatches(null);
+    setSearchText("");
+  }, []);
+
+  // Search effect: highlight nodes matching searchText
+  useEffect(() => {
+    if (!graph || !searchText.trim()) {
+      setQueryMatches(null);
+      return;
+    }
+    const q = searchText.toLowerCase();
+    const matches = new Set<number>();
+    graph.nodes.forEach((node, i) => {
+      if (node.label?.toLowerCase().includes(q)) matches.add(i);
+    });
+    setQueryMatches(matches.size > 0 ? matches : null);
+  }, [searchText, graph]);
+
   graphRef.current = graph;
 
   const handleNodeClick = useCallback((nodeId: number) => {
@@ -1083,6 +1158,7 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
   const handleReset = useCallback(() => {
     setViewState({ mode: "overview" });
     setQueryMatches(null);
+    setSearchText("");
     setPinStack([]);
     const cam = cameraRef.current;
     if (cam) cam.setLookAt(0, MINIMAP_CAM_HEIGHT, 0.1, 0, 0, 0, true);
@@ -1097,6 +1173,7 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
   const handleCollapse = useCallback(() => {
     if (embedded) return;
     setFading(true);
+    setSearchText("");
     setTimeout(() => {
       setExpanded(false);
       setViewState({ mode: "overview" });
@@ -1349,6 +1426,43 @@ export function GraphPortal({ workspaces: externalWorkspaces, embedded }: GraphP
       {/* Expanded overlay controls */}
       {expanded && (
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+          {/* Search bar — top center */}
+          <div style={{
+            position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)",
+            zIndex: 20, pointerEvents: "auto",
+            display: "flex", alignItems: "center",
+            background: "rgba(8, 10, 22, 0.85)", backdropFilter: "blur(12px)",
+            border: "1px solid rgba(77, 217, 232, 0.25)", borderRadius: 8,
+            padding: "0 10px", height: 36, width: 240,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4dd9e8"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ flexShrink: 0, opacity: 0.6 }}>
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              placeholder="Search nodes…"
+              style={{
+                flex: 1, background: "transparent", border: "none", outline: "none",
+                color: "#e0e8f0", fontSize: 12, fontFamily: "'Barlow', sans-serif",
+                padding: "0 8px",
+              }}
+            />
+            {searchText && (
+              <button
+                onClick={() => setSearchText("")}
+                style={{
+                  background: "none", border: "none", color: "rgba(255,255,255,0.4)",
+                  cursor: "pointer", padding: 0, fontSize: 16, lineHeight: 1, flexShrink: 0,
+                }}
+              >×</button>
+            )}
+          </div>
           {/* Active query indicator — top left */}
           {queryMatches && (
             <button
