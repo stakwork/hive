@@ -31,13 +31,20 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, dateStart, dateEnd } = body;
+    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, dateStart, dateEnd, isPlanDefault, isTaskDefault } = body;
 
     if (!name || !provider || inputPricePer1M == null || outputPricePer1M == null) {
       return NextResponse.json(
         { error: "name, provider, inputPricePer1M, and outputPricePer1M are required" },
         { status: 400 }
       );
+    }
+
+    if (isPlanDefault) {
+      await db.llmModel.updateMany({ where: { isPlanDefault: true }, data: { isPlanDefault: false } });
+    }
+    if (isTaskDefault) {
+      await db.llmModel.updateMany({ where: { isTaskDefault: true }, data: { isTaskDefault: false } });
     }
 
     const model = await db.llmModel.create({
@@ -49,6 +56,8 @@ export async function POST(request: NextRequest) {
         outputPricePer1M: Number(outputPricePer1M),
         dateStart: dateStart ? new Date(dateStart) : null,
         dateEnd: dateEnd ? new Date(dateEnd) : null,
+        isPlanDefault: isPlanDefault ?? false,
+        isTaskDefault: isTaskDefault ?? false,
       },
     });
 
