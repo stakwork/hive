@@ -94,3 +94,6 @@ private/
 
 notes.md
 stadeum/AGENTS.md
+
+# Scorer debug output
+scripts/scorer/output/
