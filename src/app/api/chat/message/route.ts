@@ -116,6 +116,9 @@ export async function POST(request: NextRequest) {
         sourceType: true,
         model: true,
         workflowStatus: true,
+        runBuild: true,
+        runTestSuite: true,
+        autoMerge: true,
         repository: {
           select: {
             name: true,
@@ -344,6 +347,9 @@ export async function POST(request: NextRequest) {
         history,
         webhook,
         taskModel: task.model ?? undefined,
+        runBuild: task.runBuild,
+        runTestSuite: task.runTestSuite,
+        autoMergePr: task.autoMerge,
       });
 
       if (stakworkData.projectId) {

@@ -1347,6 +1347,140 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
   });
 
+  describe("runBuild / runTestSuite / autoMerge Forwarding Tests", () => {
+    const baseTask = {
+      workspaceId: mockWorkspaceId,
+      workspace: {
+        ownerId: mockUserId,
+        members: [],
+        swarm: {
+          swarmUrl: "https://test-swarm.com/api",
+          swarmSecretAlias: "test-secret",
+          poolName: "test-pool",
+          name: "Test Swarm",
+          id: "swarm-123",
+        },
+      },
+    };
+
+    const baseMessage = {
+      id: mockMessageId,
+      taskId: mockTaskId,
+      message: "Follow-up message",
+      role: ChatRole.USER,
+      contextTags: "[]",
+      status: ChatStatus.SENT,
+      artifacts: [],
+      attachments: [],
+      task: { id: mockTaskId, title: "Test Task" },
+    };
+
+    beforeEach(() => {
+      vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
+      vi.mocked(db.workspace.findUnique).mockResolvedValue({ id: mockWorkspaceId, slug: "test-workspace" } as any);
+      vi.mocked(db.chatMessage.create).mockResolvedValue(baseMessage as any);
+      vi.mocked(db.task.update).mockResolvedValue({} as any);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: { project_id: 12345 } }),
+      } as Response);
+    });
+
+    it("should forward runBuild: false to Stakwork when task has runBuild=false", async () => {
+      vi.mocked(db.task.findFirst).mockResolvedValue({
+        ...baseTask,
+        runBuild: false,
+        runTestSuite: true,
+        autoMerge: false,
+      } as any);
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        { taskId: mockTaskId, message: "Follow-up message" },
+        mockUserId,
+      );
+
+      await POST(request);
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const vars = requestBody.workflow_params.set_var.attributes.vars;
+
+      expect(vars.runBuild).toBe(false);
+    });
+
+    it("should forward runTestSuite: false to Stakwork when task has runTestSuite=false", async () => {
+      vi.mocked(db.task.findFirst).mockResolvedValue({
+        ...baseTask,
+        runBuild: true,
+        runTestSuite: false,
+        autoMerge: false,
+      } as any);
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        { taskId: mockTaskId, message: "Follow-up message" },
+        mockUserId,
+      );
+
+      await POST(request);
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const vars = requestBody.workflow_params.set_var.attributes.vars;
+
+      expect(vars.runTestSuite).toBe(false);
+    });
+
+    it("should forward autoMergePr: true to Stakwork when task has autoMerge=true", async () => {
+      vi.mocked(db.task.findFirst).mockResolvedValue({
+        ...baseTask,
+        runBuild: true,
+        runTestSuite: true,
+        autoMerge: true,
+      } as any);
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        { taskId: mockTaskId, message: "Follow-up message" },
+        mockUserId,
+      );
+
+      await POST(request);
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const vars = requestBody.workflow_params.set_var.attributes.vars;
+
+      expect(vars.autoMergePr).toBe(true);
+    });
+
+    it("should forward all three fields correctly together", async () => {
+      vi.mocked(db.task.findFirst).mockResolvedValue({
+        ...baseTask,
+        runBuild: false,
+        runTestSuite: false,
+        autoMerge: true,
+      } as any);
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/chat/message",
+        { taskId: mockTaskId, message: "Follow-up message" },
+        mockUserId,
+      );
+
+      await POST(request);
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const vars = requestBody.workflow_params.set_var.attributes.vars;
+
+      expect(vars.runBuild).toBe(false);
+      expect(vars.runTestSuite).toBe(false);
+      expect(vars.autoMergePr).toBe(true);
+    });
+  });
+
   describe("Context Tags and Artifacts Tests", () => {
     beforeEach(() => {
       // Setup default successful mocks
