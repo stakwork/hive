@@ -55,6 +55,8 @@ const MOCK_RESPONSES: Record<string, unknown> = {
     ],
   },
   UpdatePaidEndpoint: { success: true },
+  GetSecondBrainAboutDetails: { title: "mock-graph", description: "" },
+  UpdateSecondBrainAbout: { success: true },
 };
 
 /**

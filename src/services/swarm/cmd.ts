@@ -24,7 +24,9 @@ export type SwarmCmd =
   | { type: "Swarm"; data: { cmd: "ListAdmins" } }
   | { type: "Swarm"; data: { cmd: "DeleteSubAdmin"; content: string } }
   | { type: "Swarm"; data: { cmd: "UpdateUser"; content: { id: number; pubkey: string; name: string; role: number } } }
-  | { type: "Swarm"; data: { cmd: "GetEnrichedBoltwallUsers" } };
+  | { type: "Swarm"; data: { cmd: "GetEnrichedBoltwallUsers" } }
+  | { type: "Swarm"; data: { cmd: "GetSecondBrainAboutDetails" } }
+  | { type: "Swarm"; data: { cmd: "UpdateSecondBrainAbout"; content: { title: string; description: string } } };
 
 export interface SwarmCmdResponse {
   ok: boolean;
