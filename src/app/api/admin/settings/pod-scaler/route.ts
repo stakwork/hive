@@ -1,0 +1,74 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
+import { db } from "@/lib/db";
+import {
+  POD_SCALER_CONFIG_KEYS,
+  POD_SCALER_QUEUE_WAIT_MINUTES,
+  POD_SCALER_STALENESS_WINDOW_DAYS,
+  POD_SCALER_SCALE_UP_BUFFER,
+  POD_SCALER_MAX_VM_CEILING,
+} from "@/lib/constants/pod-scaler";
+
+type PodScalerKey = keyof typeof POD_SCALER_CONFIG_KEYS;
+
+const DEFAULTS: Record<PodScalerKey, number> = {
+  queueWaitMinutes: POD_SCALER_QUEUE_WAIT_MINUTES,
+  stalenessWindowDays: POD_SCALER_STALENESS_WINDOW_DAYS,
+  scaleUpBuffer: POD_SCALER_SCALE_UP_BUFFER,
+  maxVmCeiling: POD_SCALER_MAX_VM_CEILING,
+};
+
+const DB_KEYS = Object.values(POD_SCALER_CONFIG_KEYS);
+
+export async function GET(request: NextRequest) {
+  const authResult = await requireSuperAdmin(request);
+  if (authResult instanceof NextResponse) {
+    return authResult;
+  }
+
+  const configs = await db.platformConfig.findMany({
+    where: { key: { in: DB_KEYS } },
+  });
+
+  const settings = (Object.keys(POD_SCALER_CONFIG_KEYS) as PodScalerKey[]).map((key) => {
+    const dbKey = POD_SCALER_CONFIG_KEYS[key];
+    const record = configs.find((c) => c.key === dbKey);
+    return { key, value: record ? parseInt(record.value, 10) : DEFAULTS[key] };
+  });
+
+  return NextResponse.json({ settings });
+}
+
+export async function PATCH(request: NextRequest) {
+  const authResult = await requireSuperAdmin(request);
+  if (authResult instanceof NextResponse) {
+    return authResult;
+  }
+
+  const body = await request.json();
+  const { key, value } = body as { key: unknown; value: unknown };
+
+  const validKeys = Object.keys(POD_SCALER_CONFIG_KEYS) as PodScalerKey[];
+  if (!key || !validKeys.includes(key as PodScalerKey)) {
+    return NextResponse.json(
+      { error: `key must be one of: ${validKeys.join(", ")}` },
+      { status: 400 }
+    );
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    return NextResponse.json(
+      { error: "value must be a positive integer" },
+      { status: 400 }
+    );
+  }
+
+  const dbKey = POD_SCALER_CONFIG_KEYS[key as PodScalerKey];
+  const config = await db.platformConfig.upsert({
+    where: { key: dbKey },
+    update: { value: String(value) },
+    create: { key: dbKey, value: String(value) },
+  });
+
+  return NextResponse.json({ key, value: parseInt(config.value, 10) });
+}
