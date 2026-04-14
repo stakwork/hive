@@ -8,6 +8,7 @@ import { generateSecurePassword } from "@/lib/utils/password";
 import { extractSwarmSuffix } from "@/lib/utils/swarm";
 import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { setGraphTitle } from "@/services/swarm/graph-title";
 import { createFakeSwarm, isFakeMode } from "@/services/swarm/fake";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { RepositoryStatus, SwarmStatus } from "@prisma/client";
@@ -290,6 +291,18 @@ export async function POST(request: NextRequest) {
       });
 
       console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm?.id} to ACTIVE status with swarmId: ${swarm_id}`);
+
+      // Fire-and-forget: set graph title for graph_mindset workspaces
+      // Retries handled inside setGraphTitle via retryWithExponentialBackoff — never blocks this response
+      if (workspace_type === "graph_mindset" && swarmPassword && swarm_address) {
+        const slug = vanity_address
+          ? vanity_address.replace(/\.sphinx\.chat$/, "")
+          : swarm_id;
+        const swarmUrl = `https://${swarm_address}/api`;
+        setGraphTitle(swarmUrl, swarmPassword, slug)
+          .then(() => console.log("[SWARM_CREATE] Graph title set:", slug))
+          .catch((err) => console.error("[SWARM_CREATE] setGraphTitle failed (non-fatal):", err));
+      }
 
       // Step 5: Register Stakwork secrets (both non-fatal)
       const sanitizedAlias = swarm_id ? `${swarm_id}_API_KEY` : undefined;

@@ -32,7 +32,7 @@
     },
     {
       "path": "/api/cron/pod-scaler",
-      "schedule": "*/5 * * * *"
+      "schedule": "* * * * *"
     }
   ]
 }
