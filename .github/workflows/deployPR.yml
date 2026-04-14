@@ -109,6 +109,12 @@ jobs:
                 echo "$response"
                 return 0
               fi
+              # Fast-fail on permanent "not found" errors — retrying will not help
+              if echo "$response" | jq -r '.message // empty' 2>/dev/null | grep -qi "not found"; then
+                echo "⚠️  Neon API permanent error for $url — got: ${response:0:120}" >&2
+                echo "$response"
+                return 1
+              fi
               echo "⚠️  Neon API bad/empty response (attempt $attempt/5) for $url — got: ${response:0:120}" >&2
               sleep 10
             done
@@ -213,7 +219,34 @@ jobs:
 
           # If endpoint disappeared during the wait loop, find or create a replacement
           if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
-            echo "🔄 Re-fetching endpoints to find/create a replacement..."
+            echo "🔄 Re-fetching branches and endpoints to find/create a replacement..."
+
+            # The branch itself may have been deleted — re-verify and recreate if needed
+            BRANCHES_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" "branches")
+            BRANCH_ID=$(echo "$BRANCHES_JSON" | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
+
+            if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
+              echo "⚠️  Branch $BRANCH_NAME no longer exists — recreating..."
+              RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" "branch" \
+                -X POST \
+                -H "Content-Type: application/json" \
+                -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$PARENT_BRANCH_ID\",\"expires_at\":\"$EXPIRY\"}}")
+              BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id')
+              if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
+                echo "❌ Failed to recreate branch $BRANCH_NAME"
+                exit 1
+              fi
+              echo "✅ Branch recreated: $BRANCH_ID"
+              # Wait for the new branch to be ready
+              for i in {1..20}; do
+                BRANCH_STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID" "branch")
+                STATE=$(echo "$BRANCH_STATUS" | jq -r '.branch.current_state')
+                if [ "$STATE" = "ready" ]; then break; fi
+                echo "Waiting for recreated branch... ($i)"
+                sleep 3
+              done
+            fi
+
             ENDPOINTS_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" "endpoints")
             ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
 
