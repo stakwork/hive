@@ -6,6 +6,7 @@ import {
   POD_SCALER_STALENESS_WINDOW_DAYS,
   POD_SCALER_SCALE_UP_BUFFER,
   POD_SCALER_MAX_VM_CEILING,
+  POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES,
   POD_SCALER_CONFIG_KEYS,
 } from "@/lib/constants/pod-scaler";
 
@@ -69,6 +70,10 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
     POD_SCALER_CONFIG_KEYS.maxVmCeiling,
     POD_SCALER_MAX_VM_CEILING
   );
+  const scaleDownCooldownMinutes = parseIntOrDefault(
+    POD_SCALER_CONFIG_KEYS.scaleDownCooldownMinutes,
+    POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES
+  );
 
   const swarms = await db.swarm.findMany({
     where: {
@@ -125,6 +130,25 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
       console.log(
         `${LOG_PREFIX} Swarm ${swarm.id} scaling calc: floor=${floor}, targetVms=${targetVms}, currentMinimumVms=${swarm.minimumVms}`
       );
+
+      // Cooldown guard: skip scale-down if tasks completed recently
+      if (overQueuedCount === 0 && targetVms < swarm.minimumVms) {
+        const cooldownAgo = new Date(Date.now() - scaleDownCooldownMinutes * 60 * 1000);
+        const recentlyCompletedCount = await db.task.count({
+          where: {
+            workspaceId: swarm.workspaceId,
+            status: "DONE",
+            deleted: false,
+            updatedAt: { gte: cooldownAgo },
+          },
+        });
+        if (recentlyCompletedCount > 0) {
+          console.log(
+            `${LOG_PREFIX} Skipping scale-down for swarm ${swarm.id}: ${recentlyCompletedCount} task(s) completed within cooldown window`
+          );
+          continue;
+        }
+      }
 
       // Always record the check result in deployedPods
       await db.swarm.update({
