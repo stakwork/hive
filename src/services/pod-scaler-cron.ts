@@ -26,7 +26,7 @@ export interface PodScalerResult {
  * Auto-scaler cron: scales minimum_vms up/down based on over-queued task demand.
  * Runs every 5 minutes via /api/cron/pod-scaler.
  *
- * - Over-queued tasks: TODO + TASK_COORDINATOR, not deleted/archived, createdAt > queueWaitMinutes ago
+ * - Over-queued tasks: TODO + TASK_COORDINATOR, not deleted/archived, no dependsOnTaskIds, createdAt > queueWaitMinutes ago
  * - Scale up:   minimum_vms = floor + overQueuedCount + scaleUpBuffer, capped at maxVmCeiling
  * - Scale down: minimum_vms = minimumPods
  * - minimumPods is never mutated by this cron.
@@ -106,6 +106,7 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
           deleted: false,
           archived: false,
           sourceType: { not: "USER_JOURNEY" },
+          dependsOnTaskIds: { isEmpty: true },
           OR: [
             { featureId: null },
             { feature: { status: { not: "CANCELLED" } } },
