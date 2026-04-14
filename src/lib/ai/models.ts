@@ -59,17 +59,21 @@ export function getModelValue(m: LlmModelOption): string {
  * Returns the model value string (e.g. "anthropic/claude-sonnet-4-6") or null.
  */
 export async function getDefaultModel(type: "plan" | "task"): Promise<string | null> {
-  const { db } = await import("@/lib/db");
-  const where = type === "plan" ? { isPlanDefault: true } : { isTaskDefault: true };
-  const model = await db.llmModel.findFirst({
-    where: {
-      ...where,
-      OR: [{ dateEnd: null }, { dateEnd: { gt: new Date() } }],
-    },
-    select: { id: true, name: true, provider: true, providerLabel: true, isPlanDefault: true, isTaskDefault: true },
-  });
-  if (!model) return null;
-  return getModelValue(model);
+  try {
+    const { db } = await import("@/lib/db");
+    const where = type === "plan" ? { isPlanDefault: true } : { isTaskDefault: true };
+    const model = await db.llmModel.findFirst({
+      where: {
+        ...where,
+        OR: [{ dateEnd: null }, { dateEnd: { gt: new Date() } }],
+      },
+      select: { id: true, name: true, provider: true, providerLabel: true, isPlanDefault: true, isTaskDefault: true },
+    });
+    if (!model) return null;
+    return getModelValue(model);
+  } catch {
+    return null;
+  }
 }
 
 export function getApiKeyForModel(model: ModelName | string): string | undefined {
