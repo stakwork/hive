@@ -16,7 +16,7 @@ Pure computation, no LLM. Numbers for filtering, sorting, and dashboarding.
 
 **Per-task metrics:**
 - Message count before PR (fewer = better understanding)
-- Correction count (number of USER messages in a task after the initial message — i.e. `ChatMessage` count where `taskId` is set, `role` = USER, minus 1 for the initial prompt. Any follow-up from a human means the agent didn't get it right the first time)
+- Correction count (number of substantive USER messages in a task after the initial message. Count `ChatMessage` where `taskId` is set, `role` = USER, minus 1 for the initial prompt, minus any short affirmations. Filter out messages that are simple confirmations: trim + lowercase, then exclude if it matches a known affirmation list — `yes`, `ok`, `y`, `go`, `sure`, `do it`, `looks good`, `proceed`, `continue`, `approved`, `lgtm`, `next`, `go ahead`, etc. — or is under ~10 characters. Everything else is a correction or substantive follow-up.)
 - CI pass/fail on first attempt
 - PR outcome: merged / cancelled / still open
 - Time from task start (`workflowStartedAt`) to PR merge
@@ -265,16 +265,9 @@ For each issue, explain:
 {digests}
 ```
 
-#### Prompt Library
+#### Prompts
 
-Both modes use prompts from the same `ScorerPrompt` library. Each prompt is tagged with a `mode` field (`single` or `pattern` or `both`) so the UI knows which prompts to offer in which context. Users can create custom prompts for either mode.
-
-Example custom prompts:
-
-- (single) "Trace the agent's search queries in order. Build a map of what terms the user used vs what terms the codebase uses. Suggest a glossary."
-- (pattern) "Focus on cases where the agent explored files that turned out to be irrelevant. What could we change in the codebase documentation or graph to help it navigate more efficiently?"
-- (pattern) "Look at the user's first message in each task. When did the agent misinterpret the user's intent? What vocabulary or phrasing caused confusion?"
-- (both) "Compare the architecture section of the plan to the files actually touched. What concepts are poorly linked in our codebase graph?"
+Each workspace has two editable prompt fields: one for single-session analysis, one for pattern detection. These default to the global prompts shown above. Admins can customize either prompt per workspace via the sidebar in the admin UI.
 
 #### Output
 
@@ -299,28 +292,22 @@ Example LLM output format:
 
 ## Data Model
 
-Three stored models. Metrics and full sessions are computed live — no need to persist what you can derive from existing data.
+Stored models plus a workspace-level toggle. Metrics and full sessions are computed live — no need to persist what you can derive from existing data.
 
 ```prisma
-/// Saved prompts for Layer 4 analysis (single-session or pattern detection).
-/// Users can create custom "lenses" to analyze sessions/digests from different angles.
-model ScorerPrompt {
-  id          String            @id @default(cuid())
-  name        String            // Short label: "Default", "Navigation efficiency", "Vocab mismatches"
-  description String?           // What this prompt is looking for
-  prompt      String            // The full prompt template ({session} or {digests} placeholder)
-  mode        ScorerPromptMode  // SINGLE, PATTERN, or BOTH — which analysis mode this prompt is for
-  isDefault   Boolean           @default(false) @map("is_default")
-  createdById String            @map("created_by_id")
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
-  createdBy   User              @relation(fields: [createdById], references: [id])
-  insights    ScorerInsight[]
-
-  @@index([createdById])
-  @@index([mode])
-  @@map("scorer_prompts")
-}
+/// Workspace-level scorer config. Add these fields to the existing Workspace model:
+///   scorerEnabled       Boolean  @default(false) @map("scorer_enabled")
+///   scorerPatternPrompt String?  @map("scorer_pattern_prompt")  // Custom pattern detection prompt (null = use global default)
+///   scorerSinglePrompt  String?  @map("scorer_single_prompt")   // Custom single-session prompt (null = use global default)
+///
+/// When enabled, the automatic pipeline runs for this workspace:
+/// 1. Feature completes → digest auto-generated
+/// 2. Every N new digests (or on schedule) → pattern detection runs using the pattern prompt
+/// 3. Poor-scoring features → single-session analysis runs using the single prompt
+///
+/// Global default prompts are hardcoded in the codebase. Workspaces can override
+/// either prompt via the admin UI. No ScorerPrompt model needed — just two text
+/// fields on Workspace.
 
 /// Layer 3: Compressed per-feature summary, small enough to batch 25-50 together.
 /// Cached because these are the input to pattern detection and are non-trivial to build.
@@ -338,30 +325,27 @@ model ScorerDigest {
   @@map("scorer_digests")
 }
 
-/// Layer 4: LLM-generated findings from pattern detection.
+/// Layer 4: LLM-generated findings.
 model ScorerInsight {
-  id             String        @id @default(cuid())
-  promptId       String        @map("prompt_id")
-  promptSnapshot String        @map("prompt_snapshot") // Exact prompt text at time of analysis (survives prompt edits)
-  severity       String        // HIGH, MEDIUM, LOW
-  pattern        String        // Short label: "Agent misidentifies auth module", etc.
-  description    String        // Full explanation from the LLM
-  featureIds     String[]      @map("feature_ids") // Feature IDs that exhibit this pattern
-  suggestion     String        // What to change
-  digestIds      String[]      @map("digest_ids") // Which digests were input to this analysis
-  createdAt      DateTime      @default(now()) @map("created_at")
-  prompt         ScorerPrompt  @relation(fields: [promptId], references: [id])
+  id             String     @id @default(cuid())
+  workspaceId    String     @map("workspace_id")
+  mode           String     // "single" or "pattern"
+  promptSnapshot String     @map("prompt_snapshot") // Exact prompt text used for this analysis
+  severity       String     // HIGH, MEDIUM, LOW
+  pattern        String     // Short label: "Agent misidentifies auth module", etc.
+  description    String     // Full explanation from the LLM
+  featureIds     String[]   @map("feature_ids") // Feature IDs that exhibit this pattern
+  suggestion     String     // What to change
+  digestIds      String[]   @map("digest_ids") // Which digests were input (empty for single mode)
+  dismissedAt    DateTime?  @map("dismissed_at") // null = active, set = dismissed
+  createdAt      DateTime   @default(now()) @map("created_at")
+  workspace      Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  @@index([promptId])
+  @@index([workspaceId])
   @@index([severity])
   @@index([createdAt])
+  @@index([dismissedAt])
   @@map("scorer_insights")
-}
-
-enum ScorerPromptMode {
-  SINGLE    // For single-session analysis (uses {session} placeholder)
-  PATTERN   // For pattern detection across N digests (uses {digests} placeholder)
-  BOTH      // Works in either mode
 }
 ```
 
@@ -371,75 +355,134 @@ enum ScorerPromptMode {
 
 **What IS stored:**
 - **Digests (Layer 3)** — cached because they're non-trivial to assemble (require querying the full feature tree + compressing). Regenerated on demand or when a feature's tasks change. `featureId` is unique — one digest per feature.
-- **Insights (Layer 4)** — the output of LLM analysis. Each insight records the `promptId` it came from and a `promptSnapshot` (the exact prompt text at analysis time, so editing a prompt later doesn't retroactively change what past insights claim). Also records `digestIds` so you know which digests were input.
-- **Prompts** — the reusable prompt library.
+- **Insights (Layer 4)** — the output of LLM analysis. Each insight stores the exact `promptSnapshot` used so you can see what prompt produced it. `mode` is "single" or "pattern".
+- **Prompts** — two text fields on the Workspace model (`scorerPatternPrompt`, `scorerSinglePrompt`). Null = use global defaults hardcoded in the codebase. Editable via admin UI.
+
+## Automatic Pipeline
+
+The scorer runs automatically for workspaces that have `scorerEnabled = true`. Two trigger mechanisms:
+
+### Event-driven: feature completion
+
+When a feature's last task reaches terminal state (PR merged/cancelled, or task DONE/CANCELLED), the pipeline kicks off immediately for that feature:
+
+1. **Digest generation** — assemble the Layer 2 full session, compress it via Sonnet into a Layer 3 digest, cache in `ScorerDigest`.
+2. **Single-session analysis** — if the feature's metrics are poor (see thresholds below), run Layer 4 single mode against the full session. Store insights.
+
+Hook into the existing GitHub webhook that sets PR status to DONE/CANCELLED. After updating the task/PR status, check: does this feature have all tasks in terminal state? If yes, and `workspace.scorerEnabled` is true, enqueue the digest + analysis job.
+
+### Cron: pattern detection
+
+A periodic job (e.g. daily) scans enabled workspaces and runs pattern detection:
+
+1. Find workspaces where `scorerEnabled = true`
+2. For each, count digests created since the last pattern detection run
+3. If N+ new digests exist (e.g. N=10), run Layer 4 pattern mode across the most recent digests
+4. Store insights. Only surface insights that appear in 3+ sessions.
+
+The cron is necessary because pattern detection needs to batch multiple digests together — you can't run it on every single feature completion.
+
+### Prompt resolution
+
+For a given workspace, the pipeline uses:
+- `workspace.scorerPatternPrompt` / `workspace.scorerSinglePrompt` if set
+- Global default prompts (hardcoded in the codebase) as fallback
+
+### Threshold for single-session analysis
+
+Run automatically when any of:
+- Correction count > 2
+- CI failed on first attempt
+- Plan file precision < 50% or recall < 50%
+- Task took > 3x the workspace's average duration
+
+These thresholds can be tuned later. The point is to only spend LLM calls on sessions that look bad.
 
 ## Admin UI
 
 New page: `/admin/scorer`
 
-**Top-level view:**
-- Automated metrics computed live, with filters (workspace, date range, feature status)
-- Sort by worst-performing features
-- Aggregate stats: avg message count, avg CI pass rate, plan accuracy trends over time
+### Top section: Insights Feed
 
-**Feature drill-in (Layer 2):**
-- Click a feature to see its full session assembled on the fly — the entire journey from plan to PRs
-- Every task's transcript with tool call inputs (files read, searched, edited)
-- Plan vs reality comparison: files architecture mentioned vs files actually touched
-- "Analyze This Session" button — runs single-session analysis (Layer 4 Mode A) with a chosen prompt, produces insights specific to this feature
+The first thing you see. Automatically generated, ranked by severity. This is the "what should I fix" view.
 
-**Digest view (Layer 3):**
-- Compressed version of the session, shows key moments and outcomes
-- Useful for quick scanning across many features
+- Count badge next to the "Insights" header showing total active (non-dismissed) insights
+- Each insight card shows: severity badge, short pattern label, description, suggested action, and a dismiss button (x)
+- Dismissing an insight hides it from the default view (sets `dismissedAt`). Dismissed insights can be shown via a "show dismissed" toggle.
+- Affected features are listed as clickable links — clicking one scrolls down to that feature in the data tree
+- Filterable by workspace, severity, mode (single vs pattern), date range
 
-**Prompt library:**
-- List of saved prompts with name, description, last used
-- Create / edit / delete prompts
-- Each prompt has a "Run" button that selects digests and kicks off analysis
+### Bottom section: Data Tree
 
-**Insights (Layer 4):**
-- Two entry points: "Analyze This Session" on a single feature, or "Run Pattern Analysis" across N features
-- Pattern analysis: pick a prompt, select N features (or auto-select worst performers), run analysis
-- Results: ranked list of insights with severity badges
-- Each insight links to the features that exhibit it
-- History of past insights, filterable by prompt and mode (single vs pattern), to track whether issues are getting better or worse
+Browsable hierarchy of the raw data. For investigating, exploring, and understanding what agents are doing.
+
+```
+Workspace (toggle scorer on/off, manage prompts)
+  │
+  ├── Aggregate metrics (avg message count, CI pass rate, plan accuracy trend)
+  │
+  └── Features (sortable table: title, status, message count, corrections, CI, plan precision/recall, duration)
+        │
+        ├── Metrics row (inline on the feature, scannable)
+        ├── Digest (expandable — the compressed Layer 3 summary)
+        │
+        └── [expand] Full Session (Layer 2, assembled on the fly)
+              │
+              ├── Plan
+              │     ├── Human's original request
+              │     ├── Plan agent transcript (tool calls + reasoning)
+              │     └── Plan output (brief, requirements, architecture, user stories)
+              │
+              └── Tasks
+                    └── Task 1.1: {title}
+                          ├── Coding agent transcript (tool calls + reasoning)
+                          ├── Test agent transcript (if ran)
+                          ├── Build agent transcript (if ran)
+                          ├── Files touched (from DIFF artifacts, de-duplicated)
+                          └── PR (url, status, CI result)
+```
+
+- Clicking a feature row expands it inline showing: digest, task cards (agents, files, PRs)
+- "Analyze" button inside each expanded feature — manually triggers single-session analysis on that feature (useful when the automatic pipeline didn't run it, e.g. metrics looked fine but you're curious)
+- Features highlighted by insights are visually marked (red dot) so you can see which ones have issues
+
+### Sidebar
+
+- **Workspace toggle** — single `scorerEnabled` on/off
+- **Active prompts** — shows the two prompts (pattern + single), each editable inline. Falls back to global defaults if not customized.
 
 ## API Routes
 
 ```
-GET    /api/admin/scorer/metrics         — compute metrics live (filterable by workspace, date range)
-GET    /api/admin/scorer/sessions/[id]   — assemble full session on the fly for a feature
-POST   /api/admin/scorer/digests         — generate/regenerate digests for selected features
-GET    /api/admin/scorer/digests         — list stored digests
-POST   /api/admin/scorer/analyze         — run analysis. Body: { promptId, mode: "single" | "pattern", featureId? (for single), digestIds? (for pattern) }
-GET    /api/admin/scorer/insights        — list insights (filterable by prompt, severity, date, mode)
-GET    /api/admin/scorer/prompts         — list saved prompts (filterable by mode)
-POST   /api/admin/scorer/prompts         — create a new prompt
-PATCH  /api/admin/scorer/prompts/[id]    — edit a prompt
-DELETE /api/admin/scorer/prompts/[id]    — delete a prompt
+GET    /api/admin/scorer/insights              — list insights (filterable by workspace, severity, date, mode; excludes dismissed by default, ?dismissed=true to include)
+PATCH  /api/admin/scorer/insights/[id]/dismiss — dismiss an insight (sets dismissedAt)
+GET    /api/admin/scorer/metrics               — compute metrics live (filterable by workspace, date range)
+GET    /api/admin/scorer/sessions/[id]         — assemble full session on the fly for a feature
+GET    /api/admin/scorer/digests               — list stored digests (filterable by workspace)
+POST   /api/admin/scorer/analyze/[featureId]   — manually trigger single-session analysis on one feature
+PATCH  /api/admin/scorer/workspaces/[id]       — toggle scorer enabled + edit prompts
 ```
 
 All under `/api/admin/` prefix — already covered by superadmin middleware policy.
 
 ## Implementation Order
 
-1. **Schema + migration** — add the three new models (`ScorerPrompt`, `ScorerDigest`, `ScorerInsight`)
-2. **Metrics computation** — API route that queries existing data live and computes per-task/per-feature metrics. No LLM, immediately useful.
-3. **Admin UI: metrics view** — table of features with sortable metric columns
-4. **Full session assembly** — API route that builds the complete feature session on the fly from existing data. No persistence needed.
-5. **Admin UI: session view** — click a feature to see its full end-to-end session
-6. **Digest generation** — API route that compresses sessions into digests. Cached in DB.
-7. **Prompt library** — CRUD for scorer prompts + admin UI for managing them
-8. **Pattern detection** — API route that batches N digests with a chosen prompt, sends to LLM, stores insights
-9. **Admin UI: insights panel** — display ranked insights, filterable by prompt
+1. **Schema + migration** — add `ScorerDigest` and `ScorerInsight` models, add `scorerEnabled`, `scorerPatternPrompt`, `scorerSinglePrompt` to Workspace
+2. **Metrics computation** — API route that queries existing data live. No LLM, immediately useful.
+3. **Full session assembly** — API route that builds the complete feature session on the fly.
+4. **Admin UI: metrics table + expandable session view** — table of features with inline metrics, click to expand (digest, tasks with agents, files, PRs). "Analyze" button on each expanded feature.
+5. **Digest generation** — service function that assembles Layer 2 and compresses via Sonnet. Cached in DB.
+6. **Analysis engine** — service function that runs Layer 4 (single or pattern mode), parses structured JSON, stores insights.
+7. **Event-driven pipeline** — hook into GitHub webhook (PR merge/cancel). On feature completion, auto-generate digest + run single-session analysis if metrics are poor.
+8. **Cron pipeline** — periodic job that runs pattern detection across new digests for enabled workspaces.
+9. **Admin UI: insights feed** — the primary view above the features table. Ranked insights, filterable, with links to affected features.
 
-Steps 1-5 are immediately useful without any LLM calls or new stored data. Steps 6-9 add the intelligence layer.
+Steps 1-4 give you the manual inspection tools (metrics + session view). Steps 5-6 build the analysis machinery. Steps 7-8 make it automatic. Step 9 makes it the default experience.
 
 ## Future Directions
 
-- **Automatic digest regeneration** — trigger on feature completion via webhook, so digests stay fresh
-- **Scheduled pattern detection** — weekly cron that auto-runs the default prompt on recent digests and surfaces new insights
 - **Feedback loop** — when an insight leads to a prompt change, track whether metrics improve in subsequent features
-- **Adaptive compression** — as context windows grow, digests can include more raw data (more transcript, actual code snippets), making pattern detection sharper
-- **Cross-workspace patterns** — find issues that affect all workspaces vs workspace-specific problems
+- **Adaptive compression** — as context windows grow, digests can include more raw data, making pattern detection sharper
+- **Cross-workspace patterns** — global pattern detection across all enabled workspaces to find platform-wide issues
+- **Insight deduplication** — if the same pattern keeps getting surfaced across runs, consolidate rather than repeat
+- **Actionable integration** — insights could directly suggest edits to AGENTS.md or system prompts, with a one-click "apply" button
