@@ -6,6 +6,8 @@ import { fetchSwarmDetails } from "@/services/swarm/api/swarm";
 import { isFakeMode, fakePollSwarm } from "@/services/swarm/fake";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { EncryptionService } from "@/lib/encryption";
+import { setGraphTitle } from "@/services/swarm/graph-title";
 
 export const runtime = "nodejs";
 
@@ -47,6 +49,8 @@ export async function POST(request: NextRequest) {
           select: {
             id: true,
             ownerId: true,
+            slug: true,
+            workspaceKind: true,
             members: {
               where: { userId },
               select: { role: true },
@@ -128,6 +132,18 @@ export async function POST(request: NextRequest) {
         swarmSecretAlias,
       });
 
+      // Fire-and-forget: set graph title on first activation for graph_mindset workspaces
+      if (
+        swarm.workspace?.workspaceKind === "graph_mindset" &&
+        swarm.swarmPassword &&
+        swarm.swarmUrl
+      ) {
+        const pw = EncryptionService.getInstance().decryptField("swarmPassword", swarm.swarmPassword);
+        setGraphTitle(swarm.swarmUrl, pw, swarm.workspace.slug)
+          .then(() => console.log("[POLL] Graph title set:", swarm.workspace!.slug))
+          .catch((err) => console.error("[POLL] setGraphTitle failed (non-fatal):", err));
+      }
+
       return NextResponse.json({
         success: true,
         message: "Swarm is now active",
@@ -187,6 +203,8 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           ownerId: true,
+          slug: true,
+          workspaceKind: true,
           members: {
             where: { userId },
             select: { role: true },
@@ -252,6 +270,18 @@ export async function GET(request: NextRequest) {
         swarmApiKey: xApiKey || "",
         swarmSecretAlias,
       });
+
+      // Fire-and-forget: set graph title on first activation for graph_mindset workspaces
+      if (
+        swarm.workspace?.workspaceKind === "graph_mindset" &&
+        swarm.swarmPassword &&
+        swarm.swarmUrl
+      ) {
+        const pw = EncryptionService.getInstance().decryptField("swarmPassword", swarm.swarmPassword);
+        setGraphTitle(swarm.swarmUrl, pw, swarm.workspace.slug)
+          .then(() => console.log("[POLL] Graph title set:", swarm.workspace!.slug))
+          .catch((err) => console.error("[POLL] setGraphTitle failed (non-fatal):", err));
+      }
 
       return NextResponse.json({
         success: true,

@@ -58,6 +58,8 @@ const GRAPH_ADMIN_CMDS = [
   { type: "Swarm", data: { cmd: "UpdateBoltwallAccessibility", content: true } },
   { type: "Swarm", data: { cmd: "ListPaidEndpoint" } },
   { type: "Swarm", data: { cmd: "UpdatePaidEndpoint", content: { id: 1, status: false } } },
+  { type: "Swarm", data: { cmd: "GetSecondBrainAboutDetails" } },
+  { type: "Swarm", data: { cmd: "UpdateSecondBrainAbout", content: { title: "test", description: "" } } },
 ] as const;
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
