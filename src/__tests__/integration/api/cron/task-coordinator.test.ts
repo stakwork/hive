@@ -157,6 +157,27 @@ describe("Integration: /api/cron/task-coordinator", () => {
         role: "OWNER",
       },
     });
+
+    // Create a soft-deleted workspace with sweeps enabled — should never be processed
+    await db.workspace.create({
+      data: {
+        slug: "deleted-workspace-integration",
+        name: "Deleted Workspace",
+        ownerId: testUser.id,
+        deleted: true,
+        janitorConfig: {
+          create: {
+            taskCoordinatorEnabled: true,
+            recommendationSweepEnabled: true,
+            ticketSweepEnabled: true,
+            unitTestsEnabled: false,
+            integrationTestsEnabled: false,
+            e2eTestsEnabled: false,
+            securityReviewEnabled: false,
+          },
+        },
+      },
+    });
   });
 
   afterEach(async () => {
@@ -888,6 +909,33 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(result.message).toBe("Task Coordinator is disabled");
       expect(result.workspacesProcessed).toBe(0);
       expect(result.tasksCreated).toBe(0);
+    });
+  });
+
+  describe("Deleted Workspace Filtering", () => {
+    test("deleted workspace is never processed and workspacesProcessed reflects only non-deleted workspaces", async () => {
+      // The beforeEach seeds a deleted workspace with sweeps enabled.
+      // Only testWorkspace (not deleted) should be processed.
+
+      const mockRequest = createAuthenticatedRequest();
+      process.env.TASK_COORDINATOR_ENABLED = "true";
+
+      const response = await GET(mockRequest);
+      const result = await response.json();
+
+      expect(response.status).toBe(200);
+      // workspacesProcessed must not include the deleted workspace
+      expect(result.workspacesProcessed).toBe(1);
+
+      // Verify no task was created in the deleted workspace
+      const deletedWs = await db.workspace.findUnique({
+        where: { slug: "deleted-workspace-integration" },
+      });
+      expect(deletedWs).not.toBeNull();
+      const tasksInDeletedWs = await db.task.findMany({
+        where: { workspaceId: deletedWs!.id },
+      });
+      expect(tasksInDeletedWs).toHaveLength(0);
     });
   });
 

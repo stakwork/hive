@@ -1,10 +1,11 @@
 import { db } from "@/lib/db";
-import { WorkflowStatus } from "@prisma/client";
+import { Prisma, WorkflowStatus } from "@prisma/client";
 import { startTaskWorkflow } from "@/services/task-workflow";
 import { releaseTaskPod } from "@/lib/pods";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
 import { getPodDetails } from "@/lib/pods/queries";
+import { acceptJanitorRecommendation } from "@/services/janitor";
 
 export type DependencyCheckResult = "SATISFIED" | "PENDING" | "PERMANENTLY_BLOCKED";
 
@@ -450,6 +451,131 @@ export async function releaseStaleTaskPods(): Promise<{
   }
 }
 
+// Type alias for the workspace shape returned by the DB query (with included relations)
+type EnabledWorkspace = Prisma.WorkspaceGetPayload<{
+  include: { janitorConfig: true; swarm: true; owner: { select: { id: true; name: true; email: true } } };
+}>;
+
+interface WorkspaceResult {
+  tasksCreated: number;
+  errors: Array<{ workspaceSlug: string; error: string }>;
+}
+
+/**
+ * Process a single workspace: pod check → ticket sweep → recommendation sweep.
+ * Ticket-first priority rule is preserved: recommendation sweep only runs when ticketsDispatched === 0.
+ */
+async function processWorkspace(workspace: EnabledWorkspace): Promise<WorkspaceResult> {
+  const result: WorkspaceResult = { tasksCreated: 0, errors: [] };
+
+  console.log(`[TaskCoordinator] Processing workspace: ${workspace.slug}`);
+
+  // Skip if no swarm configured
+  if (!workspace.swarm?.id) {
+    console.log(`[TaskCoordinator] Skipping workspace ${workspace.slug}: No pool configured`);
+    return result;
+  }
+
+  // Check available pods using local DB (same source of truth as UI)
+  const poolStatus = await getPoolStatusFromPods(workspace.swarm.id, workspace.id);
+  const availablePods = poolStatus.unusedVms;
+  console.log(`[TaskCoordinator] Workspace ${workspace.slug} has ${availablePods} available pods`);
+
+  if (availablePods <= 1) {
+    console.log(`[TaskCoordinator] Insufficient available pods for workspace ${workspace.slug} (need 2+ to reserve 1), skipping`);
+    return result;
+  }
+
+  const slotsAvailable = availablePods - 1;
+  let ticketsDispatched = 0;
+
+  // Priority 1: Ticket Sweep (if enabled)
+  if (workspace.janitorConfig?.ticketSweepEnabled) {
+    try {
+      ticketsDispatched = await processTicketSweep(
+        workspace.id,
+        workspace.slug,
+        slotsAvailable
+      );
+      result.tasksCreated += ticketsDispatched;
+      console.log(`[TaskCoordinator] Dispatched ${ticketsDispatched}/${slotsAvailable} tasks for workspace ${workspace.slug}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[TaskCoordinator] Ticket sweep failed for workspace ${workspace.slug}:`, errorMessage);
+      result.errors.push({
+        workspaceSlug: workspace.slug,
+        error: `Ticket sweep failed: ${errorMessage}`,
+      });
+    }
+  }
+
+  // Priority 2: Recommendation Sweep (if enabled and no tickets were dispatched)
+  if (ticketsDispatched === 0 && workspace.janitorConfig?.recommendationSweepEnabled) {
+    try {
+      const pendingRecommendations = await db.janitorRecommendation.findMany({
+        where: {
+          status: "PENDING",
+          janitorRun: {
+            janitorConfig: {
+              workspaceId: workspace.id,
+            },
+          },
+        },
+        include: {
+          janitorRun: {
+            include: {
+              janitorConfig: {
+                include: {
+                  workspace: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [
+          { priority: "desc" }, // CRITICAL first, then HIGH, MEDIUM, LOW
+          { createdAt: "asc" },  // Oldest first for same priority
+        ],
+        take: 1, // Only process one recommendation at a time
+      });
+
+      console.log(`[TaskCoordinator] Found ${pendingRecommendations.length} pending recommendations for workspace ${workspace.slug}`);
+
+      for (const recommendation of pendingRecommendations) {
+        try {
+          console.log(`[TaskCoordinator] Auto-accepting recommendation ${recommendation.id} (${recommendation.priority}) for workspace ${workspace.slug}`);
+
+          await acceptJanitorRecommendation(
+            recommendation.id,
+            workspace.owner.id, // Use workspace owner as the accepting user
+            {}, // No specific assignee or repository
+            "TASK_COORDINATOR" // Mark as auto-accepted by Task Coordinator
+          );
+
+          result.tasksCreated++;
+          console.log(`[TaskCoordinator] Successfully created task from recommendation ${recommendation.id}`);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`[TaskCoordinator] Failed to accept recommendation ${recommendation.id}:`, errorMessage);
+          result.errors.push({
+            workspaceSlug: workspace.slug,
+            error: `Failed to accept recommendation ${recommendation.id}: ${errorMessage}`,
+          });
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[TaskCoordinator] Recommendation sweep failed for workspace ${workspace.slug}:`, errorMessage);
+      result.errors.push({
+        workspaceSlug: workspace.slug,
+        error: `Recommendation sweep failed: ${errorMessage}`,
+      });
+    }
+  }
+
+  return result;
+}
+
 /**
  * Execute Task Coordinator runs for all enabled workspaces
  */
@@ -485,9 +611,10 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
       });
     }
 
-    // Get all workspaces with either sweep enabled
+    // Get all non-deleted workspaces with either sweep enabled
     const enabledWorkspaces = await db.workspace.findMany({
       where: {
+        deleted: false,
         janitorConfig: {
           OR: [
             { recommendationSweepEnabled: true },
@@ -510,132 +637,20 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
 
     console.log(`[TaskCoordinator] Found ${enabledWorkspaces.length} workspaces with Task Coordinator Sweeps enabled`);
 
-    for (const workspace of enabledWorkspaces) {
-      try {
-        workspacesProcessed++;
-        console.log(`[TaskCoordinator] Processing workspace: ${workspace.slug}`);
+    // Process all workspaces concurrently
+    const workspaceResults = await Promise.allSettled(
+      enabledWorkspaces.map(ws => processWorkspace(ws))
+    );
 
-        // Skip if no swarm configured
-        if (!workspace.swarm?.id) {
-          console.log(`[TaskCoordinator] Skipping workspace ${workspace.slug}: No pool configured`);
-          continue;
-        }
-
-        // Check available pods using local DB (same source of truth as UI)
-        const poolStatus = await getPoolStatusFromPods(workspace.swarm.id, workspace.id);
-        const availablePods = poolStatus.unusedVms;
-        console.log(`[TaskCoordinator] Workspace ${workspace.slug} has ${availablePods} available pods`);
-
-        if (availablePods <= 1) {
-          console.log(`[TaskCoordinator] Insufficient available pods for workspace ${workspace.slug} (need 2+ to reserve 1), skipping`);
-          continue;
-        }
-
-        const slotsAvailable = availablePods - 1;
-        let ticketsDispatched = 0;
-
-        // Priority 1: Ticket Sweep (if enabled)
-        if (workspace.janitorConfig?.ticketSweepEnabled) {
-          try {
-            ticketsDispatched = await processTicketSweep(
-              workspace.id,
-              workspace.slug,
-              slotsAvailable
-            );
-            tasksCreated += ticketsDispatched;
-            console.log(`[TaskCoordinator] Dispatched ${ticketsDispatched}/${slotsAvailable} tasks for workspace ${workspace.slug}`);
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(`[TaskCoordinator] Ticket sweep failed for workspace ${workspace.slug}:`, errorMessage);
-            errors.push({
-              workspaceSlug: workspace.slug,
-              error: `Ticket sweep failed: ${errorMessage}`
-            });
-          }
-        }
-
-        // Priority 2: Recommendation Sweep (if enabled and no tickets were dispatched)
-        if (ticketsDispatched === 0 && workspace.janitorConfig?.recommendationSweepEnabled) {
-          try {
-            // Get pending recommendations ordered by priority (CRITICAL > HIGH > MEDIUM > LOW)
-            const pendingRecommendations = await db.janitorRecommendation.findMany({
-              where: {
-                status: "PENDING",
-                janitorRun: {
-                  janitorConfig: {
-                    workspaceId: workspace.id
-                  }
-                }
-              },
-              include: {
-                janitorRun: {
-                  include: {
-                    janitorConfig: {
-                      include: {
-                        workspace: true
-                      }
-                    }
-                  }
-                }
-              },
-              orderBy: [
-                {
-                  priority: "desc" // CRITICAL first, then HIGH, MEDIUM, LOW
-                },
-                {
-                  createdAt: "asc" // Oldest first for same priority
-                }
-              ],
-              take: 1 // Only process one recommendation at a time
-            });
-
-            console.log(`[TaskCoordinator] Found ${pendingRecommendations.length} pending recommendations for workspace ${workspace.slug}`);
-
-            // Accept recommendations while reserving 1 pod (only processes when 2+ pods available)
-            for (const recommendation of pendingRecommendations) {
-              try {
-                console.log(`[TaskCoordinator] Auto-accepting recommendation ${recommendation.id} (${recommendation.priority}) for workspace ${workspace.slug}`);
-
-                // Use the existing acceptJanitorRecommendation service
-                const { acceptJanitorRecommendation } = await import("@/services/janitor");
-
-                // Accept the recommendation - this will create a task with sourceType: TASK_COORDINATOR
-                await acceptJanitorRecommendation(
-                  recommendation.id,
-                  workspace.owner.id, // Use workspace owner as the accepting user
-                  {}, // No specific assignee or repository
-                  "TASK_COORDINATOR" // Mark as auto-accepted by Task Coordinator
-                );
-
-                tasksCreated++;
-                console.log(`[TaskCoordinator] Successfully created task from recommendation ${recommendation.id}`);
-
-              } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                console.error(`[TaskCoordinator] Failed to accept recommendation ${recommendation.id}:`, errorMessage);
-                errors.push({
-                  workspaceSlug: workspace.slug,
-                  error: `Failed to accept recommendation ${recommendation.id}: ${errorMessage}`
-                });
-              }
-            }
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(`[TaskCoordinator] Recommendation sweep failed for workspace ${workspace.slug}:`, errorMessage);
-            errors.push({
-              workspaceSlug: workspace.slug,
-              error: `Recommendation sweep failed: ${errorMessage}`
-            });
-          }
-        }
-
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`[TaskCoordinator] Error processing workspace ${workspace.slug}:`, errorMessage);
-        errors.push({
-          workspaceSlug: workspace.slug,
-          error: errorMessage
-        });
+    for (const settled of workspaceResults) {
+      workspacesProcessed++;
+      if (settled.status === "fulfilled") {
+        tasksCreated += settled.value.tasksCreated;
+        errors.push(...settled.value.errors);
+      } else {
+        const errorMessage = settled.reason instanceof Error ? settled.reason.message : String(settled.reason);
+        console.error(`[TaskCoordinator] Unexpected error processing workspace:`, errorMessage);
+        errors.push({ workspaceSlug: "UNKNOWN", error: errorMessage });
       }
     }
 
