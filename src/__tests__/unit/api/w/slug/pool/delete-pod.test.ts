@@ -18,11 +18,16 @@ vi.mock("@/lib/service-factory", () => ({
   poolManagerService: vi.fn(),
 }));
 
+vi.mock("@/lib/pods/queries", () => ({
+  softDeletePodByPodId: vi.fn(),
+}));
+
 // Import after mocks
 import { DELETE } from "@/app/api/w/[slug]/pool/workspaces/[workspaceId]/route";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { poolManagerService } from "@/lib/service-factory";
+import { softDeletePodByPodId } from "@/lib/pods/queries";
 import { addMiddlewareHeaders } from "@/__tests__/support/helpers/request-builders";
 import { NextRequest } from "next/server";
 
@@ -58,6 +63,7 @@ describe("DELETE /api/w/[slug]/pool/workspaces/[workspaceId]", () => {
       deletePodFromPool: mockDeletePodFromPool,
     } as any);
     mockDeletePodFromPool.mockResolvedValue({ success: true });
+    vi.mocked(softDeletePodByPodId).mockResolvedValue(undefined);
 
     // Default: transaction succeeds and clears 1 task
     vi.mocked(db.$transaction).mockImplementation(async (fn) => {
@@ -157,5 +163,45 @@ describe("DELETE /api/w/[slug]/pool/workspaces/[workspaceId]", () => {
     });
 
     expect(response.status).toBe(404);
+  });
+
+  it("should call softDeletePodByPodId before deletePodFromPool", async () => {
+    const callOrder: string[] = [];
+    vi.mocked(softDeletePodByPodId).mockImplementation(async () => {
+      callOrder.push("softDelete");
+    });
+    mockDeletePodFromPool.mockImplementation(async () => {
+      callOrder.push("deleteFromPool");
+      return { success: true };
+    });
+
+    const request = createDeleteRequest("test-slug", "pod-1");
+    await DELETE(request, {
+      params: Promise.resolve({ slug: "test-slug", workspaceId: "pod-1" }),
+    });
+
+    expect(callOrder).toEqual(["softDelete", "deleteFromPool"]);
+    expect(softDeletePodByPodId).toHaveBeenCalledWith("pod-1");
+  });
+
+  it("should return 500 and NOT call deletePodFromPool if softDeletePodByPodId throws", async () => {
+    vi.mocked(softDeletePodByPodId).mockRejectedValue(new Error("DB write failed"));
+
+    const request = createDeleteRequest("test-slug", "pod-1");
+    const response = await DELETE(request, {
+      params: Promise.resolve({ slug: "test-slug", workspaceId: "pod-1" }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(mockDeletePodFromPool).not.toHaveBeenCalled();
+  });
+
+  it("should call softDeletePodByPodId with the correct workspaceId", async () => {
+    const request = createDeleteRequest("test-slug", "my-pod-id");
+    await DELETE(request, {
+      params: Promise.resolve({ slug: "test-slug", workspaceId: "my-pod-id" }),
+    });
+
+    expect(softDeletePodByPodId).toHaveBeenCalledWith("my-pod-id");
   });
 });
