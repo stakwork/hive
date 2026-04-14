@@ -58,7 +58,7 @@ export default async function AdminLayout({
                   Payments
                 </Link>
                 <Link
-                  href="/admin/settings"
+                  href="/admin/pod-scaler"
                   className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Pod Scaler
