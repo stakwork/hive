@@ -1,10 +1,13 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
 
-// Suppress logger output during tests — only errors are shown
-process.env.LOG_LEVEL = 'ERROR';
-
 const testSuite = process.env.TEST_SUITE;
+
+// Suppress logger output during unit tests — only errors are shown.
+// Integration tests may assert on logger output so we leave their level as-is.
+if (!testSuite || testSuite === 'unit') {
+  process.env.LOG_LEVEL = 'ERROR';
+}
 
 export default defineConfig({
   test: {
