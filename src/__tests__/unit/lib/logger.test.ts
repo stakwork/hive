@@ -228,8 +228,12 @@ describe('Logger', () => {
         );
       });
 
-      it('should format messages without context', () => {
-        logger.info('test message');
+      it('should format messages without context', async () => {
+        process.env.LOG_LEVEL = 'INFO';
+        vi.resetModules();
+        const { logger: testLogger } = await import('../../../lib/logger');
+
+        testLogger.info('test message');
 
         expect(mockConsole.info).toHaveBeenCalledWith(
           JSON.stringify({
@@ -240,8 +244,12 @@ describe('Logger', () => {
         );
       });
 
-      it('should sanitize metadata', () => {
-        logger.info('test message', 'CONTEXT', {
+      it('should sanitize metadata', async () => {
+        process.env.LOG_LEVEL = 'INFO';
+        vi.resetModules();
+        const { logger: testLogger } = await import('../../../lib/logger');
+
+        testLogger.info('test message', 'CONTEXT', {
           access_token: 'sensitive_token',
           username: 'testuser'
         });
@@ -291,8 +299,12 @@ describe('Logger', () => {
         expect(logData.metadata).toBeUndefined();
       });
 
-      it('should format auth info correctly', () => {
-        logger.authInfo('User logged in', 'SUCCESS', { userId: 123 });
+      it('should format auth info correctly', async () => {
+        process.env.LOG_LEVEL = 'INFO';
+        vi.resetModules();
+        const { logger: testLogger } = await import('../../../lib/logger');
+
+        testLogger.authInfo('User logged in', 'SUCCESS', { userId: 123 });
 
         const logCall = mockConsole.info.mock.calls[0][0];
         const logData = JSON.parse(logCall);
@@ -308,13 +320,17 @@ describe('Logger', () => {
         expect(sanitizeData('')).toBe('');
       });
 
-      it('should handle circular references in objects', () => {
+      it('should handle circular references in objects', async () => {
+        process.env.LOG_LEVEL = 'INFO';
+        vi.resetModules();
+        const { logger: testLogger } = await import('../../../lib/logger');
+
         const circularObj: any = { name: 'test' };
         circularObj.self = circularObj;
         
         // The logger should handle circular references gracefully
         // This will fail when JSON.stringify encounters circular references
-        expect(() => logger.info('test', 'CONTEXT', circularObj)).toThrow();
+        expect(() => testLogger.info('test', 'CONTEXT', circularObj)).toThrow();
       });
 
       it('should handle special characters in sensitive data', () => {
