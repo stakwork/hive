@@ -141,6 +141,8 @@ export function ScorerDashboard({
   const [agentStatsLoading, setAgentStatsLoading] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
+  const [expandedInsight, setExpandedInsight] = useState<string | null>(null);
+  const [insightsVisible, setInsightsVisible] = useState(10);
   const [analyzingFeature, setAnalyzingFeature] = useState<string | null>(null);
   const [downloadingFeature, setDownloadingFeature] = useState<string | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<
@@ -252,6 +254,12 @@ export function ScorerDashboard({
       if (data.error) throw new Error(data.error);
       toast.success(`Analysis complete: ${data.insightCount} insight(s) found`);
       fetchInsights();
+      // Refresh digest so the expanded feature shows it immediately
+      setDigests((prev) => {
+        const next = { ...prev };
+        delete next[featureId];
+        return next;
+      });
     } catch (err) {
       toast.error("Analysis failed");
       console.error(err);
@@ -399,6 +407,8 @@ export function ScorerDashboard({
               onClick={() => {
                 setSelectedWs(ws);
                 setExpandedFeature(null);
+                setExpandedInsight(null);
+                setInsightsVisible(10);
                 setPage(1);
                 router.replace(`?w=${ws.slug}`, { scroll: false });
               }}
@@ -512,66 +522,102 @@ export function ScorerDashboard({
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {insights.map((insight) => (
-                <div
-                  key={insight.id}
-                  className={`border rounded-md p-3 pl-4 border-l-[3px] bg-card relative ${
-                    insight.severity === "HIGH"
-                      ? "border-l-red-500"
-                      : insight.severity === "MEDIUM"
-                        ? "border-l-orange-500"
-                        : "border-l-blue-500"
-                  } ${insight.dismissedAt ? "opacity-50" : ""}`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
+              {insights.slice(0, insightsVisible).map((insight) => {
+                const isOpen = expandedInsight === insight.id;
+                return (
+                  <div
+                    key={insight.id}
+                    className={`border rounded-md bg-card border-l-[3px] ${
+                      insight.severity === "HIGH"
+                        ? "border-l-red-500"
+                        : insight.severity === "MEDIUM"
+                          ? "border-l-orange-500"
+                          : "border-l-blue-500"
+                    } ${insight.dismissedAt ? "opacity-50" : ""}`}
+                  >
+                    {/* Collapsed summary row — always visible */}
+                    <button
+                      onClick={() =>
+                        setExpandedInsight(isOpen ? null : insight.id)
+                      }
+                      className="w-full flex items-center gap-2 p-3 pl-4 text-left"
+                    >
+                      {isOpen ? (
+                        <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground" />
+                      )}
                       <span
                         className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${sevBadgeColor(insight.severity)}`}
                       >
                         {insight.severity}
                       </span>
-                      <span className="text-xs font-semibold">
+                      <span className="text-xs font-semibold truncate">
                         {insight.pattern}
                       </span>
-                    </div>
-                    {!insight.dismissedAt && (
-                      <button
-                        onClick={() => dismissInsight(insight.id)}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
+                        {timeAgo(insight.createdAt)}
+                      </span>
+                      {!insight.dismissedAt && (
+                        <span
+                          role="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            dismissInsight(insight.id);
+                          }}
+                          className="text-muted-foreground hover:text-foreground shrink-0"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Expanded details */}
+                    {isOpen && (
+                      <div className="px-4 pb-3 pt-0 border-t border-border/50">
+                        <p className="text-[11px] text-muted-foreground leading-relaxed mb-2 mt-2">
+                          {insight.description}
+                        </p>
+                        <div className="text-[11px] bg-purple-500/5 text-purple-400 rounded p-2 leading-relaxed mb-2">
+                          {insight.suggestion}
+                        </div>
+                        <div className="flex gap-3 text-[10px] text-muted-foreground">
+                          <span className="capitalize">{insight.mode}</span>
+                          <button
+                            onClick={() => {
+                              const fId = insight.featureIds[0];
+                              if (!fId) return;
+                              setExpandedFeature(fId);
+                              setTimeout(() => {
+                                document
+                                  .getElementById(`scorer-feature-${fId}`)
+                                  ?.scrollIntoView({
+                                    behavior: "smooth",
+                                    block: "center",
+                                  });
+                              }, 100);
+                            }}
+                            className="text-purple-400 hover:underline"
+                          >
+                            {insight.featureIds.length} feature
+                            {insight.featureIds.length !== 1 ? "s" : ""}
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed mb-2">
-                    {insight.description}
-                  </p>
-                  <div className="text-[11px] bg-purple-500/5 text-purple-400 rounded p-2 leading-relaxed mb-2">
-                    {insight.suggestion}
-                  </div>
-                  <div className="flex gap-3 text-[10px] text-muted-foreground">
-                    <span className="capitalize">{insight.mode}</span>
-                    <span>{timeAgo(insight.createdAt)}</span>
-                    <button
-                      onClick={() => {
-                        const fId = insight.featureIds[0];
-                        if (!fId) return;
-                        setExpandedFeature(fId);
-                        // Scroll after React re-renders the expanded row
-                        setTimeout(() => {
-                          document
-                            .getElementById(`scorer-feature-${fId}`)
-                            ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                        }, 100);
-                      }}
-                      className="text-purple-400 hover:underline"
-                    >
-                      {insight.featureIds.length} feature
-                      {insight.featureIds.length !== 1 ? "s" : ""}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
+              {insights.length > insightsVisible && (
+                <button
+                  onClick={() =>
+                    setInsightsVisible((v) => v + 10)
+                  }
+                  className="text-xs text-muted-foreground hover:text-foreground py-2"
+                >
+                  Load more ({insights.length - insightsVisible} remaining)
+                </button>
+              )}
             </div>
           )}
         </div>
