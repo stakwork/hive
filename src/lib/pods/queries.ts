@@ -76,6 +76,9 @@ export async function findClaimablePods(swarmId: string): Promise<Pod[]> {
       status: PodStatus.RUNNING,
       usageStatus: PodUsageStatus.UNUSED,
       deletedAt: null,
+      lastHealthCheck: {
+        gte: new Date(Date.now() - 60 * 60 * 1000),
+      },
     },
     orderBy: {
       createdAt: "desc",
@@ -192,6 +195,7 @@ export async function claimAvailablePod(swarmId: string, userInfo?: string): Pro
         AND status = 'RUNNING'::"PodStatus"
         AND usage_status = 'UNUSED'::"PodUsageStatus"
         AND deleted_at IS NULL
+        AND last_health_check > NOW() - INTERVAL '1 hour'
       ORDER BY created_at ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED

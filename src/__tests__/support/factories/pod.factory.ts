@@ -9,6 +9,7 @@ export interface CreatePodOptions {
   portMappings?: number[];
   status?: PodStatus;
   usageStatus?: PodUsageStatus;
+  lastHealthCheck?: Date | null;
 }
 
 // Counter to ensure unique pod IDs when creating multiple pods rapidly
@@ -36,6 +37,7 @@ export async function createTestPod(options: CreatePodOptions) {
       portMappings: portMappings,
       status: options.status || PodStatus.RUNNING,
       usageStatus: options.usageStatus || PodUsageStatus.UNUSED,
+      lastHealthCheck: options.lastHealthCheck !== undefined ? options.lastHealthCheck : new Date(),
     },
   });
 
