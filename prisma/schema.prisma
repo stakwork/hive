@@ -888,18 +888,21 @@ model Ec2Alert {
 }
 
 model AgentLog {
-  id            String       @id @default(cuid())
-  blobUrl       String       @map("blob_url")
-  agent         String
-  stakworkRunId String?      @map("stakwork_run_id")
-  taskId        String?      @map("task_id")
-  workspaceId   String       @map("workspace_id")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  featureId     String?      @map("feature_id")
-  feature       Feature?     @relation(fields: [featureId], references: [id])
-  stakworkRun   StakworkRun? @relation(fields: [stakworkRunId], references: [id])
-  task          Task?        @relation(fields: [taskId], references: [id])
-  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id              String       @id @default(cuid())
+  blobUrl         String       @map("blob_url")
+  agent           String
+  stakworkRunId   String?      @map("stakwork_run_id")
+  taskId          String?      @map("task_id")
+  workspaceId     String       @map("workspace_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  featureId       String?      @map("feature_id")
+  startedAt       DateTime?    @map("started_at")
+  completedAt     DateTime?    @map("completed_at")
+  stats           Json?        // cached parsed blob stats: { totalMessages, estimatedTokens, durationSeconds, totalToolCalls, toolFrequency, bashFrequency, developerShellFrequency, conversationPreview }
+  feature         Feature?     @relation(fields: [featureId], references: [id])
+  stakworkRun     StakworkRun? @relation(fields: [stakworkRunId], references: [id])
+  task            Task?        @relation(fields: [taskId], references: [id])
+  workspace       Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([stakworkRunId])
   @@index([taskId])
