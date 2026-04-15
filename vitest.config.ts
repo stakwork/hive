@@ -1,6 +1,9 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
 
+// Suppress logger output during tests — only errors are shown
+process.env.LOG_LEVEL = 'ERROR';
+
 const testSuite = process.env.TEST_SUITE;
 
 export default defineConfig({
