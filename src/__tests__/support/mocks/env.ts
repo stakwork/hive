@@ -29,7 +29,7 @@ const mockConfig = {
   GITHUB_APP_SLUG: "test-github-app",
   GITHUB_APP_CLIENT_ID: "test-client-id",
   GITHUB_APP_CLIENT_SECRET: "test-client-secret",
-  LOG_LEVEL: "INFO",
+  LOG_LEVEL: "ERROR",
   USE_MOCKS: false,
   MOCK_BASE: "http://localhost:3000",
 };
