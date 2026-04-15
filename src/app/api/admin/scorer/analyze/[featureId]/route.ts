@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
 import { db } from "@/lib/db";
 import { analyzeSingleSession } from "@/lib/scorer/analysis";
+import { generateDigest } from "@/lib/scorer/digest";
+import { cacheFeatureAgentStats } from "@/lib/scorer/agent-stats";
 
 /**
  * POST — manually trigger single-session analysis on one feature.
+ * Mirrors the automatic pipeline: digest → agent stats → analysis.
  */
 export async function POST(
   request: NextRequest,
@@ -20,6 +23,10 @@ export async function POST(
       where: { id: featureId },
       select: { workspaceId: true },
     });
+
+    // Generate digest and cache agent stats first (same as auto pipeline)
+    await generateDigest(featureId);
+    await cacheFeatureAgentStats(featureId);
 
     const result = await analyzeSingleSession(featureId, feature.workspaceId);
     return NextResponse.json(result);
