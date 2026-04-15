@@ -347,6 +347,7 @@ export default function SwarmsTable() {
                           <Button
                             variant="outline"
                             size="icon"
+                            aria-label="Update Swarm"
                             disabled={isUpdating || !swarmUrl}
                             onClick={() => swarmUrl && handleUpdateSwarm(instance, swarmUrl)}
                             data-testid={`update-swarm-${instance.instanceId}`}
@@ -362,6 +363,7 @@ export default function SwarmsTable() {
                         <Button
                           variant="outline"
                           size="icon"
+                          aria-label="Start"
                           disabled={isTransitional || instance.state !== "stopped"}
                           onClick={() => setPendingAction({ instance, action: "start" })}
                         >
@@ -375,6 +377,7 @@ export default function SwarmsTable() {
                         <Button
                           variant="destructive"
                           size="icon"
+                          aria-label="Stop"
                           disabled={isTransitional || !isRunning}
                           onClick={() => setPendingAction({ instance, action: "stop" })}
                         >
