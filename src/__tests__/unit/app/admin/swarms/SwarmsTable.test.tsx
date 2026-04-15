@@ -26,6 +26,7 @@ vi.mock("@/components/ui/button", () => ({
     variant,
     size,
     "data-testid": testId,
+    "aria-label": ariaLabel,
   }: {
     children: React.ReactNode;
     onClick?: () => void;
@@ -33,6 +34,7 @@ vi.mock("@/components/ui/button", () => ({
     variant?: string;
     size?: string;
     "data-testid"?: string;
+    "aria-label"?: string;
   }) => (
     <button
       onClick={onClick}
@@ -40,6 +42,7 @@ vi.mock("@/components/ui/button", () => ({
       data-variant={variant}
       data-size={size}
       data-testid={testId}
+      aria-label={ariaLabel}
     >
       {children}
     </button>
@@ -166,6 +169,12 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogTitle: ({ children }: { children: React.ReactNode }) => <h3>{children}</h3>,
   DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
   DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 vi.mock("@/app/admin/swarms/CreateSwarmDialog", () => ({
