@@ -130,6 +130,7 @@ describe("Pod Queries", () => {
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password-1",
           portMappings: [3000],
+          lastHealthCheck: new Date(),
         },
       });
 
@@ -141,6 +142,7 @@ describe("Pod Queries", () => {
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password-2",
           portMappings: [3000],
+          lastHealthCheck: new Date(),
         },
       });
 
@@ -208,6 +210,7 @@ describe("Pod Queries", () => {
           swarmId: testSwarmId,
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
+          lastHealthCheck: new Date(),
         },
       });
 
@@ -227,6 +230,7 @@ describe("Pod Queries", () => {
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password",
           portMappings: [3000],
+          lastHealthCheck: new Date(),
         },
       });
 
@@ -273,6 +277,7 @@ describe("Pod Queries", () => {
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           createdAt: new Date("2024-01-01"),
+          lastHealthCheck: new Date(),
         },
       });
 
@@ -283,6 +288,7 @@ describe("Pod Queries", () => {
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           createdAt: new Date("2024-01-02"),
+          lastHealthCheck: new Date(),
         },
       });
 
@@ -358,6 +364,58 @@ describe("Pod Queries", () => {
       const claimedPod = await claimAvailablePod(testSwarmId, testUserId);
 
       expect(claimedPod).toBeNull();
+    });
+
+    it("should not claim a pod with lastHealthCheck older than 1 hour", async () => {
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      await db.pod.create({
+        data: {
+          podId: `test-pod-stale-${Date.now()}`,
+          swarmId: testSwarmId,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.UNUSED,
+          lastHealthCheck: twoHoursAgo,
+        },
+      });
+
+      const claimedPod = await claimAvailablePod(testSwarmId, testUserId);
+
+      expect(claimedPod).toBeNull();
+    });
+
+    it("should not claim a pod with null lastHealthCheck", async () => {
+      await db.pod.create({
+        data: {
+          podId: `test-pod-no-health-${Date.now()}`,
+          swarmId: testSwarmId,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.UNUSED,
+          lastHealthCheck: null,
+        },
+      });
+
+      const claimedPod = await claimAvailablePod(testSwarmId, testUserId);
+
+      expect(claimedPod).toBeNull();
+    });
+
+    it("should claim a pod with lastHealthCheck within the last 30 minutes", async () => {
+      const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000);
+      const pod = await db.pod.create({
+        data: {
+          podId: `test-pod-recent-health-${Date.now()}`,
+          swarmId: testSwarmId,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.UNUSED,
+          lastHealthCheck: thirtyMinsAgo,
+        },
+      });
+
+      const claimedPod = await claimAvailablePod(testSwarmId, testUserId);
+
+      expect(claimedPod).not.toBeNull();
+      expect(claimedPod?.id).toBe(pod.id);
+      expect(claimedPod?.usageStatus).toBe(PodUsageStatus.USED);
     });
   });
 
