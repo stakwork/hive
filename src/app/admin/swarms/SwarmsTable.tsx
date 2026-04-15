@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Loader2, Search, ChevronUp, ChevronDown, Plus } from "lucide-react";
+import { Loader2, Search, ChevronUp, ChevronDown, Plus, RefreshCw, Play, Square } from "lucide-react";
 import CreateSwarmDialog from "./CreateSwarmDialog";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -275,6 +276,7 @@ export default function SwarmsTable() {
         </Select>
       </div>
 
+      <div className="overflow-x-auto w-full">
       <Table>
         <TableHeader>
           <TableRow>
@@ -340,32 +342,47 @@ export default function SwarmsTable() {
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-2">
                     {isRunning && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isUpdating || !swarmUrl}
-                        onClick={() => swarmUrl && handleUpdateSwarm(instance, swarmUrl)}
-                        data-testid={`update-swarm-${instance.instanceId}`}
-                      >
-                        {isUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : "Update Swarm"}
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            disabled={isUpdating || !swarmUrl}
+                            onClick={() => swarmUrl && handleUpdateSwarm(instance, swarmUrl)}
+                            data-testid={`update-swarm-${instance.instanceId}`}
+                          >
+                            {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Update Swarm</TooltipContent>
+                      </Tooltip>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isTransitional || instance.state !== "stopped"}
-                      onClick={() => setPendingAction({ instance, action: "start" })}
-                    >
-                      Start
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={isTransitional || !isRunning}
-                      onClick={() => setPendingAction({ instance, action: "stop" })}
-                    >
-                      Stop
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          disabled={isTransitional || instance.state !== "stopped"}
+                          onClick={() => setPendingAction({ instance, action: "start" })}
+                        >
+                          <Play className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Start</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          disabled={isTransitional || !isRunning}
+                          onClick={() => setPendingAction({ instance, action: "stop" })}
+                        >
+                          <Square className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Stop</TooltipContent>
+                    </Tooltip>
                   </div>
                 </TableCell>
               </TableRow>
@@ -373,6 +390,7 @@ export default function SwarmsTable() {
           })}
         </TableBody>
       </Table>
+      </div>
 
       {filteredAndSorted.length === 0 && (searchQuery || stateFilter !== "all") && (
         <div className="py-8 text-center text-muted-foreground">No instances match the current filters.</div>
