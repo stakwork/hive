@@ -13,6 +13,7 @@ import {
   Play,
   Zap,
   RefreshCw,
+  FileDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -141,6 +142,7 @@ export function ScorerDashboard({
   const [loading, setLoading] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
   const [analyzingFeature, setAnalyzingFeature] = useState<string | null>(null);
+  const [downloadingFeature, setDownloadingFeature] = useState<string | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<
     "pattern" | "single" | null
   >(null);
@@ -255,6 +257,25 @@ export function ScorerDashboard({
       console.error(err);
     } finally {
       setAnalyzingFeature(null);
+    }
+  };
+
+  const downloadTranscript = async (featureId: string) => {
+    setDownloadingFeature(featureId);
+    try {
+      const res = await fetch(`/api/admin/scorer/sessions/${featureId}?format=text`);
+      if (!res.ok) throw new Error("Failed to download");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `transcript-${featureId}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Failed to download transcript");
+    } finally {
+      setDownloadingFeature(null);
     }
   };
 
@@ -606,6 +627,8 @@ export function ScorerDashboard({
                     }
                     onAnalyze={() => analyzeFeature(f.featureId)}
                     analyzing={analyzingFeature === f.featureId}
+                    onDownload={() => downloadTranscript(f.featureId)}
+                    downloading={downloadingFeature === f.featureId}
                     formatDuration={formatDuration}
                     metricColor={metricColor}
                   />
@@ -772,6 +795,8 @@ function FeatureRow({
   onToggle,
   onAnalyze,
   analyzing,
+  onDownload,
+  downloading,
   formatDuration,
   metricColor,
 }: {
@@ -784,6 +809,8 @@ function FeatureRow({
   onToggle: () => void;
   onAnalyze: () => void;
   analyzing: boolean;
+  onDownload: () => void;
+  downloading: boolean;
   formatDuration: (min: number | null) => string;
   metricColor: (
     val: number,
@@ -896,7 +923,21 @@ function FeatureRow({
               )}
 
               {/* Analyze button */}
-              <div className="p-3 flex justify-end">
+              <div className="p-3 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={(e) => { e.stopPropagation(); onDownload(); }}
+                  disabled={downloading}
+                >
+                  {downloading ? (
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  ) : (
+                    <FileDown className="w-3 h-3 mr-1" />
+                  )}
+                  Download Transcript
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"

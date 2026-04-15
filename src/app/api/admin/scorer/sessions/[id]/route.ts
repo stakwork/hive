@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
-import { assembleFullSession } from "@/lib/scorer/session";
+import { assembleFullSession, sessionToText } from "@/lib/scorer/session";
 
 export async function GET(
   request: NextRequest,
@@ -13,6 +13,17 @@ export async function GET(
 
   try {
     const session = await assembleFullSession(featureId);
+
+    if (request.nextUrl.searchParams.get("format") === "text") {
+      const text = sessionToText(session);
+      return new Response(text, {
+        headers: {
+          "Content-Type": "text/plain",
+          "Content-Disposition": `attachment; filename="transcript-${featureId}.txt"`,
+        },
+      });
+    }
+
     return NextResponse.json(session);
   } catch (error) {
     console.error("Error assembling session:", error);
