@@ -109,14 +109,8 @@ function sanitizeData(data: any): any {
  * Structured logger class with sanitization
  */
 class StructuredLogger {
-  private currentLevel: LogLevel;
-
-  constructor() {
-    this.currentLevel = getLogLevel();
-  }
-
   private shouldLog(level: LogLevel): boolean {
-    return level <= this.currentLevel;
+    return level <= getLogLevel();
   }
 
   private formatMessage(level: string, message: string, context?: string, metadata?: any): void {
