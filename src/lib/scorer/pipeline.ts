@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { computeFeatureMetrics } from "./metrics";
 import { generateDigest } from "./digest";
 import { analyzeSingleSession, analyzePatterns } from "./analysis";
+import { cacheFeatureAgentStats } from "./agent-stats";
 
 // ---------------------------------------------------------------------------
 // Thresholds for automatic single-session analysis
@@ -41,7 +42,10 @@ export async function onFeatureCompleted(featureId: string): Promise<void> {
     // Step 1: Generate digest
     await generateDigest(featureId);
 
-    // Step 2: Check if single-session analysis is warranted
+    // Step 2: Cache agent log stats (blob parsing)
+    await cacheFeatureAgentStats(featureId);
+
+    // Step 3: Check if single-session analysis is warranted
     const metrics = await computeFeatureMetrics(featureId);
     const shouldAnalyze = await shouldRunSingleAnalysis(
       metrics,
