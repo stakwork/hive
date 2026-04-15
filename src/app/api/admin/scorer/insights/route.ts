@@ -19,15 +19,22 @@ export async function GET(request: NextRequest) {
     if (mode) where.mode = mode;
     if (!showDismissed) where.dismissedAt = null;
 
+    const SEVERITY_ORDER: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+
     const insights = await db.scorerInsight.findMany({
       where,
-      orderBy: [
-        { severity: "asc" }, // HIGH first
-        { createdAt: "desc" },
-      ],
+      orderBy: { createdAt: "desc" },
       include: {
         workspace: { select: { name: true, slug: true } },
       },
+    });
+
+    // Sort by severity (HIGH > MEDIUM > LOW), then by recency
+    insights.sort((a, b) => {
+      const sa = SEVERITY_ORDER[a.severity] ?? 9;
+      const sb = SEVERITY_ORDER[b.severity] ?? 9;
+      if (sa !== sb) return sa - sb;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
     return NextResponse.json({ insights });
