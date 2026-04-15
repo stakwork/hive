@@ -90,6 +90,29 @@ interface DigestData {
   updatedAt: string;
 }
 
+interface AgentLogStatsJson {
+  totalMessages: number;
+  estimatedTokens: number;
+  durationSeconds: number | null;
+  totalToolCalls: number;
+  toolFrequency: Record<string, number>;
+  bashFrequency: Record<string, number>;
+  developerShellFrequency: Record<string, number>;
+  conversationPreview: Array<{ role: string; text: string }>;
+}
+
+interface AgentLogEntry {
+  id: string;
+  agent: string;
+  agentType: string;
+  taskId: string | null;
+  featureId: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  stats: AgentLogStatsJson | null;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -113,6 +136,8 @@ export function ScorerDashboard({
   const [insights, setInsights] = useState<Insight[]>([]);
   const [expandedFeature, setExpandedFeature] = useState<string | null>(null);
   const [digests, setDigests] = useState<Record<string, DigestData>>({});
+  const [agentStats, setAgentStats] = useState<Record<string, AgentLogEntry[]>>({});
+  const [agentStatsLoading, setAgentStatsLoading] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
   const [analyzingFeature, setAnalyzingFeature] = useState<string | null>(null);
@@ -186,6 +211,21 @@ export function ScorerDashboard({
       })
       .catch(() => {});
   }, [expandedFeature, selectedWs, digests]);
+
+  // Fetch agent stats for expanded feature
+  useEffect(() => {
+    if (!expandedFeature || agentStats[expandedFeature]) return;
+    setAgentStatsLoading(expandedFeature);
+    fetch(`/api/admin/scorer/agent-stats?featureId=${expandedFeature}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.logs) {
+          setAgentStats((prev) => ({ ...prev, [expandedFeature]: data.logs }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAgentStatsLoading(null));
+  }, [expandedFeature, agentStats]);
 
   // Actions
   const dismissInsight = async (id: string) => {
@@ -555,6 +595,8 @@ export function ScorerDashboard({
                     isExpanded={expandedFeature === f.featureId}
                     hasInsight={insightFeatureIds.has(f.featureId)}
                     digest={digests[f.featureId] || null}
+                    agentLogs={agentStats[f.featureId] || null}
+                    agentStatsLoading={agentStatsLoading === f.featureId}
                     onToggle={() =>
                       setExpandedFeature(
                         expandedFeature === f.featureId
@@ -725,6 +767,8 @@ function FeatureRow({
   isExpanded,
   hasInsight,
   digest,
+  agentLogs,
+  agentStatsLoading,
   onToggle,
   onAnalyze,
   analyzing,
@@ -735,6 +779,8 @@ function FeatureRow({
   isExpanded: boolean;
   hasInsight: boolean;
   digest: DigestData | null;
+  agentLogs: AgentLogEntry[] | null;
+  agentStatsLoading: boolean;
   onToggle: () => void;
   onAnalyze: () => void;
   analyzing: boolean;
@@ -821,6 +867,11 @@ function FeatureRow({
                 </div>
               )}
 
+              {/* Agent stats summary for the feature */}
+              {agentLogs && agentLogs.length > 0 && (
+                <FeatureAgentSummary logs={agentLogs} />
+              )}
+
               {/* Task cards (only if tasks exist) */}
               {f.tasks.length > 0 && (
                 <div className="p-4 border-b">
@@ -834,6 +885,10 @@ function FeatureRow({
                         task={task}
                         filesPlanned={f.filesPlanned}
                         formatDuration={formatDuration}
+                        agentLogs={agentLogs?.filter(
+                          (l) => l.taskId === task.taskId
+                        ) || null}
+                        agentStatsLoading={agentStatsLoading}
                       />
                     ))}
                   </div>
@@ -872,12 +927,17 @@ function TaskCard({
   task,
   filesPlanned,
   formatDuration,
+  agentLogs,
+  agentStatsLoading,
 }: {
   task: TaskMetrics;
   filesPlanned: string[];
   formatDuration: (min: number | null) => string;
+  agentLogs: AgentLogEntry[] | null;
+  agentStatsLoading: boolean;
 }) {
   const [filesExpanded, setFilesExpanded] = useState(false);
+  const [agentsExpanded, setAgentsExpanded] = useState(false);
   const plannedSet = new Set(filesPlanned);
   const correctionMessages = task.correctionMessages || [];
   const agentRuns = task.agentRuns || [];
@@ -888,6 +948,8 @@ function TaskCard({
 
   const created = task.filesTouched.filter((f) => f.action === "create").length;
   const modified = task.filesTouched.length - created;
+
+  const logsWithStats = agentLogs?.filter((l) => l.stats) || [];
 
   return (
     <div className="border rounded-md p-3 bg-card">
@@ -921,6 +983,38 @@ function TaskCard({
       {task.taskDescription && (
         <div className="text-[10px] text-muted-foreground/70 mb-2 line-clamp-2">
           {task.taskDescription}
+        </div>
+      )}
+
+      {/* Agent stat cards (collapsible) */}
+      {(logsWithStats.length > 0 || agentStatsLoading) && (
+        <div className="mb-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setAgentsExpanded(!agentsExpanded);
+            }}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {agentsExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+            <span>
+              {logsWithStats.length} agent session{logsWithStats.length !== 1 ? "s" : ""}
+            </span>
+            {agentStatsLoading && (
+              <Loader2 className="w-3 h-3 animate-spin ml-1" />
+            )}
+          </button>
+          {agentsExpanded && (
+            <div className="flex flex-col gap-2 mt-2">
+              {logsWithStats.map((log) => (
+                <AgentStatCard key={log.id} log={log} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1004,6 +1098,176 @@ function TaskCard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function AgentStatCard({ log }: { log: AgentLogEntry }) {
+  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const stats = log.stats!;
+
+  const topTools = Object.entries(stats.toolFrequency)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5);
+
+  const topBash = Object.entries(stats.bashFrequency)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 4);
+
+  const topShell = Object.entries(stats.developerShellFrequency)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 4);
+
+  const formatSeconds = (s: number | null) => {
+    if (s === null) return null;
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    if (m < 60) return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+  };
+
+  const durationStr = formatSeconds(stats.durationSeconds);
+
+  return (
+    <div className="border rounded p-2.5 bg-background text-[10px]">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="font-semibold text-[11px]">{log.agentType}</span>
+        <span className="text-muted-foreground">
+          {stats.totalMessages} msgs
+        </span>
+        <span className="text-muted-foreground">
+          ~{stats.estimatedTokens >= 1000
+            ? `${Math.round(stats.estimatedTokens / 1000)}k`
+            : stats.estimatedTokens}{" "}
+          tok
+        </span>
+        {durationStr && (
+          <span className="text-muted-foreground">{durationStr}</span>
+        )}
+        <span className="text-muted-foreground">
+          {stats.totalToolCalls} tool call{stats.totalToolCalls !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {/* Tool frequency */}
+      {topTools.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {topTools.map(([name, count]) => (
+            <span
+              key={name}
+              className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+            >
+              {name}: {count}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Bash / shell frequency */}
+      {(topBash.length > 0 || topShell.length > 0) && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {topBash.map(([cmd, count]) => (
+            <span
+              key={`bash-${cmd}`}
+              className="px-1.5 py-0.5 rounded bg-orange-500/5 text-orange-400/80"
+            >
+              {cmd}: {count}
+            </span>
+          ))}
+          {topShell.map(([cmd, count]) => (
+            <span
+              key={`shell-${cmd}`}
+              className="px-1.5 py-0.5 rounded bg-blue-500/5 text-blue-400/80"
+            >
+              {cmd}: {count}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Conversation preview (collapsible) */}
+      {stats.conversationPreview.length > 0 && (
+        <div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setPreviewExpanded(!previewExpanded);
+            }}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {previewExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+            conversation preview
+          </button>
+          {previewExpanded && (
+            <div className="mt-1.5 max-h-48 overflow-y-auto border rounded p-2 bg-card font-mono text-[9px] leading-relaxed">
+              {stats.conversationPreview.map((msg, i) => (
+                <div
+                  key={i}
+                  className={
+                    msg.role === "user"
+                      ? "text-blue-400"
+                      : "text-muted-foreground"
+                  }
+                >
+                  [{msg.role === "assistant" ? "asst" : msg.role}]{" "}
+                  {msg.text}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FeatureAgentSummary({ logs }: { logs: AgentLogEntry[] }) {
+  const withStats = logs.filter((l) => l.stats);
+  if (withStats.length === 0) return null;
+
+  let totalTokens = 0;
+  let totalToolCalls = 0;
+  let totalDuration = 0;
+  let hasDuration = false;
+
+  for (const log of withStats) {
+    const s = log.stats!;
+    totalTokens += s.estimatedTokens;
+    totalToolCalls += s.totalToolCalls;
+    if (s.durationSeconds !== null) {
+      totalDuration += s.durationSeconds;
+      hasDuration = true;
+    }
+  }
+
+  const formatTokens = (t: number) =>
+    t >= 1000 ? `${Math.round(t / 1000)}k` : String(t);
+
+  const formatDur = (s: number) => {
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m`;
+    return `${Math.floor(m / 60)}h ${m % 60}m`;
+  };
+
+  return (
+    <div className="px-4 pt-3 pb-1 border-b">
+      <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+        <span className="text-[9px] font-semibold uppercase tracking-wider">
+          Agent totals
+        </span>
+        <span>~{formatTokens(totalTokens)} tokens</span>
+        <span>{totalToolCalls} tool calls</span>
+        {hasDuration && <span>{formatDur(totalDuration)}</span>}
+        <span>{withStats.length} session{withStats.length !== 1 ? "s" : ""}</span>
+      </div>
     </div>
   );
 }
