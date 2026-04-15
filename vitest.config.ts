@@ -3,6 +3,12 @@ import path from "path";
 
 const testSuite = process.env.TEST_SUITE;
 
+// Suppress logger output during unit tests — only errors are shown.
+// Integration tests may assert on logger output so we leave their level as-is.
+if (!testSuite || testSuite === 'unit') {
+  process.env.LOG_LEVEL = 'ERROR';
+}
+
 export default defineConfig({
   test: {
     // Default to 'node' — only files that need DOM APIs opt in to jsdom
