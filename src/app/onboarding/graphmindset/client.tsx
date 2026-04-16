@@ -396,7 +396,7 @@ function ForkRepoStep({ onComplete }: ForkRepoStepProps) {
               <Button
                 onClick={() =>
                   router.push(
-                    `/auth/signin?redirect=${encodeURIComponent("/onboarding/graphmindset")}`,
+                    `/auth/signin?redirect=${encodeURIComponent("/onboarding/graphmindset")}&reauth=true`,
                   )
                 }
                 className="bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700"

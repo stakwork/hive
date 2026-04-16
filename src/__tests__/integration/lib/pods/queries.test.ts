@@ -417,6 +417,56 @@ describe("Pod Queries", () => {
       expect(claimedPod?.id).toBe(pod.id);
       expect(claimedPod?.usageStatus).toBe(PodUsageStatus.USED);
     });
+
+    it("should return null when excludePodIds contains the only available pod's podId", async () => {
+      const recentHealthCheck = new Date(Date.now() - 10 * 60 * 1000);
+      const podA = await db.pod.create({
+        data: {
+          podId: `test-pod-exclude-only-${Date.now()}`,
+          swarmId: testSwarmId,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.UNUSED,
+          lastHealthCheck: recentHealthCheck,
+        },
+      });
+
+      const claimedPod = await claimAvailablePod(testSwarmId, testUserId, [podA.podId]);
+
+      expect(claimedPod).toBeNull();
+    });
+
+    it("should claim pod B when excludePodIds contains pod A's podId and pod B is also available", async () => {
+      const recentHealthCheck = new Date(Date.now() - 10 * 60 * 1000);
+      const timestamp = Date.now();
+
+      const podA = await db.pod.create({
+        data: {
+          podId: `test-pod-exclude-a-${timestamp}`,
+          swarmId: testSwarmId,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.UNUSED,
+          lastHealthCheck: recentHealthCheck,
+        },
+      });
+
+      // Pod B created slightly later so it would normally be claimed second by ORDER BY created_at ASC
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const podB = await db.pod.create({
+        data: {
+          podId: `test-pod-exclude-b-${timestamp}`,
+          swarmId: testSwarmId,
+          status: PodStatus.RUNNING,
+          usageStatus: PodUsageStatus.UNUSED,
+          lastHealthCheck: recentHealthCheck,
+        },
+      });
+
+      const claimedPod = await claimAvailablePod(testSwarmId, testUserId, [podA.podId]);
+
+      expect(claimedPod).not.toBeNull();
+      expect(claimedPod?.podId).toBe(podB.podId);
+      expect(claimedPod?.usageStatus).toBe(PodUsageStatus.USED);
+    });
   });
 
   describe("getPodDetails", () => {
