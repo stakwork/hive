@@ -1314,6 +1314,7 @@ model LlmModel {
   dateEnd          DateTime?   @map("date_end")
   isPlanDefault    Boolean     @default(false) @map("is_plan_default")
   isTaskDefault    Boolean     @default(false) @map("is_task_default")
+  isPublic         Boolean     @default(false) @map("is_public")
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
 

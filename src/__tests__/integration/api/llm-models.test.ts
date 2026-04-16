@@ -6,6 +6,7 @@
  * - Authentication via session (middleware context)
  * - Returns only active LLM model records
  * - Expired models are excluded
+ * - Only models with isPublic: true are returned
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
@@ -49,6 +50,7 @@ describe("GET /api/llm-models - Integration Tests", () => {
         inputPricePer1M: 5.0,
         outputPricePer1M: 15.0,
         dateEnd: null,
+        isPublic: true,
       }),
       createTestLlmModel({
         name: "claude-3-5-sonnet",
@@ -57,6 +59,7 @@ describe("GET /api/llm-models - Integration Tests", () => {
         inputPricePer1M: 3.0,
         outputPricePer1M: 15.0,
         dateEnd: futureDate,
+        isPublic: true,
       }),
       createTestLlmModel({
         name: "expired-model",
@@ -65,6 +68,7 @@ describe("GET /api/llm-models - Integration Tests", () => {
         inputPricePer1M: 1.0,
         outputPricePer1M: 2.0,
         dateEnd: pastDate,
+        isPublic: true,
       }),
     ]);
   });
@@ -166,6 +170,67 @@ describe("GET /api/llm-models - Integration Tests", () => {
     });
   });
 
+  describe("isPublic filter", () => {
+    test("excludes models with isPublic: false even when date is active", async () => {
+      const privateModel = await createTestLlmModel({
+        name: "private-model",
+        provider: "OPENAI",
+        inputPricePer1M: 1.0,
+        outputPricePer1M: 2.0,
+        dateEnd: null,
+        isPublic: false,
+      });
+      seededModels.push(privateModel);
+
+      const request = createGetRequest(VALID_API_TOKEN);
+      const response = await GET(request as any);
+
+      const data = await response.json();
+      const returnedIds = data.models.map((m: { id: string }) => m.id);
+
+      expect(returnedIds).not.toContain(privateModel.id);
+    });
+
+    test("includes models with isPublic: true and active date range", async () => {
+      const futureDate = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
+      const publicModel = await createTestLlmModel({
+        name: "public-active-model",
+        provider: "GOOGLE",
+        inputPricePer1M: 2.0,
+        outputPricePer1M: 4.0,
+        dateEnd: futureDate,
+        isPublic: true,
+      });
+      seededModels.push(publicModel);
+
+      const request = createGetRequest(VALID_API_TOKEN);
+      const response = await GET(request as any);
+
+      const data = await response.json();
+      const returnedIds = data.models.map((m: { id: string }) => m.id);
+
+      expect(returnedIds).toContain(publicModel.id);
+    });
+
+    test("returned models include isPublic field", async () => {
+      const request = createGetRequest(VALID_API_TOKEN);
+      const response = await GET(request as any);
+
+      const data = await response.json();
+      const seededActiveIds = seededModels
+        .filter((m) => m.name !== "expired-model")
+        .map((m) => m.id);
+      const returnedModels = data.models.filter((m: { id: string }) =>
+        seededActiveIds.includes(m.id)
+      );
+
+      for (const model of returnedModels) {
+        expect(model).toHaveProperty("isPublic");
+        expect(model.isPublic).toBe(true);
+      }
+    });
+  });
+
   describe("Response shape", () => {
     test("returned models contain only selected fields", async () => {
       const request = createGetRequest(VALID_API_TOKEN);
@@ -186,6 +251,7 @@ describe("GET /api/llm-models - Integration Tests", () => {
         expect(model).toHaveProperty("name");
         expect(model).toHaveProperty("provider");
         expect(model).toHaveProperty("providerLabel");
+        expect(model).toHaveProperty("isPublic");
         // Pricing fields should NOT be in the response (select only returns id/name/provider/providerLabel)
         expect(model).not.toHaveProperty("inputPricePer1M");
         expect(model).not.toHaveProperty("outputPricePer1M");
