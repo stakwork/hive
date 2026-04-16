@@ -24,6 +24,7 @@ function SignInContent() {
 
   // Derive redirect path early — must be before any early returns so isGraphMindsetFlow is always available
   const redirectPath = searchParams.get("redirect");
+  const isReauth = searchParams.get("reauth") === "true";
   const isGraphMindsetFlow =
     redirectPath?.includes("/onboarding/graphmindset") ||
     redirectPath?.includes("/onboarding/lightning-payment");
@@ -41,7 +42,7 @@ function SignInContent() {
   const hasMockProvider = providers?.mock;
 
   useEffect(() => {
-    if (session?.user) {
+    if (session?.user && !isReauth) {
       const user = session.user as { defaultWorkspaceSlug?: string };
 
       if (redirectPath) {
@@ -50,7 +51,7 @@ function SignInContent() {
         router.push(`/w/${user.defaultWorkspaceSlug}`);
       }
     }
-  }, [session, router, redirectPath]);
+  }, [session, router, redirectPath, isReauth]);
 
   if (status === "loading") {
     if (isGraphMindsetFlow) {
@@ -78,6 +79,7 @@ function SignInContent() {
       const result = await signIn("github", {
         redirect: false,
         callbackUrl: redirectPath || "/",
+        ...(isReauth && { authorizationParams: { prompt: "consent" } }),
       });
 
       if (result?.error) {
