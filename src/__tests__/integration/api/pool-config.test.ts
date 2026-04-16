@@ -117,7 +117,7 @@ describe("Pool Config API", () => {
         success: true,
         data: {
           minimumVms: 3,
-          minimumPods: null,
+          minimumPods: 2,
           isSuperAdmin: false,
         },
       });
@@ -145,7 +145,7 @@ describe("Pool Config API", () => {
         success: true,
         data: {
           minimumVms: 3,
-          minimumPods: null,
+          minimumPods: 2,
           isSuperAdmin: true,
         },
       });
@@ -232,7 +232,7 @@ describe("Pool Config API", () => {
         success: true,
         data: {
           minimumVms: 4,
-          minimumPods: null,
+          minimumPods: 2,
           isSuperAdmin: true,
         },
       });
