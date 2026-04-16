@@ -29,10 +29,11 @@ describe("Admin Settings Pod Scaler API", () => {
     await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.maxVmCeiling, "20");
     await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.scaleDownCooldownMinutes, "30");
     await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.cronEnabled, "1");
+    await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.podUtilisationThreshold, "80");
   });
 
   describe("GET /api/admin/settings/pod-scaler", () => {
-    it("should return all six settings with defaults for super-admin", async () => {
+    it("should return all seven settings with defaults for super-admin", async () => {
       const request = createAuthenticatedGetRequest(
         "/api/admin/settings/pod-scaler",
         superAdminUser
@@ -43,7 +44,7 @@ describe("Admin Settings Pod Scaler API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(Array.isArray(data.settings)).toBe(true);
-      expect(data.settings).toHaveLength(6);
+      expect(data.settings).toHaveLength(7);
 
       const keys = data.settings.map((s: { key: string }) => s.key);
       expect(keys).toContain("queueWaitMinutes");
@@ -52,6 +53,7 @@ describe("Admin Settings Pod Scaler API", () => {
       expect(keys).toContain("maxVmCeiling");
       expect(keys).toContain("scaleDownCooldownMinutes");
       expect(keys).toContain("cronEnabled");
+      expect(keys).toContain("podUtilisationThreshold");
     });
 
     it("should return 403 for regular user", async () => {
@@ -200,6 +202,61 @@ describe("Admin Settings Pod Scaler API", () => {
       const request = createAuthenticatedPatchRequest(
         "/api/admin/settings/pod-scaler",
         { key: "queueWaitMinutes", value: 0 },
+        superAdminUser
+      );
+      const { PATCH } = await import("@/app/api/admin/settings/pod-scaler/route");
+      const response = await PATCH(request);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should accept valid podUtilisationThreshold value (75)", async () => {
+      const request = createAuthenticatedPatchRequest(
+        "/api/admin/settings/pod-scaler",
+        { key: "podUtilisationThreshold", value: 75 },
+        superAdminUser
+      );
+      const { PATCH } = await import("@/app/api/admin/settings/pod-scaler/route");
+      const response = await PATCH(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({ key: "podUtilisationThreshold", value: 75 });
+
+      const record = await db.platformConfig.findUnique({
+        where: { key: POD_SCALER_CONFIG_KEYS.podUtilisationThreshold },
+      });
+      expect(record?.value).toBe("75");
+    });
+
+    it("should return 400 for podUtilisationThreshold value of 0 (below minimum)", async () => {
+      const request = createAuthenticatedPatchRequest(
+        "/api/admin/settings/pod-scaler",
+        { key: "podUtilisationThreshold", value: 0 },
+        superAdminUser
+      );
+      const { PATCH } = await import("@/app/api/admin/settings/pod-scaler/route");
+      const response = await PATCH(request);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should return 400 for podUtilisationThreshold value of 101 (above maximum)", async () => {
+      const request = createAuthenticatedPatchRequest(
+        "/api/admin/settings/pod-scaler",
+        { key: "podUtilisationThreshold", value: 101 },
+        superAdminUser
+      );
+      const { PATCH } = await import("@/app/api/admin/settings/pod-scaler/route");
+      const response = await PATCH(request);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should return 400 for podUtilisationThreshold with string value", async () => {
+      const request = createAuthenticatedPatchRequest(
+        "/api/admin/settings/pod-scaler",
+        { key: "podUtilisationThreshold", value: "eighty" },
         superAdminUser
       );
       const { PATCH } = await import("@/app/api/admin/settings/pod-scaler/route");
