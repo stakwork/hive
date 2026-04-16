@@ -10,7 +10,7 @@ import LlmModelsTable from "./LlmModelsTable";
 
 export default async function LlmModelsPage() {
   const models = await db.llmModel.findMany({
-    orderBy: { createdAt: "desc" },
+    orderBy: { name: "asc" },
   });
 
   return (
