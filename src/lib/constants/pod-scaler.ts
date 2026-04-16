@@ -4,6 +4,7 @@ export const POD_SCALER_SCALE_UP_BUFFER = 2;
 export const POD_SCALER_MAX_VM_CEILING = 20;
 export const POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES = 30;
 export const POD_SCALER_CRON_ENABLED_DEFAULT = true;
+export const POD_SCALER_UTILISATION_THRESHOLD = 80;
 
 export const POD_SCALER_CONFIG_KEYS = {
   queueWaitMinutes: "podScalerQueueWaitMinutes",
@@ -12,4 +13,5 @@ export const POD_SCALER_CONFIG_KEYS = {
   maxVmCeiling: "podScalerMaxVmCeiling",
   scaleDownCooldownMinutes: "podScalerScaleDownCooldownMinutes",
   cronEnabled: "podScalerCronEnabled",
+  podUtilisationThreshold: "podScalerUtilisationThreshold",
 } as const;
