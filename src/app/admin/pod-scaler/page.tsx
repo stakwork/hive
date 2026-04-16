@@ -14,6 +14,7 @@ import {
   POD_SCALER_MAX_VM_CEILING,
   POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES,
   POD_SCALER_CRON_ENABLED_DEFAULT,
+  POD_SCALER_UTILISATION_THRESHOLD,
 } from "@/lib/constants/pod-scaler";
 import { PodScalerConfigPanel } from "./PodScalerConfigPanel";
 
@@ -34,6 +35,7 @@ export default async function PodScalerPage() {
     maxVmCeiling: getValue("maxVmCeiling", POD_SCALER_MAX_VM_CEILING),
     scaleDownCooldownMinutes: getValue("scaleDownCooldownMinutes", POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES),
     cronEnabled: getValue("cronEnabled", POD_SCALER_CRON_ENABLED_DEFAULT ? 1 : 0),
+    podUtilisationThreshold: getValue("podUtilisationThreshold", POD_SCALER_UTILISATION_THRESHOLD),
   };
 
   return (
