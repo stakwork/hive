@@ -57,6 +57,7 @@ interface FormState {
   dateEnd: string;
   isPlanDefault: boolean;
   isTaskDefault: boolean;
+  isPublic: boolean;
 }
 
 const emptyForm: FormState = {
@@ -69,6 +70,7 @@ const emptyForm: FormState = {
   dateEnd: "",
   isPlanDefault: false,
   isTaskDefault: false,
+  isPublic: false,
 };
 
 function modelToForm(model: LlmModel): FormState {
@@ -86,6 +88,7 @@ function modelToForm(model: LlmModel): FormState {
       : "",
     isPlanDefault: model.isPlanDefault,
     isTaskDefault: model.isTaskDefault,
+    isPublic: model.isPublic,
   };
 }
 
@@ -142,6 +145,7 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
         dateEnd: form.dateEnd || null,
         isPlanDefault: form.isPlanDefault,
         isTaskDefault: form.isTaskDefault,
+        isPublic: form.isPublic,
       };
 
       const url = editingModel
@@ -230,12 +234,15 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
                 <td className="py-3 pr-4">{formatDate(model.dateStart)}</td>
                 <td className="py-3 pr-4">{formatDate(model.dateEnd)}</td>
                 <td className="py-3 pr-4">
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap">
                     {model.isPlanDefault && (
                       <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Plan</Badge>
                     )}
                     {model.isTaskDefault && (
                       <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">Task</Badge>
+                    )}
+                    {model.isPublic && (
+                      <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Public</Badge>
                     )}
                   </div>
                 </td>
@@ -366,7 +373,7 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
                 />
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <Switch
                   id="llm-plan-default"
@@ -382,6 +389,14 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
                   onCheckedChange={(checked) => setForm((f) => ({ ...f, isTaskDefault: checked }))}
                 />
                 <Label htmlFor="llm-task-default">Task default</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="llm-is-public"
+                  checked={form.isPublic}
+                  onCheckedChange={(checked) => setForm((f) => ({ ...f, isPublic: checked }))}
+                />
+                <Label htmlFor="llm-is-public">Public</Label>
               </div>
             </div>
           </div>
