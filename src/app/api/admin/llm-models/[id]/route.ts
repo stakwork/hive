@@ -20,7 +20,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, dateStart, dateEnd, isPlanDefault, isTaskDefault } = body;
+    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, dateStart, dateEnd, isPlanDefault, isTaskDefault, isPublic } = body;
 
     if (isPlanDefault) {
       await db.llmModel.updateMany({ where: { isPlanDefault: true, id: { not: id } }, data: { isPlanDefault: false } });
@@ -41,6 +41,7 @@ export async function PATCH(
         ...(dateEnd !== undefined && { dateEnd: dateEnd ? new Date(dateEnd) : null }),
         ...(isPlanDefault !== undefined && { isPlanDefault }),
         ...(isTaskDefault !== undefined && { isTaskDefault }),
+        ...(isPublic !== undefined && { isPublic }),
       },
     });
 

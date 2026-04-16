@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
 
   const models = await db.llmModel.findMany({
     where: {
+      isPublic: true,
       OR: [{ dateEnd: null }, { dateEnd: { gt: new Date() } }],
     },
     select: {
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
       providerLabel: true,
       isPlanDefault: true,
       isTaskDefault: true,
+      isPublic: true,
     },
     orderBy: { createdAt: "desc" },
   });
