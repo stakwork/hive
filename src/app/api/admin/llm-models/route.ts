@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, dateStart, dateEnd, isPlanDefault, isTaskDefault } = body;
+    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, dateStart, dateEnd, isPlanDefault, isTaskDefault, isPublic } = body;
 
     if (!name || !provider || inputPricePer1M == null || outputPricePer1M == null) {
       return NextResponse.json(
@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
         dateEnd: dateEnd ? new Date(dateEnd) : null,
         isPlanDefault: isPlanDefault ?? false,
         isTaskDefault: isTaskDefault ?? false,
+        isPublic: isPublic ?? false,
       },
     });
 

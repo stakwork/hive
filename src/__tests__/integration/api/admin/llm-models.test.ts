@@ -97,6 +97,48 @@ describe("Admin LLM Models API", () => {
       expect(dbRecord).not.toBeNull();
     });
 
+    it("should create a record with isPublic: true and persist it", async () => {
+      const request = createAuthenticatedPostRequest(
+        "/api/admin/llm-models",
+        superAdminUser,
+        {
+          name: "public-model",
+          provider: "OPENAI",
+          inputPricePer1M: 5.0,
+          outputPricePer1M: 15.0,
+          isPublic: true,
+        }
+      );
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.model.isPublic).toBe(true);
+
+      const dbRecord = await db.llmModel.findUnique({ where: { id: data.model.id } });
+      expect(dbRecord?.isPublic).toBe(true);
+    });
+
+    it("should default isPublic to false when not provided", async () => {
+      const request = createAuthenticatedPostRequest(
+        "/api/admin/llm-models",
+        superAdminUser,
+        {
+          name: "default-public-model",
+          provider: "OPENAI",
+          inputPricePer1M: 5.0,
+          outputPricePer1M: 15.0,
+        }
+      );
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.model.isPublic).toBe(false);
+    });
+
     it("should return 400 when required fields are missing", async () => {
       const request = createAuthenticatedPostRequest(
         "/api/admin/llm-models",
@@ -168,6 +210,47 @@ describe("Admin LLM Models API", () => {
       const data = await response.json();
       expect(data.model.name).toBe("updated-name");
       expect(data.model.inputPricePer1M).toBe(7.5);
+    });
+
+    it("should toggle isPublic to true via PATCH", async () => {
+      const model = await createTestLlmModel({ name: "toggle-public-model", provider: "OPENAI" });
+      expect(model.isPublic).toBe(false);
+
+      const request = createAuthenticatedPatchRequest(
+        `/api/admin/llm-models/${model.id}`,
+        { isPublic: true },
+        superAdminUser
+      );
+      const { PATCH } = await import("@/app/api/admin/llm-models/[id]/route");
+      const response = await PATCH(request, {
+        params: Promise.resolve({ id: model.id }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.model.isPublic).toBe(true);
+
+      const dbRecord = await db.llmModel.findUnique({ where: { id: model.id } });
+      expect(dbRecord?.isPublic).toBe(true);
+    });
+
+    it("should toggle isPublic back to false via PATCH", async () => {
+      const model = await createTestLlmModel({ name: "revert-public-model", provider: "OPENAI", isPublic: true });
+      expect(model.isPublic).toBe(true);
+
+      const request = createAuthenticatedPatchRequest(
+        `/api/admin/llm-models/${model.id}`,
+        { isPublic: false },
+        superAdminUser
+      );
+      const { PATCH } = await import("@/app/api/admin/llm-models/[id]/route");
+      const response = await PATCH(request, {
+        params: Promise.resolve({ id: model.id }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.model.isPublic).toBe(false);
     });
 
     it("should return 404 for unknown id", async () => {
