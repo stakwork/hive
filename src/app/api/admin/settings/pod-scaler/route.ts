@@ -9,6 +9,7 @@ import {
   POD_SCALER_MAX_VM_CEILING,
   POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES,
   POD_SCALER_CRON_ENABLED_DEFAULT,
+  POD_SCALER_UTILISATION_THRESHOLD,
 } from "@/lib/constants/pod-scaler";
 
 type PodScalerKey = keyof typeof POD_SCALER_CONFIG_KEYS;
@@ -20,6 +21,7 @@ const DEFAULTS: Record<PodScalerKey, number> = {
   maxVmCeiling: POD_SCALER_MAX_VM_CEILING,
   scaleDownCooldownMinutes: POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES,
   cronEnabled: POD_SCALER_CRON_ENABLED_DEFAULT ? 1 : 0,
+  podUtilisationThreshold: POD_SCALER_UTILISATION_THRESHOLD,
 };
 
 const DB_KEYS = Object.values(POD_SCALER_CONFIG_KEYS);
@@ -67,11 +69,18 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  // cronEnabled only accepts 0 or 1; all other keys must be positive integers
+  // cronEnabled only accepts 0 or 1; podUtilisationThreshold must be 1–100; all other keys must be positive integers
   if (key === "cronEnabled") {
     if (value !== 0 && value !== 1) {
       return NextResponse.json(
         { error: "cronEnabled value must be 0 or 1" },
+        { status: 400 }
+      );
+    }
+  } else if (key === "podUtilisationThreshold") {
+    if (value < 1 || value > 100) {
+      return NextResponse.json(
+        { error: "podUtilisationThreshold value must be an integer between 1 and 100" },
         { status: 400 }
       );
     }
