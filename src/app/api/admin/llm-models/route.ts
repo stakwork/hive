@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const models = await db.llmModel.findMany({
-      orderBy: { createdAt: "desc" },
+      orderBy: { name: "asc" },
     });
 
     return NextResponse.json({ models });
