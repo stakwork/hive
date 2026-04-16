@@ -87,6 +87,12 @@ export default function WhiteboardDetailPage() {
   } = useWhiteboardCollaboration({
     whiteboardId,
     excalidrawAPI,
+    // Mark incoming Pusher-driven scene updates as programmatic so our
+    // onChange handler doesn't echo them back to peers or schedule a DB
+    // save with a stale expectedVersion (which would 409-storm the server).
+    onBeforeRemoteUpdate: useCallback(() => {
+      programmaticUpdateCountRef.current++;
+    }, []),
   });
 
   const loadWhiteboard = useCallback(async () => {
