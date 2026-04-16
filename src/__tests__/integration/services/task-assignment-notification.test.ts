@@ -83,15 +83,22 @@ describe("TASK_ASSIGNED notification", () => {
 
     await updateTicket(task.id, owner.id, { assigneeId: assignee.id });
 
-    await new Promise((r) => setTimeout(r, 100));
+    // Poll for the notification record since fire-and-forget timing is non-deterministic
+    let record = null;
+    const maxWaitMs = 5000;
+    const pollIntervalMs = 100;
+    const startTime = Date.now();
 
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        targetUserId: assignee.id,
-        notificationType: NotificationTriggerType.TASK_ASSIGNED,
-        taskId: task.id,
-      },
-    });
+    while (!record && Date.now() - startTime < maxWaitMs) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      record = await db.notificationTrigger.findFirst({
+        where: {
+          targetUserId: assignee.id,
+          notificationType: NotificationTriggerType.TASK_ASSIGNED,
+          taskId: task.id,
+        },
+      });
+    }
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(assignee.id);
@@ -100,7 +107,7 @@ describe("TASK_ASSIGNED notification", () => {
     expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
     expect(record!.message).toBeTruthy();
     expect(sendDirectMessage).not.toHaveBeenCalled();
-  });
+  }, 10000);
 
   it("creates a SKIPPED notification_trigger row when workspace has Sphinx disabled", async () => {
     const plainOwner = await db.user.create({

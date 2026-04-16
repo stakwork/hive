@@ -31,6 +31,7 @@ interface WorkflowEditorRequest {
   webhook?: string;
   workflowJson?: string; // Current workflow JSON to store as original for diff comparison
   workflowVersionId?: string;
+  sourceWebsocketID?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
       webhook,
       workflowJson,
       workflowVersionId,
+      sourceWebsocketID,
     } = body;
 
     // Validate required fields
@@ -151,6 +153,18 @@ export async function POST(request: NextRequest) {
         status: ChatStatus.SENT,
       },
     });
+
+    // Broadcast user message to other connected clients (exclude sender to prevent duplicates)
+    try {
+      await pusherServer.trigger(
+        getTaskChannelName(taskId),
+        PUSHER_EVENTS.NEW_MESSAGE,
+        chatMessage.id,
+        sourceWebsocketID ? { socket_id: sourceWebsocketID } : {},
+      );
+    } catch (error) {
+      console.error("Error broadcasting user message to Pusher:", error);
+    }
 
     // Fetch chat history (excluding the message just created)
     const history = await fetchChatHistory(taskId, chatMessage.id);
