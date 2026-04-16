@@ -7,16 +7,20 @@ import { render, screen } from "@testing-library/react";
 
 // ---- mock next-auth ----
 const mockUseSession = vi.fn();
+const mockSignIn = vi.fn();
 vi.mock("next-auth/react", () => ({
   useSession: () => mockUseSession(),
-  getProviders: vi.fn().mockResolvedValue({}),
-  signIn: vi.fn(),
+  getProviders: vi.fn().mockResolvedValue({
+    github: { id: "github", name: "GitHub", type: "oauth", signinUrl: "/api/auth/signin/github", callbackUrl: "/api/auth/callback/github" },
+  }),
+  signIn: (...args: unknown[]) => mockSignIn(...args),
 }));
 
 // ---- mock next/navigation ----
+const mockPush = vi.fn();
 const mockSearchParams = { get: vi.fn() };
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: mockPush }),
   useSearchParams: () => mockSearchParams,
 }));
 
@@ -54,6 +58,9 @@ function renderSignIn() {
 beforeEach(() => {
   mockUseSession.mockReturnValue({ data: null, status: "unauthenticated" });
   mockSearchParams.get.mockReturnValue(null);
+  mockPush.mockReset();
+  mockSignIn.mockReset();
+  mockSignIn.mockResolvedValue({ error: null });
 });
 
 describe("SignInPage", () => {
@@ -116,6 +123,41 @@ describe("SignInPage", () => {
       mockSearchParams.get.mockReturnValue(null);
       renderSignIn();
       expect(screen.queryByTestId("dark-wizard-shell")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("reauth=true param", () => {
+    const authenticatedSession = {
+      data: { user: { name: "Test User", defaultWorkspaceSlug: "my-workspace" } },
+      status: "authenticated",
+    };
+
+    it("does NOT auto-redirect authenticated user when reauth=true", () => {
+      mockUseSession.mockReturnValue(authenticatedSession);
+      mockSearchParams.get.mockImplementation((key: string) => {
+        if (key === "redirect") return "/onboarding/graphmindset";
+        if (key === "reauth") return "true";
+        return null;
+      });
+      renderSignIn();
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it("auto-redirects authenticated user when reauth is NOT set", () => {
+      mockUseSession.mockReturnValue(authenticatedSession);
+      mockSearchParams.get.mockImplementation((key: string) => {
+        if (key === "redirect") return "/onboarding/graphmindset";
+        return null;
+      });
+      renderSignIn();
+      expect(mockPush).toHaveBeenCalledWith("/onboarding/graphmindset");
+    });
+
+    it("auto-redirects to defaultWorkspaceSlug when no redirect and reauth is NOT set", () => {
+      mockUseSession.mockReturnValue(authenticatedSession);
+      mockSearchParams.get.mockReturnValue(null);
+      renderSignIn();
+      expect(mockPush).toHaveBeenCalledWith("/w/my-workspace");
     });
   });
 });
