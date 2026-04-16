@@ -26,6 +26,7 @@ describe("AdminPodScaleControl", () => {
     expect(screen.getByText("Minimum Pods")).toBeInTheDocument();
     const inputs = screen.getAllByRole("spinbutton");
     expect(inputs[0]).toHaveValue(2);
+    expect(inputs[1]).toHaveValue(2);
     expect(screen.getByRole("button", { name: /save/i })).toBeInTheDocument();
   });
 
