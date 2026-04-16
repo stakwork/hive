@@ -1611,18 +1611,13 @@ describe("CompactTasksList", () => {
         />
       );
 
+      // Wait for models to load — the model select appears only after llmModels.length > 0
+      // It has data-value="" because task.model is null
       await waitFor(() => {
-        // Models should be loaded - find the model select by its empty value
         const selects = screen.getAllByTestId("select");
-        expect(selects.length).toBeGreaterThanOrEqual(1);
+        const modelSelect = selects.find((s) => s.getAttribute("data-value") === "");
+        expect(modelSelect).toBeDefined();
       });
-
-      // Simulate onValueChange being called with a model value
-      // The Select mock renders a div with data-testid="select" and data-value
-      // We need to find the model select - it's the one with value="" (task.model is null)
-      const selects = screen.getAllByTestId("select");
-      const modelSelect = selects.find((s) => s.getAttribute("data-value") === "");
-      expect(modelSelect).toBeDefined();
     });
 
     test("shows existing model value in selector", async () => {
