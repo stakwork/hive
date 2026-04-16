@@ -9,6 +9,7 @@ export interface CreateTestLlmModelOptions {
   outputPricePer1M?: number;
   dateStart?: Date | null;
   dateEnd?: Date | null;
+  isPublic?: boolean;
 }
 
 export async function createTestLlmModel(
