@@ -3,7 +3,7 @@ import { EncryptionService } from "@/lib/encryption";
 
 const encryptionService = EncryptionService.getInstance();
 
-export async function markPodAsUsed(podId: string, poolName: string, poolApiKey: string): Promise<void> {
+export async function markPodAsUsed(podId: string, poolName: string, poolApiKey: string): Promise<boolean> {
   const baseUrl = config.POOL_MANAGER_BASE_URL;
   const decryptedKey = encryptionService.decryptField("poolApiKey", poolApiKey);
   try {
@@ -11,9 +11,14 @@ export async function markPodAsUsed(podId: string, poolName: string, poolApiKey:
       `${baseUrl}/pools/${encodeURIComponent(poolName)}/workspaces/${podId}/mark-used`,
       { method: "POST", headers: { Authorization: `Bearer ${decryptedKey}` } },
     );
-    if (!res.ok) console.error(`[karpenter] mark-used failed for pod ${podId}: ${res.status}`);
+    if (!res.ok) {
+      console.error(`[karpenter] mark-used failed for pod ${podId}: ${res.status}`);
+      return false;
+    }
+    return true;
   } catch (e) {
     console.error(`[karpenter] mark-used error for pod ${podId}:`, e);
+    return false;
   }
 }
 

@@ -1,6 +1,7 @@
 import { parsePM2Content } from "@/utils/devContainerUtils";
 import { db } from "@/lib/db";
 import { JlistProcess } from "@/types/pod-repair";
+import type { Pod } from "@prisma/client";
 import { claimAvailablePod, getPodDetails, releasePodById, getPodUsageStatus, buildPodUrl } from "./queries";
 import { markPodAsUsed } from "./karpenter";
 
@@ -108,34 +109,61 @@ interface ServiceInfo {
   };
 }
 
+async function attemptClaimWithKarpenter(
+  swarmId: string,
+  userInfo: string | undefined,
+  excludePodIds: string[],
+  swarm: { poolName: string | null; poolApiKey: string | null } | null,
+): Promise<{ pod: Pod; karpenterOk: boolean } | null> {
+  const pod = await claimAvailablePod(swarmId, userInfo, excludePodIds);
+  if (!pod) return null;
+
+  let karpenterOk = true;
+  if (swarm?.poolName && swarm?.poolApiKey) {
+    karpenterOk = await markPodAsUsed(pod.podId, swarm.poolName, swarm.poolApiKey);
+  }
+  return { pod, karpenterOk };
+}
+
 export async function claimPodAndGetFrontend(
   swarmId: string,
   userInfo?: string,
   services?: ServiceInfo[],
 ): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
-  // Claim a pod from the database atomically
-  const pod = await claimAvailablePod(swarmId, userInfo);
+  // Fetch swarm once upfront for both attempts
+  const swarm = await db.swarm.findUnique({
+    where: { id: swarmId },
+    select: { poolName: true, poolApiKey: true },
+  });
 
-  if (!pod) {
-    throw new Error(`No available pods for swarm: ${swarmId}`);
+  // Attempt 1: claim a pod and mark it as used in Karpenter
+  let result = await attemptClaimWithKarpenter(swarmId, userInfo, [], swarm);
+  if (!result) throw new Error(`No available pods for swarm: ${swarmId}`);
+
+  if (!result.karpenterOk) {
+    // Release failed pod and retry once, excluding it
+    const failedPodId = result.pod.podId;
+    console.warn(`[karpenter] mark-used failed for pod ${failedPodId}, releasing and retrying...`);
+    await releasePodById(failedPodId).catch((e) =>
+      console.error(`>>> Failed to release pod ${failedPodId}:`, e),
+    );
+
+    // Attempt 2 — exclude the failed pod
+    const result2 = await attemptClaimWithKarpenter(swarmId, userInfo, [failedPodId], swarm);
+    if (!result2) throw new Error(`No available pods for swarm: ${swarmId}`);
+
+    if (!result2.karpenterOk) {
+      await releasePodById(result2.pod.podId).catch((e) =>
+        console.error(`>>> Failed to release pod ${result2.pod.podId}:`, e),
+      );
+      throw new Error(`Karpenter mark-used failed after retry — no protected pod available for swarm: ${swarmId}`);
+    }
+
+    result = result2;
   }
 
+  const pod = result.pod;
   console.log(">>> claimed pod", pod.podId);
-
-  // Fire-and-forget: protect pod from Karpenter disruption (non-blocking)
-  void (async () => {
-    try {
-      const swarm = await db.swarm.findUnique({
-        where: { id: swarmId },
-        select: { poolName: true, poolApiKey: true },
-      });
-      if (swarm?.poolName && swarm?.poolApiKey) {
-        markPodAsUsed(pod.podId, swarm.poolName, swarm.poolApiKey).catch(() => {});
-      }
-    } catch {
-      // non-blocking
-    }
-  })();
 
   try {
     // Password is already decrypted from the database
