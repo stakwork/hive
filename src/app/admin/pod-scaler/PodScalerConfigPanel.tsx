@@ -13,7 +13,8 @@ type PodScalerKey =
   | "scaleUpBuffer"
   | "maxVmCeiling"
   | "scaleDownCooldownMinutes"
-  | "cronEnabled";
+  | "cronEnabled"
+  | "podUtilisationThreshold";
 
 interface SettingRowProps {
   label: string;
@@ -152,6 +153,11 @@ export function PodScalerConfigPanel({ initialValues }: Props) {
       key: "scaleDownCooldownMinutes",
       label: "Scale-Down Cooldown",
       description: "Minutes the scaler must wait after a scale-down before scaling down again",
+    },
+    {
+      key: "podUtilisationThreshold",
+      label: "Pod Utilisation Threshold (%)",
+      description: "Scale up when this percentage of running pods are in use (0–100)",
     },
   ];
 
