@@ -8,7 +8,9 @@ import {
   POD_SCALER_MAX_VM_CEILING,
   POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES,
   POD_SCALER_CONFIG_KEYS,
+  POD_SCALER_UTILISATION_THRESHOLD,
 } from "@/lib/constants/pod-scaler";
+import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -74,6 +76,10 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
     POD_SCALER_CONFIG_KEYS.scaleDownCooldownMinutes,
     POD_SCALER_SCALE_DOWN_COOLDOWN_MINUTES
   );
+  const podUtilisationThreshold = parseIntOrDefault(
+    POD_SCALER_CONFIG_KEYS.podUtilisationThreshold,
+    POD_SCALER_UTILISATION_THRESHOLD
+  );
 
   const swarms = await db.swarm.findMany({
     where: {
@@ -116,15 +122,21 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
         },
       });
 
+      const { usedVms, runningVms } = await getPoolStatusFromPods(swarm.id, swarm.workspaceId);
+      const utilisationTriggered =
+        runningVms > 0 && (usedVms / runningVms) * 100 >= podUtilisationThreshold;
+
       console.log(
-        `${LOG_PREFIX} Swarm ${swarm.id} queue info: overQueuedCount=${overQueuedCount}, queueWaitMinutes=${queueWaitMinutes}, stalenessWindowDays=${stalenessWindowDays}, scaleUpBuffer=${scaleUpBuffer}, maxVmCeiling=${maxVmCeiling}`
+        `${LOG_PREFIX} Swarm ${swarm.id} queue info: overQueuedCount=${overQueuedCount}, queueWaitMinutes=${queueWaitMinutes}, stalenessWindowDays=${stalenessWindowDays}, scaleUpBuffer=${scaleUpBuffer}, maxVmCeiling=${maxVmCeiling}, podUtilisationThreshold=${podUtilisationThreshold}, usedVms=${usedVms}, runningVms=${runningVms}, utilisationTriggered=${utilisationTriggered}`
       );
 
       const floor = swarm.minimumPods ?? swarm.minimumVms;
       const targetVms = Math.min(
         overQueuedCount > 0
-          ? floor + overQueuedCount + scaleUpBuffer
-          : floor,
+          ? floor + overQueuedCount + scaleUpBuffer  // over-queue path (unchanged)
+          : utilisationTriggered
+            ? floor + scaleUpBuffer                  // utilisation path (new)
+            : floor,                                 // no trigger
         maxVmCeiling
       );
 
@@ -158,7 +170,8 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
       });
 
       if (targetVms > swarm.minimumVms) {
-        console.log(`${LOG_PREFIX} Scaling UP swarm ${swarm.id}: ${overQueuedCount} over-queued tasks → targetVms=${targetVms}`);
+        const reason = overQueuedCount > 0 ? "over-queued tasks" : "utilisation threshold";
+        console.log(`${LOG_PREFIX} Scaling UP swarm ${swarm.id}: ${reason} → targetVms=${targetVms}`);
       } else if (targetVms < swarm.minimumVms) {
         console.log(`${LOG_PREFIX} Scaling DOWN swarm ${swarm.id}: no over-queued tasks → targetVms=${targetVms}`);
       } else {
