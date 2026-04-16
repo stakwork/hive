@@ -17,11 +17,11 @@ export default function AdminPodScaleControl({
   initialMinimumPods,
 }: AdminPodScaleControlProps) {
   const [pendingVms, setPendingVms] = useState(initialMinimumVms);
-  const [pendingPods, setPendingPods] = useState(initialMinimumPods ?? 1);
+  const [pendingPods, setPendingPods] = useState(initialMinimumPods ?? 2);
   const [saving, setSaving] = useState(false);
 
   const hasChanged =
-    pendingVms !== initialMinimumVms || pendingPods !== (initialMinimumPods ?? 1);
+    pendingVms !== initialMinimumVms || pendingPods !== (initialMinimumPods ?? 2);
 
   const handleSave = async () => {
     setSaving(true);
