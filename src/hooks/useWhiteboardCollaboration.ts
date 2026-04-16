@@ -47,6 +47,15 @@ interface UseWhiteboardCollaborationOptions {
   whiteboardId: string;
   excalidrawAPI: ExcalidrawImperativeAPI | null;
   onRemoteUpdate?: () => void;
+  /**
+   * Called immediately before the hook applies a remote scene update via
+   * `excalidrawAPI.updateScene`. The page uses this to mark the upcoming
+   * `onChange` callback as programmatic so it is not re-broadcast or saved
+   * as if it were a local edit. Only fires when the remote payload actually
+   * changes the scene — bumping on a no-op would swallow a subsequent real
+   * user edit.
+   */
+  onBeforeRemoteUpdate?: () => void;
 }
 
 interface UseWhiteboardCollaborationReturn {
@@ -70,6 +79,7 @@ export function useWhiteboardCollaboration({
   whiteboardId,
   excalidrawAPI,
   onRemoteUpdate,
+  onBeforeRemoteUpdate,
 }: UseWhiteboardCollaborationOptions): UseWhiteboardCollaborationReturn {
   const { data: session } = useSession();
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
@@ -275,6 +285,8 @@ export function useWhiteboardCollaboration({
   sessionRef.current = session;
   const onRemoteUpdateRef = useRef(onRemoteUpdate);
   onRemoteUpdateRef.current = onRemoteUpdate;
+  const onBeforeRemoteUpdateRef = useRef(onBeforeRemoteUpdate);
+  onBeforeRemoteUpdateRef.current = onBeforeRemoteUpdate;
 
   // Derive a stable primitive for the dependency array
   const userId = session?.user?.id;
@@ -331,7 +343,24 @@ export function useWhiteboardCollaboration({
           if (excalidrawAPI) {
             const currentElements = excalidrawAPI.getSceneElements();
             const remoteElements = data.elements as ExcalidrawElement[];
+
+            // Skip if the delta contains nothing new. Applying a no-op
+            // updateScene would still fire onChange on the page, which we
+            // don't want, and bumping the programmatic-update counter for
+            // it would silently swallow the next real user edit.
+            const localById = new Map(currentElements.map((el) => [el.id, el]));
+            const hasChanges = remoteElements.some((remoteEl) => {
+              const localEl = localById.get(remoteEl.id);
+              return !localEl || remoteEl.version > localEl.version;
+            });
+            if (!hasChanges) return;
+
             const mergedElements = mergeElementsByVersion(currentElements, remoteElements);
+
+            // Tell the page this updateScene is programmatic so its
+            // onChange handler doesn't re-broadcast the remote elements
+            // back out or trigger a DB save with a stale expectedVersion.
+            onBeforeRemoteUpdateRef.current?.();
 
             excalidrawAPI.updateScene({
               elements: mergedElements,
@@ -409,10 +438,21 @@ export function useWhiteboardCollaboration({
                   | undefined;
                 if (!remoteElements) return;
                 const currentElements = api.getSceneElements();
+
+                const localById = new Map(
+                  currentElements.map((el) => [el.id, el]),
+                );
+                const hasChanges = remoteElements.some((remoteEl) => {
+                  const localEl = localById.get(remoteEl.id);
+                  return !localEl || remoteEl.version > localEl.version;
+                });
+                if (!hasChanges) return;
+
                 const merged = mergeElementsByVersion(
                   currentElements,
                   remoteElements,
                 );
+                onBeforeRemoteUpdateRef.current?.();
                 api.updateScene({ elements: merged });
                 onRemoteUpdateRef.current?.();
               })
