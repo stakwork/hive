@@ -6,7 +6,7 @@
  */
 
 import { db } from "@/lib/db";
-import { PodStatus, PodUsageStatus } from "@prisma/client";
+import { Prisma, PodStatus, PodUsageStatus } from "@prisma/client";
 import type { Pod } from "@prisma/client";
 import { markPodAsUnused } from "./karpenter";
 
@@ -159,7 +159,11 @@ export async function findDeletedPods(swarmId: string): Promise<Pod[]> {
  * @param userId - The user ID claiming the pod
  * @returns The claimed pod or null if none available
  */
-export async function claimAvailablePod(swarmId: string, userInfo?: string): Promise<Pod | null> {
+export async function claimAvailablePod(
+  swarmId: string,
+  userInfo?: string,
+  excludePodIds?: string[],
+): Promise<Pod | null> {
   // Use raw SQL for atomic SELECT FOR UPDATE SKIP LOCKED
   interface RawPodResult {
     id: string;
@@ -182,6 +186,11 @@ export async function claimAvailablePod(swarmId: string, userInfo?: string): Pro
     deleted_at: Date | null;
   }
 
+  const exclusionClause =
+    excludePodIds && excludePodIds.length > 0
+      ? Prisma.sql`AND pod_id != ALL(ARRAY[${Prisma.join(excludePodIds)}])`
+      : Prisma.sql``;
+
   const rawPods = await db.$queryRaw<RawPodResult[]>`
     UPDATE pods
     SET 
@@ -196,6 +205,7 @@ export async function claimAvailablePod(swarmId: string, userInfo?: string): Pro
         AND usage_status = 'UNUSED'::"PodUsageStatus"
         AND deleted_at IS NULL
         AND last_health_check > NOW() - INTERVAL '1 hour'
+        ${exclusionClause}
       ORDER BY created_at ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
