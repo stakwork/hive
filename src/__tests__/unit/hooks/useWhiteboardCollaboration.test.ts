@@ -438,6 +438,100 @@ describe("useWhiteboardCollaboration", () => {
     });
   });
 
+  describe("WHITEBOARD_ELEMENTS_UPDATE onBeforeRemoteUpdate", () => {
+    it("calls onBeforeRemoteUpdate before updateScene when remote delta contains new/higher-version elements", async () => {
+      vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
+
+      const pusher = await import("@/lib/pusher");
+      vi.mocked(pusher.getPusherClient).mockReturnValue(mockPusherClient as any);
+
+      const handlers: Record<string, (data: unknown) => void> = {};
+      vi.mocked(mockChannel.bind).mockImplementation(
+        (event: string, handler: (data: unknown) => void) => {
+          handlers[event] = handler;
+          return mockChannel;
+        },
+      );
+
+      (mockExcalidrawAPI.getSceneElements as ReturnType<typeof vi.fn>).mockReturnValue([
+        { id: "el-1", version: 1 },
+      ]);
+
+      const callOrder: string[] = [];
+      const onBeforeRemoteUpdate = vi.fn(() => callOrder.push("before"));
+      mockExcalidrawAPI.updateScene.mockImplementation(() => {
+        callOrder.push("updateScene");
+      });
+
+      renderHook(() =>
+        useWhiteboardCollaboration({
+          whiteboardId,
+          excalidrawAPI: mockExcalidrawAPI as any,
+          onBeforeRemoteUpdate,
+        }),
+      );
+
+      act(() => {
+        handlers["whiteboard-elements-update"]?.({
+          senderId: "other-user-1700-xyz",
+          elements: [{ id: "el-1", version: 2 }, { id: "el-2", version: 1 }],
+          appState: {},
+          version: 0,
+        });
+      });
+
+      expect(onBeforeRemoteUpdate).toHaveBeenCalledTimes(1);
+      expect(mockExcalidrawAPI.updateScene).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual(["before", "updateScene"]);
+
+      mockExcalidrawAPI.updateScene.mockReset();
+    });
+
+    it("skips updateScene and onBeforeRemoteUpdate entirely when remote delta has no new or newer elements", async () => {
+      vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
+
+      const pusher = await import("@/lib/pusher");
+      vi.mocked(pusher.getPusherClient).mockReturnValue(mockPusherClient as any);
+
+      const handlers: Record<string, (data: unknown) => void> = {};
+      vi.mocked(mockChannel.bind).mockImplementation(
+        (event: string, handler: (data: unknown) => void) => {
+          handlers[event] = handler;
+          return mockChannel;
+        },
+      );
+
+      (mockExcalidrawAPI.getSceneElements as ReturnType<typeof vi.fn>).mockReturnValue([
+        { id: "el-1", version: 5 },
+      ]);
+
+      const onBeforeRemoteUpdate = vi.fn();
+      mockExcalidrawAPI.updateScene.mockReset();
+
+      renderHook(() =>
+        useWhiteboardCollaboration({
+          whiteboardId,
+          excalidrawAPI: mockExcalidrawAPI as any,
+          onBeforeRemoteUpdate,
+        }),
+      );
+
+      // Remote reports a stale version for an element we already have at a
+      // higher version — nothing to apply.
+      act(() => {
+        handlers["whiteboard-elements-update"]?.({
+          senderId: "other-user-1700-xyz",
+          elements: [{ id: "el-1", version: 3 }],
+          appState: {},
+          version: 0,
+        });
+      });
+
+      expect(onBeforeRemoteUpdate).not.toHaveBeenCalled();
+      expect(mockExcalidrawAPI.updateScene).not.toHaveBeenCalled();
+    });
+  });
+
   describe("error handling", () => {
     it("should handle getPusherClient throwing error gracefully", async () => {
       vi.stubEnv("NEXT_PUBLIC_WHITEBOARD_COLLABORATION", "true");
