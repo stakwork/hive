@@ -19,6 +19,8 @@ import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { fetchChatHistory } from "@/lib/helpers/chat-history";
+import { buildFeatureContext } from "@/services/task-coordinator";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
 import { fetchCIStatus } from "./pr-ci";
 import { releaseTaskPod } from "@/lib/pods/utils";
@@ -1184,6 +1186,10 @@ export async function triggerLiveModeFix(
         mode: true,
         workflowStatus: true,
         createdById: true,
+        featureId: true,
+        phaseId: true,
+        autoMerge: true,
+        model: true,
         workspace: {
           select: {
             ownerId: true,
@@ -1224,16 +1230,43 @@ export async function triggerLiveModeFix(
     }
     const userId = creatorCredentials ? task.createdById : task.workspace.ownerId;
 
-    // 2. Create the fix message with PR monitor context
+    // 3. Create the fix message with PR monitor context
     const message = `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${prompt}`;
 
-    // 3. Send message to Stakwork workflow
+    // 4. Build feature context if task is linked to a feature and phase
+    //    (mirrors POST /api/chat/message behavior)
+    let featureContext: object | undefined;
+    if (task.featureId && task.phaseId) {
+      try {
+        featureContext = await buildFeatureContext(task.featureId, task.phaseId);
+      } catch (error) {
+        log.error("Error building feature context", { taskId, error: String(error) });
+        // Continue without feature context if it fails
+      }
+    }
+
+    // 5. Fetch chat history so Stakwork has full conversation context
+    //    (mirrors POST /api/chat/message behavior)
+    let history: Record<string, unknown>[] = [];
+    try {
+      history = await fetchChatHistory(taskId);
+    } catch (error) {
+      log.error("Error fetching chat history", { taskId, error: String(error) });
+      // Continue without history if it fails
+    }
+
+    // 6. Send message to Stakwork workflow with full context
     const result = await createChatMessageAndTriggerStakwork({
       taskId,
       message,
       userId,
       generateChatTitle: false,
       mode: "live",
+      featureContext,
+      history,
+      featureId: task.featureId,
+      autoMergePr: task.autoMerge,
+      taskModel: task.model ?? undefined,
     });
 
     if (!result.stakworkData?.projectId) {
