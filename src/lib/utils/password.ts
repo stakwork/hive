@@ -9,7 +9,7 @@ export function generateSecurePassword(length: number = 20): string {
   const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const lowercase = "abcdefghijklmnopqrstuvwxyz";
   const numbers = "0123456789";
-  const specialChars = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+  const specialChars = "!@#%^*()_+-=[]{}:,.";
   
   const allChars = uppercase + lowercase + numbers + specialChars;
   const allCharsLength = allChars.length;
@@ -52,7 +52,7 @@ export function validatePassword(password: string): {
   const hasUppercase = /[A-Z]/.test(password);
   const hasLowercase = /[a-z]/.test(password);
   const hasNumber = /\d/.test(password);
-  const hasSpecialChar = /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(password);
+  const hasSpecialChar = /[!@#%^*()_+\-=[\]{}:,.]/.test(password);
   
   if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecialChar) {
     return {
