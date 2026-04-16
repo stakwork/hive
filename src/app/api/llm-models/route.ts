@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       isTaskDefault: true,
       isPublic: true,
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { name: "asc" },
   });
 
   return NextResponse.json({ models });
