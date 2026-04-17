@@ -7,7 +7,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -211,7 +210,6 @@ export function WorkspaceSwitcher({
                           {workspace.name}
                         </div>
                       </div>
-                      <DropdownMenuShortcut>⌘{index + 2}</DropdownMenuShortcut>
                     </DropdownMenuItem>
                   ))}
               </>
