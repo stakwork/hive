@@ -34,7 +34,7 @@ function generatePassword(): string {
   const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const lower = "abcdefghijklmnopqrstuvwxyz";
   const nums = "0123456789";
-  const special = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+  const special = "!@#%^*()_+-=[]{}:,.";
   const all = upper + lower + nums + special;
   const arr = new Uint8Array(20);
   crypto.getRandomValues(arr);
