@@ -1,4 +1,4 @@
-import { describe, test, beforeEach, vi, expect } from "vitest";
+import { describe, test, beforeEach, afterEach, vi, expect } from "vitest";
 import { POST } from "@/app/api/pool-manager/claim-pod/[workspaceId]/route";
 import {
   expectSuccess,
@@ -53,11 +53,29 @@ vi.mock("@/services/swarm/secrets", () => ({
 
 const VALID_API_TOKEN = "test-api-token-secret";
 
+// Mock process list returned by getProcessList (called against pod control port)
+const MOCK_PROCESS_LIST = [
+  { pid: 1, name: "frontend", status: "online", port: "3000", pm_uptime: 1000, cwd: "/workspace" },
+  { pid: 2, name: "goose", status: "online", port: "15551", pm_uptime: 1000, cwd: "/workspace" },
+];
+
 describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Set the API_TOKEN env var for tests
     process.env.API_TOKEN = VALID_API_TOKEN;
+    // Mock global fetch so getProcessList succeeds without a real pod
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => MOCK_PROCESS_LIST,
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   describe("Authentication", () => {
