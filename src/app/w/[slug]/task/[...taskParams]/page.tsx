@@ -1637,52 +1637,12 @@ Plan and implement the real feature from this branch.`;
     setIsRetrying(true);
 
     try {
-      if (taskMode === 'workflow_editor' && currentWorkflowContext) {
-        // Find last USER message text from messages state
-        const lastUserMessage = [...messages]
-          .reverse()
-          .find((m) => m.role === ChatRole.USER);
-        const messageText = lastUserMessage?.message ?? '';
-
-        if (!messageText || !currentWorkflowContext.workflowRefId) {
-          toast.error('Cannot retry: missing workflow context.');
-          return;
-        }
-
-        const webhookToUse = workflowEditorWebhook || undefined;
-
-        const res = await fetch('/api/workflow-editor', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId: currentTaskId,
-            message: messageText,
-            workflowId: currentWorkflowContext.workflowId,
-            workflowName: currentWorkflowContext.workflowName,
-            workflowRefId: currentWorkflowContext.workflowRefId,
-            ...(currentWorkflowContext.workflowVersionId && {
-              workflowVersionId: currentWorkflowContext.workflowVersionId,
-            }),
-            ...(webhookToUse && { webhook: webhookToUse }),
-          }),
-        });
-
-        if (!res.ok) throw new Error('Retry failed');
-
-        const result = await res.json();
-        if (result.workflow?.webhook) setWorkflowEditorWebhook(result.workflow.webhook);
-        if (result.workflow?.project_id) setProjectId(result.workflow.project_id.toString());
-        setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
-        setIsChainVisible(true);
-      } else {
-        // Existing path: all other modes
-        const res = await fetch(`/api/tasks/${currentTaskId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ retryWorkflow: true }),
-        });
-        if (!res.ok) throw new Error('Retry failed');
-      }
+      const res = await fetch(`/api/tasks/${currentTaskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retryWorkflow: true }),
+      });
+      if (!res.ok) throw new Error('Retry failed');
     } catch {
       toast.error('Failed to retry task. Please try again.');
     } finally {
