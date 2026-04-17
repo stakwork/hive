@@ -217,7 +217,8 @@ export async function claimPodAndGetFrontend(
         processList = await getProcessList(controlPortUrl, workspace.password);
         console.log(`>>> Successfully fetched process list with ${processList.length} processes`);
       } catch (error) {
-        console.error(">>> Failed to fetch process list:", error);
+        console.error(`>>> Failed to fetch process list, releasing pod ${pod.podId}:`, error);
+        throw error;
       }
     }
 

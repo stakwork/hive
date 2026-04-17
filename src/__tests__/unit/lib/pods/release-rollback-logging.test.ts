@@ -275,3 +275,80 @@ describe("claimPodAndGetFrontend — Karpenter retry logic", () => {
     expect(markPodAsUsed).not.toHaveBeenCalled();
   });
 });
+
+// ============================================================================
+// Test suite: getProcessList failure scenarios
+// ============================================================================
+
+describe("claimPodAndGetFrontend — getProcessList failure", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    consoleLogSpy.mockRestore();
+  });
+
+  it("getProcessList throws → pod released → logs release success", async () => {
+    const { claimAvailablePod, releasePodById } = await import("@/lib/pods/queries");
+    const { markPodAsUsed } = await import("@/lib/pods/karpenter");
+    const { db } = await import("@/lib/db");
+
+    vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm as any);
+    vi.mocked(markPodAsUsed).mockResolvedValue(true);
+    vi.mocked(claimAvailablePod).mockResolvedValue(mockPodA as any);
+    vi.mocked(releasePodById).mockResolvedValue(mockPodA as any);
+    vi.spyOn(global, "fetch").mockRejectedValue(new Error("fetch failed"));
+
+    const { claimPodAndGetFrontend } = await import("@/lib/pods/utils");
+
+    await expect(claimPodAndGetFrontend("swarm-1", "task-1")).rejects.toThrow();
+
+    expect(releasePodById).toHaveBeenCalledWith(mockPodA.podId);
+    expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Released"));
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(expect.stringContaining("Rollback failed"));
+  });
+
+  it("getProcessList throws → releasePodById returns null → logs rollback failed", async () => {
+    const { claimAvailablePod, releasePodById } = await import("@/lib/pods/queries");
+    const { markPodAsUsed } = await import("@/lib/pods/karpenter");
+    const { db } = await import("@/lib/db");
+
+    vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm as any);
+    vi.mocked(markPodAsUsed).mockResolvedValue(true);
+    vi.mocked(claimAvailablePod).mockResolvedValue(mockPodA as any);
+    vi.mocked(releasePodById).mockResolvedValue(null);
+    vi.spyOn(global, "fetch").mockRejectedValue(new Error("fetch failed"));
+
+    const { claimPodAndGetFrontend } = await import("@/lib/pods/utils");
+
+    await expect(claimPodAndGetFrontend("swarm-1", "task-1")).rejects.toThrow();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("Rollback failed"));
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining("Released"));
+  });
+
+  it("getProcessList throws → releasePodById throws → logs release error", async () => {
+    const { claimAvailablePod, releasePodById } = await import("@/lib/pods/queries");
+    const { markPodAsUsed } = await import("@/lib/pods/karpenter");
+    const { db } = await import("@/lib/db");
+
+    vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm as any);
+    vi.mocked(markPodAsUsed).mockResolvedValue(true);
+    vi.mocked(claimAvailablePod).mockResolvedValue(mockPodA as any);
+    vi.mocked(releasePodById).mockRejectedValue(new Error("DB failure"));
+    vi.spyOn(global, "fetch").mockRejectedValue(new Error("fetch failed"));
+
+    const { claimPodAndGetFrontend } = await import("@/lib/pods/utils");
+
+    await expect(claimPodAndGetFrontend("swarm-1", "task-1")).rejects.toThrow();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to release pod"), expect.anything());
+  });
+});
