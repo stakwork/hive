@@ -308,7 +308,9 @@ export default function WhiteboardDetailPage() {
         saveInFlightRef.current = false;
         if (pendingSaveRef.current && excalidrawAPI) {
           pendingSaveRef.current = false;
-          const el = excalidrawAPI.getSceneElements();
+          // Include deleted so isDeleted flags reach mergeElementsByVersion's
+          // deletion sweep on a 409 retry.
+          const el = excalidrawAPI.getSceneElementsIncludingDeleted();
           const as = excalidrawAPI.getAppState();
           const fi = excalidrawAPI.getFiles();
           saveToDatabase(el, as, fi);
@@ -342,22 +344,24 @@ export default function WhiteboardDetailPage() {
       );
       knownElementIdsRef.current = currentIds;
 
-      if (newIds.size > 1 && excalidrawAPI) {
+      let effectiveElements: readonly ExcalidrawElement[] = elements;
+      const isBatchAdd = newIds.size > 1;
+      if (isBatchAdd && excalidrawAPI) {
         const normalized = normalizeElementStyles(elements, newIds);
         if (normalized) {
           programmaticUpdateCountRef.current++;
           excalidrawAPI.updateScene({
             elements: normalized as readonly ExcalidrawElement[],
           });
-          return;
+          effectiveElements = normalized;
         }
       }
 
       // Broadcast immediately for real-time collaboration (100ms throttle in hook)
-      broadcastElements(elements, appState);
+      broadcastElements(effectiveElements, appState);
 
       // Skip save if only appState changed (scroll, pan, zoom) — elements/files unchanged
-      const snapshot = computeSnapshot(elements, files);
+      const snapshot = computeSnapshot(effectiveElements, files);
       if (snapshot === lastSavedSnapshotRef.current) {
         if (onChangeSaveTimeoutRef.current) {
           clearTimeout(onChangeSaveTimeoutRef.current);
@@ -366,12 +370,23 @@ export default function WhiteboardDetailPage() {
         return;
       }
 
+      // Paste/batch-add: save immediately so items survive a quick tab close
+      // (the receiver never persists, so loss here loses it for everyone).
+      if (isBatchAdd) {
+        if (onChangeSaveTimeoutRef.current) {
+          clearTimeout(onChangeSaveTimeoutRef.current);
+          onChangeSaveTimeoutRef.current = null;
+        }
+        saveToDatabase(effectiveElements, appState, files);
+        return;
+      }
+
       // Debounced save as fallback for keyboard-only edits (typing, copy/paste, undo/redo)
       if (onChangeSaveTimeoutRef.current) {
         clearTimeout(onChangeSaveTimeoutRef.current);
       }
       onChangeSaveTimeoutRef.current = setTimeout(() => {
-        saveToDatabase(elements, appState, files);
+        saveToDatabase(effectiveElements, appState, files);
       }, 2500);
     },
     [broadcastElements, saveToDatabase, excalidrawAPI]
@@ -393,7 +408,9 @@ export default function WhiteboardDetailPage() {
 
     // Short debounce to batch rapid interactions
     saveTimeoutRef.current = setTimeout(() => {
-      const elements = excalidrawAPI.getSceneElements();
+      // Include deleted so a just-removed element is saved with isDeleted=true,
+      // letting the server / merge preserve the deletion across concurrent edits.
+      const elements = excalidrawAPI.getSceneElementsIncludingDeleted();
       const appState = excalidrawAPI.getAppState();
       const files = excalidrawAPI.getFiles();
       saveToDatabase(elements, appState, files);
@@ -486,7 +503,8 @@ export default function WhiteboardDetailPage() {
 
       if (hasPendingSave && excalidrawAPI) {
         try {
-          const elements = excalidrawAPI.getSceneElements();
+          // Include deleted so a pending deletion still reaches the server on unmount.
+          const elements = excalidrawAPI.getSceneElementsIncludingDeleted();
           const appState = excalidrawAPI.getAppState();
           const files = excalidrawAPI.getFiles();
           const data = {
