@@ -369,7 +369,7 @@ describe("GET /api/w/[slug]/pool/status - Pool Status Data", () => {
 
     const data = await expectSuccess(response);
     expect(data.success).toBe(true);
-    expect(data.data.status.runningVms).toBe(7); // 5 RUNNING/UNUSED + 2 RUNNING/USED
+    expect(data.data.status.runningVms).toBe(9); // 5 RUNNING/UNUSED + 2 RUNNING/USED + 1 PENDING + 1 STARTING
     expect(data.data.status.pendingVms).toBe(2); // 1 PENDING + 1 STARTING
     expect(data.data.status.failedVms).toBe(1); // 1 FAILED
     expect(data.data.status.usedVms).toBe(2); // 2 RUNNING/USED
