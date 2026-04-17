@@ -546,6 +546,82 @@ describe("executePodScalerRuns", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("suppresses utilisationTriggered when pendingVms > 0 (1 used / 1 running, 2 pending)", async () => {
+    // usedVms=1, runningVms=1, pendingVms=2 → ratio=100% but pendingVms>0 → no trigger
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count.mockResolvedValue(0); // overQueuedCount=0
+    mockedGetPoolStatus.mockResolvedValue({
+      usedVms: 1,
+      runningVms: 1,
+      unusedVms: 0,
+      pendingVms: 2,
+      failedVms: 0,
+      queuedCount: 0,
+      lastCheck: new Date().toISOString(),
+    });
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(0); // no scale-up fired
+    expect(fetchMock).not.toHaveBeenCalled();
+    const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
+    expect(logCalls.some((m) => m.includes("pendingVms=2"))).toBe(true);
+  });
+
+  it("fires utilisationTriggered when pendingVms === 0 and usedVms/runningVms >= threshold", async () => {
+    // usedVms=1, runningVms=1, pendingVms=0 → ratio=100% >= 80% → scale-up
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count.mockResolvedValue(0); // overQueuedCount=0
+    mockedGetPoolStatus.mockResolvedValue({
+      usedVms: 1,
+      runningVms: 1,
+      unusedVms: 0,
+      pendingVms: 0,
+      failedVms: 0,
+      queuedCount: 0,
+      lastCheck: new Date().toISOString(),
+    });
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(1);
+    // floor(2) + scaleUpBuffer(2) = 4
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 4, deployedPods: 4 },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ body: JSON.stringify({ minimum_vms: 4 }) })
+    );
+  });
+
+  it("does not scale up when pendingVms === 0 but ratio 75% < 80% threshold", async () => {
+    // usedVms=3, runningVms=4, pendingVms=0 → ratio=75% < 80% → no trigger
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count.mockResolvedValue(0); // overQueuedCount=0
+    mockedGetPoolStatus.mockResolvedValue({
+      usedVms: 3,
+      runningVms: 4,
+      unusedVms: 1,
+      pendingVms: 0,
+      failedVms: 0,
+      queuedCount: 0,
+      lastCheck: new Date().toISOString(),
+    });
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("reads podUtilisationThreshold from platformConfig override and triggers at 50%", async () => {
     // Threshold overridden to 50; 3/5 = 60% >= 50 → trigger
     mockedDb.platformConfig.findMany.mockResolvedValue([

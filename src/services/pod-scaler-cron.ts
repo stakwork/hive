@@ -122,12 +122,14 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
         },
       });
 
-      const { usedVms, runningVms } = await getPoolStatusFromPods(swarm.id, swarm.workspaceId);
+      const { usedVms, runningVms, pendingVms } = await getPoolStatusFromPods(swarm.id, swarm.workspaceId);
       const utilisationTriggered =
-        runningVms > 0 && (usedVms / runningVms) * 100 >= podUtilisationThreshold;
+        runningVms > 0 &&
+        pendingVms === 0 &&
+        (usedVms / runningVms) * 100 >= podUtilisationThreshold;
 
       console.log(
-        `${LOG_PREFIX} Swarm ${swarm.id} queue info: overQueuedCount=${overQueuedCount}, queueWaitMinutes=${queueWaitMinutes}, stalenessWindowDays=${stalenessWindowDays}, scaleUpBuffer=${scaleUpBuffer}, maxVmCeiling=${maxVmCeiling}, podUtilisationThreshold=${podUtilisationThreshold}, usedVms=${usedVms}, runningVms=${runningVms}, utilisationTriggered=${utilisationTriggered}`
+        `${LOG_PREFIX} Swarm ${swarm.id} queue info: overQueuedCount=${overQueuedCount}, queueWaitMinutes=${queueWaitMinutes}, stalenessWindowDays=${stalenessWindowDays}, scaleUpBuffer=${scaleUpBuffer}, maxVmCeiling=${maxVmCeiling}, podUtilisationThreshold=${podUtilisationThreshold}, usedVms=${usedVms}, runningVms=${runningVms}, pendingVms=${pendingVms}, utilisationTriggered=${utilisationTriggered}`
       );
 
       const floor = swarm.minimumPods ?? swarm.minimumVms;
