@@ -94,8 +94,8 @@ export async function getPoolStatusFromPods(
       : new Date().toISOString();
 
   return {
-    runningVms,
-    pendingVms,
+    runningVms: runningVms + pendingVms, // total intended capacity (RUNNING + PENDING/STARTING/CREATING)
+    pendingVms,                           // still exposed separately for guards
     failedVms,
     usedVms,
     unusedVms,
