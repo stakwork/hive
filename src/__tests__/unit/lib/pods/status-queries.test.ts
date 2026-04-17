@@ -69,7 +69,7 @@ describe("getPoolStatusFromPods", () => {
   });
 
   describe("pod aggregation", () => {
-    it("counts PENDING+USED pod in pendingVms only, not usedVms", async () => {
+    it("counts PENDING+USED pod in pendingVms only, not usedVms; runningVms includes pendingVms", async () => {
       mockPodFindMany.mockResolvedValue([
         makePod(PodStatus.PENDING, PodUsageStatus.USED),
       ] as any);
@@ -79,7 +79,7 @@ describe("getPoolStatusFromPods", () => {
 
       expect(result.pendingVms).toBe(1);
       expect(result.usedVms).toBe(0);
-      expect(result.runningVms).toBe(0);
+      expect(result.runningVms).toBe(1); // 0 RUNNING + 1 PENDING
       expect(result.unusedVms).toBe(0);
       expect(result.failedVms).toBe(0);
     });
@@ -114,7 +114,7 @@ describe("getPoolStatusFromPods", () => {
       expect(result.failedVms).toBe(0);
     });
 
-    it("usedVms + unusedVms equals runningVms for a mixed pod set", async () => {
+    it("usedVms + unusedVms equals RUNNING-only count; runningVms includes pendingVms for a mixed pod set", async () => {
       mockPodFindMany.mockResolvedValue([
         makePod(PodStatus.RUNNING, PodUsageStatus.USED),
         makePod(PodStatus.RUNNING, PodUsageStatus.USED),
@@ -126,15 +126,14 @@ describe("getPoolStatusFromPods", () => {
 
       const result = await getPoolStatusFromPods(SWARM_ID, WORKSPACE_ID);
 
-      expect(result.runningVms).toBe(3);
+      expect(result.runningVms).toBe(4); // 3 RUNNING + 1 PENDING
       expect(result.usedVms).toBe(2);
       expect(result.unusedVms).toBe(1);
-      expect(result.usedVms + result.unusedVms).toBe(result.runningVms);
       expect(result.pendingVms).toBe(1);
       expect(result.failedVms).toBe(1);
     });
 
-    it("counts running, pending, and failed pods correctly", async () => {
+    it("counts running, pending, and failed pods correctly; runningVms includes pending", async () => {
       const now = new Date();
       mockPodFindMany.mockResolvedValue([
         { status: PodStatus.RUNNING, usageStatus: PodUsageStatus.UNUSED, updatedAt: now },
@@ -146,12 +145,29 @@ describe("getPoolStatusFromPods", () => {
 
       const result = await getPoolStatusFromPods(SWARM_ID, WORKSPACE_ID);
 
-      expect(result.runningVms).toBe(2);
+      expect(result.runningVms).toBe(3); // 2 RUNNING + 1 PENDING
       expect(result.pendingVms).toBe(1);
       expect(result.failedVms).toBe(1);
       expect(result.usedVms).toBe(1);
       expect(result.unusedVms).toBe(1);
       expect(result.queuedCount).toBe(3);
+    });
+
+    it("includes STARTING pods in runningVms denominator alongside RUNNING pods", async () => {
+      const now = new Date();
+      mockPodFindMany.mockResolvedValue([
+        { status: PodStatus.RUNNING, usageStatus: PodUsageStatus.USED, updatedAt: now },
+        { status: PodStatus.STARTING, usageStatus: PodUsageStatus.UNUSED, updatedAt: now },
+        { status: PodStatus.STARTING, usageStatus: PodUsageStatus.UNUSED, updatedAt: now },
+      ] as any);
+      mockTaskCount.mockResolvedValue(0);
+
+      const result = await getPoolStatusFromPods(SWARM_ID, WORKSPACE_ID);
+
+      expect(result.runningVms).toBe(3); // 1 RUNNING + 2 STARTING
+      expect(result.usedVms).toBe(1);
+      expect(result.pendingVms).toBe(2);
+      expect(result.unusedVms).toBe(0);
     });
 
     it("counts only RUNNING pods as unusedVms (not PENDING + UNUSED)", async () => {
