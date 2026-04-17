@@ -40,7 +40,7 @@ describe("generateSecurePassword", () => {
     expect(/[A-Z]/.test(password)).toBe(true); // uppercase
     expect(/[a-z]/.test(password)).toBe(true); // lowercase
     expect(/[0-9]/.test(password)).toBe(true); // numbers
-    expect(/[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(password)).toBe(true); // special chars
+    expect(/[!@#%^*()_+\-=[\]{}:,.]/.test(password)).toBe(true); // special chars
   });
 
   test("includes all character types in longer passwords", () => {
@@ -50,7 +50,7 @@ describe("generateSecurePassword", () => {
     const hasLowercase = /[a-z]/.test(password);
     const hasUppercase = /[A-Z]/.test(password);
     const hasNumber = /[0-9]/.test(password);
-    const hasSpecial = /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(password);
+    const hasSpecial = /[!@#%^*()_+\-=[\]{}:,.]/.test(password);
 
     expect(hasLowercase).toBe(true);
     expect(hasUppercase).toBe(true);
@@ -59,10 +59,18 @@ describe("generateSecurePassword", () => {
   });
 
   test("only contains characters from the defined charset", () => {
-    const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+    const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#%^*()_+-=[]{}:,.";
     const password = generateSecurePassword(50);
     for (const char of password) {
       expect(charset.includes(char)).toBe(true);
+    }
+  });
+
+  test("never contains shell-unsafe characters", () => {
+    const shellUnsafe = /[$|&;<>`]/;
+    for (let i = 0; i < 200; i++) {
+      const password = generateSecurePassword();
+      expect(shellUnsafe.test(password)).toBe(false);
     }
   });
 
