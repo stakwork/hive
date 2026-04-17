@@ -57,6 +57,29 @@ export async function stopSwarmApi(
   );
 }
 
+export async function updateVanityAddressApi(
+  host: string,
+  vanityAddress: string,
+): Promise<{ success: boolean; message: string }> {
+  const url = `${config.SWARM_SUPER_ADMIN_URL}/api/super/update_swarm_vanity_address`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string,
+    },
+    body: JSON.stringify({ host, vanity_address: vanityAddress }),
+  });
+
+  const json = await response.json();
+
+  if (!response.ok) {
+    throw new Error(json?.message ?? `Request failed with status ${response.status}`);
+  }
+
+  return json;
+}
+
 export async function validateUriApi(client: HttpClient, domain: string): Promise<ValidateUriResponse> {
   return client.get<ValidateUriResponse>(`/api/super/check-domain?domain=${domain}`, {
     "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string,
