@@ -89,6 +89,9 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
       repositoryUrl: "https://github.com/testorg/testrepo",
     });
 
+    // Use a counter for deterministic, unique PR numbers (avoids random collision/deduplication)
+    let prCounter = 1;
+
     // Helper: create a task → message → PR artifact
     async function seedPRArtifact(status: string, ageHours: number) {
       const task = await createTestTask({
@@ -104,7 +107,7 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
           messageId: message.id,
           type: "PULL_REQUEST",
           content: {
-            url: `https://github.com/testorg/testrepo/pull/${Math.floor(Math.random() * 9999)}`,
+            url: `https://github.com/testorg/testrepo/pull/${prCounter++}`,
             repo: "testorg/testrepo",
             status,
             title: `Test PR (${status})`,
@@ -144,6 +147,7 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
       repositoryUrl: "https://github.com/testorg/bucketrepo",
     });
 
+    let bucketPrCounter = 1;
     async function seedDoneArtifact(ageHours: number) {
       const task = await createTestTask({ workspaceId: workspace.id, createdById: regularUser.id });
       const message = await createTestChatMessage({ taskId: task.id, message: "test" });
@@ -153,7 +157,7 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
           messageId: message.id,
           type: "PULL_REQUEST",
           content: {
-            url: `https://github.com/testorg/bucketrepo/pull/${Math.floor(Math.random() * 9999)}`,
+            url: `https://github.com/testorg/bucketrepo/pull/${bucketPrCounter++}`,
             repo: "testorg/bucketrepo",
             status: "DONE",
             title: "Test PR",
