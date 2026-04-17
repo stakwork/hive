@@ -690,101 +690,33 @@ describe('Task Page - Workflow Editor fixes', () => {
   });
 
   // ────────────────────────────────────────────────────────────────────────────
-  // handleRetry — workflow_editor mode branching
+  // handleRetry — unified PATCH path (all modes)
   // ────────────────────────────────────────────────────────────────────────────
-  describe('handleRetry — workflow_editor mode', () => {
-    // Minimal ChatRole enum matching the real one
-    enum ChatRole {
-      USER = 'USER',
-      ASSISTANT = 'ASSISTANT',
-    }
-
-    const baseContext = {
-      workflowId: 'wf-123',
-      workflowName: 'My Workflow',
-      workflowRefId: 'ref-abc',
-      workflowVersionId: undefined as string | undefined,
-    };
-
-    const messages = [
-      { role: ChatRole.ASSISTANT, message: 'Hello!' },
-      { role: ChatRole.USER, message: 'Make it faster' },
-    ];
-
-    /** Simulates the handleRetry logic extracted from page.tsx */
+  describe('handleRetry — unified PATCH path', () => {
+    /** Simulates the simplified handleRetry logic from page.tsx */
     async function runHandleRetry({
-      taskMode,
       currentTaskId,
       isRetrying,
-      currentWorkflowContext,
-      workflowEditorWebhook,
       fetchMock,
       setIsRetrying,
-      setWorkflowStatus,
-      setIsChainVisible,
-      setWorkflowEditorWebhook,
-      setProjectId,
       toastError,
     }: {
-      taskMode: string;
-      currentTaskId: string;
+      currentTaskId: string | null;
       isRetrying: boolean;
-      currentWorkflowContext: typeof baseContext | null;
-      workflowEditorWebhook: string | null;
       fetchMock: ReturnType<typeof vi.fn>;
       setIsRetrying: ReturnType<typeof vi.fn>;
-      setWorkflowStatus: ReturnType<typeof vi.fn>;
-      setIsChainVisible: ReturnType<typeof vi.fn>;
-      setWorkflowEditorWebhook: ReturnType<typeof vi.fn>;
-      setProjectId: ReturnType<typeof vi.fn>;
       toastError: ReturnType<typeof vi.fn>;
     }) {
       if (!currentTaskId || isRetrying) return;
       setIsRetrying(true);
 
       try {
-        if (taskMode === 'workflow_editor' && currentWorkflowContext) {
-          const lastUserMessage = [...messages].reverse().find((m) => m.role === ChatRole.USER);
-          const messageText = lastUserMessage?.message ?? '';
-
-          if (!messageText || !currentWorkflowContext.workflowRefId) {
-            toastError('Cannot retry: missing workflow context.');
-            return;
-          }
-
-          const webhookToUse = workflowEditorWebhook || undefined;
-
-          const res = await fetchMock('/api/workflow-editor', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              taskId: currentTaskId,
-              message: messageText,
-              workflowId: currentWorkflowContext.workflowId,
-              workflowName: currentWorkflowContext.workflowName,
-              workflowRefId: currentWorkflowContext.workflowRefId,
-              ...(currentWorkflowContext.workflowVersionId && {
-                workflowVersionId: currentWorkflowContext.workflowVersionId,
-              }),
-              ...(webhookToUse && { webhook: webhookToUse }),
-            }),
-          });
-
-          if (!res.ok) throw new Error('Retry failed');
-
-          const result = await res.json();
-          if (result.workflow?.webhook) setWorkflowEditorWebhook(result.workflow.webhook);
-          if (result.workflow?.project_id) setProjectId(result.workflow.project_id.toString());
-          setWorkflowStatus(WorkflowStatus.IN_PROGRESS);
-          setIsChainVisible(true);
-        } else {
-          const res = await fetchMock(`/api/tasks/${currentTaskId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ retryWorkflow: true }),
-          });
-          if (!res.ok) throw new Error('Retry failed');
-        }
+        const res = await fetchMock(`/api/tasks/${currentTaskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ retryWorkflow: true }),
+        });
+        if (!res.ok) throw new Error('Retry failed');
       } catch {
         toastError('Failed to retry task. Please try again.');
       } finally {
@@ -795,93 +727,50 @@ describe('Task Page - Workflow Editor fixes', () => {
     function makeSetters() {
       return {
         setIsRetrying: vi.fn(),
-        setWorkflowStatus: vi.fn(),
-        setIsChainVisible: vi.fn(),
-        setWorkflowEditorWebhook: vi.fn(),
-        setProjectId: vi.fn(),
         toastError: vi.fn(),
       };
     }
 
-    it('workflow_editor mode — success: calls POST /api/workflow-editor with correct payload', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ success: true, workflow: { webhook: 'wh', project_id: 99 } }),
-      });
+    it('workflow_editor mode: calls PATCH /api/tasks/[taskId] with { retryWorkflow: true }', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
       const setters = makeSetters();
 
       await runHandleRetry({
-        taskMode: 'workflow_editor',
         currentTaskId: 'task-1',
         isRetrying: false,
-        currentWorkflowContext: baseContext,
-        workflowEditorWebhook: null,
         fetchMock,
         ...setters,
       });
 
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/workflow-editor',
-        expect.objectContaining({ method: 'POST' }),
+        '/api/tasks/task-1',
+        expect.objectContaining({ method: 'PATCH' }),
       );
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-      expect(body.workflowId).toBe(baseContext.workflowId);
-      expect(body.workflowName).toBe(baseContext.workflowName);
-      expect(body.workflowRefId).toBe(baseContext.workflowRefId);
-      expect(body.message).toBe('Make it faster');
-      expect(setters.setWorkflowStatus).toHaveBeenCalledWith(WorkflowStatus.IN_PROGRESS);
-      expect(setters.setIsChainVisible).toHaveBeenCalledWith(true);
-      expect(setters.setWorkflowEditorWebhook).toHaveBeenCalledWith('wh');
-      expect(setters.setProjectId).toHaveBeenCalledWith('99');
-      expect(setters.setIsRetrying).toHaveBeenCalledWith(false);
+      expect(body).toEqual({ retryWorkflow: true });
     });
 
-    it('workflow_editor mode — API error: calls toast.error and always calls setIsRetrying(false)', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({ ok: false });
-      const setters = makeSetters();
-
-      await runHandleRetry({
-        taskMode: 'workflow_editor',
-        currentTaskId: 'task-1',
-        isRetrying: false,
-        currentWorkflowContext: baseContext,
-        workflowEditorWebhook: null,
-        fetchMock,
-        ...setters,
-      });
-
-      expect(setters.toastError).toHaveBeenCalledWith('Failed to retry task. Please try again.');
-      expect(setters.setIsRetrying).toHaveBeenCalledWith(false);
-    });
-
-    it('workflow_editor mode — missing workflowRefId: shows early toast and never calls fetch', async () => {
-      const fetchMock = vi.fn();
-      const setters = makeSetters();
-
-      await runHandleRetry({
-        taskMode: 'workflow_editor',
-        currentTaskId: 'task-1',
-        isRetrying: false,
-        currentWorkflowContext: { ...baseContext, workflowRefId: '' },
-        workflowEditorWebhook: null,
-        fetchMock,
-        ...setters,
-      });
-
-      expect(setters.toastError).toHaveBeenCalledWith('Cannot retry: missing workflow context.');
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it('non-workflow_editor mode: calls PATCH /api/tasks/[taskId] with { retryWorkflow: true }', async () => {
+    it('never calls POST /api/workflow-editor in any mode', async () => {
       const fetchMock = vi.fn().mockResolvedValue({ ok: true });
       const setters = makeSetters();
 
       await runHandleRetry({
-        taskMode: 'live',
+        currentTaskId: 'task-1',
+        isRetrying: false,
+        fetchMock,
+        ...setters,
+      });
+
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/workflow-editor', expect.anything());
+    });
+
+    it('non-workflow_editor mode: also calls PATCH /api/tasks/[taskId] with { retryWorkflow: true }', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      const setters = makeSetters();
+
+      await runHandleRetry({
         currentTaskId: 'task-42',
         isRetrying: false,
-        currentWorkflowContext: null,
-        workflowEditorWebhook: null,
         fetchMock,
         ...setters,
       });
@@ -892,49 +781,65 @@ describe('Task Page - Workflow Editor fixes', () => {
       );
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(body).toEqual({ retryWorkflow: true });
-      expect(fetchMock).not.toHaveBeenCalledWith('/api/workflow-editor', expect.anything());
     });
 
-    it('workflowEditorWebhook forwarded in payload when set', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ success: true, workflow: {} }),
-      });
+    it('API error: calls toast.error and always calls setIsRetrying(false)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false });
       const setters = makeSetters();
 
       await runHandleRetry({
-        taskMode: 'workflow_editor',
         currentTaskId: 'task-1',
         isRetrying: false,
-        currentWorkflowContext: baseContext,
-        workflowEditorWebhook: 'my-webhook-url',
         fetchMock,
         ...setters,
       });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-      expect(body.webhook).toBe('my-webhook-url');
+      expect(setters.toastError).toHaveBeenCalledWith('Failed to retry task. Please try again.');
+      expect(setters.setIsRetrying).toHaveBeenCalledWith(false);
     });
 
-    it('workflowVersionId forwarded in payload when set in context', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ success: true, workflow: {} }),
-      });
+    it('bails early when isRetrying is true', async () => {
+      const fetchMock = vi.fn();
       const setters = makeSetters();
 
       await runHandleRetry({
-        taskMode: 'workflow_editor',
         currentTaskId: 'task-1',
-        isRetrying: false,
-        currentWorkflowContext: { ...baseContext, workflowVersionId: 'v99' },
-        workflowEditorWebhook: null,
+        isRetrying: true,
         fetchMock,
         ...setters,
       });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-      expect(body.workflowVersionId).toBe('v99');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(setters.setIsRetrying).not.toHaveBeenCalled();
+    });
+
+    it('bails early when currentTaskId is null', async () => {
+      const fetchMock = vi.fn();
+      const setters = makeSetters();
+
+      await runHandleRetry({
+        currentTaskId: null,
+        isRetrying: false,
+        fetchMock,
+        ...setters,
+      });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(setters.setIsRetrying).not.toHaveBeenCalled();
+    });
+
+    it('always calls setIsRetrying(false) in finally — success path', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      const setters = makeSetters();
+
+      await runHandleRetry({
+        currentTaskId: 'task-1',
+        isRetrying: false,
+        fetchMock,
+        ...setters,
+      });
+
+      expect(setters.setIsRetrying).toHaveBeenCalledWith(false);
     });
   });
 });

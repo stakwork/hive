@@ -43,7 +43,7 @@ vi.mock("@/config/env", () => ({
 
 // ─── Subject ──────────────────────────────────────────────────────────────────
 
-import { retryWorkflowEditorTask } from "@/services/workflow-editor-retry";
+import { retryWorkflowEditorTask, executeWorkflowEditorRetry } from "@/services/workflow-editor-retry";
 import { db } from "@/lib/db";
 import { ChatRole, WorkflowStatus } from "@prisma/client";
 import { pusherServer } from "@/lib/pusher";
@@ -53,11 +53,10 @@ const mockedPusher = vi.mocked(pusherServer);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeTask(overrides: Record<string, unknown> = {}) {
+/** Full task shape returned by executeWorkflowEditorRetry's DB query */
+function makeFullTask(overrides: Record<string, unknown> = {}) {
   return {
     id: "task-1",
-    mode: "workflow_editor",
-    haltRetryAttempted: false,
     createdById: "user-1",
     workspaceId: "ws-1",
     workspace: {
@@ -98,6 +97,17 @@ function makeTask(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Minimal task shape returned by retryWorkflowEditorTask's guard query */
+function makeGuardTask(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "task-1",
+    mode: "workflow_editor",
+    haltRetryAttempted: false,
+    createdById: "user-1",
+    ...overrides,
+  };
+}
+
 function mockFetchSuccess(projectId = 777) {
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -113,9 +123,9 @@ function mockFetchNotOk() {
   }) as unknown as typeof fetch;
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+// ─── executeWorkflowEditorRetry tests ─────────────────────────────────────────
 
-describe("retryWorkflowEditorTask", () => {
+describe("executeWorkflowEditorRetry", () => {
   let originalFetch: typeof global.fetch;
 
   beforeEach(() => {
@@ -129,43 +139,25 @@ describe("retryWorkflowEditorTask", () => {
     global.fetch = originalFetch;
   });
 
-  test("returns false when mode !== 'workflow_editor'", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask({ mode: "live" })) as never;
-    const result = await retryWorkflowEditorTask("task-1");
-    expect(result).toBe(false);
-    expect(mockedDb.task.update).not.toHaveBeenCalled();
-  });
-
-  test("returns false when haltRetryAttempted is true", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(
-      makeTask({ haltRetryAttempted: true }),
-    ) as never;
-    const result = await retryWorkflowEditorTask("task-1");
-    expect(result).toBe(false);
-    expect(mockedDb.task.update).not.toHaveBeenCalled();
-  });
-
   test("returns false when task is not found", async () => {
     mockedDb.task.findFirst = vi.fn().mockResolvedValue(null) as never;
-    const result = await retryWorkflowEditorTask("task-1");
+    const result = await executeWorkflowEditorRetry("task-1", "user-1");
     expect(result).toBe(false);
   });
 
   test("returns false when no WORKFLOW artifact exists in chat history", async () => {
     mockedDb.task.findFirst = vi.fn().mockResolvedValue(
-      makeTask({
-        chatMessages: [
-          { role: ChatRole.USER, message: "hello", artifacts: [] },
-        ],
+      makeFullTask({
+        chatMessages: [{ role: ChatRole.USER, message: "hello", artifacts: [] }],
       }),
     ) as never;
-    const result = await retryWorkflowEditorTask("task-1");
+    const result = await executeWorkflowEditorRetry("task-1", "user-1");
     expect(result).toBe(false);
   });
 
   test("returns false when WORKFLOW artifact has no workflowRefId", async () => {
     mockedDb.task.findFirst = vi.fn().mockResolvedValue(
-      makeTask({
+      makeFullTask({
         chatMessages: [
           {
             role: ChatRole.ASSISTANT,
@@ -181,13 +173,13 @@ describe("retryWorkflowEditorTask", () => {
         ],
       }),
     ) as never;
-    const result = await retryWorkflowEditorTask("task-1");
+    const result = await executeWorkflowEditorRetry("task-1", "user-1");
     expect(result).toBe(false);
   });
 
   test("returns false when no USER message exists", async () => {
     mockedDb.task.findFirst = vi.fn().mockResolvedValue(
-      makeTask({
+      makeFullTask({
         chatMessages: [
           {
             role: ChatRole.ASSISTANT,
@@ -206,29 +198,12 @@ describe("retryWorkflowEditorTask", () => {
         ],
       }),
     ) as never;
-    const result = await retryWorkflowEditorTask("task-1");
+    const result = await executeWorkflowEditorRetry("task-1", "user-1");
     expect(result).toBe(false);
   });
 
-  test("sets haltRetryAttempted = true BEFORE calling Stakwork", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
-    mockFetchSuccess();
-
-    const updateCalls: unknown[] = [];
-    mockedDb.task.update = vi.fn().mockImplementation(async (args: unknown) => {
-      updateCalls.push(args);
-      return {};
-    }) as never;
-
-    await retryWorkflowEditorTask("task-1");
-
-    // First update (guard) must ONLY set haltRetryAttempted = true
-    const firstUpdate = updateCalls[0] as { data: Record<string, unknown> };
-    expect(firstUpdate.data).toEqual({ haltRetryAttempted: true });
-  });
-
-  test("returns true and resets haltRetryAttempted on Stakwork success", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+  test("returns true and updates task on Stakwork success", async () => {
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeFullTask()) as never;
     mockFetchSuccess(888);
 
     const updateCalls: unknown[] = [];
@@ -237,47 +212,40 @@ describe("retryWorkflowEditorTask", () => {
       return {};
     }) as never;
 
-    const result = await retryWorkflowEditorTask("task-1");
+    const result = await executeWorkflowEditorRetry("task-1", "user-1");
 
     expect(result).toBe(true);
-
-    // Second update must reset haltRetryAttempted and set IN_PROGRESS
-    const successUpdate = updateCalls[1] as { data: Record<string, unknown> };
-    expect(successUpdate.data.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
-    expect(successUpdate.data.haltRetryAttempted).toBe(false);
-    expect(successUpdate.data.stakworkProjectId).toBe(888);
+    const update = updateCalls[0] as { data: Record<string, unknown> };
+    expect(update.data.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
+    expect(update.data.haltRetryAttempted).toBe(false);
+    expect(update.data.stakworkProjectId).toBe(888);
   });
 
-  test("returns false and leaves haltRetryAttempted = true when Stakwork returns !ok", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+  test("returns false when Stakwork returns !ok", async () => {
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeFullTask()) as never;
     mockFetchNotOk();
 
-    const result = await retryWorkflowEditorTask("task-1");
+    const result = await executeWorkflowEditorRetry("task-1", "user-1");
 
     expect(result).toBe(false);
-    // Only the guard update should have been called (haltRetryAttempted = true)
-    expect(mockedDb.task.update).toHaveBeenCalledTimes(1);
-    const guardUpdate = (mockedDb.task.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      data: Record<string, unknown>;
-    };
-    expect(guardUpdate.data.haltRetryAttempted).toBe(true);
+    expect(mockedDb.task.update).not.toHaveBeenCalled();
   });
 
   test("returns false when Stakwork returns success:false", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeFullTask()) as never;
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ success: false }),
     }) as unknown as typeof fetch;
 
-    const result = await retryWorkflowEditorTask("task-1");
+    const result = await executeWorkflowEditorRetry("task-1", "user-1");
     expect(result).toBe(false);
-    expect(mockedDb.task.update).toHaveBeenCalledTimes(1);
+    expect(mockedDb.task.update).not.toHaveBeenCalled();
   });
 
   test("correctly picks LAST WORKFLOW artifact when multiple exist", async () => {
     mockedDb.task.findFirst = vi.fn().mockResolvedValue(
-      makeTask({
+      makeFullTask({
         chatMessages: [
           { role: ChatRole.USER, message: "first", artifacts: [] },
           {
@@ -295,7 +263,7 @@ describe("retryWorkflowEditorTask", () => {
               },
             ],
           },
-          { role: ChatRole.USER, message: "second", artifacts: [] },
+          { role: ChatRole.USER, message: "last user msg", artifacts: [] },
           {
             role: ChatRole.ASSISTANT,
             message: "",
@@ -311,19 +279,17 @@ describe("retryWorkflowEditorTask", () => {
               },
             ],
           },
-          { role: ChatRole.USER, message: "last user msg", artifacts: [] },
         ],
       }),
     ) as never;
     mockFetchSuccess();
 
-    await retryWorkflowEditorTask("task-1");
+    await executeWorkflowEditorRetry("task-1", "user-1");
 
     const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const body = JSON.parse(fetchCall[1].body);
     const vars = body.workflow_params.set_var.attributes.vars;
 
-    // Should use the LAST artifact: workflowId=20, workflowRefId="ref-second"
     expect(vars.workflow_id).toBe(20);
     expect(vars.workflow_ref_id).toBe("ref-second");
     expect(vars.workflow_version_id).toBe("v2");
@@ -331,29 +297,129 @@ describe("retryWorkflowEditorTask", () => {
   });
 
   test("creates assistant WORKFLOW artifact message on success", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeFullTask()) as never;
     mockFetchSuccess(999);
 
-    await retryWorkflowEditorTask("task-1");
+    await executeWorkflowEditorRetry("task-1", "user-1");
 
     expect(mockedDb.chatMessage.create).toHaveBeenCalledTimes(1);
-    const createArg = (mockedDb.chatMessage.create as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
-      data: Record<string, unknown>;
-    };
+    const createArg = (mockedDb.chatMessage.create as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { data: Record<string, unknown> };
     expect(createArg.data.taskId).toBe("task-1");
     expect(createArg.data.role).toBe(ChatRole.ASSISTANT);
   });
 
   test("triggers Pusher NEW_MESSAGE on success", async () => {
-    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeFullTask()) as never;
     mockFetchSuccess();
 
-    await retryWorkflowEditorTask("task-1");
+    await executeWorkflowEditorRetry("task-1", "user-1");
 
     expect(mockedPusher.trigger).toHaveBeenCalledWith(
       "task-task-1",
       "new-message",
       expect.anything(),
     );
+  });
+});
+
+// ─── retryWorkflowEditorTask tests ────────────────────────────────────────────
+
+describe("retryWorkflowEditorTask", () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    originalFetch = global.fetch;
+    mockedDb.task.update = vi.fn().mockResolvedValue({}) as never;
+    mockedDb.chatMessage.create = vi.fn().mockResolvedValue({ id: "msg-new" }) as never;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  test("returns false when mode !== 'workflow_editor'", async () => {
+    // Guard query returns non-workflow_editor mode
+    mockedDb.task.findFirst = vi.fn().mockResolvedValueOnce(
+      makeGuardTask({ mode: "live" }),
+    ) as never;
+    const result = await retryWorkflowEditorTask("task-1");
+    expect(result).toBe(false);
+    expect(mockedDb.task.update).not.toHaveBeenCalled();
+  });
+
+  test("returns false when haltRetryAttempted is true", async () => {
+    mockedDb.task.findFirst = vi.fn().mockResolvedValueOnce(
+      makeGuardTask({ haltRetryAttempted: true }),
+    ) as never;
+    const result = await retryWorkflowEditorTask("task-1");
+    expect(result).toBe(false);
+    expect(mockedDb.task.update).not.toHaveBeenCalled();
+  });
+
+  test("returns false when task is not found", async () => {
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue(null) as never;
+    const result = await retryWorkflowEditorTask("task-1");
+    expect(result).toBe(false);
+  });
+
+  test("sets haltRetryAttempted = true BEFORE delegating to executeWorkflowEditorRetry", async () => {
+    // First findFirst: guard query; second findFirst: executeWorkflowEditorRetry's query
+    mockedDb.task.findFirst = vi.fn()
+      .mockResolvedValueOnce(makeGuardTask())
+      .mockResolvedValueOnce(makeFullTask()) as never;
+    mockFetchSuccess();
+
+    const updateCalls: unknown[] = [];
+    mockedDb.task.update = vi.fn().mockImplementation(async (args: unknown) => {
+      updateCalls.push(args);
+      return {};
+    }) as never;
+
+    await retryWorkflowEditorTask("task-1");
+
+    // First update MUST be the guard: haltRetryAttempted = true
+    const guardUpdate = updateCalls[0] as { data: Record<string, unknown> };
+    expect(guardUpdate.data).toEqual({ haltRetryAttempted: true });
+  });
+
+  test("delegates to executeWorkflowEditorRetry and returns true on success", async () => {
+    mockedDb.task.findFirst = vi.fn()
+      .mockResolvedValueOnce(makeGuardTask())
+      .mockResolvedValueOnce(makeFullTask()) as never;
+    mockFetchSuccess(888);
+
+    const updateCalls: unknown[] = [];
+    mockedDb.task.update = vi.fn().mockImplementation(async (args: unknown) => {
+      updateCalls.push(args);
+      return {};
+    }) as never;
+
+    const result = await retryWorkflowEditorTask("task-1");
+
+    expect(result).toBe(true);
+    // Second update from executeWorkflowEditorRetry: IN_PROGRESS, haltRetryAttempted = false
+    const successUpdate = updateCalls[1] as { data: Record<string, unknown> };
+    expect(successUpdate.data.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
+    expect(successUpdate.data.haltRetryAttempted).toBe(false);
+    expect(successUpdate.data.stakworkProjectId).toBe(888);
+  });
+
+  test("returns false when executeWorkflowEditorRetry fails (Stakwork !ok)", async () => {
+    mockedDb.task.findFirst = vi.fn()
+      .mockResolvedValueOnce(makeGuardTask())
+      .mockResolvedValueOnce(makeFullTask()) as never;
+    mockFetchNotOk();
+
+    const result = await retryWorkflowEditorTask("task-1");
+
+    expect(result).toBe(false);
+    // Guard update called once; executeWorkflowEditorRetry finds !ok, no more updates
+    expect(mockedDb.task.update).toHaveBeenCalledTimes(1);
+    const guardUpdate = (mockedDb.task.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(guardUpdate.data.haltRetryAttempted).toBe(true);
   });
 });

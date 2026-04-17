@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { startTaskWorkflow } from "@/services/task-workflow";
+import { executeWorkflowEditorRetry } from "@/services/workflow-editor-retry";
 import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
 import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
@@ -95,6 +96,30 @@ export async function PATCH(
 
     // Retry workflow if requested (includes chat history)
     if (retryWorkflow) {
+      // workflow_editor mode recovers context from DB artifacts server-side
+      if (task.mode === "workflow_editor") {
+        const success = await executeWorkflowEditorRetry(taskId, userOrResponse.id);
+
+        const updatedTask = await db.task.findUnique({
+          where: { id: taskId },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            priority: true,
+            workflowStatus: true,
+            stakworkProjectId: true,
+            updatedAt: true,
+          },
+        });
+
+        return NextResponse.json(
+          { success, task: updatedTask },
+          { status: success ? 200 : 500 },
+        );
+      }
+
       const workflowResult = await startTaskWorkflow({
         taskId,
         userId: userOrResponse.id,
