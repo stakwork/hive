@@ -363,6 +363,39 @@ export async function getWorkspaceBySlug(
   });
 
   if (!membership) {
+    // Fall back to public viewer access if workspace is publicly viewable
+    if (workspace.isPublicViewable) {
+      return {
+        id: workspace.id,
+        name: workspace.name,
+        description: workspace.description,
+        slug: workspace.slug,
+        ownerId: workspace.ownerId,
+        createdAt: workspace.createdAt.toISOString(),
+        updatedAt: workspace.updatedAt.toISOString(),
+        userRole: WorkspaceRole.VIEWER,
+        owner: workspace.owner,
+        hasKey: false,
+        containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+        repositoryDraft: workspace.repositoryDraft || null,
+        swarmId: workspace.swarm?.id || null,
+        isCodeGraphSetup:
+          workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+        swarmStatus: workspace.swarm?.status || null,
+        ingestRefId: workspace.swarm?.ingestRefId || null,
+        poolState: workspace.swarm?.poolState || null,
+        podState: workspace.swarm?.podState || "NOT_STARTED",
+        swarmUrl: workspace.swarm?.swarmUrl || null,
+        logoKey: workspace.logoKey,
+        logoUrl: workspace.logoUrl,
+        nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+        workspaceKind: workspace.workspaceKind,
+        repositories: workspace.repositories?.map((repo) => ({
+          ...repo,
+          updatedAt: repo.updatedAt.toISOString(),
+        })) || [],
+      };
+    }
     return null; // User has no access
   }
 
@@ -377,6 +410,75 @@ export async function getWorkspaceBySlug(
     userRole: membership.role as WorkspaceRole,
     owner: workspace.owner,
     hasKey: hasValidApiKey(workspace.stakworkApiKey),
+    containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+    repositoryDraft: workspace.repositoryDraft || null,
+    swarmId: workspace.swarm?.id || null,
+    isCodeGraphSetup:
+      workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+    swarmStatus: workspace.swarm?.status || null,
+    ingestRefId: workspace.swarm?.ingestRefId || null,
+    poolState: workspace.swarm?.poolState || null,
+    podState: workspace.swarm?.podState || "NOT_STARTED",
+    swarmUrl: workspace.swarm?.swarmUrl || null,
+    logoKey: workspace.logoKey,
+    logoUrl: workspace.logoUrl,
+    nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+    workspaceKind: workspace.workspaceKind,
+    repositories: workspace.repositories?.map((repo) => ({
+      ...repo,
+      updatedAt: repo.updatedAt.toISOString(),
+    })) || [],
+  };
+}
+
+/**
+ * Gets a publicly viewable workspace by slug without requiring authentication.
+ * Returns workspace with VIEWER role only if `isPublicViewable` is true.
+ */
+export async function getPublicWorkspaceBySlug(
+  slug: string,
+): Promise<WorkspaceWithAccess | null> {
+  const workspace = await db.workspace.findFirst({
+    where: {
+      slug,
+      deleted: false,
+      isPublicViewable: true,
+    },
+    include: {
+      owner: {
+        select: { id: true, name: true, email: true },
+      },
+      swarm: {
+        select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, swarmUrl: true },
+      },
+      repositories: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+          status: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  return {
+    id: workspace.id,
+    name: workspace.name,
+    description: workspace.description,
+    slug: workspace.slug,
+    ownerId: workspace.ownerId,
+    createdAt: workspace.createdAt.toISOString(),
+    updatedAt: workspace.updatedAt.toISOString(),
+    userRole: WorkspaceRole.VIEWER,
+    owner: workspace.owner,
+    hasKey: false,
     containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
     repositoryDraft: workspace.repositoryDraft || null,
     swarmId: workspace.swarm?.id || null,
@@ -1299,6 +1401,7 @@ export async function updateWorkspace(
         name: data.name,
         slug: data.slug,
         description: data.description,
+        ...(data.isPublicViewable !== undefined && { isPublicViewable: data.isPublicViewable }),
         updatedAt: new Date(),
       },
     });

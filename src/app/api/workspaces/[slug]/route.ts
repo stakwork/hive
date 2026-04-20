@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import {
   getWorkspaceBySlug,
+  getPublicWorkspaceBySlug,
   deleteWorkspaceBySlug,
   updateWorkspace,
 } from "@/services/workspace";
@@ -12,11 +13,6 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-    const userId = userOrResponse.id;
-
     const { slug } = await params;
 
     if (!slug) {
@@ -26,15 +22,30 @@ export async function GET(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userId);
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
 
+    // Authenticated path
+    if (!(userOrResponse instanceof NextResponse)) {
+      const userId = userOrResponse.id;
+      const workspace = await getWorkspaceBySlug(slug, userId);
+      if (!workspace) {
+        return NextResponse.json(
+          { error: "Workspace not found or access denied" },
+          { status: 404 },
+        );
+      }
+      return NextResponse.json({ workspace });
+    }
+
+    // Unauthenticated — fall back to public workspace check
+    const workspace = await getPublicWorkspaceBySlug(slug);
     if (!workspace) {
       return NextResponse.json(
         { error: "Workspace not found or access denied" },
         { status: 404 },
       );
     }
-
     return NextResponse.json({ workspace });
   } catch (error) {
     console.error("Error fetching workspace by slug:", error);

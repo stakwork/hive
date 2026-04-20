@@ -20,10 +20,11 @@ interface DashboardLayoutProps {
       publicRepos?: number;
       followers?: number;
     };
-  };
+  } | null;
+  isPublicWorkspace?: boolean;
 }
 
-export function DashboardLayout({ children, user }: DashboardLayoutProps) {
+export function DashboardLayout({ children, user, isPublicWorkspace = false }: DashboardLayoutProps) {
   const { workspace, loading, error } = useWorkspace();
   const pathname = usePathname();
   const isFullscreenPage = pathname.includes("/task/") || pathname.includes("/plan/");
@@ -101,7 +102,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
 
   return (
     <div className="h-screen bg-background text-foreground flex flex-col">
-      <Sidebar user={user} />
+      <Sidebar user={user ?? {}} />
       <GlobalSearch />
 
       {/* Main content */}
