@@ -45,7 +45,7 @@ export function RepositorySettingsModal({
     docsEnabled: repository.docsEnabled ?? true,
     mocksEnabled: repository.mocksEnabled ?? false,
     embeddingsEnabled: repository.embeddingsEnabled ?? true,
-    triggerPodRepair: false,
+    triggerPodRepair: repository.triggerPodRepair ?? false,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -56,7 +56,7 @@ export function RepositorySettingsModal({
       docsEnabled: repository.docsEnabled ?? true,
       mocksEnabled: repository.mocksEnabled ?? false,
       embeddingsEnabled: repository.embeddingsEnabled ?? true,
-      triggerPodRepair: false,
+      triggerPodRepair: repository.triggerPodRepair ?? false,
     });
   }, [repository, isNewRepository]);
 
