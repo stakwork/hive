@@ -460,6 +460,19 @@ describe("GET /api/w/[slug]/pool/workspaces", () => {
       expect(data.data.workspaces).toEqual(mockBasicWorkspaces);
       expect(data.warning).toBeDefined();
     });
+
+    it("fallback path calls getBasicVMDataFromPods (which filters ws-pool-* pods at the query level)", async () => {
+      mockPoolManagerService.getPoolWorkspaces.mockRejectedValue(
+        new Error("Network timeout")
+      );
+
+      await GET(mockRequest, {
+        params: Promise.resolve({ slug: "test-workspace" }),
+      });
+
+      // Fallback must go through the filtered helper, not raw db.pod.findMany
+      expect(getBasicVMDataFromPods).toHaveBeenCalledWith(mockSwarm.id);
+    });
   });
 
   describe("Data Transformation", () => {
