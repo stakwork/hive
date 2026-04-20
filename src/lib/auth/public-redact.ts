@@ -16,9 +16,16 @@
 // User
 // -----------------------------------------------------------------------------
 
+/**
+ * Public-safe user shape. Includes `email: null` (rather than omitting it)
+ * so the returned object is structurally compatible with the common
+ * `{ id, name, email, image }` shape used across the codebase — this means
+ * downstream types don't need to branch on whether a user was redacted.
+ */
 export interface PublicUser {
   id: string;
   name: string | null;
+  email: null;
   image: string | null;
 }
 
@@ -30,6 +37,7 @@ export function toPublicUser<T extends { id: string; name?: string | null; image
   return {
     id: user.id,
     name: user.name ?? null,
+    email: null,
     image: user.image ?? null,
   };
 }

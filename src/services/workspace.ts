@@ -363,38 +363,12 @@ export async function getWorkspaceBySlug(
   });
 
   if (!membership) {
-    // Fall back to public viewer access if workspace is publicly viewable
+    // Not a member — fall back to public-viewer access (same sanitized
+    // shape we return for fully-unauthenticated visitors). This handles
+    // the case where a signed-in user visits a public workspace they
+    // don't belong to.
     if (workspace.isPublicViewable) {
-      return {
-        id: workspace.id,
-        name: workspace.name,
-        description: workspace.description,
-        slug: workspace.slug,
-        ownerId: workspace.ownerId,
-        createdAt: workspace.createdAt.toISOString(),
-        updatedAt: workspace.updatedAt.toISOString(),
-        userRole: WorkspaceRole.VIEWER,
-        owner: workspace.owner,
-        hasKey: false,
-        containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
-        repositoryDraft: workspace.repositoryDraft || null,
-        swarmId: workspace.swarm?.id || null,
-        isCodeGraphSetup:
-          workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
-        swarmStatus: workspace.swarm?.status || null,
-        ingestRefId: workspace.swarm?.ingestRefId || null,
-        poolState: workspace.swarm?.poolState || null,
-        podState: workspace.swarm?.podState || "NOT_STARTED",
-        swarmUrl: workspace.swarm?.swarmUrl || null,
-        logoKey: workspace.logoKey,
-        logoUrl: workspace.logoUrl,
-        nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
-        workspaceKind: workspace.workspaceKind,
-        repositories: workspace.repositories?.map((repo) => ({
-          ...repo,
-          updatedAt: repo.updatedAt.toISOString(),
-        })) || [],
-      };
+      return getPublicWorkspaceBySlug(slug);
     }
     return null; // User has no access
   }
@@ -446,10 +420,23 @@ export async function getPublicWorkspaceBySlug(
     },
     include: {
       owner: {
-        select: { id: true, name: true, email: true },
+        // Email is intentionally NOT selected — public viewers only see
+        // the owner's name + id (+ image if we add it).
+        select: { id: true, name: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, swarmUrl: true },
+        // swarmUrl is intentionally NOT selected — it's an infra URL that
+        // leaks internal network layout. We still compute `isCodeGraphSetup`
+        // from `status` and report `poolState` / `podState` so the UI can
+        // render the right empty states, but we don't expose the URL itself.
+        select: {
+          id: true,
+          status: true,
+          ingestRefId: true,
+          poolState: true,
+          podState: true,
+          containerFilesSetUp: true,
+        },
       },
       repositories: {
         select: {
@@ -477,7 +464,7 @@ export async function getPublicWorkspaceBySlug(
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
     userRole: WorkspaceRole.VIEWER,
-    owner: workspace.owner,
+    owner: { ...workspace.owner, email: null },
     hasKey: false,
     containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
     repositoryDraft: workspace.repositoryDraft || null,
@@ -488,7 +475,7 @@ export async function getPublicWorkspaceBySlug(
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
     podState: workspace.swarm?.podState || "NOT_STARTED",
-    swarmUrl: workspace.swarm?.swarmUrl || null,
+    swarmUrl: null, // never exposed to public viewers
     logoKey: workspace.logoKey,
     logoUrl: workspace.logoUrl,
     nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,

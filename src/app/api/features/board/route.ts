@@ -4,20 +4,27 @@ import { db } from "@/lib/db";
 import { FeatureStatus } from "@prisma/client";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import type { BoardFeature, BoardResponse } from "@/types/roadmap";
+import { resolveWorkspaceAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicUser } from "@/lib/auth/public-redact";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
 
-    const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     if (!workspaceId) {
       return NextResponse.json(
         { error: "workspaceId query parameter is required" },
         { status: 400 },
       );
+    }
+
+    const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
+    let redactForPublic = false;
+    if (userOrResponse instanceof NextResponse) {
+      const access = await resolveWorkspaceAccess(request, { workspaceId });
+      if (!access || access.kind !== "public-viewer") return userOrResponse;
+      redactForPublic = isPublicViewer(access);
     }
 
     // Status filter (optional, comma-separated)
@@ -134,6 +141,12 @@ export async function GET(request: NextRequest) {
               icon: systemUser.icon ?? null,
             };
           }
+        }
+
+        if (redactForPublic && assignee) {
+          // Preserve icon (used for system assignees) while stripping email.
+          const safe = toPublicUser(assignee);
+          assignee = safe ? { ...safe, email: null, icon: assignee.icon } : null;
         }
 
         return {

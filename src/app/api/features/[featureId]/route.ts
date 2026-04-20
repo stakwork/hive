@@ -6,6 +6,8 @@ import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { TaskStatus } from "@prisma/client";
 import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { resolveWorkspaceAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicUser } from "@/lib/auth/public-redact";
 
 const TASK_SELECT = {
   id: true,
@@ -79,8 +81,24 @@ export async function GET(
       where: { id: featureId },
       select: { workspaceId: true },
     });
-    const userOrResponse = await requireAuthOrApiToken(request, featureLookup?.workspaceId);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    if (!featureLookup) {
+      return NextResponse.json({ error: "Feature not found" }, { status: 404 });
+    }
+
+    // Try authenticated auth first; fall back to public-viewer access when
+    // the workspace is `isPublicViewable`.
+    const userOrResponse = await requireAuthOrApiToken(request, featureLookup.workspaceId);
+    let userId: string | null = null;
+    let redactForPublic = false;
+    if (userOrResponse instanceof NextResponse) {
+      const access = await resolveWorkspaceAccess(request, {
+        workspaceId: featureLookup.workspaceId,
+      });
+      if (!access || access.kind !== "public-viewer") return userOrResponse;
+      redactForPublic = isPublicViewer(access);
+    } else {
+      userId = userOrResponse.id;
+    }
 
     const { searchParams } = new URL(request.url);
     const sortBy = searchParams.get("sortBy") || "updatedAt";
@@ -97,14 +115,6 @@ export async function GET(
             name: true,
             slug: true,
             ownerId: true,
-            members: {
-              where: {
-                userId: userOrResponse.id,
-              },
-              select: {
-                role: true,
-              },
-            },
           },
         },
         assignee: {
@@ -182,24 +192,26 @@ export async function GET(
       );
     }
 
-    const isOwner = feature.workspace.ownerId === userOrResponse.id;
-    const isMember = feature.workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
+    // Access already validated above (either authenticated member or
+    // public-viewer on an isPublicViewable workspace). No further check
+    // needed here.
 
     const processTasks = async (tasks: typeof feature.phases[0]["tasks"]) => {
       return Promise.all(
         tasks.map(async (task) => {
-          const prArtifact = await extractPrArtifact(task, userOrResponse.id);
+          // Public viewers have no GitHub token — skip the live PR status
+          // refresh and use the stored artifact state.
+          const prArtifact = userId
+            ? await extractPrArtifact(task, userId)
+            : null;
           if (prArtifact?.content?.status === "DONE") {
             task.status = TaskStatus.DONE;
           }
           const { chatMessages: _, ...taskWithoutMessages } = task;
-          const assignee = task.systemAssigneeType && !task.assignee
+          const rawAssignee = task.systemAssigneeType && !task.assignee
             ? getSystemAssigneeUser(task.systemAssigneeType)
             : task.assignee;
+          const assignee = redactForPublic ? toPublicUser(rawAssignee) : rawAssignee;
           return { ...taskWithoutMessages, assignee, prArtifact };
         })
       );
@@ -207,6 +219,16 @@ export async function GET(
 
     const transformedFeature = {
       ...feature,
+      assignee: redactForPublic ? toPublicUser(feature.assignee) : feature.assignee,
+      createdBy: redactForPublic ? toPublicUser(feature.createdBy) : feature.createdBy,
+      updatedBy: redactForPublic ? toPublicUser(feature.updatedBy) : feature.updatedBy,
+      userStories: redactForPublic
+        ? feature.userStories.map((s) => ({
+            ...s,
+            createdBy: toPublicUser(s.createdBy),
+            updatedBy: toPublicUser(s.updatedBy),
+          }))
+        : feature.userStories,
       phases: await Promise.all(
         feature.phases.map(async (phase) => ({
           ...phase,

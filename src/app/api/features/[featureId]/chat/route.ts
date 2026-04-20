@@ -3,6 +3,8 @@ import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 import type { ContextTag, Artifact } from "@/lib/chat";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
+import { resolveWorkspaceAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicUser } from "@/lib/auth/public-redact";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -35,7 +37,14 @@ export async function GET(
     }
 
     const userOrResponse = await requireAuthOrApiToken(request, feature.workspaceId);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    let redactForPublic = false;
+    if (userOrResponse instanceof NextResponse) {
+      const access = await resolveWorkspaceAccess(request, {
+        workspaceId: feature.workspaceId,
+      });
+      if (!access || access.kind !== "public-viewer") return userOrResponse;
+      redactForPublic = isPublicViewer(access);
+    }
 
     const messages = await db.chatMessage.findMany({
       where: { featureId },
@@ -56,7 +65,9 @@ export async function GET(
 
     const clientMessages = messages.map((msg) => ({
       ...msg,
-      createdBy: msg.createdBy || undefined,
+      createdBy: redactForPublic
+        ? (toPublicUser(msg.createdBy) || undefined)
+        : (msg.createdBy || undefined),
       contextTags: JSON.parse(msg.contextTags as string) as ContextTag[],
       artifacts: msg.artifacts.map((artifact) => ({
         ...artifact,

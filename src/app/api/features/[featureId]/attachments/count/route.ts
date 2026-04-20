@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuthOrApiToken } from "@/lib/auth/api-token";
+import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 
 /**
  * GET /api/features/[featureId]/attachments/count
@@ -25,14 +26,17 @@ export async function GET(
       return NextResponse.json({ error: "Feature not found" }, { status: 404 });
     }
 
-    // Authenticate user or API token
+    // Authenticate user or API token; fall back to public-viewer on
+    // workspaces flagged `isPublicViewable`.
     const userOrResponse = await requireAuthOrApiToken(
       request,
       featureLookup.workspaceId
     );
-
     if (userOrResponse instanceof NextResponse) {
-      return userOrResponse;
+      const access = await resolveWorkspaceAccess(request, {
+        workspaceId: featureLookup.workspaceId,
+      });
+      if (!access || access.kind !== "public-viewer") return userOrResponse;
     }
 
     const count = await db.attachment.count({
