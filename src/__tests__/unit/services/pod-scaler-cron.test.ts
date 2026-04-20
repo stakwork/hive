@@ -382,6 +382,36 @@ describe("executePodScalerRuns", () => {
     );
   });
 
+  it("excludes tasks with HALTED/COMPLETED/IN_PROGRESS workflowStatus from todoCount", async () => {
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
+
+    await executePodScalerRuns();
+
+    const todoCall = mockedDb.task.count.mock.calls[0][0] as {
+      where: { workflowStatus: { notIn: string[] } };
+    };
+    expect(todoCall.where.workflowStatus).toEqual({ notIn: ["HALTED", "COMPLETED", "IN_PROGRESS"] });
+  });
+
+  it("excludes tasks with HALTED/COMPLETED/IN_PROGRESS workflowStatus from inProgressNoPodCount", async () => {
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
+
+    await executePodScalerRuns();
+
+    const inProgressCall = mockedDb.task.count.mock.calls[1][0] as {
+      where: { workflowStatus: { notIn: string[] } };
+    };
+    expect(inProgressCall.where.workflowStatus).toEqual({ notIn: ["HALTED", "COMPLETED", "IN_PROGRESS"] });
+  });
+
   it("excludes tasks with dependencies from overQueuedCount", async () => {
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
