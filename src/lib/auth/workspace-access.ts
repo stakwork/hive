@@ -9,6 +9,9 @@ import { WorkspaceRole } from "@/lib/auth/roles";
  * - `member`: authenticated user with a workspace membership.
  * - `public-viewer`: unauthenticated visitor on a workspace flagged as
  *   `isPublicViewable`. Has no userId — read-only access implied.
+ * - `unauthenticated`: request has no session and the workspace is not public.
+ * - `not-found`: workspace does not exist (authenticated request only).
+ * - `forbidden`: authenticated user is not a member of a private workspace.
  */
 export type WorkspaceAccess =
   | {
@@ -24,28 +27,20 @@ export type WorkspaceAccess =
       workspaceId: string;
       slug: string;
       role: typeof WorkspaceRole.VIEWER;
-    };
+    }
+  | { kind: "unauthenticated" }
+  | { kind: "not-found" }
+  | { kind: "forbidden" };
 
 export type WorkspaceLookup = { slug: string } | { workspaceId: string };
 
-/**
- * Resolves a request's access to a workspace.
- *
- * Flow:
- *   1. If the request has an authenticated middleware user, verify workspace
- *      membership and return `{ kind: "member", ... }`. The user's role is
- *      read from `WorkspaceMember`. Workspace owners get `OWNER` implicitly.
- *   2. Otherwise, if the workspace has `isPublicViewable: true`, return
- *      `{ kind: "public-viewer", role: VIEWER }`.
- *   3. Otherwise, return `null` (caller should respond 404).
- *
- * This helper is the single entry point for any API route that wants to
- * support both authenticated members and unauthenticated public viewers.
- */
 export async function resolveWorkspaceAccess(
   request: NextRequest,
   lookup: WorkspaceLookup,
-): Promise<WorkspaceAccess | null> {
+): Promise<WorkspaceAccess> {
+  const context = getMiddlewareContext(request);
+  const isAuthenticated = context.authStatus === "authenticated" && !!context.user;
+
   const workspace = await db.workspace.findFirst({
     where: {
       ...("slug" in lookup
@@ -61,14 +56,14 @@ export async function resolveWorkspaceAccess(
     },
   });
 
-  if (!workspace) return null;
+  if (!workspace) {
+    if (!isAuthenticated) return { kind: "unauthenticated" };
+    return { kind: "not-found" };
+  }
 
-  const context = getMiddlewareContext(request);
-
-  if (context.authStatus === "authenticated" && context.user) {
+  if (isAuthenticated && context.user) {
     const userId = context.user.id;
 
-    // Owner: full access without needing a membership row.
     if (workspace.ownerId === userId) {
       return {
         kind: "member",
@@ -98,8 +93,6 @@ export async function resolveWorkspaceAccess(
         role: membership.role as WorkspaceRole,
       };
     }
-
-    // Authenticated but not a member — fall through to public-viewer check.
   }
 
   if (workspace.isPublicViewable) {
@@ -112,57 +105,51 @@ export async function resolveWorkspaceAccess(
     };
   }
 
-  return null;
+  if (!isAuthenticated) return { kind: "unauthenticated" };
+  return { kind: "forbidden" };
 }
 
-/**
- * Convenience guard for read-only (GET) handlers. Returns the access object
- * if the caller may read, or a 404 NextResponse otherwise.
- *
- * Both authenticated members and public viewers are allowed.
- */
 export function requireReadAccess(
-  access: WorkspaceAccess | null,
-): WorkspaceAccess | NextResponse {
-  if (!access) {
+  access: WorkspaceAccess,
+): Extract<WorkspaceAccess, { kind: "member" | "public-viewer" }> | NextResponse {
+  if (access.kind === "unauthenticated") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (access.kind === "not-found") {
     return NextResponse.json(
       { error: "Workspace not found or access denied" },
       { status: 404 },
     );
+  }
+  if (access.kind === "forbidden") {
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
   }
   return access;
 }
 
-/**
- * Convenience guard for mutating handlers. Returns the access object if the
- * caller is a member (any role), or the appropriate error response otherwise.
- *
- * Public viewers are rejected with 401 so the UI can prompt sign-in. Missing
- * workspaces return 404.
- *
- * Role-based authorization (e.g. VIEWER cannot write) is left to the caller
- * — this helper just enforces "must be a real member, not a public viewer".
- */
 export function requireMemberAccess(
-  access: WorkspaceAccess | null,
+  access: WorkspaceAccess,
 ): Extract<WorkspaceAccess, { kind: "member" }> | NextResponse {
-  if (!access) {
+  if (access.kind === "unauthenticated") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (access.kind === "not-found") {
     return NextResponse.json(
       { error: "Workspace not found or access denied" },
       { status: 404 },
     );
   }
+  if (access.kind === "forbidden") {
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  }
   if (access.kind === "public-viewer") {
-    return NextResponse.json(
-      { error: "Sign in required" },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   }
   return access;
 }
 
 export function isPublicViewer(
-  access: WorkspaceAccess,
+  access: WorkspaceAccess | null | undefined,
 ): access is Extract<WorkspaceAccess, { kind: "public-viewer" }> {
-  return access.kind === "public-viewer";
+  return access?.kind === "public-viewer";
 }

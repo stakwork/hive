@@ -100,11 +100,10 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
   ];
 
   describe("Authentication", () => {
-    test("should return 404 for unauthenticated request on non-public workspace", async () => {
+    test("should return 401 for unauthenticated request on non-public workspace", async () => {
       // Route now supports unauthenticated access on `isPublicViewable`
       // workspaces. For a normal (non-public) workspace, unauthenticated
-      // callers get 404 (the same shape they'd get if the workspace did
-      // not exist at all — we don't leak existence).
+      // callers get 401 (Unauthorized).
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
 
       const request = new NextRequest(
@@ -117,8 +116,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       });
       const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data.error).toBe("Workspace not found or access denied");
+      expect(response.status).toBe(401);
+      expect(data.error).toBe("Unauthorized");
     });
 
     test("should return 404 if task does not exist", async () => {
@@ -201,7 +200,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
   });
 
   describe("Authorization", () => {
-    test("should return 404 if authenticated user is not a workspace member", async () => {
+    test("should return 403 if authenticated user is not a workspace member", async () => {
       // Workspace exists, user is NOT owner, no membership row, workspace is not public.
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.workspace.findFirst as Mock).mockResolvedValue({
@@ -221,10 +220,9 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       });
       const data = await response.json();
 
-      // Non-member on a private workspace → 404 (indistinguishable from
-      // "workspace does not exist" to avoid leaking existence).
-      expect(response.status).toBe(404);
-      expect(data.error).toBe("Workspace not found or access denied");
+      // Non-member on a private workspace → 403 (Access denied).
+      expect(response.status).toBe(403);
+      expect(data.error).toBe("Access denied");
       expect(db.chatMessage.findMany).not.toHaveBeenCalled();
     });
 
