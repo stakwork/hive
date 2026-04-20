@@ -1,5 +1,7 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { syncPoolManagerSettings } from "@/services/pool-manager/sync";
+import { getSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -12,6 +14,7 @@ const repositorySettingsSchema = z.object({
   docsEnabled: z.boolean().optional(),
   mocksEnabled: z.boolean().optional(),
   embeddingsEnabled: z.boolean().optional(),
+  triggerPodRepair: z.boolean().optional(),
 });
 
 export async function PATCH(
@@ -100,6 +103,9 @@ export async function PATCH(
 
     const settings = validationResult.data;
 
+    // Capture existing value to detect change
+    const previousTriggerPodRepair = repository.triggerPodRepair;
+
     // Update repository settings
     const updatedRepository = await db.repository.update({
       where: { id },
@@ -116,6 +122,9 @@ export async function PATCH(
         ...(settings.embeddingsEnabled !== undefined && {
           embeddingsEnabled: settings.embeddingsEnabled,
         }),
+        ...(settings.triggerPodRepair !== undefined && {
+          triggerPodRepair: settings.triggerPodRepair,
+        }),
       },
       select: {
         id: true,
@@ -126,8 +135,56 @@ export async function PATCH(
         docsEnabled: true,
         mocksEnabled: true,
         embeddingsEnabled: true,
+        triggerPodRepair: true,
       },
     });
+
+    // Best-effort pool manager sync when triggerPodRepair changes
+    const triggerPodRepairChanged =
+      settings.triggerPodRepair !== undefined &&
+      settings.triggerPodRepair !== previousTriggerPodRepair;
+
+    if (triggerPodRepairChanged) {
+      try {
+        const swarm = await db.swarm.findUnique({
+          where: { workspaceId: repository.workspace.id },
+          select: { id: true, poolName: true, poolCpu: true, poolMemory: true },
+        });
+
+        if (swarm?.poolName) {
+          const poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
+          if (poolApiKey) {
+            const syncResult = await syncPoolManagerSettings({
+              workspaceId: repository.workspace.id,
+              workspaceSlug: repository.workspace.slug,
+              swarmId: swarm.id,
+              poolApiKey,
+              poolCpu: swarm.poolCpu ?? undefined,
+              poolMemory: swarm.poolMemory ?? undefined,
+            });
+            if (!syncResult.success) {
+              console.error(
+                `[PoolManagerSync] Failed to sync after triggerPodRepair change for repo ${id}:`,
+                syncResult.error
+              );
+            }
+          } else {
+            console.warn(
+              `[PoolManagerSync] No pool API key found for workspace ${repository.workspace.id}, skipping sync`
+            );
+          }
+        } else {
+          console.warn(
+            `[PoolManagerSync] No active swarm/poolName for workspace ${repository.workspace.id}, skipping sync`
+          );
+        }
+      } catch (syncError) {
+        console.error(
+          `[PoolManagerSync] Unexpected error syncing pool manager for repo ${id}:`,
+          syncError
+        );
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -226,6 +283,7 @@ export async function GET(
         docsEnabled: repository.docsEnabled,
         mocksEnabled: repository.mocksEnabled,
         embeddingsEnabled: repository.embeddingsEnabled,
+        triggerPodRepair: repository.triggerPodRepair,
       },
     });
   } catch (error) {
