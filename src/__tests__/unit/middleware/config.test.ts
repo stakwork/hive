@@ -108,13 +108,15 @@ describe("resolveRouteAccess", () => {
   });
 
   describe("Protected Routes (Default)", () => {
-    it("treats top-level workspace slug as public, sub-routes as protected", () => {
-      // /w/* pattern matches only the top-level slug segment (e.g. /w/my-workspace).
-      // Auth is enforced at the layout level for that entry point.
-      // Deeper sub-routes (/w/slug/tasks) are still protected by default middleware.
+    it("treats workspace page routes as public at the middleware layer", () => {
+      // `/w/**` is middleware-public so page loads pass through without a
+      // session — including nested sub-paths like /w/slug/tasks. Route
+      // handlers / layouts still enforce their own access checks
+      // (authenticated users must be members; unauthenticated users only
+      // see workspaces flagged `isPublicViewable`).
       expect(resolveRouteAccess("/w/my-workspace")).toBe("public");
-      expect(resolveRouteAccess("/w/my-workspace/tasks")).toBe("protected");
-      expect(resolveRouteAccess("/w/my-workspace/recommendations")).toBe("protected");
+      expect(resolveRouteAccess("/w/my-workspace/tasks")).toBe("public");
+      expect(resolveRouteAccess("/w/my-workspace/recommendations")).toBe("public");
     });
 
     it("protects dashboard routes by default", () => {
@@ -142,7 +144,7 @@ describe("resolveRouteAccess", () => {
 
     it("handles trailing slashes for protected routes", () => {
       expect(resolveRouteAccess("/dashboard/")).toBe("protected");
-      // /w/<slug> (trailing slash stripped by normalizePath) matches /w/* → public
+      // `/w/**` is middleware-public; trailing slash is stripped by normalizePath.
       expect(resolveRouteAccess("/w/my-workspace/")).toBe("public");
     });
   });
@@ -231,10 +233,13 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/auth/verify-landing")).toBe("public");
     });
 
-    it("correctly classifies workspace routes", () => {
-      expect(resolveRouteAccess("/w/stakwork/tasks")).toBe("protected");
-      expect(resolveRouteAccess("/w/stakwork/recommendations")).toBe("protected");
-      expect(resolveRouteAccess("/w/stakwork/settings")).toBe("protected");
+    it("treats workspace page routes as middleware-public", () => {
+      // `/w/*` is middleware-public to support unauthenticated visitors on
+      // workspaces flagged `isPublicViewable`. Access is enforced in the
+      // workspace layout / API handlers, not at the middleware layer.
+      expect(resolveRouteAccess("/w/stakwork/tasks")).toBe("public");
+      expect(resolveRouteAccess("/w/stakwork/recommendations")).toBe("public");
+      expect(resolveRouteAccess("/w/stakwork/settings")).toBe("public");
     });
 
     it("correctly classifies webhook endpoints", () => {

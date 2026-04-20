@@ -89,6 +89,18 @@ function matchesPolicy(pathname: string, policy: RoutePolicy): boolean {
   }
 
   if (policy.strategy === "pattern") {
+    // A trailing `/*` in a pattern means "match the wildcard segment and
+    // any nested sub-path". Without this, `/w/*` only matches `/w/foo`
+    // but NOT `/w/foo/tasks`, which is not what callers expect when
+    // opening an entire section of the site.
+    if (policy.path.endsWith("/*")) {
+      const prefixRegex = patternToRegex(policy.path);
+      if (prefixRegex.test(pathname)) return true;
+      const nestedRegex = new RegExp(
+        prefixRegex.source.replace(/\$$/, "\\/.+$"),
+      );
+      return nestedRegex.test(pathname);
+    }
     const regex = patternToRegex(policy.path);
     return regex.test(pathname);
   }

@@ -44,6 +44,12 @@ interface WorkspaceContextType {
 
   // Helper methods
   hasAccess: boolean;
+  /**
+   * True when the current viewer is an unauthenticated visitor on a
+   * publicly-viewable workspace. All writes must be hidden / disabled
+   * in the UI when this is true.
+   */
+  isPublicViewer: boolean;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(
@@ -174,35 +180,34 @@ export function WorkspaceProvider({
     if (status === "authenticated") {
       refreshWorkspaces();
     } else if (status === "unauthenticated") {
-      // Only reset state if we're actually online - prevents clearing state during network issues
-      if (navigator.onLine) {
-        // Reset state when user logs out
-        setWorkspace(null);
-        setWorkspaces([]);
-        setError(null);
-        setCurrentLoadedSlug(""); // Reset loaded slug tracking
-      } else {
-        console.log("User appears unauthenticated but offline - preserving workspace state");
-      }
+      // Anonymous visitors get an empty workspace switcher — but we still
+      // want the current-workspace fetch below to run so public-viewable
+      // workspaces render.
+      setWorkspaces([]);
     }
   }, [status, refreshWorkspaces]);
 
-  // Load current workspace when URL slug changes
+  // Load current workspace when URL slug changes.
+  //
+  // IMPORTANT: this runs for BOTH authenticated and unauthenticated visitors.
+  // The API returns a public-viewer shape (role = VIEWER) for workspaces
+  // flagged `isPublicViewable` when called without auth. If the server
+  // returns 404, the slug isn't public and we show the not-found state.
   useEffect(() => {
+    // Wait for NextAuth status to resolve before deciding. Otherwise we'll
+    // fire a fetch as an "anon" user while the session is still loading
+    // and get a public-viewer response even though the user is logged in.
+    if (status === "loading") return;
+
     // Extract slug directly from pathname
     const matches = pathname.match(/^\/w\/([^\/]+)/);
     const currentSlug = matches?.[1] || initialSlug || "";
 
-    // If no slug and authenticated, clear everything
-    if (!currentSlug && status === "authenticated") {
+    // No slug in the URL — clear state.
+    if (!currentSlug) {
       setWorkspace(null);
       setCurrentLoadedSlug("");
       setLoading(false);
-      return;
-    }
-
-    // If not authenticated yet, just wait
-    if (status !== "authenticated") {
       return;
     }
 
@@ -273,6 +278,13 @@ export function WorkspaceProvider({
   // 2. We're still loading (don't show error until load completes)
   const hasAccess = !!workspace || effectiveLoading;
 
+  // An unauthenticated session paired with a loaded workspace can only mean
+  // the workspace was returned via the public-viewer fallback on the server.
+  // `useWorkspaceAccess` already resolves VIEWER role → canWrite=false, so
+  // most gating happens automatically; this flag is for places that need
+  // a clearer signal (e.g. "hide bug report", "disable chat input").
+  const isPublicViewer = status === "unauthenticated" && !!workspace;
+
   // Note: Permission checks have been moved to useWorkspaceAccess hook
 
   const contextValue: WorkspaceContextType = {
@@ -303,6 +315,7 @@ export function WorkspaceProvider({
 
     // Helper methods
     hasAccess,
+    isPublicViewer,
   };
 
   return (
