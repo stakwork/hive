@@ -14,6 +14,7 @@ export async function getBasicVMDataFromPods(
     where: {
       swarmId,
       deletedAt: null, // Filter out soft-deleted pods
+      podId: { not: { startsWith: "ws-pool-" } }, // exclude infrastructure pods
     },
     select: {
       podId: true,
