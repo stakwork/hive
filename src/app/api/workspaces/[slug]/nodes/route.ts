@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { getWorkspaceBySlug } from "@/services/workspace";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 
 export const runtime = "nodejs";
 
@@ -14,22 +12,12 @@ type RouteParams = { params: Promise<{ slug: string }> };
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const session = await getServerSession(authOptions);
     const { slug } = await params;
 
-    if (!session?.user) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ success: false, message: "Invalid user session" }, { status: 401 });
-    }
-
-    const workspace = await getWorkspaceBySlug(slug, userId);
-    if (!workspace) {
-      return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 404 });
-    }
+    const access = await resolveWorkspaceAccess(request, { slug });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
+    const workspaceId = ok.workspaceId;
 
     const { searchParams } = new URL(request.url);
     const nodeType = searchParams.get("node_type");
@@ -41,7 +29,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const swarm = await db.swarm.findUnique({
-      where: { workspaceId: workspace.id },
+      where: { workspaceId },
     });
 
     if (!swarm) {
@@ -55,7 +43,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (
       devMode ||
-      (workspace.id === process.env.STAKWORK_WORKSPACE_ID &&
+      (workspaceId === process.env.STAKWORK_WORKSPACE_ID &&
         process.env.STAKWORK_GRAPH_URL &&
         process.env.STAKWORK_GRAPH_API_KEY)
     ) {

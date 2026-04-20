@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { getS3Service } from "@/services/s3";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 
 async function getWhiteboardWithAccess(whiteboardId: string, userId: string) {
   const whiteboard = await db.whiteboard.findUnique({
@@ -74,16 +75,23 @@ export async function GET(
   { params }: { params: Promise<{ whiteboardId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { whiteboardId } = await params;
-    const { whiteboard, error, status } = await getWhiteboardWithAccess(whiteboardId, userOrResponse.id);
 
+    // Read is allowed for authenticated members AND public viewers on
+    // isPublicViewable workspaces. POST (above) still requires auth.
+    const whiteboard = await db.whiteboard.findUnique({
+      where: { id: whiteboardId },
+      select: { workspaceId: true, files: true },
+    });
     if (!whiteboard) {
-      return NextResponse.json({ error }, { status });
+      return NextResponse.json({ error: "Whiteboard not found" }, { status: 404 });
     }
+
+    const access = await resolveWorkspaceAccess(request, {
+      workspaceId: whiteboard.workspaceId,
+    });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
 
     const { searchParams } = new URL(request.url);
     const fileIdsParam = searchParams.get("fileIds");
