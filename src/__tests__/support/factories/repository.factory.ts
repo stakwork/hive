@@ -10,6 +10,7 @@ export interface CreateTestRepositoryOptions {
   status?: RepositoryStatus;
   testingFrameworkSetup?: boolean;
   playwrightSetup?: boolean;
+  triggerPodRepair?: boolean;
 }
 
 export async function createTestRepository(
@@ -26,6 +27,9 @@ export async function createTestRepository(
       status: options.status,
       testingFrameworkSetup: options.testingFrameworkSetup ?? false,
       playwrightSetup: options.playwrightSetup ?? false,
+      ...(options.triggerPodRepair !== undefined && {
+        triggerPodRepair: options.triggerPodRepair,
+      }),
     },
   });
 }
