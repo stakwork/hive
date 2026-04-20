@@ -104,23 +104,44 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
     swarmsProcessed++;
 
     try {
-      const overQueuedCount = await db.task.count({
-        where: {
-          workspaceId: swarm.workspaceId,
-          status: "TODO",
-          systemAssigneeType: "TASK_COORDINATOR",
-          deleted: false,
-          archived: false,
-          sourceType: { not: "USER_JOURNEY" },
-          dependsOnTaskIds: { isEmpty: true },
-          OR: [
-            { featureId: null },
-            { feature: { status: { not: "CANCELLED" } } },
-          ],
-          createdAt: { lt: queueWaitAgo },
-          updatedAt: { gte: stalenessAgo },
-        },
-      });
+      const [todoCount, inProgressNoPodCount] = await Promise.all([
+        db.task.count({
+          where: {
+            workspaceId: swarm.workspaceId,
+            status: "TODO",
+            systemAssigneeType: "TASK_COORDINATOR",
+            deleted: false,
+            archived: false,
+            sourceType: { not: "USER_JOURNEY" },
+            dependsOnTaskIds: { isEmpty: true },
+            OR: [
+              { featureId: null },
+              { feature: { status: { not: "CANCELLED" } } },
+            ],
+            createdAt: { lt: queueWaitAgo },
+            updatedAt: { gte: stalenessAgo },
+          },
+        }),
+        db.task.count({
+          where: {
+            workspaceId: swarm.workspaceId,
+            status: "IN_PROGRESS",
+            podId: null,
+            systemAssigneeType: "TASK_COORDINATOR",
+            deleted: false,
+            archived: false,
+            sourceType: { not: "USER_JOURNEY" },
+            dependsOnTaskIds: { isEmpty: true },
+            OR: [
+              { featureId: null },
+              { feature: { status: { not: "CANCELLED" } } },
+            ],
+            updatedAt: { gte: stalenessAgo },
+            // No createdAt filter — IN_PROGRESS with no pod is already past waiting
+          },
+        }),
+      ]);
+      const overQueuedCount = todoCount + inProgressNoPodCount;
 
       const { usedVms, runningVms, pendingVms } = await getPoolStatusFromPods(swarm.id, swarm.workspaceId);
       const utilisationTriggered =
@@ -129,7 +150,7 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
         (usedVms / runningVms) * 100 >= podUtilisationThreshold;
 
       console.log(
-        `${LOG_PREFIX} Swarm ${swarm.id} queue info: overQueuedCount=${overQueuedCount}, queueWaitMinutes=${queueWaitMinutes}, stalenessWindowDays=${stalenessWindowDays}, scaleUpBuffer=${scaleUpBuffer}, maxVmCeiling=${maxVmCeiling}, podUtilisationThreshold=${podUtilisationThreshold}, usedVms=${usedVms}, runningVms=${runningVms}, pendingVms=${pendingVms}, utilisationTriggered=${utilisationTriggered}`
+        `${LOG_PREFIX} Swarm ${swarm.id} queue info: overQueuedCount=${overQueuedCount} (todo=${todoCount}, inProgressNoPod=${inProgressNoPodCount}), queueWaitMinutes=${queueWaitMinutes}, stalenessWindowDays=${stalenessWindowDays}, scaleUpBuffer=${scaleUpBuffer}, maxVmCeiling=${maxVmCeiling}, podUtilisationThreshold=${podUtilisationThreshold}, usedVms=${usedVms}, runningVms=${runningVms}, pendingVms=${pendingVms}, utilisationTriggered=${utilisationTriggered}`
       );
 
       const floor = swarm.minimumPods ?? swarm.minimumVms;

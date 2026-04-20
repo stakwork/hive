@@ -112,10 +112,22 @@ const DEFAULT_SERVICES = [
 ];
 
 const DEFAULT_DOCKERFILE =
-  "FROM ghcr.io/stakwork/staklink-universal:latest\nRUN echo 'original'";
+  "FROM ghcr.io/stakwork/staklink-js:v0.1.2\nRUN echo 'original'";
 const UPDATED_DOCKERFILE = "FROM node:20-alpine\nRUN echo 'updated'";
 const DEFAULT_DOCKER_COMPOSE =
   "version: '3.8'\nservices:\n  app:\n    build: .";
+const UPDATED_DOCKER_COMPOSE =
+  "version: '3.9'\nservices:\n  app:\n    build: .\n    ports:\n      - '3000:3000'";
+const DEFAULT_DEVCONTAINER = JSON.stringify({
+  name: "dev",
+  image: "mcr.microsoft.com/devcontainers/base:ubuntu",
+  features: {},
+});
+const UPDATED_DEVCONTAINER = JSON.stringify({
+  name: "dev-updated",
+  image: "mcr.microsoft.com/devcontainers/base:ubuntu",
+  features: { "ghcr.io/devcontainers/features/node:1": {} },
+});
 
 // Helper to base64 encode strings
 const toBase64 = (str: string) => Buffer.from(str).toString("base64");
@@ -1033,6 +1045,177 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
         // Verify sync WAS called
         expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
+      });
+
+      describe("containerFiles — all 4 files trigger/suppress sync", () => {
+        // Re-seed swarm with all 4 container files so unchanged comparisons work
+        let allFilesTestData: { workspace: any; user: any; swarm: any };
+
+        beforeEach(async () => {
+          vi.mocked(syncPoolManagerSettings).mockClear();
+          vi.mocked(syncPoolManagerSettings).mockResolvedValue({ success: true });
+
+          const userId = generateUniqueId();
+          const workspaceSlug = generateUniqueSlug();
+
+          const user = await db.user.create({
+            data: {
+              id: userId,
+              email: `${userId}@example.com`,
+              name: "Test User",
+            },
+          });
+
+          const workspace = await db.workspace.create({
+            data: {
+              name: "All-Files Workspace",
+              slug: workspaceSlug,
+              ownerId: user.id,
+            },
+          });
+
+          await db.workspaceMember.create({
+            data: { userId: user.id, workspaceId: workspace.id, role: "OWNER" },
+          });
+
+          await db.repository.create({
+            data: {
+              workspaceId: workspace.id,
+              repositoryUrl: "https://github.com/test/repo",
+              name: "test-repo",
+              branch: "main",
+            },
+          });
+
+          const swarm = await db.swarm.create({
+            data: {
+              workspaceId: workspace.id,
+              name: "All-Files Swarm",
+              poolName: "all-files-pool",
+              poolApiKey: JSON.stringify(
+                encryptionService.encryptField("poolApiKey", "test-api-key"),
+              ),
+              services: JSON.stringify(DEFAULT_SERVICES),
+              containerFiles: {
+                "pm2.config.js": toBase64(DEFAULT_PM2_CONFIG),
+                Dockerfile: toBase64(DEFAULT_DOCKERFILE),
+                "docker-compose.yml": toBase64(DEFAULT_DOCKER_COMPOSE),
+                "devcontainer.json": toBase64(DEFAULT_DEVCONTAINER),
+              },
+              poolCpu: "2",
+              poolMemory: "4Gi",
+            },
+          });
+
+          allFilesTestData = { workspace, user, swarm };
+          getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+        });
+
+        // ── Dockerfile ──────────────────────────────────────────────────────────
+
+        it("triggers sync when Dockerfile content changes", async () => {
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${allFilesTestData.workspace.slug}/stakgraph`,
+            { containerFiles: { Dockerfile: toBase64(UPDATED_DOCKERFILE) } },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: allFilesTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
+        });
+
+        it("does NOT trigger sync when Dockerfile content is identical", async () => {
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${allFilesTestData.workspace.slug}/stakgraph`,
+            { containerFiles: { Dockerfile: toBase64(DEFAULT_DOCKERFILE) } },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: allFilesTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
+        });
+
+        // ── docker-compose.yml ───────────────────────────────────────────────────
+
+        it("triggers sync when docker-compose.yml content changes", async () => {
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${allFilesTestData.workspace.slug}/stakgraph`,
+            { containerFiles: { "docker-compose.yml": toBase64(UPDATED_DOCKER_COMPOSE) } },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: allFilesTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
+        });
+
+        it("does NOT trigger sync when docker-compose.yml content is identical", async () => {
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${allFilesTestData.workspace.slug}/stakgraph`,
+            { containerFiles: { "docker-compose.yml": toBase64(DEFAULT_DOCKER_COMPOSE) } },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: allFilesTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
+        });
+
+        // ── devcontainer.json ────────────────────────────────────────────────────
+
+        it("triggers sync when devcontainer.json content changes", async () => {
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${allFilesTestData.workspace.slug}/stakgraph`,
+            { containerFiles: { "devcontainer.json": toBase64(UPDATED_DEVCONTAINER) } },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: allFilesTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
+        });
+
+        it("does NOT trigger sync when devcontainer.json content is identical", async () => {
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${allFilesTestData.workspace.slug}/stakgraph`,
+            { containerFiles: { "devcontainer.json": toBase64(DEFAULT_DEVCONTAINER) } },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: allFilesTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
+        });
+
+        // ── pm2.config.js (regression guard) ────────────────────────────────────
+
+        it("does NOT trigger sync when pm2.config.js content is identical (regression guard)", async () => {
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${allFilesTestData.workspace.slug}/stakgraph`,
+            { containerFiles: { "pm2.config.js": toBase64(DEFAULT_PM2_CONFIG) } },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: allFilesTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
+        });
       });
     });
   });

@@ -95,7 +95,9 @@ describe("executePodScalerRuns", () => {
   it("scales up when over-queued tasks exist", async () => {
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(3); // 3 over-queued → targetVms = 2 + 3 + 2 = 7
+    mockedDb.task.count
+      .mockResolvedValueOnce(3)  // todoCount → 3 over-queued → targetVms = 2 + 3 + 2 = 7
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
 
     const result = await executePodScalerRuns();
 
@@ -131,7 +133,9 @@ describe("executePodScalerRuns", () => {
   it("scales down to minimumPods when no over-queued tasks and minimumVms differs", async () => {
     const swarm = makeSwarm({ minimumVms: 5, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0); // no over-queued → targetVms = minimumPods = 2
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount → no over-queued → targetVms = minimumPods = 2
 
     const result = await executePodScalerRuns();
 
@@ -157,7 +161,9 @@ describe("executePodScalerRuns", () => {
     // minimumVms=2, minimumPods=2, 0 over-queued → targetVms=2 (no change)
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
 
     const result = await executePodScalerRuns();
 
@@ -193,10 +199,12 @@ describe("executePodScalerRuns", () => {
     const swarm1 = makeSwarm({ id: "swarm-001", minimumVms: 2, minimumPods: 2 });
     const swarm2 = makeSwarm({ id: "swarm-002", minimumVms: 2, minimumPods: 2, workspaceId: "ws-002" });
     mockedDb.swarm.findMany.mockResolvedValue([swarm1, swarm2] as never);
-    // swarm1 → 3 over-queued (will trigger scale), swarm2 → 0 over-queued (no-op)
+    // swarm1 → todoCount=3, inProgressNoPodCount=0; swarm2 → todoCount=0, inProgressNoPodCount=0
     mockedDb.task.count
-      .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(0);
+      .mockResolvedValueOnce(3)  // swarm1 todoCount
+      .mockResolvedValueOnce(0)  // swarm1 inProgressNoPodCount
+      .mockResolvedValueOnce(0)  // swarm2 todoCount
+      .mockResolvedValueOnce(0); // swarm2 inProgressNoPodCount
 
     // Pool Manager throws for swarm1
     fetchMock.mockRejectedValueOnce(new Error("Network failure"));
@@ -218,7 +226,9 @@ describe("executePodScalerRuns", () => {
   it("falls back to minimumVms as floor when minimumPods is null", async () => {
     const swarm = makeSwarm({ minimumVms: 3, minimumPods: null });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(1); // 1 over-queued → targetVms = 3 + 1 + 2 = 6
+    mockedDb.task.count
+      .mockResolvedValueOnce(1)  // todoCount → 1 over-queued → targetVms = 3 + 1 + 2 = 6
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
 
     const result = await executePodScalerRuns();
 
@@ -236,7 +246,9 @@ describe("executePodScalerRuns", () => {
     // 50 over-queued tasks → targetVms = 2 + 50 + 2 = 54, capped at 20
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(50);
+    mockedDb.task.count
+      .mockResolvedValueOnce(50)  // todoCount
+      .mockResolvedValueOnce(0);  // inProgressNoPodCount
 
     const result = await executePodScalerRuns();
 
@@ -277,7 +289,9 @@ describe("executePodScalerRuns", () => {
 
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(50); // 2 + 50 + 2 = 54, capped at 10
+    mockedDb.task.count
+      .mockResolvedValueOnce(50)  // todoCount → 2 + 50 + 2 = 54, capped at 10
+      .mockResolvedValueOnce(0);  // inProgressNoPodCount
 
     const result = await executePodScalerRuns();
 
@@ -303,7 +317,8 @@ describe("executePodScalerRuns", () => {
     const swarm = makeSwarm({ minimumVms: 5, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
-      .mockResolvedValueOnce(0)  // overQueuedCount
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0)  // inProgressNoPodCount
       .mockResolvedValueOnce(1); // recentlyCompletedCount
 
     const result = await executePodScalerRuns();
@@ -323,7 +338,8 @@ describe("executePodScalerRuns", () => {
     const swarm = makeSwarm({ minimumVms: 5, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
-      .mockResolvedValueOnce(0)  // overQueuedCount
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0)  // inProgressNoPodCount
       .mockResolvedValueOnce(0); // recentlyCompletedCount
 
     const result = await executePodScalerRuns();
@@ -348,15 +364,16 @@ describe("executePodScalerRuns", () => {
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
-      .mockResolvedValueOnce(3)  // overQueuedCount → targetVms = 2+3+2=7
+      .mockResolvedValueOnce(3)  // todoCount → targetVms = 2+3+2=7
+      .mockResolvedValueOnce(0)  // inProgressNoPodCount
       .mockResolvedValueOnce(5); // recentlyCompletedCount (should NOT be called)
 
     const result = await executePodScalerRuns();
 
     expect(result.swarmsProcessed).toBe(1);
     expect(result.swarmsScaled).toBe(1);
-    // Only one task.count call (overQueuedCount), cooldown query skipped
-    expect(mockedDb.task.count).toHaveBeenCalledTimes(1);
+    // Two task.count calls (todoCount + inProgressNoPodCount), cooldown query skipped
+    expect(mockedDb.task.count).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://pool.example.com/api/pools/swarm-001/scale",
       expect.objectContaining({
@@ -369,7 +386,9 @@ describe("executePodScalerRuns", () => {
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     // Simulate all queued tasks being blocked (count returns 0 after filter)
-    mockedDb.task.count.mockResolvedValue(0);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
 
     const result = await executePodScalerRuns();
 
@@ -377,7 +396,7 @@ describe("executePodScalerRuns", () => {
     expect(result.swarmsScaled).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
 
-    // Assert the filter was included in the query
+    // Assert the filter was included in the query (first call = todoCount)
     const countCall = mockedDb.task.count.mock.calls[0][0] as {
       where: { dependsOnTaskIds: { isEmpty: boolean } };
     };
@@ -391,7 +410,9 @@ describe("executePodScalerRuns", () => {
 
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
 
     const before = Date.now();
     await executePodScalerRuns();
@@ -416,7 +437,9 @@ describe("executePodScalerRuns", () => {
     // 4/5 = 80% >= 80 threshold → utilisationTriggered; targetVms = floor(2) + scaleUpBuffer(2) = 4
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0); // overQueuedCount=0
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
       usedVms: 4,
       runningVms: 5,
@@ -447,7 +470,9 @@ describe("executePodScalerRuns", () => {
     // 3/5 = 60% < 80 threshold → no trigger; targetVms = floor = 2 (no change)
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
       usedVms: 3,
       runningVms: 5,
@@ -473,7 +498,9 @@ describe("executePodScalerRuns", () => {
     // overQueuedCount=3 → targetVms = 2+3+2 = 7; utilisation also triggered but over-queue wins
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValueOnce(3); // overQueuedCount
+    mockedDb.task.count
+      .mockResolvedValueOnce(3)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
       usedVms: 4,
       runningVms: 5,
@@ -501,7 +528,9 @@ describe("executePodScalerRuns", () => {
     // floor=19, scaleUpBuffer=2 → 19+2=21, capped at 20
     const swarm = makeSwarm({ minimumVms: 19, minimumPods: 19 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0); // overQueuedCount=0
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
       usedVms: 4,
       runningVms: 5,
@@ -528,7 +557,9 @@ describe("executePodScalerRuns", () => {
   it("no-op when runningVms === 0 (avoids false utilisation trigger)", async () => {
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
       usedVms: 0,
       runningVms: 0,
@@ -550,7 +581,9 @@ describe("executePodScalerRuns", () => {
     // usedVms=1, runningVms=1, pendingVms=2 → ratio=100% but pendingVms>0 → no trigger
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0); // overQueuedCount=0
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
       usedVms: 1,
       runningVms: 1,
@@ -574,7 +607,9 @@ describe("executePodScalerRuns", () => {
     // usedVms=1, runningVms=1, pendingVms=0 → ratio=100% >= 80% → scale-up
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0); // overQueuedCount=0
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
       usedVms: 1,
       runningVms: 1,
@@ -604,7 +639,9 @@ describe("executePodScalerRuns", () => {
     // usedVms=3, runningVms=4, pendingVms=0 → ratio=75% < 80% → no trigger
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0); // overQueuedCount=0
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
       usedVms: 3,
       runningVms: 4,
@@ -630,7 +667,9 @@ describe("executePodScalerRuns", () => {
 
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
-    mockedDb.task.count.mockResolvedValue(0);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
       usedVms: 3,
       runningVms: 5,
@@ -649,5 +688,86 @@ describe("executePodScalerRuns", () => {
       where: { id: "swarm-001" },
       data: { minimumVms: 4, deployedPods: 4 },
     });
+  });
+
+  // ── New IN_PROGRESS / no-pod demand signal tests ──────────────────────────
+
+  it("scales up when only IN_PROGRESS/no-pod tasks exist (todoCount=0, inProgressNoPodCount=2)", async () => {
+    // targetVms = floor(2) + 2 + scaleUpBuffer(2) = 6
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(2); // inProgressNoPodCount
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(1);
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 6, deployedPods: 6 },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://pool.example.com/api/pools/swarm-001/scale",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ minimum_vms: 6 }),
+      })
+    );
+  });
+
+  it("combined count drives correct targetVms (todoCount=2, inProgressNoPodCount=1 → overQueuedCount=3)", async () => {
+    // targetVms = floor(2) + 3 + scaleUpBuffer(2) = 7
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(2)  // todoCount
+      .mockResolvedValueOnce(1); // inProgressNoPodCount
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(1);
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 7, deployedPods: 7 },
+    });
+  });
+
+  it("IN_PROGRESS no-pod query does not include a createdAt filter", async () => {
+    const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
+
+    await executePodScalerRuns();
+
+    // Second call is the IN_PROGRESS / no-pod query
+    const inProgressCall = mockedDb.task.count.mock.calls[1][0] as {
+      where: Record<string, unknown>;
+    };
+    expect("createdAt" in inProgressCall.where).toBe(false);
+    expect(inProgressCall.where.status).toBe("IN_PROGRESS");
+    expect(inProgressCall.where.podId).toBeNull();
+  });
+
+  it("cooldown guard still fires when combined overQueuedCount is 0 (todoCount=0, inProgressNoPodCount=0)", async () => {
+    // minimumVms=5, minimumPods=2 → would scale down; recentlyCompletedCount=1 → skip
+    const swarm = makeSwarm({ minimumVms: 5, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0)  // inProgressNoPodCount
+      .mockResolvedValueOnce(1); // recentlyCompletedCount
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
+    expect(logCalls.some((m) => m.includes("Skipping scale-down"))).toBe(true);
   });
 });
