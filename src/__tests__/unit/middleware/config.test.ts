@@ -108,8 +108,11 @@ describe("resolveRouteAccess", () => {
   });
 
   describe("Protected Routes (Default)", () => {
-    it("protects workspace routes by default", () => {
-      expect(resolveRouteAccess("/w/my-workspace")).toBe("protected");
+    it("treats top-level workspace slug as public, sub-routes as protected", () => {
+      // /w/* pattern matches only the top-level slug segment (e.g. /w/my-workspace).
+      // Auth is enforced at the layout level for that entry point.
+      // Deeper sub-routes (/w/slug/tasks) are still protected by default middleware.
+      expect(resolveRouteAccess("/w/my-workspace")).toBe("public");
       expect(resolveRouteAccess("/w/my-workspace/tasks")).toBe("protected");
       expect(resolveRouteAccess("/w/my-workspace/recommendations")).toBe("protected");
     });
@@ -139,7 +142,8 @@ describe("resolveRouteAccess", () => {
 
     it("handles trailing slashes for protected routes", () => {
       expect(resolveRouteAccess("/dashboard/")).toBe("protected");
-      expect(resolveRouteAccess("/w/my-workspace/")).toBe("protected");
+      // /w/<slug> (trailing slash stripped by normalizePath) matches /w/* → public
+      expect(resolveRouteAccess("/w/my-workspace/")).toBe("public");
     });
   });
 
