@@ -5,6 +5,9 @@
  * Infrastructure-triggering fields:
  * - services (array/object)
  * - containerFiles["pm2.config.js"] (base64 string)
+ * - containerFiles["Dockerfile"] (string)
+ * - containerFiles["docker-compose.yml"] (string)
+ * - containerFiles["devcontainer.json"] (string)
  * - environmentVariables (array of name+value pairs)
  * - poolCpu (string)
  * - poolMemory (string)
@@ -60,6 +63,33 @@ export function hasInfrastructureChange(
     const incomingPm2 = incoming.containerFiles["pm2.config.js"];
     const existingPm2 = extractPm2Config(existing.containerFiles);
     if (incomingPm2 !== existingPm2) {
+      return true;
+    }
+  }
+
+  // Compare Dockerfile
+  if (incoming.containerFiles?.["Dockerfile"] !== undefined) {
+    const incomingDockerfile = incoming.containerFiles["Dockerfile"];
+    const existingDockerfile = extractContainerFile(existing.containerFiles, "Dockerfile");
+    if (incomingDockerfile !== existingDockerfile) {
+      return true;
+    }
+  }
+
+  // Compare docker-compose.yml
+  if (incoming.containerFiles?.["docker-compose.yml"] !== undefined) {
+    const incomingCompose = incoming.containerFiles["docker-compose.yml"];
+    const existingCompose = extractContainerFile(existing.containerFiles, "docker-compose.yml");
+    if (incomingCompose !== existingCompose) {
+      return true;
+    }
+  }
+
+  // Compare devcontainer.json
+  if (incoming.containerFiles?.["devcontainer.json"] !== undefined) {
+    const incomingDevcontainer = incoming.containerFiles["devcontainer.json"];
+    const existingDevcontainer = extractContainerFile(existing.containerFiles, "devcontainer.json");
+    if (incomingDevcontainer !== existingDevcontainer) {
       return true;
     }
   }
@@ -141,17 +171,24 @@ function normalizeToJson(value: unknown): string {
 }
 
 /**
- * Extract pm2.config.js from containerFiles (handles Record<string, string> or unknown types)
+ * Extract a named file from containerFiles (handles Record<string, string> or unknown types)
  */
-function extractPm2Config(containerFiles: unknown): string | undefined {
+function extractContainerFile(containerFiles: unknown, key: string): string | undefined {
   if (!containerFiles || typeof containerFiles !== "object") {
     return undefined;
   }
 
   const files = containerFiles as Record<string, unknown>;
-  const pm2Value = files["pm2.config.js"];
+  const value = files[key];
 
-  return typeof pm2Value === "string" ? pm2Value : undefined;
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Extract pm2.config.js from containerFiles (handles Record<string, string> or unknown types)
+ */
+function extractPm2Config(containerFiles: unknown): string | undefined {
+  return extractContainerFile(containerFiles, "pm2.config.js");
 }
 
 /**

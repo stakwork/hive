@@ -14,6 +14,7 @@ export async function getPoolStatusFromPods(
   const baseFilter = {
     swarmId,
     deletedAt: null,
+    podId: { not: { startsWith: "ws-pool-" } }, // exclude infrastructure pods
     status: {
       notIn: [PodStatus.TERMINATING, PodStatus.MOTHBALLED],
     },
