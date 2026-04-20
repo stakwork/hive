@@ -4,7 +4,7 @@ import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { pollAgentProgress } from "@/services/swarm/stakgraph-services";
-import { devcontainerJsonContent, extractEnvVarsFromPM2Config, parsePM2Content } from "@/utils/devContainerUtils";
+import { devcontainerJsonContent, dockerfileContent, extractEnvVarsFromPM2Config, parsePM2Content } from "@/utils/devContainerUtils";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
 import { NextRequest } from "next/server";
@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
                 // Prepare container files
                 const { repo } = parseGithubOwnerRepo(repo_url);
                 const containerFiles = {
-                  Dockerfile: Buffer.from("FROM ghcr.io/stakwork/staklink-universal:latest").toString("base64"),
+                  Dockerfile: Buffer.from(dockerfileContent()).toString("base64"),
                   "pm2.config.js": Buffer.from(agentFiles["pm2.config.js"] || "").toString("base64"),
                   "docker-compose.yml": Buffer.from(agentFiles["docker-compose.yml"] || "").toString("base64"),
                   "devcontainer.json": Buffer.from(devcontainerJsonContent(repo)).toString("base64"),
