@@ -10,7 +10,10 @@ import {
   generateUniqueId,
 } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
-import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
+import {
+  createTestWorkspace,
+  createTestMembership,
+} from "@/__tests__/support/factories/workspace.factory";
 import { createTestRepository } from "@/__tests__/support/factories/repository.factory";
 import { createTestSwarm } from "@/__tests__/support/factories/swarm.factory";
 
@@ -36,6 +39,12 @@ describe("Repository Settings API Integration Tests", () => {
     const workspace = await createTestWorkspace({
       name: `Test Workspace ${generateUniqueId()}`,
       ownerId: user.id,
+    });
+    // Route checks workspace members filtered by userId — must exist or returns 403
+    await createTestMembership({
+      workspaceId: workspace.id,
+      userId: user.id,
+      role: "OWNER",
     });
     const repository = await createTestRepository({
       workspaceId: workspace.id,
