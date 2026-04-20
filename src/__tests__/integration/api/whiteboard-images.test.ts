@@ -197,7 +197,9 @@ describe("Whiteboard Images API", () => {
   // ─── GET ─────────────────────────────────────────────────────────────────────
 
   describe("GET /api/whiteboards/[whiteboardId]/images", () => {
-    it("returns 401 when not authenticated", async () => {
+    // Public-readable endpoints resolve unauthenticated/non-member access
+    // to a unified 404 via `resolveWorkspaceAccess` rather than 401/403.
+    it("returns 404 when not authenticated", async () => {
       const { NextRequest } = await import("next/server");
       const request = new NextRequest(
         `http://localhost/api/whiteboards/${testWhiteboard.id}/images?fileIds=file-with-s3`,
@@ -206,10 +208,10 @@ describe("Whiteboard Images API", () => {
       const response = await GET(request, {
         params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(404);
     });
 
-    it("returns 403 for a non-member user", async () => {
+    it("returns 404 for a non-member user", async () => {
       const otherUser = await createTestUser();
       createdIds.users.push(otherUser.id);
 
@@ -221,7 +223,7 @@ describe("Whiteboard Images API", () => {
       const response = await GET(request, {
         params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(404);
     });
 
     it("returns presigned download URLs for fileIds with s3Key", async () => {

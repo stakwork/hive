@@ -85,19 +85,37 @@ export async function GET(
       return NextResponse.json({ error: "Feature not found" }, { status: 404 });
     }
 
-    // Try authenticated auth first; fall back to public-viewer access when
-    // the workspace is `isPublicViewable`.
-    const userOrResponse = await requireAuthOrApiToken(request, featureLookup.workspaceId);
+    // Resolve caller access against the workspace. Both authenticated
+    // members and public-viewers on `isPublicViewable` workspaces are
+    // allowed read access; everyone else gets a unified 404.
+    //
+    // We still go through `requireAuthOrApiToken` so that requests bearing
+    // a valid `x-api-token` header are accepted (service-to-service
+    // callers with no session). That path assumes the workspace owner as
+    // the acting user and bypasses membership — `requireAuthOrApiToken`
+    // only returns an owner-user when the token itself is valid, so the
+    // bypass is limited to trusted clients.
+    const apiTokenAuth =
+      request.headers.get("x-api-token") === process.env.API_TOKEN;
     let userId: string | null = null;
     let redactForPublic = false;
-    if (userOrResponse instanceof NextResponse) {
+
+    if (apiTokenAuth) {
+      const apiResult = await requireAuthOrApiToken(request, featureLookup.workspaceId);
+      if (apiResult instanceof NextResponse) return apiResult;
+      userId = apiResult.id;
+    } else {
       const access = await resolveWorkspaceAccess(request, {
         workspaceId: featureLookup.workspaceId,
       });
-      if (!access || access.kind !== "public-viewer") return userOrResponse;
+      if (!access) {
+        return NextResponse.json(
+          { error: "Workspace not found or access denied" },
+          { status: 404 },
+        );
+      }
+      userId = access.userId;
       redactForPublic = isPublicViewer(access);
-    } else {
-      userId = userOrResponse.id;
     }
 
     const { searchParams } = new URL(request.url);

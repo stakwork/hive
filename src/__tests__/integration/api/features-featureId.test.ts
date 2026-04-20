@@ -149,7 +149,11 @@ describe("Single Feature API - Integration Tests", () => {
       });
     });
 
-    test("requires authentication", async () => {
+    test("returns 404 for unauthenticated requests on non-public workspaces", async () => {
+      // The GET handler resolves access via `resolveWorkspaceAccess`, which
+      // returns a unified 404 whenever the caller isn't a member and the
+      // workspace isn't flagged `isPublicViewable`. We never distinguish
+      // "feature not found" from "not allowed" at this layer.
       const request = createGetRequest(
         "http://localhost:3000/api/features/test-feature-id"
       );
@@ -158,7 +162,7 @@ describe("Single Feature API - Integration Tests", () => {
         params: Promise.resolve({ featureId: "test-feature-id" }),
       });
 
-      await expectUnauthorized(response);
+      await expectError(response, "Feature not found", 404);
     });
 
     test("returns 404 for non-existent feature", async () => {
@@ -205,8 +209,9 @@ describe("Single Feature API - Integration Tests", () => {
         params: Promise.resolve({ featureId: feature.id }),
       });
 
-      // Assert
-      await expectError(response, "Access denied", 403);
+      // Assert: non-members on a non-public workspace get a unified 404
+      // from `resolveWorkspaceAccess`, not 403 "Access denied".
+      await expectError(response, "Workspace not found or access denied", 404);
     });
   });
 

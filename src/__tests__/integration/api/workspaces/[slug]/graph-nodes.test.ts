@@ -6,9 +6,7 @@ import {
   createTestWorkspace,
 } from "@/__tests__/support/fixtures";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  getMockedSession,
+  createAuthenticatedGetRequest,
   expectSuccess,
   generateUniqueSlug,
   createGetRequest,
@@ -40,9 +38,12 @@ describe("Graph Nodes API - Integration Tests", () => {
 
   describe("GET /api/workspaces/[slug]/graph/nodes", () => {
     describe("Authentication", () => {
-      test("returns 401 when no session exists", async () => {
-        getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
+      // The handler uses `resolveWorkspaceAccess`, which returns null for
+      // unauthenticated visitors on non-public workspaces. That null is
+      // surfaced as a unified 404 "Workspace not found or access denied"
+      // rather than 401 — we deliberately avoid revealing whether the
+      // workspace exists when the caller isn't allowed to see it.
+      test("returns 404 when no session exists", async () => {
         const request = createGetRequest(
           "http://localhost:3000/api/workspaces/test-slug/graph/nodes"
         );
@@ -51,44 +52,17 @@ describe("Graph Nodes API - Integration Tests", () => {
           params: Promise.resolve({ slug: "test-slug" }),
         });
 
-        expect(response.status).toBe(401);
+        expect(response.status).toBe(404);
         const data = await response.json();
-        expect(data.success).toBe(false);
-        expect(data.message).toBe("Unauthorized");
-      });
-
-      test("returns 401 when userId is missing from session", async () => {
-        const invalidSession = {
-          user: { email: "test@example.com" },
-          expires: new Date(Date.now() + 86400000).toISOString(),
-        };
-
-        getMockedSession().mockResolvedValue(invalidSession);
-
-        const request = createGetRequest(
-          "http://localhost:3000/api/workspaces/test-slug/graph/nodes"
-        );
-
-        const response = await GET(request, {
-          params: Promise.resolve({ slug: "test-slug" }),
-        });
-
-        expect(response.status).toBe(401);
-        const data = await response.json();
-        expect(data.success).toBe(false);
-        expect(data.message).toBe("Invalid user session");
+        expect(data.error).toBe("Workspace not found or access denied");
       });
     });
 
     describe("Workspace Access Control", () => {
       test("returns 404 when workspace does not exist", async () => {
         const user = await createTestUser();
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            "http://localhost:3000/api/workspaces/nonexistent-slug/graph/nodes"
-          );
+          const request = createAuthenticatedGetRequest("http://localhost:3000/api/workspaces/nonexistent-slug/graph/nodes", user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: "nonexistent-slug" }),
@@ -96,8 +70,7 @@ describe("Graph Nodes API - Integration Tests", () => {
 
           expect(response.status).toBe(404);
           const data = await response.json();
-          expect(data.success).toBe(false);
-          expect(data.message).toContain("Workspace not found or access denied");
+          expect(data.error).toContain("Workspace not found or access denied");
         } finally {
           await db.user.delete({ where: { id: user.id } });
         }
@@ -108,12 +81,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         const nonMember = await createTestUser({ email: "nonmember@example.com" });
         const workspace = await createTestWorkspace({ ownerId: owner.id });
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, nonMember);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -121,8 +90,7 @@ describe("Graph Nodes API - Integration Tests", () => {
 
           expect(response.status).toBe(404);
           const data = await response.json();
-          expect(data.success).toBe(false);
-          expect(data.message).toContain("Workspace not found or access denied");
+          expect(data.error).toContain("Workspace not found or access denied");
         } finally {
           await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
           await db.workspace.delete({ where: { id: workspace.id } });
@@ -139,12 +107,8 @@ describe("Graph Nodes API - Integration Tests", () => {
           data: { deleted: true, deletedAt: new Date() },
         });
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -152,8 +116,7 @@ describe("Graph Nodes API - Integration Tests", () => {
 
           expect(response.status).toBe(404);
           const data = await response.json();
-          expect(data.success).toBe(false);
-          expect(data.message).toContain("Workspace not found or access denied");
+          expect(data.error).toContain("Workspace not found or access denied");
         } finally {
           await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
           await db.workspace.delete({ where: { id: workspace.id } });
@@ -167,12 +130,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         const user = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: user.id });
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -204,12 +163,8 @@ describe("Graph Nodes API - Integration Tests", () => {
           },
         });
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -240,12 +195,8 @@ describe("Graph Nodes API - Integration Tests", () => {
           },
         });
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -292,13 +243,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { node_type: "file" }
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { node_type: "file" });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -345,13 +291,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { ref_ids: "node1,node2" }
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { ref_ids: "node1,node2" });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -392,12 +333,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -441,13 +378,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { node_type: JSON.stringify(["file", "function"]) }
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { node_type: JSON.stringify(["file", "function"]) });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -497,12 +429,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -544,12 +472,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -588,12 +512,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -645,12 +565,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -699,12 +615,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -746,13 +658,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { noCache: "true" }
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { noCache: "true" });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -792,12 +699,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user);
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -839,14 +742,9 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
           const testDate = "2024-01-01T00:00:00Z";
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { date: testDate }
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { date: testDate });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -891,13 +789,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { date: testDate }
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { date: testDate });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -940,18 +833,13 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { 
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { 
               node_type: "file",
               date: "2024-01-01T00:00:00Z",
               limit: "50",
               noCache: "true"
-            }
-          );
+            });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -992,16 +880,11 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { 
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { 
               node_type: JSON.stringify(["file", "function"]),
               ref_ids: "node1,node2"
-            }
-          );
+            });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -1044,13 +927,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { limit: "invalid" }
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { limit: "invalid" });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -1093,13 +971,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { node_type: JSON.stringify([]) }
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { node_type: JSON.stringify([]) });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -1140,13 +1013,8 @@ describe("Graph Nodes API - Integration Tests", () => {
         });
         global.fetch = mockFetch;
 
-        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
         try {
-          const request = createGetRequest(
-            `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`,
-            { date: "invalid-date" }
-          );
+          const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, user, { date: "invalid-date" });
 
           const response = await GET(request, {
             params: Promise.resolve({ slug: workspace.slug }),
@@ -1208,12 +1076,8 @@ describe("Graph Nodes API - Integration Tests", () => {
           global.fetch = mockFetch;
 
           const testUser = role === "OWNER" ? owner : member;
-          getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
-
           try {
-            const request = createGetRequest(
-              `http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`
-            );
+            const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/graph/nodes`, testUser);
 
             const response = await GET(request, {
               params: Promise.resolve({ slug: workspace.slug }),
@@ -1225,8 +1089,7 @@ describe("Graph Nodes API - Integration Tests", () => {
             } else {
               expect(response.status).toBe(404);
           const data = await response.json();
-          expect(data.success).toBe(false);
-          expect(data.message).toContain("Workspace not found or access denied");
+          expect(data.error).toContain("Workspace not found or access denied");
             }
           } finally {
             await db.swarm.deleteMany({ where: { workspaceId: workspace.id } });

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { WorkspaceRole } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
 import { generateUniqueId } from "@/__tests__/support/helpers";
+import { addMiddlewareHeaders } from "@/__tests__/support/helpers/request-builders";
 
 const encryptionService = new EncryptionService();
 
@@ -55,7 +56,10 @@ describe("GET /api/swarm/jarvis/nodes", () => {
   let testWorkspace: { id: string; slug: string };
   let testSwarm: { id: string; name: string; swarmApiKey: string; swarmUrl: string };
 
-  // Helper to create authenticated GET request
+  // Helper to create authenticated GET request. The route uses
+  // `resolveWorkspaceAccess` which reads from middleware auth headers —
+  // we stamp those headers onto the outbound request to simulate what
+  // the global middleware produces for a signed-in caller.
   const createAuthenticatedGetRequest = async (
     userId: string,
     workspaceId: string
@@ -63,30 +67,23 @@ describe("GET /api/swarm/jarvis/nodes", () => {
     const { GET } = await import("@/app/api/swarm/jarvis/nodes/route");
     const url = `http://localhost:3000/api/swarm/jarvis/nodes?id=${workspaceId}`;
 
-    // Mock NextAuth session
-    vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: userId, email: testUser.email, name: testUser.name },
-      expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    });
-
-    const request = new NextRequest(url, {
-      method: "GET",
+    const baseRequest = new NextRequest(url, { method: "GET" });
+    const request = addMiddlewareHeaders(baseRequest, {
+      id: userId,
+      email: testUser.email,
+      name: testUser.name,
     });
 
     return GET(request as any);
   };
 
-  // Helper to create unauthenticated GET request
+  // Helper to create unauthenticated GET request (no middleware headers —
+  // simulating a request that bypassed / was rejected by the middleware).
   const createUnauthenticatedGetRequest = async (workspaceId: string) => {
     const { GET } = await import("@/app/api/swarm/jarvis/nodes/route");
     const url = `http://localhost:3000/api/swarm/jarvis/nodes?id=${workspaceId}`;
 
-    // Mock no session
-    vi.mocked(getServerSession).mockResolvedValue(null);
-
-    const request = new NextRequest(url, {
-      method: "GET",
-    });
+    const request = new NextRequest(url, { method: "GET" });
 
     return GET(request as any);
   };
@@ -156,35 +153,16 @@ describe("GET /api/swarm/jarvis/nodes", () => {
   });
 
   describe("Authentication", () => {
-    test("returns 401 when user is not authenticated", async () => {
+    // The route now resolves access via `resolveWorkspaceAccess`, which
+    // returns a unified 404 whenever the caller isn't allowed to read the
+    // workspace — we don't emit a distinct 401 because doing so would
+    // reveal workspace existence to anonymous probes.
+    test("returns 404 when user is not authenticated on a non-public workspace", async () => {
       const response = await createUnauthenticatedGetRequest(testWorkspace.id);
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(404);
       const data = await response.json();
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Unauthorized");
-    });
-
-    test("returns 401 when session is missing user id", async () => {
-      const { GET } = await import("@/app/api/swarm/jarvis/nodes/route");
-      const url = `http://localhost:3000/api/swarm/jarvis/nodes?id=${testWorkspace.id}`;
-
-      // Mock session without user id
-      vi.mocked(getServerSession).mockResolvedValue({
-        user: { email: testUser.email },
-        expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      } as any);
-
-      const request = new NextRequest(url, {
-        method: "GET",
-      });
-
-      const response = await GET(request as any);
-
-      expect(response.status).toBe(401);
-      const data = await response.json();
-      expect(data.success).toBe(false);
-      expect(data.message).toBe("Unauthorized");
+      expect(data.error).toBe("Workspace not found or access denied");
     });
   });
 
@@ -364,12 +342,12 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       const customEndpoint = "/api/custom_graph";
       const url = `http://localhost:3000/api/swarm/jarvis/nodes?id=${testWorkspace.id}&endpoint=${encodeURIComponent(customEndpoint)}`;
 
-      vi.mocked(getServerSession).mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email, name: testUser.name },
-        expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      const baseRequest = new NextRequest(url, { method: "GET" });
+      const request = addMiddlewareHeaders(baseRequest, {
+        id: testUser.id,
+        email: testUser.email,
+        name: testUser.name,
       });
-
-      const request = new NextRequest(url, { method: "GET" });
       await GET(request as any);
 
       expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith(
@@ -410,12 +388,12 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       const { GET } = await import("@/app/api/swarm/jarvis/nodes/route");
       const url = `http://localhost:3000/api/swarm/jarvis/nodes?id=${testWorkspace.id}&node_type=Feature`;
 
-      vi.mocked(getServerSession).mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email, name: testUser.name },
-        expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      const baseRequest = new NextRequest(url, { method: "GET" });
+      const request = addMiddlewareHeaders(baseRequest, {
+        id: testUser.id,
+        email: testUser.email,
+        name: testUser.name,
       });
-
-      const request = new NextRequest(url, { method: "GET" });
       const response = await GET(request as any);
 
       expect(response.status).toBe(200);
@@ -647,7 +625,7 @@ describe("GET /api/swarm/jarvis/nodes", () => {
   describe("Error Scenarios", () => {
     test("returns 404 when workspace is not found", async () => {
       const nonExistentId = "non-existent-workspace-id";
-      
+
       const response = await createAuthenticatedGetRequest(
         testUser.id,
         nonExistentId
@@ -655,8 +633,7 @@ describe("GET /api/swarm/jarvis/nodes", () => {
 
       expect(response.status).toBe(404);
       const data = await response.json();
-      expect(data.success).toBe(false);
-      expect(data.message).toContain("Workspace not found");
+      expect(data.error).toContain("Workspace not found");
     });
 
     test("falls back to mock endpoint when swarm is not configured", async () => {
@@ -732,14 +709,11 @@ describe("GET /api/swarm/jarvis/nodes", () => {
       const { GET } = await import("@/app/api/swarm/jarvis/nodes/route");
       const url = `http://localhost:3000/api/swarm/jarvis/nodes?id=${testWorkspace.id}`;
 
-      // Mock NextAuth session
-      vi.mocked(getServerSession).mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email, name: testUser.name },
-        expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      });
-
-      const request = new NextRequest(url, {
-        method: "GET",
+      const baseRequest = new NextRequest(url, { method: "GET" });
+      const request = addMiddlewareHeaders(baseRequest, {
+        id: testUser.id,
+        email: testUser.email,
+        name: testUser.name,
       });
 
       // Don't mock swarmApiRequest - it should never be called

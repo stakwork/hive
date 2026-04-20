@@ -186,7 +186,10 @@ describe("GET /api/tasks/[taskId]/messages", () => {
   });
 
   describe("Authentication", () => {
-    it("should return 401 when no session provided", async () => {
+    // Unauthenticated access on a non-public workspace resolves to a unified
+    // 404 via `resolveWorkspaceAccess`, not a distinct 401. The handler never
+    // reveals whether the workspace exists when the caller can't see it.
+    it("should return 404 when no session provided", async () => {
       const request = createGetRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages`
       );
@@ -195,12 +198,12 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         params: Promise.resolve({ taskId: testTask.id }),
       });
 
-      expect(response?.status).toBe(401);
+      expect(response?.status).toBe(404);
       const data = await response?.json();
-      expect(data.error).toBe("Unauthorized");
+      expect(data.error).toBe("Workspace not found or access denied");
     });
 
-    it("should return 401 when no auth headers present", async () => {
+    it("should return 404 when no auth headers present", async () => {
       const request = createGetRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages`
       );
@@ -209,9 +212,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         params: Promise.resolve({ taskId: testTask.id }),
       });
 
-      expect(response?.status).toBe(401);
+      expect(response?.status).toBe(404);
       const data = await response?.json();
-      expect(data.error).toBe("Unauthorized");
+      expect(data.error).toBe("Workspace not found or access denied");
     });
   });
 
@@ -270,7 +273,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
   });
 
   describe("Authorization & Access Control", () => {
-    it("should return 403 when user is not workspace owner or member", async () => {
+    it("should return 404 when user is not workspace owner or member", async () => {
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages`,
         otherUser,
@@ -280,9 +283,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         params: Promise.resolve({ taskId: testTask.id }),
       });
 
-      expect(response?.status).toBe(403);
+      expect(response?.status).toBe(404);
       const data = await response?.json();
-      expect(data.error).toBe("Access denied");
+      expect(data.error).toBe("Workspace not found or access denied");
     });
 
     it("should allow access for workspace owner", async () => {
