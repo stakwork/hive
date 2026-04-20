@@ -179,6 +179,120 @@ describe("hasInfrastructureChange", () => {
     });
   });
 
+  describe("ContainerFiles (Dockerfile) changes", () => {
+    it("returns true when Dockerfile content differs from existing", () => {
+      const incoming = {
+        containerFiles: { "Dockerfile": "FROM node:18\nRUN apt-get update" },
+      };
+      const existing = {
+        containerFiles: { "Dockerfile": "FROM node:16" },
+        poolCpu: "1",
+        poolMemory: "2Gi",
+      };
+
+      const result = hasInfrastructureChange(incoming, existing, [], []);
+
+      expect(result).toBe(true);
+    });
+
+    it("returns false when Dockerfile content is identical to existing", () => {
+      const dockerfileContent = "FROM node:18\nRUN apt-get update";
+      const incoming = {
+        containerFiles: { "Dockerfile": dockerfileContent },
+      };
+      const existing = {
+        containerFiles: { "Dockerfile": dockerfileContent },
+        poolCpu: "1",
+        poolMemory: "2Gi",
+      };
+
+      const result = hasInfrastructureChange(incoming, existing, [], []);
+
+      expect(result).toBe(false);
+    });
+
+    it("returns true when Dockerfile added for the first time", () => {
+      const incoming = {
+        containerFiles: { "Dockerfile": "FROM node:18" },
+      };
+      const existing = {
+        containerFiles: {},
+        poolCpu: "1",
+        poolMemory: "2Gi",
+      };
+
+      const result = hasInfrastructureChange(incoming, existing, [], []);
+
+      expect(result).toBe(true);
+    });
+  });
+
+  describe("ContainerFiles (docker-compose.yml) changes", () => {
+    it("returns true when docker-compose.yml content differs", () => {
+      const incoming = {
+        containerFiles: { "docker-compose.yml": "version: '3.9'\nservices:\n  app:\n    ports: ['3001:3001']" },
+      };
+      const existing = {
+        containerFiles: { "docker-compose.yml": "version: '3.9'\nservices:\n  app:\n    ports: ['3000:3000']" },
+        poolCpu: "1",
+        poolMemory: "2Gi",
+      };
+
+      const result = hasInfrastructureChange(incoming, existing, [], []);
+
+      expect(result).toBe(true);
+    });
+
+    it("returns false when docker-compose.yml content is identical", () => {
+      const composeContent = "version: '3.9'\nservices:\n  app:\n    ports: ['3000:3000']";
+      const incoming = {
+        containerFiles: { "docker-compose.yml": composeContent },
+      };
+      const existing = {
+        containerFiles: { "docker-compose.yml": composeContent },
+        poolCpu: "1",
+        poolMemory: "2Gi",
+      };
+
+      const result = hasInfrastructureChange(incoming, existing, [], []);
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("ContainerFiles (devcontainer.json) changes", () => {
+    it("returns true when devcontainer.json content differs", () => {
+      const incoming = {
+        containerFiles: { "devcontainer.json": '{"name":"new-env"}' },
+      };
+      const existing = {
+        containerFiles: { "devcontainer.json": '{"name":"old-env"}' },
+        poolCpu: "1",
+        poolMemory: "2Gi",
+      };
+
+      const result = hasInfrastructureChange(incoming, existing, [], []);
+
+      expect(result).toBe(true);
+    });
+
+    it("returns false when devcontainer.json content is identical", () => {
+      const devcontainerContent = '{"name":"dev","image":"mcr.microsoft.com/devcontainers/base"}';
+      const incoming = {
+        containerFiles: { "devcontainer.json": devcontainerContent },
+      };
+      const existing = {
+        containerFiles: { "devcontainer.json": devcontainerContent },
+        poolCpu: "1",
+        poolMemory: "2Gi",
+      };
+
+      const result = hasInfrastructureChange(incoming, existing, [], []);
+
+      expect(result).toBe(false);
+    });
+  });
+
   describe("Environment variables changes", () => {
     it("returns true when environmentVariables name/value changed", () => {
       const incoming = {

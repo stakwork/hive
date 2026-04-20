@@ -68,6 +68,39 @@ describe("getPoolStatusFromPods", () => {
     });
   });
 
+  describe("ws-pool-* filtering", () => {
+    it("passes podId: { not: { startsWith: 'ws-pool-' } } filter in the where clause", async () => {
+      mockPodFindMany.mockResolvedValue([]);
+      mockTaskCount.mockResolvedValue(0);
+
+      await getPoolStatusFromPods(SWARM_ID, WORKSPACE_ID);
+
+      expect(mockPodFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            podId: { not: { startsWith: "ws-pool-" } },
+          }),
+        })
+      );
+    });
+
+    it("excludes ws-pool-* pods from counts when the DB filter is present", async () => {
+      // The actual DB filter excludes ws-pool-* pods before returning results.
+      // Here we simulate the filtered result (only the regular pod is returned)
+      // and verify counts reflect only that pod.
+      mockPodFindMany.mockResolvedValue([
+        makePod(PodStatus.RUNNING, PodUsageStatus.UNUSED),
+      ] as any);
+      mockTaskCount.mockResolvedValue(0);
+
+      const result = await getPoolStatusFromPods(SWARM_ID, WORKSPACE_ID);
+
+      expect(result.runningVms).toBe(1);
+      expect(result.unusedVms).toBe(1);
+      expect(result.usedVms).toBe(0);
+    });
+  });
+
   describe("pod aggregation", () => {
     it("counts PENDING+USED pod in pendingVms only, not usedVms; runningVms includes pendingVms", async () => {
       mockPodFindMany.mockResolvedValue([
