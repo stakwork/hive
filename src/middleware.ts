@@ -113,7 +113,7 @@ export async function middleware(request: NextRequest) {
   const requestId = generateRequestId();
   const { pathname } = request.nextUrl;
   const isApiRoute = pathname.startsWith("/api");
-  const routeAccess = resolveRouteAccess(pathname);
+  const routeAccess = resolveRouteAccess(pathname, request.method);
 
   const requestHeaders = new Headers(request.headers);
   sanitizeMiddlewareHeaders(requestHeaders);
