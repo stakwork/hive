@@ -133,7 +133,7 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
             archived: false,
             sourceType: { not: "USER_JOURNEY" },
             dependsOnTaskIds: { isEmpty: true },
-            workflowStatus: { notIn: ["HALTED", "COMPLETED", "IN_PROGRESS"] },
+            workflowStatus: { notIn: ["HALTED", "COMPLETED"] },
             OR: [
               { featureId: null },
               { feature: { status: { not: "CANCELLED" } } },
