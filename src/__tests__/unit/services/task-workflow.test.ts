@@ -4920,7 +4920,7 @@ describe("startTaskWorkflow - atomic claim guard", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  test("atomic claim uses correct where clause (PENDING workflowStatus and null stakworkProjectId)", async () => {
+  test("atomic claim uses correct where clause (PENDING or HALTED workflowStatus with OR guard)", async () => {
     mockDb.task.updateMany.mockResolvedValueOnce({ count: 0 } as any);
 
     const { startTaskWorkflow } = await import("@/services/task-workflow");
@@ -4935,14 +4935,123 @@ describe("startTaskWorkflow - atomic claim guard", () => {
         where: expect.objectContaining({
           id: "test-task-id",
           deleted: false,
-          workflowStatus: { in: ["PENDING"] },
-          stakworkProjectId: null,
+          workflowStatus: { in: ["PENDING", "HALTED"] },
+          OR: expect.arrayContaining([
+            { stakworkProjectId: null },
+            { workflowStatus: "HALTED" },
+          ]),
         }),
         data: expect.objectContaining({
           workflowStatus: "IN_PROGRESS",
+          stakworkProjectId: null,
         }),
       })
     );
+  });
+
+  test("HALTED task with stale stakworkProjectId — claim succeeds and clears project ID", async () => {
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    const claimCall = (mockDb.task.updateMany as any).mock.calls[0][0];
+    // HALTED must be in the allowed set
+    expect(claimCall.where.workflowStatus.in).toContain("HALTED");
+    // OR condition allows bypassing null stakworkProjectId for HALTED tasks
+    expect(claimCall.where.OR).toEqual(
+      expect.arrayContaining([{ workflowStatus: "HALTED" }])
+    );
+    // stakworkProjectId must be cleared atomically
+    expect(claimCall.data.stakworkProjectId).toBeNull();
+  });
+
+  test("HALTED task proceeds to Stakwork dispatch when claim succeeds", async () => {
+    // Claim succeeds for HALTED task
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
+    // findFirst returns a HALTED task with a stale stakworkProjectId
+    mockDb.task.findFirst.mockResolvedValueOnce({
+      id: "test-task-id",
+      title: "Halted Task",
+      description: "Task that was halted",
+      branch: "main",
+      featureId: null,
+      phaseId: null,
+      sourceType: "USER",
+      status: "IN_PROGRESS",
+      workflowStatus: "HALTED",
+      stakworkProjectId: "stale-project-999",
+      repositoryId: null,
+      deleted: false,
+      workspace: {
+        id: "test-workspace-id",
+        swarm: {
+          swarmUrl: "https://test-swarm.com",
+          apiToken: "swarm-token",
+        },
+        members: [{ userId: "test-user-id", role: "DEVELOPER" }],
+      },
+      assignee: null,
+      repository: null,
+    } as any);
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskUpdate();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ project: { id: 777 } }),
+    } as Response);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    const result = await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    // Stakwork dispatch must have been called
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(result).not.toBeNull();
+  });
+
+  test("IN_PROGRESS task is still rejected by the claim gate (no double-claim)", async () => {
+    // Simulate claim failure — task is already IN_PROGRESS
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 0 } as any);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    const result = await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    expect(result).toBeNull();
+    expect(mockDb.chatMessage.create).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test("PENDING task claim still works unchanged (regression guard)", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+    // updateMany returns count:1 (default from MockSetup.reset, reaffirmed here)
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    const result = await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    expect(result).not.toBeNull();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    // Ensure PENDING is still in the allowed set
+    const claimCall = (mockDb.task.updateMany as any).mock.calls[0][0];
+    expect(claimCall.where.workflowStatus.in).toContain("PENDING");
   });
 
   test("rolls back workflowStatus to PENDING when createChatMessageAndTriggerStakwork throws after claim", async () => {
