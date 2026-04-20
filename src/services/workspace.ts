@@ -245,15 +245,23 @@ export async function getWorkspaceById(
 }
 
 /**
- * Gets a workspace by slug if user has access (owner or member)
+ * Gets a workspace by slug if user has access (owner or member).
+ *
  * @param slug - The workspace slug
  * @param userId - The user ID
- * @param options - Optional configuration (isSuperAdmin bypasses membership check)
+ * @param options - Optional configuration:
+ *   - `isSuperAdmin`: bypasses membership check and grants OWNER-level access.
+ *   - `allowPublicViewer`: when `true`, non-members visiting a workspace
+ *     flagged `isPublicViewable` get a sanitized VIEWER-role workspace
+ *     (same shape as `getPublicWorkspaceBySlug`). **Callers must opt in
+ *     explicitly** and must themselves enforce role-gating on any
+ *     sensitive read/write that follows. Defaults to `false` so existing
+ *     membership-only callers keep their pre-public-workspaces semantics.
  */
 export async function getWorkspaceBySlug(
   slug: string,
   userId: string,
-  options?: { isSuperAdmin?: boolean },
+  options?: { isSuperAdmin?: boolean; allowPublicViewer?: boolean },
 ): Promise<WorkspaceWithAccess | null> {
   // Get the workspace with owner info, swarm status, and repositories
   const workspace = await db.workspace.findFirst({
@@ -363,11 +371,16 @@ export async function getWorkspaceBySlug(
   });
 
   if (!membership) {
-    // Not a member — fall back to public-viewer access (same sanitized
-    // shape we return for fully-unauthenticated visitors). This handles
-    // the case where a signed-in user visits a public workspace they
-    // don't belong to.
-    if (workspace.isPublicViewable) {
+    // Not a member. Callers that have explicitly opted in to public-viewer
+    // access (e.g. the workspace-page API that already renders public
+    // workspaces for anonymous visitors) may fall back to the sanitized
+    // VIEWER shape for workspaces flagged `isPublicViewable`.
+    //
+    // The default is to return `null` so that pre-existing membership-only
+    // routes (stakgraph, pool-manager, ask, etc.) don't silently gain
+    // access they never had before. See the review notes on
+    // `feature/...public-workspace-access...`.
+    if (options?.allowPublicViewer && workspace.isPublicViewable) {
       return getPublicWorkspaceBySlug(slug);
     }
     return null; // User has no access

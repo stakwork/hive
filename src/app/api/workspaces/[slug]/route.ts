@@ -25,10 +25,16 @@ export async function GET(
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
 
-    // Authenticated path
+    // Authenticated path. Signed-in non-members visiting a workspace
+    // flagged `isPublicViewable` should get the same sanitized VIEWER
+    // shape that anonymous visitors receive — this endpoint is the
+    // workspace-page data source, so it is one of the few callers that
+    // intentionally opts in to the public-viewer fallback.
     if (!(userOrResponse instanceof NextResponse)) {
       const userId = userOrResponse.id;
-      const workspace = await getWorkspaceBySlug(slug, userId);
+      const workspace = await getWorkspaceBySlug(slug, userId, {
+        allowPublicViewer: true,
+      });
       if (!workspace) {
         return NextResponse.json(
           { error: "Workspace not found or access denied" },

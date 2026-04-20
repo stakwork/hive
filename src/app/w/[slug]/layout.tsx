@@ -15,7 +15,12 @@ export async function generateMetadata({
 
   try {
     if (session?.user?.id) {
-      const workspace = await getWorkspaceBySlug(slug, session.user.id);
+      // Metadata only — opt in to the public-viewer fallback so that
+      // signed-in non-members get the workspace name in the tab title
+      // when browsing a public workspace they don't belong to.
+      const workspace = await getWorkspaceBySlug(slug, session.user.id, {
+        allowPublicViewer: true,
+      });
       if (workspace) {
         return { title: workspace.name };
       }
