@@ -77,9 +77,9 @@ describe("Repository Settings API Integration Tests", () => {
       const response = await PATCH(request, {
         params: Promise.resolve({ id: repository.id }),
       });
-      const data = await expectSuccess(response);
+      const body = await expectSuccess(response);
 
-      expect(data.triggerPodRepair).toBe(true);
+      expect(body.data.triggerPodRepair).toBe(true);
 
       const updated = await db.repository.findUnique({ where: { id: repository.id } });
       expect(updated?.triggerPodRepair).toBe(true);
@@ -103,12 +103,12 @@ describe("Repository Settings API Integration Tests", () => {
       const response = await PATCH(request, {
         params: Promise.resolve({ id: repository.id }),
       });
-      const data = await expectSuccess(response);
+      const body = await expectSuccess(response);
 
-      expect(data.triggerPodRepair).toBe(false);
+      expect(body.data.triggerPodRepair).toBe(false);
 
-      const updated = await db.repository.findUnique({ where: { id: repository.id } });
-      expect(updated?.triggerPodRepair).toBe(false);
+      const updated2 = await db.repository.findUnique({ where: { id: repository.id } });
+      expect(updated2?.triggerPodRepair).toBe(false);
 
       expect(syncPoolManagerSettings).toHaveBeenCalledOnce();
     });
@@ -162,9 +162,9 @@ describe("Repository Settings API Integration Tests", () => {
       const response = await PATCH(request, {
         params: Promise.resolve({ id: repository.id }),
       });
-      const data = await expectSuccess(response);
+      const body = await expectSuccess(response);
 
-      expect(data.triggerPodRepair).toBe(true);
+      expect(body.data.triggerPodRepair).toBe(true);
       expect(syncPoolManagerSettings).not.toHaveBeenCalled();
     });
 
@@ -184,9 +184,9 @@ describe("Repository Settings API Integration Tests", () => {
       const response = await PATCH(request, {
         params: Promise.resolve({ id: repository.id }),
       });
-      const data = await expectSuccess(response);
+      const body = await expectSuccess(response);
 
-      expect(data.triggerPodRepair).toBe(true);
+      expect(body.data.triggerPodRepair).toBe(true);
       expect(syncPoolManagerSettings).not.toHaveBeenCalled();
     });
 
@@ -210,9 +210,9 @@ describe("Repository Settings API Integration Tests", () => {
       const response = await PATCH(request, {
         params: Promise.resolve({ id: repository.id }),
       });
-      const data = await expectSuccess(response);
+      const body = await expectSuccess(response);
 
-      expect(data.triggerPodRepair).toBe(true);
+      expect(body.data.triggerPodRepair).toBe(true);
     });
 
     test("no pool API key — sync skipped, response still 200", async () => {
@@ -233,9 +233,9 @@ describe("Repository Settings API Integration Tests", () => {
       const response = await PATCH(request, {
         params: Promise.resolve({ id: repository.id }),
       });
-      const data = await expectSuccess(response);
+      const body = await expectSuccess(response);
 
-      expect(data.triggerPodRepair).toBe(true);
+      expect(body.data.triggerPodRepair).toBe(true);
       expect(syncPoolManagerSettings).not.toHaveBeenCalled();
     });
 
@@ -250,10 +250,10 @@ describe("Repository Settings API Integration Tests", () => {
       const response = await PATCH(request, {
         params: Promise.resolve({ id: repository.id }),
       });
-      const data = await expectSuccess(response);
+      const body = await expectSuccess(response);
 
-      expect(Object.keys(data)).toContain("triggerPodRepair");
-      expect(data.triggerPodRepair).toBe(true);
+      expect(Object.keys(body.data)).toContain("triggerPodRepair");
+      expect(body.data.triggerPodRepair).toBe(true);
     });
   });
 
@@ -268,10 +268,10 @@ describe("Repository Settings API Integration Tests", () => {
       const response = await GET(request, {
         params: Promise.resolve({ id: repository.id }),
       });
-      const data = await expectSuccess(response);
+      const body = await expectSuccess(response);
 
-      expect(Object.keys(data)).toContain("triggerPodRepair");
-      expect(data.triggerPodRepair).toBe(true);
+      expect(Object.keys(body.data)).toContain("triggerPodRepair");
+      expect(body.data.triggerPodRepair).toBe(true);
     });
   });
 });
