@@ -211,6 +211,7 @@ export function WorkspaceProvider({
       return;
     }
 
+
     // Only fetch if we have a slug and haven't loaded it yet
     if (currentSlug && currentSlug !== currentLoadedSlug) {
       const fetchCurrentWorkspace = async () => {

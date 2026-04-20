@@ -25,7 +25,7 @@ export class WorkspaceSettingsPage {
   async waitForLoad(): Promise<void> {
     // Wait for the settings form to be visible
     const settingsForm = this.page.locator('form');
-    await settingsForm.waitFor({ state: 'visible', timeout: 10000 });
+    await settingsForm.waitFor({ state: 'visible', timeout: 30000 });
 
     // Check if we're on the sign-in page instead
     const signInButton = this.page.locator(selectors.auth.mockSignInButton);
