@@ -243,18 +243,23 @@ export async function startTaskWorkflow(params: {
   const { taskId, userId, mode = "live", includeHistory = false } = params;
 
   // Atomic claim: only one concurrent invocation can proceed per task.
-  // updateMany is conditional — it only updates if workflowStatus is still PENDING (or null)
-  // AND no stakworkProjectId has been assigned yet.
+  // updateMany is conditional — it only updates if workflowStatus is PENDING or HALTED
+  // (HALTED tasks are eligible for retry) AND either no stakworkProjectId is assigned yet
+  // OR the task is HALTED (its existing project ID is stale and will be cleared).
   const claimed = await db.task.updateMany({
     where: {
       id: taskId,
       deleted: false,
-      workflowStatus: { in: [WorkflowStatus.PENDING] },
-      stakworkProjectId: null,
+      workflowStatus: { in: [WorkflowStatus.PENDING, WorkflowStatus.HALTED] },
+      OR: [
+        { stakworkProjectId: null },
+        { workflowStatus: WorkflowStatus.HALTED }, // HALTED tasks may have a stale project ID
+      ],
     },
     data: {
       workflowStatus: WorkflowStatus.IN_PROGRESS,
       workflowStartedAt: new Date(),
+      stakworkProjectId: null, // clear stale project ID so a new one can be assigned
     },
   });
 
