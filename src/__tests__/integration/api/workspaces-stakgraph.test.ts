@@ -112,7 +112,7 @@ const DEFAULT_SERVICES = [
 ];
 
 const DEFAULT_DOCKERFILE =
-  "FROM ghcr.io/stakwork/staklink-universal:latest\nRUN echo 'original'";
+  "FROM ghcr.io/stakwork/staklink-js:v0.1.2\nRUN echo 'original'";
 const UPDATED_DOCKERFILE = "FROM node:20-alpine\nRUN echo 'updated'";
 const DEFAULT_DOCKER_COMPOSE =
   "version: '3.8'\nservices:\n  app:\n    build: .";
