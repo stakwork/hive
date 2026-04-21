@@ -2,6 +2,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { stakworkService } from "@/lib/service-factory";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { type ApiError } from "@/types";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -13,12 +14,31 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    if (!session?.user || !(session.user as { id?: string }).id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = (session.user as { id: string }).id;
+
     const body = await request.json();
     const { workspaceId } = body;
+
+    if (!workspaceId || typeof workspaceId !== "string") {
+      return NextResponse.json(
+        { error: "workspaceId is required" },
+        { status: 400 },
+      );
+    }
+
+    // Verify the caller is an admin/owner of the workspace before consuming
+    // Stakwork allocation or writing the stakworkApiKey (IDOR hardening).
+    const access = await validateWorkspaceAccessById(workspaceId, userId);
+    if (!access.hasAccess || !access.canAdmin) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
 
     const customerResponse =
       await stakworkService().createCustomer(workspaceId);
