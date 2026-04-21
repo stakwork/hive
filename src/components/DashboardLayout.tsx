@@ -7,6 +7,8 @@ import { AlertTriangle } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "./GlobalSearch";
+import { ViewerAccessBanner } from "./workspace/ViewerAccessBanner";
+import { PublicWorkspaceBanner } from "./workspace/PublicWorkspaceBanner";
 import { useEffect, useState } from "react";
 
 /**
@@ -169,6 +171,8 @@ export function DashboardLayout({ children, user, isPublicWorkspace = false }: D
 
       {/* Main content */}
       <div className={`flex-1 flex flex-col overflow-hidden ${isFullscreenPage ? "md:pl-0" : "md:pl-64"}`}>
+        <ViewerAccessBanner />
+        <PublicWorkspaceBanner />
         <main className={`flex-1 flex flex-col overflow-auto ${isFullscreenPage ? "p-1 md:p-3" : "p-4 md:p-6"}`}>
           {children}
         </main>

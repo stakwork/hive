@@ -7,7 +7,7 @@ import {
   SourceControlOrgType,
   SwarmStatus,
 } from "@prisma/client";
-import { seedMockData } from "./mockSeedData";
+import { seedMockData, seedPublicMockWorkspace } from "./mockSeedData";
 import { slugify } from "./slugify";
 
 // Mock GitHub user ID counter (starts high to avoid conflicts)
@@ -200,6 +200,13 @@ export async function ensureMockWorkspaceForUser(
   } catch (error) {
     console.error("[MockSetup] Failed to seed mock data:", error);
     // Don't fail workspace creation if seeding fails
+  }
+
+  // Seed the public demo workspace for testing public-viewer + access-request flows
+  try {
+    await seedPublicMockWorkspace(userId);
+  } catch (error) {
+    console.error("[MockSetup] Failed to seed public mock workspace:", error);
   }
 
   return workspace.slug;

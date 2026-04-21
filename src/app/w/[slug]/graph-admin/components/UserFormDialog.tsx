@@ -31,9 +31,9 @@ export function UserFormDialog({ open, onOpenChange, user, onSave }: UserFormDia
     if (open) {
       setPubkey(user?.pubkey ?? "");
       setName(user?.name ?? "");
-      // Normalise sub_admin → sub_admin, admin → sub_admin
+      // Normalise admin → sub_admin
       const r = user?.role;
-      setRole(r === "admin" || r === "sub_admin" ? "sub_admin" : "member");
+      setRole(r === "admin" ? "sub_admin" : "member");
     }
   }, [open, user]);
 
