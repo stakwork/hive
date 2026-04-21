@@ -2320,3 +2320,62 @@ async function seedAttachments(
     console.log(`[MockSeed] Created ${diagramSeeds.length} seed diagrams`);
   }
 }
+
+/**
+ * Seeds a publicly viewable workspace for testing the public-viewer and access-request flows.
+ * Only runs when USE_MOCKS=true. Idempotent — checks by slug before creating.
+ */
+export async function seedPublicMockWorkspace(userId: string): Promise<void> {
+  if (!config.USE_MOCKS || process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  const PUBLIC_SLUG = "cal-com-public";
+
+  // Idempotency check
+  const existing = await db.workspace.findUnique({
+    where: { slug: PUBLIC_SLUG },
+    select: { id: true },
+  });
+  if (existing) {
+    console.log("[MockSeed] Public workspace already exists, skipping");
+    return;
+  }
+
+  console.log("[MockSeed] Creating public mock workspace:", PUBLIC_SLUG);
+
+  const workspace = await db.workspace.create({
+    data: {
+      name: "Cal.com (Public Demo)",
+      description: "A publicly viewable demo workspace showcasing Hive with the cal.com repository.",
+      slug: PUBLIC_SLUG,
+      ownerId: userId,
+      isPublicViewable: true,
+      logoUrl: `https://api.dicebear.com/7.x/identicons/svg?seed=${encodeURIComponent(PUBLIC_SLUG)}`,
+    },
+    select: { id: true, slug: true },
+  });
+
+  // Add a repository so the GitHub PR auto-approval flow can be tested
+  await db.repository.create({
+    data: {
+      name: "cal.com",
+      repositoryUrl: "https://github.com/calcom/cal.com",
+      branch: "main",
+      status: RepositoryStatus.SYNCED,
+      workspaceId: workspace.id,
+      codeIngestionEnabled: true,
+      docsEnabled: false,
+      mocksEnabled: false,
+    },
+  });
+
+  // Seed features/tasks so visitors see real content
+  try {
+    await seedMockData(userId, workspace.id);
+  } catch (error) {
+    console.error("[MockSeed] Failed to seed public workspace data:", error);
+  }
+
+  console.log("[MockSeed] Public mock workspace created:", PUBLIC_SLUG);
+}
