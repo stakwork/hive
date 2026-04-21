@@ -9,7 +9,11 @@ import {
   expectError,
   createDeleteRequest,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures";
+import {
+  createTestUser,
+  createTestWorkspace,
+  createTestSwarm,
+} from "@/__tests__/support/fixtures";
 import { poolManagerService } from "@/lib/service-factory";
 
 // Mock the Pool Manager service
@@ -21,26 +25,30 @@ vi.mock("@/lib/service-factory", () => ({
   }),
 }));
 
+/**
+ * Create an owner, workspace, and swarm. Returns the swarm.id so callers
+ * can use it as the pool `name` (matching the pool_name convention in
+ * create-pool: `pool_name: swarm.id`).
+ */
+async function setupOwnedPool() {
+  const user = await createTestUser();
+  const workspace = await createTestWorkspace({ ownerId: user.id });
+  const swarm = await createTestSwarm({ workspaceId: workspace.id });
+  return { user, workspace, swarm };
+}
+
 describe("DELETE /api/pool-manager/delete-pool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  /**
-   * SECURITY NOTE: This endpoint has a security gap - there is no ownership validation.
-   * Any authenticated user can delete any pool by name. This should be addressed
-   * by adding ownership checks (verify pool.owner_id === session.user.id) or
-   * role-based authorization in the future.
-   */
-
   describe("Successful Deletion", () => {
-    test("successfully deletes pool when authenticated with valid name", async () => {
+    test("successfully deletes pool when caller owns the swarm's workspace", async () => {
       // Arrange
-      const user = await createTestUser();
-      const session = createAuthenticatedSession(user);
-      getMockedSession().mockResolvedValue(session);
-      
-      const poolName = "test-pool";
+      const { user, swarm } = await setupOwnedPool();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const poolName = swarm.id;
       const mockResponse = {
         id: "pool-123",
         name: poolName,
@@ -49,7 +57,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-      
+
       mockDeletePool.mockResolvedValue(mockResponse);
 
       // Act
@@ -66,6 +74,46 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       expect(data.pool.status).toBe("deleted");
       expect(mockDeletePool).toHaveBeenCalledWith({ name: poolName });
       expect(mockDeletePool).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("IDOR hardening", () => {
+    test("returns 404 when the pool name does not match any swarm", async () => {
+      const user = await createTestUser();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = createDeleteRequest(
+        "http://localhost/api/pool-manager/delete-pool",
+        { name: "does-not-exist" }
+      );
+      const response = await DELETE(request);
+
+      expect(response.status).toBe(404);
+      const json = await response.json();
+      expect(json.error).toBe("Workspace not found or access denied");
+      expect(mockDeletePool).not.toHaveBeenCalled();
+    });
+
+    test("returns 404 when caller is not a member of the swarm's workspace", async () => {
+      // Victim: owns a pool
+      const { swarm } = await setupOwnedPool();
+
+      // Attacker: signed-in but not a member of victim's workspace
+      const attacker = await createTestUser();
+      getMockedSession().mockResolvedValue(
+        createAuthenticatedSession(attacker),
+      );
+
+      const request = createDeleteRequest(
+        "http://localhost/api/pool-manager/delete-pool",
+        { name: swarm.id }
+      );
+      const response = await DELETE(request);
+
+      expect(response.status).toBe(404);
+      const json = await response.json();
+      expect(json.error).toBe("Workspace not found or access denied");
+      expect(mockDeletePool).not.toHaveBeenCalled();
     });
   });
 
@@ -162,36 +210,34 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
   describe("Service Error Handling", () => {
     test("handles 404 pool not found error from service", async () => {
       // Arrange
-      const user = await createTestUser();
-      const session = createAuthenticatedSession(user);
-      getMockedSession().mockResolvedValue(session);
-      
+      const { user, swarm } = await setupOwnedPool();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
       const apiError = {
         status: 404,
         service: "pool-manager",
         message: "Pool not found",
-        details: { poolName: "nonexistent-pool" },
+        details: { poolName: swarm.id },
       };
       mockDeletePool.mockRejectedValue(apiError);
 
       // Act
       const request = createDeleteRequest(
         "http://localhost/api/pool-manager/delete-pool",
-        { name: "nonexistent-pool" }
+        { name: swarm.id }
       );
       const response = await DELETE(request);
 
       // Assert
       await expectError(response, "Pool not found", 404);
-      expect(mockDeletePool).toHaveBeenCalledWith({ name: "nonexistent-pool" });
+      expect(mockDeletePool).toHaveBeenCalledWith({ name: swarm.id });
     });
 
     test("handles 403 forbidden error from service", async () => {
       // Arrange
-      const user = await createTestUser();
-      const session = createAuthenticatedSession(user);
-      getMockedSession().mockResolvedValue(session);
-      
+      const { user, swarm } = await setupOwnedPool();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
       const apiError = {
         status: 403,
         service: "pool-manager",
@@ -202,7 +248,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       // Act
       const request = createDeleteRequest(
         "http://localhost/api/pool-manager/delete-pool",
-        { name: "protected-pool" }
+        { name: swarm.id }
       );
       const response = await DELETE(request);
 
@@ -212,10 +258,9 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
 
     test("handles 500 service unavailable error", async () => {
       // Arrange
-      const user = await createTestUser();
-      const session = createAuthenticatedSession(user);
-      getMockedSession().mockResolvedValue(session);
-      
+      const { user, swarm } = await setupOwnedPool();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
       const apiError = {
         status: 500,
         service: "pool-manager",
@@ -226,7 +271,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       // Act
       const request = createDeleteRequest(
         "http://localhost/api/pool-manager/delete-pool",
-        { name: "test-pool" }
+        { name: swarm.id }
       );
       const response = await DELETE(request);
 
@@ -236,10 +281,9 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
 
     test("handles 401 invalid API key error from service", async () => {
       // Arrange
-      const user = await createTestUser();
-      const session = createAuthenticatedSession(user);
-      getMockedSession().mockResolvedValue(session);
-      
+      const { user, swarm } = await setupOwnedPool();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
       const apiError = {
         status: 401,
         service: "pool-manager",
@@ -250,7 +294,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       // Act
       const request = createDeleteRequest(
         "http://localhost/api/pool-manager/delete-pool",
-        { name: "test-pool" }
+        { name: swarm.id }
       );
       const response = await DELETE(request);
 
@@ -260,17 +304,16 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
 
     test("handles generic errors from service without ApiError structure", async () => {
       // Arrange
-      const user = await createTestUser();
-      const session = createAuthenticatedSession(user);
-      getMockedSession().mockResolvedValue(session);
-      
+      const { user, swarm } = await setupOwnedPool();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
       // Generic error without ApiError structure
       mockDeletePool.mockRejectedValue(new Error("Network timeout"));
 
       // Act
       const request = createDeleteRequest(
         "http://localhost/api/pool-manager/delete-pool",
-        { name: "test-pool" }
+        { name: swarm.id }
       );
       const response = await DELETE(request);
 
@@ -329,11 +372,10 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
   describe("Service Invocation", () => {
     test("calls service with exact parameters", async () => {
       // Arrange
-      const user = await createTestUser();
-      const session = createAuthenticatedSession(user);
-      getMockedSession().mockResolvedValue(session);
-      
-      const poolName = "my-specific-pool-name";
+      const { user, swarm } = await setupOwnedPool();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const poolName = swarm.id;
       mockDeletePool.mockResolvedValue({
         id: "pool-456",
         name: poolName,
@@ -353,7 +395,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       // Assert
       expect(mockDeletePool).toHaveBeenCalledWith({ name: poolName });
       expect(mockDeletePool).toHaveBeenCalledTimes(1);
-      
+
       // Verify exact call signature
       const callArgs = mockDeletePool.mock.calls[0][0];
       expect(callArgs).toEqual({ name: poolName });

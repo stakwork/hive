@@ -61,6 +61,22 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
+// Mock the workspace access helper so these unit tests stay isolated
+// from `getWorkspaceById` DB plumbing. By default, every caller is
+// treated as an admin of the target workspace; IDOR tests override with
+// `mockValidateWorkspaceAccessById.mockResolvedValueOnce(...)`.
+vi.mock("@/services/workspace", () => {
+  const mockValidateWorkspaceAccessById = vi.fn();
+  return {
+    validateWorkspaceAccessById: mockValidateWorkspaceAccessById,
+    __mockValidateWorkspaceAccessById: mockValidateWorkspaceAccessById,
+  };
+});
+
+const workspaceServiceMock = vi.mocked(await import("@/services/workspace"));
+const mockValidateWorkspaceAccessById =
+  workspaceServiceMock.__mockValidateWorkspaceAccessById;
+
 const mockGetServerSession = getServerSession as Mock;
 
 // Test Data Factories
@@ -200,6 +216,15 @@ const MockSetup = {
 describe("POST /api/stakwork/create-customer - Unit Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: caller is an admin of the workspace. Individual tests can
+    // override with `.mockResolvedValueOnce({ hasAccess: false, ... })`.
+    mockValidateWorkspaceAccessById.mockResolvedValue({
+      hasAccess: true,
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      userRole: "OWNER",
+    });
   });
 
   describe("Authentication", () => {
@@ -232,6 +257,29 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       expect(mockGetServerSession).toHaveBeenCalled();
       expect(mockCreateCustomer).toHaveBeenCalled();
     });
+
+    test("IDOR: returns 404 when caller lacks admin access to the workspace", async () => {
+      TestHelpers.setupAuthenticatedUser();
+      MockSetup.setupSuccessfulCustomerCreation("test-token");
+
+      // Override the default admin grant for this single call.
+      mockValidateWorkspaceAccessById.mockResolvedValueOnce({
+        hasAccess: false,
+        canRead: false,
+        canWrite: false,
+        canAdmin: false,
+      });
+
+      const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
+      const response = await POST(request);
+
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data).toEqual({ error: "Workspace not found or access denied" });
+      // Stakwork customer creation and workspace write must never run.
+      expect(mockCreateCustomer).not.toHaveBeenCalled();
+      expect(mockWorkspaceUpdate).not.toHaveBeenCalled();
+    });
   });
 
   describe("Request Validation", () => {
@@ -249,23 +297,22 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       expect(mockCreateCustomer).toHaveBeenCalledWith("workspace-123");
     });
 
-    test("should handle missing workspaceId gracefully", async () => {
-      mockCreateCustomer.mockResolvedValue(TestDataFactory.createStakworkResponse("test-token"));
-      MockSetup.setupSuccessfulCustomerCreation("test-token");
-
+    test("should return 400 when workspaceId is missing", async () => {
       const request = TestHelpers.createMockRequest({});
       const response = await POST(request);
 
-      expect(mockCreateCustomer).toHaveBeenCalledWith(undefined);
+      // IDOR hardening: we no longer forward undefined/null workspaceIds
+      // down to Stakwork — the request is rejected up-front.
+      expect(response.status).toBe(400);
+      expect(mockCreateCustomer).not.toHaveBeenCalled();
     });
 
-    test("should handle null workspaceId", async () => {
-      MockSetup.setupSuccessfulCustomerCreation("test-token");
-
+    test("should return 400 when workspaceId is null", async () => {
       const request = TestHelpers.createMockRequest({ workspaceId: null });
       const response = await POST(request);
 
-      expect(mockCreateCustomer).toHaveBeenCalledWith(null);
+      expect(response.status).toBe(400);
+      expect(mockCreateCustomer).not.toHaveBeenCalled();
     });
   });
 
@@ -647,14 +694,13 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       TestHelpers.setupAuthenticatedUser();
     });
 
-    test("should handle empty workspaceId string", async () => {
-      MockSetup.setupSuccessfulCustomerCreation("test-token");
-
+    test("should return 400 for empty workspaceId string", async () => {
       const request = TestHelpers.createMockRequest({ workspaceId: "" });
       const response = await POST(request);
 
-      expect(mockCreateCustomer).toHaveBeenCalledWith("");
-      expect(response.status).toBe(201);
+      // IDOR hardening: empty string is not a valid workspaceId.
+      expect(response.status).toBe(400);
+      expect(mockCreateCustomer).not.toHaveBeenCalled();
     });
 
     test("should handle workspace with existing stakworkApiKey", async () => {
