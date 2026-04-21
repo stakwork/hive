@@ -118,7 +118,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
   async function fetchUsers() {
     setUsersLoading(true);
     try {
-      const res = await postGraphAdminCmd(workspaceSlug, { type: "Swarm", data: { cmd: "GetEnrichedBoltwallUsers" } });
+      const res = await postGraphAdminCmd(workspaceSlug, { type: "Swarm", data: { cmd: "GetBoltwallUsers" } });
       setUsers(res?.users ?? []);
     } catch {
       toast.error("Failed to load boltwall users");

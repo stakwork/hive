@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
@@ -17,31 +17,17 @@ export function UserRow({
   onSetOwner: () => void;
 }) {
   const isOwner = user.role === "owner";
-  const hasHive = !!user.hive;
-  const displayName = hasHive ? user.hive!.name : null;
+  const displayName = user.name ?? (user.pubkey ? `${user.pubkey.slice(0, 16)}…` : "—");
 
   return (
     <tr className="border-b last:border-0">
       {/* User cell */}
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
-          {hasHive ? (
-            <Avatar className="h-7 w-7 text-xs">
-              <AvatarImage src={user.hive!.image ?? undefined} alt={displayName ?? ""} />
-              <AvatarFallback>{getInitials(displayName, user.pubkey)}</AvatarFallback>
-            </Avatar>
-          ) : (
-            <Avatar className="h-7 w-7 text-xs">
-              <AvatarFallback>{getInitials(user.name, user.pubkey)}</AvatarFallback>
-            </Avatar>
-          )}
-          <span className="font-mono text-xs text-muted-foreground">
-            {hasHive && displayName
-              ? displayName
-              : user.pubkey
-              ? `${user.pubkey.slice(0, 16)}…`
-              : "—"}
-          </span>
+          <Avatar className="h-7 w-7 text-xs">
+            <AvatarFallback>{getInitials(user.name, user.pubkey)}</AvatarFallback>
+          </Avatar>
+          <span className="font-mono text-xs text-muted-foreground">{displayName}</span>
         </div>
       </td>
       {/* Role cell */}
