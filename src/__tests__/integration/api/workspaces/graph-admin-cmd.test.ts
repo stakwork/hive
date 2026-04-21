@@ -443,11 +443,10 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
     });
   });
 
-  // ── GetEnrichedBoltwallUsers ───────────────────────────────────────────────
+  // ── GetBoltwallUsers ──────────────────────────────────────────────────────
 
-  describe("GetEnrichedBoltwallUsers", () => {
+  describe("GetBoltwallUsers", () => {
     let swarm: Awaited<ReturnType<typeof createTestSwarm>>;
-    const TEST_PUBKEY = "02abc123def456789012345678901234567890123456789012345678901234567890";
 
     beforeEach(async () => {
       swarm = await createTestSwarm({
@@ -467,7 +466,7 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(nonAdminUser));
 
       const response = await callRoute(workspace.slug, {
-        cmd: { type: "Swarm", data: { cmd: "GetEnrichedBoltwallUsers" } },
+        cmd: { type: "Swarm", data: { cmd: "GetBoltwallUsers" } },
       });
 
       expect(response.status).toBe(403);
@@ -475,237 +474,56 @@ describe("POST /api/workspaces/[slug]/graph-admin/cmd", () => {
       expect(data.error).toMatch(/admin/i);
     });
 
-    test("returns enriched list with hive name when pubkey matches workspace member", async () => {
-      // Create a db.user with an encrypted lightningPubkey matching the boltwall user
-      // (no WorkspaceMember row needed — enrichment now uses db.user scan directly)
-      const { EncryptionService } = await import("@/lib/encryption");
-      const encryptionService = EncryptionService.getInstance();
-      const encryptedPubkey = JSON.stringify(encryptionService.encryptField("lightningPubkey", TEST_PUBKEY));
-
-      const hiveUser = await createTestUser({
-        email: `hive-member-${Date.now()}@test.com`,
-        name: "Hive Alice",
-        lightningPubkey: encryptedPubkey,
-      });
-      createdEntityIds.userIds.push(hiveUser.id);
-
+    test("remaps boltwall roles: admin → owner, sub_admin → admin, member → member", async () => {
       const { swarmCmdRequest } = await import("@/services/swarm/cmd");
-      vi.mocked(swarmCmdRequest).mockImplementation(async ({ cmd }) => {
-        const cmdName = (cmd as { data: { cmd: string } }).data.cmd;
-        if (cmdName === "ListAdmins") {
-          return {
-            ok: true,
-            status: 200,
-            data: {
-              data: {
-                admins: [
-                  { id: 1, pubkey: TEST_PUBKEY, name: "Alice", role: "member" },
-                ],
-              },
-            },
-          };
-        }
-        if (cmdName === "GetBoltwallSuperAdmin") {
-          return {
-            ok: true,
-            status: 200,
-            data: { success: true, data: { pubkey: "02superadmin000", name: "Super Admin" } },
-          };
-        }
-        return { ok: true, status: 200, data: {} };
+      vi.mocked(swarmCmdRequest).mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: {
+          users: [
+            { id: 1, pubkey: "03pub0001", name: "Super Admin", role: "admin" },
+            { id: 2, pubkey: "03pub0002", name: "Alice Admin", role: "sub_admin" },
+            { id: 3, pubkey: "03pub0003", name: "Bob Member", role: "member" },
+          ],
+        },
       });
 
       const response = await callRoute(workspace.slug, {
-        cmd: { type: "Swarm", data: { cmd: "GetEnrichedBoltwallUsers" } },
+        cmd: { type: "Swarm", data: { cmd: "GetBoltwallUsers" } },
       });
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.users).toBeDefined();
+      expect(data.users).toHaveLength(3);
 
-      // Owner entry (super admin)
-      const ownerEntry = data.users.find((u: { role: string }) => u.role === "owner");
-      expect(ownerEntry).toBeDefined();
-      expect(ownerEntry.pubkey).toBe("02superadmin000");
-      expect(ownerEntry.name).toBe("Super Admin");
+      const owner = data.users.find((u: { pubkey: string }) => u.pubkey === "03pub0001");
+      expect(owner?.role).toBe("owner");
 
-      // Member entry with hive enrichment
-      const memberEntry = data.users.find((u: { pubkey: string }) => u.pubkey === TEST_PUBKEY);
-      expect(memberEntry).toBeDefined();
-      expect(memberEntry.hive).not.toBeNull();
-      expect(memberEntry.hive.name).toBe("Hive Alice");
+      const admin = data.users.find((u: { pubkey: string }) => u.pubkey === "03pub0002");
+      expect(admin?.role).toBe("admin");
+
+      const member = data.users.find((u: { pubkey: string }) => u.pubkey === "03pub0003");
+      expect(member?.role).toBe("member");
     });
 
-    test("returns sentinel owner entry with pubkey null when no super admin set", async () => {
-      const { swarmCmdRequest } = await import("@/services/swarm/cmd");
-      vi.mocked(swarmCmdRequest).mockImplementation(async ({ cmd }) => {
-        const cmdName = (cmd as { data: { cmd: string } }).data.cmd;
-        if (cmdName === "ListAdmins") {
-          return {
-            ok: true,
-            status: 200,
-            data: {
-              data: {
-                admins: [
-                  { id: 2, pubkey: "02member111", name: "Bob", role: "member" },
-                ],
-              },
-            },
-          };
-        }
-        if (cmdName === "GetBoltwallSuperAdmin") {
-          // No super admin set — return empty/null-like response
-          return { ok: true, status: 200, data: {} };
-        }
-        return { ok: true, status: 200, data: {} };
-      });
-
+    test("returns 400 for ListAdmins (removed from allowlist)", async () => {
       const response = await callRoute(workspace.slug, {
-        cmd: { type: "Swarm", data: { cmd: "GetEnrichedBoltwallUsers" } },
+        cmd: { type: "Swarm", data: { cmd: "ListAdmins" } },
       });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(400);
       const data = await response.json();
-
-      const ownerEntry = data.users.find((u: { role: string }) => u.role === "owner");
-      expect(ownerEntry).toBeDefined();
-      expect(ownerEntry.pubkey).toBeNull();
-
-      // The member entry should still be present
-      const memberEntry = data.users.find((u: { pubkey: string }) => u.pubkey === "02member111");
-      expect(memberEntry).toBeDefined();
+      expect(data.error).toMatch(/invalid cmd/i);
     });
 
-    test("enriches owner entry using ownerId when lightningPubkey matches superAdmin pubkey", async () => {
-      const { EncryptionService } = await import("@/lib/encryption");
-      const encryptionService = EncryptionService.getInstance();
-      const SUPER_ADMIN_PUBKEY = "02superadminfull0000000000000000000000000000000000000000000000000001";
-      const encryptedOwnerPubkey = JSON.stringify(
-        encryptionService.encryptField("lightningPubkey", SUPER_ADMIN_PUBKEY),
-      );
-
-      // Set the owner's lightningPubkey to the encrypted superAdmin pubkey
-      await db.user.update({
-        where: { id: owner.id },
-        data: { lightningPubkey: encryptedOwnerPubkey, image: "https://example.com/owner.png" },
-      });
-
-      const { swarmCmdRequest } = await import("@/services/swarm/cmd");
-      vi.mocked(swarmCmdRequest).mockImplementation(async ({ cmd }) => {
-        const cmdName = (cmd as { data: { cmd: string } }).data.cmd;
-        if (cmdName === "ListAdmins") {
-          return { ok: true, status: 200, data: { data: { admins: [] } } };
-        }
-        if (cmdName === "GetBoltwallSuperAdmin") {
-          return {
-            ok: true,
-            status: 200,
-            data: { success: true, data: { pubkey: SUPER_ADMIN_PUBKEY, name: "Super Owner" } },
-          };
-        }
-        return { ok: true, status: 200, data: {} };
-      });
-
+    test("returns 400 for GetEnrichedBoltwallUsers (removed from allowlist)", async () => {
       const response = await callRoute(workspace.slug, {
         cmd: { type: "Swarm", data: { cmd: "GetEnrichedBoltwallUsers" } },
       });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(400);
       const data = await response.json();
-      const ownerEntry = data.users.find((u: { role: string }) => u.role === "owner");
-      expect(ownerEntry).toBeDefined();
-      expect(ownerEntry.pubkey).toBe(SUPER_ADMIN_PUBKEY);
-      expect(ownerEntry.hive).not.toBeNull();
-      expect(ownerEntry.hive.name).toBe(owner.name);
-      expect(ownerEntry.hive.image).toBe("https://example.com/owner.png");
-
-      // Cleanup
-      await db.user.update({
-        where: { id: owner.id },
-        data: { lightningPubkey: null, image: null },
-      });
-    });
-
-    test("returns hive null for boltwall-only user with no matching Hive account", async () => {
-      const UNMATCHED_PUBKEY = "02nomatch0000000000000000000000000000000000000000000000000000000001";
-
-      const { swarmCmdRequest } = await import("@/services/swarm/cmd");
-      vi.mocked(swarmCmdRequest).mockImplementation(async ({ cmd }) => {
-        const cmdName = (cmd as { data: { cmd: string } }).data.cmd;
-        if (cmdName === "ListAdmins") {
-          return {
-            ok: true,
-            status: 200,
-            data: {
-              data: {
-                admins: [{ id: 99, pubkey: UNMATCHED_PUBKEY, name: "Ghost User", role: "member" }],
-              },
-            },
-          };
-        }
-        if (cmdName === "GetBoltwallSuperAdmin") {
-          return {
-            ok: true,
-            status: 200,
-            data: { success: true, data: { pubkey: "02superadminX", name: "Super Admin X" } },
-          };
-        }
-        return { ok: true, status: 200, data: {} };
-      });
-
-      const response = await callRoute(workspace.slug, {
-        cmd: { type: "Swarm", data: { cmd: "GetEnrichedBoltwallUsers" } },
-      });
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      const memberEntry = data.users.find((u: { pubkey: string }) => u.pubkey === UNMATCHED_PUBKEY);
-      expect(memberEntry).toBeDefined();
-      expect(memberEntry.hive).toBeNull();
-    });
-
-    test("deduplicates super admin pubkey from ListAdmins results", async () => {
-      const SUPER_ADMIN_PUBKEY = "02superadmin999";
-
-      const { swarmCmdRequest } = await import("@/services/swarm/cmd");
-      vi.mocked(swarmCmdRequest).mockImplementation(async ({ cmd }) => {
-        const cmdName = (cmd as { data: { cmd: string } }).data.cmd;
-        if (cmdName === "ListAdmins") {
-          return {
-            ok: true,
-            status: 200,
-            data: {
-              data: {
-                admins: [
-                  // Super admin appears in both lists — should be deduplicated
-                  { id: 1, pubkey: SUPER_ADMIN_PUBKEY, name: "Owner Also In List", role: "admin" },
-                  { id: 2, pubkey: "02member222", name: "Carol", role: "member" },
-                ],
-              },
-            },
-          };
-        }
-        if (cmdName === "GetBoltwallSuperAdmin") {
-          return {
-            ok: true,
-            status: 200,
-            data: { success: true, data: { pubkey: SUPER_ADMIN_PUBKEY, name: "Owner" } },
-          };
-        }
-        return { ok: true, status: 200, data: {} };
-      });
-
-      const response = await callRoute(workspace.slug, {
-        cmd: { type: "Swarm", data: { cmd: "GetEnrichedBoltwallUsers" } },
-      });
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-
-      // Super admin should appear exactly once (as owner)
-      const ownerEntries = data.users.filter((u: { pubkey: string }) => u.pubkey === SUPER_ADMIN_PUBKEY);
-      expect(ownerEntries).toHaveLength(1);
-      expect(ownerEntries[0].role).toBe("owner");
+      expect(data.error).toMatch(/invalid cmd/i);
     });
   });
 

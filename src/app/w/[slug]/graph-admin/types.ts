@@ -18,7 +18,6 @@ export interface BoltwallUser {
   pubkey: string | null;
   name: string | null;
   role: "owner" | "admin" | "sub_admin" | "member";
-  hive?: { name: string | null; image: string | null } | null;
 }
 
 export interface GraphAdminClientProps {
