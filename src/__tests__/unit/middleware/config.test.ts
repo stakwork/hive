@@ -214,11 +214,19 @@ describe("resolveRouteAccess", () => {
       }
     });
 
-    it("has no duplicate paths with same strategy", () => {
+    it("has no duplicate paths with same strategy and method scope", () => {
+      // Two entries with the same path+strategy are allowed as long as they
+      // cover disjoint HTTP methods (e.g. `GET -> public` + `ALL -> webhook`
+      // for /api/workspaces/*/members). Key on the full triple so we still
+      // catch accidental true duplicates, but don't flag the deliberate
+      // split.
       const seen = new Set<string>();
-      
+
       for (const policy of ROUTE_POLICIES) {
-        const key = `${policy.path}:${policy.strategy}`;
+        const methods = policy.methods?.length
+          ? [...policy.methods].sort().join(",")
+          : "*";
+        const key = `${policy.path}:${policy.strategy}:${methods}`;
         expect(seen.has(key)).toBe(false);
         seen.add(key);
       }
