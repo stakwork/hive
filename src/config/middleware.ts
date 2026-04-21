@@ -69,8 +69,16 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/workspaces/*/graph/nodes", strategy: "pattern", access: "public", methods: ["GET"] },
   { path: "/api/workspaces/*/graph/gitree", strategy: "pattern", access: "public", methods: ["GET"] },
   { path: "/api/workspaces/*/nodes", strategy: "pattern", access: "public", methods: ["GET"] },
-  // Note: members route is listed as `webhook` above (handler enforces its
-  // own access); the webhook policy takes precedence so no entry needed.
+  // Members GET is `public` so middleware populates auth headers for
+  // signed-in callers (letting the handler's resolveWorkspaceAccess
+  // distinguish a workspace member from an anonymous public viewer) while
+  // still allowing anonymous reads of public workspaces (redacted via
+  // toPublicMember). Non-GET methods fall through to the `webhook` entry
+  // below, which bypasses middleware auth so the handlers can validate
+  // Bearer tokens OR sessions themselves. IMPORTANT: this `public, GET`
+  // entry MUST come before the `webhook` entry for the same path —
+  // policies are first-wins.
+  { path: "/api/workspaces/*/members", strategy: "pattern", access: "public", methods: ["GET"] },
 
   { path: "/api/tasks", strategy: "exact", access: "public", methods: ["GET"] },
   { path: "/api/tasks/stats", strategy: "exact", access: "public", methods: ["GET"] },
