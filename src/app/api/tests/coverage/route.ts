@@ -160,6 +160,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // IDOR guard: the workspaceId-only path was already checked above, but
+    // when only a swarmId was supplied the check was skipped entirely.
+    // Always verify membership against the swarm's actual workspace before
+    // decrypting credentials or proxying to the coverage service.
+    if (!workspaceId || workspaceId !== swarm.workspaceId) {
+      const access = await validateWorkspaceAccessById(swarm.workspaceId, session.user.id);
+      if (!access.hasAccess || !access.canWrite) {
+        return NextResponse.json(
+          { success: false, message: "Workspace not found or access denied" },
+          { status: 404 },
+        );
+      }
+    }
+
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
       return NextResponse.json(
         { success: false, message: "Test coverage is not available." },
