@@ -39,25 +39,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required field: branchName" }, { status: 400 });
     }
 
-    // Fetch podId from task record
+    // Fetch task + podId. Derive workspace from task.workspaceId — NEVER
+    // trust the body-supplied workspaceId independently of the task, or
+    // an attacker can combine a victim's taskId with their own workspace
+    // to pass the membership check while writing to the victim's pod.
     const task = await db.task.findUnique({
       where: { id: taskId },
-      select: { podId: true },
+      select: { podId: true, workspaceId: true },
     });
 
     if (!task?.podId) {
       return NextResponse.json({ error: "No pod assigned to this task" }, { status: 400 });
     }
 
+    // Reject mismatched workspaceId to fail loudly on buggy callers, but
+    // authorize only against the task's workspace.
+    if (task.workspaceId !== workspaceId) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
+
     const podId = task.podId;
 
-    // Verify user has access to the workspace
+    // Verify user has access to the task's workspace
     const workspace = await db.workspace.findFirst({
-      where: { id: workspaceId },
+      where: { id: task.workspaceId },
       include: {
         owner: true,
         members: {
-          where: { userId },
+          where: { userId, leftAt: null },
           select: { role: true },
         },
         swarm: true,
@@ -73,7 +85,21 @@ export async function POST(request: NextRequest) {
     });
 
     if (!workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
+
+    // Unified IDOR guard: non-members cannot see whether the workspace
+    // or task exists.
+    const isOwner = workspace.ownerId === userId;
+    const isMember = workspace.members.length > 0;
+    if (!isOwner && !isMember) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
 
     if (process.env.MOCK_BROWSER_URL) {
@@ -94,13 +120,6 @@ export async function POST(request: NextRequest) {
         },
         { status: 200 },
       );
-    }
-
-    const isOwner = workspace.ownerId === userId;
-    const isMember = workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Check if workspace has a swarm

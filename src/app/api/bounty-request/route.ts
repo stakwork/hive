@@ -4,6 +4,7 @@ import { ensureUniqueBountyCode } from "@/lib/bounty-code";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { EncryptionService } from "@/lib/encryption";
 import { callStakworkBountyAPI } from "@/services/task-workflow";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { ChatRole, ChatStatus, ArtifactType, Prisma } from "@prisma/client";
@@ -50,21 +51,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Bounty requests are only available for the hive workspace" }, { status: 403 });
     }
 
-    // Generate a unique bounty code
-    const bountyCode = await ensureUniqueBountyCode();
-
-    // Look up source task to get podId and agentPassword
+    // Look up the source task first so we can authorize against its
+    // real workspaceId (NOT the body-supplied sourceWorkspaceSlug/Id —
+    // the existing `=== "hive"` string check is not a membership check).
     const sourceTask = await db.task.findUnique({
       where: { id: sourceTaskId },
       select: {
         podId: true,
         agentPassword: true,
+        workspaceId: true,
       },
     });
 
     if (!sourceTask) {
-      return NextResponse.json({ error: "Source task not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
+
+    // IDOR guard: before this check any signed-in user could pass a
+    // victim's sourceTaskId (from the hardcoded "hive" workspace) and
+    // get the handler to decrypt that task's agentPassword + inject a
+    // BOUNTY-artifact chat message broadcast via Pusher, with the
+    // attacker recorded as `sourceUserId`. Require canWrite membership
+    // on the source task's actual workspace before any decryption or
+    // chat write runs.
+    const access = await validateWorkspaceAccessById(sourceTask.workspaceId, userId);
+    if (!access.hasAccess || !access.canWrite) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
+
+    // Generate a unique bounty code
+    const bountyCode = await ensureUniqueBountyCode();
 
     // Create PENDING bounty artifact
     const bountyContent: BountyContent = {
