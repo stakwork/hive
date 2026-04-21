@@ -35,6 +35,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
         workspaceName={workspace.name}
         workspaceSlug={workspace.slug}
         isOwner={workspace.userRole === "OWNER"}
+        isPublicViewable={workspace.isPublicViewable ?? false}
       />
     </div>
   );
