@@ -24,7 +24,7 @@ export function roleToNumber(role: string): number {
 
 export function getRoleLabel(role: BoltwallUser["role"]): string {
   if (role === "owner") return "Owner";
-  if (role === "admin" || role === "sub_admin") return "Admin";
+  if (role === "admin") return "Admin";
   return "Member";
 }
 
