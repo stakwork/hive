@@ -320,6 +320,7 @@ export async function getWorkspaceBySlug(
       logoUrl: workspace.logoUrl,
       nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
       workspaceKind: workspace.workspaceKind,
+      isPublicViewable: workspace.isPublicViewable,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -354,6 +355,7 @@ export async function getWorkspaceBySlug(
       logoUrl: workspace.logoUrl,
       nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
       workspaceKind: workspace.workspaceKind,
+      isPublicViewable: workspace.isPublicViewable,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -411,6 +413,7 @@ export async function getWorkspaceBySlug(
     logoUrl: workspace.logoUrl,
     nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
     workspaceKind: workspace.workspaceKind,
+    isPublicViewable: workspace.isPublicViewable,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
