@@ -83,7 +83,16 @@ tackled in a follow-up effort.
     URL or the long-lived presigned download URL, and also validates
     `session.user.id` (401 otherwise). No test churn — the existing
     integration test file was already `describe.skip`ed.
-  - Remaining Phase B items (#6, #7, #12, #19–24) — not started.
+  - **Misc #6 + #7 — DONE** on `ef/idor-fixes-2`. tasks/create-
+    from-transcript now requires `canWrite` via `validateWorkspaceAccess`
+    before extracting the transcript or firing the live Stakwork
+    workflow; features/[featureId]/invite requires `canWrite` on the
+    feature's workspace AND narrows the invitee lookup to users who
+    own the workspace or have an active `workspaceMembers` row, so
+    the caller can no longer name arbitrary @-aliases. Integration
+    tests for `/invite` were updated to enrol each test invitee as a
+    workspace member.
+  - Remaining Phase B items (#12, #19–24) — not started.
 - **Phase C (Medium #26–30)** — not started.
 - **Phase D (shared-secret S1–S3)** — not started.
 - **"also" items** (public-viewer 7-day → 1-hour presigned URLs;
@@ -268,6 +277,12 @@ proof-of-exploit, and suggested fix.
 - **Fix**: `validateWorkspaceAccess(workspaceSlug, userId)` (or
   `resolveWorkspaceAccess` + `requireMemberAccess`) before
   `extractTaskFromTranscript` / `createTaskWithStakworkWorkflow`.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2`. Replaced the bare
+  slug→id lookup with `validateWorkspaceAccess` requiring `canWrite`
+  and return the unified 404 on failure. The live Stakwork workflow
+  and the transcript-to-AI extractor now only run after membership
+  is confirmed. No existing test needed updating (this route has no
+  integration test).
 
 #### 7. `src/app/api/features/[featureId]/invite/route.ts` — POST
 - **Bug**: loads feature + workspace (with Sphinx creds) by `featureId`
@@ -279,6 +294,16 @@ proof-of-exploit, and suggested fix.
   `validateWorkspaceAccessById(feature.workspace.id, userId)` with
   `canWrite`; also verify each `inviteeUserId` is a member of the same
   workspace.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2`. Added both the caller
+  membership check (`canWrite` on `feature.workspace.id`, return 404
+  before decrypting `sphinxBotSecret` or calling `sendToSphinx`) and
+  the invitee-membership check (the `db.user.findMany` query now
+  requires each invitee to own the workspace or be an active member
+  via `workspaceMembers { some: { workspaceId, leftAt: null } }`).
+  Also added a missing `session.user.id` check (401 otherwise).
+  Integration tests updated: each invitee is now enrolled as a
+  `DEVELOPER` workspace member before the invite call, and one
+  error-message assertion was adjusted to the new copy.
 
 #### 8. `src/app/api/agent/route.ts` — POST
 - **Bug**: loads `db.task.findUnique({ where: { id: taskId } })` with
@@ -597,7 +622,8 @@ require session auth + workspace admin.
      `7b5a2fa78`).
    - Tests cluster (#17–18) ✅ on `ef/idor-fixes-2`.
    - Upload (#25) ✅ on `ef/idor-fixes-2`.
-   - Remaining (#6, #7, #12, #19–24) still open.
+   - Misc (#6, #7) ✅ on `ef/idor-fixes-2`.
+   - Remaining (#12, #19–24) still open.
 3. **Phase C — medium (#26–30)**: one cleanup PR.
 4. **Phase D — shared-secret endpoints (S1–S3)**: design work on
    per-resource tokens, then migrate webhooks to the new scheme.
