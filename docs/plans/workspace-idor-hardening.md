@@ -26,6 +26,23 @@ remaining findings pre-date this branch and are out of scope for the
 current PR — this document captures a remediation plan so they can be
 tackled in a follow-up effort.
 
+## Progress
+
+- **Phase A (Critical #1–5) — DONE** on branch `ef/idor-fixes-1`
+  (commit `03d836163`, "Harden workspace IDOR on 5 critical handlers").
+  See the per-finding "Status" notes under each Critical entry below.
+  Both the source handlers and the MCP JWT verifier were updated, and
+  targeted unit + integration tests were added asserting that a
+  signed-in non-member receives a unified `404 "Workspace not found or
+  access denied"` and that no credentialed side-effects (Stakwork
+  calls, pool deletion, S3 presigning, LiveKit/MCP JWT signing,
+  stakgraph polling / env-var writes) run on their behalf.
+- **Phase B (High #6–25)** — not started.
+- **Phase C (Medium #26–30)** — not started.
+- **Phase D (shared-secret S1–S3)** — not started.
+- **"also" items** (public-viewer 7-day → 1-hour presigned URLs;
+  jarvis/nodes call reduction) — not started.
+
 ## Guiding principles
 
 - **Membership check must run before any DB write and before any
@@ -99,6 +116,13 @@ proof-of-exploit, and suggested fix.
 - **Fix**: `validateWorkspaceAccessById(workspaceId, userId)` with
   `canAdmin: true` before the customer create or the `stakworkApiKey`
   write.
+- **Status**: ✅ Fixed on `ef/idor-fixes-1`. Handler now rejects
+  missing/null/empty `workspaceId` with 400 and rejects non-admins
+  with 404 before calling `createCustomer` or writing `stakworkApiKey`.
+  Tests: `src/__tests__/integration/api/stakwork-create-customer.test.ts`
+  (non-member → 404, DEVELOPER member → 404) +
+  `src/__tests__/unit/api/stakwork/create-customer-route.test.ts`
+  (`validateWorkspaceAccessById` mocked, IDOR branch asserted).
 
 #### 2. `src/app/api/pool-manager/delete-pool/route.ts` — DELETE
 - **Bug**: only `getServerSession` is checked; `poolManagerService().deletePool({ name })`
@@ -109,6 +133,13 @@ proof-of-exploit, and suggested fix.
 - **Fix**: look up the swarm whose id matches `name`, then
   `validateWorkspaceAccessById(swarm.workspaceId, userId)` requiring
   admin. Reject otherwise.
+- **Status**: ✅ Fixed on `ef/idor-fixes-1`. Handler now does
+  `db.swarm.findUnique({ where: { id: name } })` → admin check on
+  `swarm.workspaceId` before `deletePool`. Missing swarm and non-admin
+  both return the unified 404. Tests:
+  `src/__tests__/integration/api/pool-manager/delete-pool.test.ts`
+  (unknown `name` → 404, non-member attacker → 404; pre-existing
+  tests refactored to create a real swarm so `name === swarm.id`).
 
 #### 3. `src/app/api/upload/presigned-url/route.ts` — POST, GET
 - **Bug (POST)**: returns a presigned upload URL scoped to the victim's
@@ -123,6 +154,17 @@ proof-of-exploit, and suggested fix.
   `Attachment` / `Artifact` / `Feature` row carrying `workspaceId`),
   then require membership. Alternative: restrict to a user-specific
   prefix (e.g. `users/<userId>/*`).
+- **Status**: ✅ Fixed on `ef/idor-fixes-1`.
+  - POST: adds `validateWorkspaceAccessById(task.workspaceId, userId)`
+    with `canWrite` before issuing the upload URL.
+  - GET: parses the owning `workspaceId` out of the `s3Key` with an
+    allow-list of known prefixes (`uploads/`, `workspace-logos/`,
+    `whiteboards/`, `screenshots/`, `features/`, `diagrams/`) and
+    requires `canRead` membership before minting the download URL.
+    Unknown prefixes return 404.
+  - Tests: `src/__tests__/integration/api/upload-presigned-url.test.ts`
+    — IDOR suite covers POST non-member, GET non-member, GET unknown
+    prefix, and GET owner happy-path (redirect to presigned URL).
 
 #### 4. `src/app/api/livekit-token/route.ts` — POST
 - **Bug**: signs a 4-hour JWT containing body-supplied `slug` which
@@ -133,6 +175,16 @@ proof-of-exploit, and suggested fix.
 - **Fix**: before signing, `validateWorkspaceAccess(slug, userId)` → 403
   on failure. Embed `userId` in the JWT claims and have `verifyJwt`
   re-validate membership at use time.
+- **Status**: ✅ Fixed on `ef/idor-fixes-1`.
+  - `/api/livekit-token` calls `validateWorkspaceAccess(slug, userId)`
+    before signing and returns 404 on failure (no JWT is minted).
+  - The minted JWT now carries both `slug` and `userId` claims.
+  - `src/lib/mcp/handler.ts` `verifyJwt` rejects legacy JWTs missing
+    `userId` and re-checks `ownerId` / `workspaceMember` at use time,
+    so a revoked membership invalidates the token immediately.
+  - Tests: `src/__tests__/integration/api/livekit-token.test.ts`
+    covers unauth/400/owner-happy-path/non-member attacker/unknown
+    slug; `toJwt()` is asserted to not be called on the error paths.
 
 #### 5. `src/app/api/swarm/stakgraph/agent-stream/route.ts` — GET
 - **Bug**: loads swarm by body/query `swarmId` with no membership check,
@@ -143,6 +195,18 @@ proof-of-exploit, and suggested fix.
   victim credentials and overwrites victim's swarm env vars.
 - **Fix**: `validateWorkspaceAccessById(swarm.workspaceId, userId)` with
   `canAdmin` before the poll and writes.
+- **Status**: ✅ Fixed on `ef/idor-fixes-1`. The swarm lookup and
+  admin check now run **before** the SSE stream is opened — so there
+  is no opportunity to decrypt `swarmApiKey`, poll stakgraph, or
+  write `environment_variables` / `swarm` rows for a non-admin.
+  Failure returns a plain 404 (not an SSE error event). Tests:
+  new `describe("GET /api/swarm/stakgraph/agent-stream - IDOR hardening")`
+  suite in `src/__tests__/integration/api/swarm-stakgraph-agent-stream.test.ts`
+  covering unauth/missing-swarm/non-member/non-admin member — all
+  four assert no stream is opened and `pollAgentProgress` is never
+  called. (The pre-existing `describe.skip` block is left skipped
+  due to unrelated zombie-polling issues; the new IDOR tests do not
+  depend on the polling loop so they run.)
 
 ---
 
@@ -420,8 +484,10 @@ require session auth + workspace admin.
 
 ## Suggested rollout
 
-1. **Phase A — critical handlers (#1–5)**: single focused PR. Include
-   integration tests that sign in as a non-member and assert 403/404.
+1. **Phase A — critical handlers (#1–5)**: ✅ landed on
+   `ef/idor-fixes-1` (commit `03d836163`). Unit + integration tests
+   assert non-members get 404 and that no credentialed side-effects
+   run on their behalf.
 2. **Phase B — high-severity (#6–25)**: group by area (agent, swarm,
    github, upload, misc). 3–4 follow-up PRs. Consider factoring the
    `apiTokenAuth ? requireAuthOrApiToken(...) : resolveWorkspaceAccess(...)`

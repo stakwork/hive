@@ -112,22 +112,20 @@ describe("POST /api/stakwork/create-customer", () => {
       expect(mockCreateCustomer).not.toHaveBeenCalled();
     });
 
-    it("returns error when workspaceId is missing from request body", async () => {
+    it("returns 400 when workspaceId is missing from request body", async () => {
       const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {});
 
       const res = await POST(req);
 
-      // The endpoint will try to create customer with undefined workspaceId
-      expect(mockCreateCustomer).toHaveBeenCalledWith(undefined);
+      // IDOR hardening: reject requests missing workspaceId instead of
+      // letting them pass through to Stakwork.
+      expect(res?.status).toBe(400);
+      expect(mockCreateCustomer).not.toHaveBeenCalled();
     });
   });
 
   describe("database validation errors", () => {
-    it("handles workspace not found gracefully", async () => {
-      mockCreateCustomer.mockResolvedValueOnce({
-        data: { token: "stak-token-new" },
-      });
-
+    it("returns 404 when workspace does not exist", async () => {
       const nonExistentWorkspaceId = generateUniqueId("nonexistent");
       const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {
         workspaceId: nonExistentWorkspaceId,
@@ -135,18 +133,21 @@ describe("POST /api/stakwork/create-customer", () => {
 
       const res = await POST(req);
 
-      // Should still succeed with 201 but not update any workspace
-      expect(res?.status).toBe(201);
+      // IDOR hardening: callers without admin access to the workspace
+      // must get a unified "not found or access denied" response — and
+      // createCustomer must never be invoked on their behalf.
+      expect(res?.status).toBe(404);
       const json = await res.json();
-      expect(json).toEqual({ success: true });
+      expect(json).toEqual({ error: "Workspace not found or access denied" });
 
-      // Verify no workspace was updated
+      // Verify no workspace was created or updated
       const workspace = await db.workspace.findFirst({
         where: { id: nonExistentWorkspaceId },
       });
       expect(workspace).toBeNull();
 
-      // createSecret should never be called
+      // Neither Stakwork API should have been touched
+      expect(mockCreateCustomer).not.toHaveBeenCalled();
       expect(mockCreateSecret).not.toHaveBeenCalled();
     });
 
@@ -195,6 +196,57 @@ describe("POST /api/stakwork/create-customer", () => {
       expect(res?.status).toBe(500);
       const json = await res.json();
       expect(json).toEqual({ error: "Failed to create customer" });
+    });
+  });
+
+  describe("IDOR hardening", () => {
+    it("returns 404 when caller is not a member of the target workspace", async () => {
+      // Attacker: signed-in as a different user with no membership
+      const attacker = await db.user.create({
+        data: createTestUserData(),
+      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(attacker));
+
+      const req = createPostRequest(
+        "http://localhost:3000/api/stakwork/create-customer",
+        { workspaceId },
+      );
+
+      const res = await POST(req);
+
+      expect(res?.status).toBe(404);
+      const json = await res.json();
+      expect(json).toEqual({ error: "Workspace not found or access denied" });
+
+      // Neither Stakwork API was touched and stakworkApiKey was not written.
+      expect(mockCreateCustomer).not.toHaveBeenCalled();
+      expect(mockCreateSecret).not.toHaveBeenCalled();
+
+      const workspace = await db.workspace.findFirst({ where: { id: workspaceId } });
+      expect(workspace?.stakworkApiKey).toBeNull();
+    });
+
+    it("returns 404 when caller is a DEVELOPER member (not admin)", async () => {
+      // Viewer/developer membership does not satisfy canAdmin.
+      const developer = await db.user.create({ data: createTestUserData() });
+      await db.workspaceMember.create({
+        data: {
+          workspaceId,
+          userId: developer.id,
+          role: "DEVELOPER",
+        },
+      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(developer));
+
+      const req = createPostRequest(
+        "http://localhost:3000/api/stakwork/create-customer",
+        { workspaceId },
+      );
+
+      const res = await POST(req);
+
+      expect(res?.status).toBe(404);
+      expect(mockCreateCustomer).not.toHaveBeenCalled();
     });
   });
 
