@@ -10,6 +10,7 @@ import { WebhookService } from "@/services/github/WebhookService";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { triggerIngestAsync, checkStakgraphAvailability, SyncOptions } from "@/services/swarm/stakgraph-actions";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -44,6 +45,19 @@ export async function POST(request: NextRequest) {
     if (!workspaceId) {
       console.log(`[STAKGRAPH_INGEST] No workspaceId provided`);
       return NextResponse.json({ success: false, message: "Workspace ID is required" }, { status: 400 });
+    }
+
+    // IDOR guard: a non-member could previously trigger a real stakgraph
+    // ingest against the victim's swarm (burning credits, attacker-PAT
+    // cloning victim repos) and flip repos to PENDING. Require an active
+    // member with write permission before any swarm read or DB write.
+    const access = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!access.hasAccess || !access.canWrite) {
+      console.log(`[STAKGRAPH_INGEST] Access denied for user ${session.user.id} on workspace ${workspaceId}`);
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
 
     console.log(`[STAKGRAPH_INGEST] Looking up swarm for workspace: ${workspaceId}`);
@@ -377,6 +391,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { success: false, message: "Missing required fields: id, workspaceId" },
         { status: 400 },
+      );
+    }
+
+    // IDOR guard: reading ingest status via the victim's decrypted
+    // swarmApiKey is not free (it leaks progress + indirectly the shape
+    // of the ingest). Require active membership on the workspace.
+    const access = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!access.hasAccess || !access.canRead) {
+      console.log(`[STAKGRAPH_STATUS] Access denied for user ${session.user.id} on workspace ${workspaceId}`);
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 404 },
       );
     }
 

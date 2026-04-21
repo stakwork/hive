@@ -204,6 +204,21 @@ export async function GET(request: NextRequest) {
     let finalIntegrationGlob = integrationGlobParam;
     let finalE2eGlob = e2eGlobParam;
 
+    // IDOR guard: previously this check ran AFTER the primary-repo
+    // ignoreDirs / unitGlob / integrationGlob / e2eGlob writes below,
+    // so a non-member could poison the victim's repo glob config and
+    // only then receive a 403. Authorize before any write. Require
+    // canWrite because the repo fields are mutated from query params.
+    if (workspaceId) {
+      const access = await validateWorkspaceAccessById(workspaceId, session.user.id);
+      if (!access.hasAccess || !access.canWrite) {
+        return NextResponse.json(
+          { success: false, message: "Workspace not found or access denied" },
+          { status: 404 },
+        );
+      }
+    }
+
     if (workspaceId && !swarmId) {
       const primaryRepo = await getPrimaryRepository(workspaceId);
       if (primaryRepo) {
@@ -272,13 +287,6 @@ export async function GET(request: NextRequest) {
         { success: false, message: "Missing required parameter: workspaceId or swarmId" },
         { status: 400 },
       );
-    }
-
-    if (workspaceId) {
-      const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
-      if (!workspaceAccess.hasAccess) {
-        return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 403 });
-      }
     }
 
     const where: Record<string, string> = {};

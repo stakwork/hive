@@ -34,9 +34,17 @@ vi.mock("@/config/services", () => ({
   })),
 }));
 
-vi.mock("@/lib/constants", () => ({
-  getSwarmVanityAddress: vi.fn((name: string) => `${name}.sphinx.chat`),
-}));
+vi.mock("@/lib/constants", async (importOriginal) => {
+  // Partial mock: stub getSwarmVanityAddress so tests don't hit the real
+  // vanity resolver, but keep the rest of the module (WORKSPACE_PERMISSION_LEVELS,
+  // workspace slug constants, etc.) intact since workspace-access helpers
+  // read them.
+  const actual = await importOriginal<typeof import("@/lib/constants")>();
+  return {
+    ...actual,
+    getSwarmVanityAddress: vi.fn((name: string) => `${name}.sphinx.chat`),
+  };
+});
 
 vi.mock("@/lib/url", () => ({
   getGithubWebhookCallbackUrl: vi.fn(() => "https://app.example.com/api/github/webhook"),
