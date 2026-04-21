@@ -79,6 +79,11 @@ vi.mock("@/components/settings/NodeTypeOrderSettings", () => ({
     <div data-testid="node-type-order-settings">NodeTypeOrderSettings</div>
   ),
 }));
+vi.mock("@/components/settings/WorkspaceVisibilitySettings", () => ({
+  WorkspaceVisibilitySettings: () => (
+    <div data-testid="workspace-visibility-settings">WorkspaceVisibilitySettings</div>
+  ),
+}));
 vi.mock("@/components/DeleteWorkspace", () => ({
   DeleteWorkspace: () => <div data-testid="delete-workspace">DeleteWorkspace</div>,
 }));
