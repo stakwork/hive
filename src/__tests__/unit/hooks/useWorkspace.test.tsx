@@ -60,6 +60,7 @@ const mockContextValue = {
   slug: "test-workspace",
   id: "workspace-1",
   role: "OWNER" as const,
+  isSuperAdmin: false,
   workspaces: mockWorkspaces,
   waitingForInputCount: 3,
   notificationsLoading: false,
@@ -69,7 +70,9 @@ const mockContextValue = {
   refreshWorkspaces: vi.fn(),
   refreshCurrentWorkspace: vi.fn(),
   refreshTaskNotifications: vi.fn(),
+  updateWorkspace: vi.fn(),
   hasAccess: true,
+  isPublicViewer: false,
 };
 
 describe("useWorkspace Hook", () => {

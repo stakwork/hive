@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuthOrApiToken } from "@/lib/auth/api-token";
+import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 import { getS3Service } from "@/services/s3";
 
 export const runtime = "nodejs";
@@ -47,10 +48,26 @@ export async function GET(
       );
     }
 
-    // Step 2: Authenticate (supports both x-api-token and session)
-    const authResult = await requireAuthOrApiToken(request, workspace.id);
-    if (authResult instanceof NextResponse) {
-      return authResult; // Return error response (401, etc.)
+    // Step 2: Authenticate and authorize. x-api-token callers are trusted
+    // service-to-service clients that bypass membership. Session-
+    // authenticated callers must be members of this specific workspace —
+    // voice signatures are biometric data and must not leak cross-tenant.
+    // `requireAuthOrApiToken` alone is not sufficient: it accepts any
+    // signed-in user regardless of workspace membership.
+    const apiTokenAuth =
+      request.headers.get("x-api-token") === process.env.API_TOKEN;
+
+    if (apiTokenAuth) {
+      const authResult = await requireAuthOrApiToken(request, workspace.id);
+      if (authResult instanceof NextResponse) {
+        return authResult;
+      }
+    } else {
+      const access = await resolveWorkspaceAccess(request, {
+        workspaceId: workspace.id,
+      });
+      const member = requireMemberAccess(access);
+      if (member instanceof NextResponse) return member;
     }
 
     // Step 3: Query active members with voice signatures

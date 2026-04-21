@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
 
 export interface TaskStats {
   total: number;
@@ -18,13 +17,15 @@ interface UseTaskStatsResult {
 }
 
 export function useTaskStats(workspaceId: string | null): UseTaskStatsResult {
-  const { data: session } = useSession();
+  // Stats are safe to fetch for both authenticated users and public viewers
+  // on isPublicViewable workspaces; the server handles authorization and
+  // returns 4xx otherwise.
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
-    if (!workspaceId || !session?.user) {
+    if (!workspaceId) {
       setStats(null);
       return;
     }
@@ -58,7 +59,7 @@ export function useTaskStats(workspaceId: string | null): UseTaskStatsResult {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user]);
+  }, [workspaceId]);
 
   useEffect(() => {
     fetchStats();

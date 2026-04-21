@@ -6,6 +6,8 @@ import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { TaskStatus } from "@prisma/client";
 import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicUser } from "@/lib/auth/public-redact";
 
 const TASK_SELECT = {
   id: true,
@@ -79,8 +81,39 @@ export async function GET(
       where: { id: featureId },
       select: { workspaceId: true },
     });
-    const userOrResponse = await requireAuthOrApiToken(request, featureLookup?.workspaceId);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    if (!featureLookup) {
+      return NextResponse.json({ error: "Feature not found" }, { status: 404 });
+    }
+
+    // Resolve caller access against the workspace. Both authenticated
+    // members and public-viewers on `isPublicViewable` workspaces are
+    // allowed read access; everyone else gets a unified 404.
+    //
+    // We still go through `requireAuthOrApiToken` so that requests bearing
+    // a valid `x-api-token` header are accepted (service-to-service
+    // callers with no session). That path assumes the workspace owner as
+    // the acting user and bypasses membership — `requireAuthOrApiToken`
+    // only returns an owner-user when the token itself is valid, so the
+    // bypass is limited to trusted clients.
+    const apiTokenAuth =
+      request.headers.get("x-api-token") === process.env.API_TOKEN;
+    let userId: string | null = null;
+    let redactForPublic = false;
+
+    if (apiTokenAuth) {
+      const apiResult = await requireAuthOrApiToken(request, featureLookup.workspaceId);
+      if (apiResult instanceof NextResponse) return apiResult;
+      userId = apiResult.id;
+    } else {
+      const rawAccess = await resolveWorkspaceAccess(request, {
+        workspaceId: featureLookup.workspaceId,
+      });
+      const access = requireReadAccess(rawAccess);
+      if (access instanceof NextResponse) return access;
+      userId = access.userId ?? null;
+      redactForPublic = isPublicViewer(access);
+
+    }
 
     const { searchParams } = new URL(request.url);
     const sortBy = searchParams.get("sortBy") || "updatedAt";
@@ -97,14 +130,6 @@ export async function GET(
             name: true,
             slug: true,
             ownerId: true,
-            members: {
-              where: {
-                userId: userOrResponse.id,
-              },
-              select: {
-                role: true,
-              },
-            },
           },
         },
         assignee: {
@@ -182,24 +207,26 @@ export async function GET(
       );
     }
 
-    const isOwner = feature.workspace.ownerId === userOrResponse.id;
-    const isMember = feature.workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
+    // Access already validated above (either authenticated member or
+    // public-viewer on an isPublicViewable workspace). No further check
+    // needed here.
 
     const processTasks = async (tasks: typeof feature.phases[0]["tasks"]) => {
       return Promise.all(
         tasks.map(async (task) => {
-          const prArtifact = await extractPrArtifact(task, userOrResponse.id);
+          // Public viewers have no GitHub token — skip the live PR status
+          // refresh and use the stored artifact state.
+          const prArtifact = userId
+            ? await extractPrArtifact(task, userId)
+            : null;
           if (prArtifact?.content?.status === "DONE") {
             task.status = TaskStatus.DONE;
           }
           const { chatMessages: _, ...taskWithoutMessages } = task;
-          const assignee = task.systemAssigneeType && !task.assignee
+          const rawAssignee = task.systemAssigneeType && !task.assignee
             ? getSystemAssigneeUser(task.systemAssigneeType)
             : task.assignee;
+          const assignee = redactForPublic ? toPublicUser(rawAssignee) : rawAssignee;
           return { ...taskWithoutMessages, assignee, prArtifact };
         })
       );
@@ -207,6 +234,16 @@ export async function GET(
 
     const transformedFeature = {
       ...feature,
+      assignee: redactForPublic ? toPublicUser(feature.assignee) : feature.assignee,
+      createdBy: redactForPublic ? toPublicUser(feature.createdBy) : feature.createdBy,
+      updatedBy: redactForPublic ? toPublicUser(feature.updatedBy) : feature.updatedBy,
+      userStories: redactForPublic
+        ? feature.userStories.map((s) => ({
+            ...s,
+            createdBy: toPublicUser(s.createdBy),
+            updatedBy: toPublicUser(s.updatedBy),
+          }))
+        : feature.userStories,
       phases: await Promise.all(
         feature.phases.map(async (phase) => ({
           ...phase,
