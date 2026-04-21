@@ -58,6 +58,7 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
     status: "PENDING" | "SYNCED" | "FAILED";
     updatedAt: string;
   }>;
+  isPublicViewable?: boolean;
 }
 
 export interface WorkspaceAccessValidation {

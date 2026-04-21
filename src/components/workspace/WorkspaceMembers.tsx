@@ -17,13 +17,24 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Users, Plus, MoreHorizontal, Trash2 } from "lucide-react";
+import { Users, Plus, MoreHorizontal, Trash2, Clock, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { AddMemberModal } from "./AddMemberModal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { WorkspaceMember } from "@/types/workspace";
 import type { WorkspaceRole } from "@/lib/auth/roles";
+
+interface PendingAccessRequest {
+  id: string;
+  requestedAt: string;
+  user: {
+    id: string;
+    name: string | null;
+    image: string | null;
+    githubAuth: { githubUsername: string } | null;
+  };
+}
 
 interface WorkspaceMembersProps {
   canAdmin: boolean;
@@ -40,6 +51,9 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
     userId: string;
     userName: string;
   }>({ open: false, userId: "", userName: "" });
+  const [pendingRequests, setPendingRequests] = useState<PendingAccessRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const { slug } = useWorkspace();
 
   // Fetch workspace members
@@ -63,9 +77,54 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
     }
   }, [slug]);
 
+  // Fetch pending access requests (admin only)
+  const fetchPendingRequests = useCallback(async () => {
+    if (!slug || !canAdmin) return;
+    try {
+      setRequestsLoading(true);
+      const res = await fetch(`/api/workspaces/${slug}/access-request`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setPendingRequests(data.requests || []);
+    } catch {
+      // Non-critical — silently ignore
+    } finally {
+      setRequestsLoading(false);
+    }
+  }, [slug, canAdmin]);
+
+  const handleAccessRequestAction = async (requestId: string, action: "approve" | "reject") => {
+    if (!slug) return;
+    setActionLoading(requestId);
+    try {
+      const res = await fetch(`/api/workspaces/${slug}/access-request/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to process request");
+      }
+      toast.success(action === "approve" ? "Request approved — user is now a Developer" : "Request rejected");
+      // Refresh both lists
+      await Promise.all([fetchPendingRequests(), fetchMembers()]);
+    } catch (err) {
+      toast.error("Failed to process request", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   useEffect(() => {
     fetchMembers();
   }, [fetchMembers]);
+
+  useEffect(() => {
+    fetchPendingRequests();
+  }, [fetchPendingRequests]);
 
   const handleRemoveMember = (userId: string, userName: string) => {
     // Skip if trying to remove owner
@@ -331,6 +390,81 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Pending Access Requests — visible to admins/owners only */}
+      {canAdmin && (
+        <Card data-testid="pending-requests-card">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <CardTitle className="text-base">Pending Access Requests</CardTitle>
+            </div>
+            <CardDescription>
+              Users who have requested developer access to this workspace.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {requestsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading requests…</p>
+            ) : pendingRequests.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No pending requests.</p>
+            ) : (
+              <div className="space-y-3">
+                {pendingRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="flex items-center justify-between p-3 rounded-lg border"
+                    data-testid="pending-request-row"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar className="w-9 h-9">
+                        <AvatarImage src={req.user.image ?? undefined} alt={req.user.name ?? "User"} />
+                        <AvatarFallback>
+                          {req.user.name?.charAt(0) ?? req.user.githubAuth?.githubUsername?.charAt(0) ?? "U"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium">
+                          {req.user.name ?? req.user.githubAuth?.githubUsername ?? "Unknown"}
+                        </p>
+                        {req.user.githubAuth?.githubUsername && (
+                          <p className="text-xs text-muted-foreground">
+                            @{req.user.githubAuth.githubUsername}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-green-600 border-green-200 hover:bg-green-50"
+                        disabled={actionLoading === req.id}
+                        onClick={() => handleAccessRequestAction(req.id, "approve")}
+                        data-testid="approve-request-btn"
+                      >
+                        <Check className="w-4 h-4 mr-1" />
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive border-destructive/20 hover:bg-destructive/5"
+                        disabled={actionLoading === req.id}
+                        onClick={() => handleAccessRequestAction(req.id, "reject")}
+                        data-testid="reject-request-btn"
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {canAdmin && (
         <AddMemberModal
