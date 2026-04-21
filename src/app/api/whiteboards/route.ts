@@ -1,47 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
+import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicUser } from "@/lib/auth/public-redact";
 
 export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
     const featureId = searchParams.get("featureId");
 
-    // If featureId is provided, get whiteboard by feature
+    // If featureId is provided, get whiteboard by feature.
     if (featureId) {
       const whiteboard = await db.whiteboard.findUnique({
         where: { featureId },
         include: {
-          workspace: {
-            select: {
-              ownerId: true,
-              members: {
-                where: { userId: userOrResponse.id },
-                select: { role: true },
-              },
-            },
-          },
-          feature: {
-            select: { id: true, title: true },
-          },
+          feature: { select: { id: true, title: true, workspaceId: true } },
         },
       });
 
-      if (!whiteboard) {
+      if (!whiteboard || !whiteboard.feature) {
+        // `feature` is null-typed because the relation is optional; in
+        // practice the `where: { featureId }` filter guarantees it, but
+        // guard for TS and the edge case of a dangling whiteboard.
         return NextResponse.json({ success: true, data: null }, { status: 200 });
       }
 
-      // Check access
-      const isOwner = whiteboard.workspace.ownerId === userOrResponse.id;
-      const isMember = whiteboard.workspace.members.length > 0;
-      if (!isOwner && !isMember) {
-        return NextResponse.json({ error: "Access denied" }, { status: 403 });
-      }
+      const feature = whiteboard.feature;
+      const access = await resolveWorkspaceAccess(request, {
+        workspaceId: feature.workspaceId,
+      });
+      const ok = requireReadAccess(access);
+      if (ok instanceof NextResponse) return ok;
 
       return NextResponse.json({
         success: true,
@@ -49,7 +39,10 @@ export async function GET(request: NextRequest) {
           id: whiteboard.id,
           name: whiteboard.name,
           featureId: whiteboard.featureId,
-          feature: whiteboard.feature,
+          feature: {
+            id: feature.id,
+            title: feature.title,
+          },
           elements: whiteboard.elements,
           appState: whiteboard.appState,
           files: whiteboard.files,
@@ -66,21 +59,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify user has access to workspace
-    const workspace = await db.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        deleted: false,
-        OR: [
-          { ownerId: userOrResponse.id },
-          { members: { some: { userId: userOrResponse.id } } },
-        ],
-      },
-    });
-
-    if (!workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
-    }
+    const access = await resolveWorkspaceAccess(request, { workspaceId });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
+    const redactForPublic = isPublicViewer(ok);
 
     const createdByIdParam = searchParams.get("createdById");
     const whereClause: Record<string, unknown> = { workspaceId };
@@ -129,9 +111,12 @@ export async function GET(request: NextRequest) {
     ]);
 
     const totalPages = Math.ceil(totalCount / limitParam);
+    const publicSafeWhiteboards = redactForPublic
+      ? whiteboards.map((w) => ({ ...w, createdBy: toPublicUser(w.createdBy) }))
+      : whiteboards;
     return NextResponse.json({
       success: true,
-      data: whiteboards,
+      data: publicSafeWhiteboards,
       pagination: {
         page: pageParam,
         limit: limitParam,

@@ -14,6 +14,25 @@ vi.mock("@/lib/auth/api-token", () => ({
   }),
 }));
 
+vi.mock("@/lib/auth/workspace-access", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/auth/workspace-access")>(
+    "@/lib/auth/workspace-access",
+  );
+  return {
+    ...actual,
+    // Default: a signed-in member of the workspace the feature belongs to.
+    // Individual tests may override this to simulate non-members or
+    // public viewers.
+    resolveWorkspaceAccess: vi.fn().mockResolvedValue({
+      kind: "member",
+      userId: "user-123",
+      workspaceId: "workspace-123",
+      slug: "ws",
+      role: "DEVELOPER",
+    }),
+  };
+});
+
 vi.mock("@/lib/db", () => ({
   db: {
     feature: { findUnique: vi.fn(), update: vi.fn() },

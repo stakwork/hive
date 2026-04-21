@@ -70,7 +70,10 @@ describe('GET /api/graphmindset/payment', () => {
       workspaceSlug: 'old-graph',
     });
 
-    // Small delay to ensure ordering
+    // Small delay to ensure ordering — Prisma `now()` resolves to ms,
+    // and back-to-back inserts can collide and leave `orderBy createdAt
+    // desc` undefined on a fast machine.
+    await new Promise((r) => setTimeout(r, 20));
     const newer = await createTestFiatPayment({
       userId: testUser.id,
       status: 'PAID',

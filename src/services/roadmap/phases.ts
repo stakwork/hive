@@ -3,12 +3,31 @@ import type { CreatePhaseRequest, UpdatePhaseRequest, PhaseListItem, PhaseWithTa
 import { validateFeatureAccess, validatePhaseAccess, calculateNextOrder } from "./utils";
 
 /**
- * Gets a phase with its tasks and feature context
+ * Gets a phase with its tasks and feature context.
+ *
+ * Pass `userId: null` when the caller has already validated access (e.g.
+ * via `resolveWorkspaceAccess` for a public-viewer on an isPublicViewable
+ * workspace). In that case the service skips its own membership check.
  */
-export async function getPhase(phaseId: string, userId: string): Promise<PhaseWithTasks> {
-  const phase = await validatePhaseAccess(phaseId, userId);
-  if (!phase) {
-    throw new Error("Phase not found or access denied");
+export async function getPhase(phaseId: string, userId: string | null): Promise<PhaseWithTasks> {
+  if (userId) {
+    const phase = await validatePhaseAccess(phaseId, userId);
+    if (!phase) {
+      throw new Error("Phase not found or access denied");
+    }
+  } else {
+    // Verify the phase exists and its workspace is not deleted — access
+    // itself was already validated by the caller.
+    const exists = await db.phase.findUnique({
+      where: { id: phaseId },
+      select: {
+        id: true,
+        feature: { select: { workspace: { select: { deleted: true } } } },
+      },
+    });
+    if (!exists || exists.feature.workspace.deleted) {
+      throw new Error("Phase not found");
+    }
   }
 
   const phaseWithTasks = await db.phase.findUnique({

@@ -4,15 +4,11 @@ import { Priority, Prisma, TaskSourceType, TaskStatus, WorkflowStatus } from "@p
 import { NextRequest, NextResponse } from "next/server";
 import { VALID_MODELS } from "@/lib/ai/models";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicTasks } from "@/lib/auth/public-redact";
 
 export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
-    const userId = userOrResponse.id;
-
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
     const page = parseInt(searchParams.get("page") || "1");
@@ -29,6 +25,27 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sortBy") || "updatedAt";
     const sortOrder = searchParams.get("sortOrder") || "desc";
     const queue = searchParams.get("queue") === "true";
+
+    if (!workspaceId) {
+      return NextResponse.json({ error: "workspaceId query parameter is required" }, { status: 400 });
+    }
+
+    // Validate pagination parameters
+    if (page < 1 || limit < 1 || limit > 1000) {
+      return NextResponse.json(
+        {
+          error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
+        },
+        { status: 400 },
+      );
+    }
+
+    const access = await resolveWorkspaceAccess(request, { workspaceId });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
+    const userId = ok.userId; // null for public viewers
+    const redactForPublic = isPublicViewer(ok);
+
     const requestContext = {
       workspaceId,
       page,
@@ -46,52 +63,6 @@ export async function GET(request: NextRequest) {
     };
 
     console.log("[api/tasks] GET start", requestContext);
-
-    if (!workspaceId) {
-      return NextResponse.json({ error: "workspaceId query parameter is required" }, { status: 400 });
-    }
-
-    // Validate pagination parameters
-    if (page < 1 || limit < 1 || limit > 1000) {
-      return NextResponse.json(
-        {
-          error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
-        },
-        { status: 400 },
-      );
-    }
-
-    // Verify workspace exists and user has access
-    const workspace = await db.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        deleted: false,
-      },
-      select: {
-        id: true,
-        ownerId: true,
-        members: {
-          where: {
-            userId: userId,
-          },
-          select: {
-            role: true,
-          },
-        },
-      },
-    });
-
-    if (!workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
-    }
-
-    // Check if user is workspace owner or member
-    const isOwner = workspace.ownerId === userId;
-    const isMember = workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
 
     // Get tasks for the workspace with pagination
     const skip = (page - 1) * limit;
@@ -375,8 +346,12 @@ export async function GET(request: NextRequest) {
             latestMessage.artifacts?.some((artifact: { type: string }) => artifact.type === "FORM") || false;
         }
 
-        // Extract PR artifact if it exists using shared utility
-        const prArtifact = await extractPrArtifact(task, userId);
+        // Extract PR artifact if it exists using shared utility.
+        // Public viewers have no GitHub tokens, so we skip the live-status
+        // refresh and trust the artifact's stored status.
+        const prArtifact = userId
+          ? await extractPrArtifact(task, userId)
+          : null;
 
         // Update task status in memory if it was updated by extractPrArtifact
         if (prArtifact?.content?.status === "DONE") {
@@ -393,10 +368,15 @@ export async function GET(request: NextRequest) {
       }),
     );
 
+    const responseData = includeLatestMessage ? processedTasks : tasks;
+    const publicSafeData = redactForPublic
+      ? toPublicTasks(responseData as Array<Record<string, unknown>>)
+      : responseData;
+
     return NextResponse.json(
       {
         success: true,
-        data: includeLatestMessage ? processedTasks : tasks,
+        data: publicSafeData,
         pagination: {
           page,
           limit,

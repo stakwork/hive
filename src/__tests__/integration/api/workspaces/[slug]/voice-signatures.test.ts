@@ -29,6 +29,9 @@ describe("Voice Signatures API - Integration Tests", () => {
 
   describe("GET /api/workspaces/[slug]/voice-signatures", () => {
     describe("Authentication", () => {
+      // Voice signatures are biometric data — `requireMemberAccess`
+      // returns 401 "Unauthorized" for fully-unauthenticated callers
+      // (no session, no/invalid x-api-token).
       test("returns 401 when no auth is provided (no session, no token)", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
@@ -59,11 +62,11 @@ describe("Voice Signatures API - Integration Tests", () => {
           const baseRequest = createGetRequest(
             `http://localhost:3000/api/workspaces/${workspace.slug}/voice-signatures`
           );
-          
+
           // Add invalid API token header
           const headers = new Headers(baseRequest.headers);
           headers.set("x-api-token", "invalid-token");
-          
+
           const request = new Request(baseRequest.url, {
             method: baseRequest.method,
             headers,
@@ -73,6 +76,8 @@ describe("Voice Signatures API - Integration Tests", () => {
             params: Promise.resolve({ slug: workspace.slug }),
           });
 
+          // Invalid tokens fall through to the session path, which in turn
+          // resolves to 401 "Unauthorized" for unauthenticated callers.
           expect(response.status).toBe(401);
           const data = await response.json();
           expect(data.error).toBe("Unauthorized");

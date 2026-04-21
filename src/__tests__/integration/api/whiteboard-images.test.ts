@@ -197,6 +197,9 @@ describe("Whiteboard Images API", () => {
   // ─── GET ─────────────────────────────────────────────────────────────────────
 
   describe("GET /api/whiteboards/[whiteboardId]/images", () => {
+    // `requireReadAccess` returns differentiated status codes:
+    // 401 unauthenticated, 403 forbidden (signed-in non-member),
+    // 404 not-found (workspace doesn't exist).
     it("returns 401 when not authenticated", async () => {
       const { NextRequest } = await import("next/server");
       const request = new NextRequest(

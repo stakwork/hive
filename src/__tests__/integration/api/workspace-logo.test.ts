@@ -538,6 +538,8 @@ describe('Workspace Logo API Integration Tests', () => {
   describe('GET /api/workspaces/[slug]/image', () => {
     describe('Authentication Tests', () => {
       test('should return 401 for unauthenticated request', async () => {
+        // `requireReadAccess` returns 401 "Unauthorized" for callers with
+        // no session (kind: "unauthenticated").
         const request = createGetRequest('http://localhost:3000/api/workspaces/test/image')
 
         const response = await imageGet(request, {

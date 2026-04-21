@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicUser } from "@/lib/auth/public-redact";
 import { db } from "@/lib/db";
 import type { SearchResponse, SearchResult } from "@/types/search";
 
@@ -10,10 +11,6 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { slug } = await params;
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("q");
@@ -27,44 +24,18 @@ export async function GET(
 
     const searchQuery = query.trim();
 
-    // Verify workspace access
-    const workspace = await db.workspace.findFirst({
-      where: {
-        slug,
-        deleted: false,
-      },
-      select: {
-        id: true,
-        ownerId: true,
-        members: {
-          where: {
-            userId: userOrResponse.id,
-            leftAt: null,
-          },
-        },
-      },
-    });
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 }
-      );
-    }
-
-    if (workspace.ownerId !== userOrResponse.id && workspace.members.length === 0) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      );
-    }
+    const access = await resolveWorkspaceAccess(request, { slug });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
+    const workspaceId = ok.workspaceId;
+    const redactForPublic = isPublicViewer(ok);
 
     // Search across all entity types in parallel
     const [tasks, features, phases] = await Promise.all([
       // Search Tasks (both standalone and roadmap tasks)
       db.task.findMany({
         where: {
-          workspaceId: workspace.id,
+          workspaceId,
           deleted: false,
           OR: [
             { title: { contains: searchQuery, mode: "insensitive" } },
@@ -106,7 +77,7 @@ export async function GET(
       // Search Features
       db.feature.findMany({
         where: {
-          workspaceId: workspace.id,
+          workspaceId,
           deleted: false,
           OR: [
             { title: { contains: searchQuery, mode: "insensitive" } },
@@ -142,7 +113,7 @@ export async function GET(
         where: {
           deleted: false,
           feature: {
-            workspaceId: workspace.id,
+            workspaceId,
             deleted: false,
           },
           OR: [
@@ -197,9 +168,11 @@ export async function GET(
         metadata: {
           status: task.status,
           priority: task.priority,
-          assignee: task.assignee,
+          assignee: redactForPublic ? toPublicUser(task.assignee) : task.assignee,
           featureTitle: task.feature?.title,
-          stakworkProjectId: task.stakworkProjectId,
+          // `stakworkProjectId` is an internal Stakwork identifier; only
+          // expose it to authenticated members.
+          stakworkProjectId: redactForPublic ? null : task.stakworkProjectId,
           branch: task.branch,
           createdAt: task.createdAt.toISOString(),
           updatedAt: task.updatedAt.toISOString(),
@@ -216,7 +189,7 @@ export async function GET(
       metadata: {
         status: feature.status,
         priority: feature.priority,
-        assignee: feature.assignee,
+        assignee: redactForPublic ? toPublicUser(feature.assignee) : feature.assignee,
         createdAt: feature.createdAt.toISOString(),
         updatedAt: feature.updatedAt.toISOString(),
       },

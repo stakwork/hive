@@ -1,25 +1,26 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 
 export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
-
     const searchParams = request.nextUrl.searchParams;
     const workspaceId = searchParams.get("id");
 
-    const where: Record<string, string> = {};
-    if (workspaceId) where.workspaceId = workspaceId;
+    if (!workspaceId) {
+      return NextResponse.json({ success: false, message: "workspaceId required" }, { status: 400 });
+    }
 
-    const swarm = await db.swarm.findFirst({ where });
+    // Graph schema is a read operation — allow authenticated members and
+    // public viewers on isPublicViewable workspaces.
+    const access = await resolveWorkspaceAccess(request, { workspaceId });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
+
+    const swarm = await db.swarm.findFirst({ where: { workspaceId } });
     if (!swarm) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }

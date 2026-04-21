@@ -113,6 +113,7 @@ export interface UpdateWorkspaceRequest {
   name: string;
   slug: string;
   description?: string;
+  isPublicViewable?: boolean;
 }
 
 export interface GitHubUser {
