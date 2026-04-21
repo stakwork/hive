@@ -77,7 +77,13 @@ tackled in a follow-up effort.
     writes (previously the 403 fired *after* the writes persisted)
     and upgraded from a 403 to the unified 404. Two existing
     integration tests were updated to the new 404.
-  - Remaining Phase B items (#6, #7, #12, #19–25) — not started.
+  - **Upload #25 — DONE** on `ef/idor-fixes-2`. upload/image now
+    authorizes the caller as a `canWrite` member of
+    `feature.workspaceId` before minting either the presigned upload
+    URL or the long-lived presigned download URL, and also validates
+    `session.user.id` (401 otherwise). No test churn — the existing
+    integration test file was already `describe.skip`ed.
+  - Remaining Phase B items (#6, #7, #12, #19–24) — not started.
 - **Phase C (Medium #26–30)** — not started.
 - **Phase D (shared-secret S1–S3)** — not started.
 - **"also" items** (public-viewer 7-day → 1-hour presigned URLs;
@@ -495,6 +501,15 @@ proof-of-exploit, and suggested fix.
   victim's S3 prefix.
 - **Fix**: `validateWorkspaceAccessById(feature.workspaceId, userId)`
   with `canWrite` before issuing any presigned URL.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2`. The handler now also
+  requires a non-empty `session.user.id` (401 otherwise), folds the
+  "feature not found" path into the unified 404, and runs the
+  `canWrite` membership check on `feature.workspaceId` before either
+  the upload or download presigned URL is generated. The integration
+  test suite for this route is `describe.skip`ed; no test churn.
+  (Note: the "604800 seconds ≈ 1 year" comment in the handler is
+  actually 7 days — not tackled here; the "also" item in this plan
+  already flags public-viewer 7-day URLs for follow-up.)
 
 ---
 
@@ -581,7 +596,8 @@ require session auth + workspace admin.
    - Swarm cluster (#13–16) ✅ on `ef/idor-fixes-2` (commit
      `7b5a2fa78`).
    - Tests cluster (#17–18) ✅ on `ef/idor-fixes-2`.
-   - Remaining (#6, #7, #12, #19–25) still open.
+   - Upload (#25) ✅ on `ef/idor-fixes-2`.
+   - Remaining (#6, #7, #12, #19–24) still open.
 3. **Phase C — medium (#26–30)**: one cleanup PR.
 4. **Phase D — shared-secret endpoints (S1–S3)**: design work on
    per-resource tokens, then migrate webhooks to the new scheme.
