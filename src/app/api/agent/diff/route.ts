@@ -38,10 +38,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required field: taskId" }, { status: 400 });
     }
 
-    // Fetch podId from task record
+    // Fetch podId + workspaceId from the task. Derive the authorized
+    // workspace from task.workspaceId — never trust the body-supplied
+    // workspaceId independently, or a caller can combine a victim's
+    // taskId with their own workspaceId and read diffs from the victim's pod.
     const task = await db.task.findUnique({
       where: { id: taskId },
-      select: { podId: true },
+      select: { podId: true, workspaceId: true },
     });
 
     if (!task?.podId) {
@@ -49,16 +52,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No pod assigned to this task" }, { status: 400 });
     }
 
+    if (task.workspaceId !== workspaceId) {
+      console.log(">>> [DIFF] Body workspaceId does not match task.workspaceId");
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
+
     const podId = task.podId;
     console.log(">>> [DIFF] Found podId from task:", podId);
 
-    // Verify user has access to the workspace
+    // Verify user has access to the task's workspace
     const workspace = await db.workspace.findFirst({
-      where: { id: workspaceId },
+      where: { id: task.workspaceId },
       include: {
         owner: true,
         members: {
-          where: { userId },
+          where: { userId, leftAt: null },
           select: { role: true },
         },
         swarm: true,
@@ -66,8 +77,22 @@ export async function POST(request: NextRequest) {
     });
 
     if (!workspace) {
-      console.log(">>> [DIFF] Workspace not found:", workspaceId);
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      console.log(">>> [DIFF] Workspace not found:", task.workspaceId);
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
+
+    const isOwner = workspace.ownerId === userId;
+    const isMember = workspace.members.length > 0;
+    console.log(">>> [DIFF] Access check:", { isOwner, isMember });
+    if (!isOwner && !isMember) {
+      console.log(">>> [DIFF] Access denied");
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
 
     console.log(">>> [DIFF] Workspace found:", { id: workspace.id, hasSwarm: !!workspace.swarm });
@@ -119,15 +144,6 @@ index 1234567..abcdefg 100644
       };
 
       return NextResponse.json({ success: true, message: mockMessage }, { status: 200 });
-    }
-
-    const isOwner = workspace.ownerId === userId;
-    const isMember = workspace.members.length > 0;
-    console.log(">>> [DIFF] Access check:", { isOwner, isMember });
-
-    if (!isOwner && !isMember) {
-      console.log(">>> [DIFF] Access denied");
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Check if workspace has a swarm
