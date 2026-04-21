@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
             slug: true,
             ownerId: true,
             members: {
-              where: { userId },
+              where: { userId, leftAt: null },
               select: { role: true },
             },
           },
@@ -111,6 +111,27 @@ export async function POST(request: NextRequest) {
 
     if (!swarm) {
       return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
+    }
+
+    // IDOR guard: previously the owner/member check ran further down,
+    // AFTER the handler had already called `saveOrUpdateSwarm({ containerFiles })`
+    // with attacker-controlled content. Run the authz check immediately
+    // after the swarm lookup so no swarm row or secret decryption work
+    // happens on behalf of a non-member.
+    if (!swarm.workspace) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
+
+    const isOwner = swarm.workspace.ownerId === userId;
+    const isMember = swarm.workspace.members.length > 0;
+    if (!isOwner && !isMember) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
 
     // Get poolApiKey from swarm
@@ -231,21 +252,6 @@ export async function POST(request: NextRequest) {
         containerFiles: finalContainerFiles,
       });
       console.log("Generated and saved new container files to database");
-    }
-
-    if (!swarm) {
-      return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
-    }
-
-    if (!swarm.workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
-    }
-
-    const isOwner = swarm.workspace.ownerId === userId;
-    const isMember = swarm.workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Validate required fields

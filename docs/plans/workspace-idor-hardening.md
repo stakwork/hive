@@ -97,7 +97,11 @@ tackled in a follow-up effort.
     param before the `db.agentLog.findMany` and the per-log
     `fetchBlobContent` search loop. Unit test updated to stub
     `@/services/workspace`.
-  - Remaining Phase B items (#19–24) — not started.
+  - **Pool manager #19 — DONE** on `ef/idor-fixes-2`. Moved the
+    owner/member check above the `saveOrUpdateSwarm({ containerFiles })`
+    write, so a non-member can no longer poison the victim's swarm
+    container-file config before the auth check fires.
+  - Remaining Phase B items (#20–24) — not started.
 - **Phase C (Medium #26–30)** — not started.
 - **Phase D (shared-secret S1–S3)** — not started.
 - **"also" items** (public-viewer 7-day → 1-hour presigned URLs;
@@ -468,6 +472,14 @@ proof-of-exploit, and suggested fix.
   on victim's swarm before the access check returns 403.
 - **Fix**: move the ownership check immediately after
   `db.swarm.findFirst` and before any `saveOrUpdateSwarm` call.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2`. Ownership check now
+  runs immediately after the swarm lookup and before the container-
+  files generation / `saveOrUpdateSwarm` write that previously
+  persisted attacker-controlled content on the victim's swarm. Also
+  filtered the `workspace.members` query to `leftAt: null` to match
+  the rest of the codebase. Response upgraded from 403 → unified 404.
+  Existing "403 when user is not owner or member" test updated to
+  the new 404 status + message.
 
 #### 20. `src/app/api/github/app/callback/route.ts` — GET
 - **Bug**: `state` is base64-encoded JSON, NOT signed. Caller-supplied
@@ -635,7 +647,8 @@ require session auth + workspace admin.
    - Upload (#25) ✅ on `ef/idor-fixes-2`.
    - Misc (#6, #7) ✅ on `ef/idor-fixes-2`.
    - Agent logs (#12) ✅ on `ef/idor-fixes-2`.
-   - Remaining (#19–24) still open.
+   - Pool manager (#19) ✅ on `ef/idor-fixes-2`.
+   - Remaining (#20–24) still open.
 3. **Phase C — medium (#26–30)**: one cleanup PR.
 4. **Phase D — shared-secret endpoints (S1–S3)**: design work on
    per-resource tokens, then migrate webhooks to the new scheme.
