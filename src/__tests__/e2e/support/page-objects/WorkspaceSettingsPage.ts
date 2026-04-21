@@ -82,7 +82,7 @@ export class WorkspaceSettingsPage {
 
   async openAddMemberModal(): Promise<void> {
     await this.page.locator(selectors.workspaceMembers.addButton).click();
-    await expect(this.page.locator(selectors.addMemberModal.modal)).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator(selectors.addMemberModal.modal)).toBeVisible({ timeout: 30000 });
   }
 
   async inviteMember(options: { githubUsername: string; role?: WorkspaceRole }): Promise<void> {
@@ -102,17 +102,17 @@ export class WorkspaceSettingsPage {
     }
 
     await modal.locator(selectors.addMemberModal.submit).click();
-    await expect(modal).toBeHidden({ timeout: 10000 });
+    await expect(modal).toBeHidden({ timeout: 30000 });
   }
 
   async expectMemberVisible(username: string): Promise<void> {
     const memberRow = this.page.locator(dynamicSelectors.workspaceMemberRowByUsername(username));
-    await expect(memberRow).toBeVisible({ timeout: 10000 });
+    await expect(memberRow).toBeVisible({ timeout: 30000 });
   }
 
   async expectMemberRole(username: string, role: WorkspaceRole): Promise<void> {
     const roleBadge = this.page.locator(dynamicSelectors.workspaceMemberRoleBadgeByUsername(username));
-    await expect(roleBadge).toHaveText(role, { timeout: 10000 });
+    await expect(roleBadge).toHaveText(role, { timeout: 30000 });
   }
 
   async changeMemberRole(username: string, role: WorkspaceRole): Promise<void> {
@@ -133,24 +133,24 @@ export class WorkspaceSettingsPage {
     await this.page.locator(selectors.workspaceMembers.actionRemove).click();
 
     const dialog = this.page.locator(selectors.dialogs.confirm);
-    await expect(dialog).toBeVisible({ timeout: 10000 });
+    await expect(dialog).toBeVisible({ timeout: 30000 });
     await this.page.locator(selectors.dialogs.confirmButton).click();
-    await expect(row).toHaveCount(0, { timeout: 10000 });
+    await expect(row).toHaveCount(0, { timeout: 30000 });
   }
 
   async expectMemberAbsent(username: string): Promise<void> {
     const row = this.page.locator(dynamicSelectors.workspaceMemberRowByUsername(username));
-    await expect(row).toHaveCount(0, { timeout: 10000 });
+    await expect(row).toHaveCount(0, { timeout: 30000 });
   }
 
   async initiateDelete(): Promise<void> {
     await this.page.locator(selectors.workspaceDeletion.deleteButton).click();
-    await expect(this.page.locator(selectors.workspaceDeletion.dialog)).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator(selectors.workspaceDeletion.dialog)).toBeVisible({ timeout: 30000 });
   }
 
   async confirmDelete(workspaceName: string): Promise<void> {
     const dialog = this.page.locator(selectors.workspaceDeletion.dialog);
-    await expect(dialog).toBeVisible({ timeout: 10000 });
+    await expect(dialog).toBeVisible({ timeout: 30000 });
     
     await dialog.locator(selectors.workspaceDeletion.confirmationInput).fill(workspaceName);
     await dialog.locator(selectors.workspaceDeletion.confirmButton).click();

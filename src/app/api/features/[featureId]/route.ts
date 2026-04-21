@@ -105,13 +105,14 @@ export async function GET(
       if (apiResult instanceof NextResponse) return apiResult;
       userId = apiResult.id;
     } else {
-      const access = await resolveWorkspaceAccess(request, {
+      const rawAccess = await resolveWorkspaceAccess(request, {
         workspaceId: featureLookup.workspaceId,
       });
-      const ok = requireReadAccess(access);
-      if (ok instanceof NextResponse) return ok;
-      userId = ok.userId;
-      redactForPublic = isPublicViewer(ok);
+      const access = requireReadAccess(rawAccess);
+      if (access instanceof NextResponse) return access;
+      userId = access.userId ?? null;
+      redactForPublic = isPublicViewer(access);
+
     }
 
     const { searchParams } = new URL(request.url);
