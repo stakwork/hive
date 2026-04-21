@@ -4,6 +4,7 @@ import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { pollAgentProgress } from "@/services/swarm/stakgraph-services";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { devcontainerJsonContent, dockerfileContent, extractEnvVarsFromPM2Config, parsePM2Content } from "@/utils/devContainerUtils";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
@@ -46,6 +47,32 @@ export async function GET(request: NextRequest) {
       missingParams: { requestId: !requestId, swarmId: !swarmId },
     });
     return new Response("Missing required parameters", { status: 400 });
+  }
+
+  // IDOR hardening: resolve the swarm → workspace and require admin access
+  // BEFORE opening the SSE stream, polling with the decrypted swarmApiKey,
+  // or writing to the swarm / environment_variables tables. Otherwise any
+  // signed-in user could stream progress and mutate env vars on any
+  // workspace's swarm by guessing its id.
+  const swarmForAuth = await db.swarm.findFirst({
+    where: { id: swarmId },
+    select: { workspaceId: true },
+  });
+
+  if (!swarmForAuth) {
+    return new Response("Swarm not found or access denied", { status: 404 });
+  }
+
+  const access = await validateWorkspaceAccessById(
+    swarmForAuth.workspaceId,
+    session.user.id,
+  );
+  if (!access.hasAccess || !access.canAdmin) {
+    console.warn("[agent-stream] Access denied", {
+      ...logContext,
+      workspaceId: swarmForAuth.workspaceId,
+    });
+    return new Response("Swarm not found or access denied", { status: 404 });
   }
 
   // Set up SSE headers

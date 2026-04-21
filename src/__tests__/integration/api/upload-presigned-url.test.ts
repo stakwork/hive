@@ -1,11 +1,12 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
-import { POST } from "@/app/api/upload/presigned-url/route";
+import { POST, GET } from "@/app/api/upload/presigned-url/route";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@prisma/client";
 import {
   generateUniqueId,
   createPostRequest,
   createAuthenticatedPostRequest,
+  createAuthenticatedGetRequest,
 } from "@/__tests__/support/helpers";
 
 // Create mock S3 service methods
@@ -14,6 +15,7 @@ const mockS3Service = {
   validateFileSize: vi.fn(),
   generateS3Path: vi.fn(),
   generatePresignedUploadUrl: vi.fn(),
+  generatePresignedDownloadUrl: vi.fn(),
 };
 
 // Mock S3 service to avoid AWS SDK calls
@@ -732,6 +734,148 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         expect.any(String),
         testTask.id,
         longFilename,
+      );
+    });
+  });
+
+  describe("IDOR hardening", () => {
+    async function createVictimSetup() {
+      const victim = await db.user.create({
+        data: {
+          id: generateUniqueId("victim"),
+          email: `victim-${generateUniqueId()}@example.com`,
+          name: "Victim User",
+        },
+      });
+      const workspace = await db.workspace.create({
+        data: {
+          id: generateUniqueId("victim-ws"),
+          name: "Victim Workspace",
+          slug: generateUniqueId("victim-ws"),
+          ownerId: victim.id,
+        },
+      });
+      const task = await db.task.create({
+        data: {
+          id: generateUniqueId("victim-task"),
+          title: "Victim Task",
+          status: "TODO",
+          workspaceId: workspace.id,
+          workflowStatus: WorkflowStatus.PENDING,
+          createdById: victim.id,
+          updatedById: victim.id,
+        },
+      });
+      return { victim, workspace, task };
+    }
+
+    test("POST returns 404 when caller is not a member of the task's workspace", async () => {
+      // Victim owns a task in their workspace
+      const { task } = await createVictimSetup();
+
+      // Attacker: signed-in but not a member of victim's workspace
+      const attacker = await db.user.create({
+        data: {
+          id: generateUniqueId("attacker"),
+          email: `attacker-${generateUniqueId()}@example.com`,
+          name: "Attacker",
+        },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        attacker,
+        {
+          taskId: task.id,
+          filename: "evil.jpg",
+          contentType: "image/jpeg",
+          size: 1024,
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error).toBe("Workspace not found or access denied");
+      expect(mockS3Service.generatePresignedUploadUrl).not.toHaveBeenCalled();
+    });
+
+    test("GET returns 404 when caller is not a member of the workspace named in s3Key", async () => {
+      const { workspace } = await createVictimSetup();
+
+      const attacker = await db.user.create({
+        data: {
+          id: generateUniqueId("attacker-get"),
+          email: `attacker-get-${generateUniqueId()}@example.com`,
+          name: "Attacker GET",
+        },
+      });
+
+      // Attacker knows/guesses the victim's workspaceId and tries to pull
+      // an arbitrary attachment out of its S3 prefix.
+      const s3Key = `uploads/${workspace.id}/default/some-task/victim-secret.png`;
+
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        { id: attacker.id, email: attacker.email, name: attacker.name },
+        { s3Key },
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error).toBe("Workspace not found or access denied");
+      expect(mockS3Service.generatePresignedDownloadUrl).not.toHaveBeenCalled();
+    });
+
+    test("GET returns 404 for s3Key with an unrecognized prefix", async () => {
+      const user = await db.user.create({
+        data: {
+          id: generateUniqueId("user"),
+          email: `user-${generateUniqueId()}@example.com`,
+          name: "User",
+        },
+      });
+
+      // Not a known prefix (e.g. `uploads/`, `whiteboards/`, etc.)
+      const s3Key = "arbitrary/path/file.png";
+
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        { id: user.id, email: user.email, name: user.name },
+        { s3Key },
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(404);
+      expect(mockS3Service.generatePresignedDownloadUrl).not.toHaveBeenCalled();
+    });
+
+    test("GET redirects to presigned URL when caller owns the workspace named in s3Key", async () => {
+      const { victim, workspace } = await createVictimSetup();
+
+      mockS3Service.generatePresignedDownloadUrl.mockResolvedValueOnce(
+        "https://test-bucket.s3.us-east-1.amazonaws.com/presigned-download?sig=ok",
+      );
+
+      const s3Key = `uploads/${workspace.id}/default/some-task/image.png`;
+
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        { id: victim.id, email: victim.email, name: victim.name },
+        { s3Key },
+      );
+
+      const response = await GET(request);
+
+      // Redirects (3xx) to the presigned URL on success
+      expect([301, 302, 303, 307, 308]).toContain(response.status);
+      expect(mockS3Service.generatePresignedDownloadUrl).toHaveBeenCalledWith(
+        s3Key,
+        300,
       );
     });
   });
