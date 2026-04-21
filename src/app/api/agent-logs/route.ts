@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { fetchBlobContent } from "@/lib/utils/blob-fetch";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 
 /**
  * GET /api/agent-logs
@@ -46,6 +47,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: "workspace_id is required" },
         { status: 400 }
+      );
+    }
+
+    // IDOR guard: previously any signed-in user could read agent log
+    // metadata for any workspace, and with `search=...` also surface
+    // matching blob contents. Require an active workspace member (any
+    // role — this endpoint is read-only) before the findMany.
+    const access = await validateWorkspaceAccessById(workspaceId, userOrResponse.id);
+    if (!access.hasAccess || !access.canRead) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
       );
     }
 

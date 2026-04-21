@@ -21,6 +21,20 @@ vi.mock("@/lib/utils/blob-fetch", () => ({
   fetchBlobContent: vi.fn(),
 }));
 
+// Stub the workspace-access validator so this unit stays focused on the
+// agent-logs pagination/search paths. Integration coverage owns the
+// real membership check.
+vi.mock("@/services/workspace", () => ({
+  validateWorkspaceAccessById: vi.fn(async () => ({
+    hasAccess: true,
+    canRead: true,
+    canWrite: true,
+    canAdmin: true,
+    userRole: "OWNER",
+    workspace: { id: "ws-1" },
+  })),
+}));
+
 import { GET } from "@/app/api/agent-logs/route";
 import { db } from "@/lib/db";
 import { fetchBlobContent } from "@/lib/utils/blob-fetch";

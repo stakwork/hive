@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { type ModelMessage } from "ai";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { extractTaskFromTranscript } from "@/lib/ai/extract-task";
-import { db } from "@/lib/db";
 import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
+import { validateWorkspaceAccess } from "@/services/workspace";
 import { Priority } from "@prisma/client";
 
 export async function POST(request: NextRequest) {
@@ -33,14 +33,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get workspace ID from slug
-    const workspace = await db.workspace.findUnique({
-      where: { slug: workspaceSlug },
-      select: { id: true },
-    });
-
-    if (!workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    // IDOR guard: without a membership check any signed-in user could
+    // pass another workspace's slug and fire a live Stakwork workflow
+    // (burning victim credits) against the victim's swarm, leaking the
+    // attacker-supplied transcript into the victim's AI pipeline and
+    // dropping a task + chat messages into the victim's workspace.
+    // Resolve the workspace through `validateWorkspaceAccess` so the
+    // membership + role check runs before `extractTaskFromTranscript`
+    // or `createTaskWithStakworkWorkflow`.
+    const access = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
+    if (!access.hasAccess || !access.canWrite || !access.workspace) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
 
     console.log("🎤 Creating task from voice transcript:", {
@@ -57,7 +63,7 @@ export async function POST(request: NextRequest) {
     const result = await createTaskWithStakworkWorkflow({
       title: extractedTask.title,
       description: extractedTask.description,
-      workspaceId: workspace.id,
+      workspaceId: access.workspace.id,
       priority: Priority.HIGH, // HIGH priority for voice-created tasks
       sourceType: "USER",
       userId: userOrResponse.id,
