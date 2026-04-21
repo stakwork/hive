@@ -37,7 +37,47 @@ tackled in a follow-up effort.
   access denied"` and that no credentialed side-effects (Stakwork
   calls, pool deletion, S3 presigning, LiveKit/MCP JWT signing,
   stakgraph polling / env-var writes) run on their behalf.
-- **Phase B (High #6–25)** — not started.
+- **Phase B (High #6–25) — partial.**
+  - **Agent cluster #8–11 — DONE** on branch `ef/idor-fixes-2`
+    (commit `3d39db806`). /api/agent now runs the workspace
+    membership check before `claimPodForTask` / credential writes;
+    /api/agent/commit and /api/agent/diff derive the authorized
+    workspaceId from `task.workspaceId` (rejecting mismatched body
+    `workspaceId` with the unified 404) so a caller can't pair a
+    victim's `taskId` with their own `workspaceId`; /api/agent/branch
+    resolves `task.workspace` and rejects non-members before invoking
+    `generateCommitMessage`, so the AI-summary path no longer leaks
+    chat history. Existing integration tests were updated from the
+    "security-gap documentation" shape to assert the new 404 + no-AI-
+    call behavior; these routes are also currently gated behind the
+    `TASK_AGENT_MODE` feature flag, which is why new targeted tests
+    weren't added.
+  - **Swarm cluster #13–16 — DONE** on `ef/idor-fixes-2` (commit
+    `7b5a2fa78`). stakgraph/ingest POST requires `canWrite` on the
+    body workspaceId before the CAS flag flip, repo→PENDING update,
+    stakgraph trigger, or GitHub webhook registration; stakgraph/
+    ingest GET requires `canRead` before fetching swarm creds and
+    polling stakgraph; stakgraph/services and stakgraph/sync now
+    authorize against `swarm.workspaceId` (not the body-supplied
+    `workspaceId`/`swarmId`) and require `canWrite` before the
+    decrypted credentialed side-effects run; jarvis/search-by-types
+    requires a `workspaceId` query param plus `canRead` before the
+    swarm lookup so non-members can't exfiltrate the code-graph
+    (which contains presigned S3 media URLs). Test adjustments:
+    promoted the `@/lib/constants` mock in two integration suites to
+    a partial `importOriginal` variant so `WORKSPACE_PERMISSION_LEVELS`
+    is still available to `validateWorkspaceAccessById`, reworded one
+    jarvis test to match the unified 404, and stubbed
+    `@/services/workspace` in the stakgraph-ingest unit test.
+  - **Tests cluster #17–18 — DONE** on `ef/idor-fixes-2`. tests/
+    coverage now requires `canWrite` before the primary-repo
+    ignoreDirs / unitGlob / integrationGlob / e2eGlob writes and
+    before decrypting `swarmApiKey`; tests/nodes had its pre-existing
+    `validateWorkspaceAccessById` call moved above the same repo
+    writes (previously the 403 fired *after* the writes persisted)
+    and upgraded from a 403 to the unified 404. Two existing
+    integration tests were updated to the new 404.
+  - Remaining Phase B items (#6, #7, #12, #19–25) — not started.
 - **Phase C (Medium #26–30)** — not started.
 - **Phase D (shared-secret S1–S3)** — not started.
 - **"also" items** (public-viewer 7-day → 1-hour presigned URLs;
@@ -244,6 +284,11 @@ proof-of-exploit, and suggested fix.
   task thread.
 - **Fix**: load the task with `workspace.ownerId` + `workspace.members { where: { userId } }`
   and reject non-members. Pattern exists already on `prototype-push`.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2` (commit `3d39db806`). The
+  task lookup now pulls `workspace.ownerId` + filtered `members` and
+  returns the unified 404 for non-members *before* `claimPodForTask`,
+  any credential write, or `saveUserMessage`. Added the missing
+  `userId` session check (401 instead of 500 on malformed sessions).
 
 #### 9. `src/app/api/agent/commit/route.ts` — POST
 - **Bug**: body carries both `taskId` and `workspaceId` independently;
@@ -256,6 +301,11 @@ proof-of-exploit, and suggested fix.
 - **Fix**: derive `workspaceId` from `task.workspaceId` — never trust
   two independent body fields. Or at minimum assert
   `task.workspaceId === workspaceId`.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2` (commit `3d39db806`). The
+  task load now returns both `podId` and `workspaceId`; the handler
+  rejects mismatched body `workspaceId` with the unified 404 and runs
+  the membership check against `task.workspaceId` only. Existing
+  integration tests updated from 403 → 404.
 
 #### 10. `src/app/api/agent/diff/route.ts` — POST
 - **Bug**: identical task↔workspace decoupling to #9; calls
@@ -263,6 +313,9 @@ proof-of-exploit, and suggested fix.
   pod and writes an assistant `ChatMessage` + `DIFF` `Artifact` onto
   the victim's task.
 - **Fix**: same as #9 — tie `workspaceId` to `task.workspaceId`.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2` (commit `3d39db806`).
+  Same pattern as #9 applied. Duplicate access check that ran after
+  the mock branch was collapsed into the single pre-mock gate.
 
 #### 11. `src/app/api/agent/branch/route.ts` — POST
 - **Bug**: `generateCommitMessage(taskId, ...)` queries the task's full
@@ -271,6 +324,12 @@ proof-of-exploit, and suggested fix.
   history as an AI-generated summary.
 - **Fix**: verify caller is owner/member of `task.workspaceId` before
   calling `generateCommitMessage`.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2` (commit `3d39db806`). The
+  handler now loads `task.workspace.{ownerId, members}` and returns
+  the unified 404 for non-members *before* `generateCommitMessage`,
+  so the AI summarizer never sees the victim's chat. Also added the
+  missing `userId` session check. The "SECURITY GAP documentation"
+  test was flipped to assert the new secure behavior.
 
 #### 12. `src/app/api/agent-logs/route.ts` — GET
 - **Bug**: `db.agentLog.findMany({ where: { workspaceId, ... } })` and
@@ -291,6 +350,10 @@ proof-of-exploit, and suggested fix.
   exfiltrate ingest progress.
 - **Fix**: `validateWorkspaceAccessById(workspaceId, userId)` — write
   for POST, read for GET.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2` (commit `7b5a2fa78`).
+  POST requires `canWrite` before the CAS flip, repo→PENDING updates,
+  stakgraph trigger, and webhook registration; GET requires `canRead`
+  before the credentialed poll. Failure returns the unified 404.
 
 #### 14. `src/app/api/swarm/stakgraph/services/route.ts` — GET
 - **Bug**: loads swarm by body `swarmId` / `workspaceId` with no
@@ -299,6 +362,10 @@ proof-of-exploit, and suggested fix.
   / `agentStatus` / `services` / `environmentVariables`.
 - **Fix**: `validateWorkspaceAccessById(swarm.workspaceId, userId)`
   after loading the swarm.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2` (commit `7b5a2fa78`). The
+  membership check runs against `swarm.workspaceId` (not any body
+  field) and requires `canWrite` before the services_agent call or
+  any writes to `swarm.agentRequestId` / `services` / env vars.
 
 #### 15. `src/app/api/swarm/stakgraph/sync/route.ts` — POST
 - **Bug**: loads swarm by body `swarmId` / `workspaceId` with no
@@ -307,6 +374,10 @@ proof-of-exploit, and suggested fix.
   webhook callback URL pointing at an attacker-controlled host.
 - **Fix**: `validateWorkspaceAccessById(swarm.workspaceId, userId)`
   with `canWrite` before the writes.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2` (commit `7b5a2fa78`).
+  `canWrite` membership check on `swarm.workspaceId` runs immediately
+  after the swarm lookup, before the repo→PENDING write, the
+  `triggerAsyncSync` call, and the `ingestRefId` update.
 
 #### 16. `src/app/api/swarm/jarvis/search-by-types/route.ts` — POST
 - **Bug**: `db.swarm.findFirst({ where: { workspaceId } })` with
@@ -316,6 +387,10 @@ proof-of-exploit, and suggested fix.
   presigned S3 media URLs).
 - **Fix**: `validateWorkspaceAccessById(workspaceId, userId)` before
   the swarm lookup.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2` (commit `7b5a2fa78`). The
+  `id` query param is now required (400 if missing) and gated by
+  `canRead` before the swarm lookup, so non-members can't touch the
+  jarvis graph even in the mock-response branch.
 
 #### 17. `src/app/api/tests/coverage/route.ts` — GET
 - **Bug**: `getPrimaryRepository(workspaceId)` and then
@@ -327,6 +402,10 @@ proof-of-exploit, and suggested fix.
   data through victim's decrypted API key.
 - **Fix**: `validateWorkspaceAccessById(workspaceId, userId)` with
   `canWrite` before any repo update or swarm fetch.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2`. The `canWrite` membership
+  check runs immediately after parsing query params and before any
+  `getPrimaryRepository` / `db.repository.update` / `db.swarm.findFirst`
+  call. Returns unified 404 on failure.
 
 #### 18. `src/app/api/tests/nodes/route.ts` — GET
 - **Bug**: `db.repository.update` at L213-244 writes globs BEFORE the
@@ -334,6 +413,11 @@ proof-of-exploit, and suggested fix.
   the writes already persisted.
 - **Fix**: move `validateWorkspaceAccessById` above
   `getPrimaryRepository` and before any repo update.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2`. Moved the existing
+  `validateWorkspaceAccessById` call up to run immediately after param
+  parsing — before `getPrimaryRepository` and the four `db.repository.
+  update` calls — and upgraded the response from 403 to the unified
+  404. Two integration tests that asserted the old 403 were updated.
 
 #### 19. `src/app/api/pool-manager/create-pool/route.ts` — POST
 - **Bug**: `saveOrUpdateSwarm({ containerFiles })` writes to the
@@ -492,6 +576,12 @@ require session auth + workspace admin.
    github, upload, misc). 3–4 follow-up PRs. Consider factoring the
    `apiTokenAuth ? requireAuthOrApiToken(...) : resolveWorkspaceAccess(...)`
    pattern into a shared helper to keep new handlers honest.
+   - Agent cluster (#8–11) ✅ on `ef/idor-fixes-2` (commit
+     `3d39db806`).
+   - Swarm cluster (#13–16) ✅ on `ef/idor-fixes-2` (commit
+     `7b5a2fa78`).
+   - Tests cluster (#17–18) ✅ on `ef/idor-fixes-2`.
+   - Remaining (#6, #7, #12, #19–25) still open.
 3. **Phase C — medium (#26–30)**: one cleanup PR.
 4. **Phase D — shared-secret endpoints (S1–S3)**: design work on
    per-resource tokens, then migrate webhooks to the new scheme.
