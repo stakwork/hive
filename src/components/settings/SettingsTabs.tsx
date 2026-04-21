@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkspaceSettings } from "@/components/WorkspaceSettings";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
+import { WorkspaceVisibilitySettings } from "@/components/settings/WorkspaceVisibilitySettings";
 import { VMConfigSection } from "@/components/pool-status";
 import { RerunIngest } from "@/components/RerunIngest";
 import { Neo4jConfigSettings } from "@/components/settings/Neo4jConfigSettings";
@@ -31,9 +32,10 @@ interface SettingsTabsProps {
   workspaceName: string;
   workspaceSlug: string;
   isOwner: boolean;
+  isPublicViewable?: boolean;
 }
 
-export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwner }: SettingsTabsProps) {
+export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwner, isPublicViewable = false }: SettingsTabsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { id, refreshCurrentWorkspace } = useWorkspace();
@@ -133,6 +135,7 @@ export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwne
       <TabsContent value="general">
         <div className="max-w-2xl space-y-6 mt-6">
           <WorkspaceSettings />
+          {isOwner && <WorkspaceVisibilitySettings isPublicViewable={isPublicViewable} />}
           <WorkspaceMembers canAdmin />
           {isOwner && <DeleteWorkspace workspaceSlug={workspaceSlug} workspaceName={workspaceName} />}
         </div>
