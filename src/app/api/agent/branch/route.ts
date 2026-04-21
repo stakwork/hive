@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
+import { db } from "@/lib/db";
 import { generateCommitMessage } from "@/lib/ai/commit-msg";
 
 export async function POST(request: NextRequest) {
@@ -11,11 +12,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = (session.user as { id?: string })?.id;
+    if (!userId) {
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { taskId } = body;
 
     if (!taskId) {
       return NextResponse.json({ error: "Missing required field: taskId" }, { status: 400 });
+    }
+
+    // IDOR guard: generateCommitMessage reads the full chat history for
+    // the task and returns an AI summary. Without a membership check any
+    // signed-in user can exfiltrate any task's private conversation.
+    // Resolve the task's workspace and verify the caller is an owner or
+    // active member before invoking the AI summarizer.
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: {
+        workspace: {
+          select: {
+            ownerId: true,
+            members: {
+              where: { userId, leftAt: null },
+              select: { userId: true },
+            },
+          },
+        },
+      },
+    });
+
+    const isOwner = task?.workspace.ownerId === userId;
+    const isMember = (task?.workspace.members.length ?? 0) > 0;
+    if (!task || (!isOwner && !isMember)) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
 
     console.log(">>> Generating commit message and branch name for task:", taskId);

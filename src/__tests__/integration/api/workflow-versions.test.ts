@@ -151,13 +151,18 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/versions", () => {
       expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.success).toBe(false);
-      expect(data.error).toBe("Workspace not found");
+      expect(data.error).toBe("Workspace not found or access denied");
     });
 
-    test("returns 404 when user is not a workspace member (workspace not visible)", async () => {
+    test("returns 404 when user is not a workspace member (IDOR hardening)", async () => {
+      // Previously this handler loaded `members` filtered by userId
+      // but never consulted `members.length` or `ownerId`, so any
+      // signed-in user could read workflow_version nodes (including
+      // raw workflow_json) from any workspace slug. The fix enforces
+      // active ownership/membership and returns the unified 404 so
+      // we don't leak workspace existence either.
       const { workspace } = await createTestFixtures();
 
-      // Create a different user who is not a member
       const nonMember = await createTestUser({
         id: generateUniqueId(),
         email: `nonmember-${Date.now()}@example.com`,
@@ -174,9 +179,10 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/versions", () => {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "123" }),
       });
 
-      // Without membership check, workspace is still found so it proceeds
-      // The request will fail at the swarm/graph level
-      expect(response.status).not.toBe(403);
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.success).toBe(false);
+      expect(data.error).toContain("Workspace not found or access denied");
     });
   });
 

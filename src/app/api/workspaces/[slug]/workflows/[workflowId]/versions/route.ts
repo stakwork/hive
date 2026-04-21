@@ -48,7 +48,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       include: {
         owner: true,
         members: {
-          where: { userId },
+          where: { userId, leftAt: null },
           select: { role: true },
         },
         swarm: true,
@@ -57,7 +57,25 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!workspace) {
-      return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
+
+    // IDOR guard: the handler loaded `members` filtered by userId but
+    // never checked `members.length` or `ownerId`, so any signed-in
+    // user could read workflow_version nodes (including raw
+    // workflow_json) from any workspace slug via the victim's
+    // decrypted swarmApiKey. Require active ownership or membership
+    // before decrypting credentials or calling the graph API.
+    const isOwner = workspace.ownerId === userId;
+    const isMember = workspace.members.length > 0;
+    if (!isOwner && !isMember) {
+      return NextResponse.json(
+        { success: false, error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
 
     // Validate workflowId is a valid number
