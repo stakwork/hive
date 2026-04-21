@@ -177,9 +177,11 @@ describe("GET /api/tests/nodes Integration Tests", () => {
       );
 
       const response = await GET(request);
-      
-      // Check actual response structure  
-      expect(response.status).toBe(403);
+
+      // The access check now runs before any primary-repo glob writes
+      // and returns the unified 404 rather than a 403 that fired after
+      // the writes had already landed (see plan Phase B #18).
+      expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.success).toBe(false);
       expect(data.message).toContain("Workspace not found or access denied");
@@ -666,7 +668,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should return 404 for non-existent workspace", async () => {
       const user = await createTestUser();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const request = createGetRequest(
@@ -675,9 +677,10 @@ describe("GET /api/tests/nodes Integration Tests", () => {
       );
 
       const response = await GET(request);
-      
-      // Check actual response structure  
-      expect(response.status).toBe(403);
+
+      // Unified 404 for "unknown workspace" and "no access" — the check
+      // now runs before any repo write (plan Phase B #18).
+      expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.success).toBe(false);
       expect(data.message).toContain("Workspace not found or access denied");
@@ -715,7 +718,11 @@ describe("GET /api/tests/nodes Integration Tests", () => {
       }
     });
 
-    test("should prioritize swarmId over workspaceId when both provided", async () => {
+    test("rejects body-supplied workspaceId that caller lacks access to, even when swarmId is also present", async () => {
+      // The access check now runs based on the body workspaceId and
+      // fires before the swarm lookup, so a non-member combining a
+      // victim's workspaceId with some swarmId they know can no longer
+      // slip through. Unified 404.
       const { user, swarm } = await createTestWorkspaceWithSwarm();
       const otherUser = await createTestUser({ name: "Other User" });
       const otherWorkspace = await createTestWorkspace({
@@ -733,25 +740,18 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
       const request = createGetRequest(
         "http://localhost/api/tests/nodes",
-        { 
+        {
           workspaceId: otherWorkspace.id, // Different workspace (user has no access)
-          swarmId: swarm.id // But valid swarm
+          swarmId: swarm.id, // But valid swarm
         }
       );
 
       const response = await GET(request);
-      
+
+      expect(response.status).toBe(404);
       const data = await response.json();
-      // API may not have auth checks for swarmId - check actual behavior
-      if (response.status === 403) {
-        // If auth check still applies when swarmId is present
-        expect(data.message).toContain("Workspace not found or access denied");
-      } else if (response.status === 404) {
-        expect(data.message).toContain("Swarm not found");  
-      } else {
-        expect(response.status).toBe(200);
-        expect(data.success).toBe(true);
-      }
+      expect(data.success).toBe(false);
+      expect(data.message).toContain("Workspace not found or access denied");
     });
   });
 });

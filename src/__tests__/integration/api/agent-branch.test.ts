@@ -36,18 +36,11 @@ describe("POST /api/agent/branch Integration Tests", () => {
       await expectUnauthorized(response);
     });
 
-    // VALIDATION GAP: This test documents current behavior where missing user.id causes 500 instead of 401
-    // The route should validate user.id exists before proceeding (like /api/agent/commit does)
-    test("VALIDATION GAP: currently returns 500 when user session has no id (should be 401)", async () => {
+    test("returns 401 when user session has no id", async () => {
       getMockedSession().mockResolvedValue({
         user: { email: "test@example.com", name: "Test User" },
         expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       } as any);
-
-      const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
-      vi.mocked(generateCommitMessage).mockRejectedValue(
-        new Error("Cannot process request with invalid user session")
-      );
 
       const request = createPostRequest("http://localhost:3000/api/agent/branch", {
         taskId: "test-task-id",
@@ -55,11 +48,9 @@ describe("POST /api/agent/branch Integration Tests", () => {
 
       const response = await POST(request);
 
-      // Current behavior: returns 500 due to missing userId validation
-      // Expected behavior: should return 401 with explicit userId check (see /api/agent/commit)
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(401);
       const data = await response.json();
-      expect(data.error).toBeTruthy();
+      expect(data.error).toBe("Invalid user session");
     });
   });
 
@@ -108,14 +99,14 @@ describe("POST /api/agent/branch Integration Tests", () => {
       expect(data.error).toBe("No conversation history found for this task");
     });
 
-    test("should return 500 when task does not exist", async () => {
+    test("should return 404 when task does not exist", async () => {
+      // IDOR guard: we resolve the task's workspace and check membership
+      // before calling generateCommitMessage, so a missing task returns
+      // the unified 404 and never touches the AI summarizer.
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
-      vi.mocked(generateCommitMessage).mockRejectedValue(
-        new Error("Task not found")
-      );
 
       const request = createPostRequest("http://localhost:3000/api/agent/branch", {
         taskId: "non-existent-task-id",
@@ -123,14 +114,20 @@ describe("POST /api/agent/branch Integration Tests", () => {
 
       const response = await POST(request);
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(404);
       const data = await response.json();
-      expect(data.error).toContain("Task not found");
+      expect(data.error).toContain("Workspace not found or access denied");
+      expect(vi.mocked(generateCommitMessage)).not.toHaveBeenCalled();
     });
   });
 
-  describe("Authorization Tests (Security Gap Documentation)", () => {
-    test("SECURITY GAP: currently allows any authenticated user to generate branch names for any task", async () => {
+  describe("Authorization Tests (IDOR hardening)", () => {
+    test("returns 404 and does not call generateCommitMessage for non-member attacker", async () => {
+      // Previously this route had no workspace membership check: any
+      // signed-in user could read another workspace's task chat history
+      // as an AI-generated summary. The IDOR fix resolves the task's
+      // workspace first and returns the unified 404 for non-members
+      // before ever calling the AI summarizer.
       const owner = await createTestUser({ name: "Owner" });
       const unauthorizedUser = await createTestUser({ name: "Unauthorized User" });
 
@@ -168,15 +165,13 @@ describe("POST /api/agent/branch Integration Tests", () => {
 
       const response = await POST(request);
 
-      // SECURITY GAP: Currently returns 200 for unauthorized users
-      // EXPECTED: Should return 403 with proper workspace authorization
-      const data = await expectSuccess(response, 200);
-      expect(data.success).toBe(true);
-      expect(data.data.branch_name).toBe("feat/implement-feature-x");
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error).toContain("Workspace not found or access denied");
+      expect(vi.mocked(generateCommitMessage)).not.toHaveBeenCalled();
     });
 
-    // TODO: Implement workspace authorization using validateWorkspaceAccess()
-    // These tests document expected secure behavior after authorization is implemented
+    // Legacy skipped placeholders describing the fix now live above.
     test.skip("EXPECTED BEHAVIOR: should return 403 when user lacks workspace access", async () => {
       const owner = await createTestUser({ name: "Owner" });
       const unauthorizedUser = await createTestUser({ name: "Unauthorized User" });

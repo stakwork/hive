@@ -4,6 +4,7 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { convertGlobsToRegex } from "@/lib/utils/glob";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { TestCoverageData } from "@/types/test-coverage";
@@ -35,6 +36,22 @@ export async function GET(request: NextRequest) {
     let finalUnitGlob = unitGlobParam;
     let finalIntegrationGlob = integrationGlobParam;
     let finalE2eGlob = e2eGlobParam;
+
+    // IDOR guard: before this check the handler happily accepted a
+    // body-supplied `workspaceId` and overwrote the primary repo's
+    // ignoreDirs / unitGlob / integrationGlob / e2eGlob fields (poisoning
+    // the victim's future test runs) and decrypted the victim's
+    // swarmApiKey. Authorize the caller as a write-capable member of
+    // the target workspace before any repo update or swarm fetch.
+    if (workspaceId) {
+      const access = await validateWorkspaceAccessById(workspaceId, session.user.id);
+      if (!access.hasAccess || !access.canWrite) {
+        return NextResponse.json(
+          { success: false, message: "Workspace not found or access denied" },
+          { status: 404 },
+        );
+      }
+    }
 
     if (workspaceId && !swarmId) {
       const primaryRepo = await getPrimaryRepository(workspaceId);

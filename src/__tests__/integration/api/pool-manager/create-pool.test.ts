@@ -7,7 +7,6 @@ import {
   expectUnauthorized,
   expectError,
   expectNotFound,
-  expectForbidden,
   createPostRequest,
   generateUniqueId,
 } from "@/__tests__/support/helpers";
@@ -166,7 +165,12 @@ describe("POST /api/pool-manager/create-pool", () => {
       await expectNotFound(response, "Swarm not found");
     });
 
-    test("returns 403 when user is not owner or member", async () => {
+    test("returns 404 when user is not owner or member (IDOR)", async () => {
+      // The owner/member check was moved above the saveOrUpdateSwarm
+      // (containerFiles) write so a non-member no longer gets the chance
+      // to poison the victim's swarm containerFiles before the 403 fires.
+      // Response now uses the unified 404 "Workspace not found or access
+      // denied" convention.
       const nonMember = await createTestUser({ email: "nonmember@test.com" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
 
@@ -176,7 +180,7 @@ describe("POST /api/pool-manager/create-pool", () => {
       );
       const response = await POST(request);
 
-      await expectForbidden(response, "Access denied");
+      await expectNotFound(response, "Workspace not found or access denied");
     });
 
     test("allows workspace owner to create pool", async () => {

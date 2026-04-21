@@ -82,7 +82,9 @@ describe("POST /api/agent — claimPodForTask rollback logging", () => {
     repositories: [],
   };
 
-  // Task with no podId so the claim path is taken; mode must be "agent"
+  // Task with no podId so the claim path is taken; mode must be "agent".
+  // Includes the nested `workspace` selector the handler uses for the
+  // IDOR membership check (user-1 is the workspace owner).
   const mockTask = {
     id: "task-1",
     workspaceId: "workspace-1",
@@ -92,6 +94,10 @@ describe("POST /api/agent — claimPodForTask rollback logging", () => {
     agentWebhookSecret: null,
     mode: "agent",
     model: null,
+    workspace: {
+      ownerId: "user-1",
+      members: [],
+    },
   };
 
   // Empty portMappings → controlUrl will be undefined → throws "Pod control port not available"
