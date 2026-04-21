@@ -218,6 +218,91 @@ describe("triggerPodRepair", () => {
   });
 });
 
+// ── getRepairHistory decoding ──────────────────────────────────────────────
+
+describe("getRepairHistory — containerFiles decoding", () => {
+  let mockStakworkRequest: ReturnType<typeof makeMockStakworkRequest>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStakworkRequest = makeMockStakworkRequest();
+    mockedStakworkService.mockReturnValue({
+      stakworkRequest: mockStakworkRequest,
+    } as ReturnType<typeof stakworkService>);
+    setupCommonDbMocks();
+  });
+
+  it("decodes base64 containerFiles to plain text", async () => {
+    const plainContent = "FROM node:18\nRUN npm install";
+    const encoded = Buffer.from(plainContent, "utf-8").toString("base64");
+
+    mockedDb.stakworkRun.findMany.mockResolvedValue([
+      {
+        id: "run-hist-1",
+        status: WorkflowStatus.COMPLETED,
+        result: { containerFiles: { "Dockerfile": encoded } },
+        feedback: null,
+        createdAt: new Date("2024-01-01T00:00:00Z"),
+        updatedAt: new Date("2024-01-01T01:00:00Z"),
+      },
+    ] as any);
+
+    await triggerPodRepair(WORKSPACE_ID, WORKSPACE_SLUG, POD_ID, POD_PASSWORD, FAILED_SERVICES);
+
+    const [, payload] = mockStakworkRequest.mock.calls[0] as [string, Record<string, unknown>];
+    const vars = (payload as any).workflow_params.set_var.attributes.vars;
+    const history = vars.history as Array<{ result: { containerFiles: Record<string, string> } }>;
+
+    expect(history[0].result.containerFiles["Dockerfile"]).toBe(plainContent);
+  });
+
+  it("handles null result safely without throwing", async () => {
+    mockedDb.stakworkRun.findMany.mockResolvedValue([
+      {
+        id: "run-hist-2",
+        status: WorkflowStatus.FAILED,
+        result: null,
+        feedback: null,
+        createdAt: new Date("2024-01-01T00:00:00Z"),
+        updatedAt: new Date("2024-01-01T01:00:00Z"),
+      },
+    ] as any);
+
+    await expect(
+      triggerPodRepair(WORKSPACE_ID, WORKSPACE_SLUG, POD_ID, POD_PASSWORD, FAILED_SERVICES)
+    ).resolves.not.toThrow();
+
+    const [, payload] = mockStakworkRequest.mock.calls[0] as [string, Record<string, unknown>];
+    const vars = (payload as any).workflow_params.set_var.attributes.vars;
+    const history = vars.history as Array<{ result: unknown }>;
+
+    expect(history[0].result).toBeNull();
+  });
+
+  it("returns result unchanged when containerFiles key is absent", async () => {
+    const resultWithoutFiles = { summary: "did stuff" };
+
+    mockedDb.stakworkRun.findMany.mockResolvedValue([
+      {
+        id: "run-hist-3",
+        status: WorkflowStatus.COMPLETED,
+        result: resultWithoutFiles,
+        feedback: null,
+        createdAt: new Date("2024-01-01T00:00:00Z"),
+        updatedAt: new Date("2024-01-01T01:00:00Z"),
+      },
+    ] as any);
+
+    await triggerPodRepair(WORKSPACE_ID, WORKSPACE_SLUG, POD_ID, POD_PASSWORD, FAILED_SERVICES);
+
+    const [, payload] = mockStakworkRequest.mock.calls[0] as [string, Record<string, unknown>];
+    const vars = (payload as any).workflow_params.set_var.attributes.vars;
+    const history = vars.history as Array<{ result: unknown }>;
+
+    expect(history[0].result).toEqual(resultWithoutFiles);
+  });
+});
+
 // ── getEligibleWorkspaces ──────────────────────────────────────────────────
 
 describe("getEligibleWorkspaces", () => {

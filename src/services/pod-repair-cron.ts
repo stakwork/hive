@@ -305,14 +305,34 @@ async function getRepairHistory(workspaceId: string) {
     orderBy: { createdAt: "asc" },
   });
 
-  return previousRuns.map((run) => ({
-    runId: run.id,
-    status: run.status,
-    result: run.result,
-    feedback: run.feedback,
-    createdAt: run.createdAt.toISOString(),
-    updatedAt: run.updatedAt.toISOString(),
-  }));
+  return previousRuns.map((run) => {
+    let result = run.result as Record<string, unknown> | null;
+
+    if (result && typeof result === "object" && result.containerFiles) {
+      const rawFiles = result.containerFiles as Record<string, string>;
+      if (rawFiles && typeof rawFiles === "object") {
+        result = {
+          ...result,
+          containerFiles: Object.entries(rawFiles).reduce(
+            (acc, [name, content]) => {
+              acc[name] = Buffer.from(content, "base64").toString("utf-8");
+              return acc;
+            },
+            {} as Record<string, string>
+          ),
+        };
+      }
+    }
+
+    return {
+      runId: run.id,
+      status: run.status,
+      result,
+      feedback: run.feedback,
+      createdAt: run.createdAt.toISOString(),
+      updatedAt: run.updatedAt.toISOString(),
+    };
+  });
 }
 
 /**
