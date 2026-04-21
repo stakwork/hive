@@ -1351,3 +1351,134 @@ describe.skip("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () =>
     });
   });
 });
+
+// These tests exercise the synchronous membership check that runs BEFORE
+// the SSE stream is opened, so they don't hit the zombie polling issue
+// that forced the main suite to be skipped.
+describe("GET /api/swarm/stakgraph/agent-stream - IDOR hardening", () => {
+  const enc = EncryptionService.getInstance();
+
+  async function createOwnedSwarm() {
+    const user = await db.user.create({
+      data: {
+        id: generateUniqueId("idor-user"),
+        email: `idor-${generateUniqueId()}@example.com`,
+        name: "IDOR Owner",
+      },
+    });
+    const workspace = await db.workspace.create({
+      data: {
+        name: "IDOR Workspace",
+        slug: generateUniqueSlug("idor-ws"),
+        ownerId: user.id,
+      },
+    });
+    const swarm = await db.swarm.create({
+      data: {
+        workspaceId: workspace.id,
+        name: "idor-swarm",
+        swarmId: generateUniqueId("swarm"),
+        status: "ACTIVE",
+        swarmUrl: "https://idor-swarm.sphinx.chat/api",
+        swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", "idor-key")),
+        services: [],
+        agentRequestId: `req-${generateUniqueId()}`,
+        agentStatus: "PROCESSING",
+      },
+    });
+    return { user, workspace, swarm };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const { swarm } = await createOwnedSwarm();
+    getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
+
+    const url = new URL("http://localhost:3000/api/swarm/stakgraph/agent-stream");
+    url.searchParams.set("request_id", swarm.agentRequestId!);
+    url.searchParams.set("swarm_id", swarm.id);
+
+    const response = await GET(new Request(url.toString(), { method: "GET" }) as any);
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 404 when swarm does not exist", async () => {
+    const user = await db.user.create({
+      data: {
+        id: generateUniqueId("idor-no-swarm"),
+        email: `idor-no-swarm-${generateUniqueId()}@example.com`,
+        name: "User",
+      },
+    });
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+    const url = new URL("http://localhost:3000/api/swarm/stakgraph/agent-stream");
+    url.searchParams.set("request_id", "req-123");
+    url.searchParams.set("swarm_id", "non-existent-swarm-id");
+
+    const response = await GET(new Request(url.toString(), { method: "GET" }) as any);
+
+    expect(response.status).toBe(404);
+    // Must not be an SSE stream — the access check short-circuits before
+    // the stream is opened.
+    expect(response.headers.get("content-type")).not.toBe("text/event-stream");
+  });
+
+  it("returns 404 when caller is not a member of the swarm's workspace", async () => {
+    const { swarm } = await createOwnedSwarm();
+
+    const attacker = await db.user.create({
+      data: {
+        id: generateUniqueId("idor-attacker"),
+        email: `idor-attacker-${generateUniqueId()}@example.com`,
+        name: "Attacker",
+      },
+    });
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(attacker));
+
+    const url = new URL("http://localhost:3000/api/swarm/stakgraph/agent-stream");
+    url.searchParams.set("request_id", swarm.agentRequestId!);
+    url.searchParams.set("swarm_id", swarm.id);
+
+    const response = await GET(new Request(url.toString(), { method: "GET" }) as any);
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).not.toBe("text/event-stream");
+    // The polling fn must never be reached, so the decrypted swarm api key
+    // never leaves the DB.
+    expect(mockPollAgentProgress).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when caller is a non-admin member (lacks canAdmin)", async () => {
+    const { swarm, workspace } = await createOwnedSwarm();
+
+    const viewer = await db.user.create({
+      data: {
+        id: generateUniqueId("idor-viewer"),
+        email: `idor-viewer-${generateUniqueId()}@example.com`,
+        name: "Viewer",
+      },
+    });
+    await db.workspaceMember.create({
+      data: {
+        workspaceId: workspace.id,
+        userId: viewer.id,
+        role: "VIEWER",
+      },
+    });
+    getMockedSession().mockResolvedValue(createAuthenticatedSession(viewer));
+
+    const url = new URL("http://localhost:3000/api/swarm/stakgraph/agent-stream");
+    url.searchParams.set("request_id", swarm.agentRequestId!);
+    url.searchParams.set("swarm_id", swarm.id);
+
+    const response = await GET(new Request(url.toString(), { method: "GET" }) as any);
+
+    expect(response.status).toBe(404);
+    expect(mockPollAgentProgress).not.toHaveBeenCalled();
+  });
+});
