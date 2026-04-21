@@ -3,6 +3,7 @@ import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { getS3Service } from "@/services/s3";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import type { JarvisNode, JarvisResponse, SearchByTypesRequest } from "@/types/jarvis";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -102,10 +103,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const where: Record<string, string> = {};
-    if (workspaceId) where.workspaceId = workspaceId;
+    if (!workspaceId) {
+      return NextResponse.json(
+        { success: false, message: "Missing required query parameter: id" },
+        { status: 400 },
+      );
+    }
 
-    const swarm = await db.swarm.findFirst({ where });
+    // IDOR guard: a non-member could previously run arbitrary graph
+    // queries against the victim's swarm using its decrypted swarmApiKey,
+    // exfiltrating functions / files / presigned S3 media URLs.
+    const access = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!access.hasAccess || !access.canRead) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
+
+    const swarm = await db.swarm.findFirst({ where: { workspaceId } });
 
     // Return mock data if swarm is not configured (for development/testing)
     if (!swarm || !swarm.swarmUrl || !swarm.swarmApiKey) {

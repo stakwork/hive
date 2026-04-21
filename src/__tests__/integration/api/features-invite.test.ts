@@ -18,12 +18,20 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
-// Mock environment config
-vi.mock("@/config/env", () => ({
-  config: {
-    SPHINX_API_URL: "http://localhost:3000/api/mock/sphinx/action",
-  },
-}));
+// Mock environment config. Extend the real module (via importOriginal)
+// so that downstream callers like @/config/services still see
+// optionalEnvVars / USE_MOCKS / MOCK_BASE when this test file imports
+// @/services/workspace (pulled in by the route's IDOR fix).
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return {
+    ...actual,
+    config: {
+      ...actual.config,
+      SPHINX_API_URL: "http://localhost:3000/api/mock/sphinx/action",
+    },
+  };
+});
 
 // Mock fetch for Sphinx API calls
 global.fetch = vi.fn();
@@ -154,6 +162,12 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       // No sphinxAlias set
     });
 
+    // Invitee must be an active workspace member for the IDOR-hardened
+    // route to let them through to the sphinxAlias check.
+    await db.workspaceMember.create({
+      data: { userId: invitee.id, workspaceId: workspace.id, role: "DEVELOPER" },
+    });
+
     const feature = await db.feature.create({
       data: {
         title: "Test Feature",
@@ -171,9 +185,9 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
 
     const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
     expect(response.status).toBe(400);
-    
+
     const data = await response.json();
-    expect(data.error).toContain("does not have a Sphinx alias");
+    expect(data.error).toContain("lacks a Sphinx alias");
   });
 
   test("successfully sends invite when all conditions are met", async () => {
@@ -198,6 +212,10 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       name: "Invitee User",
       sphinxAlias: "invitee_sphinx",
       lightningPubkey: "test-pubkey-123",
+    });
+
+    await db.workspaceMember.create({
+      data: { userId: invitee.id, workspaceId: workspace.id, role: "DEVELOPER" },
     });
 
     const feature = await db.feature.create({
@@ -262,6 +280,13 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       createTestUser({ email: `bob-${generateUniqueId()}@example.com`, name: "Bob", sphinxAlias: "bob", lightningPubkey: "pk-bob" }),
     ]);
 
+    await db.workspaceMember.createMany({
+      data: [
+        { userId: alice.id, workspaceId: workspace.id, role: "DEVELOPER" },
+        { userId: bob.id, workspaceId: workspace.id, role: "DEVELOPER" },
+      ],
+    });
+
     const feature = await db.feature.create({
       data: { title: "Multi-User Feature", workspaceId: workspace.id, createdById: owner.id, updatedById: owner.id },
     });
@@ -307,6 +332,14 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       createTestUser({ email: `bob-${generateUniqueId()}@example.com`, name: "Bob", sphinxAlias: "bob", lightningPubkey: "pk-bob" }),
       createTestUser({ email: `charlie-${generateUniqueId()}@example.com`, name: "Charlie", sphinxAlias: "charlie", lightningPubkey: "pk-charlie" }),
     ]);
+
+    await db.workspaceMember.createMany({
+      data: [
+        { userId: alice.id, workspaceId: workspace.id, role: "DEVELOPER" },
+        { userId: bob.id, workspaceId: workspace.id, role: "DEVELOPER" },
+        { userId: charlie.id, workspaceId: workspace.id, role: "DEVELOPER" },
+      ],
+    });
 
     const feature = await db.feature.create({
       data: { title: "Three-User Feature", workspaceId: workspace.id, createdById: owner.id, updatedById: owner.id },
@@ -364,6 +397,10 @@ describe("POST /api/features/[featureId]/invite Integration Tests", () => {
       name: "Invitee User",
       sphinxAlias: "invitee_sphinx",
       lightningPubkey: "test-pubkey-123",
+    });
+
+    await db.workspaceMember.create({
+      data: { userId: invitee.id, workspaceId: workspace.id, role: "DEVELOPER" },
     });
 
     const feature = await db.feature.create({

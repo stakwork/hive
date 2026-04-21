@@ -9,7 +9,6 @@ import {
   expectSuccess,
   expectError,
   expectUnauthorized,
-  expectForbidden,
   expectNotFound,
   generateUniqueSlug,
   createPostRequest,
@@ -199,8 +198,9 @@ describe("POST /api/agent/diff Integration Tests", () => {
   });
 
   describe("Authorization Tests", () => {
-    test("returns 404 when workspace not found", async () => {
-      // Create a task with podId in a workspace the user doesn't have access to
+    test("returns 404 when body workspaceId does not match task.workspaceId", async () => {
+      // Attacker passes a victim's taskId paired with a workspaceId they
+      // control; the mismatch check rejects before any pod read.
       const { task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
@@ -211,10 +211,10 @@ describe("POST /api/agent/diff Integration Tests", () => {
       });
 
       const response = await POST(request);
-      await expectNotFound(response, "Workspace not found");
+      await expectNotFound(response, "Workspace not found or access denied");
     });
 
-    test("returns 403 when user is not workspace owner or member", async () => {
+    test("returns 404 when user is not workspace owner or member (IDOR)", async () => {
       const { workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       const unauthorizedUser = await createTestUser({ name: "Unauthorized User" });
 
@@ -226,7 +226,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       });
 
       const response = await POST(request);
-      await expectForbidden(response);
+      await expectNotFound(response, "Workspace not found or access denied");
     });
 
     test("allows workspace owner to fetch diff", async () => {

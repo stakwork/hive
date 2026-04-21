@@ -26,6 +26,18 @@ vi.mock("@/lib/helpers/repository");
 vi.mock("@/services/swarm/stakgraph-actions");
 vi.mock("@/services/swarm/api/swarm");
 vi.mock("@/services/swarm/db");
+// Stub the workspace-access validator so this unit test stays focused on
+// the ingest flow. Integration tests cover the real membership check.
+vi.mock("@/services/workspace", () => ({
+  validateWorkspaceAccessById: vi.fn(async () => ({
+    hasAccess: true,
+    canRead: true,
+    canWrite: true,
+    canAdmin: true,
+    userRole: "OWNER",
+    workspace: { id: "workspace-123" },
+  })),
+}));
 vi.mock("@/lib/encryption", () => ({
   EncryptionService: {
     getInstance: vi.fn(() => ({

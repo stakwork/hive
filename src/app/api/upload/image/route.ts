@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth/nextauth'
 import { getS3Service } from '@/services/s3'
 import { db } from '@/lib/db'
+import { validateWorkspaceAccessById } from '@/services/workspace'
 import { z } from 'zod'
 
 const uploadRequestSchema = z.object({
@@ -23,10 +24,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const userId = (session.user as { id?: string }).id
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Invalid user session' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
     const validatedData = uploadRequestSchema.parse(body)
     const { filename, contentType, size, featureId } = validatedData
-    
+
     // Get feature with workspace information
     const feature = await db.feature.findFirst({
       where: {
@@ -47,16 +56,30 @@ export async function POST(request: NextRequest) {
         },
       },
     })
-    
+
     if (!feature) {
       return NextResponse.json(
-        { error: 'Feature not found' },
+        { error: 'Workspace not found or access denied' },
         { status: 404 }
       )
     }
-    
+
     const workspaceId = feature.workspace.id
     const swarmId = feature.workspace.swarm?.id || 'default'
+
+    // IDOR guard: previously any signed-in user could pass another
+    // workspace's `featureId` and receive a write-capable presigned
+    // upload URL + a long-lived presigned download URL under that
+    // workspace's S3 prefix. Require an active workspace member with
+    // write permission before issuing either URL. Return the unified
+    // 404 so we don't leak whether the feature exists.
+    const access = await validateWorkspaceAccessById(workspaceId, userId)
+    if (!access.hasAccess || !access.canWrite) {
+      return NextResponse.json(
+        { error: 'Workspace not found or access denied' },
+        { status: 404 }
+      )
+    }
 
     // Validate file type
     if (!getS3Service().validateFileType(contentType)) {
