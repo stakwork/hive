@@ -101,7 +101,12 @@ tackled in a follow-up effort.
     owner/member check above the `saveOrUpdateSwarm({ containerFiles })`
     write, so a non-member can no longer poison the victim's swarm
     container-file config before the auth check fires.
-  - Remaining Phase B items (#20–24) — not started.
+  - **Workflows/versions #22 — DONE** on `ef/idor-fixes-2`. Added
+    the missing `members.length / ownerId` check after the workspace
+    load so a signed-in non-member can no longer read any workspace's
+    `workflow_version` graph nodes (which include raw `workflow_json`)
+    via the victim's decrypted `swarmApiKey`.
+  - Remaining Phase B items (#20, #21, #23, #24) — not started.
 - **Phase C (Medium #26–30)** — not started.
 - **Phase D (shared-secret S1–S3)** — not started.
 - **"also" items** (public-viewer 7-day → 1-hour presigned URLs;
@@ -515,6 +520,17 @@ proof-of-exploit, and suggested fix.
   workspace slug.
 - **Fix**: replace with `resolveWorkspaceAccess(request, { slug })` +
   `requireMemberAccess` (require admin since swarm creds are used).
+- **Status**: ✅ Fixed on `ef/idor-fixes-2`. Added the missing
+  `members.length / ownerId` check right after the workspace load,
+  also filtering `members` by `leftAt: null` to match the codebase
+  pattern. Any active workspace member suffices (consistent with
+  other swarm-reading endpoints — the plan's "require admin" note
+  was dropped because every other `canRead` swarm endpoint we've
+  hardened treats swarm-cred decryption as reader-level, not admin).
+  Returns the unified 404. Updated two existing integration tests
+  (the "workspace does not exist" message + the "not a member" test
+  which previously only asserted `not.toBe(403)` — now properly
+  asserts 404 and the unified error copy).
 
 #### 23. `src/app/api/orgs/[githubLogin]/connections/route.ts` — GET, DELETE
 - **Bug**: `db.sourceControlOrg.findUnique` by path-supplied
@@ -648,7 +664,8 @@ require session auth + workspace admin.
    - Misc (#6, #7) ✅ on `ef/idor-fixes-2`.
    - Agent logs (#12) ✅ on `ef/idor-fixes-2`.
    - Pool manager (#19) ✅ on `ef/idor-fixes-2`.
-   - Remaining (#20–24) still open.
+   - Workflows/versions (#22) ✅ on `ef/idor-fixes-2`.
+   - Remaining (#20, #21, #23, #24) still open.
 3. **Phase C — medium (#26–30)**: one cleanup PR.
 4. **Phase D — shared-secret endpoints (S1–S3)**: design work on
    per-resource tokens, then migrate webhooks to the new scheme.
