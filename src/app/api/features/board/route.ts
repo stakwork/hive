@@ -19,11 +19,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
+    // Auth: x-api-token callers are trusted service-to-service clients that
+    // bypass membership. Everyone else is resolved through
+    // `resolveWorkspaceAccess`, which enforces workspace membership (or
+    // public-viewer on `isPublicViewable` workspaces). `requireAuthOrApiToken`
+    // alone is not sufficient — it accepts any authenticated user without
+    // checking workspace membership, which would leak board data across
+    // tenants.
+    const apiTokenAuth =
+      request.headers.get("x-api-token") === process.env.API_TOKEN;
     let redactForPublic = false;
-    if (userOrResponse instanceof NextResponse) {
+
+    if (apiTokenAuth) {
+      const apiResult = await requireAuthOrApiToken(request, workspaceId);
+      if (apiResult instanceof NextResponse) return apiResult;
+    } else {
       const access = await resolveWorkspaceAccess(request, { workspaceId });
-      if (!access || access.kind !== "public-viewer") return userOrResponse;
+      if (!access) {
+        return NextResponse.json(
+          { error: "Workspace not found or access denied" },
+          { status: 404 },
+        );
+      }
       redactForPublic = isPublicViewer(access);
     }
 

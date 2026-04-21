@@ -36,13 +36,29 @@ export async function GET(
       return NextResponse.json({ error: "Feature not found" }, { status: 404 });
     }
 
-    const userOrResponse = await requireAuthOrApiToken(request, feature.workspaceId);
+    // Auth: x-api-token callers are trusted service-to-service clients that
+    // bypass membership. Everyone else is resolved through
+    // `resolveWorkspaceAccess`, which enforces workspace membership (or
+    // public-viewer on `isPublicViewable` workspaces). `requireAuthOrApiToken`
+    // alone would accept any authenticated user regardless of membership
+    // and leak the feature's chat history across tenants.
+    const apiTokenAuth =
+      request.headers.get("x-api-token") === process.env.API_TOKEN;
     let redactForPublic = false;
-    if (userOrResponse instanceof NextResponse) {
+
+    if (apiTokenAuth) {
+      const apiResult = await requireAuthOrApiToken(request, feature.workspaceId);
+      if (apiResult instanceof NextResponse) return apiResult;
+    } else {
       const access = await resolveWorkspaceAccess(request, {
         workspaceId: feature.workspaceId,
       });
-      if (!access || access.kind !== "public-viewer") return userOrResponse;
+      if (!access) {
+        return NextResponse.json(
+          { error: "Workspace not found or access denied" },
+          { status: 404 },
+        );
+      }
       redactForPublic = isPublicViewer(access);
     }
 
@@ -102,8 +118,34 @@ export async function POST(
       return NextResponse.json({ error: "Feature not found" }, { status: 404 });
     }
 
-    const userOrResponse = await requireAuthOrApiToken(request, feature.workspaceId);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    // POST is a write: x-api-token is still accepted for service callers,
+    // but session-authenticated requests must belong to the workspace.
+    // Without the membership check any signed-in user could inject chat
+    // messages into any workspace's feature conversations and trigger
+    // downstream Stakwork workflows on the victim's account.
+    const apiTokenAuth =
+      request.headers.get("x-api-token") === process.env.API_TOKEN;
+    let userOrResponse: Awaited<ReturnType<typeof requireAuthOrApiToken>>;
+
+    if (apiTokenAuth) {
+      userOrResponse = await requireAuthOrApiToken(request, feature.workspaceId);
+      if (userOrResponse instanceof NextResponse) return userOrResponse;
+    } else {
+      const access = await resolveWorkspaceAccess(request, {
+        workspaceId: feature.workspaceId,
+      });
+      if (!access || access.kind !== "member") {
+        return NextResponse.json(
+          { error: "Workspace not found or access denied" },
+          { status: 404 },
+        );
+      }
+      userOrResponse = {
+        id: access.userId,
+        email: "",
+        name: "",
+      };
+    }
 
     const body = await request.json();
     const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory, isPrototype, attachments = [] as AttachmentRequest[], model } = body;

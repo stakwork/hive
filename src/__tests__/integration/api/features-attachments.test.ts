@@ -307,7 +307,10 @@ describe("GET /api/features/[featureId]/attachments", () => {
     expect(data.attachments).toEqual([]);
   });
 
-  it("should return 401 when unauthenticated", async () => {
+  it("should return 404 when unauthenticated on a non-public workspace", async () => {
+    // Handler uses `resolveWorkspaceAccess` which returns null for
+    // unauthenticated visitors on non-public workspaces, producing a
+    // unified 404 rather than 401 to avoid revealing workspace existence.
     const request = new NextRequest(
       `http://localhost:3000/api/features/${testFeature.id}/attachments`
     );
@@ -316,7 +319,7 @@ describe("GET /api/features/[featureId]/attachments", () => {
       params: Promise.resolve({ featureId: testFeature.id }),
     });
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(404);
   });
 
   it("should return 404 for non-existent feature", async () => {

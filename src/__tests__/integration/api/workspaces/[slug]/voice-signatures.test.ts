@@ -29,7 +29,12 @@ describe("Voice Signatures API - Integration Tests", () => {
 
   describe("GET /api/workspaces/[slug]/voice-signatures", () => {
     describe("Authentication", () => {
-      test("returns 401 when no auth is provided (no session, no token)", async () => {
+      // Voice signatures are biometric data — the handler resolves access
+      // via `resolveWorkspaceAccess`, which returns a unified 404
+      // "Workspace not found or access denied" whenever the caller is
+      // unauthenticated (or the x-api-token is invalid). We never emit
+      // a distinct 401, to avoid revealing workspace existence.
+      test("returns 404 when no auth is provided (no session, no token)", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
 
@@ -42,16 +47,16 @@ describe("Voice Signatures API - Integration Tests", () => {
             params: Promise.resolve({ slug: workspace.slug }),
           });
 
-          expect(response.status).toBe(401);
+          expect(response.status).toBe(404);
           const data = await response.json();
-          expect(data.error).toBe("Unauthorized");
+          expect(data.message).toBe("Workspace not found or access denied");
         } finally {
           await db.workspace.delete({ where: { id: workspace.id } });
           await db.user.delete({ where: { id: owner.id } });
         }
       });
 
-      test("returns 401 with invalid x-api-token header", async () => {
+      test("returns 404 with invalid x-api-token header", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
 
@@ -59,11 +64,11 @@ describe("Voice Signatures API - Integration Tests", () => {
           const baseRequest = createGetRequest(
             `http://localhost:3000/api/workspaces/${workspace.slug}/voice-signatures`
           );
-          
+
           // Add invalid API token header
           const headers = new Headers(baseRequest.headers);
           headers.set("x-api-token", "invalid-token");
-          
+
           const request = new Request(baseRequest.url, {
             method: baseRequest.method,
             headers,
@@ -73,9 +78,11 @@ describe("Voice Signatures API - Integration Tests", () => {
             params: Promise.resolve({ slug: workspace.slug }),
           });
 
-          expect(response.status).toBe(401);
+          // Invalid tokens fall through to the session path, which in turn
+          // resolves to a unified 404.
+          expect(response.status).toBe(404);
           const data = await response.json();
-          expect(data.error).toBe("Unauthorized");
+          expect(data.message).toBe("Workspace not found or access denied");
         } finally {
           await db.workspace.delete({ where: { id: workspace.id } });
           await db.user.delete({ where: { id: owner.id } });

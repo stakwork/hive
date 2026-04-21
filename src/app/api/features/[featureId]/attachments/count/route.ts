@@ -26,17 +26,29 @@ export async function GET(
       return NextResponse.json({ error: "Feature not found" }, { status: 404 });
     }
 
-    // Authenticate user or API token; fall back to public-viewer on
-    // workspaces flagged `isPublicViewable`.
-    const userOrResponse = await requireAuthOrApiToken(
-      request,
-      featureLookup.workspaceId
-    );
-    if (userOrResponse instanceof NextResponse) {
+    // Auth: x-api-token callers are trusted service-to-service clients that
+    // bypass membership. Everyone else must resolve through
+    // `resolveWorkspaceAccess`, which enforces workspace membership (or
+    // public-viewer on `isPublicViewable` workspaces).
+    const apiTokenAuth =
+      request.headers.get("x-api-token") === process.env.API_TOKEN;
+
+    if (apiTokenAuth) {
+      const apiResult = await requireAuthOrApiToken(
+        request,
+        featureLookup.workspaceId
+      );
+      if (apiResult instanceof NextResponse) return apiResult;
+    } else {
       const access = await resolveWorkspaceAccess(request, {
         workspaceId: featureLookup.workspaceId,
       });
-      if (!access || access.kind !== "public-viewer") return userOrResponse;
+      if (!access) {
+        return NextResponse.json(
+          { error: "Workspace not found or access denied" },
+          { status: 404 },
+        );
+      }
     }
 
     const count = await db.attachment.count({

@@ -156,8 +156,30 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Public routes (auth pages, onboarding) - accessible after landing page check
+    // Public routes are reachable without a session, but if the caller
+    // DOES have a session we must still stamp the user headers so that
+    // route handlers can distinguish "authenticated member" from
+    // "anonymous public viewer". Routes like /api/workspaces/[slug]
+    // allow both — without the headers, signed-in members would be
+    // treated as public viewers (or, on non-public workspaces,
+    // unauthenticated and denied).
     if (routeAccess === "public") {
+      const token = await getToken({
+        req: request,
+        secret: process.env.NEXTAUTH_SECRET,
+        secureCookie: shouldUseSecureCookie(request),
+      });
+      if (token) {
+        requestHeaders.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
+        requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, extractTokenProperty(token, "id"));
+        requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, extractTokenProperty(token, "email"));
+        requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, extractTokenProperty(token, "name"));
+        const role = extractTokenProperty(token, "role");
+        if (role) {
+          requestHeaders.set(MIDDLEWARE_HEADERS.USER_ROLE, role);
+        }
+        return continueRequest(requestHeaders, "authenticated");
+      }
       return continueRequest(requestHeaders, routeAccess);
     }
 
