@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { listFeatures, createFeature } from "@/services/roadmap";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import { resolveWorkspaceAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicFeatures } from "@/lib/auth/public-redact";
 import type {
   CreateFeatureRequest,
   FeatureListResponse,
@@ -12,8 +14,23 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
+
+    // Try the standard auth path first (covers session + API token auth).
+    // If that fails, fall back to public-viewer access for workspaces
+    // flagged `isPublicViewable`.
     const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
+    let userIdForService: string | null = null;
+    let redactForPublic = false;
+
+    if (userOrResponse instanceof NextResponse) {
+      if (!workspaceId) return userOrResponse;
+      const access = await resolveWorkspaceAccess(request, { workspaceId });
+      if (!access || access.kind !== "public-viewer") return userOrResponse;
+      userIdForService = null;
+      redactForPublic = isPublicViewer(access);
+    } else {
+      userIdForService = userOrResponse.id;
+    }
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
 
@@ -105,7 +122,7 @@ export async function GET(request: NextRequest) {
 
     const result = await listFeatures({
       workspaceId,
-      userId: userOrResponse.id,
+      userId: userIdForService,
       page,
       limit,
       statuses,
@@ -117,10 +134,17 @@ export async function GET(request: NextRequest) {
       needsAttention,
     });
 
+    const featuresData = redactForPublic
+      ? toPublicFeatures(result.features as Array<Record<string, unknown>>)
+      : result.features;
+
     return NextResponse.json<FeatureListResponse>(
       {
         success: true,
-        data: result.features,
+        // Cast: redaction changes the assignee/createdBy shape to PublicUser
+        // which is structurally compatible but narrower than the original
+        // type. The runtime data is correct.
+        data: featuresData as typeof result.features,
         pagination: result.pagination,
       },
       { status: 200 },

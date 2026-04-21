@@ -1,13 +1,12 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { getS3Service } from "@/services/s3";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { mockData } from "./example";
 import { config } from "@/config/env";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 
 export const runtime = "nodejs";
 
@@ -132,17 +131,21 @@ async function callMockEndpoint(request: NextRequest, workspaceId: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
-
-    // console.log('request--here', request);
-
     const searchParams = request.nextUrl.searchParams;
     const workspaceId = searchParams.get("id");
     const endpoint = searchParams.get("endpoint") || "graph/search/latest?limit=1000&top_node_count=500";
     const nodeType = searchParams.get("node_type");
+
+    if (!workspaceId) {
+      return NextResponse.json({ success: false, message: "workspaceId required" }, { status: 400 });
+    }
+
+    // Graph nodes are read-only; allow authenticated members AND public
+    // viewers on isPublicViewable workspaces. Write operations (search
+    // queries, etc.) live on separate endpoints and remain auth-only.
+    const access = await resolveWorkspaceAccess(request, { workspaceId });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
 
     // console.log("[Jarvis Nodes] Full request URL:", request.nextUrl.toString());
     // console.log("[Jarvis Nodes] Endpoint param:", endpoint);
@@ -151,18 +154,15 @@ export async function GET(request: NextRequest) {
     // Priority check: Use mocks if USE_MOCKS=true (skip swarm lookup entirely)
     if (config.USE_MOCKS) {
       console.log("[Jarvis Nodes] USE_MOCKS=true, calling mock endpoint");
-      return await callMockEndpoint(request, workspaceId!);
+      return await callMockEndpoint(request, workspaceId);
     }
 
-    const where: Record<string, string> = {};
-    if (workspaceId) where.workspaceId = workspaceId;
-
-    const swarm = await db.swarm.findFirst({ where });
+    const swarm = await db.swarm.findFirst({ where: { workspaceId } });
 
     // Return mock data if swarm is not configured (for development/testing)
     if (!swarm || !swarm.swarmUrl || !swarm.swarmApiKey) {
       console.log("[Jarvis Nodes] Swarm not configured, calling mock endpoint");
-      return await callMockEndpoint(request, workspaceId!);
+      return await callMockEndpoint(request, workspaceId);
     }
 
     const vanityAddress = getSwarmVanityAddress(swarm.name);
@@ -194,7 +194,7 @@ export async function GET(request: NextRequest) {
       console.warn(
         `[Jarvis Nodes] Swarm API failed (status ${apiResult.status}), falling back to mock data`
       );
-      return await callMockEndpoint(request, workspaceId!);
+      return await callMockEndpoint(request, workspaceId);
     }
 
     // Process the response data to presign any media_url fields in nodes

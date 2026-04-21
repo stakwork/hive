@@ -29,6 +29,8 @@ export const updateWorkspaceSchema = z.object({
     .max(500, "Description must be 500 characters or less")
     .transform((val) => val === "" ? undefined : val)
     .optional(),
+
+  isPublicViewable: z.boolean().optional(),
 });
 
 export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceSchema>;

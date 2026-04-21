@@ -1,10 +1,8 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getS3Service } from "@/services/s3";
-import { getWorkspaceBySlug } from "@/services/workspace";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 
 export const runtime = "nodejs";
 
@@ -65,23 +63,14 @@ async function processNodesMediaUrls(
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
     const { slug } = await params;
 
-    if (!session?.user) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ success: false, message: "Invalid user session" }, { status: 401 });
-    }
-
-    // Get workspace and verify user has access
-    const workspace = await getWorkspaceBySlug(slug, userId);
-    if (!workspace) {
-      return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 404 });
-    }
+    // Graph nodes are read-only; allow members AND public viewers on
+    // isPublicViewable workspaces.
+    const access = await resolveWorkspaceAccess(request, { slug });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
+    const workspaceId = ok.workspaceId;
 
     const { searchParams } = new URL(request.url);
     const nodeType = searchParams.get("node_type");
@@ -93,7 +82,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Get swarm for this workspace
     const swarm = await db.swarm.findUnique({
-      where: { workspaceId: workspace.id },
+      where: { workspaceId },
     });
 
     if (!swarm) {
