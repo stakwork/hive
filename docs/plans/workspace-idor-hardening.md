@@ -106,7 +106,13 @@ tackled in a follow-up effort.
     load so a signed-in non-member can no longer read any workspace's
     `workflow_version` graph nodes (which include raw `workflow_json`)
     via the victim's decrypted `swarmApiKey`.
-  - Remaining Phase B items (#20, #21, #23, #24) — not started.
+  - **Bounty request #24 — DONE** on `ef/idor-fixes-2`. The bounty
+    handler now authorizes against `task.workspaceId` with `canWrite`
+    before decrypting `agentPassword`, creating the BOUNTY chat
+    message, or calling the Stakwork bounty API; the bare
+    `sourceWorkspaceSlug === "hive"` string check is no longer the
+    real auth gate.
+  - Remaining Phase B items (#20, #21, #23) — not started.
 - **Phase C (Medium #26–30)** — not started.
 - **Phase D (shared-secret S1–S3)** — not started.
 - **"also" items** (public-viewer 7-day → 1-hour presigned URLs;
@@ -554,6 +560,16 @@ proof-of-exploit, and suggested fix.
   via Pusher), records attacker as `sourceUserId`.
 - **Fix**: `validateWorkspaceAccessById(task.workspaceId, userId)`
   with `canWrite`; tighten or remove the hard-coded slug check.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2`. The task lookup now also
+  returns `workspaceId`; the handler authorizes the caller as a
+  `canWrite` member of `task.workspaceId` (never the body-supplied
+  slug) before generating the bounty code, writing the `BOUNTY`
+  chat message, decrypting `agentPassword`, or calling the Stakwork
+  bounty API. The "Source task not found" response was folded into
+  the unified 404 so we don't leak task existence. The hardcoded
+  `sourceWorkspaceSlug === "hive"` 403 check is left in place as a
+  belt-and-braces guard; the real authorization is now the membership
+  check. No existing tests.
 
 #### 25. `src/app/api/upload/image/route.ts` — POST
 - **Bug**: `db.feature.findFirst({ where: { id: featureId } })` with
@@ -665,7 +681,8 @@ require session auth + workspace admin.
    - Agent logs (#12) ✅ on `ef/idor-fixes-2`.
    - Pool manager (#19) ✅ on `ef/idor-fixes-2`.
    - Workflows/versions (#22) ✅ on `ef/idor-fixes-2`.
-   - Remaining (#20, #21, #23, #24) still open.
+   - Bounty request (#24) ✅ on `ef/idor-fixes-2`.
+   - Remaining (#20, #21, #23) still open.
 3. **Phase C — medium (#26–30)**: one cleanup PR.
 4. **Phase D — shared-secret endpoints (S1–S3)**: design work on
    per-resource tokens, then migrate webhooks to the new scheme.
