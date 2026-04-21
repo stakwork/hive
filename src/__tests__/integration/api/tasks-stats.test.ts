@@ -19,28 +19,31 @@ const TestHelpers = {
     expect(data.data).toMatchObject(expected);
   },
 
+  // `requireReadAccess` returns differentiated status codes depending on
+  // why the caller can't read: 401 (unauthenticated), 404 (workspace
+  // not-found), or 403 (forbidden / non-member of a private workspace).
   expectUnauthorized: async (response: Response) => {
     expect(response.status).toBe(401);
     const data = await response.json();
-    expect(data.error).toBeDefined();
+    expect(data.error).toBe("Unauthorized");
+  },
+
+  expectNotFound: async (response: Response) => {
+    expect(response.status).toBe(404);
+    const data = await response.json();
+    expect(data.error).toContain("Workspace not found or access denied");
+  },
+
+  expectForbidden: async (response: Response) => {
+    expect(response.status).toBe(403);
+    const data = await response.json();
+    expect(data.error).toContain("Access denied");
   },
 
   expectBadRequest: async (response: Response, errorMessage: string) => {
     expect(response.status).toBe(400);
     const data = await response.json();
     expect(data.error).toBe(errorMessage);
-  },
-
-  expectForbidden: async (response: Response) => {
-    expect(response.status).toBe(403);
-    const data = await response.json();
-    expect(data.error).toContain("access denied");
-  },
-
-  expectNotFound: async (response: Response) => {
-    expect(response.status).toBe(403);
-    const data = await response.json();
-    expect(data.error).toContain("not found");
   },
 };
 
@@ -190,7 +193,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       await TestHelpers.expectBadRequest(response, "workspaceId query parameter is required");
     });
 
-    test("should return 403 for non-existent workspace", async () => {
+    test("should return 404 for non-existent workspace", async () => {
       const fakeWorkspaceId = generateUniqueId("workspace");
       const request = createAuthenticatedGetRequest(
         `/api/tasks/stats?workspaceId=${fakeWorkspaceId}`,
@@ -201,7 +204,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       await TestHelpers.expectNotFound(response);
     });
 
-    test("should return 403 for soft-deleted workspace", async () => {
+    test("should return 404 for soft-deleted workspace", async () => {
       const deletedWorkspace = await createTestWorkspace(testUser.id, { deleted: true });
       const request = createAuthenticatedGetRequest(
         `/api/tasks/stats?workspaceId=${deletedWorkspace.id}`,

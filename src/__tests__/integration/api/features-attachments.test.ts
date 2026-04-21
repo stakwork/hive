@@ -308,6 +308,8 @@ describe("GET /api/features/[featureId]/attachments", () => {
   });
 
   it("should return 401 when unauthenticated", async () => {
+    // `requireReadAccess` returns 401 "Unauthorized" for callers with no
+    // session (kind: "unauthenticated").
     const request = new NextRequest(
       `http://localhost:3000/api/features/${testFeature.id}/attachments`
     );

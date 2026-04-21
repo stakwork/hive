@@ -4,20 +4,40 @@ import { db } from "@/lib/db";
 import { FeatureStatus } from "@prisma/client";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import type { BoardFeature, BoardResponse } from "@/types/roadmap";
+import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicUser } from "@/lib/auth/public-redact";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
 
-    const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     if (!workspaceId) {
       return NextResponse.json(
         { error: "workspaceId query parameter is required" },
         { status: 400 },
       );
+    }
+
+    // Auth: x-api-token callers are trusted service-to-service clients that
+    // bypass membership. Everyone else is resolved through
+    // `resolveWorkspaceAccess`, which enforces workspace membership (or
+    // public-viewer on `isPublicViewable` workspaces). `requireAuthOrApiToken`
+    // alone is not sufficient — it accepts any authenticated user without
+    // checking workspace membership, which would leak board data across
+    // tenants.
+    const apiTokenAuth =
+      request.headers.get("x-api-token") === process.env.API_TOKEN;
+    let redactForPublic = false;
+
+    if (apiTokenAuth) {
+      const apiResult = await requireAuthOrApiToken(request, workspaceId);
+      if (apiResult instanceof NextResponse) return apiResult;
+    } else {
+      const access = await resolveWorkspaceAccess(request, { workspaceId });
+      const ok = requireReadAccess(access);
+      if (ok instanceof NextResponse) return ok;
+      redactForPublic = isPublicViewer(ok);
     }
 
     // Status filter (optional, comma-separated)
@@ -134,6 +154,12 @@ export async function GET(request: NextRequest) {
               icon: systemUser.icon ?? null,
             };
           }
+        }
+
+        if (redactForPublic && assignee) {
+          // Preserve icon (used for system assignees) while stripping email.
+          const safe = toPublicUser(assignee);
+          assignee = safe ? { ...safe, email: null, icon: assignee.icon } : null;
         }
 
         return {

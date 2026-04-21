@@ -15,6 +15,7 @@ import {
   expectError,
   expectMemberLeft,
   generateUniqueId,
+  createAuthenticatedGetRequest,
   createGetRequest,
   createPostRequest,
   createPatchRequest,
@@ -83,9 +84,7 @@ describe("Workspace Members API Integration Tests", () => {
       // Member already created by createTestWorkspaceScenario (no need to create again)
 
       // Mock session with owner user
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
-      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, ownerUser);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
       const data = await expectSuccess(response);
@@ -105,10 +104,10 @@ describe("Workspace Members API Integration Tests", () => {
     });
 
     test("should return 401 when user not authenticated", async () => {
+      // `requireReadAccess` returns 401 "Unauthorized" for callers with
+      // no session (kind: "unauthenticated").
       const { workspace } = await createTestWorkspaceWithUsers();
-      
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-      
+
       const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
@@ -118,32 +117,17 @@ describe("Workspace Members API Integration Tests", () => {
     test("should return 404 for non-existent workspace", async () => {
       const { ownerUser } = await createTestWorkspaceWithUsers();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
-      const request = createGetRequest("http://localhost:3000/api/workspaces/nonexistent/members");
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/workspaces/nonexistent/members", ownerUser);
       const response = await GET(request, { params: Promise.resolve({ slug: "nonexistent" }) });
 
       await expectNotFound(response, "Workspace not found or access denied");
     });
 
-    test("should return members when authenticated via Bearer token", async () => {
-      const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
-
-      getMockedSession().mockResolvedValue(null);
-      vi.mocked(getToken).mockResolvedValue({ id: ownerUser.id } as any);
-
-      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
-      const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
-
-      const data = await expectSuccess(response);
-      expect(data.members).toBeDefined();
-    });
-
-    test("should return 401 when both session and Bearer token are absent", async () => {
+    test("should return 401 when no middleware auth headers are present", async () => {
+      // The GET handler authorizes via `resolveWorkspaceAccess`, which
+      // reads from middleware auth headers. A bare request (no headers)
+      // is treated as unauthenticated and returns 401 "Unauthorized".
       const { workspace } = await createTestWorkspaceWithUsers();
-
-      getMockedSession().mockResolvedValue(null);
-      vi.mocked(getToken).mockResolvedValue(null);
 
       const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
@@ -163,9 +147,7 @@ describe("Workspace Members API Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
-      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, ownerUser);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
       const data = await expectSuccess(response);
@@ -212,9 +194,7 @@ describe("Workspace Members API Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
-      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, ownerUser);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
       const data = await expectSuccess(response);
@@ -228,9 +208,7 @@ describe("Workspace Members API Integration Tests", () => {
     test("should have null decryptedLightningPubkey on members without lightningPubkey", async () => {
       const { ownerUser, workspace, memberUser } = await createTestWorkspaceWithUsers();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
-
-      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, ownerUser);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
       const data = await expectSuccess(response);
