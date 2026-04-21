@@ -102,6 +102,7 @@ interface SidebarContentProps {
   setIsBugReportOpen: (open: boolean) => void;
   canAdmin: boolean;
   workspaceKind?: string | null;
+  isPublicViewer: boolean;
 }
 
 const baseNavigationItems: NavigationItem[] = [
@@ -175,6 +176,7 @@ function SidebarContent({
   setIsBugReportOpen,
   canAdmin,
   workspaceKind,
+  isPublicViewer,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     // Auto-expand Protect if any child route is active
@@ -201,8 +203,9 @@ function SidebarContent({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Workspace Switcher */}
-      <WorkspaceSwitcher onWorkspaceChange={() => null} />
+      {/* Workspace Switcher — authenticated users only.
+          Public viewers don't have a workspaces list. */}
+      {!isPublicViewer && <WorkspaceSwitcher onWorkspaceChange={() => null} />}
       {/* Navigation */}
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
@@ -328,20 +331,24 @@ function SidebarContent({
       </nav>
       {/* Spacer to push bottom content down */}
       <div className="flex-1" />
-      {/* Report Bug */}
-      <div className="p-4 pb-2">
-        <Button
-          data-testid="report-bug-button"
-          variant="ghost"
-          className="w-full justify-start"
-          onClick={() => setIsBugReportOpen(true)}
-        >
-          <Bug className="w-4 h-4 mr-2" />
-          Report Bug
-        </Button>
-      </div>
-      {/* Voice Agent Indicator */}
-      <VoiceIndicator slug={workspaceSlug} onNavigate={() => setIsOpen(false)} />
+      {/* Report Bug — hidden for public viewers (POSTs a feature on submit) */}
+      {!isPublicViewer && (
+        <div className="p-4 pb-2">
+          <Button
+            data-testid="report-bug-button"
+            variant="ghost"
+            className="w-full justify-start"
+            onClick={() => setIsBugReportOpen(true)}
+          >
+            <Bug className="w-4 h-4 mr-2" />
+            Report Bug
+          </Button>
+        </div>
+      )}
+      {/* Voice Agent Indicator — requires LiveKit auth; hide for public viewers */}
+      {!isPublicViewer && (
+        <VoiceIndicator slug={workspaceSlug} onNavigate={() => setIsOpen(false)} />
+      )}
       {/* GraphMindset Admin */}
       {workspaceKind === "graph_mindset" && workspaceSlug && canAdmin && (
         <div className="px-4 pb-2">
@@ -381,36 +388,47 @@ function SidebarContent({
         </div>
       )}
       <Separator />
-      {/* User Popover */}
+      {/* User Popover, or Sign-in CTA for public viewers */}
       <div className="p-4">
-        <NavUser
-          user={{
-            name: user.name || "User",
-            email: user.email || "",
-            avatar: user.image || "",
-          }}
-        />
+        {isPublicViewer ? (
+          <Button asChild variant="default" className="w-full">
+            <Link href="/auth/signin" data-testid="public-viewer-signin">
+              Sign in
+            </Link>
+          </Button>
+        ) : (
+          <NavUser
+            user={{
+              name: user.name || "User",
+              email: user.email || "",
+              avatar: user.image || "",
+            }}
+          />
+        )}
       </div>
-      {/* Bug Report Slideout */}
-      <BugReportSlideout
-        open={isBugReportOpen}
-        onOpenChange={setIsBugReportOpen}
-      />
+      {/* Bug Report Slideout — never mount for public viewers */}
+      {!isPublicViewer && (
+        <BugReportSlideout
+          open={isBugReportOpen}
+          onOpenChange={setIsBugReportOpen}
+        />
+      )}
     </div>
   );
 }
 
 export function Sidebar({ user }: SidebarProps) {
-  const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
+  const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications, isPublicViewer } = useWorkspace();
   const { canAdmin } = useWorkspaceAccess();
   const workspaceKind = workspace?.workspaceKind;
 
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
 
-  // Fetch pool status for capacity count with real-time polling (every 10 seconds)
-  const isPoolActive = workspace?.poolState === "COMPLETE";
-  const { poolStatus } = usePoolStatus(workspaceSlug || "", isPoolActive, { 
+  // Fetch pool status for capacity count with real-time polling (every 10 seconds).
+  // Skip polling entirely for public viewers — the pool status endpoint is auth-only.
+  const isPoolActive = workspace?.poolState === "COMPLETE" && !isPublicViewer;
+  const { poolStatus } = usePoolStatus(workspaceSlug || "", isPoolActive, {
     pollingInterval: 10000 // Poll every 10 seconds
   });
 
@@ -443,6 +461,13 @@ export function Sidebar({ user }: SidebarProps) {
   const excludeLabels: string[] = [];
   if (!canAccessDefense) excludeLabels.push("Protect");
 
+  // Public viewers cannot access admin/infra pages — hide entire sections.
+  // Capacity exposes pool/pod infra; Protect exposes security findings and
+  // janitor config that leak repository internals.
+  if (isPublicViewer) {
+    excludeLabels.push("Capacity", "Protect");
+  }
+
   // Insert Stak Toolkit items before Build section
   const allNavigationItems = [
     ...baseNavigationItems.slice(0, 2), // Graph and Capacity
@@ -458,6 +483,13 @@ export function Sidebar({ user }: SidebarProps) {
         return {
           ...item,
           children: item.children.filter((child) => child.label !== "Graph"),
+        };
+      }
+      // Public viewers can't see Agent Logs (raw agent output with PII/secrets).
+      if (item.label === "Context" && item.children && isPublicViewer) {
+        return {
+          ...item,
+          children: item.children.filter((child) => child.label !== "Agent Logs"),
         };
       }
       return item;
@@ -496,6 +528,7 @@ export function Sidebar({ user }: SidebarProps) {
               setIsBugReportOpen={setIsBugReportOpen}
               canAdmin={canAdmin}
               workspaceKind={workspaceKind}
+              isPublicViewer={isPublicViewer}
             />
           </SheetContent>
         </Sheet>
@@ -518,6 +551,7 @@ export function Sidebar({ user }: SidebarProps) {
             setIsBugReportOpen={setIsBugReportOpen}
             canAdmin={canAdmin}
             workspaceKind={workspaceKind}
+            isPublicViewer={isPublicViewer}
           />
         </div>
       </div>

@@ -23,12 +23,32 @@ describe("middleware", () => {
     vi.clearAllMocks();
   });
 
-  it("allows public routes without calling getToken", async () => {
+  it("allows public routes and stays marked public for anonymous callers", async () => {
+    // Public routes still go through `getToken` — when a session cookie is
+    // present we stamp the user headers so handlers that support both
+    // authenticated-member and public-viewer access (e.g.
+    // /api/workspaces/[slug]) can tell the two apart. Anonymous callers
+    // stay at auth_status=public.
+    getTokenMock.mockResolvedValueOnce(null);
+
     const response = await middleware(createRequest("/"));
 
-    expect(getTokenMock).not.toHaveBeenCalled();
+    expect(getTokenMock).toHaveBeenCalled();
     expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("public");
     expect(response.headers.get(MIDDLEWARE_HEADERS.REQUEST_ID)).toBeTruthy();
+  });
+
+  it("promotes public routes to authenticated when a session cookie is present", async () => {
+    getTokenMock.mockResolvedValueOnce({
+      id: "user-123",
+      email: "user@example.com",
+      name: "Test User",
+    });
+
+    const response = await middleware(createRequest("/"));
+
+    expect(getTokenMock).toHaveBeenCalled();
+    expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("authenticated");
   });
 
   it("allows webhook routes and marks them as webhook", async () => {

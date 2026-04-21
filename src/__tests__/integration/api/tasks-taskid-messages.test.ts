@@ -186,6 +186,8 @@ describe("GET /api/tasks/[taskId]/messages", () => {
   });
 
   describe("Authentication", () => {
+    // `requireReadAccess` returns 401 "Unauthorized" for callers with no
+    // session (kind: "unauthenticated").
     it("should return 401 when no session provided", async () => {
       const request = createGetRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages`
@@ -280,6 +282,8 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         params: Promise.resolve({ taskId: testTask.id }),
       });
 
+      // Authenticated non-members on a private workspace get 403 "Access
+      // denied" (kind: "forbidden"), distinct from 404 not-found.
       expect(response?.status).toBe(403);
       const data = await response?.json();
       expect(data.error).toBe("Access denied");

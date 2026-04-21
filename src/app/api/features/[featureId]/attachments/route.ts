@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { getS3Service } from "@/services/s3";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 
 /**
  * GET /api/features/[featureId]/attachments
@@ -29,14 +30,27 @@ export async function GET(
       );
     }
 
-    // Authenticate user or API token
-    const userOrResponse = await requireAuthOrApiToken(
-      request,
-      featureLookup.workspaceId
-    );
+    // Auth: x-api-token callers are trusted service-to-service clients that
+    // bypass membership. Everyone else must resolve through
+    // `resolveWorkspaceAccess`, which enforces workspace membership (or
+    // public-viewer on `isPublicViewable` workspaces). Without this,
+    // `requireAuthOrApiToken` would accept any signed-in user and return
+    // 7-day presigned S3 URLs for any feature's task attachments.
+    const apiTokenAuth =
+      request.headers.get("x-api-token") === process.env.API_TOKEN;
 
-    if (userOrResponse instanceof NextResponse) {
-      return userOrResponse;
+    if (apiTokenAuth) {
+      const apiResult = await requireAuthOrApiToken(
+        request,
+        featureLookup.workspaceId
+      );
+      if (apiResult instanceof NextResponse) return apiResult;
+    } else {
+      const access = await resolveWorkspaceAccess(request, {
+        workspaceId: featureLookup.workspaceId,
+      });
+      const ok = requireReadAccess(access);
+      if (ok instanceof NextResponse) return ok;
     }
 
     // Fetch all image attachments for tasks in this feature

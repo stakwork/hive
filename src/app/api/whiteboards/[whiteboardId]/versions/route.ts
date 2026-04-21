@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 
 const MAX_VERSIONS = 10;
 
@@ -35,19 +36,22 @@ export async function GET(
   { params }: { params: Promise<{ whiteboardId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { whiteboardId } = await params;
 
-    const access = await checkWhiteboardAccess(whiteboardId, userOrResponse.id);
-    if (!access) {
+    // Resolve workspace through the whiteboard so we can run the standard
+    // access check (supports public-viewer fallback).
+    const wb = await db.whiteboard.findUnique({
+      where: { id: whiteboardId },
+      select: { workspaceId: true },
+    });
+    if (!wb) {
       return NextResponse.json({ error: "Whiteboard not found" }, { status: 404 });
     }
-    if (access === "forbidden") {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
+    const access = await resolveWorkspaceAccess(request, {
+      workspaceId: wb.workspaceId,
+    });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
 
     const versions = await db.whiteboardVersion.findMany({
       where: { whiteboardId },

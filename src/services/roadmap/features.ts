@@ -9,7 +9,12 @@ import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { createAndSendNotification } from "@/services/notifications";
 
 /**
- * Lists features for a workspace with pagination, filtering, and sorting
+ * Lists features for a workspace with pagination, filtering, and sorting.
+ *
+ * When `userId` is null, the caller is expected to have ALREADY validated
+ * access (e.g. via `resolveWorkspaceAccess` in a route that supports
+ * public-viewer fallback). The service skips its own membership check in
+ * that case — it never runs a workspace query with `userId: null`.
  */
 export async function listFeatures({
   workspaceId,
@@ -25,7 +30,7 @@ export async function listFeatures({
   needsAttention,
 }: {
   workspaceId: string;
-  userId: string;
+  userId: string | null;
   page?: number;
   limit?: number;
   statuses?: FeatureStatus[]; // Array of statuses for multi-select filtering
@@ -36,9 +41,11 @@ export async function listFeatures({
   sortOrder?: "asc" | "desc";
   needsAttention?: boolean; // Filter features that have pending StakworkRuns awaiting user decision
 }) {
-  const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userId);
-  if (!workspaceAccess.hasAccess) {
-    throw new Error("Access denied");
+  if (userId) {
+    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userId);
+    if (!workspaceAccess.hasAccess) {
+      throw new Error("Access denied");
+    }
   }
 
   const skip = (page - 1) * limit;

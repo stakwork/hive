@@ -58,13 +58,15 @@ describe("Workspace Update API Integration Tests", () => {
       await expectWorkspaceExists(workspace.id);
     });
 
-    test("should return 401 for unauthenticated request", async () => {
+    test("should return 404 for unauthenticated request on non-public workspace", async () => {
       const { workspace } = await createTestWorkspace();
 
+      // Unauthenticated requests now fall through to public workspace check.
+      // Since the workspace is not publicly viewable, the response is 404.
       const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
-      await expectUnauthorized(response);
+      await expectNotFound(response, "Workspace not found or access denied");
     });
 
     test("should return 404 for non-existent workspace", async () => {

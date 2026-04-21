@@ -1,26 +1,19 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET } from "@/app/api/workspaces/[slug]/members/route";
 import { db } from "@/lib/db";
-import { generateUniqueId } from "@/__tests__/support/helpers";
+import {
+  generateUniqueId,
+  createAuthenticatedGetRequest,
+} from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
-import { getServerSession } from "next-auth/next";
 
-// Helper to create authenticated GET request with session mock
+// Wrap createAuthenticatedGetRequest to match the legacy call signature used
+// throughout this file: pass (url, user) and set middleware auth headers.
 const createAuthenticatedRequest = (
   url: string,
-  user: { id: string; email: string; name: string | null }
-) => {
-  vi.mocked(getServerSession).mockResolvedValue({
-    user: { id: user.id, email: user.email, name: user.name! },
-    expires: new Date(Date.now() + 86400000).toISOString(),
-  });
-  
-  return new Request(url, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  });
-};
+  user: { id: string; email: string | null; name: string | null }
+) => createAuthenticatedGetRequest(url, user);
 
 describe("GET /api/workspaces/[slug]/members?sphinxLinkedOnly=true Integration Tests", () => {
   beforeEach(() => {
@@ -35,9 +28,8 @@ describe("GET /api/workspaces/[slug]/members?sphinxLinkedOnly=true Integration T
   });
 
   test("returns 401 when unauthenticated", async () => {
-    // Mock no session
-    vi.mocked(getServerSession).mockResolvedValue(null);
-    
+    // `requireReadAccess` returns 401 "Unauthorized" for callers with no
+    // session (kind: "unauthenticated").
     const request = new Request("http://localhost:3000/api/workspaces/test/members?sphinxLinkedOnly=true", {
       method: "GET",
     });
