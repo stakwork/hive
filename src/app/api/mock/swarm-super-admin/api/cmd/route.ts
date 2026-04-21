@@ -35,6 +35,13 @@ const MOCK_RESPONSES: Record<string, unknown> = {
   },
   UpdatePaidEndpoint: { success: true },
   GetBotBalance: { success: true, message: "bot balance retrieved", data: { msat: 30000 } },
+  GetBoltwallUsers: {
+    users: [
+      { id: 1, pubkey: "03superadmin0000000000000000000000000000000000000000000000000000001", name: "Super Admin", role: "admin" },
+      { id: 2, pubkey: "03admin00000000000000000000000000000000000000000000000000000000002", name: "Alice Admin", role: "sub_admin" },
+      { id: 3, pubkey: "03member0000000000000000000000000000000000000000000000000000000003", name: "Bob Member", role: "member" },
+    ],
+  },
   GetSecondBrainAboutDetails: { title: "mock-graph", description: "" },
   UpdateSecondBrainAbout: { success: true },
 };
