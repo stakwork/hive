@@ -6,7 +6,6 @@ import {
   usePusherConnection,
 } from "@/hooks/usePusherConnection";
 import { WorkflowStatus } from "@/lib/chat";
-import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 
 // SessionStorage key for persisting current page across navigation
@@ -158,7 +157,6 @@ export function useWorkspaceTasks(
   sortOrder?: string,
   queue?: boolean
 ): UseWorkspaceTasksResult {
-  const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -167,7 +165,10 @@ export function useWorkspaceTasks(
   const [isRestoringFromStorage, setIsRestoringFromStorage] = useState(false);
 
   const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications, limit: number = pageLimit) => {
-    if (!workspaceId || !session?.user) {
+    // Fire for both authenticated users and unauthenticated public viewers.
+    // The server returns an empty list (404 on workspace) for viewers on
+    // non-public workspaces, so there's no privacy concern in trying.
+    if (!workspaceId) {
       setTasks([]);
       setPagination(null);
       return;
@@ -205,11 +206,11 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod, filters?.createdById, showAllStatuses, sortBy, sortOrder, queue]);
+  }, [workspaceId, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod, filters?.createdById, showAllStatuses, sortBy, sortOrder, queue]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
-    if (!workspaceId || !session?.user) return;
+    if (!workspaceId) return;
 
     const storedPage = getStoredPage(workspaceId);
     if (storedPage <= 1) {
@@ -264,7 +265,7 @@ export function useWorkspaceTasks(
       setLoading(false);
       setIsRestoringFromStorage(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived, showAllStatuses]);
+  }, [workspaceId, includeNotifications, fetchTasks, showArchived, showAllStatuses]);
 
   // Handle real-time task title updates (also handles archive status changes)
   const handleTaskTitleUpdate = useCallback(

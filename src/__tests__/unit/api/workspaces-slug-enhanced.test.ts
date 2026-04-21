@@ -2,16 +2,18 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
-import { getWorkspaceBySlug, updateWorkspace, deleteWorkspaceBySlug } from "@/services/workspace";
+import { getWorkspaceBySlug, getPublicWorkspaceBySlug, updateWorkspace, deleteWorkspaceBySlug } from "@/services/workspace";
 
 // Mock the workspace service functions
 vi.mock("@/services/workspace", () => ({
   getWorkspaceBySlug: vi.fn(),
+  getPublicWorkspaceBySlug: vi.fn(),
   updateWorkspace: vi.fn(),
   deleteWorkspaceBySlug: vi.fn(),
 }));
 
 const mockGetWorkspaceBySlug = getWorkspaceBySlug as vi.MockedFunction<typeof getWorkspaceBySlug>;
+const mockGetPublicWorkspaceBySlug = getPublicWorkspaceBySlug as vi.MockedFunction<typeof getPublicWorkspaceBySlug>;
 const mockUpdateWorkspace = updateWorkspace as vi.MockedFunction<typeof updateWorkspace>;
 const mockDeleteWorkspaceBySlug = deleteWorkspaceBySlug as vi.MockedFunction<typeof deleteWorkspaceBySlug>;
 
@@ -80,7 +82,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
       expect(data.workspace.name).toBe(mockWorkspace.name);
       expect(data.workspace.slug).toBe(mockWorkspace.slug);
       expect(data.workspace.userRole).toBe("OWNER");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockOwnerUser.id);
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(
+        mockWorkspace.slug,
+        mockOwnerUser.id,
+        { allowPublicViewer: true },
+      );
     });
 
     test("should return workspace with correct user role for admin", async () => {
@@ -97,7 +103,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(data.workspace.userRole).toBe("ADMIN");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockAdminUser.id);
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(
+        mockWorkspace.slug,
+        mockAdminUser.id,
+        { allowPublicViewer: true },
+      );
     });
 
     test("should return workspace with correct user role for member", async () => {
@@ -114,7 +124,11 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(data.workspace.userRole).toBe("DEVELOPER");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockMemberUser.id);
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(
+        mockWorkspace.slug,
+        mockMemberUser.id,
+        { allowPublicViewer: true },
+      );
     });
 
     test("should return 404 for outsider user with no access", async () => {
@@ -128,17 +142,25 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
       expect(response.status).toBe(404);
       expect(data.error).toBe("Workspace not found or access denied");
-      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug, mockOutsiderUser.id);
+      expect(mockGetWorkspaceBySlug).toHaveBeenCalledWith(
+        mockWorkspace.slug,
+        mockOutsiderUser.id,
+        { allowPublicViewer: true },
+      );
     });
 
     test("should handle missing auth headers gracefully", async () => {
-      // Unauthenticated — no middleware headers
+      // Unauthenticated — no middleware headers — falls through to public workspace check
+      mockGetPublicWorkspaceBySlug.mockResolvedValue(null);
+
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`);
       const response = await GET(request, { params: Promise.resolve({ slug: mockWorkspace.slug }) });
       const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("Unauthorized");
+      // Not public → 404 (not 401), since GET now supports public workspaces
+      expect(response.status).toBe(404);
+      expect(data.error).toBe("Workspace not found or access denied");
+      expect(mockGetPublicWorkspaceBySlug).toHaveBeenCalledWith(mockWorkspace.slug);
     });
 
     test("should handle empty slug parameter", async () => {
@@ -398,15 +420,18 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
   describe("API Contract and Error Handling - Enhanced Coverage", () => {
     test("should return consistent error response format", async () => {
+      // Unauthenticated requests fall through to public workspace check (→ 404, not 401)
       const errorScenarios = [
         { slug: "", expectedStatus: 400, authenticated: true },
         { slug: "non-existent", expectedStatus: 404, authenticated: true },
-        { slug: "test-workspace", expectedStatus: 401, authenticated: false },
+        { slug: "test-workspace", expectedStatus: 404, authenticated: false },
       ];
 
       for (const scenario of errorScenarios) {
         if (scenario.authenticated) {
           mockGetWorkspaceBySlug.mockResolvedValue(null);
+        } else {
+          mockGetPublicWorkspaceBySlug.mockResolvedValue(null);
         }
 
         const headers = scenario.authenticated ? makeAuthHeaders(mockOwnerUser) : new Headers();

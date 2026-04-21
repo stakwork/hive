@@ -3,24 +3,54 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getTicket, updateTicket, deleteTicket } from "@/services/roadmap";
 import type { UpdateTicketRequest, TicketResponse, TicketDetail } from "@/types/roadmap";
 import type { ApiSuccessResponse } from "@/types/common";
+import { db } from "@/lib/db";
+import { resolveWorkspaceAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicUser } from "@/lib/auth/public-redact";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { ticketId } = await params;
 
-    const ticket = await getTicket(ticketId, userOrResponse.id);
+    // Resolve ticket → workspace so we can run the standard access check.
+    const ticketMeta = await db.task.findUnique({
+      where: { id: ticketId },
+      select: { workspaceId: true, deleted: true },
+    });
+    if (!ticketMeta || ticketMeta.deleted) {
+      return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
+
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    let userIdForService: string | null = null;
+    let redactForPublic = false;
+
+    if (userOrResponse instanceof NextResponse) {
+      const access = await resolveWorkspaceAccess(request, {
+        workspaceId: ticketMeta.workspaceId,
+      });
+      if (!access || access.kind !== "public-viewer") return userOrResponse;
+      redactForPublic = isPublicViewer(access);
+    } else {
+      userIdForService = userOrResponse.id;
+    }
+
+    const ticket = await getTicket(ticketId, userIdForService);
+
+    const sanitized = redactForPublic
+      ? {
+          ...ticket,
+          assignee: toPublicUser((ticket as unknown as { assignee?: unknown }).assignee as Parameters<typeof toPublicUser>[0]),
+        }
+      : ticket;
 
     return NextResponse.json<ApiSuccessResponse<TicketDetail>>(
       {
         success: true,
-        data: ticket,
+        data: sanitized as TicketDetail,
       },
       { status: 200 }
     );

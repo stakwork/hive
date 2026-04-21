@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { toPublicUser } from "@/lib/auth/public-redact";
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
@@ -11,11 +12,6 @@ export async function GET(
   { params }: { params: Promise<{ taskId: string }> },
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-    const userId = userOrResponse.id;
-
     const { taskId } = await params;
 
     if (!taskId) {
@@ -25,12 +21,11 @@ export async function GET(
       );
     }
 
-    // Verify task exists and user has access through workspace
-    const task = await db.task.findFirst({
-      where: {
-        id: taskId,
-        deleted: false,
-      },
+    // Look up the task's workspaceId first so we can run the standard
+    // access check. We deliberately don't return the task details until
+    // we confirm the caller may read the workspace.
+    const taskMeta = await db.task.findFirst({
+      where: { id: taskId, deleted: false },
       select: {
         id: true,
         title: true,
@@ -41,41 +36,22 @@ export async function GET(
         podId: true,
         featureId: true,
         sourceType: true,
-        feature: {
-          select: {
-            id: true,
-            title: true,
-          },
-        },
-        workspace: {
-          select: {
-            id: true,
-            name: true,
-            ownerId: true,
-            members: {
-              where: {
-                userId: userId,
-              },
-              select: {
-                role: true,
-              },
-            },
-          },
-        },
+        feature: { select: { id: true, title: true } },
       },
     });
 
-    if (!task) {
+    if (!taskMeta) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    // Check if user is workspace owner or member
-    const isOwner = task.workspace.ownerId === userId;
-    const isMember = task.workspace.members.length > 0;
+    const access = await resolveWorkspaceAccess(request, {
+      workspaceId: taskMeta.workspaceId,
+    });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
+    const redactForPublic = isPublicViewer(ok);
 
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
+    const task = taskMeta;
 
     // Get all chat messages for the task
     const chatMessages = await db.chatMessage.findMany({
@@ -123,8 +99,13 @@ export async function GET(
         }
       }
 
+      const redactedCreatedBy = redactForPublic
+        ? toPublicUser(msg.createdBy)
+        : msg.createdBy;
+
       return {
         ...msg,
+        createdBy: redactedCreatedBy,
         contextTags,
         artifacts: msg.artifacts.map((artifact) => ({
           ...artifact,
@@ -143,9 +124,11 @@ export async function GET(
             title: task.title,
             workspaceId: task.workspaceId,
             workflowStatus: task.workflowStatus,
-            stakworkProjectId: task.stakworkProjectId,
+            // Stakwork project ID is an internal identifier; hide from public viewers.
+            stakworkProjectId: redactForPublic ? null : task.stakworkProjectId,
             mode: task.mode,
-            podId: task.podId,
+            // Pod ID is infra; hide from public viewers.
+            podId: redactForPublic ? null : task.podId,
             featureId: task.featureId,
             sourceType: task.sourceType,
             feature: task.feature,

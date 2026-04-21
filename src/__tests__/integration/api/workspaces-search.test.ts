@@ -346,7 +346,9 @@ describe("Workspace Search API - Integration Tests", () => {
       await expectError(response, "Search query must be at least 2 characters", 400);
     });
 
-    test("requires authentication", async () => {
+    test("returns 401 for unauthenticated request", async () => {
+      // `requireReadAccess` returns 401 "Unauthorized" for callers with no
+      // session (kind: "unauthenticated").
       const request = createGetRequest(
         "http://localhost:3000/api/workspaces/test-workspace/search?q=test"
       );
@@ -355,7 +357,7 @@ describe("Workspace Search API - Integration Tests", () => {
         params: Promise.resolve({ slug: "test-workspace" }),
       });
 
-      await expectUnauthorized(response);
+      await expectError(response, "Unauthorized", 401);
     });
 
     test("denies access to non-workspace members", async () => {
@@ -375,6 +377,8 @@ describe("Workspace Search API - Integration Tests", () => {
         params: Promise.resolve({ slug: "test-workspace" }),
       });
 
+      // Authenticated non-members on a non-public workspace get 403
+      // "Access denied" (kind: "forbidden"), distinct from 404 not-found.
       await expectError(response, "Access denied", 403);
     });
 

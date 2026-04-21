@@ -16,15 +16,30 @@ import { updateFeatureStatusFromTasks } from "./feature-status-sync";
 import { createAndSendNotification } from "@/services/notifications";
 
 /**
- * Gets a roadmap task with full context (feature, phase, creator, updater)
+ * Gets a roadmap task with full context (feature, phase, creator, updater).
+ *
+ * Pass `userId: null` when the caller has already validated workspace
+ * access (e.g. public-viewer on an isPublicViewable workspace). The
+ * service then skips its membership check but still ensures the task
+ * exists and is not soft-deleted.
  */
 export async function getTicket(
   taskId: string,
-  userId: string
+  userId: string | null
 ): Promise<RoadmapTaskDetail> {
-  const task = await validateRoadmapTaskAccess(taskId, userId);
-  if (!task) {
-    throw new Error("Task not found or access denied");
+  if (userId) {
+    const task = await validateRoadmapTaskAccess(taskId, userId);
+    if (!task) {
+      throw new Error("Task not found or access denied");
+    }
+  } else {
+    const exists = await db.task.findUnique({
+      where: { id: taskId },
+      select: { id: true, deleted: true },
+    });
+    if (!exists || exists.deleted) {
+      throw new Error("Task not found");
+    }
   }
 
   const taskDetail = await db.task.findUnique({

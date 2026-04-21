@@ -31,6 +31,7 @@ export function useWorkspace() {
     refreshTaskNotifications,
     updateWorkspace,
     hasAccess,
+    isPublicViewer,
   } = context;
 
   return {
@@ -52,6 +53,7 @@ export function useWorkspace() {
     loading,
     error,
     hasAccess,
+    isPublicViewer,
 
     // Operations
     switchWorkspace,

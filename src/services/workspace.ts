@@ -245,15 +245,23 @@ export async function getWorkspaceById(
 }
 
 /**
- * Gets a workspace by slug if user has access (owner or member)
+ * Gets a workspace by slug if user has access (owner or member).
+ *
  * @param slug - The workspace slug
  * @param userId - The user ID
- * @param options - Optional configuration (isSuperAdmin bypasses membership check)
+ * @param options - Optional configuration:
+ *   - `isSuperAdmin`: bypasses membership check and grants OWNER-level access.
+ *   - `allowPublicViewer`: when `true`, non-members visiting a workspace
+ *     flagged `isPublicViewable` get a sanitized VIEWER-role workspace
+ *     (same shape as `getPublicWorkspaceBySlug`). **Callers must opt in
+ *     explicitly** and must themselves enforce role-gating on any
+ *     sensitive read/write that follows. Defaults to `false` so existing
+ *     membership-only callers keep their pre-public-workspaces semantics.
  */
 export async function getWorkspaceBySlug(
   slug: string,
   userId: string,
-  options?: { isSuperAdmin?: boolean },
+  options?: { isSuperAdmin?: boolean; allowPublicViewer?: boolean },
 ): Promise<WorkspaceWithAccess | null> {
   // Get the workspace with owner info, swarm status, and repositories
   const workspace = await db.workspace.findFirst({
@@ -363,6 +371,18 @@ export async function getWorkspaceBySlug(
   });
 
   if (!membership) {
+    // Not a member. Callers that have explicitly opted in to public-viewer
+    // access (e.g. the workspace-page API that already renders public
+    // workspaces for anonymous visitors) may fall back to the sanitized
+    // VIEWER shape for workspaces flagged `isPublicViewable`.
+    //
+    // The default is to return `null` so that pre-existing membership-only
+    // routes (stakgraph, pool-manager, ask, etc.) don't silently gain
+    // access they never had before. See the review notes on
+    // `feature/...public-workspace-access...`.
+    if (options?.allowPublicViewer && workspace.isPublicViewable) {
+      return getPublicWorkspaceBySlug(slug);
+    }
     return null; // User has no access
   }
 
@@ -387,6 +407,88 @@ export async function getWorkspaceBySlug(
     poolState: workspace.swarm?.poolState || null,
     podState: workspace.swarm?.podState || "NOT_STARTED",
     swarmUrl: workspace.swarm?.swarmUrl || null,
+    logoKey: workspace.logoKey,
+    logoUrl: workspace.logoUrl,
+    nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
+    workspaceKind: workspace.workspaceKind,
+    repositories: workspace.repositories?.map((repo) => ({
+      ...repo,
+      updatedAt: repo.updatedAt.toISOString(),
+    })) || [],
+  };
+}
+
+/**
+ * Gets a publicly viewable workspace by slug without requiring authentication.
+ * Returns workspace with VIEWER role only if `isPublicViewable` is true.
+ */
+export async function getPublicWorkspaceBySlug(
+  slug: string,
+): Promise<WorkspaceWithAccess | null> {
+  const workspace = await db.workspace.findFirst({
+    where: {
+      slug,
+      deleted: false,
+      isPublicViewable: true,
+    },
+    include: {
+      owner: {
+        // Email is intentionally NOT selected — public viewers only see
+        // the owner's name + id (+ image if we add it).
+        select: { id: true, name: true },
+      },
+      swarm: {
+        // swarmUrl is intentionally NOT selected — it's an infra URL that
+        // leaks internal network layout. We still compute `isCodeGraphSetup`
+        // from `status` and report `poolState` / `podState` so the UI can
+        // render the right empty states, but we don't expose the URL itself.
+        select: {
+          id: true,
+          status: true,
+          ingestRefId: true,
+          poolState: true,
+          podState: true,
+          containerFilesSetUp: true,
+        },
+      },
+      repositories: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+          status: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  return {
+    id: workspace.id,
+    name: workspace.name,
+    description: workspace.description,
+    slug: workspace.slug,
+    ownerId: workspace.ownerId,
+    createdAt: workspace.createdAt.toISOString(),
+    updatedAt: workspace.updatedAt.toISOString(),
+    userRole: WorkspaceRole.VIEWER,
+    owner: { ...workspace.owner, email: null },
+    hasKey: false,
+    containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
+    repositoryDraft: workspace.repositoryDraft || null,
+    swarmId: workspace.swarm?.id || null,
+    isCodeGraphSetup:
+      workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+    swarmStatus: workspace.swarm?.status || null,
+    ingestRefId: workspace.swarm?.ingestRefId || null,
+    poolState: workspace.swarm?.poolState || null,
+    podState: workspace.swarm?.podState || "NOT_STARTED",
+    swarmUrl: null, // never exposed to public viewers
     logoKey: workspace.logoKey,
     logoUrl: workspace.logoUrl,
     nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
@@ -1299,6 +1401,7 @@ export async function updateWorkspace(
         name: data.name,
         slug: data.slug,
         description: data.description,
+        ...(data.isPublicViewable !== undefined && { isPublicViewable: data.isPublicViewable }),
         updatedAt: new Date(),
       },
     });

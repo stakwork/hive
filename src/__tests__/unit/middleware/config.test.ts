@@ -108,10 +108,15 @@ describe("resolveRouteAccess", () => {
   });
 
   describe("Protected Routes (Default)", () => {
-    it("protects workspace routes by default", () => {
-      expect(resolveRouteAccess("/w/my-workspace")).toBe("protected");
-      expect(resolveRouteAccess("/w/my-workspace/tasks")).toBe("protected");
-      expect(resolveRouteAccess("/w/my-workspace/recommendations")).toBe("protected");
+    it("treats workspace page routes as public at the middleware layer", () => {
+      // `/w/**` is middleware-public so page loads pass through without a
+      // session — including nested sub-paths like /w/slug/tasks. Route
+      // handlers / layouts still enforce their own access checks
+      // (authenticated users must be members; unauthenticated users only
+      // see workspaces flagged `isPublicViewable`).
+      expect(resolveRouteAccess("/w/my-workspace")).toBe("public");
+      expect(resolveRouteAccess("/w/my-workspace/tasks")).toBe("public");
+      expect(resolveRouteAccess("/w/my-workspace/recommendations")).toBe("public");
     });
 
     it("protects dashboard routes by default", () => {
@@ -139,7 +144,8 @@ describe("resolveRouteAccess", () => {
 
     it("handles trailing slashes for protected routes", () => {
       expect(resolveRouteAccess("/dashboard/")).toBe("protected");
-      expect(resolveRouteAccess("/w/my-workspace/")).toBe("protected");
+      // `/w/**` is middleware-public; trailing slash is stripped by normalizePath.
+      expect(resolveRouteAccess("/w/my-workspace/")).toBe("public");
     });
   });
 
@@ -208,11 +214,19 @@ describe("resolveRouteAccess", () => {
       }
     });
 
-    it("has no duplicate paths with same strategy", () => {
+    it("has no duplicate paths with same strategy and method scope", () => {
+      // Two entries with the same path+strategy are allowed as long as they
+      // cover disjoint HTTP methods (e.g. `GET -> public` + `ALL -> webhook`
+      // for /api/workspaces/*/members). Key on the full triple so we still
+      // catch accidental true duplicates, but don't flag the deliberate
+      // split.
       const seen = new Set<string>();
-      
+
       for (const policy of ROUTE_POLICIES) {
-        const key = `${policy.path}:${policy.strategy}`;
+        const methods = policy.methods?.length
+          ? [...policy.methods].sort().join(",")
+          : "*";
+        const key = `${policy.path}:${policy.strategy}:${methods}`;
         expect(seen.has(key)).toBe(false);
         seen.add(key);
       }
@@ -227,10 +241,13 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/auth/verify-landing")).toBe("public");
     });
 
-    it("correctly classifies workspace routes", () => {
-      expect(resolveRouteAccess("/w/stakwork/tasks")).toBe("protected");
-      expect(resolveRouteAccess("/w/stakwork/recommendations")).toBe("protected");
-      expect(resolveRouteAccess("/w/stakwork/settings")).toBe("protected");
+    it("treats workspace page routes as middleware-public", () => {
+      // `/w/*` is middleware-public to support unauthenticated visitors on
+      // workspaces flagged `isPublicViewable`. Access is enforced in the
+      // workspace layout / API handlers, not at the middleware layer.
+      expect(resolveRouteAccess("/w/stakwork/tasks")).toBe("public");
+      expect(resolveRouteAccess("/w/stakwork/recommendations")).toBe("public");
+      expect(resolveRouteAccess("/w/stakwork/settings")).toBe("public");
     });
 
     it("correctly classifies webhook endpoints", () => {
@@ -258,6 +275,86 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/admin/users")).toBe("superadmin");
       expect(resolveRouteAccess("/api/admin/config")).toBe("superadmin");
       expect(resolveRouteAccess("/api/admin/anything")).toBe("superadmin");
+    });
+  });
+
+  describe("Method-aware public GET allowlist", () => {
+    // The public workspace view relies on method-restricted policies so
+    // GET on /api/tasks, /api/features, etc. is public while POST/PATCH/DELETE
+    // on the same paths remains protected. Tests here cover the full round
+    // trip: same path, different methods, different access results.
+
+    it("lets GET through the public allowlist for workspace sub-routes", () => {
+      expect(resolveRouteAccess("/api/workspaces/my-workspace", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/workspaces/my-workspace/image", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/workspaces/my-workspace/search", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/workspaces/my-workspace/graph/nodes", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/workspaces/my-workspace/graph/gitree", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/workspaces/my-workspace/nodes", "GET")).toBe("public");
+    });
+
+    it("blocks non-GET methods on public-read workspace paths", () => {
+      expect(resolveRouteAccess("/api/workspaces/my-workspace", "PUT")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-workspace", "DELETE")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-workspace/image", "POST")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-workspace/search", "POST")).toBe("protected");
+    });
+
+    it("lets GET through for tasks, features, phases, tickets, whiteboards", () => {
+      expect(resolveRouteAccess("/api/tasks", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/tasks/stats", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/tasks/task-123/messages", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/features", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/features/board", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/features/feat-1", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/features/feat-1/chat", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/features/feat-1/attachments", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/phases/phase-1", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/tickets/ticket-1", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/whiteboards", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/whiteboards/wb-1", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/whiteboards/wb-1/images", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/whiteboards/wb-1/versions", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/swarm/jarvis/schema", "GET")).toBe("public");
+      expect(resolveRouteAccess("/api/swarm/jarvis/nodes", "GET")).toBe("public");
+    });
+
+    it("blocks writes to opened resources", () => {
+      expect(resolveRouteAccess("/api/tasks", "POST")).toBe("protected");
+      expect(resolveRouteAccess("/api/tasks/task-123/messages", "POST")).toBe("protected");
+      expect(resolveRouteAccess("/api/features", "POST")).toBe("protected");
+      expect(resolveRouteAccess("/api/features/feat-1", "PATCH")).toBe("protected");
+      expect(resolveRouteAccess("/api/features/feat-1", "DELETE")).toBe("protected");
+      expect(resolveRouteAccess("/api/phases/phase-1", "PATCH")).toBe("protected");
+      expect(resolveRouteAccess("/api/tickets/ticket-1", "PATCH")).toBe("protected");
+      expect(resolveRouteAccess("/api/whiteboards", "POST")).toBe("protected");
+      expect(resolveRouteAccess("/api/whiteboards/wb-1", "PATCH")).toBe("protected");
+    });
+
+    it("does NOT expose sensitive workspace subtrees as public GET", () => {
+      // Narrow allowlist safety: settings / api-keys / janitors / git-leaks /
+      // chat / logs-agent must remain protected even for GET, even though
+      // they're under /api/workspaces/<slug>/. The narrow patterns (e.g.
+      // /api/workspaces/*/image not /api/workspaces/*) ensure this.
+      expect(resolveRouteAccess("/api/workspaces/my-ws/settings/sphinx-integration", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-ws/settings/vercel-integration", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-ws/settings/neo4j", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-ws/api-keys", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-ws/git-leaks", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-ws/janitors/config", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-ws/chat/recent", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-ws/chat/conversations", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-ws/logs-agent", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/workspaces/my-ws/tasks/notifications-count", "GET")).toBe("protected");
+    });
+
+    it("treats method-restricted policies as non-matching when method is omitted", () => {
+      // Policies with a `methods: ["GET"]` restriction should not match a
+      // call that does not supply the method at all. This preserves the
+      // default-deny behaviour so tests that don't care about methods
+      // continue to reason about protected paths correctly.
+      expect(resolveRouteAccess("/api/tasks")).toBe("protected");
+      expect(resolveRouteAccess("/api/features")).toBe("protected");
     });
   });
 });

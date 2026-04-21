@@ -13,18 +13,35 @@ vi.mock("@/lib/db", () => ({
     chatMessage: {
       findMany: vi.fn(),
     },
+    // resolveWorkspaceAccess consults these — return safe defaults here
+    // and let individual tests override as needed.
+    workspace: {
+      findFirst: vi.fn(),
+    },
+    workspaceMember: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
 describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.resetAllMocks();
-  });
-
   const mockTaskId = "task-123";
   const mockUserId = "user-123";
   const mockWorkspaceId = "workspace-123";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetAllMocks();
+    // Default: workspace exists, owned by current test user, not public.
+    // Individual tests override as needed.
+    (db.workspace.findFirst as Mock).mockResolvedValue({
+      id: mockWorkspaceId,
+      slug: "test-workspace",
+      ownerId: mockUserId,
+      isPublicViewable: false,
+    });
+    (db.workspaceMember.findUnique as Mock).mockResolvedValue(null);
+  });
 
   function createAuthenticatedRequest(url: string): NextRequest {
     const headers = new Headers();
@@ -41,12 +58,11 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     workspaceId: mockWorkspaceId,
     workflowStatus: "IN_PROGRESS",
     stakworkProjectId: 456,
-    workspace: {
-      id: mockWorkspaceId,
-      name: "Test Workspace",
-      ownerId: mockUserId,
-      members: [],
-    },
+    mode: "live",
+    podId: null,
+    featureId: null,
+    sourceType: "USER",
+    feature: null,
   };
 
   const mockChatMessages = [
@@ -84,7 +100,12 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
   ];
 
   describe("Authentication", () => {
-    test("should return 401 if no session", async () => {
+    test("should return 401 for unauthenticated request on non-public workspace", async () => {
+      // Route now supports unauthenticated access on `isPublicViewable`
+      // workspaces. For a normal (non-public) workspace, unauthenticated
+      // callers get 401 (Unauthorized).
+      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
+
       const request = new NextRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
         { method: "GET" }
@@ -97,10 +118,11 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
       expect(response.status).toBe(401);
       expect(data.error).toBe("Unauthorized");
-      expect(db.task.findFirst).not.toHaveBeenCalled();
     });
 
-    test("should return 401 if no auth headers present", async () => {
+    test("should return 404 if task does not exist", async () => {
+      (db.task.findFirst as Mock).mockResolvedValue(null);
+
       const request = new NextRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
         { method: "GET" }
@@ -111,9 +133,8 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       });
       const data = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("Unauthorized");
-      expect(db.task.findFirst).not.toHaveBeenCalled();
+      expect(response.status).toBe(404);
+      expect(data.error).toBe("Task not found");
     });
   });
 
@@ -173,24 +194,22 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
           workspaceId: true,
           workflowStatus: true,
           stakworkProjectId: true,
-          workspace: expect.any(Object),
         }),
       });
     });
   });
 
   describe("Authorization", () => {
-    test("should return 403 if user is not workspace owner or member", async () => {
-      const taskWithDifferentOwner = {
-        ...mockTask,
-        workspace: {
-          ...mockTask.workspace,
-          ownerId: "different-user",
-          members: [], // No members
-        },
-      };
-
-      (db.task.findFirst as Mock).mockResolvedValue(taskWithDifferentOwner);
+    test("should return 403 if authenticated user is not a workspace member", async () => {
+      // Workspace exists, user is NOT owner, no membership row, workspace is not public.
+      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.workspace.findFirst as Mock).mockResolvedValue({
+        id: mockWorkspaceId,
+        slug: "test-workspace",
+        ownerId: "different-user",
+        isPublicViewable: false,
+      });
+      (db.workspaceMember.findUnique as Mock).mockResolvedValue(null);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -201,6 +220,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       });
       const data = await response.json();
 
+      // Non-member on a private workspace → 403 (Access denied).
       expect(response.status).toBe(403);
       expect(data.error).toBe("Access denied");
       expect(db.chatMessage.findMany).not.toHaveBeenCalled();
@@ -223,16 +243,14 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should allow access if user is workspace member", async () => {
-      const taskWithMember = {
-        ...mockTask,
-        workspace: {
-          ...mockTask.workspace,
-          ownerId: "different-user",
-          members: [{ role: "DEVELOPER" }], // User is a member
-        },
-      };
-
-      (db.task.findFirst as Mock).mockResolvedValue(taskWithMember);
+      (db.task.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.workspace.findFirst as Mock).mockResolvedValue({
+        id: mockWorkspaceId,
+        slug: "test-workspace",
+        ownerId: "different-user",
+        isPublicViewable: false,
+      });
+      (db.workspaceMember.findUnique as Mock).mockResolvedValue({ role: "DEVELOPER" });
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(
@@ -247,53 +265,28 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       expect(db.chatMessage.findMany).toHaveBeenCalled();
     });
 
-    test("should filter workspace members by current user in query", async () => {
+    test("should allow public access on isPublicViewable workspace", async () => {
+      // Unauthenticated request on a public workspace → 200 with messages.
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
+      (db.workspace.findFirst as Mock).mockResolvedValue({
+        id: mockWorkspaceId,
+        slug: "test-workspace",
+        ownerId: "different-user",
+        isPublicViewable: true,
+      });
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
-      const request = createAuthenticatedRequest(
+      const request = new NextRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
+        { method: "GET" },
       );
 
-      await GET(request, {
+      const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
       });
 
-      expect(db.task.findFirst).toHaveBeenCalledWith({
-        where: expect.any(Object),
-        select: {
-          id: true,
-          title: true,
-          workspaceId: true,
-          workflowStatus: true,
-          stakworkProjectId: true,
-          mode: true,
-          podId: true,
-          featureId: true,
-          sourceType: true,
-          feature: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
-          workspace: {
-            select: {
-              id: true,
-              name: true,
-              ownerId: true,
-              members: {
-                where: {
-                  userId: mockUserId,
-                },
-                select: {
-                  role: true,
-                },
-              },
-            },
-          },
-        },
-      });
+      expect(response.status).toBe(200);
+      expect(db.chatMessage.findMany).toHaveBeenCalled();
     });
   });
 

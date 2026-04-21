@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { validateWorkspaceAccessById } from "@/services/workspace";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@/lib/chat";
 
 export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
 
@@ -20,14 +15,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Validate workspace access
-    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userOrResponse.id);
-    if (!workspaceAccess.hasAccess) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 403 },
-      );
-    }
+    const access = await resolveWorkspaceAccess(request, { workspaceId });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
 
     // Get task statistics
     const [

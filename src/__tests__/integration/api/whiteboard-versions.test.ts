@@ -60,6 +60,8 @@ describe("GET /api/whiteboards/[whiteboardId]/versions", () => {
     await db.user.deleteMany({ where: { id: { in: [testUser.id, otherUser.id] } } });
   });
 
+  // `requireReadAccess` returns 401 for fully-unauthenticated callers and
+  // 403 for authenticated non-members of a private workspace.
   it("returns 401 for unauthenticated requests", async () => {
     const req = new Request(`http://localhost/api/whiteboards/${testWhiteboard.id}/versions`, { method: "GET" });
     const res = await GET(req as never, { params: Promise.resolve({ whiteboardId: testWhiteboard.id }) });
