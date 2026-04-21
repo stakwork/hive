@@ -450,3 +450,11 @@ For each PR:
   [`src/app/api/features/[featureId]/attachments/count/route.ts`](../../src/app/api/features/[featureId]/attachments/count/route.ts),
   [`src/app/api/workspaces/[slug]/voice-signatures/route.ts`](../../src/app/api/workspaces/[slug]/voice-signatures/route.ts)
   — the five regressions introduced by PRs 1–3 of this branch.
+
+### also
+
+Public viewers get **7-day presigned S3 URLs** on feature attachments... make that 1 hour for unauthenticated users
+
+### also
+
+cut down jarvis/nodes calls, it will crash swarm
