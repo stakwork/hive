@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { FeatureStatus } from "@prisma/client";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import type { BoardFeature, BoardResponse } from "@/types/roadmap";
-import { resolveWorkspaceAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
 import { toPublicUser } from "@/lib/auth/public-redact";
 
 export async function GET(request: NextRequest) {
@@ -35,13 +35,9 @@ export async function GET(request: NextRequest) {
       if (apiResult instanceof NextResponse) return apiResult;
     } else {
       const access = await resolveWorkspaceAccess(request, { workspaceId });
-      if (!access) {
-        return NextResponse.json(
-          { error: "Workspace not found or access denied" },
-          { status: 404 },
-        );
-      }
-      redactForPublic = isPublicViewer(access);
+      const ok = requireReadAccess(access);
+      if (ok instanceof NextResponse) return ok;
+      redactForPublic = isPublicViewer(ok);
     }
 
     // Status filter (optional, comma-separated)

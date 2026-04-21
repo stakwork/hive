@@ -29,12 +29,10 @@ describe("Voice Signatures API - Integration Tests", () => {
 
   describe("GET /api/workspaces/[slug]/voice-signatures", () => {
     describe("Authentication", () => {
-      // Voice signatures are biometric data — the handler resolves access
-      // via `resolveWorkspaceAccess`, which returns a unified 404
-      // "Workspace not found or access denied" whenever the caller is
-      // unauthenticated (or the x-api-token is invalid). We never emit
-      // a distinct 401, to avoid revealing workspace existence.
-      test("returns 404 when no auth is provided (no session, no token)", async () => {
+      // Voice signatures are biometric data — `requireMemberAccess`
+      // returns 401 "Unauthorized" for fully-unauthenticated callers
+      // (no session, no/invalid x-api-token).
+      test("returns 401 when no auth is provided (no session, no token)", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
 
@@ -47,16 +45,16 @@ describe("Voice Signatures API - Integration Tests", () => {
             params: Promise.resolve({ slug: workspace.slug }),
           });
 
-          expect(response.status).toBe(404);
+          expect(response.status).toBe(401);
           const data = await response.json();
-          expect(data.message).toBe("Workspace not found or access denied");
+          expect(data.error).toBe("Unauthorized");
         } finally {
           await db.workspace.delete({ where: { id: workspace.id } });
           await db.user.delete({ where: { id: owner.id } });
         }
       });
 
-      test("returns 404 with invalid x-api-token header", async () => {
+      test("returns 401 with invalid x-api-token header", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
 
@@ -79,10 +77,10 @@ describe("Voice Signatures API - Integration Tests", () => {
           });
 
           // Invalid tokens fall through to the session path, which in turn
-          // resolves to a unified 404.
-          expect(response.status).toBe(404);
+          // resolves to 401 "Unauthorized" for unauthenticated callers.
+          expect(response.status).toBe(401);
           const data = await response.json();
-          expect(data.message).toBe("Workspace not found or access denied");
+          expect(data.error).toBe("Unauthorized");
         } finally {
           await db.workspace.delete({ where: { id: workspace.id } });
           await db.user.delete({ where: { id: owner.id } });

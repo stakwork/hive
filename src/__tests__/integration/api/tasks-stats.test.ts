@@ -19,14 +19,25 @@ const TestHelpers = {
     expect(data.data).toMatchObject(expected);
   },
 
-  // Workspace read endpoints use `resolveWorkspaceAccess`, which returns a
-  // unified 404 "Workspace not found or access denied" whenever the caller
-  // is unauthenticated or not a member of a non-public workspace — we don't
-  // distinguish the two states to avoid leaking workspace existence.
-  expectAccessDenied: async (response: Response) => {
+  // `requireReadAccess` returns differentiated status codes depending on
+  // why the caller can't read: 401 (unauthenticated), 404 (workspace
+  // not-found), or 403 (forbidden / non-member of a private workspace).
+  expectUnauthorized: async (response: Response) => {
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(data.error).toBe("Unauthorized");
+  },
+
+  expectNotFound: async (response: Response) => {
     expect(response.status).toBe(404);
     const data = await response.json();
     expect(data.error).toContain("Workspace not found or access denied");
+  },
+
+  expectForbidden: async (response: Response) => {
+    expect(response.status).toBe(403);
+    const data = await response.json();
+    expect(data.error).toContain("Access denied");
   },
 
   expectBadRequest: async (response: Response, errorMessage: string) => {
@@ -156,11 +167,11 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
   });
 
   describe("Authentication", () => {
-    test("should return 404 for unauthenticated user", async () => {
+    test("should return 401 for unauthenticated user", async () => {
       const request = createGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`);
       const response = await GET(request);
 
-      await TestHelpers.expectAccessDenied(response);
+      await TestHelpers.expectUnauthorized(response);
     });
 
     test("should proceed with valid authenticated session", async () => {
@@ -190,7 +201,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       );
       const response = await GET(request);
 
-      await TestHelpers.expectAccessDenied(response);
+      await TestHelpers.expectNotFound(response);
     });
 
     test("should return 404 for soft-deleted workspace", async () => {
@@ -201,7 +212,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       );
       const response = await GET(request);
 
-      await TestHelpers.expectAccessDenied(response);
+      await TestHelpers.expectNotFound(response);
     });
   });
 
@@ -232,7 +243,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       await TestHelpers.expectSuccess(response, { total: 0, inProgress: 0, waitingForInput: 0 });
     });
 
-    test("should return 404 for non-member user", async () => {
+    test("should return 403 for non-member user", async () => {
       const outsiderUser = await createTestUser({
         email: `outsider-${Date.now()}@example.com`,
       });
@@ -243,7 +254,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       );
       const response = await GET(request);
 
-      await TestHelpers.expectAccessDenied(response);
+      await TestHelpers.expectForbidden(response);
     });
   });
 

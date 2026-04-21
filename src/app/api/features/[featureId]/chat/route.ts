@@ -3,7 +3,12 @@ import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 import type { ContextTag, Artifact } from "@/lib/chat";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
-import { resolveWorkspaceAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import {
+  resolveWorkspaceAccess,
+  requireReadAccess,
+  requireMemberAccess,
+  isPublicViewer,
+} from "@/lib/auth/workspace-access";
 import { toPublicUser } from "@/lib/auth/public-redact";
 
 export const runtime = "nodejs";
@@ -53,13 +58,9 @@ export async function GET(
       const access = await resolveWorkspaceAccess(request, {
         workspaceId: feature.workspaceId,
       });
-      if (!access) {
-        return NextResponse.json(
-          { error: "Workspace not found or access denied" },
-          { status: 404 },
-        );
-      }
-      redactForPublic = isPublicViewer(access);
+      const ok = requireReadAccess(access);
+      if (ok instanceof NextResponse) return ok;
+      redactForPublic = isPublicViewer(ok);
     }
 
     const messages = await db.chatMessage.findMany({
@@ -134,14 +135,10 @@ export async function POST(
       const access = await resolveWorkspaceAccess(request, {
         workspaceId: feature.workspaceId,
       });
-      if (!access || access.kind !== "member") {
-        return NextResponse.json(
-          { error: "Workspace not found or access denied" },
-          { status: 404 },
-        );
-      }
+      const member = requireMemberAccess(access);
+      if (member instanceof NextResponse) return member;
       userOrResponse = {
-        id: access.userId,
+        id: member.userId,
         email: "",
         name: "",
       };

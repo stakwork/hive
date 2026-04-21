@@ -103,15 +103,15 @@ describe("Workspace Members API Integration Tests", () => {
       expect(membersInDb[0].role).toBe(WorkspaceRole.DEVELOPER);
     });
 
-    test("should return 404 when user not authenticated", async () => {
-      // Unauthenticated access on a non-public workspace resolves to a
-      // unified 404 via `resolveWorkspaceAccess`, not a 401.
+    test("should return 401 when user not authenticated", async () => {
+      // `requireReadAccess` returns 401 "Unauthorized" for callers with
+      // no session (kind: "unauthenticated").
       const { workspace } = await createTestWorkspaceWithUsers();
 
       const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
-      await expectNotFound(response, "Workspace not found or access denied");
+      await expectUnauthorized(response);
     });
 
     test("should return 404 for non-existent workspace", async () => {
@@ -123,17 +123,16 @@ describe("Workspace Members API Integration Tests", () => {
       await expectNotFound(response, "Workspace not found or access denied");
     });
 
-    test("should return 404 when no middleware auth headers are present", async () => {
-      // The GET handler now authorizes via `resolveWorkspaceAccess`, which
-      // reads from middleware auth headers rather than from
-      // getServerSession / getToken. A bare request (no headers) is treated
-      // as unauthenticated and returns 404 on a non-public workspace.
+    test("should return 401 when no middleware auth headers are present", async () => {
+      // The GET handler authorizes via `resolveWorkspaceAccess`, which
+      // reads from middleware auth headers. A bare request (no headers)
+      // is treated as unauthenticated and returns 401 "Unauthorized".
       const { workspace } = await createTestWorkspaceWithUsers();
 
       const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
       const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
 
-      await expectNotFound(response, "Workspace not found or access denied");
+      await expectUnauthorized(response);
     });
 
     test("should not return duplicate owner when owner exists in WorkspaceMember table", async () => {

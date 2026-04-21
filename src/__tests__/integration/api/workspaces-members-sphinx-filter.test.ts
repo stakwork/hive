@@ -27,15 +27,15 @@ describe("GET /api/workspaces/[slug]/members?sphinxLinkedOnly=true Integration T
     await db.user.deleteMany({});
   });
 
-  test("returns 404 when unauthenticated", async () => {
-    // Unauthenticated access on a non-public workspace resolves to a unified
-    // 404 via `resolveWorkspaceAccess` rather than 401.
+  test("returns 401 when unauthenticated", async () => {
+    // `requireReadAccess` returns 401 "Unauthorized" for callers with no
+    // session (kind: "unauthenticated").
     const request = new Request("http://localhost:3000/api/workspaces/test/members?sphinxLinkedOnly=true", {
       method: "GET",
     });
 
     const response = await GET(request, { params: { slug: "test" } });
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(401);
   });
 
   test("returns only members with both sphinxAlias and lightningPubkey when sphinxLinkedOnly=true", async () => {

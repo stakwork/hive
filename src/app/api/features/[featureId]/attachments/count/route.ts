@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuthOrApiToken } from "@/lib/auth/api-token";
-import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 
 /**
  * GET /api/features/[featureId]/attachments/count
@@ -43,12 +43,8 @@ export async function GET(
       const access = await resolveWorkspaceAccess(request, {
         workspaceId: featureLookup.workspaceId,
       });
-      if (!access) {
-        return NextResponse.json(
-          { error: "Workspace not found or access denied" },
-          { status: 404 },
-        );
-      }
+      const ok = requireReadAccess(access);
+      if (ok instanceof NextResponse) return ok;
     }
 
     const count = await db.attachment.count({

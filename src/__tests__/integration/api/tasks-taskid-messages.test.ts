@@ -186,10 +186,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
   });
 
   describe("Authentication", () => {
-    // Unauthenticated access on a non-public workspace resolves to a unified
-    // 404 via `resolveWorkspaceAccess`, not a distinct 401. The handler never
-    // reveals whether the workspace exists when the caller can't see it.
-    it("should return 404 when no session provided", async () => {
+    // `requireReadAccess` returns 401 "Unauthorized" for callers with no
+    // session (kind: "unauthenticated").
+    it("should return 401 when no session provided", async () => {
       const request = createGetRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages`
       );
@@ -198,12 +197,12 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         params: Promise.resolve({ taskId: testTask.id }),
       });
 
-      expect(response?.status).toBe(404);
+      expect(response?.status).toBe(401);
       const data = await response?.json();
-      expect(data.error).toBe("Workspace not found or access denied");
+      expect(data.error).toBe("Unauthorized");
     });
 
-    it("should return 404 when no auth headers present", async () => {
+    it("should return 401 when no auth headers present", async () => {
       const request = createGetRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages`
       );
@@ -212,9 +211,9 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         params: Promise.resolve({ taskId: testTask.id }),
       });
 
-      expect(response?.status).toBe(404);
+      expect(response?.status).toBe(401);
       const data = await response?.json();
-      expect(data.error).toBe("Workspace not found or access denied");
+      expect(data.error).toBe("Unauthorized");
     });
   });
 
@@ -273,7 +272,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
   });
 
   describe("Authorization & Access Control", () => {
-    it("should return 404 when user is not workspace owner or member", async () => {
+    it("should return 403 when user is not workspace owner or member", async () => {
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/tasks/${testTask.id}/messages`,
         otherUser,
@@ -283,9 +282,11 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         params: Promise.resolve({ taskId: testTask.id }),
       });
 
-      expect(response?.status).toBe(404);
+      // Authenticated non-members on a private workspace get 403 "Access
+      // denied" (kind: "forbidden"), distinct from 404 not-found.
+      expect(response?.status).toBe(403);
       const data = await response?.json();
-      expect(data.error).toBe("Workspace not found or access denied");
+      expect(data.error).toBe("Access denied");
     });
 
     it("should allow access for workspace owner", async () => {

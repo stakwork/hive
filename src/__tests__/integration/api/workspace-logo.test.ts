@@ -537,16 +537,16 @@ describe('Workspace Logo API Integration Tests', () => {
 
   describe('GET /api/workspaces/[slug]/image', () => {
     describe('Authentication Tests', () => {
-      test('should return 404 for unauthenticated request on non-public workspace', async () => {
-        // resolveWorkspaceAccess returns null for unauthenticated visitors
-        // on non-public workspaces, surfacing as a unified 404.
+      test('should return 401 for unauthenticated request', async () => {
+        // `requireReadAccess` returns 401 "Unauthorized" for callers with
+        // no session (kind: "unauthenticated").
         const request = createGetRequest('http://localhost:3000/api/workspaces/test/image')
 
         const response = await imageGet(request, {
           params: Promise.resolve({ slug: 'test' }),
         })
 
-        expect(response.status).toBe(404)
+        expect(response.status).toBe(401)
       })
     })
 

@@ -6,7 +6,7 @@ import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { TaskStatus } from "@prisma/client";
 import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
-import { resolveWorkspaceAccess, isPublicViewer } from "@/lib/auth/workspace-access";
+import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
 import { toPublicUser } from "@/lib/auth/public-redact";
 
 const TASK_SELECT = {
@@ -108,14 +108,10 @@ export async function GET(
       const access = await resolveWorkspaceAccess(request, {
         workspaceId: featureLookup.workspaceId,
       });
-      if (!access) {
-        return NextResponse.json(
-          { error: "Workspace not found or access denied" },
-          { status: 404 },
-        );
-      }
-      userId = access.userId;
-      redactForPublic = isPublicViewer(access);
+      const ok = requireReadAccess(access);
+      if (ok instanceof NextResponse) return ok;
+      userId = ok.userId;
+      redactForPublic = isPublicViewer(ok);
     }
 
     const { searchParams } = new URL(request.url);

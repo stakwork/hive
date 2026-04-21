@@ -91,14 +91,24 @@ describe("GET /api/features/board", () => {
     expect(body.error).toMatch(/workspaceId/);
   });
 
-  it("returns 404 when the caller is not a workspace member", async () => {
-    // `resolveWorkspaceAccess` returns null for callers who are neither
-    // workspace members nor public viewers, producing a unified 404
-    // "Workspace not found or access denied".
-    mockedResolveWorkspaceAccess.mockResolvedValue(null);
+  it("returns 403 when the caller is an authenticated non-member", async () => {
+    // `resolveWorkspaceAccess` returns kind: "forbidden" for authenticated
+    // callers who aren't members of a non-public workspace;
+    // `requireReadAccess` surfaces that as 403 "Access denied".
+    mockedResolveWorkspaceAccess.mockResolvedValue({ kind: "forbidden" });
     const req = makeRequest({ workspaceId: "ws-1" });
     const res = await GET(req);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 401 when the caller is unauthenticated", async () => {
+    // `resolveWorkspaceAccess` returns kind: "unauthenticated" for callers
+    // with no session on a non-public workspace; `requireReadAccess`
+    // surfaces that as 401 "Unauthorized".
+    mockedResolveWorkspaceAccess.mockResolvedValue({ kind: "unauthenticated" });
+    const req = makeRequest({ workspaceId: "ws-1" });
+    const res = await GET(req);
+    expect(res.status).toBe(401);
   });
 
   it("returns 400 for invalid status values", async () => {

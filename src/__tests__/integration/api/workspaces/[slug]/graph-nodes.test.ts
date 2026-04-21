@@ -38,12 +38,10 @@ describe("Graph Nodes API - Integration Tests", () => {
 
   describe("GET /api/workspaces/[slug]/graph/nodes", () => {
     describe("Authentication", () => {
-      // The handler uses `resolveWorkspaceAccess`, which returns null for
-      // unauthenticated visitors on non-public workspaces. That null is
-      // surfaced as a unified 404 "Workspace not found or access denied"
-      // rather than 401 — we deliberately avoid revealing whether the
-      // workspace exists when the caller isn't allowed to see it.
-      test("returns 404 when no session exists", async () => {
+      // `requireReadAccess` returns 401 "Unauthorized" for callers with no
+      // session (kind: "unauthenticated") — the handler's auth boundary,
+      // separate from membership/forbidden checks below.
+      test("returns 401 when no session exists", async () => {
         const request = createGetRequest(
           "http://localhost:3000/api/workspaces/test-slug/graph/nodes"
         );
@@ -52,9 +50,9 @@ describe("Graph Nodes API - Integration Tests", () => {
           params: Promise.resolve({ slug: "test-slug" }),
         });
 
-        expect(response.status).toBe(404);
+        expect(response.status).toBe(401);
         const data = await response.json();
-        expect(data.error).toBe("Workspace not found or access denied");
+        expect(data.error).toBe("Unauthorized");
       });
     });
 
@@ -76,7 +74,7 @@ describe("Graph Nodes API - Integration Tests", () => {
         }
       });
 
-      test("returns 404 when user is not workspace member", async () => {
+      test("returns 403 when authenticated user is not a workspace member", async () => {
         const owner = await createTestUser();
         const nonMember = await createTestUser({ email: "nonmember@example.com" });
         const workspace = await createTestWorkspace({ ownerId: owner.id });
@@ -88,9 +86,12 @@ describe("Graph Nodes API - Integration Tests", () => {
             params: Promise.resolve({ slug: workspace.slug }),
           });
 
-          expect(response.status).toBe(404);
+          // `requireReadAccess` returns 403 "Access denied" for
+          // authenticated callers who are not members of a private
+          // workspace (kind: "forbidden"), distinct from 404 not-found.
+          expect(response.status).toBe(403);
           const data = await response.json();
-          expect(data.error).toContain("Workspace not found or access denied");
+          expect(data.error).toContain("Access denied");
         } finally {
           await db.workspaceMember.deleteMany({ where: { workspaceId: workspace.id } });
           await db.workspace.delete({ where: { id: workspace.id } });

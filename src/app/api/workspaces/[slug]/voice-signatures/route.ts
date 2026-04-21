@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuthOrApiToken } from "@/lib/auth/api-token";
-import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
+import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 import { getS3Service } from "@/services/s3";
 
 export const runtime = "nodejs";
@@ -66,12 +66,8 @@ export async function GET(
       const access = await resolveWorkspaceAccess(request, {
         workspaceId: workspace.id,
       });
-      if (!access || access.kind !== "member") {
-        return NextResponse.json(
-          { success: false, message: "Workspace not found or access denied" },
-          { status: 404 },
-        );
-      }
+      const member = requireMemberAccess(access);
+      if (member instanceof NextResponse) return member;
     }
 
     // Step 3: Query active members with voice signatures

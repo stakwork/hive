@@ -209,9 +209,9 @@ describe("Single Feature API - Integration Tests", () => {
         params: Promise.resolve({ featureId: feature.id }),
       });
 
-      // Assert: non-members on a non-public workspace get a unified 404
-      // from `resolveWorkspaceAccess`, not 403 "Access denied".
-      await expectError(response, "Workspace not found or access denied", 404);
+      // Authenticated non-members on a non-public workspace get 403
+      // "Access denied" (kind: "forbidden") from `requireReadAccess`.
+      await expectError(response, "Access denied", 403);
     });
   });
 

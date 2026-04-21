@@ -153,16 +153,14 @@ describe("GET /api/swarm/jarvis/nodes", () => {
   });
 
   describe("Authentication", () => {
-    // The route now resolves access via `resolveWorkspaceAccess`, which
-    // returns a unified 404 whenever the caller isn't allowed to read the
-    // workspace — we don't emit a distinct 401 because doing so would
-    // reveal workspace existence to anonymous probes.
-    test("returns 404 when user is not authenticated on a non-public workspace", async () => {
+    // `requireReadAccess` returns 401 "Unauthorized" for callers with no
+    // session (kind: "unauthenticated").
+    test("returns 401 when user is not authenticated", async () => {
       const response = await createUnauthenticatedGetRequest(testWorkspace.id);
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(401);
       const data = await response.json();
-      expect(data.error).toBe("Workspace not found or access denied");
+      expect(data.error).toBe("Unauthorized");
     });
   });
 

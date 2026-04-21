@@ -346,11 +346,9 @@ describe("Workspace Search API - Integration Tests", () => {
       await expectError(response, "Search query must be at least 2 characters", 400);
     });
 
-    test("returns 404 for unauthenticated request on non-public workspace", async () => {
-      // resolveWorkspaceAccess returns null for unauthenticated visitors on
-      // workspaces that are not flagged `isPublicViewable`, producing a
-      // unified 404 (rather than 401) to avoid revealing whether the
-      // workspace exists.
+    test("returns 401 for unauthenticated request", async () => {
+      // `requireReadAccess` returns 401 "Unauthorized" for callers with no
+      // session (kind: "unauthenticated").
       const request = createGetRequest(
         "http://localhost:3000/api/workspaces/test-workspace/search?q=test"
       );
@@ -359,7 +357,7 @@ describe("Workspace Search API - Integration Tests", () => {
         params: Promise.resolve({ slug: "test-workspace" }),
       });
 
-      await expectError(response, "Workspace not found or access denied", 404);
+      await expectError(response, "Unauthorized", 401);
     });
 
     test("denies access to non-workspace members", async () => {
@@ -379,9 +377,9 @@ describe("Workspace Search API - Integration Tests", () => {
         params: Promise.resolve({ slug: "test-workspace" }),
       });
 
-      // Non-members receive 404 "Workspace not found or access denied" for
-      // workspaces that are not publicly viewable.
-      await expectError(response, "Workspace not found or access denied", 404);
+      // Authenticated non-members on a non-public workspace get 403
+      // "Access denied" (kind: "forbidden"), distinct from 404 not-found.
+      await expectError(response, "Access denied", 403);
     });
 
     test("returns 404 for non-existent workspace", async () => {
