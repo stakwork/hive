@@ -417,17 +417,49 @@ async function verifyJwt(
   if (!jwtSecret) return undefined;
 
   try {
-    const payload = jwt.verify(token, jwtSecret) as { slug?: string };
+    const payload = jwt.verify(token, jwtSecret) as {
+      slug?: string;
+      userId?: string;
+    };
     if (!payload.slug) return undefined;
 
     const workspace = await db.workspace.findFirst({
       where: { slug: payload.slug, deleted: false },
-      select: { id: true, slug: true, name: true },
+      select: { id: true, slug: true, name: true, ownerId: true },
     });
     if (!workspace) {
       console.log("[MCP] JWT workspace not found:", payload.slug);
       return undefined;
     }
+
+    // IDOR hardening: if the JWT carries a userId (minted by
+    // /api/livekit-token), re-validate that the user is still a member of
+    // the workspace at use time. Legacy JWTs without userId are rejected.
+    if (!payload.userId) {
+      console.log("[MCP] JWT missing userId claim — rejecting legacy token");
+      return undefined;
+    }
+
+    const isOwner = workspace.ownerId === payload.userId;
+    if (!isOwner) {
+      const membership = await db.workspaceMember.findUnique({
+        where: {
+          workspaceId_userId: {
+            workspaceId: workspace.id,
+            userId: payload.userId,
+          },
+        },
+        select: { role: true },
+      });
+      if (!membership) {
+        console.log(
+          "[MCP] JWT user is no longer a member of workspace:",
+          workspace.slug,
+        );
+        return undefined;
+      }
+    }
+
     console.log("[MCP] JWT verified for workspace:", workspace.slug);
 
     const swarmAccess = await getSwarmAccessByWorkspaceId(workspace.id);
