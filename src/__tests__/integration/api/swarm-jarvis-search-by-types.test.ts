@@ -20,9 +20,13 @@ vi.mock("@/services/s3", () => ({
   getS3Service: vi.fn(),
 }));
 
-vi.mock("@/lib/constants", () => ({
-  getSwarmVanityAddress: vi.fn((name: string) => `${name}.sphinx.chat`),
-}));
+vi.mock("@/lib/constants", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/constants")>();
+  return {
+    ...actual,
+    getSwarmVanityAddress: vi.fn((name: string) => `${name}.sphinx.chat`),
+  };
+});
 
 vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
@@ -465,7 +469,10 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
   });
 
   describe("Swarm Configuration", () => {
-    test("returns 404 when workspace not found", async () => {
+    test("returns 404 when workspace not found or caller lacks access", async () => {
+      // IDOR fix: the membership check now runs before the swarm lookup,
+      // so unknown-workspace and no-access cases collapse into the
+      // unified 'Workspace not found or access denied' message.
       const nonExistentWorkspaceId = "non-existent-workspace-id";
 
       const response = await createAuthenticatedPostRequest(
@@ -477,7 +484,7 @@ describe("POST /api/swarm/jarvis/search-by-types", () => {
       expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.success).toBe(false);
-      expect(data.message).toBe("Workspace not found");
+      expect(data.message).toBe("Workspace not found or access denied");
     });
 
     test("returns mock response when swarm is not configured", async () => {

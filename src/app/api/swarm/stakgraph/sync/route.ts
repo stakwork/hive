@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { AsyncSyncResult, triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -36,6 +37,20 @@ export async function POST(request: NextRequest) {
       console.error("[Sync] Swarm not found or misconfigured", { workspaceId, swarmId });
       return NextResponse.json({ success: false, message: "Swarm not found or misconfigured" }, { status: 400 });
     }
+
+    // IDOR guard: a non-member could previously force a sync (flipping
+    // repos to PENDING/FAILED, overwriting ingestRefId, and registering
+    // a webhook callback URL pointing at an attacker-controlled host
+    // when combined with request spoofing). Authorize against the
+    // swarm's actual workspace, not any body-supplied id.
+    const access = await validateWorkspaceAccessById(swarm.workspaceId, session.user.id);
+    if (!access.hasAccess || !access.canWrite) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
+
     const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
     const repositoryUrl = primaryRepo?.repositoryUrl;
 
