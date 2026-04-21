@@ -17,10 +17,9 @@ const ALLOWED_CMDS = new Set([
   "UpdateEndpointPrice",
   "GetBotBalance",
   "CreateBotInvoice",
-  "GetEnrichedBoltwallUsers",
+  "GetBoltwallUsers",
   "AddBoltwallAdminPubkey",
   "AddBoltwallUser",
-  "ListAdmins",
   "DeleteSubAdmin",
   "UpdateUser",
   "GetSecondBrainAboutDetails",
@@ -105,99 +104,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  // 7. Intercept composite command: GetEnrichedBoltwallUsers
-  if (cmdName === "GetEnrichedBoltwallUsers") {
-    const [adminsResult, superAdminResult] = await Promise.allSettled([
-      swarmCmdRequest({ swarmUrl: swarm.swarmUrl, jwt, cmd: { type: "Swarm", data: { cmd: "ListAdmins" } } }),
-      swarmCmdRequest({ swarmUrl: swarm.swarmUrl, jwt, cmd: { type: "Swarm", data: { cmd: "GetBoltwallSuperAdmin" } } }),
-    ]);
-
-    const admins: Array<{ id: number; pubkey: string; name: string; role: string }> =
-      adminsResult.status === "fulfilled" && adminsResult.value.ok
-        ? (() => {
-            const raw = adminsResult.value.data as { data?: { admins?: unknown[] }; admins?: unknown[] };
-            return (raw?.data?.admins ?? raw?.admins ?? []) as Array<{ id: number; pubkey: string; name: string; role: string }>;
-          })()
-        : [];
-
-    const superAdminInner =
-      superAdminResult.status === "fulfilled" && superAdminResult.value.ok
-        ? (superAdminResult.value.data as { data?: { pubkey?: string; name?: string } })?.data
-        : undefined;
-    const superAdmin: { pubkey: string; name: string } | null =
-      superAdminInner?.pubkey ? (superAdminInner as { pubkey: string; name: string }) : null;
-
-    // Build pubkey → Hive identity map using direct db.user queries
-
-    // Part 1: Owner — fetch directly by ownerId (already in scope via access.workspace)
-    const ownerUserId = access.workspace?.ownerId;
-    const ownerUser = ownerUserId
-      ? await db.user.findUnique({
-          where: { id: ownerUserId },
-          select: { name: true, image: true, lightningPubkey: true },
-        })
-      : null;
-
-    // Part 2: Admins/members — scan db.user by lightningPubkey
-    const adminPubkeys = admins.map((a) => a.pubkey);
-    const usersWithPubkey =
-      adminPubkeys.length > 0
-        ? await db.user.findMany({
-            where: { lightningPubkey: { not: null } },
-            select: { name: true, image: true, lightningPubkey: true },
-          })
-        : [];
-
-    const hiveMap = new Map<string, { name: string | null; image: string | null }>();
-
-    // Owner: try to match their stored lightningPubkey to the boltwall superAdmin pubkey
-    const superAdminPubkey = superAdmin?.pubkey ?? null;
-    if (ownerUser?.lightningPubkey && superAdminPubkey) {
-      try {
-        const decrypted = encryptionService.decryptField("lightningPubkey", ownerUser.lightningPubkey);
-        if (decrypted === superAdminPubkey) {
-          hiveMap.set(superAdminPubkey, { name: ownerUser.name ?? null, image: ownerUser.image ?? null });
-        }
-      } catch {
-        // skip if pubkey cannot be decrypted
-      }
-    }
-
-    // Admins: decrypt and match against boltwall pubkeys
-    for (const user of usersWithPubkey) {
-      try {
-        const decrypted = encryptionService.decryptField("lightningPubkey", user.lightningPubkey!);
-        if (adminPubkeys.includes(decrypted)) {
-          hiveMap.set(decrypted, { name: user.name ?? null, image: user.image ?? null });
-        }
-      } catch {
-        // skip users whose pubkey cannot be decrypted
-      }
-    }
-
-    // Build enriched list: owner first, then admins/members (deduplicating super admin)
-    const ownerEntry = {
-      pubkey: superAdminPubkey,
-      name: superAdmin?.name ?? null,
-      role: "owner" as const,
-      hive: superAdminPubkey
-        ? (hiveMap.get(superAdminPubkey) ?? null)
-        : ownerUser
-          ? { name: ownerUser.name ?? null, image: ownerUser.image ?? null }
-          : null,
-    };
-
-    const enrichedAdmins = admins
-      .filter((a) => a.pubkey !== superAdminPubkey)
-      .map((a) => ({
-        id: a.id,
-        pubkey: a.pubkey,
-        name: a.name,
-        role: a.role,
-        hive: hiveMap.get(a.pubkey) ?? null,
-      }));
-
-    return NextResponse.json({ users: [ownerEntry, ...enrichedAdmins] });
+  // 7. Intercept GetBoltwallUsers: proxy to swarm + remap roles
+  if (cmdName === "GetBoltwallUsers") {
+    const result = await swarmCmdRequest({ swarmUrl: swarm.swarmUrl, jwt, cmd });
+    if (!result.ok) return NextResponse.json({ error: "Swarm cmd failed" }, { status: 502 });
+    const raw = result.data as { users?: Array<{ id: number; pubkey: string; name: string; role: string }> };
+    const users = (raw?.users ?? []).map((u) => ({
+      ...u,
+      role: u.role === "admin" ? "owner" : u.role === "sub_admin" ? "admin" : "member",
+    }));
+    return NextResponse.json({ users });
   }
 
   // 8. Proxy cmd to swarm
