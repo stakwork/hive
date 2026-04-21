@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuthOrApiToken } from "@/lib/auth/api-token";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 
 /**
  * GET /api/features/[featureId]/attachments/count
@@ -25,14 +26,25 @@ export async function GET(
       return NextResponse.json({ error: "Feature not found" }, { status: 404 });
     }
 
-    // Authenticate user or API token
-    const userOrResponse = await requireAuthOrApiToken(
-      request,
-      featureLookup.workspaceId
-    );
+    // Auth: x-api-token callers are trusted service-to-service clients that
+    // bypass membership. Everyone else must resolve through
+    // `resolveWorkspaceAccess`, which enforces workspace membership (or
+    // public-viewer on `isPublicViewable` workspaces).
+    const apiTokenAuth =
+      request.headers.get("x-api-token") === process.env.API_TOKEN;
 
-    if (userOrResponse instanceof NextResponse) {
-      return userOrResponse;
+    if (apiTokenAuth) {
+      const apiResult = await requireAuthOrApiToken(
+        request,
+        featureLookup.workspaceId
+      );
+      if (apiResult instanceof NextResponse) return apiResult;
+    } else {
+      const access = await resolveWorkspaceAccess(request, {
+        workspaceId: featureLookup.workspaceId,
+      });
+      const ok = requireReadAccess(access);
+      if (ok instanceof NextResponse) return ok;
     }
 
     const count = await db.attachment.count({

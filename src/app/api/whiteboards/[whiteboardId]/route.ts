@@ -2,31 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { pusherServer, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ whiteboardId: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { whiteboardId } = await params;
 
     const whiteboard = await db.whiteboard.findUnique({
       where: { id: whiteboardId },
-      include: {
-        workspace: {
-          select: {
-            id: true,
-            ownerId: true,
-            members: {
-              where: { userId: userOrResponse.id },
-              select: { role: true },
-            },
-          },
-        },
+      select: {
+        id: true,
+        name: true,
+        workspaceId: true,
+        featureId: true,
+        elements: true,
+        appState: true,
+        files: true,
+        version: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -34,13 +31,11 @@ export async function GET(
       return NextResponse.json({ error: "Whiteboard not found" }, { status: 404 });
     }
 
-    // Check access
-    const isOwner = whiteboard.workspace.ownerId === userOrResponse.id;
-    const isMember = whiteboard.workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
+    const access = await resolveWorkspaceAccess(request, {
+      workspaceId: whiteboard.workspaceId,
+    });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
 
     return NextResponse.json({
       success: true,

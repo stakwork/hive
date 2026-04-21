@@ -28,25 +28,40 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const userId = await getUserId(request);
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { slug } = await params;
 
-    // Check workspace access
-    const workspace = await getWorkspaceBySlug(slug, userId);
-    if (!workspace) {
-      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
+    const { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } = await import(
+      "@/lib/auth/workspace-access"
+    );
+    const { toPublicMember } = await import("@/lib/auth/public-redact");
+
+    const access = await resolveWorkspaceAccess(request, { slug });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
+    const redactForPublic = isPublicViewer(ok);
+
+    // Check if system assignees should be included (defaults to false).
+    // Public viewers never get the sphinxLinkedOnly filter since that leaks
+    // membership-integration metadata — they see only active members.
+    const url = new URL(request.url);
+    const includeSystemAssignees =
+      url.searchParams.get("includeSystemAssignees") === "true" && !redactForPublic;
+    const sphinxLinkedOnly =
+      url.searchParams.get("sphinxLinkedOnly") === "true" && !redactForPublic;
+
+    const result = await getWorkspaceMembers(ok.workspaceId, includeSystemAssignees, sphinxLinkedOnly);
+
+    if (redactForPublic && result && typeof result === "object" && "members" in result) {
+      // Strip emails + GitHub metadata for public viewers. Shape stays
+      // the same (email: null) so downstream components don't need to
+      // branch on the redacted vs authenticated form.
+      const sanitized = {
+        ...result,
+        members: (result.members as Array<Parameters<typeof toPublicMember>[0]>).map(toPublicMember),
+      };
+      return NextResponse.json(sanitized);
     }
 
-    // Check if system assignees should be included (defaults to false)
-    const url = new URL(request.url);
-    const includeSystemAssignees = url.searchParams.get("includeSystemAssignees") === "true";
-    const sphinxLinkedOnly = url.searchParams.get("sphinxLinkedOnly") === "true";
-
-    const result = await getWorkspaceMembers(workspace.id, includeSystemAssignees, sphinxLinkedOnly);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching workspace members:", error);

@@ -52,7 +52,7 @@ interface WhiteboardData {
 export default function WhiteboardDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { slug } = useWorkspace();
+  const { slug, isPublicViewer } = useWorkspace();
   const whiteboardId = params.id as string;
 
   const [whiteboard, setWhiteboard] = useState<WhiteboardData | null>(null);
@@ -716,10 +716,12 @@ export default function WhiteboardDetailPage() {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <WhiteboardVersionPanel
-              whiteboardId={whiteboardId}
-              onReloadWhiteboard={loadWhiteboard}
-            />
+            {!isPublicViewer && (
+              <WhiteboardVersionPanel
+                whiteboardId={whiteboardId}
+                onReloadWhiteboard={loadWhiteboard}
+              />
+            )}
             <Button
               variant="outline"
               size="icon"
@@ -787,10 +789,14 @@ export default function WhiteboardDetailPage() {
             })()}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}
-            isCollaborating={collaborators.length > 0}
+            isCollaborating={!isPublicViewer && collaborators.length > 0}
+            // Public viewers get a strictly read-only canvas. The PATCH
+            // route still rejects their writes server-side, but this
+            // prevents them from trying (and seeing confusing errors).
+            viewModeEnabled={isPublicViewer}
           />
         </div>
-        {!isFullscreen && (
+        {!isFullscreen && !isPublicViewer && (
           <WhiteboardChatPanel
             whiteboardId={whiteboardId}
             featureId={whiteboard.featureId ?? null}

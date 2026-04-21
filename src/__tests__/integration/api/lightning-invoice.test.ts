@@ -125,6 +125,10 @@ describe('Lightning Invoice API Integration Tests', () => {
         paymentHash: 'hash_older',
         amount: 500,
       });
+      // Small delay so `createdAt` on the two rows is strictly ordered;
+      // Prisma's default `now()` resolves to milliseconds and two back-to-
+      // back inserts can collide, leaving `orderBy createdAt desc` undefined.
+      await new Promise((r) => setTimeout(r, 20));
       await createTestLightningPayment({
         workspaceId: workspace.id,
         paymentHash: 'hash_latest',
