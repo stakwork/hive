@@ -92,7 +92,12 @@ tackled in a follow-up effort.
     the caller can no longer name arbitrary @-aliases. Integration
     tests for `/invite` were updated to enrol each test invitee as a
     workspace member.
-  - Remaining Phase B items (#12, #19–24) — not started.
+  - **Agent logs #12 — DONE** on `ef/idor-fixes-2`. agent-logs GET
+    now requires `canRead` membership on the `workspace_id` query
+    param before the `db.agentLog.findMany` and the per-log
+    `fetchBlobContent` search loop. Unit test updated to stub
+    `@/services/workspace`.
+  - Remaining Phase B items (#19–24) — not started.
 - **Phase C (Medium #26–30)** — not started.
 - **Phase D (shared-secret S1–S3)** — not started.
 - **"also" items** (public-viewer 7-day → 1-hour presigned URLs;
@@ -370,6 +375,12 @@ proof-of-exploit, and suggested fix.
   contents for any workspace.
 - **Fix**: `validateWorkspaceAccessById(workspaceId, userId)` with
   `canRead` before the query.
+- **Status**: ✅ Fixed on `ef/idor-fixes-2`. `canRead` membership
+  check now runs immediately after the `workspace_id` validation and
+  before both the `findMany` and the `fetchBlobContent` loop.
+  Returns unified 404. The existing unit test was updated to stub
+  `@/services/workspace` so it stays focused on the pagination and
+  keyword-search paths it actually covers.
 
 #### 13. `src/app/api/swarm/stakgraph/ingest/route.ts` — POST, GET
 - **Bug**: loads swarm by `workspaceId` with no membership check; POST
@@ -623,7 +634,8 @@ require session auth + workspace admin.
    - Tests cluster (#17–18) ✅ on `ef/idor-fixes-2`.
    - Upload (#25) ✅ on `ef/idor-fixes-2`.
    - Misc (#6, #7) ✅ on `ef/idor-fixes-2`.
-   - Remaining (#12, #19–24) still open.
+   - Agent logs (#12) ✅ on `ef/idor-fixes-2`.
+   - Remaining (#19–24) still open.
 3. **Phase C — medium (#26–30)**: one cleanup PR.
 4. **Phase D — shared-secret endpoints (S1–S3)**: design work on
    per-resource tokens, then migrate webhooks to the new scheme.
