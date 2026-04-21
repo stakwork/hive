@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
 import type { SphinxConfig } from "@/lib/sphinx/daily-pr-summary";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,11 @@ export async function POST(
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) {
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     const { featureId } = await params;
@@ -60,10 +66,27 @@ export async function POST(
     });
 
     if (!feature) {
-      return NextResponse.json({ error: "Feature not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
 
     const workspace = feature.workspace;
+
+    // IDOR guard: before this check any signed-in user could broadcast
+    // attacker-controlled invite messages into the victim workspace's
+    // Sphinx channel using the victim's bot credentials, naming
+    // arbitrary users as invitees. Require an active workspace member
+    // with `canWrite` before decrypting `sphinxBotSecret` or calling
+    // `sendToSphinx`.
+    const access = await validateWorkspaceAccessById(workspace.id, userId);
+    if (!access.hasAccess || !access.canWrite) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
+      );
+    }
 
     // Validate Sphinx config
     if (
@@ -78,20 +101,34 @@ export async function POST(
       );
     }
 
-    // Fetch all invitees in one query, then restore the caller's order
+    // Fetch all invitees in one query, then restore the caller's order.
+    // Also require each invitee to be an active member of this workspace
+    // (or the workspace owner) so the caller can't name arbitrary
+    // @-aliases into the Sphinx message.
     const inviteesRaw = await db.user.findMany({
-      where: { id: { in: ids } },
+      where: {
+        id: { in: ids },
+        OR: [
+          { ownedWorkspaces: { some: { id: workspace.id } } },
+          {
+            workspaceMembers: {
+              some: { workspaceId: workspace.id, leftAt: null },
+            },
+          },
+        ],
+      },
       select: { id: true, sphinxAlias: true },
     });
     const invitees = ids
       .map((id) => inviteesRaw.find((u) => u.id === id))
       .filter((u): u is NonNullable<typeof u> => u !== undefined);
 
-    // Validate that every requested invitee exists and has a Sphinx alias
+    // Validate that every requested invitee exists, is a workspace member,
+    // and has a Sphinx alias configured.
     const missingAlias = invitees.find((u) => !u.sphinxAlias);
     if (missingAlias || invitees.length < ids.length) {
       return NextResponse.json(
-        { error: "One or more invitees does not have a Sphinx alias configured" },
+        { error: "One or more invitees is not a workspace member or lacks a Sphinx alias" },
         { status: 400 }
       );
     }

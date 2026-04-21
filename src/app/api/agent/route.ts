@@ -417,6 +417,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const userId = (session.user as { id?: string })?.id;
+  if (!userId) {
+    return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+  }
+
   // 1a. Gate agent mode behind feature flag
   if (!canAccessServerFeature(FEATURE_FLAGS.TASK_AGENT_MODE)) {
     return NextResponse.json({ error: "Agent mode is not enabled" }, { status: 403 });
@@ -426,7 +431,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "taskId is required" }, { status: 400 });
   }
 
-  // 2. Load task and message count
+  // 2. Load task (with workspace membership) and message count
   const [task, messageCount] = await Promise.all([
     db.task.findUnique({
       where: { id: taskId },
@@ -438,6 +443,15 @@ export async function POST(request: NextRequest) {
         agentWebhookSecret: true,
         mode: true,
         model: true,
+        workspace: {
+          select: {
+            ownerId: true,
+            members: {
+              where: { userId, leftAt: null },
+              select: { userId: true },
+            },
+          },
+        },
       },
     }),
     db.chatMessage.count({
@@ -445,8 +459,15 @@ export async function POST(request: NextRequest) {
     }),
   ]);
 
-  if (!task) {
-    return NextResponse.json({ error: "Task not found" }, { status: 404 });
+  // IDOR guard: treat "task exists but caller is not a workspace member"
+  // identically to "task does not exist" so we don't leak task existence.
+  const isOwner = task?.workspace.ownerId === userId;
+  const isMember = (task?.workspace.members.length ?? 0) > 0;
+  if (!task || (!isOwner && !isMember)) {
+    return NextResponse.json(
+      { error: "Workspace not found or access denied" },
+      { status: 404 },
+    );
   }
 
   if (task.mode !== "agent") {

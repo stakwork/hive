@@ -7,6 +7,7 @@ import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
 import { checkStakgraphAvailability } from "@/services/swarm/stakgraph-actions";
 import { fetchStakgraphServices } from "@/services/swarm/stakgraph-services";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -55,6 +56,19 @@ export async function GET(request: NextRequest) {
 
     if (!swarm) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
+    }
+
+    // IDOR guard: a non-member could previously drive the services_agent
+    // against the victim's swarm using its decrypted swarmApiKey and
+    // overwrite agentRequestId / services / environmentVariables on the
+    // victim's swarm row. Authorize against the swarm's actual workspace,
+    // not the body-supplied workspaceId.
+    const access = await validateWorkspaceAccessById(swarm.workspaceId, session.user.id);
+    if (!access.hasAccess || !access.canWrite) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
 
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
