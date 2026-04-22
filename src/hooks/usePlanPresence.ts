@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { getPusherClient, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
@@ -23,6 +23,8 @@ interface UsePlanPresenceParams {
 
 interface UsePlanPresenceReturn {
   collaborators: CollaboratorInfo[];
+  typingUsers: string[];
+  sendTyping: (isTyping: boolean) => void;
 }
 
 /**
@@ -39,15 +41,29 @@ export function usePlanPresence({
 }: UsePlanPresenceParams): UsePlanPresenceReturn {
   const { data: session } = useSession();
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
+  const [typingUsers, setTypingUsers] = useState<{ userId: string; name: string }[]>([]);
   const hasSentJoin = useRef(false);
   const knownUserIds = useRef(new Set<string>());
+  // Stable ref so sendTyping never changes identity
+  const typingStateRef = useRef<{ featureId: string; userId: string | undefined; name: string | undefined }>({
+    featureId,
+    userId: undefined,
+    name: undefined,
+  });
+
+  // Derive a stable primitive for the dependency array
+  const userId = session?.user?.id;
 
   // Stable ref for session so the effect doesn't re-run on token refreshes
   const sessionRef = useRef(session);
   sessionRef.current = session;
 
-  // Derive a stable primitive for the dependency array
-  const userId = session?.user?.id;
+  // Keep typingStateRef in sync
+  typingStateRef.current = {
+    featureId,
+    userId,
+    name: session?.user?.name ?? undefined,
+  };
 
   useEffect(() => {
     if (!userId || !sessionRef.current?.user) return;
@@ -114,8 +130,22 @@ export function usePlanPresence({
         );
       };
 
+      const handleTypingStart = (data: { userId: string; name: string }) => {
+        if (data.userId === userId) return; // self-exclusion
+        setTypingUsers((prev) => {
+          if (prev.some((u) => u.userId === data.userId)) return prev;
+          return [...prev, { userId: data.userId, name: data.name }];
+        });
+      };
+
+      const handleTypingStop = (data: { userId: string }) => {
+        setTypingUsers((prev) => prev.filter((u) => u.userId !== data.userId));
+      };
+
       channel.bind(PUSHER_EVENTS.PLAN_USER_JOIN, handleUserJoin);
       channel.bind(PUSHER_EVENTS.PLAN_USER_LEAVE, handleUserLeave);
+      channel.bind(PUSHER_EVENTS.PLAN_TYPING_START, handleTypingStart);
+      channel.bind(PUSHER_EVENTS.PLAN_TYPING_STOP, handleTypingStop);
 
       sendJoin();
     } catch {
@@ -128,6 +158,8 @@ export function usePlanPresence({
         presenceUrl,
         new Blob([JSON.stringify({ type: "leave" })], { type: "application/json" }),
       );
+      // Clear typing state on leave
+      setTypingUsers([]);
     };
 
     window.addEventListener("beforeunload", sendLeaveBeacon);
@@ -145,5 +177,29 @@ export function usePlanPresence({
     };
   }, [featureId, userId]);
 
-  return { collaborators };
+  // Stable sendTyping function backed by a ref so it never triggers re-renders
+  const sendTyping = useCallback(
+    (isTyping: boolean) => {
+      const { featureId: fId, userId: uId, name } = typingStateRef.current;
+      if (!uId) return;
+      const firstName = (name ?? "").split(" ")[0] || name || "Someone";
+      fetch(`/api/features/${fId}/presence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          isTyping
+            ? { type: "typing-start", name: firstName }
+            : { type: "typing-stop" }
+        ),
+      }).catch(() => {});
+    },
+    [] // intentionally empty — reads via ref
+  );
+
+  const typingUserNames = useMemo(
+    () => typingUsers.map((u) => u.name),
+    [typingUsers]
+  );
+
+  return { collaborators, typingUsers: typingUserNames, sendTyping };
 }

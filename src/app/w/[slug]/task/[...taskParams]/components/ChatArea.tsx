@@ -15,6 +15,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, FlaskConical, Loader2, Monitor, Pencil, Server, ServerOff, UserPlus } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
+import { TypingIndicator } from "@/components/chat/TypingIndicator";
 import { ChatInput } from "./ChatInput";
 import type { StreamContext } from "./WorkflowStatusBadge";
 import { ChatMessage } from "./ChatMessage";
@@ -62,6 +63,9 @@ interface ChatAreaProps {
   onModelChange?: (m: string) => void;
   llmModels?: { id: string; name: string; provider: string; providerLabel: string | null; isPlanDefault: boolean; isTaskDefault: boolean }[];
   hasMessages?: boolean;
+  typingUsers?: string[];
+  onTypingStart?: () => void;
+  onTypingStop?: () => void;
 }
 
 export function ChatArea({
@@ -106,6 +110,9 @@ export function ChatArea({
   onModelChange,
   llmModels,
   hasMessages,
+  typingUsers,
+  onTypingStart,
+  onTypingStop,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -383,6 +390,9 @@ export function ChatArea({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Typing Indicator */}
+      <TypingIndicator typingUsers={typingUsers ?? []} />
+
       {/* Input Bar */}
       <ChatInput
         onSend={onSend}
@@ -410,6 +420,8 @@ export function ChatArea({
         onModelChange={onModelChange}
         llmModels={llmModels}
         hasMessages={hasMessages}
+        onTypingStart={onTypingStart}
+        onTypingStop={onTypingStop}
       />
 
       {onReleasePod && (
