@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
+import { readCanvas, writeCanvas } from "@/lib/canvas";
 
-const EMPTY_CANVAS = { nodes: [], edges: [] } as const;
-
-/** Refs are user-chosen opaque strings; we just refuse the root sentinel. */
-function validateRef(ref: string): ref is string {
+/** Refs are user-chosen opaque strings; we refuse empty + over-long. */
+function validateRef(ref: string): boolean {
   return typeof ref === "string" && ref.length > 0 && ref.length <= 512;
 }
 
-function validateCanvasData(value: unknown): value is Record<string, unknown> {
+function validateCanvasData(value: unknown): value is {
+  nodes?: unknown[];
+  edges?: unknown[];
+} {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   if (v.nodes != null && !Array.isArray(v.nodes)) return false;
@@ -25,10 +26,10 @@ async function findOrg(githubLogin: string) {
   });
 }
 
-/** Fetch (or lazily create) a sub-canvas addressed by `ref`. */
+/** Fetch a merged sub-canvas (authored blob + live projection). */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ githubLogin: string; ref: string }> }
+  { params }: { params: Promise<{ githubLogin: string; ref: string }> },
 ) {
   const context = getMiddlewareContext(request);
   const userOrResponse = requireAuth(context);
@@ -46,26 +47,18 @@ export async function GET(
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
-    // Upsert on GET so first-time drill-down always resolves, even before the
-    // user has edited the sub-canvas. Callers can tell "empty but exists"
-    // from "never created" by inspecting `data.nodes`.
-    const canvas = await db.canvas.upsert({
-      where: { orgId_ref: { orgId: org.id, ref } },
-      update: {},
-      create: { orgId: org.id, ref, data: EMPTY_CANVAS },
-    });
-
-    return NextResponse.json({ data: canvas.data, updatedAt: canvas.updatedAt });
+    const data = await readCanvas(org.id, ref);
+    return NextResponse.json({ data });
   } catch (error) {
     console.error("[GET /api/orgs/[githubLogin]/canvas/[ref]] Error:", error);
     return NextResponse.json({ error: "Failed to fetch canvas" }, { status: 500 });
   }
 }
 
-/** Replace a sub-canvas document. */
+/** Replace a sub-canvas. Splitter strips live-node identity fields. */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ githubLogin: string; ref: string }> }
+  { params }: { params: Promise<{ githubLogin: string; ref: string }> },
 ) {
   const context = getMiddlewareContext(request);
   const userOrResponse = requireAuth(context);
@@ -89,14 +82,12 @@ export async function PUT(
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const jsonData = data as Prisma.InputJsonValue;
-    const saved = await db.canvas.upsert({
-      where: { orgId_ref: { orgId: org.id, ref } },
-      update: { data: jsonData },
-      create: { orgId: org.id, ref, data: jsonData },
+    await writeCanvas(org.id, ref, {
+      nodes: (data.nodes ?? []) as never,
+      edges: (data.edges ?? []) as never,
     });
-
-    return NextResponse.json({ data: saved.data, updatedAt: saved.updatedAt });
+    const merged = await readCanvas(org.id, ref);
+    return NextResponse.json({ data: merged });
   } catch (error) {
     console.error("[PUT /api/orgs/[githubLogin]/canvas/[ref]] Error:", error);
     return NextResponse.json({ error: "Failed to save canvas" }, { status: 500 });
