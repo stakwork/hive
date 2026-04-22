@@ -51,7 +51,7 @@ import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSe
 import { PromptsPanel } from "@/components/prompts";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
+import { VALID_MODELS, getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRepoBranches } from "@/hooks/useRepoBranches";
 
@@ -65,7 +65,7 @@ interface PendingImage {
 }
 
 interface TaskStartInputProps {
-  onStart: (task: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string, runBuild?: boolean, runTestSuite?: boolean) => void;
+  onStart: (task: string, model?: string, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string, runBuild?: boolean, runTestSuite?: boolean) => void;
   taskMode: string;
   onModeChange: (mode: string) => void;
   isLoading?: boolean;
@@ -81,8 +81,9 @@ interface TaskStartInputProps {
   // Project debugger props
   onProjectSelect?: (projectId: string, projectData: any) => void;
   // Model selection for agent mode
-  selectedModel?: ModelName;
-  onModelChange?: (model: ModelName) => void;
+  selectedModel?: string;
+  onModelChange?: (model: string) => void;
+  llmModels?: LlmModelOption[];
 }
 
 export function TaskStartInput({
@@ -101,6 +102,7 @@ export function TaskStartInput({
   onProjectSelect,
   selectedModel = "sonnet",
   onModelChange,
+  llmModels,
 }: TaskStartInputProps) {
   const searchParams = useSearchParams();
   const { workspace } = useWorkspace();
@@ -831,7 +833,7 @@ export function TaskStartInput({
                 </Select>
               )}
               {taskMode === "agent" && onModelChange && (
-                <Select value={selectedModel} onValueChange={(value) => onModelChange(value as ModelName)}>
+                <Select value={selectedModel} onValueChange={(value) => onModelChange(value)}>
                   <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm">
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-4 w-4" />
@@ -839,13 +841,21 @@ export function TaskStartInput({
                     </div>
                   </SelectTrigger>
                   <SelectContent>
-                    {VALID_MODELS.map((model) => (
-                      <SelectItem key={model} value={model}>
+                    {(llmModels && llmModels.length > 0 ? llmModels : []).map((m) => (
+                      <SelectItem key={m.id} value={getModelValue(m)}>
                         <div className="flex items-center gap-2">
-                          <span>{model}</span>
+                          <span>{m.name}</span>
                         </div>
                       </SelectItem>
                     ))}
+                    {(!llmModels || llmModels.length === 0) &&
+                      VALID_MODELS.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          <div className="flex items-center gap-2">
+                            <span>{model}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               )}

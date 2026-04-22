@@ -64,7 +64,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
-import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
+import { isValidModel, getApiKeyForModel } from "@/lib/ai/models";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodById } from "@/lib/pods";
 
@@ -325,7 +325,7 @@ async function createAgentSession(
   agentPassword: string | null,
   taskId: string,
   webhookUrl: string,
-  effectiveModel: ModelName | undefined,
+  effectiveModel: string | undefined,
 ): Promise<string> {
   const sessionUrl = agentUrl.replace(/\/$/, "") + "/session";
 
@@ -409,7 +409,7 @@ export async function POST(request: NextRequest) {
   const { message, taskId, artifacts = [], model } = body;
 
   // Validate model parameter if provided
-  const requestModel: ModelName | undefined = isValidModel(model) ? model : undefined;
+  const requestModel: string | undefined = isValidModel(model) ? model : undefined;
 
   // 1. Authenticate user
   const session = await getServerSession(authOptions);
@@ -475,8 +475,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Determine effective model: request > task > default
-  const taskModel: ModelName | undefined = isValidModel(task.model) ? task.model : undefined;
-  const effectiveModel: ModelName | undefined = requestModel || taskModel;
+  const taskModel: string | undefined = isValidModel(task.model) ? task.model : undefined;
+  const effectiveModel: string | undefined = requestModel || taskModel;
 
   // 3. Ensure pod is available (claim if needed)
   let agentCredentials: AgentCredentials;
