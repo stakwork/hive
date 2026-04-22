@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { WebhookService } from "@/services/github/WebhookService";
 import { getServiceConfig } from "@/config/services";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,25 @@ export async function POST(request: NextRequest) {
             "Missing required fields: workspaceId and repositoryUrl or repositoryId",
         },
         { status: 400 },
+      );
+    }
+
+    // IDOR hardening: verify the caller is a writer on the workspace
+    // BEFORE touching the repository or minting/storing a webhook secret.
+    // Without this, a signed-in non-member could overwrite a victim
+    // workspace's githubWebhookId / githubWebhookSecret and then forge
+    // webhook callbacks under the new attacker-known secret.
+    const access = await validateWorkspaceAccessById(
+      workspaceId,
+      session.user.id as string,
+    );
+    if (!access.hasAccess || !access.canWrite) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Workspace not found or access denied",
+        },
+        { status: 404 },
       );
     }
 
