@@ -1468,3 +1468,33 @@ export async function getUserOrganizations(userId: string): Promise<OrgResponse[
     type: org.type as 'ORG' | 'USER',
   }));
 }
+
+/**
+ * Returns true when the user owns or is an active member of at least one
+ * non-deleted workspace that belongs to the given SourceControlOrg.
+ * Accepts either the org's `githubLogin` (string) or its database `id`.
+ */
+export async function validateUserBelongsToOrg(
+  orgIdentifier: string,
+  userId: string,
+  identifierType: "githubLogin" | "id" = "githubLogin",
+): Promise<boolean> {
+  const orgWhere =
+    identifierType === "id"
+      ? { id: orgIdentifier }
+      : { githubLogin: orgIdentifier };
+
+  const workspace = await db.workspace.findFirst({
+    where: {
+      deleted: false,
+      sourceControlOrg: orgWhere,
+      OR: [
+        { ownerId: userId },
+        { members: { some: { userId, leftAt: null } } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  return workspace !== null;
+}
