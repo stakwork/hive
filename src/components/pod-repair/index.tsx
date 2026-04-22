@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
@@ -58,6 +59,9 @@ export function PodRepairSection() {
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
   const [savingDescription, setSavingDescription] = useState(false);
+  const [repairAgentDisabled, setRepairAgentDisabled] = useState(false);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
 
   const isPoolActive = workspace?.poolState === "COMPLETE";
   const canTrigger = isOwner || isAdmin;
@@ -83,10 +87,17 @@ export function PodRepairSection() {
   }, [workspaceId]);
 
   useEffect(() => {
-    if (isPoolActive) {
-      fetchRuns();
-    }
-  }, [isPoolActive, fetchRuns]);
+    if (!isPoolActive || !slug) return;
+    fetchRuns();
+    setConfigLoading(true);
+    fetch(`/api/w/${slug}/pool/repair/config`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.config) setRepairAgentDisabled(data.config.repairAgentDisabled);
+      })
+      .catch(() => {/* silently fail */})
+      .finally(() => setConfigLoading(false));
+  }, [isPoolActive, fetchRuns, slug]);
 
   const handleTriggerRepair = async () => {
     if (!slug) return;
@@ -123,6 +134,29 @@ export function PodRepairSection() {
     }
   };
 
+  const handleToggleRepairAgent = async () => {
+    if (!slug) return;
+    setSavingConfig(true);
+    try {
+      const res = await fetch(`/api/w/${slug}/pool/repair/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repairAgentDisabled: !repairAgentDisabled }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRepairAgentDisabled(data.config.repairAgentDisabled);
+        toast.success(data.config.repairAgentDisabled ? "Auto-repair disabled" : "Auto-repair enabled");
+      } else {
+        toast.error("Failed to update setting");
+      }
+    } catch {
+      toast.error("Failed to update setting");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   const handleStartEditDescription = () => {
     setDescriptionDraft(formData.description || "");
     setEditingDescription(true);
@@ -154,11 +188,23 @@ export function PodRepairSection() {
             <p className="text-sm font-medium">Pod Agent</p>
             <PodStateInline state={podState} repoCount={repoCount} />
           </div>
-          {canTrigger && !showPrompt && (
-            <Button size="sm" variant="outline" onClick={() => setShowPrompt(true)}>
-              <Play className="h-3.5 w-3.5 mr-1.5" />
-              Repair
-            </Button>
+          {canTrigger && (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Auto-repair</span>
+                <Switch
+                  checked={!repairAgentDisabled}
+                  onCheckedChange={handleToggleRepairAgent}
+                  disabled={savingConfig || configLoading}
+                />
+              </div>
+              {!showPrompt && (
+                <Button size="sm" variant="outline" onClick={() => setShowPrompt(true)}>
+                  <Play className="h-3.5 w-3.5 mr-1.5" />
+                  Repair
+                </Button>
+              )}
+            </div>
           )}
         </div>
 
