@@ -213,7 +213,7 @@ describe("POST /api/pool-manager/create-pool", () => {
       expect(data.pool).toEqual(mockPool);
     });
 
-    test("allows workspace member to create pool", async () => {
+    test("denies workspace member (DEVELOPER role) from creating pool — requires ADMIN or OWNER", async () => {
       const member = await createTestUser({ email: "member@test.com" });
       await db.workspaceMember.create({
         data: {
@@ -225,20 +225,6 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(member));
 
-      const mockPool = {
-        id: "pool-456",
-        name: swarm.id,
-        status: "active" as const,
-        owner_id: member.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      mockPoolManagerService.mockReturnValue({
-        createPool: vi.fn().mockResolvedValue(mockPool),
-        updateApiKey: vi.fn(),
-      } as any);
-
       const request = createPostRequest(
         "http://localhost/api/pool-manager/create-pool",
         {
@@ -248,8 +234,7 @@ describe("POST /api/pool-manager/create-pool", () => {
       );
       const response = await POST(request);
 
-      const data = await expectSuccess(response, 201);
-      expect(data.pool).toEqual(mockPool);
+      await expectNotFound(response, "Workspace not found or access denied");
     });
   });
 
