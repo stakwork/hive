@@ -35,18 +35,11 @@ const STATUS = {
 } as const;
 
 const ACCENT = {
-  objective: "#a78bfa",
   note: "#f59e0b",
   decision: "#a78bfa",
   // Teal/cyan reads as "infrastructure / container" — distinct from the
   // purple objective, amber note, and status greens/ambers/reds.
   workspace: "#22d3ee",
-} as const;
-
-// Blue -> violet gradient used for the objective title.
-const OBJECTIVE_GRADIENT = {
-  from: "#60a5fa", // sky-400
-  to: "#818cf8", // indigo-400
 } as const;
 
 const LABEL_FONT =
@@ -61,8 +54,6 @@ const MONO_FONT =
 const CARD_W = 240;
 const CARD_H = 104;
 const SMALL_W = 220;
-const OBJECTIVE_W = 340;
-const OBJECTIVE_H = 116;
 
 const baseCard = {
   fill: SURFACE,
@@ -147,142 +138,120 @@ function renderMetricsFooter(
   );
 }
 
-const statusToolbar = [
+// ---------------------------------------------------------------------------
+// Status (as customData on objective)
+// ---------------------------------------------------------------------------
+//
+// "Status" is a *property of an objective*, not a node type. It lives in
+// `customData.status` on an `objective` node and drives the pill label,
+// pill color, progress-bar tint, and top-edge accent. The toolbar on the
+// objective category lets the user flip between OK / ATTN / RISK without
+// changing the node's category.
+
+type StatusKey = keyof typeof STATUS;
+const STATUS_LABELS: Record<StatusKey, string> = {
+  ok: "OK",
+  attn: "ATTN",
+  risk: "RISK",
+};
+
+/** Read `customData.status`, falling back to `ok`. Unknown values also clamp to `ok`. */
+function getStatus(node: CanvasNode): StatusKey {
+  const raw = node.customData?.status;
+  if (raw === "ok" || raw === "attn" || raw === "risk") return raw;
+  return "ok";
+}
+
+function statusColor(node: CanvasNode): string {
+  return STATUS[getStatus(node)];
+}
+
+function statusLabel(node: CanvasNode): string {
+  return STATUS_LABELS[getStatus(node)];
+}
+
+/**
+ * Toolbar group for the objective node: a three-swatch picker that
+ * writes BOTH `customData.status` (the semantic keyword the agent
+ * reads/writes) AND `node.color` (the hex that drives the library's
+ * resolver, which colors the border + derived fill).
+ *
+ * `patch` is a function so we can shallow-merge into the existing
+ * customData — the library's `updateNode` replaces `customData`
+ * wholesale if you hand it a static object.
+ */
+const objectiveStatusToolbar = [
   {
     id: "status",
     label: "Status",
     kind: "swatches" as const,
-    actions: [
-      {
-        id: "status-ok",
-        label: "OK",
-        swatch: STATUS.ok,
-        patch: { category: "status-ok" },
-        isActive: (n: CanvasNode) => n.category === "status-ok",
-      },
-      {
-        id: "status-attn",
-        label: "Attention",
-        swatch: STATUS.attn,
-        patch: { category: "status-attn" },
-        isActive: (n: CanvasNode) => n.category === "status-attn",
-      },
-      {
-        id: "status-risk",
-        label: "Risk",
-        swatch: STATUS.risk,
-        patch: { category: "status-risk" },
-        isActive: (n: CanvasNode) => n.category === "status-risk",
-      },
-    ],
+    actions: (["ok", "attn", "risk"] as const).map((s) => ({
+      id: `status-${s}`,
+      label: STATUS_LABELS[s],
+      swatch: STATUS[s],
+      patch: (n: CanvasNode) => ({
+        color: STATUS[s],
+        customData: { ...(n.customData ?? {}), status: s },
+      }),
+      isActive: (n: CanvasNode) => getStatus(n) === s,
+    })),
   },
 ];
 
-function statusCategory(
-  status: keyof typeof STATUS,
-  label: string,
-): CategoryDefinition {
-  const color = STATUS[status];
-  return {
-    ...baseCard,
-    // The category's stroke IS the status color — slots inherit from it.
-    stroke: color,
-    defaultWidth: CARD_W,
-    defaultHeight: CARD_H,
-    type: "text",
-    toolbar: statusToolbar,
-    slots: {
-      topEdge: { kind: "color", extent: "full" },
-      bodyTop: {
-        kind: "progress",
-        value: (ctx: SlotContext) =>
-          parsePercent(ctx.node.customData?.primary),
-      },
-      topRight: { kind: "pill", value: label },
-      topRightOuter: {
-        kind: "count",
-        value: (ctx: SlotContext) =>
-          (ctx.node.customData?.count as number | undefined) ?? 0,
-      },
-      footer: {
-        kind: "custom",
-        render: (ctx: SlotContext) =>
-          renderMetricsFooter(ctx, ctx.node.resolvedStroke),
-      },
-    },
-  } as CategoryDefinition;
-}
-
 // ---------------------------------------------------------------------------
-// Objective (gradient title) card
+// Objective card
 // ---------------------------------------------------------------------------
 
-function renderObjectiveBody(ctx: SlotContext): React.ReactNode {
-  const { region, node, theme } = ctx;
-  const raw = node.text ?? "";
-  const lines = raw.split("\n").filter(Boolean);
-  if (lines.length === 0) return null;
-
-  const fs = Math.round(theme.node.fontSize * 1.35);
-  const lineHeight = fs + 4;
-  const font = theme.node.labelFont ?? theme.node.fontFamily;
-  const baseY = region.y + fs;
-  const gradId = `sc-objective-grad-${node.id}`;
-
-  return createElement(
-    "g",
-    { pointerEvents: "none" },
-    createElement(
-      "defs",
-      null,
-      createElement(
-        "linearGradient",
-        { id: gradId, x1: "0", y1: "0", x2: "1", y2: "0" },
-        createElement("stop", {
-          offset: "0%",
-          stopColor: OBJECTIVE_GRADIENT.from,
-        }),
-        createElement("stop", {
-          offset: "100%",
-          stopColor: OBJECTIVE_GRADIENT.to,
-        }),
-      ),
-    ),
-    ...lines.map((line, i) =>
-      createElement(
-        "text",
-        {
-          key: i,
-          x: region.x,
-          y: baseY + i * lineHeight,
-          fill: `url(#${gradId})`,
-          fontSize: fs,
-          fontWeight: 600,
-          fontFamily: font,
-          pointerEvents: "none",
-        },
-        line,
-      ),
-    ),
-  );
-}
-
+/**
+ * The one initiative card. An objective carries:
+ *   - `text` — the card title, rendered by the library's default label
+ *     renderer (no custom body).
+ *   - `customData.status` → pill label (OK/ATTN/RISK). The toolbar that
+ *     sets status ALSO sets `node.color` to the matching hex, so the
+ *     resolver colors the border + derived fill automatically — every
+ *     slot that defaults to `node.resolvedStroke` (topEdge, pill,
+ *     progress, count) follows along for free.
+ *   - `customData.primary`   → progress bar + first footer metric.
+ *   - `customData.secondary` → second footer metric (e.g. "4 blockers").
+ *   - `customData.count`     → blocker-count badge (top-right notch).
+ *
+ * Default category `stroke` is the "ok" green so a brand-new objective
+ * (before any status has been set) reads as on-track and the node still
+ * has a visible border.
+ */
 const objectiveCategory: CategoryDefinition = {
   ...baseCard,
-  defaultWidth: OBJECTIVE_W,
-  defaultHeight: OBJECTIVE_H,
-  stroke: "rgba(167, 139, 250, 0.35)",
-  fill: "rgba(167, 139, 250, 0.05)",
+  defaultWidth: CARD_W,
+  defaultHeight: CARD_H,
+  stroke: STATUS.ok,
   type: "text",
+  toolbar: objectiveStatusToolbar,
+  // Seed new objectives so they start life in a coherent "OK / on
+  // track" state that lines up with the default category stroke above.
+  defaultCustomData: { status: "ok" },
   slots: {
-    header: {
-      kind: "text",
-      value: "OBJECTIVE",
-      color: ACCENT.objective,
+    // All slots below omit `color` on purpose — they inherit
+    // `node.resolvedStroke`, which is driven by `node.color` (set by
+    // the status toolbar). Change the status once → everything recolors.
+    topEdge: { kind: "color", extent: "full" },
+    bodyTop: {
+      kind: "progress",
+      value: (ctx: SlotContext) =>
+        parsePercent(ctx.node.customData?.primary),
     },
-    body: {
+    topRight: {
+      kind: "pill",
+      value: (ctx: SlotContext) => statusLabel(ctx.node),
+    },
+    topRightOuter: {
+      kind: "count",
+      value: (ctx: SlotContext) =>
+        (ctx.node.customData?.count as number | undefined) ?? 0,
+    },
+    footer: {
       kind: "custom",
-      render: (ctx: SlotContext) => renderObjectiveBody(ctx),
+      render: (ctx: SlotContext) =>
+        renderMetricsFooter(ctx, ctx.node.resolvedStroke),
     },
   },
 } as CategoryDefinition;
@@ -335,9 +304,6 @@ const workspaceCategory: CategoryDefinition = {
 const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
   workspace: workspaceCategory,
   objective: objectiveCategory,
-  "status-ok": statusCategory("ok", "OK"),
-  "status-attn": statusCategory("attn", "ATTN"),
-  "status-risk": statusCategory("risk", "RISK"),
   note: accentNote(ACCENT.note, "NOTE"),
   decision: accentNote(ACCENT.decision, "DECISION"),
 };

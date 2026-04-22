@@ -52,10 +52,17 @@ export interface CategorySpec {
 // ---------------------------------------------------------------------------
 
 /**
- * All three `status-*` categories expose the same customData contract,
- * so we factor it out. Keeps the registry below scannable.
+ * `customData` keys used by the `objective` category. Status is part of
+ * objective, not a separate category — the user switches it via a swatch
+ * toolbar on the node and the renderer reads `customData.status` to
+ * color the pill, top-edge, and progress bar.
  */
-const STATUS_CUSTOM_DATA: CategoryCustomDataKey[] = [
+const OBJECTIVE_CUSTOM_DATA: CategoryCustomDataKey[] = [
+  {
+    key: "status",
+    description:
+      'one of `"ok"` | `"attn"` | `"risk"`. Drives the border color, status pill (OK/ATTN/RISK), top-edge strip, and progress-bar tint. Defaults to `"ok"` (green).',
+  },
   {
     key: "primary",
     description:
@@ -90,24 +97,11 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
   },
   {
     id: "objective",
-    agentDescription: "top-level goal with a gradient title",
+    agentDescription:
+      "an initiative / objective — card with a title, progress bar, status pill (OK / ATTN / RISK), and optional blocker count",
     promptGuidance:
-      "Multi-line `text` renders with a gradient (use `\\n` to split lines). Usually one per workspace, or one shared org-wide north-star.",
-  },
-  {
-    id: "status-ok",
-    agentDescription: "initiative card, on-track (green pill)",
-    customDataKeys: STATUS_CUSTOM_DATA,
-  },
-  {
-    id: "status-attn",
-    agentDescription: "initiative card, needs attention (amber pill)",
-    customDataKeys: STATUS_CUSTOM_DATA,
-  },
-  {
-    id: "status-risk",
-    agentDescription: "initiative card, at risk (red pill)",
-    customDataKeys: STATUS_CUSTOM_DATA,
+      'Set `customData.status` to `"ok"` | `"attn"` | `"risk"` to color the border, top-edge strip, progress bar, and pill. Defaults to `"ok"` (green). Use this category for both top-level north-stars and the active initiatives beneath them.',
+    customDataKeys: OBJECTIVE_CUSTOM_DATA,
   },
   {
     id: "note",

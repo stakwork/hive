@@ -131,13 +131,18 @@ const CATEGORY_DESCRIPTION = buildCategoryDescription();
 
 const customDataSchema = z
   .object({
-    /** Progress percent for status cards, e.g. "38%" or 0.38. */
+    /**
+     * Objective status — drives the pill (OK/ATTN/RISK), top-edge accent,
+     * and progress-bar tint. Defaults to "ok" when omitted.
+     */
+    status: z.enum(["ok", "attn", "risk"]).optional(),
+    /** Progress percent, e.g. "38%" or 0.38. Used by `objective`. */
     primary: z.union([z.string(), z.number()]).optional(),
-    /** Footer text for status cards, e.g. "4 blockers" or "6 ppl". */
+    /** Footer text, e.g. "4 blockers" or "6 ppl". Used by `objective`. */
     secondary: z.string().optional(),
     /** When true, `secondary` is rendered in the status color (red/amber). */
     secondaryAccent: z.boolean().optional(),
-    /** Blocker-tab badge number on status cards. */
+    /** Blocker-tab badge number. Used by `objective`. */
     count: z.number().int().nonnegative().optional(),
   })
   .passthrough()

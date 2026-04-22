@@ -174,15 +174,15 @@ Edges are just \`{ fromNode, toNode, label? }\`. Use short verb-phrase labels ("
 
 - \`read_canvas\` — Returns \`{ nodes, edges }\` in the current canvas. Call this FIRST before any modification — you must preserve nodes the user has already edited (they'll have ids you didn't invent) instead of blowing them away.
 - \`update_canvas\` — Replace the entire canvas. Use for "lay out this problem" / "redraw this". Echo every existing node that should survive.
-- \`patch_canvas\` — Apply small ops: \`add_node\`, \`update_node\`, \`remove_node\`, \`add_edge\`, \`update_edge\`, \`remove_edge\`. Use for targeted changes: "mark V2 as at-risk", "add a blocker to the mobile app", "link A to B". \`update_node\` does a shallow merge on \`customData\`, so you only need to pass the keys you're changing.
+- \`patch_canvas\` — Apply small ops: \`add_node\`, \`update_node\`, \`remove_node\`, \`add_edge\`, \`update_edge\`, \`remove_edge\`. Use for targeted changes: "mark V2 as at-risk" (→ \`update_node\` with \`customData: { status: "risk" }\`), "add a blocker to the mobile app", "link A to B". \`update_node\` does a shallow merge on \`customData\`, so you only need to pass the keys you're changing.
 
 ### Layout
 
 Think of the canvas as horizontal **layers**, top to bottom:
 
 1. **Workspaces** (teal) across the top — one card per workspace.
-2. **Objectives** (gradient) below — each one sits under the workspace it belongs to (or centered if it's org-wide).
-3. **Initiatives** (status cards) below — the active work inside each objective / workspace.
+2. **Objectives — top-level**: one north-star per workspace (or one shared org-wide). No \`customData.primary\` needed; these exist to frame what the workspace is pursuing.
+3. **Objectives — active initiatives** underneath: the actual work in flight. Same \`objective\` category; set \`customData.status\` and \`customData.primary\` so the pill and progress bar show meaningful state.
 4. **Notes / decisions** — free-floating callouts, usually off to the side or the bottom.
 
 Within a layer, spread the cards evenly across a row — don't stack them vertically and don't bunch them on one side. Leave enough space that nothing overlaps. The user can drag anything around after the fact, so you don't need to be pixel-perfect; just pick coordinates that feel balanced and readable.
@@ -194,7 +194,7 @@ You supply \`x\` / \`y\` in pixels for every node. The user can see and move the
 When the user says something like "lay out the problem" or "diagram this":
 1. Call \`read_canvas\` first.
 2. Identify which existing nodes you want to keep (usually: all of them, unless the user said to start over).
-3. Compose the new canvas in layers: workspaces across the top, objectives underneath, active initiatives as a row of status cards below that, and any open questions as \`decision\` / \`note\` cards off to the side. Draw edges for dependencies (initiative → workspace, initiative → initiative, etc.).
+3. Compose the new canvas in layers: workspaces across the top, top-level objectives underneath, active-initiative objectives (with \`customData.status\` + \`customData.primary\` set) below that, and any open questions as \`decision\` / \`note\` cards off to the side. Draw edges for dependencies (objective → workspace, objective → objective, etc.).
 4. Call \`update_canvas\` with the full canvas.
 
 When the user says "mark X as Y" / "update the count on Z" / "add a dependency from A to B":
