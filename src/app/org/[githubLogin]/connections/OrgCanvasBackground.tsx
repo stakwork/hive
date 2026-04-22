@@ -79,11 +79,18 @@ interface OrgCanvasBackgroundProps {
    * Connections sidebar.
    */
   rightInset?: number;
+  /**
+   * Label for the root breadcrumb. We prefer the org's display name so
+   * users see "Acme" rather than the generic "Canvas"; falls back to
+   * the `githubLogin` when no name is set.
+   */
+  orgName?: string | null;
 }
 
 export function OrgCanvasBackground({
   githubLogin,
   rightInset = 0,
+  orgName,
 }: OrgCanvasBackgroundProps) {
   const [root, setRoot] = useState<CanvasData | null>(null);
   const [subCanvases, setSubCanvases] = useState<Record<string, CanvasData>>({});
@@ -192,15 +199,33 @@ export function OrgCanvasBackground({
 
     const handleCanvasUpdated = (payload: { ref?: string | null }) => {
       console.log("[OrgCanvasBackground] CANVAS_UPDATED received", payload);
-      // Only root-canvas events are handled today; sub-canvas payloads
-      // carry a non-null `ref` and we ignore them for now.
-      if (payload?.ref) return;
+      // Don't clobber unsaved local edits — our autosave flush will
+      // propagate them shortly. On collision, last-write-wins.
       if (dirtyRef.current.size > 0) return;
-      fetchRoot(githubLogin)
-        .then((data) => setRoot(data))
+
+      const ref = payload?.ref ?? null;
+      if (!ref) {
+        fetchRoot(githubLogin)
+          .then((data) => setRoot(data))
+          .catch((err) => {
+            console.error(
+              "[OrgCanvasBackground] refetch root after CANVAS_UPDATED failed",
+              err,
+            );
+          });
+        return;
+      }
+      // Only refetch sub-canvases we've actually opened. The cache is
+      // keyed by ref; if the user hasn't drilled in, there's nothing to
+      // update and the next `onResolveCanvas` will fetch fresh anyway.
+      if (!subCanvasesRef.current[ref]) return;
+      fetchSub(githubLogin, ref)
+        .then((data) => {
+          setSubCanvases((prev) => ({ ...prev, [ref]: data }));
+        })
         .catch((err) => {
           console.error(
-            "[OrgCanvasBackground] refetch after CANVAS_UPDATED failed",
+            "[OrgCanvasBackground] refetch sub after CANVAS_UPDATED failed",
             err,
           );
         });
@@ -367,7 +392,7 @@ export function OrgCanvasBackground({
           onEdgeUpdate={handleEdgeUpdate}
           onEdgeDelete={handleEdgeDelete}
           renderAddNodeButton={renderAddNodeButton}
-          rootLabel="Canvas"
+          rootLabel={orgName || githubLogin}
         />
       </div>
     </>
