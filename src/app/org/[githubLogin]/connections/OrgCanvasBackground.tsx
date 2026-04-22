@@ -18,6 +18,7 @@ import {
   type NodeUpdate,
 } from "system-canvas-react";
 import { connectionsTheme } from "./canvas-theme";
+import { getOrgChannelName, getPusherClient, PUSHER_EVENTS } from "@/lib/pusher";
 
 /**
  * Full-screen interactive system-canvas background for the Connections page.
@@ -157,6 +158,44 @@ export function OrgCanvasBackground({
         // fetch() still sends the request.
         void saveCanvas(githubLogin, ref, data);
       }
+    };
+  }, [githubLogin]);
+
+  // Listen for agent-driven canvas updates. When the AI agent (or any
+  // other tab / user) rewrites the canvas through `update_canvas` /
+  // `patch_canvas`, the server emits `CANVAS_UPDATED` on the org channel
+  // so every open viewer refetches and re-renders.
+  //
+  // Important: we skip the refetch if we have unsaved local edits
+  // pending — the user's in-flight changes would be silently clobbered
+  // by a read of stale remote state. The autosave flush will propagate
+  // our edits shortly, and if a collision happens, last-write-wins.
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_PUSHER_KEY) return;
+
+    const channelName = getOrgChannelName(githubLogin);
+    const pusher = getPusherClient();
+    const channel = pusher.subscribe(channelName);
+
+    const handleCanvasUpdated = (payload: { ref?: string | null }) => {
+      // Only root-canvas events are handled today; sub-canvas payloads
+      // carry a non-null `ref` and we ignore them for now.
+      if (payload?.ref) return;
+      if (dirtyRef.current.size > 0) return;
+      fetchRoot(githubLogin)
+        .then((data) => setRoot(data))
+        .catch((err) => {
+          console.error(
+            "[OrgCanvasBackground] refetch after CANVAS_UPDATED failed",
+            err,
+          );
+        });
+    };
+
+    channel.bind(PUSHER_EVENTS.CANVAS_UPDATED, handleCanvasUpdated);
+    return () => {
+      channel.unbind(PUSHER_EVENTS.CANVAS_UPDATED, handleCanvasUpdated);
+      pusher.unsubscribe(channelName);
     };
   }, [githubLogin]);
 
