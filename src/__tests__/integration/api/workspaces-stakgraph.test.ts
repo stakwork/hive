@@ -115,7 +115,7 @@ const DEFAULT_DOCKERFILE =
   "FROM ghcr.io/stakwork/staklink-js:v0.1.2\nRUN echo 'original'";
 const UPDATED_DOCKERFILE = "FROM node:20-alpine\nRUN echo 'updated'";
 const DEFAULT_DOCKER_COMPOSE =
-  "version: '3.8'\nservices:\n  app:\n    build: .";
+  "version: '3.8'\nnetworks:\n  app_network:\n    driver: bridge\nservices: {}";
 const UPDATED_DOCKER_COMPOSE =
   "version: '3.9'\nservices:\n  app:\n    build: .\n    ports:\n      - '3000:3000'";
 const DEFAULT_DEVCONTAINER = JSON.stringify({
