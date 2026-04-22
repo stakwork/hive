@@ -52,6 +52,10 @@ describe("isLiveId", () => {
     expect(isLiveId("feature:xyz")).toBe(true);
   });
 
+  it("recognizes the repo: prefix as a live id", () => {
+    expect(isLiveId("repo:abc")).toBe(true);
+  });
+
   it("treats unprefixed ids as authored", () => {
     expect(isLiveId("some-random-id")).toBe(false);
     expect(isLiveId("nd_1234")).toBe(false);

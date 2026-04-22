@@ -112,6 +112,17 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
       "Projected from the database — one `ws:<id>` node per live workspace. Do NOT create these yourself. Draw edges from objectives to them to show which workspace an initiative belongs to.",
   },
   {
+    id: "repository",
+    agentDescription:
+      "slate-indigo card representing a GitHub repository inside a workspace",
+    // Repositories are projected live from the DB (id prefix `repo:`)
+    // on a workspace's sub-canvas. Like workspaces, the agent never
+    // authors them.
+    agentWritable: false,
+    promptGuidance:
+      "Projected from the database — one `repo:<id>` node per repository on a workspace sub-canvas. Do NOT create these yourself.",
+  },
+  {
     id: "objective",
     agentDescription:
       "an initiative / objective — card with a title, progress bar, status pill (OK / ATTN / RISK), and optional blocker count",

@@ -18,7 +18,7 @@ export const ROOT_REF = "";
  * new entity kind is a single edit here plus a new projector. Anything
  * not in this set is treated as an authored id.
  */
-const LIVE_ID_PREFIXES = ["ws:", "feature:"] as const;
+const LIVE_ID_PREFIXES = ["ws:", "feature:", "repo:"] as const;
 
 /** True iff `id` is prefixed with a known live-id kind. */
 export function isLiveId(id: string): boolean {

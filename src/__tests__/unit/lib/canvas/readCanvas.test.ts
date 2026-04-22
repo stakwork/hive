@@ -13,7 +13,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/db", () => ({
   db: {
     canvas: { findUnique: vi.fn() },
-    workspace: { findMany: vi.fn() },
+    workspace: { findMany: vi.fn(), findFirst: vi.fn() },
+    repository: { findMany: vi.fn() },
   },
 }));
 
@@ -23,7 +24,11 @@ import type { CanvasBlob } from "@/lib/canvas";
 
 const dbMock = db as unknown as {
   canvas: { findUnique: ReturnType<typeof vi.fn> };
-  workspace: { findMany: ReturnType<typeof vi.fn> };
+  workspace: {
+    findMany: ReturnType<typeof vi.fn>;
+    findFirst: ReturnType<typeof vi.fn>;
+  };
+  repository: { findMany: ReturnType<typeof vi.fn> };
 };
 
 function mockBlob(blob: CanvasBlob | null) {
@@ -153,5 +158,77 @@ describe("readCanvas (root scope)", () => {
     const { nodes, edges } = await read("org-1", "");
     expect(nodes.map((n) => n.id)).toEqual(["obj-1"]);
     expect(edges).toEqual([]);
+  });
+});
+
+describe("readCanvas (workspace scope)", () => {
+  function mockRepositories(repos: Array<{ id: string; name: string }>) {
+    dbMock.repository.findMany.mockResolvedValue(repos);
+  }
+
+  function mockOwnedWorkspace(id: string | null) {
+    // The workspace projector guards with `findFirst({ id, orgId })` to
+    // prevent cross-org reads; tests decide whether that guard passes.
+    dbMock.workspace.findFirst.mockResolvedValue(id ? { id } : null);
+  }
+
+  it("projects repositories as repo:<id> live nodes on a workspace sub-canvas", async () => {
+    mockBlob(null);
+    mockWorkspaces([]); // rootProjector is a no-op here, but it still runs
+    mockOwnedWorkspace("w1");
+    mockRepositories([
+      { id: "r1", name: "hive" },
+      { id: "r2", name: "stack" },
+    ]);
+
+    const { nodes } = await read("org-1", "ws:w1");
+    expect(nodes.map((n) => n.id)).toEqual(["repo:r1", "repo:r2"]);
+    expect(nodes[0].text).toBe("hive");
+    expect(nodes[0].category).toBe("repository");
+  });
+
+  it("returns no projected nodes when the workspace is not owned by this org", async () => {
+    // Guard against cross-org reads: scope.workspaceId must belong to
+    // orgId, otherwise the projector emits nothing (even if the
+    // workspace exists in some other org's canvas).
+    mockBlob(null);
+    mockWorkspaces([]);
+    mockOwnedWorkspace(null);
+    // `findMany` should not be called when the guard fails, but mock it
+    // anyway so a regression (dropping the guard) would surface as the
+    // test seeing unexpected repo nodes.
+    mockRepositories([{ id: "leaked", name: "should-not-appear" }]);
+
+    const { nodes } = await read("other-org", "ws:w1");
+    expect(nodes).toEqual([]);
+  });
+
+  it("applies stored positions on top of default repo placement", async () => {
+    mockBlob({
+      nodes: [],
+      edges: [],
+      positions: { "repo:r1": { x: 500, y: 200 } },
+    });
+    mockWorkspaces([]);
+    mockOwnedWorkspace("w1");
+    mockRepositories([{ id: "r1", name: "hive" }]);
+
+    const { nodes } = await read("org-1", "ws:w1");
+    const r1 = nodes.find((n) => n.id === "repo:r1");
+    expect(r1?.x).toBe(500);
+    expect(r1?.y).toBe(200);
+  });
+
+  it("root-scope reads do NOT project repositories", async () => {
+    // The workspace projector must gate on `scope.kind === "workspace"`;
+    // a leak here would cause repos to appear on the org root canvas.
+    mockBlob(null);
+    mockWorkspaces([{ id: "w1", name: "Alpha" }]);
+    mockOwnedWorkspace("w1");
+    mockRepositories([{ id: "r1", name: "hive" }]);
+
+    const { nodes } = await read("org-1", "");
+    expect(nodes.map((n) => n.id)).toEqual(["ws:w1"]);
+    expect(dbMock.repository.findMany).not.toHaveBeenCalled();
   });
 });

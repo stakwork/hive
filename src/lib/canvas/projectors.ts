@@ -27,6 +27,17 @@ function defaultWorkspacePosition(index: number): { x: number; y: number } {
   return { x: WORKSPACE_ROW_X0 + index * WORKSPACE_ROW_STEP, y: WORKSPACE_ROW_Y };
 }
 
+// Repo row on a workspace sub-canvas. Cards are smaller than workspace
+// cards (see `repositoryCategory` in canvas-theme.ts) so the step is
+// correspondingly tighter.
+const REPO_ROW_Y = 40;
+const REPO_ROW_X0 = 40;
+const REPO_ROW_STEP = 240;
+
+function defaultRepoPosition(index: number): { x: number; y: number } {
+  return { x: REPO_ROW_X0 + index * REPO_ROW_STEP, y: REPO_ROW_Y };
+}
+
 // ---------------------------------------------------------------------------
 // Root projector — workspaces across the top of the canvas.
 // ---------------------------------------------------------------------------
@@ -73,8 +84,63 @@ export const rootProjector: Projector = {
 };
 
 // ---------------------------------------------------------------------------
-// Registry. Order is irrelevant — each projector gates on `scope.kind`.
-// Add new projectors (authoredProjector, workspaceProjector, ...) here.
+// Workspace projector — a workspace's sub-canvas shows its repositories.
+//
+// Reached by clicking the `ws:<cuid>` node on the root canvas, which
+// carries a matching `ref: "ws:<cuid>"`. The scope parser turns that
+// ref into `{ kind: "workspace", workspaceId }` and this projector
+// emits one `repo:<cuid>` live node per repository in the workspace.
+//
+// Future slices on this same scope: features, members, active tasks.
 // ---------------------------------------------------------------------------
 
-export const PROJECTORS: Projector[] = [rootProjector];
+export const workspaceProjector: Projector = {
+  async project(scope: Scope, orgId: string): Promise<ProjectionResult> {
+    if (scope.kind !== "workspace") return { nodes: [] };
+
+    // Guard: the workspace must belong to the org we were asked about.
+    // Without this check, any authenticated user could read any
+    // workspace's repos by guessing a cuid; the scope ref travels
+    // through the URL and isn't validated against `orgId` otherwise.
+    const workspace = await db.workspace.findFirst({
+      where: {
+        id: scope.workspaceId,
+        sourceControlOrgId: orgId,
+        deleted: false,
+      },
+      select: { id: true },
+    });
+    if (!workspace) return { nodes: [] };
+
+    const repositories = await db.repository.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, name: true },
+    });
+
+    const nodes: CanvasNode[] = repositories.map((r, index) => {
+      const liveId = `repo:${r.id}`;
+      const pos = defaultRepoPosition(index);
+      return {
+        id: liveId,
+        type: "text",
+        category: "repository",
+        text: r.name,
+        // No `ref` today — no deeper canvas below a repo yet. Adding
+        // one is a later slice; the node just won't be clickable for
+        // drill-down until then.
+        x: pos.x,
+        y: pos.y,
+      };
+    });
+
+    return { nodes };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Registry. Order is irrelevant — each projector gates on `scope.kind`.
+// Add new projectors (authoredProjector, ...) here.
+// ---------------------------------------------------------------------------
+
+export const PROJECTORS: Projector[] = [rootProjector, workspaceProjector];
