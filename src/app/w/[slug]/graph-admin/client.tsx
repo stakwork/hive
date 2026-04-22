@@ -11,7 +11,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ExternalLink, Loader2, AlertCircle, RefreshCw, Zap, Plus, Pencil, Check, Globe, Lock } from "lucide-react";
 import { toast } from "sonner";
 import type { PaidEndpoint, BoltwallUser, GraphAdminClientProps, SecondBrainAbout } from "./types";
-import { postGraphAdminCmd, roleToNumber } from "./utils";
+import { postGraphAdminCmd, roleToNumber, extractPubkey } from "./utils";
 import { CopyButton, UserRow, UserFormDialog, SetOwnerDialog } from "./components";
 
 export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: GraphAdminClientProps) {
@@ -267,19 +267,20 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
   // ── Users: save (add/edit) ──
   async function handleSaveUser(data: { pubkey: string; name: string; role: string }) {
     const roleNum = roleToNumber(data.role);
+    const pubkey = extractPubkey(data.pubkey);
     if (editingUser) {
       await postGraphAdminCmd(workspaceSlug, {
         type: "Swarm",
         data: {
           cmd: "UpdateUser",
-          content: { id: editingUser.id!, pubkey: data.pubkey, name: data.name, role: roleNum },
+          content: { id: editingUser.id!, pubkey, name: data.name, role: roleNum },
         },
       });
       toast.success("User updated");
     } else {
       await postGraphAdminCmd(workspaceSlug, {
         type: "Swarm",
-        data: { cmd: "AddBoltwallUser", content: { pubkey: data.pubkey, name: data.name, role: roleNum } },
+        data: { cmd: "AddBoltwallUser", content: { pubkey, name: data.name, role: roleNum } },
       });
       toast.success("User added");
     }
@@ -291,7 +292,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
   async function handleSetOwner(data: { pubkey: string; name: string }) {
     await postGraphAdminCmd(workspaceSlug, {
       type: "Swarm",
-      data: { cmd: "AddBoltwallAdminPubkey", content: { pubkey: data.pubkey, name: data.name } },
+      data: { cmd: "AddBoltwallAdminPubkey", content: { pubkey: extractPubkey(data.pubkey), name: data.name } },
     });
     toast.success("Owner set");
     await fetchUsers();
@@ -302,7 +303,7 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
     if (!deleteTarget?.pubkey) return;
     await postGraphAdminCmd(workspaceSlug, {
       type: "Swarm",
-      data: { cmd: "DeleteSubAdmin", content: deleteTarget.pubkey },
+      data: { cmd: "DeleteSubAdmin", content: extractPubkey(deleteTarget.pubkey) },
     });
     toast.success("User removed");
     setDeleteTarget(null);

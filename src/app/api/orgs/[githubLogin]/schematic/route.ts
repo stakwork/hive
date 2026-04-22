@@ -74,12 +74,12 @@ export async function GET(
       );
     }
 
-    const org = await db.sourceControlOrg.findUnique({
+    const row = await db.sourceControlOrg.findUnique({
       where: { id: orgId },
       select: { schematic: true },
     });
 
-    return NextResponse.json({ schematic: org?.schematic ?? null });
+    return NextResponse.json({ schematic: row?.schematic ?? null });
   } catch (error) {
     console.error("[GET /api/orgs/[githubLogin]/schematic] Error:", error);
     return NextResponse.json({ error: "Failed to fetch schematic" }, { status: 500 });
@@ -120,13 +120,13 @@ export async function PUT(
       );
     }
 
-    const org = await db.sourceControlOrg.update({
+    const updated = await db.sourceControlOrg.update({
       where: { id: orgId },
       data: { schematic },
       select: { schematic: true },
     });
 
-    return NextResponse.json({ schematic: org.schematic });
+    return NextResponse.json({ schematic: updated.schematic });
   } catch (error) {
     console.error("[PUT /api/orgs/[githubLogin]/schematic] Error:", error);
     return NextResponse.json({ error: "Failed to update schematic" }, { status: 500 });
