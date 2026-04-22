@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
-
-const EMPTY_CANVAS = { nodes: [], edges: [] } as const;
-
-/** Sentinel for the root canvas row; see schema comment on `Canvas.ref`. */
-const ROOT_REF = "";
+import { readCanvas, writeCanvas, ROOT_REF } from "@/lib/canvas";
 
 /** Reject anything that isn't a JSON object matching the CanvasData shape. */
-function validateCanvasData(value: unknown): value is Record<string, unknown> {
+function validateCanvasData(value: unknown): value is {
+  nodes?: unknown[];
+  edges?: unknown[];
+} {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   if (v.nodes != null && !Array.isArray(v.nodes)) return false;
@@ -24,10 +22,15 @@ async function findOrg(githubLogin: string) {
   });
 }
 
-/** Fetch the root canvas for an org. Creates an empty one on first read. */
+/**
+ * Fetch the root canvas for an org. Returns the merged `CanvasData` —
+ * authored content plus projected live nodes (workspaces, etc.). The
+ * caller sees one uniform `{ nodes, edges }` document; it never has to
+ * distinguish projected from authored content.
+ */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ githubLogin: string }> }
+  { params }: { params: Promise<{ githubLogin: string }> },
 ) {
   const context = getMiddlewareContext(request);
   const userOrResponse = requireAuth(context);
@@ -41,23 +44,22 @@ export async function GET(
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const root = await db.canvas.upsert({
-      where: { orgId_ref: { orgId: org.id, ref: ROOT_REF } },
-      update: {},
-      create: { orgId: org.id, ref: ROOT_REF, data: EMPTY_CANVAS },
-    });
-
-    return NextResponse.json({ data: root.data, updatedAt: root.updatedAt });
+    const data = await readCanvas(org.id, ROOT_REF);
+    return NextResponse.json({ data });
   } catch (error) {
     console.error("[GET /api/orgs/[githubLogin]/canvas] Error:", error);
     return NextResponse.json({ error: "Failed to fetch canvas" }, { status: 500 });
   }
 }
 
-/** Replace the full root canvas document. */
+/**
+ * Replace the root canvas. The client always sends the full merged
+ * document back; the server splits out just the authored half + any
+ * position overlays for live ids before persisting.
+ */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ githubLogin: string }> }
+  { params }: { params: Promise<{ githubLogin: string }> },
 ) {
   const context = getMiddlewareContext(request);
   const userOrResponse = requireAuth(context);
@@ -77,14 +79,15 @@ export async function PUT(
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const jsonData = data as Prisma.InputJsonValue;
-    const saved = await db.canvas.upsert({
-      where: { orgId_ref: { orgId: org.id, ref: ROOT_REF } },
-      update: { data: jsonData },
-      create: { orgId: org.id, ref: ROOT_REF, data: jsonData },
+    await writeCanvas(org.id, ROOT_REF, {
+      nodes: (data.nodes ?? []) as never,
+      edges: (data.edges ?? []) as never,
     });
-
-    return NextResponse.json({ data: saved.data, updatedAt: saved.updatedAt });
+    // Return the fresh merged view so clients stay in sync without a
+    // second round-trip. Cheap (one extra read) and avoids subtle
+    // divergence if projectors computed new rollups mid-request.
+    const merged = await readCanvas(org.id, ROOT_REF);
+    return NextResponse.json({ data: merged });
   } catch (error) {
     console.error("[PUT /api/orgs/[githubLogin]/canvas] Error:", error);
     return NextResponse.json({ error: "Failed to save canvas" }, { status: 500 });
