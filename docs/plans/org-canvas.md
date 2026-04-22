@@ -1,19 +1,23 @@
 # Org Canvas — Live + Authored
 
-A design for the org-level canvas where DB entities (workspaces, features, later members/tasks) live side-by-side with human/LLM-authored content (objectives, notes, decisions) on the same infinite whiteboard, navigable via zoom.
+A design for the org-level canvas where DB entities (workspaces, repositories, later features/members/tasks) live side-by-side with human/LLM-authored content (objectives, notes, decisions) on the same infinite whiteboard, navigable via zoom.
 
-Status: **plan**. Nothing in here is implemented yet; the current canvas treats every node as authored.
+Status: **shipping**. v1 (root projection of workspaces) and v1.1 (workspace sub-canvas projecting repositories, drillable authored objectives with child-canvas rollup) are in. v2+ (feature projection, member projection) are unshipped.
 
 ## Goal
 
 One visual surface where managers and the CEO see "the state of the org" — which workspaces exist, which strategic objectives span them, and how those objectives are progressing — and where AI agents can decorate and enrich the picture freely. Users can draw whatever they want; the system keeps DB-backed entities honest by re-projecting them on every read.
 
+The animating principle: **the roadmap IS the product.** Breaking an objective into mini-objectives, ticking one off as done, promoting a note into a real Feature — those aren't documentation steps; they ARE the operating interface. Human ICs and LLM agents both work against the same canvas, and progress bubbles up automatically.
+
 ## The three concepts the whole design rests on
 
 1. **Scope** — "what canvas am I looking at." A scope is a URI stored in the existing `Canvas.ref` column.
    - `""` → the org root.
-   - `"node:<authoredNodeId>"` → zoom-into an authored node (e.g. an objective's sub-canvas).
-   - More scope kinds slot in later (`ws:<id>` for a workspace team view, `feature:<id>` for a feature deep-dive).
+   - `"ws:<cuid>"` → a workspace sub-canvas (the repos / members / future features view).
+   - `"node:<authoredNodeId>"` → zoom-into an authored node (today: objectives; drillable at write time via `DRILLABLE_CATEGORIES`).
+   - `"feature:<cuid>"` → feature deep-dive (reserved; no projector yet).
+   - Unknown prefixes are accepted as `"opaque"` scopes — stored verbatim with no projection. Keeps pre-v1 sub-canvases working.
 
 2. **Projection** — "given a scope, what live nodes belong here." A pure function of scope + current DB state. Never persisted.
 
@@ -49,6 +53,8 @@ The merged `CanvasData` the client renders is `projection(scope) + blob(scope)`,
                                   └────────────────────────┘
 ```
 
+Not shown: on read, authored objectives with a `ref: "node:<id>"` get a second enrichment pass that peeks at their child canvas and stamps a progress rollup into `customData` (see `computeChildRollups`). On write, the splitter auto-stamps `ref: "node:<id>"` on any authored objective that doesn't already have one.
+
 ## The ontology we're working with
 
 What the DB already owns (from `prisma/schema.prisma`):
@@ -61,26 +67,23 @@ What the DB already owns (from `prisma/schema.prisma`):
 
 What the canvas adds on top, as **authored nodes only** — no new Prisma model:
 
-- **Objective** — a free-floating story a manager or the CEO is telling. "Ship mobile by Q3", "Reduce onboarding friction", "Become SOC2-compliant." Objectives often span workspaces. They are connected, by edges, to the real Features that contribute to them. An objective's progress is derived from the Features it's edged to; the objective itself is just a JSON node in a canvas document.
+- **Objective** — a free-floating story a manager or the CEO is telling. "Ship mobile by Q3", "Reduce onboarding friction", "Become SOC2-compliant." Objectives are drillable: clicking one opens its own sub-canvas where mini-objectives live. A parent objective's progress is computed from its child canvas (count of child objectives with `status === "ok"` over total). The objective itself is just a JSON node in a canvas document.
 - **Note** — amber free-form callout. "Remember to…" / "Open question…"
 - **Decision** — purple free-form callout. "Shared vs dedicated pools?" / "Adopt X or Y?"
 
 The key design choice: **objectives are canvas-native**, not a Prisma model. They can be renamed, reshaped, split, merged, or deleted with a single canvas write. No migration cost to iterate. The LLM can redraw them at will.
 
-## How "links" work — by not being a separate thing
+## How "links" work — edges are decoration, not load-bearing
 
-Edges are the only relation primitive.
+Edges are the cheap relation primitive: `{ fromNode, toNode, label? }`, endpoints can be authored or live in any combination. They exist to say "these two things are related" and to make the canvas readable. **They do NOT determine what a parent objective rolls up from.**
 
-- A user draws a line from an authored objective to a real feature. That's an edge between an authored node and a `feature:<cuid>` node. It's stored like any other edge.
-- The server, on render, sees an objective with outgoing edges to live feature ids, projects the feature content (status, progress), and stamps a rollup into the objective's `customData`. Done.
-- When the user zooms into the objective, the authored-sub scope projects exactly those feature ids as live nodes on the child canvas.
+The original plan here proposed using edges as the membership relation — draw an edge from objective → feature and the feature would both feed the objective's rollup AND appear on the objective's child canvas. We abandoned that during v1.1. Reasons:
 
-There is no `links` field. No `ObjectiveFeature` join table. No hidden metadata. **The edge IS the link.** This was the simplification the rest of the design hinges on.
+- Layers should be independent. What lives inside an objective's sub-canvas is the user's (and agent's) composition problem, not a derivation from the parent's edges. An objective can hold mini-objectives, notes, team members, features — whatever the team decides — without those being constrained by what got edged on the parent.
+- Edges are UX scaffolding. An arrow between cards is for the reader. Forcing it to carry membership semantics makes every decorative line a rollup input, and pollutes the rollup with junk edges to notes and decisions.
+- The rollup has a simpler definition if we just look at **what's inside the child canvas**: count the child objectives with `status === "ok"` vs total, stamp the percent into the parent. No edge walk. No endpoint-kind filter. No "which edges count" heuristic.
 
-### Trade-offs this accepts
-
-- Every edge carries semantic weight. An arrow drawn "decoratively" from an objective to a random note creates a relationship. In v1 that's fine — there's no such thing as a purely decorative edge. Later a `kind` field on edges could distinguish "semantic" from "aesthetic" if needed.
-- Rollup logic has to decide which edges count. Rule: when computing a node's rollup, walk its edges, keep only those whose other endpoint is a live entity of a kind this node rollup knows how to aggregate. Feature-id endpoints feed feature-aware rollups; note-or-decision endpoints are ignored. This rule is local to each category's rollup function — not a data-model decision.
+So edges survive as a purely visual relation ("depends on", "blocks", "contributes to") and **the child canvas is the source of truth for a parent's progress**. See the "Drillable authored nodes" section below for the current shape.
 
 ## Canvas vs. Connections — where depth lives
 
@@ -106,7 +109,7 @@ interface CanvasBlob {
   nodes: CanvasNode[];
   /**
    * Edges between any two nodes. Endpoints may be authored ids, live
-   * ids (`ws:<cuid>`, `feature:<cuid>`), or a mix. Always stored here;
+   * ids (`ws:<cuid>`, `repo:<cuid>`, …), or a mix. Always stored here;
    * never in the projection.
    */
   edges: CanvasEdge[];
@@ -129,38 +132,43 @@ Four fields. `nodes` and `edges` already exist; `positions` and `hidden` are the
 
 One rule applied everywhere: **live ids have a `<kind>:` prefix; authored ids don't.**
 
-- `ws:<cuid>` — Workspace projection.
-- `feature:<cuid>` — Feature projection.
+- `ws:<cuid>` — Workspace projection. *(shipped)*
+- `repo:<cuid>` — Repository projection. *(shipped)*
+- `feature:<cuid>` — Feature projection. *(reserved; no projector yet)*
 - Future: `member:<cuid>`, `task:<cuid>`, `phase:<cuid>`.
 - Anything else — authored.
 
-A single predicate `isLiveId(id: string): boolean` (prefix sniff) is the only place in the system that cares about the distinction.
+The source of truth is `LIVE_ID_PREFIXES` in `src/lib/canvas/scope.ts`. A single predicate `isLiveId(id: string): boolean` (prefix sniff) is the only place in the system that cares about the distinction.
 
-## The three scope kinds in v1
+## Scope kinds
 
-Ship the framework flexible enough to support all three, implement them in order.
+Four in the framework; three have projectors today.
 
-### 1. Root scope — `ref = ""`
+### 1. Root scope — `ref = ""`  *(shipped)*
 
-- **Live nodes**: workspaces as `ws:<cuid>` nodes. `customData` carries a rollup of their feature health.
+- **Live nodes**: workspaces as `ws:<cuid>` nodes. Workspace rollup (feature health) is future work.
 - **Authored content**: objectives, notes, decisions, free-floating text, edges between anything.
 - **Primary user**: the CEO / org admin. Reads progress top-down.
 
-### 2. Authored-sub scope — `ref = "node:<authoredId>"`
+### 2. Workspace sub-scope — `ref = "ws:<cuid>"`  *(shipped)*
 
-The sub-canvas you enter by clicking into an authored node on its parent canvas.
+Reached by clicking a `ws:<cuid>` node on root.
 
-- **Live nodes**: the entities the parent-canvas edges of this authored node point to. If the authored node is an objective edged to three Features on root, those three Features are the live nodes here. `customData` carries deeper feature-level rollups (phase progress, blocker count).
-- **Authored content**: sub-milestones, sub-objectives, notes, decisions, edges.
-- **Primary user**: the objective owner. Marks pieces off, adds narrative, pulls in more Features by drawing more edges on the parent canvas.
+- **Live nodes**: the workspace's repositories as `repo:<cuid>` nodes. The workspace projector guards with a `findFirst({ id, sourceControlOrgId })` check to prevent cross-org reads by guessing cuids.
+- **Authored content**: team-level notes, decisions, workstream groupings, mini-objectives.
+- **Future**: features, members, active tasks, meetings/messages as additional projections — each one new projector, no schema change.
 
-### 3. Workspace-sub scope — `ref = "ws:<cuid>"`
+### 3. Authored-sub scope — `ref = "node:<authoredId>"`  *(shipped — drillable objectives)*
 
-Deferred to after objectives are shipped. Included in this plan so the framework doesn't get narrowed around v1.
+The sub-canvas you enter by clicking into an authored `objective` node. `splitCanvas` auto-stamps this ref on every authored objective at write time, so clicking it always resolves.
 
-- **Live nodes**: the workspace's Features, Members, and (optionally) active Tasks. Meetings / messages / calls may come later.
-- **Authored content**: team-level notes, decisions, workstream groupings.
-- **Primary user**: the team lead. Coordination surface.
+- **Live nodes**: **none by default**. Layers are independent — the child canvas is a fresh whiteboard, not a projection of the parent's edges (see the "How links work" section). The user and the agent compose the child canvas from scratch: mini-objectives, notes, decisions.
+- **Bubble-up**: the parent's `customData.primary` / `.secondary` / `.status` are rolled up from the child canvas — count of child objectives with `status === "ok"` over total child objectives. Manual customData on the parent always wins (same rule as live-node rollups).
+- **Primary user**: the objective owner. Breaks the objective into mini-objectives, ticks them off, watches the parent's progress bar fill.
+
+### 4. Feature sub-scope — `ref = "feature:<cuid>"`  *(unshipped)*
+
+Reserved for when Features get their own deep-dive canvas. Projector stub will emit phases / tasks / PRs.
 
 ## The merge — `readCanvas(orgId, ref)`
 
@@ -171,16 +179,19 @@ Deferred to after objectives are shipped. Included in this plan so the framework
    nodes + rollups.
 4. Drop live nodes whose id is in blob.hidden.
 5. For each remaining live node, apply blob.positions[id] as x/y
-   (fallback to an auto-layout for the rest).
-6. Merge rollups into each live node's customData.
-7. Concat live nodes + authored nodes.
-8. Filter edges: keep only those whose both endpoints exist in the
+   (fallback to the projector's default placement).
+6. Merge rollups into each live node's customData (manual wins).
+7. Compute child-canvas rollups for drillable authored nodes
+   (objectives with a `node:<id>` ref) in ONE batched findMany;
+   stamp them into each parent's customData (manual wins).
+8. Concat live nodes + authored nodes.
+9. Filter edges: keep only those whose both endpoints exist in the
    merged set. Dropped edges stay in the blob for now; a cleanup
    pass can prune them later.
-9. Return { nodes, edges }.
+10. Return { nodes, edges }.
 ```
 
-Nine lines of intent. The implementation is ~40 lines of TypeScript.
+Steps 1–6 and 8–9 are in `src/lib/canvas/io.ts` (merge). Step 7 is `src/lib/canvas/rollups.ts` (`computeChildRollups`).
 
 ## The split — `writeCanvas(orgId, ref, incoming)`
 
@@ -189,19 +200,22 @@ Client sends the merged `CanvasData` back. Server:
 ```
 1. Start a fresh blob.
 2. For every node in incoming.nodes:
-   • if isLiveId(node.id): store only { x, y } in blob.positions.
-   • else: push into blob.nodes as-is.
+   • if isLiveId(node.id): merge { x, y } into blob.positions and drop
+     the rest. Text / category / customData are owned by the projection
+     and silently discarded.
+   • else (authored): push onto blob.nodes as-is. If its category is
+     in DRILLABLE_CATEGORIES (currently just "objective") and it has
+     no explicit `ref`, auto-stamp `ref: "node:<id>"` so the library's
+     drill-in fires on click.
 3. blob.edges = incoming.edges (always persisted verbatim).
 4. blob.hidden = (existing row).hidden   // preserved; write path
                                          // for `hidden` is separate.
 5. Persist blob.
 ```
 
-The split is mechanical. The client is entirely unaware of it.
+Key invariant: **omitting a live id from the incoming document is NOT an implicit hide.** Positions for missing live ids are preserved from the previous blob. This protects users from autosave races and partial writes silently resetting their drags. Explicit hides go through the dedicated `POST /canvas/hide` endpoint.
 
-`hidden` is managed by dedicated endpoints (e.g. `POST /canvas/:ref/hide`, `POST /canvas/:ref/show`) so it doesn't get churned by autosave.
-
-## Projectors — the extension point
+## Projectors — the extension point for live nodes
 
 ```ts
 interface Projector {
@@ -213,15 +227,15 @@ interface Projector {
 }
 
 const PROJECTORS: Projector[] = [
-  rootProjector,      // workspaces + rollups on root
-  authoredProjector,  // features on an objective's sub-canvas
-  // workspaceProjector, featureProjector — later
+  rootProjector,       // workspaces on root
+  workspaceProjector,  // repositories on a workspace sub-canvas
+  // featureProjector, memberProjector — later
 ];
 ```
 
-Each projector decides whether to emit anything given the scope. `rootProjector` is a no-op for non-root; `authoredProjector` is a no-op for non-authored-sub. The framework calls them all; merging is trivial.
+Each projector decides whether to emit anything given the scope (`rootProjector` no-ops for non-root, `workspaceProjector` no-ops for non-workspace, etc.). The framework calls them all; merging is trivial.
 
-### Sketch: `rootProjector`
+### `rootProjector` (shipped)
 
 ```ts
 async project(scope, orgId) {
@@ -230,197 +244,152 @@ async project(scope, orgId) {
     where: { sourceControlOrgId: orgId, deleted: false },
   });
   return {
-    nodes: workspaces.map(w => ({
+    nodes: workspaces.map((w, i) => ({
       id: `ws:${w.id}`,
       type: "text",
       category: "workspace",
       text: w.name,
-      x: 0, y: 0,
-      ref: `ws:${w.id}`,          // enables team-view zoom later
+      ref: `ws:${w.id}`,              // enables workspace-sub zoom
+      ...defaultWorkspacePosition(i),
     })),
-    rollups: Object.fromEntries(
-      workspaces.map(w => [`ws:${w.id}`, workspaceRollup(w)]),
-    ),
+    rollups: {},                       // future: feature-health rollup
   };
 }
 ```
 
-### Sketch: `authoredProjector`
-
-The subtle projector. Its children come from **edges on the parent canvas**.
+### `workspaceProjector` (shipped)
 
 ```ts
 async project(scope, orgId) {
-  if (scope.kind !== "authored") return { nodes: [] };
-
-  // Find the parent-canvas blob that contains this authored node.
-  const parent = await findParentContaining(orgId, scope.nodeId);
-  if (!parent) return { nodes: [] };
-
-  // Every edge touching this authored node.
-  const touching = parent.edges.filter(
-    e => e.fromNode === scope.nodeId || e.toNode === scope.nodeId,
-  );
-  const otherEnds = touching.map(e =>
-    e.fromNode === scope.nodeId ? e.toNode : e.fromNode,
-  );
-
-  // For v1, only `feature:` endpoints are projected.
-  const featureIds = otherEnds
-    .filter(id => id.startsWith("feature:"))
-    .map(id => id.slice("feature:".length));
-
-  const features = await db.feature.findMany({
-    where: { id: { in: featureIds }, deleted: false },
-    include: { phases: true, tasks: true },
+  if (scope.kind !== "workspace") return { nodes: [] };
+  // Ownership guard: prevent cross-org reads by guessing cuids.
+  const workspace = await db.workspace.findFirst({
+    where: { id: scope.workspaceId, sourceControlOrgId: orgId, deleted: false },
   });
-
+  if (!workspace) return { nodes: [] };
+  const repos = await db.repository.findMany({ where: { workspaceId: workspace.id } });
   return {
-    nodes: features.map(f => ({
-      id: `feature:${f.id}`,
+    nodes: repos.map((r, i) => ({
+      id: `repo:${r.id}`,
       type: "text",
-      category: "feature",
-      text: f.title,
-      x: 0, y: 0,
-      ref: `feature:${f.id}`,
+      category: "repository",
+      text: r.name,
+      ...defaultRepoPosition(i),
     })),
-    rollups: Object.fromEntries(
-      features.map(f => [`feature:${f.id}`, featureRollup(f)]),
-    ),
   };
 }
 ```
 
-Finding the parent canvas (`findParentContaining`) is the one expensive operation in this design. Two options:
+## Child-canvas rollups — the extension point for authored nodes
 
-- **Cached scan**: walk up `(orgId, *)` canvases, find the first whose `blob.nodes` contains `scope.nodeId`. O(canvases); fine if there aren't many.
-- **Stored back-pointer**: when an authored node is first given a sub-canvas, record `parentRef` as a field on the sub-canvas blob (one-time write). O(1) lookup forever.
+Authored-node rollups are **different** from projector rollups. Instead of deriving state from the DB, they read the authored node's own **child canvas** (one level down) and summarize it.
 
-Start with the scan for simplicity; add the back-pointer if it becomes hot.
+Currently one rule: for every authored `objective` with a `ref: "node:<id>"`, count its child canvas's `objective`-category nodes where `customData.status === "ok"` over total, stamp `{ primary: "N%", secondary: "done/total", status: "ok"|"attn" }` into the parent's customData (manual wins).
 
-## Rollup logic
+Batched into one `findMany({ where: { ref: { in: [...] } } })` so read cost stays O(1) DB round-trips regardless of how many drillable objectives the parent has.
 
-Per category, not a universal rule. A rollup is a function `(entity) → Partial<CustomData>`.
+See `src/lib/canvas/rollups.ts` (`summarizeChildObjectives`, `computeChildRollups`).
 
-- **Workspace rollup** (live node on root): derived from the workspace's Features. `status` = worst status among its active features. `primary` = average progress. `secondary` = "N features" or "M blockers."
-- **Feature rollup** (live node on an objective's sub-canvas): derived from the feature's Phases/Tasks. Same shape.
-- **Objective rollup** (authored node, derived on read): walk outgoing edges, collect live feature endpoints, aggregate their rollups. `status` = worst; `primary` = weighted mean; `secondary` = "N features."
+Adding a new rollup kind (e.g. "a note with a checklist"): extend `rollups.ts` with the aggregation, teach `splitCanvas`'s `DRILLABLE_CATEGORIES` if the category needs a sub-canvas.
 
-Rollups are computed at read time and merged into the node's `customData` in the merge step. They are never persisted. The source of truth for rollup inputs is always the DB.
+## Rollup rule — manual customData wins
 
-The authored objective can also carry its **own** manually-set `customData.status` and `customData.primary`, for when the user wants to override or when the objective isn't yet linked to anything. Rule: **manual customData wins; rollup fills the gaps.** Concretely, when merging, rollup fields only populate keys the authored node doesn't already have set.
+One universal rule, applied wherever rollups stamp into nodes:
 
-## Agent tool surface — almost unchanged
+- If the authored / live node already has a value for a customData key, keep it.
+- Otherwise, use the rollup's value.
 
-Existing tools (`read_canvas`, `update_canvas`, `patch_canvas`) gain a `ref?: string` argument, defaulting to `""` (root). Everything else stays. The agent can already:
+Concretely: `applyRollup(node, rollupPartial)` merges non-undefined keys from `node.customData` on top of `rollupPartial`. A user who's typed "status: risk" on an objective keeps it even when the child canvas is 100% done — their call. Remove the manual override to get the rollup back.
 
-- Read the merged canvas and see live + authored nodes in one array.
-- Add authored nodes with `patch_canvas`.
+## Agent tool surface
+
+The three existing tools (`read_canvas`, `update_canvas`, `patch_canvas`) each take an optional `ref?: string` (defaults to `""` = root). Same vocabulary works everywhere. The agent can:
+
+- Read the merged canvas at any scope and see live + authored nodes in one array.
+- Add / edit / remove authored nodes with `patch_canvas` or `update_canvas`.
 - Add edges between any two ids — the server doesn't care whether endpoints are live, authored, or mixed.
-- Drop an edge to "unlink" an authored node from a Feature.
+- Populate a drillable objective's child canvas by passing `ref: "node:<id>"`.
 
-**One new sentence in the prompt:**
-
-> "Node ids prefixed with `ws:` or `feature:` are database entities. You can edge to them and choose where they sit on the canvas, but their `text` and `category` are fixed — those come from the database. Every other node is authored and fully yours. To express 'this objective is about these Features,' draw an edge from the objective to each `feature:` node — that's how the canvas links to real work."
-
-No new tool. No second vocabulary. The whole "link" story is carried by a single sentence and the agent's existing edge ops.
+The prompt teaches two things: (a) **don't author projected categories** (they're filtered out of the tool schema via `agentWritable: false`), and (b) **use `ref: "node:<id>"` to work on an objective's sub-canvas**. Both lessons are in `getCanvasPromptSuffix()` in `src/lib/constants/prompt.ts`.
 
 A small future convenience: a `list_entities({ kind, workspaceId? })` tool so the agent can discover real entity ids without having to read a canvas that already mentions them. Needed once objectives exist and the agent is asked to find relevant Features across the org. Defer to when we actually need it.
 
-## Client changes — minimal
+## Client changes
 
 `OrgCanvasBackground.tsx`:
 
-- Already tracks sub-canvases via `ref`. Wire `ref` through the new merge-aware endpoint on fetch and save.
-- The library already calls `onResolveCanvas(ref)` when the user clicks a `ref`-bearing node. Live workspace/feature nodes carry their own `ref`, so navigation works with no new code.
-- Saving: hand the whole merged canvas back to the server. Server splits it. The client has no awareness of authored vs. live.
+- Fetches root via `/api/orgs/<login>/canvas`, sub-canvases via `/api/orgs/<login>/canvas/<ref>`. Keeps a `Record<ref, CanvasData>` cache keyed by ref. The library drives drill-in via `onResolveCanvas(ref)`; projected nodes carry their own `ref` so navigation works with no custom wiring.
+- Save: hand the whole merged canvas back to the server. Server splits it. The client has no awareness of authored vs. live.
+- `CANVAS_UPDATED` Pusher events carry `ref` (null for root, string for sub). The client refetches the specific canvas that changed, and only if we have it in the cache (i.e. the user has opened it).
 
-Editing constraints on live nodes:
+Live-node editing:
 
-- **Text/category are server-owned.** The library allows inline-edit by default. We either (a) short-circuit the edit UI for live-ids, or (b) let edits go through and silently drop them at the write-splitter. Option (a) is cleaner — a category-level `readOnly: true` hint on `workspace` / `feature` categories.
-- **Position is user-owned.** Drag freely; saves as positions.
-- **Deletion on the canvas = "hide from this canvas."** We write the live id into `blob.hidden` and re-render. Never touches the DB. A sidebar / palette lets the user bring hidden entities back.
-
-## Renderer changes — tiny
-
-The `system-canvas` theme already supports per-category configuration. Add:
-
-- `workspace` category — teal container (exists already).
-- `feature` category — new. Similar footprint to workspace but a different accent color. Same slots (status pill, progress bar, footer metrics) as `objective`, because both are rollup-driven.
-
-Both live categories get a lock/database icon in the toolbar position, or their toolbar is suppressed entirely. A double-click on them opens a drawer (the real entity's page or an inline drawer) — no inline text edit.
-
-## Prompt generation — unchanged mechanism
-
-The existing `canvas-categories.ts` registry drives `buildCategoryDescription()` and `buildPromptCategorySection()`. Add:
-
-- `workspace` (already present) — mark `agentWritable: false` so the registry knows the agent shouldn't construct these from scratch (they're projected, not authored).
-- `feature` — new entry, same `agentWritable: false`.
-- `objective`, `note`, `decision` — already present, `agentWritable: true` by implication.
-
-The prompt generator emits the live-id sentence automatically for all `agentWritable: false` categories.
+- **Text / category / customData** are server-owned. The splitter discards any edits on live ids. No client-side readOnly flag yet — if this becomes a UX issue (users getting confused when their edits revert), add a category-level hint and short-circuit the edit UI.
+- **Position** is user-owned. Drag freely; autosave persists it as a `positions[liveId]` overlay.
+- **Hide** goes through `POST /canvas/hide` (dedicated endpoint so autosave can't accidentally toggle it).
 
 ## Dangling edges
 
-When a workspace or feature is deleted, edges referencing them become unresolvable. Policy:
+When a workspace / repo / feature is deleted, edges referencing them become unresolvable. Policy:
 
-- **Read side**: step 8 of the merge silently drops them. They don't render; they can't cause a crash.
-- **Write side**: they stay in the blob. A future idempotent cleanup pass can prune them, or we prune on every write. (Cheap enough to prune on every write — it's a single filter.) Start with write-side prune; it's simple and prevents indefinite accumulation.
+- **Read side**: the merge drops them silently. They don't render; they can't cause a crash.
+- **Write side**: they stay in the blob. Cleanup is a future idempotent sweep.
 
-Re-adding a deleted workspace with the same id is vanishingly unlikely (cuids), so we don't need to guard against "edge reappears because entity came back."
+Re-adding a deleted entity with the same id is vanishingly unlikely (cuids), so we don't guard against "edge reappears because entity came back."
 
-## Ship slice — v1 (root canvas)
+## Ship slices
 
-1. Extend `CanvasBlob` typing in `src/app/org/[githubLogin]/connections/` and its server-side types to include `positions` and `hidden`. No Prisma change.
-2. Add `parseScope`, `isLiveId`, `applyPositions`, and a `mergeProjections` helper. ~40 lines total.
-3. Write `rootProjector` with workspaces + rollup.
-4. Introduce `readCanvas` / `writeCanvas` in the server. Swap the existing `/api/orgs/[githubLogin]/canvas` handlers to use them.
-5. Add `workspace` live rendering (already mostly done) + rollup stamping.
-6. Extend the category registry with `agentWritable`; one new sentence in the prompt.
-7. Live-node edit suppression in `OrgCanvasBackground.tsx`: no inline text edit, drag-to-position works, delete→hide.
-8. Ship. The root canvas now shows real workspaces, the user and LLM can draw objectives and edges, and edges survive DB changes.
+### v1 — root canvas (shipped)
 
-At this point there are no live rollups on objectives yet — they're just pretty cards with a status pill. That's fine for the first cut.
+`CanvasBlob` gains `positions` + `hidden`. `parseScope` / `isLiveId` / projector infrastructure lands. `rootProjector` emits workspaces. `readCanvas` / `writeCanvas` replace the raw DB read/write in the REST routes. Category registry gains `agentWritable`. Prompt teaches live ids.
 
-## Ship slice — v2 (objective zoom + rollups)
+### v1.1 — workspace sub-canvas + drillable objectives (shipped)
 
-1. Add `feature` category to the renderer and registry.
-2. Write `authoredProjector` + `findParentContaining`.
-3. Write `featureRollup` (Phase/Task aggregation) and `objectiveRollup` (walks outgoing edges, aggregates feature rollups).
-4. Add a `kind: "authored"` parsing rule to `parseScope`; navigation lights up.
-5. Prompt gets one more sentence about zoom: "Each authored node has its own sub-canvas, reachable by clicking. Inside, the live nodes are the entities edged to this node on its parent canvas."
-6. Ship. Objectives now roll up automatically from their linked Features. Clicking in shows the decomposition. Users start using the feature.
+`workspaceProjector` emits repositories (with an org-ownership guard) on the `ws:<cuid>` scope. A `repository` category lands with a slate-indigo theme. `splitCanvas` auto-stamps `ref: "node:<id>"` on authored objectives — the library's existing drill-in fires automatically. `computeChildRollups` reads each drillable objective's child canvas in ONE batched `findMany` and stamps `{ primary, secondary, status }` into the parent's customData (manual wins). Prompt gains the "objectives have sub-canvases" section.
 
-## Ship slice — v3 (workspace team view)
+### v2 — feature projection (unshipped)
 
-1. New scope kind in `parseScope`: `ws:<cuid>`.
-2. `workspaceProjector` emits Features + Members as live nodes for `ws:<cuid>` scope.
-3. New categories in the registry: `member`. `feature` already exists.
-4. Rollups: member rollup is trivial (online/away/whatever). Feature rollup is reused.
-5. Ship.
+Add a `feature` category (rollup-driven like `objective`). Add a `featureProjector` that emits `feature:<cuid>` live nodes — likely on the workspace sub-canvas (alongside repos) and/or as a standalone feature scope. Add a feature rollup derived from phases / tasks.
 
-Later slices add tasks, meetings, transcripts, calls, messages — each one new projector + one new category.
+Open: should drawing a line from an authored objective to a `feature:<cuid>` imply membership, or do we stay strict ("edges are decoration; to attach a feature to an objective, open the objective's sub-canvas and add it there")? The v1.1 lesson was that implicit-membership-from-edges complicates the mental model. Leaning toward "the child canvas owns the membership; edges are pure decoration" — which likely means adding a "promote this note to a Feature" agent tool rather than "edge this feature into the objective."
+
+### v3 — workspace team view, continued (unshipped)
+
+Extend `workspaceProjector` (or add a `memberProjector`) for workspace members. `member` category. Later slices add tasks, meetings, transcripts, calls, messages — each one new projector + one new category.
 
 ## What we're explicitly NOT doing
 
-- No `Objective` Prisma model. Objectives are authored JSON. This is load-bearing — it's what makes the LLM rewrite story work.
-- No `links` field on nodes. Edges are the only relation.
-- No cross-scope edges in v1. An edge on root is for root. An edge on an objective's sub-canvas is for that sub-canvas. Cross-scope linking (e.g. objective → task three levels down) is a v4+ problem and probably doesn't need a new primitive — it falls out of nested projection if we want it later.
-- No new join tables. No new schema. The only persisted mutation is `Canvas.data`.
-- No special treatment for decorative vs semantic edges in v1. An edge is an edge. Add a `kind` field when we have a concrete UX need.
+- **No `Objective` Prisma model.** Objectives are authored JSON. This is load-bearing — it's what makes the LLM rewrite story work.
+- **No `links` field on nodes.** Edges are the only relation primitive, and they're pure decoration ("these are related") — NOT membership. Membership is "what lives in my child canvas," computed per-parent via `computeChildRollups`.
+- **No cross-scope edges.** An edge on root is for root. An edge on an objective's sub-canvas is for that sub-canvas. Cross-scope linking falls out naturally from nested projection when / if we want it.
+- **No new join tables. No new schema.** The only persisted mutation is `Canvas.data`.
+- **No special treatment for decorative vs semantic edges.** An edge is an edge. Add a `kind` field only if a concrete UX need shows up.
+- **No edge-derived projection.** The original plan proposed projecting a feature onto an objective's sub-canvas because an edge existed between them on the parent. We rejected this during v1.1 — layers are independent.
 
-## Open questions worth revisiting once we start building
+## Open questions worth revisiting
 
-- **Rollup caching.** On every canvas read we re-query Features/Tasks and re-aggregate. For an org with many workspaces this could be slow. A short-lived per-request cache is easy; a redis-backed cache with invalidation on DB writes is the real answer if it matters.
-- **Live-node edit drawer.** What opens when a user double-clicks a workspace or feature live node? v1 can route to the existing workspace/feature page. v2 might show a side drawer on the canvas itself.
-- **Hidden live nodes UX.** How does the user bring one back? A "+ show entity" palette that lists everything not currently placed. Small but not free.
-- **Auto-layout for first render.** When a workspace has no stored position, where does it go? A deterministic hash-based placement is fine; a proper force-directed layout is overkill for v1.
-- **Multi-user presence.** If two managers open the same canvas simultaneously, whose position wins? Existing Pusher + autosave handle this awkwardly (last write wins). Real CRDT or yjs integration is a separate concern; not on the critical path.
+- **Parent-canvas refresh after child edits.** Today, editing a mini-objective inside a child canvas doesn't trigger a re-render of the parent's rollup in open viewers; the parent needs to be re-fetched. Fix: when writing a sub-canvas with `ref: "node:<id>"`, also emit `CANVAS_UPDATED` for the parent ref. Requires knowing the parent ref — cached scan or stored back-pointer, same trade-off as before.
+- **Rollup caching.** We re-query and re-aggregate on every canvas read. Short-lived per-request cache is easy; DB-invalidated cache is the real answer if latency matters.
+- **Live-node edit drawer.** Double-clicking a workspace / repo / feature should open a drawer or the entity's existing page. Not wired yet.
+- **Hidden live nodes UX.** How does a user bring one back? Needs a "+ show entity" palette. Small but not free.
+- **Multi-user presence.** Two managers editing the same canvas simultaneously is "last write wins" today. Real CRDT / yjs integration is a separate concern.
+- **Note → Feature promotion.** The "roadmap is the product" pattern's missing primitive: a tool / UX that takes an authored note and creates a real `Feature` record, replacing the note node with a projected `feature:<cuid>` node. Key for v2+ once feature projection lands.
 
 ## Success criteria
 
-- A CEO can open `/org/<login>/connections` and see a live map of workspaces, a few objectives spanning them, and edges connecting them to the real features.
+Root canvas:
+- A CEO can open `/org/<login>/connections` and see a live map of workspaces, a few authored objectives, and edges connecting them.
 - Renaming a workspace in the DB: the canvas reflects it on next read.
-- Drawing an edge from an objective to a feature: the objective's rollup picks up the feature's status immediately.
-- Clicking into an objective: see only the features (and nested authored nodes) that matter to it.
-- The LLM, when asked "what are we working on?", can read the canvas, compare with the DB, add notes and objectives, and edge them to real features — with zero code to teach it the difference between live and authored beyond one sentence of prompt.
+
+Workspace drill-down (shipped):
+- Clicking a workspace card opens a sub-canvas with the workspace's repositories.
+- The user and agent can annotate that sub-canvas with notes, decisions, and mini-objectives.
+
+Objective drill-down (shipped):
+- Clicking an authored objective opens a blank sub-canvas.
+- Adding mini-objectives and marking them `status: ok` makes the parent's progress bar fill. No manual number entry required.
+- Setting a manual status on the parent overrides the rollup.
+
+LLM workflow:
+- When asked to plan an initiative, the agent creates the parent objective and immediately calls `update_canvas` with `ref: "node:<id>"` to populate the child canvas.
+- When asked "what's the state of X?", the agent reads the root canvas, drills into the relevant objective via the `ref`, and summarizes what it sees.

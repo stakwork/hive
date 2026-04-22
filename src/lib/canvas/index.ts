@@ -12,6 +12,10 @@ export {
   hideLiveNode,
   showLiveNode,
 } from "./io";
+export {
+  summarizeChildObjectives,
+  computeChildRollups,
+} from "./rollups";
 export { parseScope, isLiveId, ROOT_REF } from "./scope";
 export type {
   CanvasBlob,

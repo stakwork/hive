@@ -95,4 +95,50 @@ describe("splitCanvas", () => {
     expect(second.nodes).toEqual(first.nodes);
     expect(second.positions).toEqual(first.positions);
   });
+
+  describe("drillable-ref stamping", () => {
+    it("auto-stamps `ref: node:<id>` on authored objectives that have no ref", () => {
+      const incoming: CanvasData = {
+        nodes: [node("obj-1", 0, 0, { category: "objective" })],
+        edges: [],
+      };
+      const blob = splitCanvas(incoming, emptyPrev);
+      expect(blob.nodes[0].ref).toBe("node:obj-1");
+    });
+
+    it("preserves an explicit ref the caller set on an objective", () => {
+      // If the agent or a migration wants to wire an objective at a
+      // custom ref (e.g. a named workstream), don't clobber it.
+      const incoming: CanvasData = {
+        nodes: [node("obj-1", 0, 0, { category: "objective", ref: "custom-ref" })],
+        edges: [],
+      };
+      const blob = splitCanvas(incoming, emptyPrev);
+      expect(blob.nodes[0].ref).toBe("custom-ref");
+    });
+
+    it("does NOT stamp a ref on non-drillable categories (notes, decisions)", () => {
+      // Only `objective` is drillable today. Notes/decisions are leaves.
+      const incoming: CanvasData = {
+        nodes: [
+          node("n-1", 0, 0, { category: "note" }),
+          node("d-1", 0, 0, { category: "decision" }),
+        ],
+        edges: [],
+      };
+      const blob = splitCanvas(incoming, emptyPrev);
+      expect(blob.nodes[0].ref).toBeUndefined();
+      expect(blob.nodes[1].ref).toBeUndefined();
+    });
+
+    it("does NOT stamp a ref on authored nodes without any category", () => {
+      // Pre-category canvases should round-trip unchanged.
+      const incoming: CanvasData = {
+        nodes: [{ id: "x", type: "text", x: 0, y: 0, text: "x" }],
+        edges: [],
+      };
+      const blob = splitCanvas(incoming, emptyPrev);
+      expect(blob.nodes[0].ref).toBeUndefined();
+    });
+  });
 });

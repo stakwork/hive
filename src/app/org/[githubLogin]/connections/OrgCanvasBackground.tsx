@@ -79,11 +79,18 @@ interface OrgCanvasBackgroundProps {
    * Connections sidebar.
    */
   rightInset?: number;
+  /**
+   * Label for the root breadcrumb. We prefer the org's display name so
+   * users see "Acme" rather than the generic "Canvas"; falls back to
+   * the `githubLogin` when no name is set.
+   */
+  orgName?: string | null;
 }
 
 export function OrgCanvasBackground({
   githubLogin,
   rightInset = 0,
+  orgName,
 }: OrgCanvasBackgroundProps) {
   const [root, setRoot] = useState<CanvasData | null>(null);
   const [subCanvases, setSubCanvases] = useState<Record<string, CanvasData>>({});
@@ -385,7 +392,7 @@ export function OrgCanvasBackground({
           onEdgeUpdate={handleEdgeUpdate}
           onEdgeDelete={handleEdgeDelete}
           renderAddNodeButton={renderAddNodeButton}
-          rootLabel="Canvas"
+          rootLabel={orgName || githubLogin}
         />
       </div>
     </>

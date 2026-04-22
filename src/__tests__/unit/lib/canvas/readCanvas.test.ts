@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/db", () => ({
   db: {
-    canvas: { findUnique: vi.fn() },
+    canvas: { findUnique: vi.fn(), findMany: vi.fn() },
     workspace: { findMany: vi.fn(), findFirst: vi.fn() },
     repository: { findMany: vi.fn() },
   },
@@ -23,7 +23,10 @@ import { readCanvas } from "@/lib/canvas";
 import type { CanvasBlob } from "@/lib/canvas";
 
 const dbMock = db as unknown as {
-  canvas: { findUnique: ReturnType<typeof vi.fn> };
+  canvas: {
+    findUnique: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+  };
   workspace: {
     findMany: ReturnType<typeof vi.fn>;
     findFirst: ReturnType<typeof vi.fn>;
@@ -45,6 +48,9 @@ function mockWorkspaces(ws: Array<{ id: string; name: string }>) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  // Default: child-canvas rollup query finds nothing. Individual tests
+  // can override when they want to exercise the rollup path.
+  dbMock.canvas.findMany.mockResolvedValue([]);
 });
 
 // `CanvasData` has `nodes?` / `edges?` as optional; in practice readCanvas
@@ -158,6 +164,128 @@ describe("readCanvas (root scope)", () => {
     const { nodes, edges } = await read("org-1", "");
     expect(nodes.map((n) => n.id)).toEqual(["obj-1"]);
     expect(edges).toEqual([]);
+  });
+});
+
+describe("readCanvas (child-canvas rollup)", () => {
+  it("stamps child-canvas progress into a parent objective's customData", async () => {
+    // Parent canvas: one authored objective with a drillable ref.
+    mockBlob({
+      nodes: [
+        {
+          id: "obj-1",
+          type: "text",
+          x: 10,
+          y: 10,
+          text: "Ship mobile",
+          category: "objective",
+          ref: "node:obj-1",
+        },
+      ],
+      edges: [],
+    });
+    mockWorkspaces([]); // rootProjector no-op for simplicity
+
+    // Child canvas: 2 of 4 mini-objectives are done.
+    dbMock.canvas.findMany.mockResolvedValue([
+      {
+        ref: "node:obj-1",
+        data: {
+          nodes: [
+            {
+              id: "c1",
+              type: "text",
+              x: 0,
+              y: 0,
+              text: "a",
+              category: "objective",
+              customData: { status: "ok" },
+            },
+            {
+              id: "c2",
+              type: "text",
+              x: 0,
+              y: 0,
+              text: "b",
+              category: "objective",
+              customData: { status: "ok" },
+            },
+            {
+              id: "c3",
+              type: "text",
+              x: 0,
+              y: 0,
+              text: "c",
+              category: "objective",
+              customData: { status: "attn" },
+            },
+            {
+              id: "c4",
+              type: "text",
+              x: 0,
+              y: 0,
+              text: "d",
+              category: "objective",
+            },
+          ],
+          edges: [],
+        },
+      },
+    ]);
+
+    const { nodes } = await read("org-1", "");
+    const obj = nodes.find((n) => n.id === "obj-1");
+    expect(obj?.customData).toMatchObject({
+      primary: "50%",
+      secondary: "2/4",
+      status: "attn",
+    });
+  });
+
+  it("does NOT overwrite a manual status the user has set (manual wins)", async () => {
+    mockBlob({
+      nodes: [
+        {
+          id: "obj-1",
+          type: "text",
+          x: 0,
+          y: 0,
+          text: "Ship mobile",
+          category: "objective",
+          ref: "node:obj-1",
+          // User marked this at-risk manually.
+          customData: { status: "risk" },
+        },
+      ],
+      edges: [],
+    });
+    mockWorkspaces([]);
+    dbMock.canvas.findMany.mockResolvedValue([
+      {
+        ref: "node:obj-1",
+        data: {
+          nodes: [
+            {
+              id: "c1",
+              type: "text",
+              x: 0,
+              y: 0,
+              text: "a",
+              category: "objective",
+              customData: { status: "ok" },
+            },
+          ],
+          edges: [],
+        },
+      },
+    ]);
+
+    const { nodes } = await read("org-1", "");
+    const obj = nodes.find((n) => n.id === "obj-1");
+    // Manual status stays; rollup still fills in primary/secondary.
+    expect(obj?.customData?.status).toBe("risk");
+    expect(obj?.customData?.primary).toBe("100%");
+    expect(obj?.customData?.secondary).toBe("1/1");
   });
 });
 
