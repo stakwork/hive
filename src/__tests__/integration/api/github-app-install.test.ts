@@ -265,8 +265,20 @@ describe("GitHub App Install API Integration Tests", () => {
         expect(data.data.state).toBeDefined();
         expect(typeof data.data.state).toBe("string");
 
-        // Verify state token was generated and is base64 encoded
-        expect(() => Buffer.from(data.data.state, "base64")).not.toThrow();
+        // State is now signed: `<base64url-json>.<hex-sig>`. Both halves
+        // must be present and the body must decode to valid JSON.
+        const [body, signature] = data.data.state.split(".");
+        expect(body).toBeTruthy();
+        expect(signature).toMatch(/^[0-9a-f]+$/i);
+        // Ensure the payload body decodes without blowing up (base64url
+        // variant — hyphen/underscore instead of +/ and no padding).
+        const padded =
+          body + "=".repeat((4 - (body.length % 4)) % 4);
+        const decodedJson = Buffer.from(
+          padded.replace(/-/g, "+").replace(/_/g, "/"),
+          "base64",
+        ).toString("utf-8");
+        expect(() => JSON.parse(decodedJson)).not.toThrow();
       });
 
       test("should generate installation URL with target_type=User for user repositories", async () => {
@@ -802,9 +814,14 @@ describe("GitHub App Install API Integration Tests", () => {
         const response = await POST(request);
         const data = await expectSuccess(response);
 
-        // Decode state token
+        // Decode signed state: `<base64url-json>.<hex-sig>`
+        const [body] = data.data.state.split(".");
+        const padded = body + "=".repeat((4 - (body.length % 4)) % 4);
         const stateData = JSON.parse(
-          Buffer.from(data.data.state, "base64").toString()
+          Buffer.from(
+            padded.replace(/-/g, "+").replace(/_/g, "/"),
+            "base64",
+          ).toString("utf-8"),
         );
 
         expect(stateData.workspaceSlug).toBe(workspace.slug);
