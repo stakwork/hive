@@ -292,6 +292,7 @@ describe("pusher.ts", () => {
         PLAN_USER_LEAVE: "plan-user-leave",
         FEATURE_UPDATED: "feature-updated",
         CONNECTION_UPDATED: "connection-updated",
+        CANVAS_UPDATED: "canvas-updated",
       });
     });
 
