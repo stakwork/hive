@@ -45,6 +45,17 @@ export interface CategorySpec {
    * indented sub-bullets under the category in the prompt.
    */
   customDataKeys?: CategoryCustomDataKey[];
+  /**
+   * When `false`, this category's nodes are **projected from the DB**
+   * and the agent should never create them. The renderer still accepts
+   * them (they're normal nodes visually), but their text / category /
+   * customData are server-owned; only the **position** is persisted
+   * through the canvas write path. The agent can still draw edges
+   * to/from them.
+   *
+   * Omit or set `true` for author-created categories (the default).
+   */
+  agentWritable?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +104,12 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
     id: "workspace",
     agentDescription:
       "teal container card representing a single workspace / repo in the org — the top layer",
-    promptGuidance: "Use one per workspace you want to show.",
+    // Workspaces are projected live from the DB (id prefix `ws:`). The
+    // agent never authors a workspace card directly; it edges OTHER
+    // nodes to the existing `ws:<id>` nodes.
+    agentWritable: false,
+    promptGuidance:
+      "Projected from the database — one `ws:<id>` node per live workspace. Do NOT create these yourself. Draw edges from objectives to them to show which workspace an initiative belongs to.",
   },
   {
     id: "objective",
@@ -122,10 +138,11 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
 /**
  * One-line category vocabulary for the Zod `category` field's tool-schema
  * description. Kept deliberately compact — the agent pays tokens for
- * this on every tool call.
+ * this on every tool call. Projected categories (`agentWritable: false`)
+ * are omitted so the agent never tries to author one from scratch.
  */
 export function buildCategoryDescription(): string {
-  const parts = CATEGORY_REGISTRY.map(
+  const parts = CATEGORY_REGISTRY.filter((c) => c.agentWritable !== false).map(
     (c) => `\`${c.id}\` (${c.agentDescription})`,
   );
   return `One of: ${parts.join(", ")}.`;
