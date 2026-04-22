@@ -177,7 +177,21 @@ export function OrgCanvasBackground({
     const pusher = getPusherClient();
     const channel = pusher.subscribe(channelName);
 
+    // Diagnostic: log the subscription lifecycle so we can tell, in the
+    // field, whether an agent-driven update arrived before or after the
+    // server confirmed our subscription. (Non-presence channels drop any
+    // events published during the pre-confirmation window.)
+    const handleSubSucceeded = () => {
+      console.log(`[OrgCanvasBackground] subscribed to ${channelName}`);
+    };
+    const handleSubError = (err: unknown) => {
+      console.error(`[OrgCanvasBackground] subscription error on ${channelName}`, err);
+    };
+    channel.bind("pusher:subscription_succeeded", handleSubSucceeded);
+    channel.bind("pusher:subscription_error", handleSubError);
+
     const handleCanvasUpdated = (payload: { ref?: string | null }) => {
+      console.log("[OrgCanvasBackground] CANVAS_UPDATED received", payload);
       // Only root-canvas events are handled today; sub-canvas payloads
       // carry a non-null `ref` and we ignore them for now.
       if (payload?.ref) return;
@@ -194,6 +208,8 @@ export function OrgCanvasBackground({
 
     channel.bind(PUSHER_EVENTS.CANVAS_UPDATED, handleCanvasUpdated);
     return () => {
+      channel.unbind("pusher:subscription_succeeded", handleSubSucceeded);
+      channel.unbind("pusher:subscription_error", handleSubError);
       channel.unbind(PUSHER_EVENTS.CANVAS_UPDATED, handleCanvasUpdated);
       pusher.unsubscribe(channelName);
     };

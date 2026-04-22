@@ -20,6 +20,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getOrgChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
+import { buildCategoryDescription } from "@/app/org/[githubLogin]/connections/canvas-categories";
 
 /**
  * Canvas tools for the Connections-page agent.
@@ -67,6 +68,19 @@ async function persistRootCanvas(
   });
 }
 
+/**
+ * Delay before firing the Pusher trigger. On a brand-new page the client
+ * lazily opens its Pusher WebSocket the first time `getPusherClient()`
+ * runs, and `channel.subscribe()` resolves BEFORE the server confirms the
+ * subscription. Events published during that window are dropped silently
+ * (non-presence channels don't replay). Giving the client a short head
+ * start makes first-canvas updates reliably land live instead of only on
+ * refresh. 300ms is invisible to users (the agent has just finished a
+ * multi-second reasoning turn) but comfortably longer than the typical
+ * handshake.
+ */
+const CANVAS_NOTIFY_DELAY_MS = 300;
+
 async function notifyCanvasUpdated(
   orgId: string,
   action: string,
@@ -77,14 +91,25 @@ async function notifyCanvasUpdated(
       where: { id: orgId },
       select: { githubLogin: true },
     });
-    if (!org) return;
+    if (!org) {
+      console.warn(
+        "[canvasTools] notifyCanvasUpdated: no SourceControlOrg for orgId",
+        orgId,
+      );
+      return;
+    }
     const channelName = getOrgChannelName(org.githubLogin);
+    await new Promise((r) => setTimeout(r, CANVAS_NOTIFY_DELAY_MS));
     await pusherServer.trigger(channelName, PUSHER_EVENTS.CANVAS_UPDATED, {
       ref: null, // null == root canvas, mirrors the API's ROOT_REF sentinel
       action,
       ...(detail ?? {}),
       timestamp: Date.now(),
     });
+    console.log(
+      `[canvasTools] CANVAS_UPDATED → ${channelName} (${action})`,
+      detail ?? {},
+    );
   } catch (e) {
     console.error("[canvasTools] failed to send canvas update:", e);
   }
@@ -95,16 +120,14 @@ async function notifyCanvasUpdated(
 // ---------------------------------------------------------------------------
 
 /**
- * The category vocabulary the renderer understands. Keep this in sync with
- * `canvas-theme.ts`. The schema is `z.string()` rather than an enum so the
- * agent can experiment with future categories without tool-call failures;
- * the renderer treats unknown categories as plain boxes.
+ * The category vocabulary the renderer understands. Generated from
+ * `canvas-categories.ts` so the tool schema and the prompt can never
+ * drift from the renderer. The Zod type is `z.string()` rather than an
+ * enum so the agent can experiment with future categories without
+ * tool-call failures; the renderer treats unknown categories as plain
+ * boxes.
  */
-const CATEGORY_DESCRIPTION =
-  "One of: `objective` (top-level goal, gradient title), " +
-  "`status-ok` | `status-attn` | `status-risk` (initiative card with " +
-  "progress bar, status pill, blocker count), " +
-  "`note` (amber free-floating callout), `decision` (purple callout).";
+const CATEGORY_DESCRIPTION = buildCategoryDescription();
 
 const customDataSchema = z
   .object({

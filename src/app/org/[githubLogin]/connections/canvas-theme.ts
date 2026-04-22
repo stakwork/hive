@@ -6,6 +6,7 @@ import type {
   SlotContext,
 } from "system-canvas";
 import { darkTheme, resolveTheme } from "system-canvas";
+import { CATEGORY_REGISTRY } from "./canvas-categories";
 
 /**
  * Theme for the Connections-page background canvas.
@@ -37,6 +38,9 @@ const ACCENT = {
   objective: "#a78bfa",
   note: "#f59e0b",
   decision: "#a78bfa",
+  // Teal/cyan reads as "infrastructure / container" — distinct from the
+  // purple objective, amber note, and status greens/ambers/reds.
+  workspace: "#22d3ee",
 } as const;
 
 // Blue -> violet gradient used for the objective title.
@@ -302,6 +306,43 @@ function accentNote(color: string, kicker: string): CategoryDefinition {
 }
 
 // ---------------------------------------------------------------------------
+// Workspace card — a "container" category sitting above objectives. Same
+// footprint as a status card so layers line up, but no progress / pill /
+// blocker slots: it's purely an identity label for the workspace.
+// ---------------------------------------------------------------------------
+
+const workspaceCategory: CategoryDefinition = {
+  ...baseCard,
+  defaultWidth: CARD_W,
+  defaultHeight: CARD_H,
+  type: "text",
+  stroke: hexAlpha(ACCENT.workspace, 0.45),
+  fill: hexAlpha(ACCENT.workspace, 0.05),
+  slots: {
+    header: { kind: "text", value: "WORKSPACE", color: ACCENT.workspace },
+  },
+} as CategoryDefinition;
+
+// ---------------------------------------------------------------------------
+// Definition lookup
+// ---------------------------------------------------------------------------
+
+/**
+ * Map every registered category id to its renderer definition. Keys
+ * here MUST match ids in `CATEGORY_REGISTRY` (canvas-categories.ts) —
+ * the `resolveTheme` call below checks this and throws on mismatch.
+ */
+const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
+  workspace: workspaceCategory,
+  objective: objectiveCategory,
+  "status-ok": statusCategory("ok", "OK"),
+  "status-attn": statusCategory("attn", "ATTN"),
+  "status-risk": statusCategory("risk", "RISK"),
+  note: accentNote(ACCENT.note, "NOTE"),
+  decision: accentNote(ACCENT.decision, "DECISION"),
+};
+
+// ---------------------------------------------------------------------------
 // Theme build
 // ---------------------------------------------------------------------------
 
@@ -336,14 +377,23 @@ export const connectionsTheme: CanvasTheme = resolveTheme(
       ...darkTheme.grid,
       color: "rgba(255, 255, 255, 0.03)",
     },
-    categories: {
-      objective: objectiveCategory,
-      "status-risk": statusCategory("risk", "RISK"),
-      "status-attn": statusCategory("attn", "ATTN"),
-      "status-ok": statusCategory("ok", "OK"),
-      note: accentNote(ACCENT.note, "NOTE"),
-      decision: accentNote(ACCENT.decision, "DECISION"),
-    },
+    // Build the renderer's category map by joining the category
+    // registry (id + agent docs) with the local renderer definitions.
+    // The registry is the single source of truth for which categories
+    // exist — if a spec appears there without a definition below, we
+    // throw at load so the mismatch is loud, not silent.
+    categories: Object.fromEntries(
+      CATEGORY_REGISTRY.map((spec) => {
+        const def = CATEGORY_DEFINITIONS[spec.id];
+        if (!def) {
+          throw new Error(
+            `[canvas-theme] missing CategoryDefinition for "${spec.id}". ` +
+              `Add it to CATEGORY_DEFINITIONS.`,
+          );
+        }
+        return [spec.id, def] as const;
+      }),
+    ),
   },
   darkTheme,
 );

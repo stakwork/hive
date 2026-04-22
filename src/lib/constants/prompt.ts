@@ -1,5 +1,6 @@
 import { ModelMessage } from "ai";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
+import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
 
 /**
  * Format a flat list of members for the single-workspace prompt.
@@ -163,17 +164,9 @@ export function getCanvasPromptSuffix(): string {
 
 You also have access to tools for managing the organization's **Canvas** — a spatial, diagrammable whiteboard that sits as the live background of this page. The user can see and edit it in real time. Think of it as "the shared map of what the org is working on."
 
-Categories in the canvas have strong visual meaning:
-- \`objective\` — a top-level goal/vision. Gradient purple title. Use ONE at a time as the north-star; multi-line \`text\` is rendered with a gradient (use \\n to split lines).
-- \`status-ok\` | \`status-attn\` | \`status-risk\` — an initiative / project / workstream with a progress bar, status pill (OK / ATTN / RISK), and blocker-count badge. Use these for the things the org is actively doing.
-- \`note\` — an amber free-floating callout. "Remember to...", "Heads up...", "Open question..."
-- \`decision\` — a purple free-floating callout. "Shared vs dedicated pools?", "Adopt X or Y?"
+Categories in the canvas have strong visual meaning. The list below is generated from the renderer's category registry — it's always authoritative:
 
-For the three status categories, \`customData\` drives the card content:
-- \`customData.primary\` — progress percent, e.g. \`"38%"\` or \`0.38\`. Drives the progress bar AND shows as the first footer number.
-- \`customData.secondary\` — footer text, e.g. \`"4 blockers"\` or \`"6 ppl"\`.
-- \`customData.secondaryAccent\` — when \`true\`, renders \`secondary\` in the status color (red/amber). Use for blockers or risks; leave off for neutral counts like headcount.
-- \`customData.count\` — number on the notched tab badge in the top-right. Use for open blocker count.
+${buildPromptCategorySection()}
 
 Edges are just \`{ fromNode, toNode, label? }\`. Use short verb-phrase labels ("blocks", "depends on", "feeds"). Use edges to show dependencies between initiatives.
 
@@ -183,22 +176,25 @@ Edges are just \`{ fromNode, toNode, label? }\`. Use short verb-phrase labels ("
 - \`update_canvas\` — Replace the entire canvas. Use for "lay out this problem" / "redraw this". Echo every existing node that should survive.
 - \`patch_canvas\` — Apply small ops: \`add_node\`, \`update_node\`, \`remove_node\`, \`add_edge\`, \`update_edge\`, \`remove_edge\`. Use for targeted changes: "mark V2 as at-risk", "add a blocker to the mobile app", "link A to B". \`update_node\` does a shallow merge on \`customData\`, so you only need to pass the keys you're changing.
 
-### Layout rules
+### Layout
 
-The canvas is a 2D plane; you supply \`x\` / \`y\` in pixels for every node. Follow this grid so things don't overlap:
+Think of the canvas as horizontal **layers**, top to bottom:
 
-- Objective row: single node at \`x ≈ 200\`, \`y = 0\`, width 340, height 116.
-- Initiative row(s): status cards of width 240, height 104. Space them \`x: 0, 270, 540, 810, ...\` (270px pitch). First row at \`y = 200\`, next at \`y = 360\`, then \`y = 520\`, etc. (160px row pitch).
-- Note/decision cards: width 220, height 86. Park them to the right of whichever row they annotate, or on a dedicated right-hand column at \`x ≈ 900+\`.
+1. **Workspaces** (teal) across the top — one card per workspace.
+2. **Objectives** (gradient) below — each one sits under the workspace it belongs to (or centered if it's org-wide).
+3. **Initiatives** (status cards) below — the active work inside each objective / workspace.
+4. **Notes / decisions** — free-floating callouts, usually off to the side or the bottom.
 
-A blank canvas should feel readable, not bunched. If you have 3 initiatives, don't stack them vertically — spread them across a row.
+Within a layer, spread the cards evenly across a row — don't stack them vertically and don't bunch them on one side. Leave enough space that nothing overlaps. The user can drag anything around after the fact, so you don't need to be pixel-perfect; just pick coordinates that feel balanced and readable.
+
+You supply \`x\` / \`y\` in pixels for every node. The user can see and move them; do your best and move on.
 
 ### Workflow
 
 When the user says something like "lay out the problem" or "diagram this":
 1. Call \`read_canvas\` first.
 2. Identify which existing nodes you want to keep (usually: all of them, unless the user said to start over).
-3. Compose the new canvas: ONE objective at the top, the active initiatives as a row of status cards underneath, dependencies as edges, and any open questions as \`decision\` / \`note\` cards on the side.
+3. Compose the new canvas in layers: workspaces across the top, objectives underneath, active initiatives as a row of status cards below that, and any open questions as \`decision\` / \`note\` cards off to the side. Draw edges for dependencies (initiative → workspace, initiative → initiative, etc.).
 4. Call \`update_canvas\` with the full canvas.
 
 When the user says "mark X as Y" / "update the count on Z" / "add a dependency from A to B":
