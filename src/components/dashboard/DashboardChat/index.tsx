@@ -38,9 +38,10 @@ interface DashboardChatProps {
   defaultExtraWorkspaceSlugs?: string[];
   orgSlug?: string;
   orgId?: string;
+  maxExtraWorkspaces?: number;
 }
 
-export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId }: DashboardChatProps = {}) {
+export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId, maxExtraWorkspaces }: DashboardChatProps = {}) {
   const { slug, workspace } = useWorkspace();
   const { data: session } = useSession();
   const router = useRouter();
@@ -848,6 +849,7 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId }: Da
           onAddWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => [...prev, ws])}
           onRemoveWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => prev.filter((s) => s !== ws))}
           currentWorkspaceSlug={slug}
+          maxExtraWorkspaces={maxExtraWorkspaces}
         />
       </div>
 

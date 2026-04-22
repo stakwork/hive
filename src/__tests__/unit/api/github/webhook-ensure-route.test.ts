@@ -32,17 +32,23 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
+vi.mock("@/services/workspace", () => ({
+  validateWorkspaceAccessById: vi.fn(),
+}));
+
 // Import mocked modules
 import { db } from "@/lib/db";
 import { WebhookService } from "@/services/github/WebhookService";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { getServiceConfig } from "@/config/services";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 
 const mockGetServerSession = getServerSession as Mock;
 const mockDbRepositoryFindUnique = db.repository.findUnique as Mock;
 const mockWebhookService = WebhookService as Mock;
 const mockGetGithubWebhookCallbackUrl = getGithubWebhookCallbackUrl as Mock;
 const mockGetServiceConfig = getServiceConfig as Mock;
+const mockValidateWorkspaceAccessById = validateWorkspaceAccessById as Mock;
 
 // Test Data Factories
 const TestDataFactory = {
@@ -162,6 +168,51 @@ const TestHelpers = {
 const MockSetup = {
   reset: () => {
     vi.clearAllMocks();
+    // Default: caller has write access. IDOR-specific tests override this.
+    mockValidateWorkspaceAccessById.mockResolvedValue({
+      hasAccess: true,
+      canRead: true,
+      canWrite: true,
+      canAdmin: false,
+      userRole: "DEVELOPER",
+      workspace: {
+        id: "workspace-123",
+        name: "ws",
+        description: null,
+        slug: "ws",
+        ownerId: "owner-1",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  },
+
+  setupNonMember: () => {
+    mockValidateWorkspaceAccessById.mockResolvedValue({
+      hasAccess: false,
+      canRead: false,
+      canWrite: false,
+      canAdmin: false,
+    });
+  },
+
+  setupReaderOnly: () => {
+    mockValidateWorkspaceAccessById.mockResolvedValue({
+      hasAccess: true,
+      canRead: true,
+      canWrite: false,
+      canAdmin: false,
+      userRole: "VIEWER",
+      workspace: {
+        id: "workspace-123",
+        name: "ws",
+        description: null,
+        slug: "ws",
+        ownerId: "owner-1",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
   },
 
   setupSuccessfulWebhookCreation: (webhookId: number = 123456789) => {
@@ -811,6 +862,71 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
           userId: differentUserId,
         })
       );
+    });
+  });
+
+  describe("IDOR hardening", () => {
+    beforeEach(() => {
+      TestHelpers.setupAuthenticatedUser();
+    });
+
+    test("returns 404 and skips webhook writes when caller is not a member", async () => {
+      MockSetup.setupNonMember();
+      MockSetup.setupSuccessfulWebhookCreation();
+
+      const request = TestHelpers.createMockRequest({
+        workspaceId: "victim-workspace-id",
+        repositoryUrl: "https://github.com/victim-org/victim-repo",
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data).toEqual({
+        success: false,
+        message: "Workspace not found or access denied",
+      });
+      expect(mockValidateWorkspaceAccessById).toHaveBeenCalledWith(
+        "victim-workspace-id",
+        "user-123",
+      );
+      // No webhook side-effects — no callback URL built, no service instantiated,
+      // and therefore no repo update of githubWebhookId / githubWebhookSecret.
+      expect(mockGetGithubWebhookCallbackUrl).not.toHaveBeenCalled();
+      expect(mockWebhookService).not.toHaveBeenCalled();
+      expect(mockDbRepositoryFindUnique).not.toHaveBeenCalled();
+    });
+
+    test("returns 404 when caller is a reader but not a writer (VIEWER)", async () => {
+      MockSetup.setupReaderOnly();
+      MockSetup.setupSuccessfulWebhookCreation();
+
+      const request = TestHelpers.createMockRequest({
+        workspaceId: "workspace-123",
+        repositoryUrl: "https://github.com/test-org/test-repo",
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(404);
+      expect(mockWebhookService).not.toHaveBeenCalled();
+    });
+
+    test("authorization check runs BEFORE the repositoryId → url lookup", async () => {
+      // If we ever flip the order, a non-member could at least confirm
+      // the existence of arbitrary repository ids. Lock the order down.
+      MockSetup.setupNonMember();
+
+      const request = TestHelpers.createMockRequest({
+        workspaceId: "victim-workspace-id",
+        repositoryId: "some-repo-id",
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(404);
+      expect(mockDbRepositoryFindUnique).not.toHaveBeenCalled();
     });
   });
 });
