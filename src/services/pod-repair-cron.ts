@@ -49,6 +49,7 @@ export async function getEligibleWorkspaces() {
         containerFiles: { not: Prisma.DbNull },
         containerFilesSetUp: true,
         poolApiKey: { not: null },
+        repairAgentDisabled: false,
       },
     },
     select: {

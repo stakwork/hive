@@ -335,4 +335,11 @@ describe("getEligibleWorkspaces", () => {
     expect(swarmSelect).toHaveProperty("pendingRepairTrigger", true);
     expect(swarmSelect).toHaveProperty("description", true);
   });
+
+  it("passes repairAgentDisabled: false in the swarm where-clause", async () => {
+    await getEligibleWorkspaces();
+
+    const [callArgs] = mockedDb.workspace.findMany.mock.calls[0] as [Record<string, unknown>];
+    expect((callArgs as any).where.swarm).toHaveProperty("repairAgentDisabled", false);
+  });
 });

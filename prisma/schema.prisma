@@ -337,6 +337,7 @@ model Swarm {
   webhookUrl              String?               @map("webhook_url")
   pendingRepairTrigger    Json?                 @map("pending_repair_trigger")
   podCompletedAt          DateTime?             @map("pod_completed_at")
+  repairAgentDisabled     Boolean               @default(false) @map("repair_agent_disabled")
   description             String?
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
