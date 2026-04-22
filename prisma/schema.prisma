@@ -156,6 +156,7 @@ model SourceControlOrg {
   workspaces           Workspace[]
   sharedConversations  SharedConversation[]
   connections          Connection[]
+  canvases             Canvas[]
 
   @@index([githubLogin])
   @@index([githubInstallationId])
@@ -1412,6 +1413,29 @@ model Connection {
   @@unique([orgId, slug])
   @@index([orgId])
   @@map("connections")
+}
+
+/// System-canvas document attached to a SourceControlOrg. Each org has one
+/// root canvas (ref = "") plus any number of nested sub-canvases addressed
+/// by `ref`; nodes in one canvas can point at another via `ref`, producing a
+/// drill-down graph. `data` stores the full CanvasData JSON (nodes, edges,
+/// theme hints, lanes) as produced/consumed by system-canvas-react.
+///
+/// The empty-string sentinel for the root (rather than NULL) avoids
+/// PostgreSQL's "NULL is never equal" semantics on the composite unique,
+/// which would otherwise let two rows claim to be "root" for the same org.
+model Canvas {
+  id        String           @id @default(cuid())
+  orgId     String           @map("org_id")
+  ref       String           @default("")
+  data      Json
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+  org       SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, ref])
+  @@index([orgId])
+  @@map("canvases")
 }
 
 model WorkspaceTransaction {
