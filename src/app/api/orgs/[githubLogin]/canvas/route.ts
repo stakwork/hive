@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { validateUserBelongsToOrg } from "@/services/workspace";
 import { db } from "@/lib/db";
 
 const EMPTY_CANVAS = { nodes: [], edges: [] } as const;
@@ -35,6 +36,11 @@ export async function GET(
 
   const { githubLogin } = await params;
 
+  const isMember = await validateUserBelongsToOrg(githubLogin, userOrResponse.id);
+  if (!isMember) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
   try {
     const org = await findOrg(githubLogin);
     if (!org) {
@@ -64,6 +70,11 @@ export async function PUT(
   if (userOrResponse instanceof NextResponse) return userOrResponse;
 
   const { githubLogin } = await params;
+
+  const isMember = await validateUserBelongsToOrg(githubLogin, userOrResponse.id);
+  if (!isMember) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
 
   try {
     const body = await request.json();
