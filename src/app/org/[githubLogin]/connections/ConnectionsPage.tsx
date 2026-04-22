@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { OrgChat } from "../OrgChat";
 import { ConnectionsSidebar } from "./ConnectionsSidebar";
 import { ConnectionViewer } from "./ConnectionViewer";
+import { OrgCanvasBackground } from "./OrgCanvasBackground";
 
 export interface ConnectionData {
   id: string;
@@ -110,15 +111,31 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
     }
   };
 
+  // Interactive system-canvas background. Lives in absolute layer behind
+  // the chat + sidebar so pan/zoom/edit happens wherever the UI doesn't
+  // occlude it. The overlay layer below uses pointer-events:none by
+  // default; each real UI surface re-enables them on itself.
   return (
-    <div className="flex h-screen w-full">
-      {/* Main content area — fills height, right-margin for sidebar */}
-      <div className="flex-1 mr-80 flex flex-col h-full">
+    <div className="relative flex h-screen w-full overflow-hidden">
+      <OrgCanvasBackground
+        githubLogin={githubLogin}
+        rightInset={320}
+      />
+
+      {/* Hide the background entirely while a specific connection is open —
+          that view has its own dense UI and shouldn't sit over the canvas. */}
+      {activeConnection && (
+        <div className="absolute inset-0 bg-background z-10" aria-hidden />
+      )}
+
+      <div className="relative z-20 flex flex-1 mr-80 flex-col h-full pointer-events-none">
         {activeConnection ? (
-          <ConnectionViewer
-            connection={activeConnection}
-            onBack={handleBack}
-          />
+          <div className="pointer-events-auto flex-1 flex flex-col h-full">
+            <ConnectionViewer
+              connection={activeConnection}
+              onBack={handleBack}
+            />
+          </div>
         ) : loadingWorkspaces ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
@@ -128,6 +145,12 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
             No workspaces available.
           </div>
         ) : (
+          // DashboardChat's root is already `pointer-events-none` and each
+          // interactive surface inside (input, pill row, provenance sidebar)
+          // re-enables pointer events on itself. We must NOT wrap it in a
+          // `pointer-events-auto` div: that would claim the whole chat
+          // column's bounding box and block clicks on the canvas FAB that
+          // sits in the same bottom-right region.
           <div className="flex-1 flex flex-col justify-end pb-4">
             <OrgChat
               workspaceSlugs={workspaceSlugs}
@@ -138,16 +161,18 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
         )}
       </div>
 
-      {/* Right sidebar */}
-      <ConnectionsSidebar
-        githubLogin={githubLogin}
-        connections={connections}
-        activeConnectionId={activeConnection?.id ?? null}
-        onConnectionClick={handleConnectionClick}
-        onConnectionCreated={handleConnectionCreated}
-        onConnectionDeleted={handleConnectionDeleted}
-        isLoading={loadingConnections}
-      />
+      {/* Right sidebar — opaque, always interactive */}
+      <div className="relative z-20 pointer-events-auto">
+        <ConnectionsSidebar
+          githubLogin={githubLogin}
+          connections={connections}
+          activeConnectionId={activeConnection?.id ?? null}
+          onConnectionClick={handleConnectionClick}
+          onConnectionCreated={handleConnectionCreated}
+          onConnectionDeleted={handleConnectionDeleted}
+          isLoading={loadingConnections}
+        />
+      </div>
     </div>
   );
 }
