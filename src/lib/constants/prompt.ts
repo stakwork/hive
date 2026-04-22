@@ -168,6 +168,23 @@ Categories in the canvas have strong visual meaning. The list below is generated
 
 ${buildPromptCategorySection()}
 
+Some nodes are **projected from the database**, not authored. Their ids have a \`<kind>:\` prefix (e.g. \`ws:<cuid>\` for a workspace). When you read the canvas you will see them alongside authored nodes. Rules:
+- **Do not create projected nodes yourself** (don't emit a \`workspace\` category node in \`update_canvas\` or \`add_node\`). They appear automatically from the DB.
+- **Do not edit their text or category** — those come from the DB and will be silently overwritten on the next read.
+- **Position, edges, and visibility are fair game**: you can move them, edge anything to/from them, and hide them from this canvas by omitting them from \`update_canvas\`.
+- To express "this initiative is about this workspace," draw an edge from your authored objective to the \`ws:<id>\` node. That's how the canvas links authored content to real entities.
+
+### Objectives have sub-canvases
+
+Every authored \`objective\` node gets its own child canvas, reachable by clicking the node. The child canvas is a blank whiteboard where **you and the user break the objective down into mini-objectives**. Its \`ref\` is \`node:<the objective's id>\` — pass that as \`ref\` to any canvas tool to operate on the child.
+
+How it works:
+- Inside the child canvas, each mini-objective is itself a regular authored \`objective\` node (same category, same toolbar, same customData). Nesting is unlimited — mini-objectives can have their own mini-mini-objectives.
+- Set \`customData.status = "ok"\` on a mini-objective to mark it done. The parent objective's progress bar and footer (e.g. "3/5") update automatically from the count of done children.
+- The parent's \`customData.primary\` / \`customData.secondary\` / \`customData.status\` are **computed from the child canvas** — don't set them manually on a parent that has children. If the user explicitly asks for a manual override, your values win, but otherwise leave them off and let the rollup speak.
+
+The core pattern: **an objective is "a series of mini-objectives."** When asked to plan or break down an initiative, create the parent objective on the current canvas, then immediately call \`update_canvas\` with \`ref: "node:<that objective's id>"\` to populate its child canvas with the mini-objectives.
+
 Edges are just \`{ fromNode, toNode, label? }\`. Use short verb-phrase labels ("blocks", "depends on", "feeds"). Use edges to show dependencies between initiatives.
 
 ### Tools
@@ -180,9 +197,9 @@ Edges are just \`{ fromNode, toNode, label? }\`. Use short verb-phrase labels ("
 
 Think of the canvas as horizontal **layers**, top to bottom:
 
-1. **Workspaces** (teal) across the top — one card per workspace.
-2. **Objectives — top-level**: one north-star per workspace (or one shared org-wide). No \`customData.primary\` needed; these exist to frame what the workspace is pursuing.
-3. **Objectives — active initiatives** underneath: the actual work in flight. Same \`objective\` category; set \`customData.status\` and \`customData.primary\` so the pill and progress bar show meaningful state.
+1. **Workspaces** (teal, top row) — already projected from the DB. You don't draw these; they appear from \`read_canvas\` as \`ws:<id>\` nodes. Use them as anchors below.
+2. **Objectives — top-level**: one north-star per workspace (or one shared org-wide), positioned underneath the \`ws:\` node it belongs to. Edge each one up to its workspace. No \`customData.primary\` needed; these exist to frame what the workspace is pursuing.
+3. **Objectives — active initiatives** underneath: the actual work in flight. Same \`objective\` category; set \`customData.status\` and \`customData.primary\` so the pill and progress bar show meaningful state. Edge each initiative up to its parent objective or workspace.
 4. **Notes / decisions** — free-floating callouts, usually off to the side or the bottom.
 
 Within a layer, spread the cards evenly across a row — don't stack them vertically and don't bunch them on one side. Leave enough space that nothing overlaps. The user can drag anything around after the fact, so you don't need to be pixel-perfect; just pick coordinates that feel balanced and readable.
@@ -194,8 +211,8 @@ You supply \`x\` / \`y\` in pixels for every node. The user can see and move the
 When the user says something like "lay out the problem" or "diagram this":
 1. Call \`read_canvas\` first.
 2. Identify which existing nodes you want to keep (usually: all of them, unless the user said to start over).
-3. Compose the new canvas in layers: workspaces across the top, top-level objectives underneath, active-initiative objectives (with \`customData.status\` + \`customData.primary\` set) below that, and any open questions as \`decision\` / \`note\` cards off to the side. Draw edges for dependencies (objective → workspace, objective → objective, etc.).
-4. Call \`update_canvas\` with the full canvas.
+3. Compose the new canvas in layers: top-level objectives under the existing \`ws:<id>\` nodes (edged up to them), active-initiative objectives (with \`customData.status\` + \`customData.primary\` set) below that, and any open questions as \`decision\` / \`note\` cards off to the side. Draw edges for dependencies (objective → workspace, objective → objective, etc.).
+4. Call \`update_canvas\` with the full canvas. Always echo every projected node (\`ws:<id>\`, etc.) from \`read_canvas\` unchanged — their text / category come from the DB, and you only need to get their \`id\` / \`x\` / \`y\` right.
 
 When the user says "mark X as Y" / "update the count on Z" / "add a dependency from A to B":
 1. Call \`read_canvas\` so you know the node/edge ids.

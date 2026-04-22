@@ -120,6 +120,7 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
       <OrgCanvasBackground
         githubLogin={githubLogin}
         rightInset={320}
+        orgName={orgName}
       />
 
       {/* Hide the background entirely while a specific connection is open —
