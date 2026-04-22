@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { serviceConfigs } from "@/config/services";
 import { getUserAppTokens } from "@/lib/githubApp";
+import { signGithubAppState } from "@/lib/auth/github-app-state";
 import { randomBytes } from "crypto";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -29,15 +30,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Workspace slug is required" }, { status: 400 });
     }
 
-    // Generate state
+    // Generate state. The state is signed with NEXTAUTH_SECRET (HMAC-SHA256)
+    // so an attacker can't forge a callback against a victim workspace's
+    // slug. See `@/lib/auth/github-app-state` for the rationale.
     const randomState = randomBytes(32).toString("hex");
-    const stateData = {
+    const state = signGithubAppState({
       workspaceSlug,
       repositoryUrl, // Include repository URL in state for callback
       randomState,
       timestamp: Date.now(),
-    };
-    const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+    });
 
     // Store the GitHub state in the user's session
     await db.session.updateMany({
