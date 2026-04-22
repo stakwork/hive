@@ -5,6 +5,11 @@ import { config, optionalEnvVars } from "@/config/env";
 import { serviceConfigs } from "@/config/services";
 import { checkRepositoryAccess } from "@/lib/github-oauth-repository-access";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
+import {
+  verifyGithubAppState,
+  type GithubAppStatePayload,
+} from "@/lib/auth/github-app-state";
+import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -81,18 +86,59 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL("/auth", request.url));
     }
 
-    // Get the user's session to validate the GitHub state
-    // const userSession = await db.session.findFirst({
-    //   where: {
-    //     userId: session.user.id as string,
-    //     githubState: state,
-    //   },
-    // });
+    // IDOR hardening: verify the signed state BEFORE any side-effects
+    // (token exchange, installation lookup, workspace mutations). The
+    // state is HMAC-signed with NEXTAUTH_SECRET so an attacker who only
+    // knows a victim workspace slug can no longer forge a callback that
+    // rewires `workspace.sourceControlOrgId`.
+    const stateResult = verifyGithubAppState(state);
+    if (!stateResult.ok || !stateResult.payload) {
+      console.error("GitHub App callback rejected state:", stateResult.reason);
+      const errorCode =
+        stateResult.reason === "expired" ? "state_expired" : "invalid_state";
+      return NextResponse.redirect(new URL(`/?error=${errorCode}`, request.url));
+    }
+    const statePayload: GithubAppStatePayload = stateResult.payload;
 
-    // if (!userSession) {
-    //   console.error("Invalid or expired GitHub state for user:", session.user.id);
-    //   return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
-    // }
+    // Additionally bind the state to this user's session. The install
+    // handler stores the signed state on `session.githubState`, so even
+    // if an attacker somehow replayed a valid signed state issued to
+    // another user (e.g. via log exfil), it won't match this user's
+    // session and the rewire will be rejected.
+    const userSession = await db.session.findFirst({
+      where: {
+        userId: session.user.id as string,
+        githubState: state,
+      },
+      select: { id: true },
+    });
+    if (!userSession) {
+      console.error(
+        "GitHub App callback: state not bound to user session",
+        session.user.id,
+      );
+      return NextResponse.redirect(
+        new URL("/?error=invalid_state", request.url),
+      );
+    }
+
+    // Authorization: the caller must be an admin (OWNER/ADMIN) of the
+    // workspace named in the state BEFORE we perform the token exchange
+    // or mutate `workspace.sourceControlOrgId`. Plain members and non-
+    // members see a generic "invalid_state" and no side-effects run.
+    const workspaceAccess = await validateWorkspaceAccess(
+      statePayload.workspaceSlug,
+      session.user.id as string,
+    );
+    if (!workspaceAccess.hasAccess || !workspaceAccess.canAdmin) {
+      console.error(
+        "GitHub App callback: caller lacks admin on workspace",
+        statePayload.workspaceSlug,
+      );
+      return NextResponse.redirect(
+        new URL("/?error=workspace_access_denied", request.url),
+      );
+    }
 
     const { userAccessToken, userRefreshToken } = await getAccessToken(code, state);
 
@@ -117,22 +163,8 @@ export async function GET(request: NextRequest) {
 
     const githubUser = await userResponse.json();
 
-    // Decode the state to get workspace information FIRST
-    let workspaceSlug: string;
-    try {
-      const stateData = JSON.parse(Buffer.from(state, "base64").toString());
-      workspaceSlug = stateData.workspaceSlug;
-
-      // Optional: Validate timestamp (e.g., state not older than 1 hour)
-      const stateAge = Date.now() - stateData.timestamp;
-      if (stateAge > 60 * 60 * 1000) {
-        // 1 hour
-        return NextResponse.redirect(new URL(`/?error=state_expired`, request.url));
-      }
-    } catch (error) {
-      console.error("Failed to decode state:", error);
-      return NextResponse.redirect(new URL("/?error=invalid_state", request.url));
-    }
+    // Workspace slug was already extracted from the signed state above.
+    const workspaceSlug = statePayload.workspaceSlug;
 
     // Get installation info if available
     let githubOwner: string;
@@ -380,15 +412,10 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // If no swarm yet, try to reconstruct from the state data
+      // If no swarm yet, fall back to the repositoryUrl embedded in the
+      // (already-verified) signed state payload.
       if (!targetRepositoryUrl) {
-        try {
-          const stateData = JSON.parse(Buffer.from(state, "base64").toString());
-          // If we stored repositoryUrl in state, use it (we should enhance the install route to include this)
-          targetRepositoryUrl = stateData.repositoryUrl;
-        } catch (error) {
-          console.log("Could not extract repository URL from state", error);
-        }
+        targetRepositoryUrl = statePayload.repositoryUrl;
       }
 
       if (targetRepositoryUrl) {
