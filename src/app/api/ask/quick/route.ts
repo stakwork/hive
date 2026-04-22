@@ -5,6 +5,7 @@ import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/as
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import { buildWorkspaceConfigs, fetchConceptsForWorkspaces } from "@/lib/ai/workspaceConfig";
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
+import { buildCanvasTools } from "@/lib/ai/canvasTools";
 import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 import { z } from "zod";
@@ -138,9 +139,16 @@ export async function POST(request: NextRequest) {
       const workspaceConfigs = await buildWorkspaceConfigs(slugs, userOrResponse.id);
       tools = askToolsMulti(workspaceConfigs, apiKey);
 
-      // Merge connection tools when orgId is provided
+      // Merge org-scoped tools when orgId is provided. Both connection and
+      // canvas tools are exposed simultaneously; the prompt teaches the
+      // agent to pick based on intent (document-an-integration vs
+      // draw-a-diagram).
       if (orgId) {
-        tools = { ...tools, ...buildConnectionTools(orgId, userOrResponse.id) };
+        tools = {
+          ...tools,
+          ...buildConnectionTools(orgId, userOrResponse.id),
+          ...buildCanvasTools(orgId),
+        };
       }
 
       const conceptsByWorkspace = await fetchConceptsForWorkspaces(workspaceConfigs);
