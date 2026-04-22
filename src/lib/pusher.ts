@@ -65,4 +65,6 @@ export const PUSHER_EVENTS = {
   PLAN_USER_LEAVE: "plan-user-leave",
   // Connection events
   CONNECTION_UPDATED: "connection-updated",
+  // Canvas events (system-canvas document on the org)
+  CANVAS_UPDATED: "canvas-updated",
 } as const;
