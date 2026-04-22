@@ -90,6 +90,7 @@ export const select = {
   webhookUrl: true,
   pendingRepairTrigger: true,
   description: true,
+  repairAgentDisabled: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
