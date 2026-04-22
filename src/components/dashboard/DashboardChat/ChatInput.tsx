@@ -15,7 +15,7 @@ import {
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { WorkspacePills } from "./WorkspacePills";
 
-const MAX_EXTRA_WORKSPACES = 4; // current + 4 = 5 total
+const DEFAULT_MAX_EXTRA_WORKSPACES = 4; // current + 4 = 5 total
 
 interface ChatInputProps {
   onSend: (message: string, clearInput: () => void) => Promise<void>;
@@ -27,6 +27,7 @@ interface ChatInputProps {
   onAddWorkspace?: (slug: string) => void;
   onRemoveWorkspace?: (slug: string) => void;
   currentWorkspaceSlug?: string;
+  maxExtraWorkspaces?: number;
 }
 
 export function ChatInput({
@@ -39,6 +40,7 @@ export function ChatInput({
   onAddWorkspace,
   onRemoveWorkspace,
   currentWorkspaceSlug,
+  maxExtraWorkspaces = DEFAULT_MAX_EXTRA_WORKSPACES,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -50,7 +52,8 @@ export function ChatInput({
 
   const { workspaces } = useWorkspace();
 
-  const isAtLimit = extraWorkspaceSlugs.length >= MAX_EXTRA_WORKSPACES;
+  const isAtLimit = extraWorkspaceSlugs.length >= maxExtraWorkspaces;
+  const totalLimit = Number.isFinite(maxExtraWorkspaces) ? maxExtraWorkspaces + 1 : null;
 
   const availableWorkspaces = workspaces.filter(
     (ws) =>
@@ -221,7 +224,7 @@ export function ChatInput({
               </PopoverTrigger>
             </TooltipTrigger>
             <TooltipContent>
-              {isAtLimit ? "Maximum 5 workspaces" : "Add workspace"}
+              {isAtLimit && totalLimit !== null ? `Maximum ${totalLimit} workspaces` : "Add workspace"}
             </TooltipContent>
           </Tooltip>
 
