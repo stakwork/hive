@@ -17,6 +17,52 @@ import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { signGithubAppState } from "@/lib/auth/github-app-state";
+
+// Ensure NEXTAUTH_SECRET is set before signGithubAppState runs. The
+// integration test env sets this, but we assert it defensively here so
+// that running this suite in isolation fails loudly instead of minting
+// unsigned state that the handler will reject.
+if (!process.env.NEXTAUTH_SECRET) {
+  process.env.NEXTAUTH_SECRET = "test-nextauth-secret-for-integration-tests";
+}
+
+/**
+ * Signs a state payload and optionally mirrors it onto the user's
+ * NextAuth session row (so the handler's "state bound to session"
+ * check passes).
+ */
+async function signStateFor(
+  user: { id: string },
+  data: { workspaceSlug: string; repositoryUrl?: string; timestamp?: number },
+  { bindToSession = true }: { bindToSession?: boolean } = {},
+): Promise<string> {
+  // Use a NEW random value per call so even within a single test every
+  // signed state is unique. Previously the fixed `randomState` caused
+  // later calls to compute the same signature, and `signStateFor` for
+  // user A would collide on `session.findFirst({userId:A})` with a
+  // prior test's leftover session row that had a stale `githubState`.
+  const state = signGithubAppState({
+    workspaceSlug: data.workspaceSlug,
+    repositoryUrl: data.repositoryUrl,
+    randomState: `test-random-${Math.random().toString(36).slice(2)}`,
+    timestamp: data.timestamp ?? Date.now(),
+  });
+  if (bindToSession) {
+    // Always create a brand-new session row rather than mutating any
+    // existing one. The handler only cares that *some* session for
+    // this user has `githubState === state`.
+    await db.session.create({
+      data: {
+        userId: user.id,
+        sessionToken: `sess-${user.id}-${Date.now()}-${Math.random()}`,
+        expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        githubState: state,
+      },
+    });
+  }
+  return state;
+}
 
 // Mock next-auth for session management
 vi.mock("next-auth/next");
@@ -43,8 +89,12 @@ global.fetch = mockFetch;
 
 describe("GitHub App Callback API Integration Tests", () => {
   beforeEach(async () => {
-    vi.clearAllMocks();
-    mockFetch.mockClear();
+    // `mockClear` keeps the `mockResolvedValueOnce` queue around, which
+    // caused leftover mocks from earlier tests to bleed into later ones.
+    // `mockReset` clears both the call history AND any queued
+    // implementations, which is what we actually want between tests.
+    vi.resetAllMocks();
+    mockFetch.mockReset();
   });
 
   describe("GET /api/github/app/callback", () => {
@@ -66,7 +116,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock GitHub token exchange
         mockFetch.mockResolvedValueOnce({
@@ -221,7 +271,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock token exchange
         mockFetch.mockResolvedValueOnce({
@@ -294,7 +344,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock token exchange
         mockFetch.mockResolvedValueOnce({
@@ -374,7 +424,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock token exchange
         mockFetch.mockResolvedValueOnce({
@@ -448,7 +498,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock token exchange
         mockFetch.mockResolvedValueOnce({
@@ -510,17 +560,13 @@ describe("GitHub App Callback API Integration Tests", () => {
       test("should redirect to /auth for unauthenticated user", async () => {
         getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-        const stateData = {
-          workspaceSlug: "test-workspace",
-          timestamp: Date.now(),
-        };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
-
+        // Auth check runs before state verification, so the state value
+        // doesn't matter here — any non-empty string works.
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/callback",
           {
             code: "test_code",
-            state,
+            state: "irrelevant-state-auth-fails-first",
           }
         );
 
@@ -538,17 +584,11 @@ describe("GitHub App Callback API Integration Tests", () => {
           expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         });
 
-        const stateData = {
-          workspaceSlug: "test-workspace",
-          timestamp: Date.now(),
-        };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
-
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/callback",
           {
             code: "test_code",
-            state,
+            state: "irrelevant-state-auth-fails-first",
           }
         );
 
@@ -592,7 +632,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: "test-workspace",
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         const request = createGetRequest(
           "http://localhost:3000/api/github/app/callback",
@@ -620,7 +660,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: "test-workspace",
           timestamp: Date.now() - 2 * 60 * 60 * 1000, // 2 hours ago
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock successful token exchange (so we can reach state validation)
         mockFetch.mockResolvedValueOnce({
@@ -712,7 +752,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock failed token exchange
         mockFetch.mockResolvedValueOnce({
@@ -750,7 +790,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock token exchange returning no access_token
         mockFetch.mockResolvedValueOnce({
@@ -792,7 +832,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock successful token exchange
         mockFetch.mockResolvedValueOnce({
@@ -838,7 +878,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock network error
         mockFetch.mockRejectedValue(new Error("Network error"));
@@ -903,7 +943,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock token exchange
         mockFetch.mockResolvedValueOnce({
@@ -989,7 +1029,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock token exchange
         mockFetch.mockResolvedValueOnce({
@@ -1058,7 +1098,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock token exchange
         mockFetch.mockResolvedValueOnce({
@@ -1162,7 +1202,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         const beforeTime = Date.now();
 
@@ -1260,7 +1300,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           workspaceSlug: workspace.slug,
           timestamp: Date.now(),
         };
-        const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
+        const state = await signStateFor(testUser, stateData);
 
         // Mock token exchange
         mockFetch.mockResolvedValueOnce({
@@ -1291,6 +1331,221 @@ describe("GitHub App Callback API Integration Tests", () => {
           where: { id: workspace.id },
         });
         expect(updatedWorkspace?.sourceControlOrgId).toBeNull();
+      });
+    });
+
+    describe("IDOR hardening (Plan finding #20)", () => {
+      test("rejects legacy unsigned base64 state without any side-effects", async () => {
+        // The old `state` format (plain base64-encoded JSON) is now
+        // considered forgeable. The handler must reject these outright,
+        // even when the caller is otherwise authenticated as a workspace
+        // admin — otherwise a logged-in attacker who only knows a victim
+        // workspace's slug can mint a state themselves.
+        const testUser = await createTestUser({ name: "legacy-state-user" });
+        const workspace = await createTestWorkspace({
+          ownerId: testUser.id,
+          slug: "legacy-state-workspace",
+        });
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(testUser)
+        );
+
+        const stateData = {
+          workspaceSlug: workspace.slug,
+          timestamp: Date.now(),
+        };
+        const legacyState = Buffer.from(JSON.stringify(stateData)).toString(
+          "base64"
+        );
+
+        const request = createGetRequest(
+          "http://localhost:3000/api/github/app/callback",
+          {
+            code: "legacy_code",
+            state: legacyState,
+          }
+        );
+
+        const response = await GET(request);
+
+        expect(response.status).toBe(307);
+        const location = response.headers.get("location");
+        expect(location).toContain("error=invalid_state");
+
+        // No token exchange, no GitHub API calls — the handler must
+        // bail before any side-effects. This is the whole point of the
+        // IDOR fix.
+        expect(mockFetch).not.toHaveBeenCalled();
+
+        // And the workspace must not have been relinked.
+        const unchanged = await db.workspace.findUnique({
+          where: { id: workspace.id },
+        });
+        expect(unchanged?.sourceControlOrgId).toBe(workspace.sourceControlOrgId);
+      });
+
+      test("rejects a signed state that isn't bound to this user's session", async () => {
+        // An attacker who steals a signed state issued to another user
+        // (e.g. via log exfil) must not be able to replay it — the
+        // handler requires session.githubState to match.
+        const victim = await createTestUser({ name: "session-bind-victim" });
+        const attacker = await createTestUser({ name: "session-bind-attacker" });
+        const workspace = await createTestWorkspace({
+          ownerId: victim.id,
+          slug: "session-bind-workspace",
+        });
+
+        // Sign a state and bind it to the victim's session. Do NOT bind
+        // it to the attacker's session.
+        const state = await signStateFor(
+          victim,
+          { workspaceSlug: workspace.slug, timestamp: Date.now() },
+          { bindToSession: true },
+        );
+
+        // Attacker's session exists but has no matching `githubState`.
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(attacker)
+        );
+
+        const request = createGetRequest(
+          "http://localhost:3000/api/github/app/callback",
+          {
+            code: "replay_code",
+            state,
+          }
+        );
+
+        const response = await GET(request);
+
+        expect(response.status).toBe(307);
+        const location = response.headers.get("location");
+        expect(location).toContain("error=invalid_state");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      test("rejects when caller is not an admin on the workspace named in state", async () => {
+        // A plain workspace member (DEVELOPER) signs a state for a
+        // victim workspace they co-own. The rewire must be blocked
+        // because only OWNER/ADMIN should be able to re-point
+        // `sourceControlOrgId`.
+        const owner = await createTestUser({ name: "nonadmin-owner" });
+        const developer = await createTestUser({ name: "nonadmin-dev" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          slug: "nonadmin-workspace",
+        });
+
+        await db.workspaceMember.create({
+          data: {
+            workspaceId: workspace.id,
+            userId: developer.id,
+            role: "DEVELOPER",
+            joinedAt: new Date(),
+          },
+        });
+
+        const state = await signStateFor(
+          developer,
+          { workspaceSlug: workspace.slug, timestamp: Date.now() },
+          { bindToSession: true },
+        );
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(developer)
+        );
+
+        const request = createGetRequest(
+          "http://localhost:3000/api/github/app/callback",
+          {
+            code: "nonadmin_code",
+            state,
+          }
+        );
+
+        const response = await GET(request);
+
+        expect(response.status).toBe(307);
+        const location = response.headers.get("location");
+        expect(location).toContain("error=workspace_access_denied");
+
+        // No token exchange, no rewire.
+        expect(mockFetch).not.toHaveBeenCalled();
+        const unchanged = await db.workspace.findUnique({
+          where: { id: workspace.id },
+        });
+        expect(unchanged?.sourceControlOrgId).toBe(workspace.sourceControlOrgId);
+      });
+
+      test("rejects when state names a workspace the caller doesn't belong to at all", async () => {
+        const owner = await createTestUser({ name: "idor-owner" });
+        const attacker = await createTestUser({ name: "idor-attacker" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          slug: "idor-victim-workspace",
+        });
+
+        const state = await signStateFor(
+          attacker,
+          { workspaceSlug: workspace.slug, timestamp: Date.now() },
+          { bindToSession: true },
+        );
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(attacker)
+        );
+
+        const request = createGetRequest(
+          "http://localhost:3000/api/github/app/callback",
+          {
+            code: "idor_code",
+            state,
+          }
+        );
+
+        const response = await GET(request);
+
+        expect(response.status).toBe(307);
+        const location = response.headers.get("location");
+        expect(location).toContain("error=workspace_access_denied");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      test("rejects a state with a tampered signature", async () => {
+        const testUser = await createTestUser({ name: "tamper-user" });
+        const workspace = await createTestWorkspace({
+          ownerId: testUser.id,
+          slug: "tamper-workspace",
+        });
+
+        const state = await signStateFor(
+          testUser,
+          { workspaceSlug: workspace.slug, timestamp: Date.now() },
+          { bindToSession: true },
+        );
+
+        // Flip the last character of the signature.
+        const tampered = state.replace(/.$/, (c) => (c === "a" ? "b" : "a"));
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(testUser)
+        );
+
+        const request = createGetRequest(
+          "http://localhost:3000/api/github/app/callback",
+          {
+            code: "tamper_code",
+            state: tampered,
+          }
+        );
+
+        const response = await GET(request);
+
+        expect(response.status).toBe(307);
+        const location = response.headers.get("location");
+        expect(location).toContain("error=invalid_state");
+        expect(mockFetch).not.toHaveBeenCalled();
       });
     });
   });

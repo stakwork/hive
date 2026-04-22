@@ -112,7 +112,34 @@ tackled in a follow-up effort.
     message, or calling the Stakwork bounty API; the bare
     `sourceWorkspaceSlug === "hive"` string check is no longer the
     real auth gate.
-  - Remaining Phase B items (#20, #21, #23) — not started.
+  - **Github callback / webhook / orgs cluster (#20, #21, #23) —
+    DONE** on branch `ef/idor-fixes-3`. `/api/github/app/callback` now
+    verifies an HMAC-signed `state` (new helper
+    `src/lib/auth/github-app-state.ts`, signed in `/api/github/app/install`
+    with `NEXTAUTH_SECRET`), re-checks that the state is bound to the
+    caller's `session.githubState`, and requires `canAdmin` on the
+    workspace slug *before* the token exchange or any
+    `workspace.sourceControlOrgId` rewire — the legacy unsigned base64
+    state is now rejected as malformed. `/api/github/webhook/ensure`
+    requires `canWrite` on the body-supplied `workspaceId` before
+    `ensureRepoWebhook` so a non-member can no longer overwrite a
+    victim's `githubWebhookId` / `githubWebhookSecret`.
+    `/api/orgs/[githubLogin]/connections` GET now requires the caller
+    to belong to at least one workspace under the org before the
+    `db.connection.findMany`, and DELETE additionally requires
+    OWNER/ADMIN — both paths return a unified 404 on failure so org
+    existence isn't leaked. Tests: new `github-app-state` unit suite
+    (13 tests), five new IDOR-hardening integration tests on
+    `github-app-callback.test.ts` (legacy-state rejection,
+    session-binding replay, non-admin member, non-member slug
+    takeover, tampered signature), the existing callback tests were
+    updated to use a `signStateFor` helper that binds the signed
+    state to the user's DB session (plus a `mockReset` fix to stop
+    stale `mockResolvedValueOnce` queues bleeding between tests),
+    the install-route tests were updated to parse the new
+    `<base64url>.<hex>` format, and three new IDOR test blocks on the
+    webhook-ensure unit suite + eleven new integration tests on the
+    org-connections route.
 - **Phase C (Medium #26–30)** — not started.
 - **Phase D (shared-secret S1–S3)** — not started.
 - **"also" items** (public-viewer 7-day → 1-hour presigned URLs;
@@ -504,6 +531,33 @@ proof-of-exploit, and suggested fix.
   incoming state; and require
   `validateWorkspaceAccess(workspaceSlug, userId)` with `canAdmin`
   before mutating `workspace.sourceControlOrgId`.
+- **Status**: ✅ Fixed on `ef/idor-fixes-3`. New helper
+  `src/lib/auth/github-app-state.ts` signs the state payload with
+  HMAC-SHA256 (format: `<base64url-json>.<hex-sig>`) and re-validates
+  on the callback side with a constant-time compare, a 1h expiry
+  window, and a structural `workspaceSlug`/`randomState`/`timestamp`
+  check. The install route (`/api/github/app/install`) now emits the
+  signed state; the callback route now (a) rejects unsigned/legacy
+  states outright, (b) re-checks `session.findFirst({userId,
+  githubState: state})` so a signed state issued to one user can't
+  be replayed by another, and (c) runs `validateWorkspaceAccess`
+  with `canAdmin` before the token exchange or any
+  `workspace.updateMany({sourceControlOrgId})` write — non-admins
+  see `error=workspace_access_denied` with no side-effects. Tests:
+  new `src/__tests__/unit/lib/github-app-state.test.ts` (13 tests
+  covering sign/verify happy-path, body tampering, signature
+  tampering, secret rotation, expiry, missing fields, legacy-format
+  rejection) and five new IDOR integration tests on
+  `github-app-callback.test.ts` (legacy base64 rejection, signed
+  state replayed to the wrong user, non-admin member, completely
+  non-member, tampered signature) — all five assert `mockFetch`
+  was never called and the victim's `sourceControlOrgId` was left
+  untouched. Existing `github-app-callback.test.ts` was swept to
+  use a new `signStateFor` helper (signs + binds to a real
+  `Session` row per call) and `github-app-install.test.ts` was
+  updated to parse the new signed format. Also swapped the suite's
+  `beforeEach` from `mockClear` to `mockReset` to stop stale
+  `mockResolvedValueOnce` queues from bleeding between tests.
 
 #### 21. `src/app/api/github/webhook/ensure/route.ts` — POST
 - **Bug**: `db.repository.findUnique({ where: { id: repositoryId } })`
@@ -515,6 +569,19 @@ proof-of-exploit, and suggested fix.
   callbacks under the new attacker-known secret.
 - **Fix**: `validateWorkspaceAccessById(workspaceId, userId)` with
   `canWrite` before `ensureRepoWebhook`.
+- **Status**: ✅ Fixed on `ef/idor-fixes-3`. The `canWrite`
+  membership check now runs immediately after the missing-fields
+  400 and before the `repository.findUnique` lookup, callback URL
+  construction, and `WebhookService.ensureRepoWebhook` call —
+  returns the unified 404 on failure so repository existence isn't
+  leaked either. Also added the ordering guarantee that auth
+  precedes the `repositoryId → url` lookup so an attacker can't use
+  the endpoint as a probe for arbitrary repository ids. Tests:
+  three new IDOR unit tests on
+  `src/__tests__/unit/api/github/webhook-ensure-route.test.ts`
+  (non-member → 404 + no webhook side-effects, VIEWER → 404,
+  check-before-lookup ordering) plus a stubbed
+  `@/services/workspace` mock so the 34 existing tests still pass.
 
 #### 22. `src/app/api/workspaces/[slug]/workflows/[workflowId]/versions/route.ts` — GET
 - **Bug**: fetches workspace with `members: { where: { userId } }` but
@@ -549,6 +616,23 @@ proof-of-exploit, and suggested fix.
   workspace under `org.id` (pattern used in
   `orgs/[githubLogin]/workspaces/route.ts`). DELETE additionally
   requires ADMIN/OWNER.
+- **Status**: ✅ Fixed on `ef/idor-fixes-3`. A new private helper
+  `resolveAuthorizedOrgId(githubLogin, userId, requireAdmin)` in
+  the route file resolves the org id only when the caller owns or
+  is an active member of at least one workspace under it — for
+  DELETE we pass `requireAdmin: true`, which narrows the match to
+  OWNER or WorkspaceRole.ADMIN. GET now uses the resolved org id
+  to scope `db.connection.findMany`; DELETE first uses it to scope
+  the existence lookup, then only deletes when found. Unknown
+  `githubLogin` and non-qualifying callers both get the unified
+  404 "Organization not found" so org existence isn't leaked.
+  Tests: new integration suite
+  `src/__tests__/integration/api/orgs-connections.test.ts` with 11
+  tests covering GET (unauth → 401, non-member attacker → 404
+  with no payload leakage, unknown org → 404, owner happy-path,
+  plain DEVELOPER member happy-path) and DELETE (unauth → 401,
+  non-member → 404 with no write, DEVELOPER → 404 with no write,
+  OWNER deletes, ADMIN deletes, missing connectionId → 400).
 
 #### 24. `src/app/api/bounty-request/route.ts` — POST
 - **Bug**: only a `sourceWorkspaceSlug === "hive"` string check — no
@@ -682,7 +766,7 @@ require session auth + workspace admin.
    - Pool manager (#19) ✅ on `ef/idor-fixes-2`.
    - Workflows/versions (#22) ✅ on `ef/idor-fixes-2`.
    - Bounty request (#24) ✅ on `ef/idor-fixes-2`.
-   - Remaining (#20, #21, #23) still open.
+   - Github cluster (#20, #21, #23) ✅ on `ef/idor-fixes-3`.
 3. **Phase C — medium (#26–30)**: one cleanup PR.
 4. **Phase D — shared-secret endpoints (S1–S3)**: design work on
    per-resource tokens, then migrate webhooks to the new scheme.
