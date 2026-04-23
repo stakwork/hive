@@ -140,6 +140,30 @@ class MockSwarmStateManager {
   }
 
   /**
+   * Update the vanity address for a swarm
+   */
+  updateVanityAddress(host: string, vanityAddress: string): { success: boolean; message: string } {
+    const swarm = Array.from(this.swarms.values()).find(
+      (s) => s.address === host
+    );
+
+    if (!swarm) {
+      return { success: false, message: "Swarm not found" };
+    }
+
+    const oldSubdomain = swarm.address.replace(/\.sphinx\.chat$/, "");
+    const newSubdomain = vanityAddress.replace(/\.sphinx\.chat$/, "");
+
+    swarm.address = vanityAddress;
+    swarm.updatedAt = new Date();
+
+    this.domains.delete(oldSubdomain);
+    this.domains.add(newSubdomain);
+
+    return { success: true, message: "Vanity address updated" };
+  }
+
+  /**
    * Check if a domain name is available
    */
   checkDomain(domain: string): {

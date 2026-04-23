@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
 import { PodState, PoolState, SwarmStatus } from "@prisma/client";
+import { setGraphTitle } from "@/services/swarm/graph-title";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -226,4 +227,35 @@ export async function getSwarmContainerConfig(
   }
 
   return { containerFiles, services };
+}
+
+export async function updateSwarmVanityAddress({
+  workspaceId,
+  newSubdomain,
+  swarmPassword,
+}: {
+  workspaceId: string;
+  newSubdomain: string;
+  swarmPassword?: string | null;
+}): Promise<void> {
+  const newSwarmUrl = `https://${newSubdomain}.sphinx.chat/api`;
+
+  await db.$transaction([
+    db.swarm.update({
+      where: { workspaceId },
+      data: { name: newSubdomain, swarmUrl: newSwarmUrl },
+    }),
+    db.workspace.update({
+      where: { id: workspaceId },
+      data: { slug: newSubdomain, name: newSubdomain, updatedAt: new Date() },
+    }),
+  ]);
+
+  // Fire-and-forget: set graph title if swarm password is provided
+  if (swarmPassword) {
+    const decryptedPassword = encryptionService.decryptField("swarmPassword", swarmPassword);
+    setGraphTitle(newSwarmUrl, decryptedPassword, newSubdomain)
+      .then(() => console.log("[VANITY_UPDATE] Graph title set:", newSubdomain))
+      .catch((err) => console.error("[VANITY_UPDATE] setGraphTitle failed (non-fatal):", err));
+  }
 }
