@@ -17,16 +17,15 @@ import {
   updateEdge,
   updateNode,
 } from "system-canvas";
-import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getOrgChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { buildCategoryDescription } from "@/app/org/[githubLogin]/connections/canvas-categories";
+import { readCanvas, writeCanvas, ROOT_REF } from "@/lib/canvas";
 
 /**
  * Canvas tools for the Connections-page agent.
  *
- * The agent operates on the ORG ROOT canvas only (sub-canvases are a
- * follow-up). Three tools in increasing granularity:
+ * Three tools in increasing granularity:
  *
  *   1. `read_canvas`   — inspect current state; always called first so the
  *                        agent can preserve user edits on a re-generation.
@@ -35,37 +34,38 @@ import { buildCategoryDescription } from "@/app/org/[githubLogin]/connections/ca
  *   3. `patch_canvas`  — apply a sequence of small ops (add/update/remove
  *                        node/edge). The "tick this box" tool.
  *
- * All writes go through the same `persistCanvas` helper so the root-row
- * sentinel, Pusher notification, and JSON validation stay in one place.
+ * Each tool takes an optional `ref` (defaults to the root canvas, `""`).
+ * All persistence goes through `readCanvas` / `writeCanvas` in
+ * `@/lib/canvas`, which handle the authored-vs-live split. Pusher
+ * notifications are fired afterwards so open clients refetch and
+ * re-render the merged canvas.
  */
-
-/** Sentinel used for the root canvas row; mirrors the REST route. */
-const ROOT_REF = "";
 
 // ---------------------------------------------------------------------------
 // Persistence + notification helpers
 // ---------------------------------------------------------------------------
 
-async function loadRootCanvas(orgId: string): Promise<CanvasData> {
-  const row = await db.canvas.findUnique({
-    where: { orgId_ref: { orgId, ref: ROOT_REF } },
-  });
-  if (!row) return { nodes: [], edges: [] };
-  // Data was inserted as a validated CanvasData-shaped JSON; re-assert the
-  // type here so downstream helpers get a typed value.
-  return (row.data ?? { nodes: [], edges: [] }) as unknown as CanvasData;
+/**
+ * Load the merged canvas at `(orgId, ref)`. Returns the same view the
+ * REST `GET` returns — live nodes projected, rollups applied, edges
+ * filtered to intact endpoints.
+ */
+async function loadCanvas(orgId: string, ref: string): Promise<CanvasData> {
+  return readCanvas(orgId, ref);
 }
 
-async function persistRootCanvas(
+/**
+ * Persist a canvas at `(orgId, ref)`. The write helper splits the
+ * incoming merged document into an authored-only blob before it hits
+ * the DB, so DB-owned fields on live nodes (text, category,
+ * customData) are silently discarded.
+ */
+async function persistCanvas(
   orgId: string,
+  ref: string,
   data: CanvasData,
 ): Promise<void> {
-  const jsonData = data as unknown as Prisma.InputJsonValue;
-  await db.canvas.upsert({
-    where: { orgId_ref: { orgId, ref: ROOT_REF } },
-    update: { data: jsonData },
-    create: { orgId, ref: ROOT_REF, data: jsonData },
-  });
+  await writeCanvas(orgId, ref, data);
 }
 
 /**
@@ -83,6 +83,7 @@ const CANVAS_NOTIFY_DELAY_MS = 300;
 
 async function notifyCanvasUpdated(
   orgId: string,
+  ref: string,
   action: string,
   detail?: Record<string, unknown>,
 ): Promise<void> {
@@ -101,13 +102,16 @@ async function notifyCanvasUpdated(
     const channelName = getOrgChannelName(org.githubLogin);
     await new Promise((r) => setTimeout(r, CANVAS_NOTIFY_DELAY_MS));
     await pusherServer.trigger(channelName, PUSHER_EVENTS.CANVAS_UPDATED, {
-      ref: null, // null == root canvas, mirrors the API's ROOT_REF sentinel
+      // `null` == root canvas; a non-empty string addresses a sub-canvas
+      // (mirrors the API's empty-string sentinel). The client routes
+      // refetches off this.
+      ref: ref === ROOT_REF ? null : ref,
       action,
       ...(detail ?? {}),
       timestamp: Date.now(),
     });
     console.log(
-      `[canvasTools] CANVAS_UPDATED → ${channelName} (${action})`,
+      `[canvasTools] CANVAS_UPDATED → ${channelName} (${action}, ref=${ref || "root"})`,
       detail ?? {},
     );
   } catch (e) {
@@ -152,7 +156,8 @@ const nodeInputSchema = z.object({
   /**
    * Stable identifier. Omit on creation — we generate one. Supply only
    * when you want to re-use an id from `read_canvas` (e.g. to preserve a
-   * node across an `update_canvas` regeneration).
+   * node across an `update_canvas` regeneration or to echo back a
+   * projected live node).
    */
   id: z.string().optional(),
   type: z.literal("text").default("text"),
@@ -162,6 +167,12 @@ const nodeInputSchema = z.object({
   y: z.number().describe("Canvas-space y (pixels). See prompt for layout guide."),
   width: z.number().positive().optional(),
   height: z.number().positive().optional(),
+  /**
+   * Optional sub-canvas ref. Projected live nodes carry one so users
+   * can zoom into them; the agent should echo it back unchanged when
+   * round-tripping through `update_canvas`.
+   */
+  ref: z.string().optional(),
   customData: customDataSchema,
 });
 
@@ -180,6 +191,11 @@ const edgeInputSchema = z.object({
  * Trim internal/derived fields so the LLM sees a small, stable shape.
  * Whatever we include here is also the contract the agent should use when
  * round-tripping through `update_canvas`.
+ *
+ * `ref` is preserved on live nodes (`ws:…`, `feature:…`) so the agent
+ * can tell at a glance which nodes are projected from the DB — those
+ * ids have the `<kind>:` prefix, and the `ref` field points to their
+ * drill-down sub-canvas.
  */
 function compactNode(n: CanvasNode) {
   const out: Record<string, unknown> = {
@@ -189,6 +205,7 @@ function compactNode(n: CanvasNode) {
     x: n.x,
     y: n.y,
   };
+  if (n.ref) out.ref = n.ref;
   if (n.width != null) out.width = n.width;
   if (n.height != null) out.height = n.height;
   if (n.customData && Object.keys(n.customData).length > 0) {
@@ -266,6 +283,7 @@ function toCanvasNode(input: z.infer<typeof nodeInputSchema>): CanvasNode {
   };
   if (input.width != null) node.width = input.width;
   if (input.height != null) node.height = input.height;
+  if (input.ref) node.ref = input.ref;
   if (input.customData) {
     node.customData = input.customData as Record<string, unknown>;
   }
@@ -320,18 +338,34 @@ function applyPatchOp(canvas: CanvasData, op: PatchOp): CanvasData {
 // Public: build the toolset
 // ---------------------------------------------------------------------------
 
+/**
+ * Shared `ref` argument. Optional; defaults to the root canvas. Sub-
+ * canvases use the same id/ref convention as the REST API: `""` for
+ * root, `node:<id>` for an authored-node zoom, `ws:<cuid>` / `feature:
+ * <cuid>` for entity deep-dives.
+ */
+const REF_DESCRIPTION =
+  'Canvas scope. Omit (or pass "") for the org root canvas. Pass a ' +
+  'sub-canvas ref (e.g. "node:<id>" to zoom into an authored node) ' +
+  "to address a different canvas.";
+
 export function buildCanvasTools(orgId: string): ToolSet {
   return {
     read_canvas: tool({
       description:
-        "Read the current org canvas (nodes + edges). Call this FIRST " +
+        "Read the current canvas (nodes + edges). Call this FIRST " +
         "whenever you're about to modify the canvas — you need to see " +
         "what the user has already built or edited so you can preserve " +
-        "their work.",
-      inputSchema: z.object({}),
-      execute: async () => {
+        "their work. Returns authored nodes AND projected live nodes " +
+        "(ids prefixed with `ws:`, `feature:`, etc.) merged into one " +
+        "array; you don't need to distinguish them for reads.",
+      inputSchema: z.object({
+        ref: z.string().describe(REF_DESCRIPTION).optional(),
+      }),
+      execute: async ({ ref }) => {
         try {
-          const canvas = await loadRootCanvas(orgId);
+          const scopeRef = ref ?? ROOT_REF;
+          const canvas = await loadCanvas(orgId, scopeRef);
           const nodes = (canvas.nodes ?? []).map(compactNode);
           const edges = (canvas.edges ?? []).map(compactEdge);
           return { nodes, edges };
@@ -344,24 +378,27 @@ export function buildCanvasTools(orgId: string): ToolSet {
 
     update_canvas: tool({
       description:
-        "Replace the entire org canvas with a new set of nodes and edges. " +
+        "Replace the entire canvas with a new set of nodes and edges. " +
         "Use this when you're laying out (or re-laying out) a problem " +
         "from scratch. IMPORTANT: call read_canvas first and echo back " +
-        "every node the user has already edited (recognizable by ids you " +
-        "didn't just invent) so you don't clobber their work. For small " +
-        "updates, prefer `patch_canvas`.",
+        "every node the user has already edited (recognizable by ids " +
+        "you didn't just invent) AND every projected live node " +
+        "(prefixed `ws:`, `feature:`, …) so you don't clobber their " +
+        "work. For small updates, prefer `patch_canvas`.",
       inputSchema: z.object({
+        ref: z.string().describe(REF_DESCRIPTION).optional(),
         nodes: z.array(nodeInputSchema),
         edges: z.array(edgeInputSchema).default([]),
       }),
-      execute: async ({ nodes, edges }) => {
+      execute: async ({ ref, nodes, edges }) => {
         try {
+          const scopeRef = ref ?? ROOT_REF;
           const canvas: CanvasData = {
             nodes: nodes.map(toCanvasNode),
             edges: edges.map(toCanvasEdge),
           };
-          await persistRootCanvas(orgId, canvas);
-          await notifyCanvasUpdated(orgId, "replaced", {
+          await persistCanvas(orgId, scopeRef, canvas);
+          await notifyCanvasUpdated(orgId, scopeRef, "replaced", {
             nodeCount: canvas.nodes?.length ?? 0,
             edgeCount: canvas.edges?.length ?? 0,
           });
@@ -379,23 +416,25 @@ export function buildCanvasTools(orgId: string): ToolSet {
 
     patch_canvas: tool({
       description:
-        "Apply one or more small ops (add/update/remove node/edge) to the " +
-        "org canvas. Use this for targeted changes like 'mark initiative " +
-        "X as at-risk' or 'add a blocker count'. Each op is applied in " +
+        "Apply one or more small ops (add/update/remove node/edge) to a " +
+        "canvas. Use this for targeted changes like 'mark initiative X " +
+        "as at-risk' or 'add a blocker count'. Each op is applied in " +
         "order; if one fails, later ops in the same call still run.",
       inputSchema: z.object({
+        ref: z.string().describe(REF_DESCRIPTION).optional(),
         ops: z.array(patchOpSchema).min(1),
       }),
-      execute: async ({ ops }) => {
+      execute: async ({ ref, ops }) => {
         try {
-          let canvas = await loadRootCanvas(orgId);
+          const scopeRef = ref ?? ROOT_REF;
+          let canvas = await loadCanvas(orgId, scopeRef);
           const applied: string[] = [];
           for (const op of ops as PatchOp[]) {
             canvas = applyPatchOp(canvas, op);
             applied.push(op.op);
           }
-          await persistRootCanvas(orgId, canvas);
-          await notifyCanvasUpdated(orgId, "patched", { ops: applied });
+          await persistCanvas(orgId, scopeRef, canvas);
+          await notifyCanvasUpdated(orgId, scopeRef, "patched", { ops: applied });
           return {
             status: "patched",
             appliedOps: applied,
