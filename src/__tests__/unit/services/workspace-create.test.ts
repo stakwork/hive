@@ -263,7 +263,7 @@ describe("createWorkspace - Unit Tests", () => {
         "my-workspace",
         "test-123",
         "workspace-with-hyphens",
-        "a1",
+        "a1b",
       ];
 
       for (const slug of validSlugs) {
@@ -290,7 +290,7 @@ describe("createWorkspace - Unit Tests", () => {
       await expect(
         createWorkspace({
           name: "Test",
-          slug: "a", // 1 character (min is 2)
+          slug: "a", // 1 character (min is 3)
           ownerId: mockUserId,
         })
       ).rejects.toThrow(WORKSPACE_ERRORS.SLUG_INVALID_LENGTH);
@@ -312,7 +312,7 @@ describe("createWorkspace - Unit Tests", () => {
       (db.workspace.count as Mock).mockResolvedValue(0);
       (db.workspace.findUnique as Mock).mockResolvedValue(null);
 
-      const minSlug = "ab"; // 2 characters
+      const minSlug = "abc"; // 3 characters
       const mockWorkspace = createMockWorkspace({ slug: minSlug });
       (db.workspace.create as Mock).mockResolvedValue(mockWorkspace);
 
