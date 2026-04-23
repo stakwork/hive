@@ -75,7 +75,11 @@ export async function createAndSendNotification(input: {
       : null;
     const dmReady = isDirectMessageConfigured() && !!decryptedPubkey;
 
-    // 4. Always insert a row — use SKIPPED when DM is not ready
+    // 4. Compute deferred fields up-front to avoid a two-step create+update race
+    const isDeferred = dmReady && DEFERRED_NOTIFICATION_TYPES.has(input.notificationType);
+    const sendAfter = isDeferred ? new Date(Date.now() + DEFERRED_DELAY_MS) : null;
+
+    // 5. Insert a single row with all fields set atomically
     const record = await db.notificationTrigger.create({
       data: {
         targetUserId: input.targetUserId,
@@ -88,10 +92,11 @@ export async function createAndSendNotification(input: {
           : NotificationTriggerStatus.SKIPPED,
         notificationMethod: NotificationMethod.SPHINX,
         notificationTimestamps: [],
+        ...(isDeferred && { sendAfter, message: input.message }),
       },
     });
 
-    // 5. Stop here if DM is not configured — no send attempted
+    // 6. Stop here if DM is not configured — no send attempted
     if (!dmReady) {
       logger.info(
         `[Notifications] DM not ready — record created as SKIPPED for ${input.notificationType}`,
@@ -101,15 +106,10 @@ export async function createAndSendNotification(input: {
       return;
     }
 
-    // 6. Deferred types: store sendAfter + message, return without sending
-    if (DEFERRED_NOTIFICATION_TYPES.has(input.notificationType)) {
-      const sendAfter = new Date(Date.now() + DEFERRED_DELAY_MS);
-      await db.notificationTrigger.update({
-        where: { id: record.id },
-        data: { sendAfter, message: input.message },
-      });
+    // 7. Deferred types: log and return — sendAfter already persisted above
+    if (isDeferred) {
       logger.info(
-        `[Notifications] Deferred ${input.notificationType} — will dispatch after ${sendAfter.toISOString()}`,
+        `[Notifications] Deferred ${input.notificationType} — will dispatch after ${sendAfter!.toISOString()}`,
         "NOTIFICATIONS",
         { recordId: record.id, targetUserId: input.targetUserId, taskId, featureId }
       );
