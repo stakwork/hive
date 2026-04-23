@@ -40,6 +40,10 @@ const ACCENT = {
   // Teal/cyan reads as "infrastructure / container" — distinct from the
   // purple objective, amber note, and status greens/ambers/reds.
   workspace: "#22d3ee",
+  // Slate/indigo — reads as "source control" and sits one visual step
+  // below the teal workspace container so a repo on a workspace sub-
+  // canvas is legibly "part of" its workspace without color-clashing.
+  repository: "#818cf8",
 } as const;
 
 const LABEL_FONT =
@@ -293,6 +297,25 @@ const workspaceCategory: CategoryDefinition = {
 } as CategoryDefinition;
 
 // ---------------------------------------------------------------------------
+// Repository card — projected from the DB on a workspace's sub-canvas.
+// Compact footprint: repos are leaves (not containers), and a workspace
+// often has several of them, so we want a row of small cards rather
+// than a grid of full-width objectives.
+// ---------------------------------------------------------------------------
+
+const repositoryCategory: CategoryDefinition = {
+  ...baseCard,
+  defaultWidth: SMALL_W,
+  defaultHeight: 72,
+  type: "text",
+  stroke: hexAlpha(ACCENT.repository, 0.45),
+  fill: hexAlpha(ACCENT.repository, 0.05),
+  slots: {
+    header: { kind: "text", value: "REPO", color: ACCENT.repository },
+  },
+} as CategoryDefinition;
+
+// ---------------------------------------------------------------------------
 // Definition lookup
 // ---------------------------------------------------------------------------
 
@@ -303,6 +326,7 @@ const workspaceCategory: CategoryDefinition = {
  */
 const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
   workspace: workspaceCategory,
+  repository: repositoryCategory,
   objective: objectiveCategory,
   note: accentNote(ACCENT.note, "NOTE"),
   decision: accentNote(ACCENT.decision, "DECISION"),
