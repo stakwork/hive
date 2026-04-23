@@ -1,35 +1,17 @@
 "use client";
 
-import { getPusherClient, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mergeElementsByVersion } from "@/lib/whiteboard/merge-elements";
-import type {
-  CollaboratorInfo,
-  WhiteboardCursorUpdateEvent,
-  WhiteboardElementsUpdateEvent,
-  WhiteboardRefetchEvent,
-  WhiteboardUserJoinEvent,
-  WhiteboardUserLeaveEvent,
-} from "@/types/whiteboard-collaboration";
+import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import type { AppState, Collaborator, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type {
+  AppState,
+  Collaborator,
+  ExcalidrawImperativeAPI,
+} from "@excalidraw/excalidraw/types";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { io, type Socket } from "socket.io-client";
 
-/**
- * Extract the userId from a senderId of the form `<userId>-<timestamp>-<random>`.
- * The timestamp and random suffix never contain hyphens (digits and base-36
- * lowercase respectively), so the userId is everything before the last two
- * dash-separated segments. Returns `null` if the senderId is malformed.
- */
-function extractUserIdFromSenderId(senderId: string): string | null {
-  const lastDash = senderId.lastIndexOf("-");
-  if (lastDash <= 0) return null;
-  const secondLastDash = senderId.lastIndexOf("-", lastDash - 1);
-  if (secondLastDash <= 0) return null;
-  return senderId.slice(0, secondLastDash);
-}
-
-// Generate a consistent color based on user ID
 function generateUserColor(userId: string): string {
   const colors = [
     "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4",
@@ -41,6 +23,15 @@ function generateUserColor(userId: string): string {
     hash = userId.charCodeAt(i) + ((hash << 5) - hash);
   }
   return colors[Math.abs(hash) % colors.length];
+}
+
+interface RosterEntry {
+  odinguserId: string;
+  name: string;
+  image: string | null;
+  color: string;
+  joinedAt: number;
+  senderId: string;
 }
 
 interface UseWhiteboardCollaborationOptions {
@@ -61,12 +52,12 @@ interface UseWhiteboardCollaborationOptions {
 interface UseWhiteboardCollaborationReturn {
   collaborators: CollaboratorInfo[];
   isConnected: boolean;
-  /** Broadcast elements to other users immediately (no DB save) */
+  /** Broadcast element delta to other users (no DB save). 100 ms throttle. */
   broadcastElements: (
     elements: readonly ExcalidrawElement[],
-    appState: AppState
+    appState: AppState,
   ) => void;
-  /** Broadcast cursor position to other users */
+  /** Broadcast cursor position to other users. 50 ms throttle. */
   broadcastCursor: (x: number, y: number) => void;
   senderId: string;
   userColor: string;
@@ -84,24 +75,19 @@ export function useWhiteboardCollaboration({
   const { data: session } = useSession();
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [senderId, setSenderId] = useState("");
 
-  // Use a ref for cursor positions to avoid React re-renders on every cursor event
-  const cursorPositionsRef = useRef<Map<string, { x: number; y: number; color: string; username?: string; lastUpdated: number }>>(new Map());
-
-  // Stable ref for excalidrawAPI to avoid stale closures in Pusher callbacks
+  const socketRef = useRef<Socket | null>(null);
   const excalidrawAPIRef = useRef(excalidrawAPI);
   excalidrawAPIRef.current = excalidrawAPI;
 
-  // Generate a unique sender ID for this session
-  const senderIdRef = useRef<string>(
-    `${session?.user?.id || "anon"}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-  );
+  const cursorPositionsRef = useRef<
+    Map<string, { x: number; y: number; color: string; username?: string }>
+  >(new Map());
 
-  const userColorRef = useRef<string>(
-    generateUserColor(session?.user?.id || senderIdRef.current)
-  );
+  const userId = session?.user?.id;
+  const userColorRef = useRef<string>(generateUserColor(userId || "anon"));
 
-  // Throttle refs for broadcasting
   const lastElementsBroadcastRef = useRef<number>(0);
   const lastCursorBroadcastRef = useRef<number>(0);
   const pendingElementsRef = useRef<{
@@ -110,474 +96,348 @@ export function useWhiteboardCollaboration({
   } | null>(null);
   const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Track last broadcast state for delta computation
-  const lastBroadcastedElementsRef = useRef<Map<string, { version: number; isDeleted?: boolean }>>(new Map());
+  const lastBroadcastedElementsRef = useRef<
+    Map<string, { version: number; isDeleted?: boolean }>
+  >(new Map());
 
-  // One-shot warning flag for oversized real-time payloads.
-  const hasWarnedOversizedRef = useRef(false);
+  const onRemoteUpdateRef = useRef(onRemoteUpdate);
+  onRemoteUpdateRef.current = onRemoteUpdate;
+  const onBeforeRemoteUpdateRef = useRef(onBeforeRemoteUpdate);
+  onBeforeRemoteUpdateRef.current = onBeforeRemoteUpdate;
 
-  // Debounce timer for WHITEBOARD_REFETCH events. When several oversized
-  // broadcasts happen in quick succession we collapse them into a single
-  // database fetch instead of stampeding the API.
-  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Push current cursor ref contents into Excalidraw's scene imperatively
   const flushCursorsToScene = useCallback(() => {
     const api = excalidrawAPIRef.current;
     if (!api) return;
     const map = new Map<string, Collaborator>();
-    cursorPositionsRef.current.forEach((cursor, senderId) => {
-      map.set(senderId, {
+    cursorPositionsRef.current.forEach((cursor, sid) => {
+      map.set(sid, {
         username: cursor.username || "Collaborator",
         pointer: { x: cursor.x, y: cursor.y, tool: "pointer" },
         color: { background: cursor.color, stroke: cursor.color },
       });
     });
-    (api as any).updateScene({ collaborators: map });
+    (api as unknown as { updateScene: (p: { collaborators: Map<string, Collaborator> }) => void }).updateScene({
+      collaborators: map,
+    });
   }, []);
 
-  // Compute delta between current elements and last broadcasted state
   const computeElementsDelta = useCallback(
     (elements: readonly ExcalidrawElement[]): ExcalidrawElement[] => {
       const lastState = lastBroadcastedElementsRef.current;
-      const changedElements: ExcalidrawElement[] = [];
+      const changed: ExcalidrawElement[] = [];
 
       for (const el of elements) {
         const lastEl = lastState.get(el.id);
-        // Include if: new element, version changed, or deleted status changed
         if (
           !lastEl ||
           lastEl.version !== el.version ||
           lastEl.isDeleted !== el.isDeleted
         ) {
-          changedElements.push(el);
+          changed.push(el);
         }
       }
 
-      // Update the last broadcasted state
       const newState = new Map<string, { version: number; isDeleted?: boolean }>();
       for (const el of elements) {
         newState.set(el.id, { version: el.version, isDeleted: el.isDeleted });
       }
       lastBroadcastedElementsRef.current = newState;
 
-      return changedElements;
+      return changed;
     },
-    []
+    [],
   );
 
-  // Broadcast elements with 100ms throttle (no DB save, just Pusher)
-  // Uses delta sync to only send changed elements, keeping payload under Pusher's 10KB limit
   const broadcastElements = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState) => {
       if (!COLLABORATION_ENABLED || !whiteboardId) return;
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
 
       const now = Date.now();
-      const timeSinceLastBroadcast = now - lastElementsBroadcastRef.current;
+      const timeSince = now - lastElementsBroadcastRef.current;
 
-      const doBroadcast = (els: readonly ExcalidrawElement[], state: AppState) => {
-        // Compute delta - only send changed elements
-        const changedElements = computeElementsDelta(els);
-
-        // Skip broadcast if nothing changed
-        if (changedElements.length === 0) return;
-
-        fetch(`/api/whiteboards/${whiteboardId}/collaboration`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "elements",
-            elements: changedElements, // Only changed elements
-            appState: {
-              viewBackgroundColor: state.viewBackgroundColor,
-              gridSize: state.gridSize,
-            },
-            senderId: senderIdRef.current,
-          }),
-        })
-          .then(async (res) => {
-            if (!res.ok) return;
-            // When the payload is too large for Pusher (10KB cap), the server
-            // broadcasts a tiny WHITEBOARD_REFETCH event instead of the inline
-            // delta and tells us so via `refetchTriggered`. Reset delta
-            // tracking for these elements so a future smaller change will
-            // resend them through the normal path.
-            const body = await res.json().catch(() => null);
-            if (body?.refetchTriggered) {
-              for (const el of changedElements) {
-                lastBroadcastedElementsRef.current.delete(el.id);
-              }
-              if (!hasWarnedOversizedRef.current) {
-                hasWarnedOversizedRef.current = true;
-                console.info(
-                  "[whiteboard] Broadcast exceeded Pusher payload cap; " +
-                    "collaborators will refetch from the database.",
-                );
-              }
-            }
-          })
-          .catch(console.error);
+      const doBroadcast = (
+        els: readonly ExcalidrawElement[],
+        state: AppState,
+      ) => {
+        const changed = computeElementsDelta(els);
+        if (changed.length === 0) return;
+        socket.emit("elements:update", {
+          elements: changed,
+          appState: {
+            viewBackgroundColor: state.viewBackgroundColor,
+            gridSize: state.gridSize,
+          },
+        });
       };
 
-      if (timeSinceLastBroadcast >= 100) {
+      if (timeSince >= 100) {
         lastElementsBroadcastRef.current = now;
         doBroadcast(elements, appState);
       } else {
         pendingElementsRef.current = { elements, appState };
         setTimeout(() => {
           if (pendingElementsRef.current) {
-            const pending = pendingElementsRef.current;
+            const p = pendingElementsRef.current;
             pendingElementsRef.current = null;
             lastElementsBroadcastRef.current = Date.now();
-            doBroadcast(pending.elements, pending.appState);
+            doBroadcast(p.elements, p.appState);
           }
-        }, 100 - timeSinceLastBroadcast);
+        }, 100 - timeSince);
       }
     },
-    [whiteboardId, computeElementsDelta]
+    [whiteboardId, computeElementsDelta],
   );
 
-  // Broadcast cursor with 50ms throttle
   const broadcastCursor = useCallback(
     (x: number, y: number) => {
       if (!COLLABORATION_ENABLED || !whiteboardId) return;
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
 
       const now = Date.now();
-      const timeSinceLastBroadcast = now - lastCursorBroadcastRef.current;
+      const timeSince = now - lastCursorBroadcastRef.current;
 
-      const doBroadcast = (cursorX: number, cursorY: number) => {
-        fetch(`/api/whiteboards/${whiteboardId}/collaboration`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "cursor",
-            senderId: senderIdRef.current,
-            cursor: { x: cursorX, y: cursorY },
-            color: userColorRef.current,
-          }),
-        }).catch(console.error);
+      const doBroadcast = (cx: number, cy: number) => {
+        socket.emit("cursor:update", {
+          cursor: { x: cx, y: cy },
+          color: userColorRef.current,
+        });
       };
 
-      if (timeSinceLastBroadcast >= 50) {
+      if (timeSince >= 50) {
         lastCursorBroadcastRef.current = now;
         doBroadcast(x, y);
       } else {
         pendingCursorRef.current = { x, y };
         setTimeout(() => {
           if (pendingCursorRef.current) {
-            const pending = pendingCursorRef.current;
+            const p = pendingCursorRef.current;
             pendingCursorRef.current = null;
             lastCursorBroadcastRef.current = Date.now();
-            doBroadcast(pending.x, pending.y);
+            doBroadcast(p.x, p.y);
           }
-        }, 50 - timeSinceLastBroadcast);
+        }, 50 - timeSince);
       }
     },
-    [whiteboardId]
+    [whiteboardId],
   );
 
-  // Refs for presence rebroadcast (following usePlanPresence pattern)
-  const hasSentJoinRef = useRef(false);
-  const knownUserIdsRef = useRef(new Set<string>());
+  // Pull the latest scene from the DB and merge it in. Used after a socket
+  // reconnect — events broadcast during the outage are not replayed by the
+  // relay, so the DB is our only source of truth for catching up.
+  const refetchAndMerge = useCallback(async () => {
+    const api = excalidrawAPIRef.current;
+    if (!api) return;
+    try {
+      const res = await fetch(`/api/whiteboards/${whiteboardId}`);
+      if (!res.ok) return;
+      const body = await res.json();
+      const remoteElements = body?.data?.elements as
+        | ExcalidrawElement[]
+        | undefined;
+      if (!remoteElements) return;
 
-  // Stable ref for session so the effect doesn't re-run on token refreshes
-  const sessionRef = useRef(session);
-  sessionRef.current = session;
-  const onRemoteUpdateRef = useRef(onRemoteUpdate);
-  onRemoteUpdateRef.current = onRemoteUpdate;
-  const onBeforeRemoteUpdateRef = useRef(onBeforeRemoteUpdate);
-  onBeforeRemoteUpdateRef.current = onBeforeRemoteUpdate;
+      const currentElements = api.getSceneElements();
+      const localById = new Map(currentElements.map((el) => [el.id, el]));
+      const hasChanges = remoteElements.some((remoteEl) => {
+        const localEl = localById.get(remoteEl.id);
+        return !localEl || remoteEl.version > localEl.version;
+      });
+      if (!hasChanges) return;
 
-  // Derive a stable primitive for the dependency array
-  const userId = session?.user?.id;
+      const merged = mergeElementsByVersion(currentElements, remoteElements);
+      onBeforeRemoteUpdateRef.current?.();
+      api.updateScene({ elements: merged });
+      onRemoteUpdateRef.current?.();
+    } catch (err) {
+      console.error("[whiteboard] refetch-after-reconnect failed:", err);
+    }
+  }, [whiteboardId]);
 
-  // Subscribe to Pusher channel
   useEffect(() => {
     if (!COLLABORATION_ENABLED || !whiteboardId || !userId) return;
 
-    // Capture ref values once so the cleanup function operates on the same
-    // Maps/Sets the effect body uses (and to satisfy react-hooks/exhaustive-deps).
+    // Capture ref instances once so the cleanup function operates on the same
+    // Maps the effect body uses (react-hooks/exhaustive-deps — refs can be
+    // re-assigned between render and cleanup in theory, even though ours
+    // never are).
     const cursorPositions = cursorPositionsRef.current;
-    const knownUserIds = knownUserIdsRef.current;
     const lastBroadcastedElements = lastBroadcastedElementsRef.current;
 
-    const collaborationUrl = `/api/whiteboards/${whiteboardId}/collaboration`;
+    let cancelled = false;
+    let socket: Socket | null = null;
 
-    const buildUserPayload = () => ({
-      odinguserId: userId,
-      name: sessionRef.current?.user?.name || "Anonymous",
-      image: sessionRef.current?.user?.image || null,
-      color: userColorRef.current,
-      joinedAt: Date.now(),
-    });
-
-    const sendJoin = () => {
-      if (hasSentJoinRef.current) return;
-      fetch(collaborationUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "join", user: buildUserPayload() }),
-      }).catch(console.error);
-      hasSentJoinRef.current = true;
+    const fetchToken = async (): Promise<{ token: string; url: string } | null> => {
+      try {
+        const res = await fetch(`/api/whiteboards/${whiteboardId}/relay-token`);
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as {
+            reason?: string;
+            error?: string;
+          };
+          console.info(
+            `[whiteboard] relay unavailable (HTTP ${res.status}, reason=${body.reason ?? body.error ?? "unknown"}) — live collaboration off for this session.`,
+          );
+          return null;
+        }
+        return (await res.json()) as { token: string; url: string };
+      } catch (err) {
+        console.info("[whiteboard] relay token fetch failed:", err);
+        return null;
+      }
     };
 
-    let pusher: ReturnType<typeof getPusherClient> | null = null;
-    let channel: ReturnType<ReturnType<typeof getPusherClient>["subscribe"]> | null = null;
-    let channelName: string | null = null;
+    void (async () => {
+      const initial = await fetchToken();
+      if (!initial || cancelled) return;
 
-    try {
-      pusher = getPusherClient();
-      channelName = getWhiteboardChannelName(whiteboardId);
-      channel = pusher.subscribe(channelName);
+      // Pass the initial token directly; for reconnects, the auth callback
+      // fetches a fresh one. Tokens are short-lived (5 min) so we refresh
+      // per-handshake to avoid a stale-token reconnect failure.
+      let cachedInitialToken: string | null = initial.token;
 
-      channel.bind("pusher:subscription_succeeded", () => {
+      socket = io(initial.url, {
+        auth: (cb) => {
+          if (cachedInitialToken) {
+            cb({ token: cachedInitialToken });
+            cachedInitialToken = null;
+            return;
+          }
+          void fetchToken().then((t) => cb({ token: t?.token ?? "" }));
+        },
+        transports: ["websocket"],
+        reconnection: true,
+      });
+      socketRef.current = socket;
+
+      socket.on("connect", () => {
+        if (!socket) return;
         setIsConnected(true);
+        setSenderId(socket.id ?? "");
+        console.info(`[whiteboard] relay connected sid=${socket.id}`);
       });
 
-      // Handle remote element updates
-      channel.bind(
-        PUSHER_EVENTS.WHITEBOARD_ELEMENTS_UPDATE,
-        (data: WhiteboardElementsUpdateEvent) => {
-          if (data.senderId === senderIdRef.current) return;
+      socket.on("disconnect", () => {
+        setIsConnected(false);
+      });
 
-          if (excalidrawAPI) {
-            const currentElements = excalidrawAPI.getSceneElements();
-            const remoteElements = data.elements as ExcalidrawElement[];
+      socket.io.on("reconnect", () => {
+        void refetchAndMerge();
+      });
 
-            // Skip if the delta contains nothing new. Applying a no-op
-            // updateScene would still fire onChange on the page, which we
-            // don't want, and bumping the programmatic-update counter for
-            // it would silently swallow the next real user edit.
-            const localById = new Map(currentElements.map((el) => [el.id, el]));
-            const hasChanges = remoteElements.some((remoteEl) => {
-              const localEl = localById.get(remoteEl.id);
-              return !localEl || remoteEl.version > localEl.version;
-            });
-            if (!hasChanges) return;
+      socket.on("connect_error", (err) => {
+        console.warn("[whiteboard] relay connect_error:", err.message);
+        setIsConnected(false);
+      });
 
-            const mergedElements = mergeElementsByVersion(currentElements, remoteElements);
+      socket.on("room:roster", (data: { collaborators: RosterEntry[] }) => {
+        setCollaborators(
+          data.collaborators.map((c) => ({
+            odinguserId: c.odinguserId,
+            name: c.name,
+            image: c.image,
+            color: c.color,
+            joinedAt: c.joinedAt,
+          })),
+        );
+      });
 
-            // Tell the page this updateScene is programmatic so its
-            // onChange handler doesn't re-broadcast the remote elements
-            // back out or trigger a DB save with a stale expectedVersion.
-            onBeforeRemoteUpdateRef.current?.();
+      socket.on("user:join", (data: { user: RosterEntry }) => {
+        const u = data.user;
+        setCollaborators((prev) => {
+          if (prev.some((c) => c.odinguserId === u.odinguserId)) return prev;
+          return [
+            ...prev,
+            {
+              odinguserId: u.odinguserId,
+              name: u.name,
+              image: u.image,
+              color: u.color,
+              joinedAt: u.joinedAt,
+            },
+          ];
+        });
+      });
 
-            excalidrawAPI.updateScene({
-              elements: mergedElements,
-              appState: data.appState as any,
-            });
+      socket.on("user:leave", (data: { userId: string; senderId: string }) => {
+        setCollaborators((prev) =>
+          prev.filter((c) => c.odinguserId !== data.userId),
+        );
+        cursorPositionsRef.current.delete(data.senderId);
+        flushCursorsToScene();
+      });
 
-            onRemoteUpdateRef.current?.();
-          }
-        }
+      socket.on(
+        "elements:update",
+        (data: {
+          senderId: string;
+          elements: ExcalidrawElement[];
+          appState: Partial<AppState>;
+        }) => {
+          const api = excalidrawAPIRef.current;
+          if (!api) return;
+          const currentElements = api.getSceneElements();
+          const localById = new Map(currentElements.map((el) => [el.id, el]));
+          const hasChanges = data.elements.some((remoteEl) => {
+            const localEl = localById.get(remoteEl.id);
+            return !localEl || remoteEl.version > localEl.version;
+          });
+          if (!hasChanges) return;
+
+          const merged = mergeElementsByVersion(currentElements, data.elements);
+          onBeforeRemoteUpdateRef.current?.();
+          api.updateScene({
+            elements: merged,
+            appState: data.appState as unknown as AppState,
+          });
+          onRemoteUpdateRef.current?.();
+        },
       );
 
-      // Handle cursor updates — persist until explicit leave, sweep stale after 60s
-      channel.bind(
-        PUSHER_EVENTS.WHITEBOARD_CURSOR_UPDATE,
-        (data: WhiteboardCursorUpdateEvent) => {
-          if (data.senderId === senderIdRef.current) return;
-
+      socket.on(
+        "cursor:update",
+        (data: {
+          senderId: string;
+          cursor: { x: number; y: number };
+          color: string;
+          username?: string;
+        }) => {
           cursorPositionsRef.current.set(data.senderId, {
             x: data.cursor.x,
             y: data.cursor.y,
             color: data.color,
             username: data.username,
-            lastUpdated: Date.now(),
           });
           flushCursorsToScene();
-        }
-      );
-
-      // Handle user join with rebroadcast for late joiners
-      channel.bind(
-        PUSHER_EVENTS.WHITEBOARD_USER_JOIN,
-        (data: WhiteboardUserJoinEvent) => {
-          if (data.user.odinguserId === userId) return;
-
-          const isNew = !knownUserIdsRef.current.has(data.user.odinguserId);
-
-          setCollaborators((prev) => {
-            if (prev.some((c) => c.odinguserId === data.user.odinguserId)) return prev;
-            return [...prev, data.user];
-          });
-
-          if (isNew) {
-            knownUserIdsRef.current.add(data.user.odinguserId);
-          }
-
-          // Re-broadcast our presence so the new joiner sees us
-          if (hasSentJoinRef.current && isNew && !data.rebroadcast) {
-            fetch(collaborationUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ type: "join", user: buildUserPayload(), rebroadcast: true }),
-            }).catch(console.error);
-          }
-        }
-      );
-
-      // Handle refetch fallback (oversized broadcast). Pull the latest scene
-      // from the server and merge it into the local canvas. Debounced 300ms
-      // so a burst of refetch events only triggers one DB fetch.
-      channel.bind(
-        PUSHER_EVENTS.WHITEBOARD_REFETCH,
-        (data: WhiteboardRefetchEvent) => {
-          if (data.senderId === senderIdRef.current) return;
-
-          if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
-          refetchTimerRef.current = setTimeout(() => {
-            refetchTimerRef.current = null;
-            const api = excalidrawAPIRef.current;
-            if (!api) return;
-            fetch(`/api/whiteboards/${whiteboardId}`)
-              .then((res) => (res.ok ? res.json() : null))
-              .then((body) => {
-                const remoteElements = body?.data?.elements as
-                  | ExcalidrawElement[]
-                  | undefined;
-                if (!remoteElements) return;
-                const currentElements = api.getSceneElements();
-
-                const localById = new Map(
-                  currentElements.map((el) => [el.id, el]),
-                );
-                const hasChanges = remoteElements.some((remoteEl) => {
-                  const localEl = localById.get(remoteEl.id);
-                  return !localEl || remoteEl.version > localEl.version;
-                });
-                if (!hasChanges) return;
-
-                const merged = mergeElementsByVersion(
-                  currentElements,
-                  remoteElements,
-                );
-                onBeforeRemoteUpdateRef.current?.();
-                api.updateScene({ elements: merged });
-                onRemoteUpdateRef.current?.();
-              })
-              .catch((err) => {
-                console.error("[whiteboard] Refetch fallback failed:", err);
-              });
-          }, 300);
         },
       );
+    })();
 
-      // Handle user leave
-      channel.bind(
-        PUSHER_EVENTS.WHITEBOARD_USER_LEAVE,
-        (data: WhiteboardUserLeaveEvent) => {
-          knownUserIdsRef.current.delete(data.userId);
-          setCollaborators((prev) =>
-            prev.filter((c) => c.odinguserId !== data.userId)
-          );
-          // Match senderIds whose embedded userId is exactly `data.userId`.
-          // Using `startsWith` here would incorrectly remove cursors of users
-          // with similar IDs (e.g. "user-12" would also match "user-123").
-          for (const key of cursorPositionsRef.current.keys()) {
-            if (extractUserIdFromSenderId(key) === data.userId) {
-              cursorPositionsRef.current.delete(key);
-            }
-          }
-          flushCursorsToScene();
-        }
-      );
-
-      // Announce our presence
-      sendJoin();
-
-      // Pull the current collaborator list from the server so late joiners
-      // see everyone who is already in the room — not just whoever happens
-      // to rebroadcast in response to our join event. Best-effort: failures
-      // (network, multi-instance gap) fall back to the rebroadcast pattern.
-      fetch(collaborationUrl)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((body) => {
-          const initial = body?.collaborators as CollaboratorInfo[] | undefined;
-          if (!initial || initial.length === 0) return;
-          setCollaborators((prev) => {
-            const merged = [...prev];
-            const seen = new Set(prev.map((c) => c.odinguserId));
-            for (const c of initial) {
-              if (c.odinguserId === userId) continue;
-              if (seen.has(c.odinguserId)) continue;
-              merged.push(c);
-              knownUserIdsRef.current.add(c.odinguserId);
-              seen.add(c.odinguserId);
-            }
-            return merged;
-          });
-        })
-        .catch(() => {
-          // Silently ignore — rebroadcast handler will fill in.
-        });
-    } catch {
-      // Pusher not configured in this environment
-      return;
-    }
-
-    // Sweep stale cursors every 30s (safety net for missed leave events)
-    const sweepInterval = setInterval(() => {
-      const now = Date.now();
-      let changed = false;
-      for (const [key, cursor] of cursorPositionsRef.current) {
-        if (now - cursor.lastUpdated > 60_000) {
-          cursorPositionsRef.current.delete(key);
-          changed = true;
-        }
-      }
-      if (changed) flushCursorsToScene();
-    }, 30_000);
-
-    // Reliable leave via sendBeacon (survives tab close)
-    const sendLeaveBeacon = () => {
-      navigator.sendBeacon(
-        collaborationUrl,
-        new Blob([JSON.stringify({ type: "leave" })], { type: "application/json" }),
-      );
-    };
-
-    window.addEventListener("beforeunload", sendLeaveBeacon);
-
-    // Cleanup on unmount
     return () => {
-      window.removeEventListener("beforeunload", sendLeaveBeacon);
-      clearInterval(sweepInterval);
-      try {
-        channel?.unbind_all();
-      } catch (err) {
-        console.error("[whiteboard] Failed to unbind Pusher channel:", err);
+      cancelled = true;
+      if (socket) {
+        socket.removeAllListeners();
+        socket.disconnect();
       }
-      try {
-        if (pusher && channelName) {
-          pusher.unsubscribe(channelName);
-        }
-      } catch (err) {
-        console.error("[whiteboard] Failed to unsubscribe from Pusher channel:", err);
-      }
-      sendLeaveBeacon();
-      hasSentJoinRef.current = false;
-      knownUserIds.clear();
+      socketRef.current = null;
+      setIsConnected(false);
+      setSenderId("");
+      setCollaborators([]);
       cursorPositions.clear();
+      lastBroadcastedElements.clear();
       pendingCursorRef.current = null;
       pendingElementsRef.current = null;
-      lastBroadcastedElements.clear();
-      hasWarnedOversizedRef.current = false;
-      if (refetchTimerRef.current) {
-        clearTimeout(refetchTimerRef.current);
-        refetchTimerRef.current = null;
-      }
-      setIsConnected(false);
     };
-  }, [whiteboardId, excalidrawAPI, userId, flushCursorsToScene]);
+  }, [whiteboardId, userId, flushCursorsToScene, refetchAndMerge]);
 
   return {
     collaborators,
     isConnected,
     broadcastElements,
     broadcastCursor,
-    senderId: senderIdRef.current,
+    senderId,
     userColor: userColorRef.current,
   };
 }
-
