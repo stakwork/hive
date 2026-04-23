@@ -31,10 +31,14 @@ interface VoiceState {
   messages: AgentMessage[];
   transcription: Transcription | null;
 
+  // TTS (voice mode) – mirrors the agent's `tts` attribute
+  ttsState: string | null;
+
   // Actions
   connect: (slug: string) => Promise<void>;
   disconnect: () => void;
   toggleMic: () => Promise<void>;
+  toggleTts: () => void;
   sendMessage: (text: string) => void;
   clearError: () => void;
 }
@@ -49,6 +53,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
   error: null,
   messages: [],
   transcription: null,
+  ttsState: null,
 
   connect: async (slug: string) => {
     if (get().isConnected || get().isConnecting) return;
@@ -104,8 +109,23 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
         },
       );
 
+      // Track the agent's TTS attribute (voice mode on/off)
+      const updateTts = () => {
+        for (const [, p] of room.remoteParticipants) {
+          if (p.attributes?.tts !== undefined) {
+            set({ ttsState: p.attributes.tts });
+            return;
+          }
+        }
+        set({ ttsState: null });
+      };
+      room.on(RoomEvent.Connected, updateTts);
+      room.on(RoomEvent.ParticipantConnected, updateTts);
+      room.on(RoomEvent.ParticipantDisconnected, updateTts);
+      room.on(RoomEvent.ParticipantAttributesChanged, updateTts);
+
       room.on(RoomEvent.Disconnected, () => {
-        set({ isConnected: false, isConnecting: false, isMicEnabled: false, room: null });
+        set({ isConnected: false, isConnecting: false, isMicEnabled: false, ttsState: null, room: null });
       });
 
       await room.connect(LIVEKIT_URL, token);
@@ -132,6 +152,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       isMicEnabled: false,
       messages: [],
       transcription: null,
+      ttsState: null,
     });
   },
 
@@ -154,6 +175,18 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     const encoded = new TextEncoder().encode(JSON.stringify(msg));
     room.localParticipant.publishData(encoded, { topic: "lk-chat-topic", reliable: true });
     set((s) => ({ messages: [...s.messages, msg] }));
+  },
+
+  toggleTts: () => {
+    const { room } = get();
+    if (!room) return;
+    const payload = new TextEncoder().encode(
+      JSON.stringify({ type: "tts-toggle" }),
+    );
+    room.localParticipant.publishData(payload, {
+      reliable: true,
+      topic: "lk-chat-topic",
+    });
   },
 
   clearError: () => set({ error: null }),
