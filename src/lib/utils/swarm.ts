@@ -12,6 +12,11 @@ export function getJarvisUrl(swarmName: string): string {
   return `https://${swarmName}.sphinx.chat:8444`;
 }
 
+export function getRelayUrl(swarmName: string, swarmUrl?: string): string {
+  if (swarmUrl?.includes("localhost")) return "http://localhost:3333";
+  return `https://${swarmName}.sphinx.chat:3333`;
+}
+
 /**
  * Strips the leading "swarm" prefix from a swarm_id and returns the remainder.
  * e.g. "swarmPLuy9q" → "PLuy9q"
