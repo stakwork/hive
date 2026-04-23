@@ -368,7 +368,7 @@ export async function sendFeatureChatMessage({
       isPrototype: isPrototype && isFirstMessage,
       subAgents: extraSwarms,
       attachments: attachmentUrls,
-      taskModel: model || feature.model || undefined,
+      taskModel: feature.model || model || undefined,
     });
 
     // Only update workflow status when Stakwork confirms a project was created
