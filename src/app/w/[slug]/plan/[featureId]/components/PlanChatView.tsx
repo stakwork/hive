@@ -282,26 +282,30 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const response = await fetch("/api/llm-models");
         if (response.ok) {
           const data = await response.json();
-          const models = data.models ?? [];
-          setLlmModels(models);
-          if (!selectedModel && models.length > 0) {
-            const defaultModel = models.find((m: { isPlanDefault: boolean }) => m.isPlanDefault);
-            setSelectedModel(getModelValue(defaultModel ?? models[0]));
-          }
+          setLlmModels(data.models ?? []);
         }
       } catch (error) {
         console.error("Error fetching LLM models:", error);
       }
     };
     fetchLlmModels();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Initialize selectedModel from persisted feature.model
+  // Resolve selectedModel once both feature and models are loaded.
+  // Prefer the persisted feature.model; only fall back to the plan default
+  // when the feature has no model set. Runs once on initial load.
   useEffect(() => {
-    if (feature?.model && !selectedModel) {
+    if (selectedModel) return;
+    if (!feature) return;
+    if (feature.model) {
       setSelectedModel(feature.model);
+      return;
     }
-  }, [feature?.model]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (llmModels.length > 0) {
+      const defaultModel = llmModels.find((m) => m.isPlanDefault);
+      setSelectedModel(getModelValue(defaultModel ?? llmModels[0]));
+    }
+  }, [feature, llmModels, selectedModel]);
 
   // Refetch on tab visibility change
   useEffect(() => {
