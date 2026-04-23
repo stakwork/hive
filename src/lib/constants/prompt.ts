@@ -284,7 +284,9 @@ Assign every node to a class. No unstyled nodes.
 ### Avoid
 - Don't use \`style\` on individual nodes — only \`classDef\` + \`class\`
 - Don't exceed ~15 nodes for a connection diagram (keep it high-level!)
-- Don't leave subgraphs with only 1 node`;
+- Don't leave subgraphs with only 1 node
+- DO NOT use curly braces {} in node names!!!!! Mermaid parsing interpets that as a rhombus node.
+- Make sure to create valid mermaid syntax, avoid special characters in node names in general.`;
 }
 
 export function getMultiWorkspacePrefixMessages(
