@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
 import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
+import { useRelayConnectionProbe } from "@/hooks/useRelayConnectionProbe";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
@@ -94,6 +95,11 @@ export default function WhiteboardDetailPage() {
       programmaticUpdateCountRef.current++;
     }, []),
   });
+
+  const relayProbe = useRelayConnectionProbe({ whiteboardId });
+  useEffect(() => {
+    console.info("[relay-probe] status", relayProbe);
+  }, [relayProbe]);
 
   const loadWhiteboard = useCallback(async () => {
     try {
