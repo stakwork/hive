@@ -1,17 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
-import { hideLiveNode, showLiveNode, isLiveId, ROOT_REF } from "@/lib/canvas";
+import {
+  hideLiveNode,
+  showLiveNode,
+  isLiveId,
+  readHiddenLive,
+  ROOT_REF,
+} from "@/lib/canvas";
 
 /**
  * Dedicated hide/show endpoint — keeps the hidden list out of the
  * autosave PUT path so routine edits never accidentally reset it.
  *
- * Body: `{ ref?: string, id: string, action: "hide" | "show" }`
- *   - `ref` is the canvas scope ("" for root; omit or pass "" for root).
- *   - `id` must be a live id (`ws:…`, `feature:…`).
- *   - `action` — "hide" adds to the set; "show" removes from it.
+ * - `GET  ?ref=...` → list hidden live entries with display names for
+ *   a restore UI. `ref` defaults to root. Returns `{ entries: [...] }`.
+ * - `POST { ref?, id, action: "hide" | "show" }` → toggle visibility.
  */
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ githubLogin: string }> },
+) {
+  const context = getMiddlewareContext(request);
+  const userOrResponse = requireAuth(context);
+  if (userOrResponse instanceof NextResponse) return userOrResponse;
+
+  const { githubLogin } = await params;
+  const ref = request.nextUrl.searchParams.get("ref") ?? ROOT_REF;
+
+  try {
+    const org = await db.sourceControlOrg.findUnique({
+      where: { githubLogin },
+      select: { id: true },
+    });
+    if (!org) {
+      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+    }
+    const entries = await readHiddenLive(org.id, ref);
+    return NextResponse.json({ entries });
+  } catch (error) {
+    console.error("[GET /api/orgs/[githubLogin]/canvas/hide] Error:", error);
+    return NextResponse.json({ error: "Failed to list hidden" }, { status: 500 });
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ githubLogin: string }> },
