@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
-import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWhiteboardCollaborationViaRelay } from "@/hooks/useWhiteboardCollaborationViaRelay";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { uploadNewFiles, resolveFilesForDisplay } from "@/hooks/useWhiteboardImages";
@@ -36,8 +35,6 @@ const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,
   { ssr: false }
 );
-
-const USE_RELAY = process.env.NEXT_PUBLIC_WHITEBOARD_USE_RELAY === "true";
 
 interface WhiteboardItem {
   id: string;
@@ -84,16 +81,13 @@ export function FeatureWhiteboardSection({
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const resolvedFilesRef = useRef<BinaryFiles>({});
 
-  const useCollabHook = USE_RELAY
-    ? useWhiteboardCollaborationViaRelay
-    : useWhiteboardCollaboration;
   const {
     collaborators,
     isConnected,
     broadcastElements,
     broadcastCursor,
     senderId,
-  } = useCollabHook({
+  } = useWhiteboardCollaborationViaRelay({
     whiteboardId: whiteboard?.id || "",
     excalidrawAPI,
   });
