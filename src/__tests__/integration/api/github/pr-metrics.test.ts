@@ -778,4 +778,50 @@ describe('GET /api/github/pr-metrics', () => {
       db.artifact.findMany = originalFindMany;
     });
   });
+
+  describe('IDOR hardening (#29)', () => {
+    test('should return 404 for signed-in non-member attacker (no metrics leak)', async () => {
+      // Victim workspace is `testWorkspace` (owned by testUser) with a
+      // merged PR on it. Attacker has no membership on it.
+      const attacker = await db.user.create({
+        data: {
+          email: `attacker-${Date.now()}@example.com`,
+          name: 'Attacker',
+        },
+      });
+
+      // Seed a merged PR on the victim's workspace so we can prove no
+      // metrics leaked to the attacker.
+      await db.artifact.create({
+        data: {
+          id: generateUniqueId(),
+          messageId: testMessage.id,
+          type: 'PULL_REQUEST',
+          content: {
+            repo: 'victim/repo',
+            url: 'https://github.com/victim/repo/pull/1',
+            status: 'DONE',
+          },
+        },
+      });
+
+      mockSessionAs(createAuthenticatedSession({ id: attacker.id, email: attacker.email! }));
+
+      const findManySpy = vi.spyOn(db.artifact, 'findMany');
+
+      const request = createGetRequest('/api/github/pr-metrics', {
+        workspaceId: testWorkspace.id,
+      });
+
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error).toBe('Workspace not found or access denied');
+      // The artifact.findMany should never have run for the attacker.
+      expect(findManySpy).not.toHaveBeenCalled();
+
+      findManySpy.mockRestore();
+    });
+  });
 });
