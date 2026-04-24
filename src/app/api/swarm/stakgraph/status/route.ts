@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -44,6 +45,17 @@ export async function GET(request: NextRequest) {
       const session = await getServerSession(authOptions);
       if (!session?.user?.id) {
         return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+      }
+
+      // IDOR hardening: verify the caller is a member of the workspace the
+      // swarm belongs to before using the decrypted `swarmApiKey` to poll
+      // stakgraph. Trust `swarm.workspaceId`, not any body/query field.
+      const access = await validateWorkspaceAccessById(swarm.workspaceId, session.user.id as string);
+      if (!access.hasAccess || !access.canRead) {
+        return NextResponse.json(
+          { success: false, message: "Workspace not found or access denied" },
+          { status: 404 },
+        );
       }
     }
 
