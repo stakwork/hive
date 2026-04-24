@@ -7,8 +7,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
 import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
-import { useRelayConnectionProbe } from "@/hooks/useRelayConnectionProbe";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
+import { useWhiteboardCollaborationViaRelay } from "@/hooks/useWhiteboardCollaborationViaRelay";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState, normalizeElementStyles } from "@/lib/excalidraw-config";
@@ -27,6 +27,8 @@ const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,
   { ssr: false }
 );
+
+const USE_RELAY = process.env.NEXT_PUBLIC_WHITEBOARD_USE_RELAY === "true";
 
 function computeSnapshot(elements: readonly unknown[], files: Record<string, unknown>): string {
   // Lightweight fingerprint: element count + IDs + versions + file IDs
@@ -78,28 +80,25 @@ export default function WhiteboardDetailPage() {
   const knownElementIdsRef = useRef<Set<string>>(new Set());
   const lastVersionSnapshotRef = useRef<Set<string>>(new Set());
 
-  // Collaboration hook
+  const useCollabHook = USE_RELAY
+    ? useWhiteboardCollaborationViaRelay
+    : useWhiteboardCollaboration;
   const {
     collaborators,
     isConnected,
     broadcastElements,
     broadcastCursor,
     senderId,
-  } = useWhiteboardCollaboration({
+  } = useCollabHook({
     whiteboardId,
     excalidrawAPI,
-    // Mark incoming Pusher-driven scene updates as programmatic so our
-    // onChange handler doesn't echo them back to peers or schedule a DB
-    // save with a stale expectedVersion (which would 409-storm the server).
+    // Mark incoming remote scene updates as programmatic so our onChange
+    // handler doesn't echo them back to peers or schedule a DB save with a
+    // stale expectedVersion (which would 409-storm the server).
     onBeforeRemoteUpdate: useCallback(() => {
       programmaticUpdateCountRef.current++;
     }, []),
   });
-
-  const relayProbe = useRelayConnectionProbe({ whiteboardId });
-  useEffect(() => {
-    console.info("[relay-probe] status", relayProbe);
-  }, [relayProbe]);
 
   const loadWhiteboard = useCallback(async () => {
     try {
