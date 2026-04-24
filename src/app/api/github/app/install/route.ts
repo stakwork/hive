@@ -4,6 +4,7 @@ import { config } from "@/config/env";
 import { serviceConfigs } from "@/config/services";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { signGithubAppState } from "@/lib/auth/github-app-state";
+import { validateWorkspaceAccess } from "@/services/workspace";
 import { randomBytes } from "crypto";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -28,6 +29,20 @@ export async function POST(request: NextRequest) {
 
     if (!workspaceSlug) {
       return NextResponse.json({ success: false, message: "Workspace slug is required" }, { status: 400 });
+    }
+
+    // IDOR hardening: require the caller to be an ADMIN/OWNER of the
+    // workspace before minting any GitHub-App state or leaking the
+    // workspace's install metadata (installationId, repositoryUrl, etc).
+    // Without this gate any signed-in user could bind a GitHub App
+    // installation to a victim workspace by replaying the callback with
+    // the state emitted here.
+    const access = await validateWorkspaceAccess(workspaceSlug, session.user.id as string);
+    if (!access.hasAccess || !access.canAdmin) {
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 404 },
+      );
     }
 
     // Generate state. The state is signed with NEXTAUTH_SECRET (HMAC-SHA256)
