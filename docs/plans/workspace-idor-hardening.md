@@ -140,7 +140,55 @@ tackled in a follow-up effort.
     `<base64url>.<hex>` format, and three new IDOR test blocks on the
     webhook-ensure unit suite + eleven new integration tests on the
     org-connections route.
-- **Phase C (Medium #26–30)** — not started.
+- **Phase C (Medium #26–30) — DONE** on branch `ef/idor-fixes-4`.
+  - **#26 stakgraph/status**: in the session branch (no Bearer
+    token), the handler now runs `validateWorkspaceAccessById(
+    swarm.workspaceId, userId)` with `canRead` before the decrypted
+    `swarmApiKey` polls stakgraph. The Bearer-token branch is
+    unchanged (it's a server-to-server shared-secret path). Failure
+    returns the unified 404. No existing tests.
+  - **#27 features/[featureId]/presence**: the handler now looks
+    up `feature.workspaceId` and runs `validateWorkspaceAccessById`
+    (`canRead`) before triggering the Pusher presence events, so
+    signed-in non-members can no longer spoof collaborator
+    joins/leaves on a victim feature's private realtime channel.
+    Feature-existence is folded into the same unified 404 so we
+    don't leak it. No existing tests.
+  - **#28 github/app/install**: added
+    `validateWorkspaceAccess(workspaceSlug, userId)` with
+    `canAdmin` immediately after the slug null-check, before any
+    GitHub state is minted, before any install metadata
+    (`githubInstallationId`, `repositoryUrl`, `ownerType`) is
+    leaked, and before `db.session.updateMany({ githubState })`
+    runs for the caller. Non-admins get the unified 404 with no
+    side-effects. Tests: updated two existing 404 assertions to
+    the new unified message and added three new IDOR tests
+    (non-member → 404 with no state stored on session + no GitHub
+    API calls, DEVELOPER → 404, ADMIN → happy path).
+  - **#29 github/pr-metrics**: added
+    `validateWorkspaceAccessById(workspaceId, userId)` with
+    `canRead` after the workspaceId validation and before the
+    `db.artifact.findMany` query. Non-members get the unified 404
+    without leaking PR count / success rate / time-to-merge. Test:
+    one new IDOR test asserting `artifact.findMany` is never
+    called for a signed-in non-member attacker.
+  - **#30 orgs/[githubLogin]/schematic**: mirrored the helper
+    pattern from `/orgs/[githubLogin]/connections` — a private
+    `resolveAuthorizedOrgId(githubLogin, userId, requireAdmin)`
+    returns the org id only when the caller owns or is an active
+    member of at least one workspace under it; `requireAdmin`
+    narrows to OWNER/ADMIN for the PUT path. GET uses the
+    resolved org id to scope `findUnique`; PUT uses it to scope
+    the `update`. Unknown `githubLogin` and non-qualifying
+    callers both get the unified 404 "Organization not found" so
+    org existence isn't leaked. Tests: the existing integration
+    suite was updated to enrol each test user in a workspace
+    under the org (the old version had random users reading any
+    org's schematic) and four new IDOR tests were added
+    (non-member GET → 404 with no schematic content in the
+    response body, unknown org GET → 404, DEVELOPER PUT → 404 +
+    schematic unchanged in DB, non-member PUT → 404 + schematic
+    unchanged in DB) alongside a new ADMIN happy-path PUT test.
 - **Phase D (shared-secret S1–S3)** — not started.
 - **"also" items** (public-viewer 7-day → 1-hour presigned URLs;
   jarvis/nodes call reduction) — not started.
@@ -687,6 +735,12 @@ proof-of-exploit, and suggested fix.
 - **Fix**: in the session branch,
   `validateWorkspaceAccessById(swarm.workspaceId, userId)` after
   loading the swarm.
+- **Status**: ✅ Fixed on `ef/idor-fixes-4`. The session branch
+  now runs `validateWorkspaceAccessById(swarm.workspaceId,
+  session.user.id)` with `canRead` before the decrypted
+  `swarmApiKey` polls stakgraph. Failure returns the unified 404.
+  The Bearer-token branch is left unchanged (server-to-server
+  shared-secret path). No existing tests for this route.
 
 #### 27. `src/app/api/features/[featureId]/presence/route.ts` — POST
 - **Bug**: `pusherServer.trigger(getFeatureChannelName(featureId), PLAN_USER_JOIN/LEAVE, ...)`
@@ -697,6 +751,13 @@ proof-of-exploit, and suggested fix.
 - **Fix**: resolve `feature.workspaceId` then
   `resolveWorkspaceAccess(request, { workspaceId })` +
   `requireMemberAccess`.
+- **Status**: ✅ Fixed on `ef/idor-fixes-4`. The handler now
+  loads `feature.workspaceId` and runs
+  `validateWorkspaceAccessById` with `canRead` before
+  `pusherServer.trigger`, so signed-in non-members can no longer
+  broadcast fake join/leave events onto a victim feature's
+  realtime channel. Missing feature and non-member both return a
+  unified 404 so feature existence isn't leaked either.
 
 #### 28. `src/app/api/github/app/install/route.ts` — POST
 - **Bug**: no membership check on `workspaceSlug` from body; reads
@@ -704,6 +765,19 @@ proof-of-exploit, and suggested fix.
   mints a state bound to the victim workspace.
 - **Fix**: `validateWorkspaceAccess(workspaceSlug, userId)` with
   `canAdmin` before generating state or returning install info.
+- **Status**: ✅ Fixed on `ef/idor-fixes-4`. The `canAdmin`
+  access check runs immediately after the slug null-check, so the
+  handler never mints a signed state, never writes
+  `session.githubState`, never calls the GitHub API, and never
+  returns install metadata for non-admins. Note that even without
+  the install-route fix, `/api/github/app/callback` already
+  re-validates admin access on the workspaceSlug (see #20), so
+  the pre-fix impact here was primarily install-metadata
+  disclosure + state pollution on the caller's own session
+  row rather than a direct cross-tenant write. Tests: updated
+  two existing 404 message assertions and added three new IDOR
+  tests (non-member attacker → 404 + no GitHub fetch + no
+  githubState stored, DEVELOPER → 404, ADMIN happy path).
 
 #### 29. `src/app/api/github/pr-metrics/route.ts` — GET
 - **Bug**: `db.artifact.findMany({ where: { message: { task: { workspaceId } } } })`
@@ -712,6 +786,11 @@ proof-of-exploit, and suggested fix.
   time-to-merge) for any workspace.
 - **Fix**: `validateWorkspaceAccessById(workspaceId, userId)` before
   the query.
+- **Status**: ✅ Fixed on `ef/idor-fixes-4`. Added the `canRead`
+  check between the `workspaceId` null-check and the
+  `artifact.findMany` query. Returns the unified 404. Tests: one
+  new IDOR test asserts the attacker gets 404 and
+  `db.artifact.findMany` is never called.
 
 #### 30. `src/app/api/orgs/[githubLogin]/schematic/route.ts` — GET, PUT
 - **Bug**: `db.sourceControlOrg.findUnique({ where: { githubLogin }, select: { schematic } })`
@@ -720,6 +799,21 @@ proof-of-exploit, and suggested fix.
 - **Exploit**: any signed-in user reads or overwrites any org's
   `schematic`.
 - **Fix**: same pattern as #23; admin required for PUT.
+- **Status**: ✅ Fixed on `ef/idor-fixes-4`. Added a private
+  `resolveAuthorizedOrgId(githubLogin, userId, requireAdmin)`
+  helper (mirror of the one in the sibling connections route)
+  that returns the org id only when the caller owns or is an
+  active member of at least one workspace under it, with the
+  `requireAdmin` branch narrowing to OWNER / WorkspaceRole.ADMIN.
+  GET uses the resolved id to scope `findUnique`; PUT uses it to
+  scope the `update`. Unknown `githubLogin` and non-qualifying
+  callers both return "Organization not found" at 404 so org
+  existence isn't leaked. Tests: the existing 3 GET + 3 PUT
+  tests were updated to enrol each test user in a workspace
+  under the org, and 5 new IDOR tests were added (GET non-
+  member → 404 with no schematic content in the body, GET
+  unknown org → 404, PUT DEVELOPER → 404 + no DB write, PUT
+  non-member → 404 + no DB write, PUT ADMIN → happy path).
 
 ---
 
@@ -767,7 +861,11 @@ require session auth + workspace admin.
    - Workflows/versions (#22) ✅ on `ef/idor-fixes-2`.
    - Bounty request (#24) ✅ on `ef/idor-fixes-2`.
    - Github cluster (#20, #21, #23) ✅ on `ef/idor-fixes-3`.
-3. **Phase C — medium (#26–30)**: one cleanup PR.
+3. **Phase C — medium (#26–30)**: ✅ landed on `ef/idor-fixes-4`.
+   All five medium-severity handlers now gate their reads/writes
+   behind workspace membership (or org-scoped workspace membership
+   for the /orgs paths). Integration tests added/updated for each
+   handler that had an existing suite.
 4. **Phase D — shared-secret endpoints (S1–S3)**: design work on
    per-resource tokens, then migrate webhooks to the new scheme.
 
