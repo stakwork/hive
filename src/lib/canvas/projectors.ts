@@ -67,7 +67,10 @@ export const rootProjector: Projector = {
     const nodes: CanvasNode[] = workspaces.map((w, index) => {
       const liveId = `ws:${w.id}`;
       const pos = defaultWorkspacePosition(index);
-      const repoCount = w._count.repositories;
+      // Defensive: production Prisma always returns `_count` when it's
+      // in the `select`, but test mocks may omit it. Default to 0 so
+      // a missing `_count` surfaces as "0 repos" rather than a crash.
+      const repoCount = w._count?.repositories ?? 0;
       return {
         id: liveId,
         type: "text",
