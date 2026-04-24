@@ -7,7 +7,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
 import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
-import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { useWhiteboardCollaborationViaRelay } from "@/hooks/useWhiteboardCollaborationViaRelay";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
@@ -27,8 +26,6 @@ const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,
   { ssr: false }
 );
-
-const USE_RELAY = process.env.NEXT_PUBLIC_WHITEBOARD_USE_RELAY === "true";
 
 function computeSnapshot(elements: readonly unknown[], files: Record<string, unknown>): string {
   // Lightweight fingerprint: element count + IDs + versions + file IDs
@@ -80,16 +77,13 @@ export default function WhiteboardDetailPage() {
   const knownElementIdsRef = useRef<Set<string>>(new Set());
   const lastVersionSnapshotRef = useRef<Set<string>>(new Set());
 
-  const useCollabHook = USE_RELAY
-    ? useWhiteboardCollaborationViaRelay
-    : useWhiteboardCollaboration;
   const {
     collaborators,
     isConnected,
     broadcastElements,
     broadcastCursor,
     senderId,
-  } = useCollabHook({
+  } = useWhiteboardCollaborationViaRelay({
     whiteboardId,
     excalidrawAPI,
     // Mark incoming remote scene updates as programmatic so our onChange
