@@ -293,6 +293,14 @@ const workspaceCategory: CategoryDefinition = {
   fill: hexAlpha(ACCENT.workspace, 0.05),
   slots: {
     header: { kind: "text", value: "WORKSPACE", color: ACCENT.workspace },
+    // Footer summary, e.g. "3 repos". Populated by the root projector
+    // from `customData.secondary`; shares the objective-card footer
+    // renderer so workspace + objective cards read as one family.
+    footer: {
+      kind: "custom",
+      render: (ctx: SlotContext) =>
+        renderMetricsFooter(ctx, ACCENT.workspace),
+    },
   },
 } as CategoryDefinition;
 
