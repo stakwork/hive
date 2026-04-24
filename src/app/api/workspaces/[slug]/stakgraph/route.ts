@@ -1,8 +1,9 @@
 import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { decryptEnvVars, encryptEnvVars } from "@/lib/encryption";
+import { decryptEnvVars, encryptEnvVars, EncryptionService } from "@/lib/encryption";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
+import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { WebhookService } from "@/services/github/WebhookService";
 import { syncPoolManagerSettings } from "@/services/pool-manager/sync";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
@@ -499,6 +500,77 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       const repoIdsToDelete = existingRepoIds.filter((id) => !incomingRepoIds.includes(id));
       if (repoIdsToDelete.length > 0) {
+        // Best-effort cleanup before deleting DB rows. Failures (expired token,
+        // repo gone, swarm offline, etc.) are logged but don't block DB cleanup.
+        const reposBeingDeleted = await db.repository.findMany({
+          where: {
+            id: { in: repoIdsToDelete },
+            workspaceId: workspace.id,
+          },
+          select: { repositoryUrl: true, githubWebhookId: true },
+        });
+
+        // 1) Delete GitHub webhooks
+        const reposWithWebhook = reposBeingDeleted.filter((r) => r.githubWebhookId);
+        if (reposWithWebhook.length > 0 && userId) {
+          const webhookService = new WebhookService(getServiceConfig("github"));
+          await Promise.all(
+            reposWithWebhook.map((repo) =>
+              webhookService
+                .deleteRepoWebhook({
+                  userId,
+                  repositoryUrl: repo.repositoryUrl,
+                  workspaceId: workspace.id,
+                })
+                .catch((error) => {
+                  console.error(
+                    `[STAKGRAPH] Failed to delete GitHub webhook for ${repo.repositoryUrl}:`,
+                    error,
+                  );
+                }),
+            ),
+          );
+        }
+
+        // 2) Delete the repo from stakgraph (port 3355) so it stops indexing it.
+        if (reposBeingDeleted.length > 0) {
+          const swarmForDelete = await db.swarm.findUnique({
+            where: { workspaceId: workspace.id },
+            select: { swarmUrl: true, swarmApiKey: true },
+          });
+          if (swarmForDelete?.swarmUrl && swarmForDelete.swarmApiKey) {
+            const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarmForDelete.swarmUrl);
+            const apiKey = EncryptionService.getInstance().decryptField(
+              "swarmApiKey",
+              swarmForDelete.swarmApiKey,
+            );
+            await Promise.all(
+              reposBeingDeleted.map(async (repo) => {
+                try {
+                  const url = `${repo2GraphUrl}/repo?repo_url=${encodeURIComponent(repo.repositoryUrl)}`;
+                  const res = await fetch(url, {
+                    method: "DELETE",
+                    headers: {
+                      Authorization: `Bearer ${apiKey}`,
+                      "x-api-token": apiKey,
+                    },
+                  });
+                  if (!res.ok) {
+                    console.error(
+                      `[STAKGRAPH] Failed to delete repo from stakgraph ${repo.repositoryUrl}: HTTP ${res.status}`,
+                    );
+                  }
+                } catch (error) {
+                  console.error(
+                    `[STAKGRAPH] Error deleting repo from stakgraph ${repo.repositoryUrl}:`,
+                    error,
+                  );
+                }
+              }),
+            );
+          }
+        }
+
         await db.repository.deleteMany({
           where: {
             id: { in: repoIdsToDelete },
