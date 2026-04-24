@@ -42,8 +42,21 @@ function mockBlob(blob: CanvasBlob | null) {
   }
 }
 
-function mockWorkspaces(ws: Array<{ id: string; name: string }>) {
-  dbMock.workspace.findMany.mockResolvedValue(ws);
+/**
+ * Mock a `db.workspace.findMany` result. Matches the projector's real
+ * query shape, including the `_count: { repositories }` aggregate that
+ * drives the "N repos" footer. Individual test entries can override the
+ * count; omitting it defaults to 0 to keep test noise down.
+ */
+function mockWorkspaces(
+  ws: Array<{ id: string; name: string; repositoryCount?: number }>,
+) {
+  dbMock.workspace.findMany.mockResolvedValue(
+    ws.map(({ repositoryCount, ...rest }) => ({
+      ...rest,
+      _count: { repositories: repositoryCount ?? 0 },
+    })),
+  );
 }
 
 beforeEach(() => {
@@ -74,6 +87,24 @@ describe("readCanvas (root scope)", () => {
     // Projected nodes carry `ref: "ws:<id>"` so clicking drills in.
     expect(nodes.every((n) => n.ref?.startsWith("ws:"))).toBe(true);
     expect(nodes[0].text).toBe("Alpha");
+  });
+
+  it("stamps a pluralized 'N repo(s)' footer into workspace customData", async () => {
+    // Pluralization rule lives in the projector, so test both branches.
+    // This is the contract the workspace card's footer slot relies on
+    // (see `canvas-theme.ts` → `renderMetricsFooter`).
+    mockBlob(null);
+    mockWorkspaces([
+      { id: "w1", name: "Alpha", repositoryCount: 1 },
+      { id: "w2", name: "Beta", repositoryCount: 3 },
+      { id: "w3", name: "Gamma", repositoryCount: 0 },
+    ]);
+
+    const { nodes } = await read("org-1", "");
+    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+    expect(byId["ws:w1"].customData?.secondary).toBe("1 repo");
+    expect(byId["ws:w2"].customData?.secondary).toBe("3 repos");
+    expect(byId["ws:w3"].customData?.secondary).toBe("0 repos");
   });
 
   it("overlays `blob.positions` on top of projected defaults", async () => {

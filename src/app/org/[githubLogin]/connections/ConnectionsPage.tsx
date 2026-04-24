@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { OrgChat } from "../OrgChat";
 import { ConnectionsSidebar } from "./ConnectionsSidebar";
 import { ConnectionViewer } from "./ConnectionViewer";
 import { OrgCanvasBackground } from "./OrgCanvasBackground";
+import type { HiddenLiveEntry } from "./HiddenLivePill";
+
+/** Strip the `ws:` prefix from a live workspace id. */
+function stripWsPrefix(liveId: string): string {
+  return liveId.startsWith("ws:") ? liveId.slice(3) : liveId;
+}
 
 export interface ConnectionData {
   id: string;
@@ -28,8 +34,32 @@ interface ConnectionsPageProps {
 export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [workspaceSlugs, setWorkspaceSlugs] = useState<string[]>([]);
+  /**
+   * All workspaces in the org the user has access to. We keep both
+   * `id` and `slug` because the canvas expresses "hidden" with
+   * `ws:<id>` while the chat takes slugs; having both lets us bridge
+   * without refetching.
+   */
+  const [workspaces, setWorkspaces] = useState<{ id: string; slug: string }[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
+  /**
+   * Hidden workspace ids (raw, without the `ws:` prefix). Populated
+   * from the canvas's hidden-list and kept live via `OrgCanvasBackground`'s
+   * `onHiddenChange`. Used to filter the chat's default context set so
+   * "hidden on canvas" and "default-in-chat-context" stay aligned.
+   */
+  const [hiddenWorkspaceIds, setHiddenWorkspaceIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  /**
+   * The canvas's `onHiddenChange` fires once after its initial fetch
+   * resolves. We gate the chat's first mount on this so the seed for
+   * `defaultExtraWorkspaceSlugs` is already filtered — `DashboardChat`
+   * only reads that prop on mount (by design, so user pill edits
+   * aren't clobbered), so mounting too early would leak hidden
+   * workspaces into the default set until the next fresh chat.
+   */
+  const [hiddenInitialized, setHiddenInitialized] = useState(false);
   const [connections, setConnections] = useState<ConnectionData[]>([]);
   const [loadingConnections, setLoadingConnections] = useState(true);
   const [activeConnection, setActiveConnection] = useState<ConnectionData | null>(null);
@@ -47,17 +77,50 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
     [router, githubLogin, searchParams]
   );
 
-  // Fetch workspace slugs for the org
+  // Fetch workspaces for the org.
   useEffect(() => {
     fetch(`/api/orgs/${githubLogin}/workspaces`)
       .then((res) => res.json())
       .then((data) => {
-        const slugs = Array.isArray(data) ? data.map((ws: { slug: string }) => ws.slug) : [];
-        setWorkspaceSlugs(slugs);
+        const list = Array.isArray(data)
+          ? data.map((ws: { id: string; slug: string }) => ({
+              id: ws.id,
+              slug: ws.slug,
+            }))
+          : [];
+        setWorkspaces(list);
       })
-      .catch(() => setWorkspaceSlugs([]))
+      .catch(() => setWorkspaces([]))
       .finally(() => setLoadingWorkspaces(false));
   }, [githubLogin]);
+
+  /**
+   * Fires from `OrgCanvasBackground` on every hidden-list change
+   * (initial load, user hide/restore, Pusher refresh). We reduce to
+   * just workspace ids — feature/repo hides aren't part of the chat
+   * context story.
+   */
+  const handleHiddenChange = useCallback((entries: HiddenLiveEntry[]) => {
+    const ids = new Set(
+      entries.filter((e) => e.kind === "ws").map((e) => stripWsPrefix(e.id)),
+    );
+    setHiddenWorkspaceIds(ids);
+    setHiddenInitialized(true);
+  }, []);
+
+  /**
+   * Workspace slugs passed to the chat as default context. Recompute
+   * whenever the workspace list or the hidden set changes. "Hidden on
+   * the canvas" means "not part of the default chat context" — the
+   * user can still opt back in via the chat's own pill row.
+   */
+  const chatWorkspaceSlugs = useMemo(
+    () =>
+      workspaces
+        .filter((ws) => !hiddenWorkspaceIds.has(ws.id))
+        .map((ws) => ws.slug),
+    [workspaces, hiddenWorkspaceIds],
+  );
 
   // Fetch connections for the org
   const fetchConnections = useCallback(async () => {
@@ -121,6 +184,7 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
         githubLogin={githubLogin}
         rightInset={320}
         orgName={orgName}
+        onHiddenChange={handleHiddenChange}
       />
 
       {/* Hide the background entirely while a specific connection is open —
@@ -137,11 +201,11 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
               onBack={handleBack}
             />
           </div>
-        ) : loadingWorkspaces ? (
+        ) : loadingWorkspaces || !hiddenInitialized ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
           </div>
-        ) : workspaceSlugs.length === 0 ? (
+        ) : workspaces.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-muted-foreground">
             No workspaces available.
           </div>
@@ -152,9 +216,13 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
           // `pointer-events-auto` div: that would claim the whole chat
           // column's bounding box and block clicks on the canvas FAB that
           // sits in the same bottom-right region.
+          //
+          // `chatWorkspaceSlugs` excludes any workspace hidden on the
+          // canvas — hiding a workspace card removes it from both
+          // surfaces at once, restoring puts it back.
           <div className="flex-1 flex flex-col justify-end pb-4">
             <OrgChat
-              workspaceSlugs={workspaceSlugs}
+              workspaceSlugs={chatWorkspaceSlugs}
               githubLogin={githubLogin}
               orgId={orgId}
             />
