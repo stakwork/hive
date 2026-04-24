@@ -264,6 +264,51 @@ export async function writeCanvas(
   return blob;
 }
 
+/**
+ * Summary of a hidden live node — just enough for a "Restore" UI to show
+ * a recognizable label next to each entry. Extend carefully: this shape
+ * crosses the REST boundary.
+ */
+export interface HiddenLiveEntry {
+  /** The live id, e.g. `ws:abc`. Round-trip into `showLiveNode`. */
+  id: string;
+  /** Display label sourced from the projector (workspace name, etc.). */
+  name: string;
+  /** Prefix kind — lets the UI group entries ("Hidden workspaces"). */
+  kind: string;
+}
+
+/**
+ * List live nodes hidden on this canvas, resolved to display metadata.
+ *
+ * The name comes from the projector's own `text` — we run projection
+ * exactly once here to avoid duplicating the "how do I look up a
+ * workspace name" logic. An entry in `blob.hidden` with no matching
+ * projection (entity was deleted after being hidden) drops out silently,
+ * which is also the right behavior for the UI: you can't restore
+ * something that no longer exists.
+ */
+export async function readHiddenLive(
+  orgId: string,
+  ref: string,
+): Promise<HiddenLiveEntry[]> {
+  const blob = await loadBlob(orgId, ref);
+  const hiddenIds = blob.hidden;
+  if (!hiddenIds || hiddenIds.length === 0) return [];
+
+  const { liveNodes } = await projectAll(ref, orgId);
+  const byId = new Map(liveNodes.map((n) => [n.id, n]));
+
+  const out: HiddenLiveEntry[] = [];
+  for (const id of hiddenIds) {
+    const node = byId.get(id);
+    if (!node) continue;
+    const kind = id.split(":")[0] ?? "";
+    out.push({ id, name: node.text ?? id, kind });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Hidden-list mutations — dedicated endpoints per the plan, so autosave
 // (which only writes nodes + positions) can't accidentally reset them.

@@ -11,7 +11,9 @@ export {
   splitCanvas,
   hideLiveNode,
   showLiveNode,
+  readHiddenLive,
 } from "./io";
+export type { HiddenLiveEntry } from "./io";
 export {
   summarizeChildObjectives,
   computeChildRollups,
