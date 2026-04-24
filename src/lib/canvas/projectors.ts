@@ -57,12 +57,17 @@ export const rootProjector: Projector = {
     const workspaces = await db.workspace.findMany({
       where: { sourceControlOrgId: orgId, deleted: false },
       orderBy: { createdAt: "asc" },
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { repositories: true } },
+      },
     });
 
     const nodes: CanvasNode[] = workspaces.map((w, index) => {
       const liveId = `ws:${w.id}`;
       const pos = defaultWorkspacePosition(index);
+      const repoCount = w._count.repositories;
       return {
         id: liveId,
         type: "text",
@@ -71,12 +76,17 @@ export const rootProjector: Projector = {
         ref: liveId,
         x: pos.x,
         y: pos.y,
+        customData: {
+          // Footer line on the workspace card, e.g. "1 repo" / "3 repos".
+          // Rendered via the `secondary` slot (see canvas-theme.ts).
+          secondary: `${repoCount} ${repoCount === 1 ? "repo" : "repos"}`,
+        },
       };
     });
 
-    // v1: workspaces render as plain identity cards. A workspace rollup
-    // (worst feature status, average progress, blocker count) lands
-    // here in a later slice — keep the shape ready for it.
+    // v1: workspaces render as identity cards with a repo-count footer.
+    // A richer rollup (worst feature status, average progress, blocker
+    // count) lands here in a later slice — keep the shape ready for it.
     const rollups: Record<string, Record<string, unknown>> = {};
 
     return { nodes, rollups };
