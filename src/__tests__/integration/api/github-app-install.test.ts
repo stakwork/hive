@@ -121,7 +121,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
         expect(response.status).toBe(404);
         expect(data.success).toBe(false);
-        expect(data.message).toBe("Workspace not found");
+        expect(data.message).toBe("Workspace not found or access denied");
       });
     });
 
@@ -716,7 +716,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
         expect(response.status).toBe(404);
         expect(data.success).toBe(false);
-        expect(data.message).toBe("Workspace not found");
+        expect(data.message).toBe("Workspace not found or access denied");
       });
 
       test("should handle getUserAppTokens returning null", async () => {
@@ -829,6 +829,128 @@ describe("GitHub App Install API Integration Tests", () => {
         expect(stateData.randomState).toBeDefined();
         expect(stateData.timestamp).toBeDefined();
         expect(typeof stateData.timestamp).toBe("number");
+      });
+    });
+
+    describe("IDOR hardening (#28)", () => {
+      test("should return 404 for signed-in non-member attacker (no state minted)", async () => {
+        const { createTestMembership } = await import(
+          "@/__tests__/support/factories/workspace.factory"
+        );
+
+        const owner = await createTestUser({ name: "Owner" });
+        const attacker = await createTestUser({ name: "Attacker" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          slug: "victim-install-workspace",
+        });
+        // sanity: attacker is not a member
+        void createTestMembership;
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(attacker)
+        );
+
+        const request = createPostRequest(
+          "http://localhost:3000/api/github/app/install",
+          {
+            workspaceSlug: workspace.slug,
+            repositoryUrl: testRepositoryUrls.https,
+          }
+        );
+
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(data.success).toBe(false);
+        expect(data.message).toBe("Workspace not found or access denied");
+        // Never queried GitHub and never leaked install metadata
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(data.data).toBeUndefined();
+
+        // No GitHub state stored on the attacker's session either.
+        const { db } = await import("@/lib/db");
+        const sessions = await db.session.findMany({ where: { userId: attacker.id } });
+        for (const s of sessions) {
+          expect(s.githubState).toBeNull();
+        }
+      });
+
+      test("should return 404 for non-admin member (DEVELOPER)", async () => {
+        const { createTestMembership } = await import(
+          "@/__tests__/support/factories/workspace.factory"
+        );
+
+        const owner = await createTestUser({ name: "Owner" });
+        const developer = await createTestUser({ name: "Developer" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          slug: "dev-install-workspace",
+        });
+        await createTestMembership({
+          workspaceId: workspace.id,
+          userId: developer.id,
+          role: "DEVELOPER",
+        });
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(developer)
+        );
+
+        const request = createPostRequest(
+          "http://localhost:3000/api/github/app/install",
+          {
+            workspaceSlug: workspace.slug,
+            repositoryUrl: testRepositoryUrls.https,
+          }
+        );
+
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(data.success).toBe(false);
+        expect(data.message).toBe("Workspace not found or access denied");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      test("should allow an ADMIN member to install", async () => {
+        const { createTestMembership } = await import(
+          "@/__tests__/support/factories/workspace.factory"
+        );
+
+        const owner = await createTestUser({ name: "Owner" });
+        const admin = await createTestUser({ name: "Admin" });
+        const workspace = await createTestWorkspace({
+          ownerId: owner.id,
+          slug: "admin-install-workspace",
+        });
+        await createTestMembership({
+          workspaceId: workspace.id,
+          userId: admin.id,
+          role: "ADMIN",
+        });
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(admin)
+        );
+
+        vi.mocked(getUserAppTokens).mockResolvedValue(null);
+
+        const request = createPostRequest(
+          "http://localhost:3000/api/github/app/install",
+          {
+            workspaceSlug: workspace.slug,
+            repositoryUrl: testRepositoryUrls.https,
+          }
+        );
+
+        const response = await POST(request);
+        const data = await expectSuccess(response);
+
+        expect(data.success).toBe(true);
+        expect(data.data.state).toBeDefined();
       });
     });
   });
