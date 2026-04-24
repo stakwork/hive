@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { db } from "@/lib/db";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 
 type PresencePayload =
@@ -32,6 +34,31 @@ export async function POST(
       return NextResponse.json(
         { error: "Feature ID is required" },
         { status: 400 }
+      );
+    }
+
+    // IDOR hardening: verify the caller is a member of the feature's
+    // workspace before broadcasting presence events. Otherwise a
+    // signed-in non-member could spoof collaborator joins/leaves on
+    // any feature's private realtime channel.
+    const feature = await db.feature.findUnique({
+      where: { id: featureId },
+      select: { workspaceId: true },
+    });
+    if (!feature) {
+      return NextResponse.json(
+        { error: "Feature not found or access denied" },
+        { status: 404 }
+      );
+    }
+    const access = await validateWorkspaceAccessById(
+      feature.workspaceId,
+      userOrResponse.id
+    );
+    if (!access.hasAccess || !access.canRead) {
+      return NextResponse.json(
+        { error: "Feature not found or access denied" },
+        { status: 404 }
       );
     }
 

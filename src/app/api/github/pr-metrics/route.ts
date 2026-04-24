@@ -1,6 +1,7 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { PullRequestContent } from "@/lib/chat";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 
@@ -37,6 +38,20 @@ export async function GET(request: Request) {
       return NextResponse.json(
         { error: "Missing required parameter: workspaceId" },
         { status: 400 }
+      );
+    }
+
+    // 2.5️⃣ IDOR hardening: require the caller to be a member of the
+    // workspace before leaking PR-metrics (PR count, merged count, success
+    // rate, time-to-merge) for any other tenant's tasks.
+    const access = await validateWorkspaceAccessById(
+      workspaceId,
+      session.user.id as string,
+    );
+    if (!access.hasAccess || !access.canRead) {
+      return NextResponse.json(
+        { error: "Workspace not found or access denied" },
+        { status: 404 },
       );
     }
 
