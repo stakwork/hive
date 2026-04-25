@@ -96,49 +96,43 @@ describe("splitCanvas", () => {
     expect(second.positions).toEqual(first.positions);
   });
 
-  describe("drillable-ref stamping", () => {
-    it("auto-stamps `ref: node:<id>` on authored objectives that have no ref", () => {
-      const incoming: CanvasData = {
-        nodes: [node("obj-1", 0, 0, { category: "objective" })],
-        edges: [],
-      };
-      const blob = splitCanvas(incoming, emptyPrev);
-      expect(blob.nodes[0].ref).toBe("node:obj-1");
-    });
+  it("does not stamp any ref on authored nodes (drillable behavior was removed in the initiatives cutover)", () => {
+    // The pre-cutover splitter auto-stamped `ref: node:<id>` on authored
+    // `objective` nodes so they could drill into a child canvas. That
+    // behavior is gone — drillable structure now lives entirely on
+    // projected entities (`ws:`, `initiative:`). Authored nodes stay
+    // ref-less unless the caller sets one explicitly.
+    const incoming: CanvasData = {
+      nodes: [
+        node("legacy-objective", 0, 0, { category: "objective" }),
+        node("note-1", 0, 0, { category: "note" }),
+        node("custom-ref-node", 0, 0, { category: "note", ref: "explicit" }),
+      ],
+      edges: [],
+    };
+    const blob = splitCanvas(incoming, emptyPrev);
+    expect(blob.nodes.find((n) => n.id === "legacy-objective")?.ref).toBeUndefined();
+    expect(blob.nodes.find((n) => n.id === "note-1")?.ref).toBeUndefined();
+    // Explicit caller-set refs are preserved verbatim.
+    expect(blob.nodes.find((n) => n.id === "custom-ref-node")?.ref).toBe("explicit");
+  });
 
-    it("preserves an explicit ref the caller set on an objective", () => {
-      // If the agent or a migration wants to wire an objective at a
-      // custom ref (e.g. a named workstream), don't clobber it.
-      const incoming: CanvasData = {
-        nodes: [node("obj-1", 0, 0, { category: "objective", ref: "custom-ref" })],
-        edges: [],
-      };
-      const blob = splitCanvas(incoming, emptyPrev);
-      expect(blob.nodes[0].ref).toBe("custom-ref");
-    });
-
-    it("does NOT stamp a ref on non-drillable categories (notes, decisions)", () => {
-      // Only `objective` is drillable today. Notes/decisions are leaves.
-      const incoming: CanvasData = {
-        nodes: [
-          node("n-1", 0, 0, { category: "note" }),
-          node("d-1", 0, 0, { category: "decision" }),
-        ],
-        edges: [],
-      };
-      const blob = splitCanvas(incoming, emptyPrev);
-      expect(blob.nodes[0].ref).toBeUndefined();
-      expect(blob.nodes[1].ref).toBeUndefined();
-    });
-
-    it("does NOT stamp a ref on authored nodes without any category", () => {
-      // Pre-category canvases should round-trip unchanged.
-      const incoming: CanvasData = {
-        nodes: [{ id: "x", type: "text", x: 0, y: 0, text: "x" }],
-        edges: [],
-      };
-      const blob = splitCanvas(incoming, emptyPrev);
-      expect(blob.nodes[0].ref).toBeUndefined();
+  it("treats new live-id prefixes (`initiative:`, `milestone:`) as live, not authored", () => {
+    // Adding a prefix in scope.ts ripples to the splitter automatically
+    // via `isLiveId`. This test is a guard against a future drift where
+    // someone adds a prefix to scope.ts but forgets the splitter.
+    const incoming: CanvasData = {
+      nodes: [
+        node("initiative:abc", 100, 200),
+        node("milestone:xyz", 300, 400),
+      ],
+      edges: [],
+    };
+    const blob = splitCanvas(incoming, emptyPrev);
+    expect(blob.nodes).toEqual([]);
+    expect(blob.positions).toEqual({
+      "initiative:abc": { x: 100, y: 200 },
+      "milestone:xyz": { x: 300, y: 400 },
     });
   });
 });
