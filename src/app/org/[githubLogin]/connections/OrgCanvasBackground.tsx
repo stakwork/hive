@@ -233,6 +233,29 @@ export function OrgCanvasBackground({
    * same tab — cheaply detected by comparing to `currentRef`.)
    */
   const initialNavAppliedRef = useRef(false);
+  /**
+   * Truthy from initial render until the deep-link drill-in completes.
+   * Captured synchronously from `searchParams` so the spinner overlay
+   * shows on the very first paint — the user never sees a flash of the
+   * root canvas before the sub-canvas opens.
+   *
+   * Stored as a ref so the captured value doesn't shift mid-render
+   * (and stored separately as state below for the spinner gate, since
+   * a ref alone wouldn't trigger re-render on clear).
+   */
+  const pendingDeepLinkRef = useRef<string | null>(null);
+  if (pendingDeepLinkRef.current === null && !initialNavAppliedRef.current) {
+    // First render only — capture the URL's `?canvas=` value before any
+    // effect runs so the spinner gate below is correct on the initial
+    // paint. After this render, `pendingDeepLinkRef` is either the
+    // target ref (drill-in pending) or `""` (no deep link, gate stays
+    // closed but spinner-state remains false). We use the ref's
+    // null/non-null distinction as the "have we captured yet" signal.
+    pendingDeepLinkRef.current = searchParams.get("canvas") ?? "";
+  }
+  const [deepLinkInFlight, setDeepLinkInFlight] = useState<boolean>(
+    () => (searchParams.get("canvas") ?? "") !== "",
+  );
 
   /**
    * Update the `?canvas=<ref>` query param without navigating away
@@ -361,12 +384,18 @@ export function OrgCanvasBackground({
   // (e.g. `initiative:<id>`) to actually exist on the rendered canvas.
   // The guarded `initialNavAppliedRef` keeps this from firing twice on
   // strict-mode / fast-refresh re-renders.
+  //
+  // The spinner overlay (see JSX) covers the canvas from initial
+  // paint until this promise resolves, so the user never sees a
+  // flash of the root canvas before the sub-canvas mounts.
   useEffect(() => {
     if (!root || initialNavAppliedRef.current) return;
-    const targetRef = searchParams.get("canvas") ?? "";
+    const targetRef = pendingDeepLinkRef.current ?? "";
     if (targetRef === "" || targetRef === currentRef) {
-      // No deep link, or already there — nothing to do.
+      // No deep link, or already there — nothing to do. Clear the
+      // spinner gate (which only fires for true deep links anyway).
       initialNavAppliedRef.current = true;
+      setDeepLinkInFlight(false);
       return;
     }
     // Today the projector emits a node whose `id` matches the ref it
@@ -387,13 +416,23 @@ export function OrgCanvasBackground({
     // (Drilling in via a click still gets the default animation; that
     // path uses the library's internal navigation flow, not this
     // imperative call.)
-    void handle.zoomIntoNode(targetRef, { durationMs: 0 }).catch((err) => {
-      console.error(
-        "[OrgCanvasBackground] zoomIntoNode failed for URL ref",
-        targetRef,
-        err,
-      );
-    });
+    //
+    // The promise resolves once the sub-canvas has mounted AND its
+    // auto-fit has run (see the library's two-RAF wait inside
+    // `zoomIntoNode`). At that point the spinner is safe to drop —
+    // the user is already looking at the right canvas.
+    void handle
+      .zoomIntoNode(targetRef, { durationMs: 0 })
+      .catch((err) => {
+        console.error(
+          "[OrgCanvasBackground] zoomIntoNode failed for URL ref",
+          targetRef,
+          err,
+        );
+      })
+      .finally(() => {
+        setDeepLinkInFlight(false);
+      });
     // Intentionally not depending on `searchParams` / `currentRef` —
     // we only want this to fire once on initial mount. Subsequent
     // navigation flows write to the URL, not the other way around.
@@ -1096,6 +1135,31 @@ export function OrgCanvasBackground({
             entries={hiddenLive}
             onRestore={handleRestoreLive}
           />
+        )}
+
+        {/*
+         * Deep-link load overlay. When the page loads with a `?canvas=`
+         * query param, we mount the root canvas first (the library
+         * needs it to find the target node before `zoomIntoNode` can
+         * navigate). That brief moment of "root visible" before the
+         * sub-canvas opens reads as a flash. This overlay covers the
+         * canvas with the same background + a spinner so the user
+         * sees only "loading → already on the right canvas." Cleared
+         * when `zoomIntoNode`'s promise resolves (sub-canvas mounted
+         * and auto-fit complete).
+         *
+         * Only shown when `deepLinkInFlight` started true (URL had
+         * `?canvas=`). Subsequent in-app drill-ins don't go through
+         * this overlay; they animate naturally.
+         */}
+        {deepLinkInFlight && (
+          <div
+            className="absolute inset-0 z-40 flex items-center justify-center bg-[#15171c]"
+            aria-busy="true"
+            aria-label="Loading canvas"
+          >
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+          </div>
         )}
       </div>
 
