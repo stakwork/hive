@@ -101,6 +101,37 @@ export async function DELETE(
       return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
     }
 
+    const renumber = request.nextUrl.searchParams.get("renumber") === "true";
+
+    if (renumber) {
+      // Fetch sequence before deletion, then delete + renumber siblings atomically
+      const toDelete = await db.milestone.findUnique({
+        where: { id: milestoneId },
+        select: { sequence: true },
+      });
+      if (!toDelete) {
+        return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
+      }
+
+      const deletedSequence = toDelete.sequence;
+
+      await db.$transaction([
+        db.milestone.delete({ where: { id: milestoneId } }),
+        db.milestone.updateMany({
+          where: { initiativeId, sequence: { gt: deletedSequence } },
+          data: { sequence: { decrement: 1 } },
+        }),
+      ]);
+
+      const updatedSiblings = await db.milestone.findMany({
+        where: { initiativeId },
+        include: MILESTONE_INCLUDE,
+        orderBy: { sequence: "asc" },
+      });
+
+      return NextResponse.json({ status: "deleted", milestones: updatedSiblings });
+    }
+
     // SetNull on Feature.milestoneId is handled by DB cascade
     await db.milestone.delete({ where: { id: milestoneId } });
 
