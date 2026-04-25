@@ -11,41 +11,40 @@
 import { db } from "@/lib/db";
 import type { CanvasNode } from "system-canvas";
 import type { Projector, ProjectionResult, Scope } from "./types";
+import {
+  INITIATIVE_ROW_STEP,
+  INITIATIVE_ROW_X0,
+  INITIATIVE_ROW_Y,
+  MILESTONE_ROW_STEP,
+  MILESTONE_ROW_X0,
+  MILESTONE_ROW_Y,
+  REPO_ROW_STEP,
+  REPO_ROW_X0,
+  REPO_ROW_Y,
+  WORKSPACE_ROW_STEP,
+  WORKSPACE_ROW_X0,
+  WORKSPACE_ROW_Y,
+} from "./geometry";
 
 // ---------------------------------------------------------------------------
-// Layout: default placement for live nodes when the blob hasn't stored a
+// Default placement for live nodes when the blob hasn't stored a
 // position yet. Deterministic (hash-free: just index-based) so the same
-// workspace always lands in the same slot on first render — no jitter
+// entity always lands in the same slot on first render — no jitter
 // between reads.
+//
+// Card sizes and per-row layout constants live in `./geometry` as the
+// single source of truth shared with the client renderer
+// (`canvas-theme.ts`). Tweaking a card width there ripples through
+// these step values automatically.
 // ---------------------------------------------------------------------------
-
-const WORKSPACE_ROW_Y = 40;
-const WORKSPACE_ROW_X0 = 40;
-const WORKSPACE_ROW_STEP = 260;
 
 function defaultWorkspacePosition(index: number): { x: number; y: number } {
   return { x: WORKSPACE_ROW_X0 + index * WORKSPACE_ROW_STEP, y: WORKSPACE_ROW_Y };
 }
 
-// Repo row on a workspace sub-canvas. Cards are smaller than workspace
-// cards (see `repositoryCategory` in canvas-theme.ts) so the step is
-// correspondingly tighter.
-const REPO_ROW_Y = 40;
-const REPO_ROW_X0 = 40;
-const REPO_ROW_STEP = 240;
-
 function defaultRepoPosition(index: number): { x: number; y: number } {
   return { x: REPO_ROW_X0 + index * REPO_ROW_STEP, y: REPO_ROW_Y };
 }
-
-// Initiative row on the org root canvas, sitting one band below the
-// workspace row. Step is wider than the workspace row's because the
-// initiative card itself is wider (340px vs 240px — see
-// `INITIATIVE_W` in canvas-theme.ts) — the gradient "vision-style"
-// title wants room to breathe.
-const INITIATIVE_ROW_Y = 220;
-const INITIATIVE_ROW_X0 = 40;
-const INITIATIVE_ROW_STEP = 360;
 
 function defaultInitiativePosition(index: number): { x: number; y: number } {
   return {
@@ -53,15 +52,6 @@ function defaultInitiativePosition(index: number): { x: number; y: number } {
     y: INITIATIVE_ROW_Y,
   };
 }
-
-// Milestone timeline on an initiative sub-canvas. Horizontal lay-out by
-// `sequence` so the canvas reads left-to-right as time. The step is
-// tighter than initiative cards because milestones are smaller (see
-// `milestoneCategory` in canvas-theme.ts) and a single initiative can
-// have many of them.
-const MILESTONE_ROW_Y = 80;
-const MILESTONE_ROW_X0 = 40;
-const MILESTONE_ROW_STEP = 220;
 
 function defaultMilestonePosition(index: number): { x: number; y: number } {
   return {

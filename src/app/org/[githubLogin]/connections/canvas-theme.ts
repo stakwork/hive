@@ -6,6 +6,15 @@ import type {
   SlotContext,
 } from "system-canvas";
 import { darkTheme, resolveTheme } from "system-canvas";
+import {
+  CARD_H,
+  CARD_W,
+  INITIATIVE_H,
+  INITIATIVE_W,
+  MILESTONE_H,
+  MILESTONE_W,
+  SMALL_W,
+} from "@/lib/canvas/geometry";
 import { CATEGORY_REGISTRY } from "./canvas-categories";
 
 /**
@@ -86,17 +95,12 @@ const MONO_FONT =
 
 // ---------------------------------------------------------------------------
 // Geometry
+//
+// Card widths/heights live in `@/lib/canvas/geometry` as the single
+// source of truth shared with the server-side projector pipeline.
+// Edit them there — projector row-spacing tracks the same constants
+// so cards never overlap on first render.
 // ---------------------------------------------------------------------------
-
-const CARD_W = 240;
-const CARD_H = 104;
-const SMALL_W = 220;
-
-// Initiative cards run wider and taller than standard so the gradient
-// title (rendered in `body` at ~135% of base font) has room to breathe.
-// Mirrors the showcase "12-month vision" card dimensions.
-const INITIATIVE_W = 340;
-const INITIATIVE_H = 116;
 
 const baseCard = {
   fill: SURFACE,
@@ -315,8 +319,8 @@ function milestoneStatusLabel(node: CanvasNode): string {
 
 const milestoneCategory: CategoryDefinition = {
   ...baseCard,
-  defaultWidth: SMALL_W,
-  defaultHeight: 88,
+  defaultWidth: MILESTONE_W,
+  defaultHeight: MILESTONE_H,
   type: "text",
   // Default stroke is the muted "not started" tone; the topEdge slot
   // below repaints with the live status color on every render, so this
