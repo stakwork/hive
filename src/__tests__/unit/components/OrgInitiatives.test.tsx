@@ -40,6 +40,10 @@ vi.mock("@dnd-kit/utilities", () => ({
   CSS: { Transform: { toString: vi.fn(() => "") } },
 }));
 
+vi.mock("@/app/org/[githubLogin]/LinkFeatureModal", () => ({
+  LinkFeatureModal: () => null,
+}));
+
 vi.mock("@/hooks/useReorderMilestones", () => ({
   useReorderMilestones: vi.fn(() => ({
     sensors: [],
@@ -206,10 +210,13 @@ vi.mock("lucide-react", () => ({
   ChevronDown: () => <span data-testid="chevron-down" />,
   ChevronRight: () => <span data-testid="chevron-right" />,
   GripVertical: () => <span data-testid="grip-vertical" />,
+  Link2: () => <span data-testid="link2" />,
   MoreHorizontal: () => <span data-testid="more-horizontal" />,
   Pencil: () => <span data-testid="pencil" />,
   Plus: () => <span data-testid="plus" />,
+  Search: () => <span data-testid="search" />,
   Trash2: () => <span data-testid="trash2" />,
+  X: () => <span data-testid="x-icon" />,
 }));
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
@@ -230,6 +237,7 @@ function makeMilestone(overrides: Partial<MilestoneResponse> = {}): MilestoneRes
     dueDate: null,
     completedAt: null,
     assignee: null,
+    feature: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,

@@ -19,7 +19,7 @@ export async function GET(
   const userOrResponse = requireAuth(context);
   if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-  const { githubLogin } = await params;
+  const { githubLogin, initiativeId, milestoneId } = await params;
   const userId = userOrResponse.id;
 
   const { searchParams } = new URL(request.url);
@@ -35,6 +35,20 @@ export async function GET(
     const orgId = await resolveAuthorizedOrgId(githubLogin, userId, false);
     if (!orgId) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+    }
+
+    // Verify the milestone belongs to the initiative which belongs to this org
+    // before returning any data, preventing enumeration via fabricated path params.
+    const milestone = await db.milestone.findFirst({
+      where: {
+        id: milestoneId,
+        initiativeId,
+        initiative: { orgId },
+      },
+      select: { id: true },
+    });
+    if (!milestone) {
+      return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
     }
 
     // Fetch all non-deleted workspace IDs for the org
