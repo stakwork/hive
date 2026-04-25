@@ -1359,6 +1359,173 @@ async function seedInitiativesAndMilestones(
   );
 }
 
+async function seedMilestoneLinkFeatureData(
+  users: Array<{ id: string; email: string }>,
+) {
+  const SEED_PREFIX = "[SEED]";
+
+  // Guard against re-seeding
+  const existingCount = await prisma.feature.count({
+    where: { title: { startsWith: SEED_PREFIX } },
+  });
+  if (existingCount > 0) {
+    console.log(
+      `✓ Milestone link feature seed data already exists (${existingCount} features found), skipping.`,
+    );
+    return;
+  }
+
+  const userId = users[0].id;
+
+  // Find the three target workspaces
+  const [alphaWs, betaWs, devMockWs] = await Promise.all([
+    prisma.workspace.findUnique({ where: { slug: "alpha-workspace" } }),
+    prisma.workspace.findUnique({ where: { slug: "beta-workspace" } }),
+    prisma.workspace.findUnique({ where: { slug: "dev-mock" } }),
+  ]);
+
+  if (!alphaWs || !betaWs || !devMockWs) {
+    console.log(
+      "⚠ One or more target workspaces not found, skipping milestone link feature seed.",
+    );
+    return;
+  }
+
+  // Find a seeded milestone to pre-link one feature
+  const firstMilestone = await prisma.milestone.findFirst({
+    orderBy: { sequence: "asc" },
+  });
+
+  const now = new Date();
+  const weeksAgo = (weeks: number) =>
+    new Date(now.getTime() - weeks * 7 * 24 * 60 * 60 * 1000);
+
+  const featureSets: Array<{
+    workspaceId: string;
+    features: Array<{
+      title: string;
+      brief: string;
+      status: FeatureStatus;
+      priority: FeaturePriority;
+      updatedAt: Date;
+    }>;
+  }> = [
+    {
+      workspaceId: alphaWs.id,
+      features: [
+        {
+          title: `${SEED_PREFIX} Redesign onboarding flow`,
+          brief: "Overhaul the user onboarding experience with progressive disclosure and contextual hints.",
+          status: FeatureStatus.IN_PROGRESS,
+          priority: FeaturePriority.HIGH,
+          updatedAt: weeksAgo(1),
+        },
+        {
+          title: `${SEED_PREFIX} Add dark mode toggle`,
+          brief: "Implement system-aware dark mode with manual override stored in user preferences.",
+          status: FeatureStatus.PLANNED,
+          priority: FeaturePriority.MEDIUM,
+          updatedAt: weeksAgo(3),
+        },
+        {
+          title: `${SEED_PREFIX} Real-time collaboration cursors`,
+          brief: "Show live presence indicators and cursors for concurrent workspace editors.",
+          status: FeatureStatus.BACKLOG,
+          priority: FeaturePriority.LOW,
+          updatedAt: weeksAgo(6),
+        },
+      ],
+    },
+    {
+      workspaceId: betaWs.id,
+      features: [
+        {
+          title: `${SEED_PREFIX} API rate limiting`,
+          brief: "Enforce per-client rate limits on all public API endpoints with configurable thresholds.",
+          status: FeatureStatus.IN_PROGRESS,
+          priority: FeaturePriority.HIGH,
+          updatedAt: weeksAgo(2),
+        },
+        {
+          title: `${SEED_PREFIX} Webhook retry logic`,
+          brief: "Implement exponential back-off retry queue for failed outbound webhook deliveries.",
+          status: FeatureStatus.PLANNED,
+          priority: FeaturePriority.HIGH,
+          updatedAt: weeksAgo(4),
+        },
+        {
+          title: `${SEED_PREFIX} GraphQL schema cleanup`,
+          brief: "Remove deprecated fields, consolidate duplicate resolvers, and add schema linting CI step.",
+          status: FeatureStatus.BACKLOG,
+          priority: FeaturePriority.MEDIUM,
+          updatedAt: weeksAgo(7),
+        },
+      ],
+    },
+    {
+      workspaceId: devMockWs.id,
+      features: [
+        {
+          title: `${SEED_PREFIX} CI pipeline optimisation`,
+          brief: "Parallelise test suites and add build caching to cut average CI runtime by 40%.",
+          status: FeatureStatus.IN_PROGRESS,
+          priority: FeaturePriority.MEDIUM,
+          updatedAt: weeksAgo(1),
+        },
+        {
+          title: `${SEED_PREFIX} Improve seed script coverage`,
+          brief: "Extend seed helpers to cover all feature areas so local dev environments bootstrap fully.",
+          status: FeatureStatus.PLANNED,
+          priority: FeaturePriority.LOW,
+          updatedAt: weeksAgo(5),
+        },
+      ],
+    },
+  ];
+
+  let totalCreated = 0;
+  let linkedToMilestone = false;
+
+  for (const { workspaceId, features } of featureSets) {
+    for (const featureData of features) {
+      const created = await prisma.feature.create({
+        data: {
+          title: featureData.title,
+          brief: featureData.brief,
+          status: featureData.status,
+          priority: featureData.priority,
+          workspaceId,
+          createdById: userId,
+          updatedById: userId,
+          // Link the first feature of the first workspace to a milestone
+          ...(firstMilestone && !linkedToMilestone
+            ? { milestoneId: firstMilestone.id }
+            : {}),
+        },
+      });
+
+      // Override updatedAt via a raw update (Prisma auto-sets updatedAt on create)
+      await prisma.feature.update({
+        where: { id: created.id },
+        data: { updatedAt: featureData.updatedAt },
+      });
+
+      if (firstMilestone && !linkedToMilestone) {
+        linkedToMilestone = true;
+      }
+
+      totalCreated++;
+    }
+  }
+
+  console.log(
+    `✓ Seeded ${totalCreated} features across alpha-workspace, beta-workspace, dev-mock` +
+      (linkedToMilestone && firstMilestone
+        ? ` (1 pre-linked to milestone "${firstMilestone.name}")`
+        : ""),
+  );
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1372,6 +1539,7 @@ async function main() {
   await seedDashboardConversations(users);
   await seedPlatformConfig();
   await seedInitiativesAndMilestones(users);
+  await seedMilestoneLinkFeatureData(users);
 
   console.log("Seed completed.");
 }
