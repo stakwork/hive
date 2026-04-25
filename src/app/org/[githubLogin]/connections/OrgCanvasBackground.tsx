@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AddNodeButton,
   SystemCanvas,
@@ -16,6 +17,7 @@ import {
   type CanvasNode,
   type EdgeUpdate,
   type NodeUpdate,
+  type SystemCanvasHandle,
 } from "system-canvas-react";
 import { connectionsTheme } from "./canvas-theme";
 import { HiddenLivePill, type HiddenLiveEntry } from "./HiddenLivePill";
@@ -196,6 +198,98 @@ export function OrgCanvasBackground({
    * and is focused on a smaller scope.
    */
   const [currentRef, setCurrentRef] = useState<string>("");
+
+  // -------------------------------------------------------------------
+  // URL <-> canvas-scope sync
+  //
+  // The active canvas ref is mirrored to the URL as `?canvas=<ref>` so
+  // a user can deep-link into a specific initiative timeline or
+  // workspace sub-canvas (e.g. share `?canvas=initiative:abc` with a
+  // teammate). Three-way sync:
+  //
+  //   1. URL → canvas: on mount (and when the URL changes externally),
+  //      drill into the ref via `SystemCanvas`'s imperative handle.
+  //      Done once after `root` loads — `zoomIntoNode` needs the
+  //      target node to exist on the rendered canvas.
+  //   2. canvas → URL: `onNavigate(ref)` fires on drill-IN; we replace
+  //      the URL with the new ref. Uses `router.replace` so browser
+  //      back exits the page rather than walking through canvas
+  //      scopes (matches the connections-sidebar URL convention on
+  //      the same page).
+  //   3. canvas → URL on back-out: `onNavigate` does NOT fire on
+  //      breadcrumb clicks (library quirk — see `useNavigation.js`).
+  //      We wire `onBreadcrumbClick` to update both `currentRef`
+  //      state and the URL so going back to root clears `?canvas=`.
+  // -------------------------------------------------------------------
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  /** Imperative handle for `SystemCanvas`; used to drill into a ref from a URL param. */
+  const canvasHandleRef = useRef<SystemCanvasHandle | null>(null);
+  /**
+   * One-shot guard so we only drill into the URL's `?canvas=` once on
+   * mount. After that, `onNavigate` / `onBreadcrumbClick` own the URL
+   * and the URL would re-feed the same ref back into the handle in a
+   * loop. (Future: re-fire when the user pastes a new URL into the
+   * same tab — cheaply detected by comparing to `currentRef`.)
+   */
+  const initialNavAppliedRef = useRef(false);
+
+  /**
+   * Update the `?canvas=<ref>` query param without navigating away
+   * from the page. Pass `""` to clear the param (root canvas).
+   * Other query params on the page (notably `?c=<connection-slug>`
+   * from the Connections sidebar) are preserved.
+   */
+  const writeCanvasUrlParam = useCallback(
+    (ref: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (ref === "") {
+        params.delete("canvas");
+      } else {
+        params.set("canvas", ref);
+      }
+      const qs = params.toString();
+      router.replace(
+        `/org/${githubLogin}/connections${qs ? `?${qs}` : ""}`,
+        { scroll: false },
+      );
+    },
+    [router, githubLogin, searchParams],
+  );
+
+  /**
+   * Library callback: user drilled into a sub-canvas. Update both
+   * local state (gates the HiddenLivePill, scope-aware `+` menu, etc.)
+   * and the URL (so the deep link is shareable + browser refresh
+   * lands the user on the same scope).
+   */
+  const handleSystemCanvasNavigate = useCallback(
+    (ref: string) => {
+      setCurrentRef(ref);
+      writeCanvasUrlParam(ref);
+    },
+    [writeCanvasUrlParam],
+  );
+
+  /**
+   * Library callback: user clicked a breadcrumb. The library does NOT
+   * fire `onNavigate` for back-navigation (only for drill-in), so we
+   * have to track scope changes here too. `index === 0` means the
+   * root crumb; we don't currently surface multi-level deep canvases,
+   * so any non-zero index from `onBreadcrumbClick` is a no-op today
+   * (kept simple; the day we have nested sub-canvases this needs to
+   * walk a stored breadcrumb stack to recover the intermediate ref).
+   */
+  const handleBreadcrumbClick = useCallback(
+    (index: number) => {
+      if (index === 0) {
+        setCurrentRef("");
+        writeCanvasUrlParam("");
+      }
+    },
+    [writeCanvasUrlParam],
+  );
+
   /**
    * Hidden live entries for the ROOT canvas only. Keeps the pill's
    * data model simple (it sits on the root view). If we later surface
@@ -261,6 +355,44 @@ export function OrgCanvasBackground({
       cancelled = true;
     };
   }, [githubLogin]);
+
+  // Initial drill-in from `?canvas=<ref>`. Runs once after the root
+  // canvas has loaded — `zoomIntoNode` requires the projected node
+  // (e.g. `initiative:<id>`) to actually exist on the rendered canvas.
+  // The guarded `initialNavAppliedRef` keeps this from firing twice on
+  // strict-mode / fast-refresh re-renders.
+  useEffect(() => {
+    if (!root || initialNavAppliedRef.current) return;
+    const targetRef = searchParams.get("canvas") ?? "";
+    if (targetRef === "" || targetRef === currentRef) {
+      // No deep link, or already there — nothing to do.
+      initialNavAppliedRef.current = true;
+      return;
+    }
+    // Today the projector emits a node whose `id` matches the ref it
+    // drills into (e.g. the `initiative:<id>` node on root carries
+    // `ref: "initiative:<id>"`). So zooming into the id navigates
+    // into the matching sub-canvas in one shot.
+    //
+    // If the ref doesn't resolve to an on-canvas node (e.g. a stale
+    // share link to a deleted initiative), the handle's promise just
+    // resolves without navigating; the user lands on root, which is
+    // the right fallback.
+    const handle = canvasHandleRef.current;
+    if (!handle) return;
+    initialNavAppliedRef.current = true;
+    void handle.zoomIntoNode(targetRef).catch((err) => {
+      console.error(
+        "[OrgCanvasBackground] zoomIntoNode failed for URL ref",
+        targetRef,
+        err,
+      );
+    });
+    // Intentionally not depending on `searchParams` / `currentRef` —
+    // we only want this to fire once on initial mount. Subsequent
+    // navigation flows write to the URL, not the other way around.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root]);
 
   const refreshHiddenLive = useCallback(() => {
     fetchHiddenLive(githubLogin, undefined).then(setHiddenLive);
@@ -926,12 +1058,14 @@ export function OrgCanvasBackground({
       <div className="absolute inset-0 bg-[#15171c]" aria-hidden />
       <div className="absolute inset-y-0 left-0" style={canvasContainerStyle}>
         <SystemCanvas
+          ref={canvasHandleRef}
           canvas={canvasForRender}
           canvases={subCanvases}
           theme={connectionsTheme}
           editable
           onResolveCanvas={onResolveCanvas}
-          onNavigate={setCurrentRef}
+          onNavigate={handleSystemCanvasNavigate}
+          onBreadcrumbClick={handleBreadcrumbClick}
           onNodeAdd={handleNodeAdd}
           onNodeUpdate={handleNodeUpdate}
           onNodeDelete={handleNodeDelete}
