@@ -28,6 +28,22 @@ describe("parseScope", () => {
     });
   });
 
+  it("parses an initiative: prefix into an initiative scope", () => {
+    expect(parseScope("initiative:iuid_1")).toEqual({
+      kind: "initiative",
+      initiativeId: "iuid_1",
+    });
+  });
+
+  it("parses a milestone: prefix into a milestone scope", () => {
+    // No projector under this scope yet (v2), but the parser accepts
+    // it so we don't have to change refs when the projector lands.
+    expect(parseScope("milestone:muid_1")).toEqual({
+      kind: "milestone",
+      milestoneId: "muid_1",
+    });
+  });
+
   it("treats unknown refs as opaque (preserves pre-projection behavior)", () => {
     expect(parseScope("legacy-sub-canvas")).toEqual({
       kind: "opaque",
@@ -54,6 +70,14 @@ describe("isLiveId", () => {
 
   it("recognizes the repo: prefix as a live id", () => {
     expect(isLiveId("repo:abc")).toBe(true);
+  });
+
+  it("recognizes the initiative: prefix as a live id", () => {
+    expect(isLiveId("initiative:abc")).toBe(true);
+  });
+
+  it("recognizes the milestone: prefix as a live id", () => {
+    expect(isLiveId("milestone:abc")).toBe(true);
   });
 
   it("treats unprefixed ids as authored", () => {
