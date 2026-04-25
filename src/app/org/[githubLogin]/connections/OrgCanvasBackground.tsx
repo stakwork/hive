@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AddNodeButton,
   SystemCanvas,
@@ -16,10 +17,24 @@ import {
   type CanvasNode,
   type EdgeUpdate,
   type NodeUpdate,
+  type SystemCanvasHandle,
 } from "system-canvas-react";
 import { connectionsTheme } from "./canvas-theme";
 import { HiddenLivePill, type HiddenLiveEntry } from "./HiddenLivePill";
 import { getOrgChannelName, getPusherClient, PUSHER_EVENTS } from "@/lib/pusher";
+import {
+  InitiativeDialog,
+  type InitiativeForm,
+} from "@/components/initiatives/InitiativeDialog";
+import {
+  MilestoneDialog,
+  type MilestoneForm,
+} from "@/components/initiatives/MilestoneDialog";
+import type {
+  InitiativeResponse,
+  MilestoneResponse,
+} from "@/types/initiatives";
+import { categoryAllowedOnScope } from "./canvas-categories";
 
 /**
  * Live-id detection mirrors `src/lib/canvas/scope.ts`'s `isLiveId`.
@@ -27,17 +42,25 @@ import { getOrgChannelName, getPusherClient, PUSHER_EVENTS } from "@/lib/pusher"
  * only need the prefix check on the client. Keep the prefix list in sync
  * with `LIVE_ID_PREFIXES` there.
  */
-const LIVE_ID_PREFIXES = ["ws:", "feature:", "repo:"];
+const LIVE_ID_PREFIXES = ["ws:", "feature:", "repo:", "initiative:", "milestone:"];
 function isLiveId(id: string): boolean {
   return LIVE_ID_PREFIXES.some((p) => id.startsWith(p));
 }
 
 /**
- * Categories projected from the DB — the agent can't author them and
- * the user shouldn't either (any node they'd create would be a fake
- * that vanishes on refresh). Filtered out of the `+` menu below.
+ * Categories that, when picked from the `+` menu, open a creation
+ * dialog instead of dropping a node onto the canvas. The dialog hits
+ * the appropriate REST API; on success the projector re-emits the new
+ * node, and we save the user's click position so the node lands where
+ * they clicked.
+ *
+ * Whether each category is *visible* in the `+` menu on the current
+ * scope is decided by `categoryAllowedOnScope` in `canvas-categories.ts`
+ * — see `renderAddNodeButton` below. Both filters consult the same
+ * helper so a category never shows in the menu but fails the dispatch
+ * (or vice versa).
  */
-const PROJECTED_CATEGORIES = new Set(["workspace", "repository"]);
+const DB_CREATING_CATEGORIES = new Set(["initiative", "milestone"]);
 
 /**
  * Full-screen interactive system-canvas background for the Connections page.
@@ -164,6 +187,133 @@ export function OrgCanvasBackground({
   const [subCanvases, setSubCanvases] = useState<Record<string, CanvasData>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   /**
+   * Current canvas scope as the user has it open. `""` is root; any
+   * non-empty value is a sub-canvas ref (e.g. `"ws:abc"` or
+   * `"initiative:xyz"`). Driven by the library's `onNavigate` callback;
+   * defaults to root.
+   *
+   * We track this so chrome that's only meaningful at the org level
+   * (notably the "N hidden" restore pill, which lists hidden workspaces)
+   * stays out of the way when the user has drilled into a sub-canvas
+   * and is focused on a smaller scope.
+   */
+  const [currentRef, setCurrentRef] = useState<string>("");
+
+  // -------------------------------------------------------------------
+  // URL <-> canvas-scope sync
+  //
+  // The active canvas ref is mirrored to the URL as `?canvas=<ref>` so
+  // a user can deep-link into a specific initiative timeline or
+  // workspace sub-canvas (e.g. share `?canvas=initiative:abc` with a
+  // teammate). Three-way sync:
+  //
+  //   1. URL → canvas: on mount (and when the URL changes externally),
+  //      drill into the ref via `SystemCanvas`'s imperative handle.
+  //      Done once after `root` loads — `zoomIntoNode` needs the
+  //      target node to exist on the rendered canvas.
+  //   2. canvas → URL: `onNavigate(ref)` fires on drill-IN; we replace
+  //      the URL with the new ref. Uses `router.replace` so browser
+  //      back exits the page rather than walking through canvas
+  //      scopes (matches the connections-sidebar URL convention on
+  //      the same page).
+  //   3. canvas → URL on back-out: `onNavigate` does NOT fire on
+  //      breadcrumb clicks (library quirk — see `useNavigation.js`).
+  //      We wire `onBreadcrumbClick` to update both `currentRef`
+  //      state and the URL so going back to root clears `?canvas=`.
+  // -------------------------------------------------------------------
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  /** Imperative handle for `SystemCanvas`; used to drill into a ref from a URL param. */
+  const canvasHandleRef = useRef<SystemCanvasHandle | null>(null);
+  /**
+   * One-shot guard so we only drill into the URL's `?canvas=` once on
+   * mount. After that, `onNavigate` / `onBreadcrumbClick` own the URL
+   * and the URL would re-feed the same ref back into the handle in a
+   * loop. (Future: re-fire when the user pastes a new URL into the
+   * same tab — cheaply detected by comparing to `currentRef`.)
+   */
+  const initialNavAppliedRef = useRef(false);
+  /**
+   * Truthy from initial render until the deep-link drill-in completes.
+   * Captured synchronously from `searchParams` so the spinner overlay
+   * shows on the very first paint — the user never sees a flash of the
+   * root canvas before the sub-canvas opens.
+   *
+   * Stored as a ref so the captured value doesn't shift mid-render
+   * (and stored separately as state below for the spinner gate, since
+   * a ref alone wouldn't trigger re-render on clear).
+   */
+  const pendingDeepLinkRef = useRef<string | null>(null);
+  if (pendingDeepLinkRef.current === null && !initialNavAppliedRef.current) {
+    // First render only — capture the URL's `?canvas=` value before any
+    // effect runs so the spinner gate below is correct on the initial
+    // paint. After this render, `pendingDeepLinkRef` is either the
+    // target ref (drill-in pending) or `""` (no deep link, gate stays
+    // closed but spinner-state remains false). We use the ref's
+    // null/non-null distinction as the "have we captured yet" signal.
+    pendingDeepLinkRef.current = searchParams.get("canvas") ?? "";
+  }
+  const [deepLinkInFlight, setDeepLinkInFlight] = useState<boolean>(
+    () => (searchParams.get("canvas") ?? "") !== "",
+  );
+
+  /**
+   * Update the `?canvas=<ref>` query param without navigating away
+   * from the page. Pass `""` to clear the param (root canvas).
+   * Other query params on the page (notably `?c=<connection-slug>`
+   * from the Connections sidebar) are preserved.
+   */
+  const writeCanvasUrlParam = useCallback(
+    (ref: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (ref === "") {
+        params.delete("canvas");
+      } else {
+        params.set("canvas", ref);
+      }
+      const qs = params.toString();
+      router.replace(
+        `/org/${githubLogin}/connections${qs ? `?${qs}` : ""}`,
+        { scroll: false },
+      );
+    },
+    [router, githubLogin, searchParams],
+  );
+
+  /**
+   * Library callback: user drilled into a sub-canvas. Update both
+   * local state (gates the HiddenLivePill, scope-aware `+` menu, etc.)
+   * and the URL (so the deep link is shareable + browser refresh
+   * lands the user on the same scope).
+   */
+  const handleSystemCanvasNavigate = useCallback(
+    (ref: string) => {
+      setCurrentRef(ref);
+      writeCanvasUrlParam(ref);
+    },
+    [writeCanvasUrlParam],
+  );
+
+  /**
+   * Library callback: user clicked a breadcrumb. The library does NOT
+   * fire `onNavigate` for back-navigation (only for drill-in), so we
+   * have to track scope changes here too. `index === 0` means the
+   * root crumb; we don't currently surface multi-level deep canvases,
+   * so any non-zero index from `onBreadcrumbClick` is a no-op today
+   * (kept simple; the day we have nested sub-canvases this needs to
+   * walk a stored breadcrumb stack to recover the intermediate ref).
+   */
+  const handleBreadcrumbClick = useCallback(
+    (index: number) => {
+      if (index === 0) {
+        setCurrentRef("");
+        writeCanvasUrlParam("");
+      }
+    },
+    [writeCanvasUrlParam],
+  );
+
+  /**
    * Hidden live entries for the ROOT canvas only. Keeps the pill's
    * data model simple (it sits on the root view). If we later surface
    * hidden entries on sub-canvases, switch this to a `Record<ref, …>`.
@@ -228,6 +378,66 @@ export function OrgCanvasBackground({
       cancelled = true;
     };
   }, [githubLogin]);
+
+  // Initial drill-in from `?canvas=<ref>`. Runs once after the root
+  // canvas has loaded — `zoomIntoNode` requires the projected node
+  // (e.g. `initiative:<id>`) to actually exist on the rendered canvas.
+  // The guarded `initialNavAppliedRef` keeps this from firing twice on
+  // strict-mode / fast-refresh re-renders.
+  //
+  // The spinner overlay (see JSX) covers the canvas from initial
+  // paint until this promise resolves, so the user never sees a
+  // flash of the root canvas before the sub-canvas mounts.
+  useEffect(() => {
+    if (!root || initialNavAppliedRef.current) return;
+    const targetRef = pendingDeepLinkRef.current ?? "";
+    if (targetRef === "" || targetRef === currentRef) {
+      // No deep link, or already there — nothing to do. Clear the
+      // spinner gate (which only fires for true deep links anyway).
+      initialNavAppliedRef.current = true;
+      setDeepLinkInFlight(false);
+      return;
+    }
+    // Today the projector emits a node whose `id` matches the ref it
+    // drills into (e.g. the `initiative:<id>` node on root carries
+    // `ref: "initiative:<id>"`). So zooming into the id navigates
+    // into the matching sub-canvas in one shot.
+    //
+    // If the ref doesn't resolve to an on-canvas node (e.g. a stale
+    // share link to a deleted initiative), the handle's promise just
+    // resolves without navigating; the user lands on root, which is
+    // the right fallback.
+    const handle = canvasHandleRef.current;
+    if (!handle) return;
+    initialNavAppliedRef.current = true;
+    // `durationMs: 0` skips the camera dive-in animation. For a deep
+    // link the user just wants to land on the sub-canvas — a 900ms
+    // cinematic zoom every time they refresh would feel sluggish.
+    // (Drilling in via a click still gets the default animation; that
+    // path uses the library's internal navigation flow, not this
+    // imperative call.)
+    //
+    // The promise resolves once the sub-canvas has mounted AND its
+    // auto-fit has run (see the library's two-RAF wait inside
+    // `zoomIntoNode`). At that point the spinner is safe to drop —
+    // the user is already looking at the right canvas.
+    void handle
+      .zoomIntoNode(targetRef, { durationMs: 0 })
+      .catch((err) => {
+        console.error(
+          "[OrgCanvasBackground] zoomIntoNode failed for URL ref",
+          targetRef,
+          err,
+        );
+      })
+      .finally(() => {
+        setDeepLinkInFlight(false);
+      });
+    // Intentionally not depending on `searchParams` / `currentRef` —
+    // we only want this to fire once on initial mount. Subsequent
+    // navigation flows write to the URL, not the other way around.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root]);
 
   const refreshHiddenLive = useCallback(() => {
     fetchHiddenLive(githubLogin, undefined).then(setHiddenLive);
@@ -380,17 +590,368 @@ export function OrgCanvasBackground({
     [markDirty],
   );
 
+  // -------------------------------------------------------------------
+  // DB-creating `+` menu interception
+  //
+  // When the user picks `Initiative` or `Milestone` from the `+` menu,
+  // the library hands us a freshly-synthesized authored node. We do
+  // NOT add it to the canvas blob. Instead we open the matching
+  // creation dialog with the click position cached, hit the REST API
+  // on save, then save the click position into `Canvas.data.positions`
+  // for the projected node id so the new card lands where the user
+  // clicked. The Pusher `CANVAS_UPDATED` event from the API then
+  // re-projects the new entity onto the canvas.
+  //
+  // Cancel: nothing happens. No node was added.
+  // -------------------------------------------------------------------
+
+  /**
+   * Pending dialog state for an interception. Carries the click
+   * position so we can save it once the API returns the new entity id.
+   * `canvasRef` tracks which canvas the click came from — root for
+   * initiatives, `initiative:<id>` for milestones.
+   */
+  type PendingInitiativeAdd = {
+    kind: "initiative";
+    x: number;
+    y: number;
+    canvasRef: string | undefined;
+  };
+  type PendingMilestoneAdd = {
+    kind: "milestone";
+    x: number;
+    y: number;
+    /** Always an `initiative:<id>` ref — milestones can only be added inside one. */
+    canvasRef: string;
+    initiativeId: string;
+    /** Sequence numbers already taken on this initiative; pre-fetched for the dialog. */
+    usedSequences: number[];
+    defaultSequence: number;
+  };
+  type PendingAdd = PendingInitiativeAdd | PendingMilestoneAdd;
+
+  const [pendingAdd, setPendingAdd] = useState<PendingAdd | null>(null);
+
+  /**
+   * Save a freshly-created live node's click position into the canvas
+   * blob so it lands where the user clicked. Fire-and-forget: the API
+   * response from POST already returned the new id, so we can write
+   * the position before the projector re-emits the node — by the time
+   * Pusher fires the refresh, the position overlay is already in place.
+   */
+  const savePositionForLiveId = useCallback(
+    async (
+      canvasRef: string | undefined,
+      liveId: string,
+      x: number,
+      y: number,
+    ) => {
+      try {
+        // Read-modify-write the relevant canvas. We read first so we
+        // don't clobber other position overlays the user already set.
+        const url = canvasRef
+          ? `/api/orgs/${githubLogin}/canvas/${encodeURIComponent(canvasRef)}`
+          : `/api/orgs/${githubLogin}/canvas`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const body = await res.json();
+        const data: CanvasData = body.data ?? { nodes: [], edges: [] };
+        // Append a stub node carrying the position. The server's
+        // splitter will treat its live id as a positions overlay and
+        // discard everything else (text/category/customData). It
+        // doesn't matter that the projector hasn't emitted the real
+        // node yet — the position survives independently.
+        const existingNodes = data.nodes ?? [];
+        const nextNodes: CanvasNode[] = [
+          ...existingNodes.filter((n) => n.id !== liveId),
+          {
+            id: liveId,
+            type: "text",
+            category: "",
+            text: "",
+            x,
+            y,
+          },
+        ];
+        await fetch(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: { ...data, nodes: nextNodes } }),
+        });
+      } catch (err) {
+        // Non-fatal: the node will appear at the projector's default
+        // position and the user can drag it.
+        console.error(
+          "[OrgCanvasBackground] savePositionForLiveId failed",
+          err,
+        );
+      }
+    },
+    [githubLogin],
+  );
+
+  /**
+   * Open the InitiativeDialog with the click position cached. Caller
+   * passes the synthetic node from the library so we can pull `x`/`y`
+   * off it.
+   */
+  const startInitiativeCreate = useCallback(
+    (node: CanvasNode, canvasRef: string | undefined) => {
+      setPendingAdd({
+        kind: "initiative",
+        x: node.x,
+        y: node.y,
+        canvasRef,
+      });
+    },
+    [],
+  );
+
+  /**
+   * Open the MilestoneDialog. Pre-fetch the initiative's existing
+   * milestones so we know which sequence numbers are taken (needed
+   * for the dialog's client-side validation) and what the next-free
+   * sequence is to pre-populate the form.
+   *
+   * Caller (handleNodeAdd) must already have validated the scope —
+   * this function trusts that `canvasRef` is `initiative:<id>`.
+   */
+  const startMilestoneCreate = useCallback(
+    async (node: CanvasNode, canvasRef: string) => {
+      const initiativeId = canvasRef.slice("initiative:".length);
+      try {
+        const res = await fetch(
+          `/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones`,
+        );
+        const list: MilestoneResponse[] = res.ok ? await res.json() : [];
+        const usedSequences = list.map((m) => m.sequence);
+        const defaultSequence =
+          usedSequences.length === 0 ? 1 : Math.max(...usedSequences) + 1;
+        setPendingAdd({
+          kind: "milestone",
+          x: node.x,
+          y: node.y,
+          canvasRef,
+          initiativeId,
+          usedSequences,
+          defaultSequence,
+        });
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] failed to fetch milestones for dialog seed",
+          err,
+        );
+      }
+    },
+    [githubLogin],
+  );
+
   const handleNodeAdd = useCallback(
     (node: CanvasNode, canvasRef: string | undefined) => {
+      const category = node.category ?? "";
+      const ref = canvasRef ?? "";
+
+      // DB-creating categories are routed through their dialog. The
+      // scope-aware `+` menu filter shouldn't have offered the option
+      // outside its valid scope, but check here too — a stale menu
+      // pick (e.g. user navigated mid-click) shouldn't create at the
+      // wrong scope. Single rule, two enforcement points.
+      if (DB_CREATING_CATEGORIES.has(category)) {
+        if (!categoryAllowedOnScope(category, ref)) return;
+        if (category === "initiative") {
+          startInitiativeCreate(node, canvasRef);
+          return;
+        }
+        if (category === "milestone") {
+          // categoryAllowedOnScope guarantees ref starts with "initiative:".
+          void startMilestoneCreate(node, ref);
+          return;
+        }
+      }
       applyMutation(canvasRef, (c) => addNode(c, node));
     },
-    [applyMutation],
+    [applyMutation, startInitiativeCreate, startMilestoneCreate],
   );
+
+  // -------------------------------------------------------------------
+  // Dialog save handlers
+  // -------------------------------------------------------------------
+
+  const handleSaveInitiative = useCallback(
+    async (form: InitiativeForm): Promise<void> => {
+      if (pendingAdd?.kind !== "initiative") return;
+      const body: Record<string, unknown> = {
+        name: form.name,
+        description: form.description || undefined,
+        status: form.status,
+        startDate: form.startDate || undefined,
+        targetDate: form.targetDate || undefined,
+        completedAt: form.completedAt || undefined,
+      };
+      const res = await fetch(`/api/orgs/${githubLogin}/initiatives`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        // Surface enough info to console; the dialog's `onSave` swallows
+        // the throw so this is the user-visible signal we have today.
+        // A toast belongs here when we add the global toast system.
+        console.error(
+          "[OrgCanvasBackground] create initiative failed",
+          res.status,
+        );
+        return;
+      }
+      const created: InitiativeResponse = await res.json();
+      // Pin the new initiative to the click position before refetching
+      // so the refetched canvas already has the position overlay
+      // applied. If the position write fails, the projector falls back
+      // to default placement and the user can drag.
+      await savePositionForLiveId(
+        pendingAdd.canvasRef,
+        `initiative:${created.id}`,
+        pendingAdd.x,
+        pendingAdd.y,
+      );
+      // Local refetch: don't wait for the Pusher fan-out (300ms delay
+      // + WebSocket round-trip + dirtyRef guard). The user just took
+      // an explicit action; the new card should appear immediately.
+      // Pusher still handles other tabs / users.
+      try {
+        const data = await fetchRoot(githubLogin);
+        setRoot(data);
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] refetch after create initiative failed",
+          err,
+        );
+      }
+    },
+    [githubLogin, pendingAdd, savePositionForLiveId],
+  );
+
+  const handleSaveMilestone = useCallback(
+    async (form: MilestoneForm): Promise<{ error?: string }> => {
+      if (pendingAdd?.kind !== "milestone") return {};
+      const body: Record<string, unknown> = {
+        name: form.name,
+        description: form.description || undefined,
+        status: form.status,
+        sequence: parseInt(form.sequence, 10),
+        dueDate: form.dueDate || undefined,
+        completedAt: form.completedAt || undefined,
+      };
+      const res = await fetch(
+        `/api/orgs/${githubLogin}/initiatives/${pendingAdd.initiativeId}/milestones`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      if (res.status === 409) {
+        return {
+          error:
+            "A milestone with that sequence already exists in this initiative.",
+        };
+      }
+      if (!res.ok) {
+        return { error: "Failed to create milestone." };
+      }
+      const created: MilestoneResponse = await res.json();
+      // Same pattern as initiative create: position-save first so the
+      // refetch already reflects it, then refresh the timeline locally
+      // for snappy UX. Pusher still notifies other tabs.
+      const subRef = pendingAdd.canvasRef;
+      await savePositionForLiveId(
+        subRef,
+        `milestone:${created.id}`,
+        pendingAdd.x,
+        pendingAdd.y,
+      );
+      try {
+        const data = await fetchSub(githubLogin, subRef);
+        setSubCanvases((prev) => ({ ...prev, [subRef]: data }));
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] refetch after create milestone failed",
+          err,
+        );
+      }
+      return {};
+    },
+    [githubLogin, pendingAdd, savePositionForLiveId],
+  );
+  /**
+   * Persist a milestone status change to the DB. Fire-and-forget; on
+   * success the API route emits CANVAS_UPDATED which round-trips through
+   * the projector and reconciles the canonical status. On failure, log
+   * and let the next read pull the unchanged status — the optimistic
+   * local change will be quietly reverted, which is acceptable for the
+   * "I clicked the wrong swatch" scenario.
+   */
+  const persistMilestoneStatus = useCallback(
+    async (
+      milestoneId: string,
+      initiativeId: string,
+      status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED",
+    ) => {
+      try {
+        const res = await fetch(
+          `/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones/${milestoneId}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          },
+        );
+        if (!res.ok) {
+          console.error(
+            `[OrgCanvasBackground] PATCH milestone status failed (${res.status})`,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] PATCH milestone status threw",
+          err,
+        );
+      }
+    },
+    [githubLogin],
+  );
+
   const handleNodeUpdate = useCallback(
     (id: string, patch: NodeUpdate, canvasRef: string | undefined) => {
+      // Optimistic local update first — keeps the swatch reflecting the
+      // user's choice immediately, regardless of which path we take
+      // below. The autosave will silently drop customData on live ids
+      // (the splitter discards it), so this never round-trips through
+      // the canvas blob — the PATCH below is the only persistence path
+      // for status.
       applyMutation(canvasRef, (c) => updateNode(c, id, patch));
+
+      // For milestone live nodes: a status change is a DB mutation, not
+      // a canvas blob change. Intercept it here and PATCH the milestone
+      // REST endpoint. Position changes (x/y) still flow through the
+      // normal autosave path as `positions[liveId]` overlays.
+      if (
+        id.startsWith("milestone:") &&
+        canvasRef?.startsWith("initiative:")
+      ) {
+        const newStatus = patch.customData?.status;
+        if (
+          newStatus === "NOT_STARTED" ||
+          newStatus === "IN_PROGRESS" ||
+          newStatus === "COMPLETED"
+        ) {
+          const milestoneId = id.slice("milestone:".length);
+          const initiativeId = canvasRef.slice("initiative:".length);
+          void persistMilestoneStatus(milestoneId, initiativeId, newStatus);
+        }
+      }
     },
-    [applyMutation],
+    [applyMutation, persistMilestoneStatus],
   );
   const handleNodeDelete = useCallback(
     (id: string, canvasRef: string | undefined) => {
@@ -479,18 +1040,30 @@ export function OrgCanvasBackground({
    * at `bottom:16` of the canvas, which sits underneath the chat input's
    * `pointer-events-auto` wrapper and can't receive clicks.
    *
-   * We also filter out projected categories (`workspace`, `repository`)
-   * from the menu — authoring those would create ghost nodes that
-   * vanish on the next read. Restore-from-hidden lives on its own pill
-   * (see `HiddenLivePill`); creating a real workspace happens through
-   * the normal workspace-creation UI.
+   * Menu filtering is **scope-aware**: each option is run through
+   * `categoryAllowedOnScope` against `currentRef`, so the user only
+   * sees categories that make sense at the canvas they're currently
+   * looking at:
+   *   - Root → initiative, note, decision, text/file/link/group
+   *   - Workspace sub-canvas → note, decision, text/file/link/group
+   *   - Initiative timeline → milestone, note, decision, text/...
+   *
+   * `kind: "type"` options (the library's built-in JSON-canvas types)
+   * are always shown — they're free authoring primitives and have no
+   * scope semantics.
+   *
+   * `currentRef` is captured lexically; React re-renders the component
+   * whenever the user navigates (we set it in onNavigate), and the
+   * library calls this render-prop on every render, so the menu
+   * tracks scope changes automatically.
    */
   const renderAddNodeButton = (props: AddNodeButtonRenderProps) => {
     const filtered = {
       ...props,
-      options: props.options.filter(
-        (o) => !(o.kind === "category" && PROJECTED_CATEGORIES.has(o.value)),
-      ),
+      options: props.options.filter((o) => {
+        if (o.kind !== "category") return true;
+        return categoryAllowedOnScope(o.value, currentRef);
+      }),
     };
     return (
       <div
@@ -530,11 +1103,14 @@ export function OrgCanvasBackground({
       <div className="absolute inset-0 bg-[#15171c]" aria-hidden />
       <div className="absolute inset-y-0 left-0" style={canvasContainerStyle}>
         <SystemCanvas
+          ref={canvasHandleRef}
           canvas={canvasForRender}
           canvases={subCanvases}
           theme={connectionsTheme}
           editable
           onResolveCanvas={onResolveCanvas}
+          onNavigate={handleSystemCanvasNavigate}
+          onBreadcrumbClick={handleBreadcrumbClick}
           onNodeAdd={handleNodeAdd}
           onNodeUpdate={handleNodeUpdate}
           onNodeDelete={handleNodeDelete}
@@ -545,16 +1121,72 @@ export function OrgCanvasBackground({
           rootLabel={orgName || githubLogin}
         />
         {/*
-         * Restore pill — top-right of the canvas area. Hides itself
-         * when nothing is hidden, so the 99% case is zero chrome. Sits
-         * inside the canvas container so it tracks `rightInset`
+         * Restore pill — top-right of the canvas area. Only shown on
+         * the root canvas: the hidden-list it surfaces is workspace-
+         * scoped (org-level chrome), and a sub-canvas like a
+         * workspace's repos page or an initiative's milestone timeline
+         * has no use for restoring workspaces. Hides itself when
+         * nothing is hidden, so the 99% case on root is zero chrome.
+         * Sits inside the canvas container so it tracks `rightInset`
          * alongside the canvas itself (stays clear of the sidebar).
          */}
-        <HiddenLivePill
-          entries={hiddenLive}
-          onRestore={handleRestoreLive}
-        />
+        {currentRef === "" && (
+          <HiddenLivePill
+            entries={hiddenLive}
+            onRestore={handleRestoreLive}
+          />
+        )}
+
+        {/*
+         * Deep-link load overlay. When the page loads with a `?canvas=`
+         * query param, we mount the root canvas first (the library
+         * needs it to find the target node before `zoomIntoNode` can
+         * navigate). That brief moment of "root visible" before the
+         * sub-canvas opens reads as a flash. This overlay covers the
+         * canvas with the same background + a spinner so the user
+         * sees only "loading → already on the right canvas." Cleared
+         * when `zoomIntoNode`'s promise resolves (sub-canvas mounted
+         * and auto-fit complete).
+         *
+         * Only shown when `deepLinkInFlight` started true (URL had
+         * `?canvas=`). Subsequent in-app drill-ins don't go through
+         * this overlay; they animate naturally.
+         */}
+        {deepLinkInFlight && (
+          <div
+            className="absolute inset-0 z-40 flex items-center justify-center bg-[#15171c]"
+            aria-busy="true"
+            aria-label="Loading canvas"
+          >
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+          </div>
+        )}
       </div>
+
+      {/*
+       * Creation dialogs for DB-backed categories. Mounted at the
+       * component's top level (not inside the canvas container) so they
+       * render as full-page modals rather than getting clipped by the
+       * canvas's positioning shim. Closing without saving (cancel,
+       * Esc, click-outside) just clears `pendingAdd` — no node was
+       * ever added to the canvas.
+       */}
+      <InitiativeDialog
+        open={pendingAdd?.kind === "initiative"}
+        onClose={() => setPendingAdd(null)}
+        onSave={handleSaveInitiative}
+      />
+      <MilestoneDialog
+        open={pendingAdd?.kind === "milestone"}
+        onClose={() => setPendingAdd(null)}
+        defaultSequence={
+          pendingAdd?.kind === "milestone" ? pendingAdd.defaultSequence : undefined
+        }
+        usedSequences={
+          pendingAdd?.kind === "milestone" ? pendingAdd.usedSequences : []
+        }
+        onSave={handleSaveMilestone}
+      />
     </>
   );
 }
