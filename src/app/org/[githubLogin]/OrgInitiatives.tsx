@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +20,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -38,9 +44,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { useReorderMilestones } from "@/hooks/useReorderMilestones";
 import { formatRelativeOrDate } from "@/lib/date-utils";
 import type { InitiativeResponse, MilestoneResponse } from "@/types/initiatives";
-import { ChevronDown, ChevronRight, Link2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { DndContext } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  ChevronDown,
+  ChevronRight,
+  GripVertical,
+  Link2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { LinkFeatureModal } from "./LinkFeatureModal";
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
@@ -117,11 +137,11 @@ interface MilestoneForm {
   completedAt: string;
 }
 
-const emptyMilestoneForm = (): MilestoneForm => ({
+const emptyMilestoneForm = (defaultSequence?: number): MilestoneForm => ({
   name: "",
   description: "",
   status: "NOT_STARTED",
-  sequence: "",
+  sequence: defaultSequence !== undefined ? String(defaultSequence) : "",
   dueDate: "",
   completedAt: "",
 });
@@ -259,26 +279,44 @@ interface MilestoneDialogProps {
   open: boolean;
   onClose: () => void;
   initial?: MilestoneResponse | null;
+  defaultSequence?: number;
+  usedSequences: number[];
   onSave: (form: MilestoneForm) => Promise<{ error?: string }>;
 }
 
-function MilestoneDialog({ open, onClose, initial, onSave }: MilestoneDialogProps) {
+function MilestoneDialog({
+  open,
+  onClose,
+  initial,
+  defaultSequence,
+  usedSequences,
+  onSave,
+}: MilestoneDialogProps) {
   const [form, setForm] = useState<MilestoneForm>(emptyMilestoneForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      setForm(initial ? milestoneToForm(initial) : emptyMilestoneForm());
+      setForm(initial ? milestoneToForm(initial) : emptyMilestoneForm(defaultSequence));
       setError(null);
     }
-  }, [open, initial]);
+  }, [open, initial, defaultSequence]);
 
-  const set = <K extends keyof MilestoneForm>(key: K, value: MilestoneForm[K]) =>
+  const set = <K extends keyof MilestoneForm>(key: K, value: MilestoneForm[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
+    if (key === "sequence") setError(null);
+  };
 
   const handleSubmit = async () => {
     if (!form.name.trim() || !form.sequence) return;
+
+    const seqNum = parseInt(form.sequence, 10);
+    if (usedSequences.includes(seqNum)) {
+      setError("Sequence already in use — choose another number.");
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
@@ -292,6 +330,8 @@ function MilestoneDialog({ open, onClose, initial, onSave }: MilestoneDialogProp
       setSaving(false);
     }
   };
+
+  const hasSequenceError = !!error;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -341,7 +381,8 @@ function MilestoneDialog({ open, onClose, initial, onSave }: MilestoneDialogProp
                 min={1}
                 value={form.sequence}
                 onChange={(e) => set("sequence", e.target.value)}
-                placeholder="e.g. 10"
+                placeholder="e.g. 1"
+                className={hasSequenceError ? "border-destructive" : ""}
               />
             </div>
           </div>
@@ -373,13 +414,246 @@ function MilestoneDialog({ open, onClose, initial, onSave }: MilestoneDialogProp
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!form.name.trim() || !form.sequence || saving}
+            disabled={!form.name.trim() || !form.sequence || hasSequenceError || saving}
           >
             {saving ? "Saving…" : initial ? "Save Changes" : "Add Milestone"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Sortable Milestone Row ───────────────────────────────────────────────────
+
+interface SortableMilestoneRowProps {
+  milestone: MilestoneResponse;
+  siblingSequences: number[];
+  githubLogin: string;
+  initiativeId: string;
+  onEdit: (m: MilestoneResponse) => void;
+  onDelete: (m: MilestoneResponse) => void;
+  onMilestoneUpdated: (m: MilestoneResponse) => void;
+  onLinkFeature: (m: MilestoneResponse) => void;
+  onUnlinkFeature: (m: MilestoneResponse) => void;
+  onInsertBefore: (m: MilestoneResponse) => void;
+  onInsertAfter: (m: MilestoneResponse) => void;
+}
+
+function SortableMilestoneRow({
+  milestone,
+  siblingSequences,
+  githubLogin,
+  initiativeId,
+  onEdit,
+  onDelete,
+  onMilestoneUpdated,
+  onLinkFeature,
+  onUnlinkFeature,
+  onInsertBefore,
+  onInsertAfter,
+}: SortableMilestoneRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: milestone.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const [seqValue, setSeqValue] = useState(String(milestone.sequence));
+  const [seqError, setSeqError] = useState<string | null>(null);
+  const [seqFocused, setSeqFocused] = useState(false);
+  const prevSeqRef = useRef(String(milestone.sequence));
+
+  useEffect(() => {
+    if (!seqFocused) {
+      setSeqValue(String(milestone.sequence));
+      prevSeqRef.current = String(milestone.sequence);
+    }
+  }, [milestone.sequence, seqFocused]);
+
+  const commitSequenceEdit = async () => {
+    setSeqFocused(false);
+    const newSeq = parseInt(seqValue, 10);
+    if (isNaN(newSeq) || newSeq < 1) {
+      setSeqValue(prevSeqRef.current);
+      setSeqError(null);
+      return;
+    }
+    if (newSeq === milestone.sequence) {
+      setSeqError(null);
+      return;
+    }
+    if (siblingSequences.includes(newSeq)) {
+      setSeqError("Already in use");
+      setSeqValue(prevSeqRef.current);
+      return;
+    }
+    setSeqError(null);
+
+    onMilestoneUpdated({ ...milestone, sequence: newSeq });
+    prevSeqRef.current = String(newSeq);
+
+    try {
+      const res = await fetch(
+        `/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones/${milestone.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sequence: newSeq }),
+        }
+      );
+      if (res.status === 409) {
+        setSeqError("Already in use");
+        onMilestoneUpdated({ ...milestone, sequence: milestone.sequence });
+        setSeqValue(String(milestone.sequence));
+        prevSeqRef.current = String(milestone.sequence);
+        return;
+      }
+      if (!res.ok) throw new Error("Failed");
+      const updated: MilestoneResponse = await res.json();
+      onMilestoneUpdated(updated);
+      prevSeqRef.current = String(updated.sequence);
+    } catch {
+      onMilestoneUpdated({ ...milestone, sequence: milestone.sequence });
+      setSeqValue(String(milestone.sequence));
+      prevSeqRef.current = String(milestone.sequence);
+    }
+  };
+
+  return (
+    <TableRow ref={setNodeRef} style={style} className="hover:bg-muted/30">
+      {/* Drag handle */}
+      <TableCell className="w-6 px-1">
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground p-0.5 touch-none"
+          aria-label="Drag to reorder"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+      </TableCell>
+
+      {/* Inline sequence edit */}
+      <TableCell className="w-16">
+        <div className="relative">
+          <Input
+            type="number"
+            min={1}
+            value={seqValue}
+            onChange={(e) => {
+              setSeqValue(e.target.value);
+              setSeqError(null);
+            }}
+            onFocus={() => setSeqFocused(true)}
+            onBlur={commitSequenceEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.currentTarget.blur();
+              } else if (e.key === "Escape") {
+                setSeqValue(prevSeqRef.current);
+                setSeqError(null);
+                setSeqFocused(false);
+                e.currentTarget.blur();
+              }
+            }}
+            className={`h-6 w-12 text-xs font-mono px-1 ${
+              seqFocused
+                ? "border-border bg-background"
+                : "border-transparent bg-transparent shadow-none"
+            } ${seqError ? "border-destructive" : ""}`}
+          />
+          {seqError && (
+            <span className="absolute -bottom-4 left-0 text-[10px] text-destructive whitespace-nowrap">
+              {seqError}
+            </span>
+          )}
+        </div>
+      </TableCell>
+
+      <TableCell className="text-sm font-medium">{milestone.name}</TableCell>
+      <TableCell>
+        <MilestoneStatusBadge status={milestone.status} />
+      </TableCell>
+      <TableCell>
+        <DateCell value={milestone.dueDate} />
+      </TableCell>
+      <TableCell>
+        <DateCell value={milestone.completedAt} />
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {milestone.assignee?.name ?? "—"}
+      </TableCell>
+
+      {/* Actions */}
+      <TableCell>
+        <div className="flex items-center gap-1 flex-wrap">
+          {milestone.feature ? (
+            <div className="flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-xs">
+              <span className="text-blue-900 dark:text-blue-100 font-medium max-w-[100px] truncate">
+                {milestone.feature.title}
+              </span>
+              <span className="text-blue-600 dark:text-blue-400 mx-0.5">·</span>
+              <span className="text-blue-700 dark:text-blue-300 max-w-[70px] truncate">
+                {milestone.feature.workspace.name}
+              </span>
+              <button
+                className="ml-1 text-blue-500 hover:text-blue-700"
+                title="Unlink feature"
+                onClick={() => onUnlinkFeature(milestone)}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              title="Link feature"
+              onClick={() => onLinkFeature(milestone)}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => onEdit(milestone)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive hover:text-destructive"
+            onClick={() => onDelete(milestone)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onInsertBefore(milestone)}>
+                Insert Before
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onInsertAfter(milestone)}>
+                Insert After
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -390,7 +664,8 @@ interface MilestonesTableProps {
   githubLogin: string;
   onMilestoneAdded: (initiativeId: string, milestone: MilestoneResponse) => void;
   onMilestoneUpdated: (initiativeId: string, milestone: MilestoneResponse) => void;
-  onMilestoneDeleted: (initiativeId: string, milestoneId: string) => void;
+  onMilestoneDeleted: (initiativeId: string, updatedSiblings: MilestoneResponse[]) => void;
+  onMilestonesReordered: (initiativeId: string, milestones: MilestoneResponse[]) => void;
 }
 
 function MilestonesTable({
@@ -399,6 +674,7 @@ function MilestonesTable({
   onMilestoneAdded,
   onMilestoneUpdated,
   onMilestoneDeleted,
+  onMilestonesReordered,
 }: MilestonesTableProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<MilestoneResponse | null>(null);
@@ -406,19 +682,23 @@ function MilestonesTable({
   const [deleting, setDeleting] = useState(false);
   const [linkTarget, setLinkTarget] = useState<MilestoneResponse | null>(null);
 
-  const baseUrl = `/api/orgs/${githubLogin}/initiatives/${initiative.id}/milestones`;
+  const [insertDialogOpen, setInsertDialogOpen] = useState(false);
+  const [insertSequence, setInsertSequence] = useState<number | undefined>(undefined);
+  const [insertUsedSequences, setInsertUsedSequences] = useState<number[]>([]);
 
-  const handleUnlink = async (m: MilestoneResponse) => {
-    const res = await fetch(`${baseUrl}/${m.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ featureId: null }),
-    });
-    if (res.ok) {
-      const updated: MilestoneResponse = await res.json();
-      onMilestoneUpdated(initiative.id, updated);
-    }
-  };
+  const sorted = [...initiative.milestones].sort((a, b) => a.sequence - b.sequence);
+
+  const baseUrl = `/api/orgs/${githubLogin}/initiatives/${initiative.id}/milestones`;
+  const reorderUrl = `${baseUrl}/reorder`;
+
+  const nextSequence = Math.max(0, ...initiative.milestones.map((m) => m.sequence)) + 1;
+
+  const { sensors, milestoneIds, handleDragEnd, collisionDetection } = useReorderMilestones({
+    milestones: sorted,
+    initiativeId: initiative.id,
+    githubLogin,
+    onOptimisticUpdate: (reordered) => onMilestonesReordered(initiative.id, reordered),
+  });
 
   const handleAdd = async (form: MilestoneForm): Promise<{ error?: string }> => {
     const body: Record<string, unknown> = {
@@ -467,9 +747,10 @@ function MilestonesTable({
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res = await fetch(`${baseUrl}/${deleteTarget.id}`, { method: "DELETE" });
+      const res = await fetch(`${baseUrl}/${deleteTarget.id}?renumber=true`, { method: "DELETE" });
       if (res.ok) {
-        onMilestoneDeleted(initiative.id, deleteTarget.id);
+        const data = await res.json();
+        onMilestoneDeleted(initiative.id, data.milestones ?? []);
         setDeleteTarget(null);
       }
     } finally {
@@ -477,7 +758,69 @@ function MilestonesTable({
     }
   };
 
-  const sorted = [...initiative.milestones].sort((a, b) => a.sequence - b.sequence);
+  const handleUnlink = async (m: MilestoneResponse) => {
+    const res = await fetch(`${baseUrl}/${m.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ featureId: null }),
+    });
+    if (res.ok) {
+      const updated: MilestoneResponse = await res.json();
+      onMilestoneUpdated(initiative.id, updated);
+    }
+  };
+
+  const handleInsertBefore = async (m: MilestoneResponse) => {
+    const insertPos = m.sequence;
+    await shiftAndOpenInsert(insertPos);
+  };
+
+  const handleInsertAfter = async (m: MilestoneResponse) => {
+    const insertPos = m.sequence + 1;
+    await shiftAndOpenInsert(insertPos);
+  };
+
+  const shiftAndOpenInsert = async (insertPos: number) => {
+    const toShift = sorted.filter((m) => m.sequence >= insertPos);
+
+    if (toShift.length > 0) {
+      const shifted = sorted.map((m) =>
+        m.sequence >= insertPos ? { ...m, sequence: m.sequence + 1 } : m
+      );
+
+      onMilestonesReordered(initiative.id, shifted);
+
+      try {
+        const res = await fetch(reorderUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            milestones: shifted.map((m) => ({ id: m.id, sequence: m.sequence })),
+          }),
+        });
+        if (!res.ok) {
+          onMilestonesReordered(initiative.id, sorted);
+          return;
+        }
+        const updated: MilestoneResponse[] = await res.json();
+        onMilestonesReordered(initiative.id, updated);
+        setInsertUsedSequences(updated.map((m) => m.sequence));
+      } catch {
+        onMilestonesReordered(initiative.id, sorted);
+        return;
+      }
+    } else {
+      setInsertUsedSequences(sorted.map((m) => m.sequence));
+    }
+
+    setInsertSequence(insertPos);
+    setInsertDialogOpen(true);
+  };
+
+  const addUsedSequences = sorted.map((m) => m.sequence);
+  const editUsedSequences = editTarget
+    ? sorted.filter((m) => m.id !== editTarget.id).map((m) => m.sequence)
+    : [];
 
   return (
     <div className="pl-8 pr-2 pb-3">
@@ -485,83 +828,42 @@ function MilestonesTable({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="w-12 text-xs">Seq</TableHead>
+              <TableHead className="w-6 px-1" />
+              <TableHead className="w-16 text-xs">Seq</TableHead>
               <TableHead className="text-xs">Name</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs">Due Date</TableHead>
               <TableHead className="text-xs">Completed</TableHead>
               <TableHead className="text-xs">Assignee</TableHead>
-              <TableHead className="w-20 text-xs" />
+              <TableHead className="w-28 text-xs" />
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {sorted.map((m) => (
-              <TableRow key={m.id} className="hover:bg-muted/30">
-                <TableCell className="text-xs font-mono text-muted-foreground">{m.sequence}</TableCell>
-                <TableCell className="text-sm font-medium">{m.name}</TableCell>
-                <TableCell>
-                  <MilestoneStatusBadge status={m.status} />
-                </TableCell>
-                <TableCell>
-                  <DateCell value={m.dueDate} />
-                </TableCell>
-                <TableCell>
-                  <DateCell value={m.completedAt} />
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {m.assignee?.name ?? "—"}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {m.feature ? (
-                      <div className="flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-xs">
-                        <span className="text-blue-900 dark:text-blue-100 font-medium max-w-[120px] truncate">
-                          {m.feature.title}
-                        </span>
-                        <span className="text-blue-600 dark:text-blue-400 mx-0.5">·</span>
-                        <span className="text-blue-700 dark:text-blue-300 max-w-[80px] truncate">
-                          {m.feature.workspace.name}
-                        </span>
-                        <button
-                          className="ml-1 text-blue-500 hover:text-blue-700"
-                          title="Unlink feature"
-                          onClick={() => handleUnlink(m)}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        title="Link feature"
-                        onClick={() => setLinkTarget(m)}
-                      >
-                        <Link2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => setEditTarget(m)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => setDeleteTarget(m)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={collisionDetection}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={milestoneIds} strategy={verticalListSortingStrategy}>
+              <TableBody>
+                {sorted.map((m) => (
+                  <SortableMilestoneRow
+                    key={m.id}
+                    milestone={m}
+                    siblingSequences={sorted.filter((s) => s.id !== m.id).map((s) => s.sequence)}
+                    githubLogin={githubLogin}
+                    initiativeId={initiative.id}
+                    onEdit={setEditTarget}
+                    onDelete={setDeleteTarget}
+                    onMilestoneUpdated={(updated) => onMilestoneUpdated(initiative.id, updated)}
+                    onLinkFeature={setLinkTarget}
+                    onUnlinkFeature={handleUnlink}
+                    onInsertBefore={handleInsertBefore}
+                    onInsertAfter={handleInsertAfter}
+                  />
+                ))}
+              </TableBody>
+            </SortableContext>
+          </DndContext>
         </Table>
       ) : (
         <p className="text-sm text-muted-foreground py-2">No milestones yet.</p>
@@ -572,16 +874,34 @@ function MilestonesTable({
         Add Milestone
       </Button>
 
+      {/* Add dialog */}
       <MilestoneDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
+        defaultSequence={nextSequence}
+        usedSequences={addUsedSequences}
         onSave={handleAdd}
       />
+
+      {/* Edit dialog */}
       <MilestoneDialog
         open={!!editTarget}
         onClose={() => setEditTarget(null)}
         initial={editTarget}
+        usedSequences={editUsedSequences}
         onSave={handleEdit}
+      />
+
+      {/* Insert before/after dialog */}
+      <MilestoneDialog
+        open={insertDialogOpen}
+        onClose={() => {
+          setInsertDialogOpen(false);
+          setInsertSequence(undefined);
+        }}
+        defaultSequence={insertSequence}
+        usedSequences={insertUsedSequences}
+        onSave={handleAdd}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
@@ -590,7 +910,8 @@ function MilestonesTable({
             <AlertDialogTitle>Delete Milestone</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete &quot;{deleteTarget?.name}&quot;? This will unlink any
-              features associated with this milestone.
+              features associated with this milestone. Remaining milestones will be automatically
+              renumbered.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -633,7 +954,6 @@ export function OrgInitiatives({ githubLogin }: OrgInitiativesProps) {
   const [error, setError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-  // Initiative dialog state
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<InitiativeResponse | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InitiativeResponse | null>(null);
@@ -695,7 +1015,9 @@ export function OrgInitiatives({ githubLogin }: OrgInitiativesProps) {
     });
     if (!res.ok) throw new Error("Failed to update initiative");
     const updated: InitiativeResponse = await res.json();
-    setInitiatives((prev) => prev.map((i) => (i.id === updated.id ? { ...updated, milestones: i.milestones } : i)));
+    setInitiatives((prev) =>
+      prev.map((i) => (i.id === updated.id ? { ...updated, milestones: i.milestones } : i))
+    );
   };
 
   const handleDeleteInitiative = async () => {
@@ -732,13 +1054,17 @@ export function OrgInitiatives({ githubLogin }: OrgInitiativesProps) {
     );
   };
 
-  const handleMilestoneDeleted = (initiativeId: string, milestoneId: string) => {
+  const handleMilestoneDeleted = (initiativeId: string, updatedSiblings: MilestoneResponse[]) => {
     setInitiatives((prev) =>
       prev.map((i) =>
-        i.id === initiativeId
-          ? { ...i, milestones: i.milestones.filter((m) => m.id !== milestoneId) }
-          : i
+        i.id === initiativeId ? { ...i, milestones: updatedSiblings } : i
       )
+    );
+  };
+
+  const handleMilestonesReordered = (initiativeId: string, milestones: MilestoneResponse[]) => {
+    setInitiatives((prev) =>
+      prev.map((i) => (i.id === initiativeId ? { ...i, milestones } : i))
     );
   };
 
@@ -798,9 +1124,8 @@ export function OrgInitiatives({ githubLogin }: OrgInitiativesProps) {
               {initiatives.map((initiative) => {
                 const expanded = expandedIds.has(initiative.id);
                 return (
-                  <>
+                  <React.Fragment key={initiative.id}>
                     <TableRow
-                      key={initiative.id}
                       className="cursor-pointer hover:bg-muted/40"
                       onClick={() => toggleExpand(initiative.id)}
                     >
@@ -870,11 +1195,12 @@ export function OrgInitiatives({ githubLogin }: OrgInitiativesProps) {
                             onMilestoneAdded={handleMilestoneAdded}
                             onMilestoneUpdated={handleMilestoneUpdated}
                             onMilestoneDeleted={handleMilestoneDeleted}
+                            onMilestonesReordered={handleMilestonesReordered}
                           />
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </React.Fragment>
                 );
               })}
             </TableBody>
