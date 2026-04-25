@@ -697,11 +697,75 @@ export function OrgCanvasBackground({
     },
     [githubLogin, pendingAdd, savePositionForLiveId],
   );
+  /**
+   * Persist a milestone status change to the DB. Fire-and-forget; on
+   * success the API route emits CANVAS_UPDATED which round-trips through
+   * the projector and reconciles the canonical status. On failure, log
+   * and let the next read pull the unchanged status — the optimistic
+   * local change will be quietly reverted, which is acceptable for the
+   * "I clicked the wrong swatch" scenario.
+   */
+  const persistMilestoneStatus = useCallback(
+    async (
+      milestoneId: string,
+      initiativeId: string,
+      status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED",
+    ) => {
+      try {
+        const res = await fetch(
+          `/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones/${milestoneId}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          },
+        );
+        if (!res.ok) {
+          console.error(
+            `[OrgCanvasBackground] PATCH milestone status failed (${res.status})`,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] PATCH milestone status threw",
+          err,
+        );
+      }
+    },
+    [githubLogin],
+  );
+
   const handleNodeUpdate = useCallback(
     (id: string, patch: NodeUpdate, canvasRef: string | undefined) => {
+      // Optimistic local update first — keeps the swatch reflecting the
+      // user's choice immediately, regardless of which path we take
+      // below. The autosave will silently drop customData on live ids
+      // (the splitter discards it), so this never round-trips through
+      // the canvas blob — the PATCH below is the only persistence path
+      // for status.
       applyMutation(canvasRef, (c) => updateNode(c, id, patch));
+
+      // For milestone live nodes: a status change is a DB mutation, not
+      // a canvas blob change. Intercept it here and PATCH the milestone
+      // REST endpoint. Position changes (x/y) still flow through the
+      // normal autosave path as `positions[liveId]` overlays.
+      if (
+        id.startsWith("milestone:") &&
+        canvasRef?.startsWith("initiative:")
+      ) {
+        const newStatus = patch.customData?.status;
+        if (
+          newStatus === "NOT_STARTED" ||
+          newStatus === "IN_PROGRESS" ||
+          newStatus === "COMPLETED"
+        ) {
+          const milestoneId = id.slice("milestone:".length);
+          const initiativeId = canvasRef.slice("initiative:".length);
+          void persistMilestoneStatus(milestoneId, initiativeId, newStatus);
+        }
+      }
     },
-    [applyMutation],
+    [applyMutation, persistMilestoneStatus],
   );
   const handleNodeDelete = useCallback(
     (id: string, canvasRef: string | undefined) => {

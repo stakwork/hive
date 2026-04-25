@@ -3,6 +3,8 @@ import type {
   CanvasNode,
   CanvasTheme,
   CategoryDefinition,
+  NodeAction,
+  NodeActionGroup,
   SlotContext,
 } from "system-canvas";
 import { darkTheme, resolveTheme } from "system-canvas";
@@ -317,6 +319,45 @@ function milestoneStatusLabel(node: CanvasNode): string {
   return map[getMilestoneStatus(node)];
 }
 
+/**
+ * Toolbar swatches for the milestone node. Three swatches mirror the
+ * three `MilestoneStatus` Prisma enum values; clicking one writes the
+ * new status into `customData.status` (which the slots read for color).
+ *
+ * Persistence: the canvas autosave path discards customData on live
+ * ids (DB-owned), so the optimistic local change shown by the swatch
+ * does NOT round-trip through the canvas blob. Instead,
+ * `OrgCanvasBackground.handleNodeUpdate` intercepts updates on
+ * `milestone:` ids and PATCHes the milestone REST endpoint, after
+ * which the projector's CANVAS_UPDATED-driven re-projection becomes
+ * the source of truth. See `handleNodeUpdate` for the wiring.
+ *
+ * `isActive` highlights the current status swatch in the toolbar so
+ * the user can see what state the milestone is in at a glance.
+ */
+const milestoneStatusToolbar: NodeActionGroup[] = [
+  {
+    id: "status",
+    label: "Status",
+    kind: "swatches",
+    actions: (
+      ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"] as const
+    ).map<NodeAction>((s) => ({
+      id: `status-${s.toLowerCase()}`,
+      label: {
+        NOT_STARTED: "Not started",
+        IN_PROGRESS: "In progress",
+        COMPLETED: "Completed",
+      }[s],
+      swatch: MILESTONE_COLORS[s],
+      patch: (n: CanvasNode) => ({
+        customData: { ...(n.customData ?? {}), status: s },
+      }),
+      isActive: (n: CanvasNode) => getMilestoneStatus(n) === s,
+    })),
+  },
+];
+
 const milestoneCategory: CategoryDefinition = {
   ...baseCard,
   defaultWidth: MILESTONE_W,
@@ -327,6 +368,12 @@ const milestoneCategory: CategoryDefinition = {
   // only matters for the brief moment before customData is populated.
   stroke: STROKE,
   fill: SURFACE,
+  toolbar: milestoneStatusToolbar,
+  // Milestones are DB rows, not authored canvas content. Hide the
+  // built-in trash button so users don't expect "delete from canvas"
+  // to mean "delete the milestone." Real deletion happens in the
+  // OrgInitiatives table UI.
+  hideToolbarDelete: true,
   slots: {
     // Thin top-edge band tinted by status. Reads at a glance from
     // across the timeline.
