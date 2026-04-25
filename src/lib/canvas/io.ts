@@ -97,8 +97,11 @@ function applyRollup(
 }
 
 /**
- * Apply the user's stored per-canvas position to a live node, if any.
- * Missing keys fall back to whatever the projector supplied.
+ * Apply the user's stored per-canvas overlay to a live node. Position
+ * is always present in an overlay entry; size (`width`/`height`) is
+ * optional and only set when the user has resized the card. Anything
+ * missing falls back to whatever the projector supplied (which itself
+ * falls back to the theme default for the category).
  */
 function applyPosition(
   node: CanvasNode,
@@ -106,7 +109,10 @@ function applyPosition(
 ): CanvasNode {
   const p = positions?.[node.id];
   if (!p) return node;
-  return { ...node, x: p.x, y: p.y };
+  const next: CanvasNode = { ...node, x: p.x, y: p.y };
+  if (p.width !== undefined) next.width = p.width;
+  if (p.height !== undefined) next.height = p.height;
+  return next;
 }
 
 async function projectAll(
@@ -199,18 +205,25 @@ export async function readCanvas(
 
 /**
  * Reduce an incoming merged `CanvasData` to just the authored half +
- * any new position overlays for live ids. Pure; no DB access.
+ * any new overlay entries for live ids. Pure; no DB access.
  *
  * Field ownership:
- *   - authored nodes: kept verbatim.
+ *   - authored nodes: kept verbatim (including their own width/height).
  *   - live-id text / category / customData: silently dropped (owned by
  *     projection; re-derived on read).
- *   - live-id positions: merged into `blob.positions`. Omitting a live
- *     id from the incoming document is **not** an implicit "hide" —
- *     we keep its previous position untouched so that stale or
- *     partial writes (autosave race, agent that forgot to echo) don't
- *     silently lose a user's drag. Use the dedicated hide endpoint to
- *     hide a live node.
+ *   - live-id position (`x`/`y`): merged into `blob.positions[id]`. Always
+ *     present on the incoming node, so always overwritten.
+ *   - live-id size (`width`/`height`): merged into the same overlay
+ *     entry **only when present** on the incoming node. Projectors don't
+ *     emit size, so an absent `width`/`height` means "user has never
+ *     resized — keep using the theme default." Once the user resizes
+ *     once, the size sticks via the overlay (subsequent saves keep
+ *     overwriting with the latest value).
+ *   - Omitting a live id from the incoming document is **not** an
+ *     implicit "hide" — we keep its previous overlay entry untouched so
+ *     that stale or partial writes (autosave race, agent that forgot
+ *     to echo) don't silently lose a user's drag/resize. Use the
+ *     dedicated hide endpoint to hide a live node.
  *   - `hidden`: preserved from `previous`; never touched by this path.
  *
  * NOTE: the pre-cutover plan auto-stamped `ref: "node:<id>"` on
@@ -224,13 +237,27 @@ export function splitCanvas(
   previous: CanvasBlob,
 ): CanvasBlob {
   const nodes: CanvasNode[] = [];
-  const positions: Record<string, { x: number; y: number }> = {
+  const positions: NonNullable<CanvasBlob["positions"]> = {
     ...(previous.positions ?? {}),
   };
 
   for (const n of incoming.nodes ?? []) {
     if (isLiveId(n.id)) {
-      positions[n.id] = { x: n.x, y: n.y };
+      const entry: { x: number; y: number; width?: number; height?: number } = {
+        x: n.x,
+        y: n.y,
+      };
+      // Preserve a previously-saved size if the incoming node didn't
+      // carry one (e.g. a partial agent write that only echoed x/y).
+      // An explicit user resize always rides through with width/height
+      // set; an absent value here means "no change," not "reset to
+      // default." Resetting requires a new code path.
+      const prev = previous.positions?.[n.id];
+      const width = n.width ?? prev?.width;
+      const height = n.height ?? prev?.height;
+      if (width !== undefined) entry.width = width;
+      if (height !== undefined) entry.height = height;
+      positions[n.id] = entry;
       continue;
     }
     nodes.push(n);
