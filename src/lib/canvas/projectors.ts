@@ -9,33 +9,57 @@
  * the cost of a few extra no-op calls — a cost we're happy to pay.
  */
 import { db } from "@/lib/db";
-import type { CanvasNode } from "system-canvas";
+import type { CanvasLane, CanvasNode } from "system-canvas";
 import type { Projector, ProjectionResult, Scope } from "./types";
+import {
+  INITIATIVE_ROW_STEP,
+  INITIATIVE_ROW_X0,
+  INITIATIVE_ROW_Y,
+  MILESTONE_ROW_STEP,
+  MILESTONE_ROW_X0,
+  MILESTONE_ROW_Y,
+  REPO_ROW_STEP,
+  REPO_ROW_X0,
+  REPO_ROW_Y,
+  TIMELINE_COL_W,
+  TIMELINE_COL_X0,
+  WORKSPACE_ROW_STEP,
+  WORKSPACE_ROW_X0,
+  WORKSPACE_ROW_Y,
+} from "./geometry";
 
 // ---------------------------------------------------------------------------
-// Layout: default placement for live nodes when the blob hasn't stored a
+// Default placement for live nodes when the blob hasn't stored a
 // position yet. Deterministic (hash-free: just index-based) so the same
-// workspace always lands in the same slot on first render — no jitter
+// entity always lands in the same slot on first render — no jitter
 // between reads.
+//
+// Card sizes and per-row layout constants live in `./geometry` as the
+// single source of truth shared with the client renderer
+// (`canvas-theme.ts`). Tweaking a card width there ripples through
+// these step values automatically.
 // ---------------------------------------------------------------------------
-
-const WORKSPACE_ROW_Y = 40;
-const WORKSPACE_ROW_X0 = 40;
-const WORKSPACE_ROW_STEP = 260;
 
 function defaultWorkspacePosition(index: number): { x: number; y: number } {
   return { x: WORKSPACE_ROW_X0 + index * WORKSPACE_ROW_STEP, y: WORKSPACE_ROW_Y };
 }
 
-// Repo row on a workspace sub-canvas. Cards are smaller than workspace
-// cards (see `repositoryCategory` in canvas-theme.ts) so the step is
-// correspondingly tighter.
-const REPO_ROW_Y = 40;
-const REPO_ROW_X0 = 40;
-const REPO_ROW_STEP = 240;
-
 function defaultRepoPosition(index: number): { x: number; y: number } {
   return { x: REPO_ROW_X0 + index * REPO_ROW_STEP, y: REPO_ROW_Y };
+}
+
+function defaultInitiativePosition(index: number): { x: number; y: number } {
+  return {
+    x: INITIATIVE_ROW_X0 + index * INITIATIVE_ROW_STEP,
+    y: INITIATIVE_ROW_Y,
+  };
+}
+
+function defaultMilestonePosition(index: number): { x: number; y: number } {
+  return {
+    x: MILESTONE_ROW_X0 + index * MILESTONE_ROW_STEP,
+    y: MILESTONE_ROW_Y,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -152,8 +176,230 @@ export const workspaceProjector: Projector = {
 };
 
 // ---------------------------------------------------------------------------
+// Initiative projector — one card per Initiative on the org root canvas.
+//
+// Sits on the same root scope as workspaces (we keep them as separate
+// projectors so each emission is a single, focused function). The card
+// shows the initiative's name plus a milestone-completion footer
+// (e.g. "3/7 milestones") and progress percent. Carries
+// `ref: "initiative:<cuid>"` so clicking drills into the timeline.
+//
+// Initiative.status (DRAFT/ACTIVE/COMPLETED/ARCHIVED) is intentionally
+// NOT mapped to a canvas color — initiatives can be long-running or
+// neverending, and a status traffic-light would mislead. The table UI
+// in `OrgInitiatives.tsx` is still the place to manage status.
+// ---------------------------------------------------------------------------
+
+export const initiativeProjector: Projector = {
+  async project(scope: Scope, orgId: string): Promise<ProjectionResult> {
+    if (scope.kind !== "root") return { nodes: [] };
+
+    const initiatives = await db.initiative.findMany({
+      where: { orgId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        name: true,
+        // We need both the count (for the denominator) and each
+        // milestone's status (to count the COMPLETED ones in JS — Prisma
+        // can't filter inside `_count` without a relation predicate
+        // that isn't available on this model).
+        milestones: { select: { status: true } },
+      },
+    });
+
+    const nodes: CanvasNode[] = initiatives.map((i, index) => {
+      const liveId = `initiative:${i.id}`;
+      const pos = defaultInitiativePosition(index);
+      const total = i.milestones.length;
+      const done = i.milestones.filter((m) => m.status === "COMPLETED").length;
+
+      // `customData.primary` drives both the progress bar (parsed via
+      // `parsePercent` in canvas-theme.ts) and the first footer metric.
+      // Skip it when there are no milestones — a 0% bar on an empty
+      // initiative reads as "behind", which is wrong; "no milestones
+      // yet" in the secondary slot is more honest.
+      const customData: Record<string, unknown> = {
+        secondary:
+          total === 0
+            ? "no milestones yet"
+            : `${done}/${total} milestone${total === 1 ? "" : "s"}`,
+      };
+      if (total > 0) {
+        customData.primary = `${Math.round((done / total) * 100)}%`;
+      }
+
+      return {
+        id: liveId,
+        type: "text",
+        category: "initiative",
+        text: i.name,
+        ref: liveId,
+        x: pos.x,
+        y: pos.y,
+        customData,
+      };
+    });
+
+    return { nodes };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Milestone-timeline projector — milestones laid out by `sequence` on
+// an initiative sub-canvas (`ref: "initiative:<cuid>"`).
+//
+// Includes an org-ownership guard: we look up the initiative with the
+// orgId in the where clause to prevent cross-org reads via cuid
+// guessing (the ref travels through the URL and isn't validated against
+// orgId otherwise — same pattern as workspaceProjector).
+//
+// Also emits four time-window **columns** as decorative background
+// chrome:
+//   - Past Due — overdue, not completed
+//   - This Quarter — calendar quarter containing today
+//   - Next Quarter — the calendar quarter after that
+//   - Later — anything beyond next quarter
+//
+// Columns are positional reference frames, NOT snap targets. Cards
+// keep their projector-assigned x positions (sequence-based) and
+// users drag freely; the columns just paint background bands so users
+// can think in time.
+// ---------------------------------------------------------------------------
+
+/**
+ * Calendar-quarter boundary helper. Returns the index of the quarter
+ * (0-3) and the year, so we can compute "next quarter" cleanly across
+ * year boundaries.
+ */
+function quarterOf(d: Date): { year: number; quarter: 0 | 1 | 2 | 3 } {
+  const m = d.getMonth(); // 0..11
+  return {
+    year: d.getFullYear(),
+    quarter: Math.floor(m / 3) as 0 | 1 | 2 | 3,
+  };
+}
+
+/** Short label for a (year, quarter) tuple, e.g. "Q3 2026". */
+function quarterLabel(year: number, quarter: 0 | 1 | 2 | 3): string {
+  return `Q${quarter + 1} ${year}`;
+}
+
+/**
+ * Emit the four time-window columns for the milestone timeline.
+ * Pure: takes `now` so tests can pin the date and assert against
+ * stable column labels.
+ */
+export function buildTimelineColumns(now: Date): CanvasLane[] {
+  const { year: y, quarter: q } = quarterOf(now);
+  const nextQ = ((q + 1) % 4) as 0 | 1 | 2 | 3;
+  const nextY = q === 3 ? y + 1 : y;
+  return [
+    {
+      id: "past-due",
+      label: "Past Due",
+      start: TIMELINE_COL_X0 + 0 * TIMELINE_COL_W,
+      size: TIMELINE_COL_W,
+    },
+    {
+      id: "this-quarter",
+      label: `This Quarter · ${quarterLabel(y, q)}`,
+      start: TIMELINE_COL_X0 + 1 * TIMELINE_COL_W,
+      size: TIMELINE_COL_W,
+    },
+    {
+      id: "next-quarter",
+      label: `Next Quarter · ${quarterLabel(nextY, nextQ)}`,
+      start: TIMELINE_COL_X0 + 2 * TIMELINE_COL_W,
+      size: TIMELINE_COL_W,
+    },
+    {
+      id: "later",
+      label: "Later",
+      start: TIMELINE_COL_X0 + 3 * TIMELINE_COL_W,
+      size: TIMELINE_COL_W,
+    },
+  ];
+}
+
+export const milestoneTimelineProjector: Projector = {
+  async project(scope: Scope, orgId: string): Promise<ProjectionResult> {
+    if (scope.kind !== "initiative") return { nodes: [] };
+
+    const initiative = await db.initiative.findFirst({
+      where: { id: scope.initiativeId, orgId },
+      select: { id: true },
+    });
+    if (!initiative) return { nodes: [] };
+
+    const milestones = await db.milestone.findMany({
+      where: { initiativeId: initiative.id },
+      orderBy: { sequence: "asc" },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        sequence: true,
+        dueDate: true,
+        _count: { select: { features: true } },
+      },
+    });
+
+    const nodes: CanvasNode[] = milestones.map((m, index) => {
+      const liveId = `milestone:${m.id}`;
+      const pos = defaultMilestonePosition(index);
+      // Defensive `_count` access for the same reason as workspaceProjector
+      // (production Prisma always returns it; some test mocks omit it).
+      const featureCount = m._count?.features ?? 0;
+
+      // Footer: "Due Mar 4 · 2 features", or just one half if the other
+      // is missing. Keep it terse — the milestone card is small.
+      const footerParts: string[] = [];
+      if (m.dueDate) {
+        footerParts.push(
+          `Due ${m.dueDate.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })}`,
+        );
+      }
+      if (featureCount > 0) {
+        footerParts.push(
+          `${featureCount} feature${featureCount === 1 ? "" : "s"}`,
+        );
+      }
+
+      return {
+        id: liveId,
+        type: "text",
+        category: "milestone",
+        text: m.name,
+        // No `ref` in v1 — drilling into a milestone (to see its
+        // features/tasks) is v2 work.
+        x: pos.x,
+        y: pos.y,
+        customData: {
+          // Raw enum value; the theme maps it to a color
+          // (NOT_STARTED → muted, IN_PROGRESS → blue, COMPLETED → green).
+          status: m.status,
+          sequence: m.sequence,
+          ...(footerParts.length > 0 && { secondary: footerParts.join(" · ") }),
+        },
+      };
+    });
+
+    return { nodes, columns: buildTimelineColumns(new Date()) };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Registry. Order is irrelevant — each projector gates on `scope.kind`.
 // Add new projectors (authoredProjector, ...) here.
 // ---------------------------------------------------------------------------
 
-export const PROJECTORS: Projector[] = [rootProjector, workspaceProjector];
+export const PROJECTORS: Projector[] = [
+  rootProjector,
+  workspaceProjector,
+  initiativeProjector,
+  milestoneTimelineProjector,
+];
