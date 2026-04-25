@@ -270,21 +270,37 @@ If we want a true cleanup later, write a one-off script to delete `category=="ob
 - **No drillable authored nodes.** Replaced by drillable projected entities.
 - **No cross-scope edges.** An edge on the initiative timeline is for that timeline.
 - **No `feature:<id>` projection** anywhere yet (the prefix is reserved).
-- **No reordering of milestones from the canvas.** Reorder happens in the table UI; the canvas re-projects after.
 
 ## v2 follow-ups
 
 In rough priority order:
 
-1. **Milestone sub-canvas** projecting linked Features and (optionally) their Tasks. `ref: "milestone:<cuid>"`. Each Feature appears as a `feature:<id>` node; clicking drills into the existing feature page or a feature-detail sub-canvas. **The agent's main job here is documentation:** linking existing Features to the right Milestones, drawing dependency edges, leaving status notes — annotating and tracking the structure humans created.
-2. **Agent annotation tools** (read-only over structure, write over annotation):
+1. **Scope-aware `+` menu filtering.** Today the `+` menu shows every user-creatable category regardless of which canvas the user is looking at. The interception in `handleNodeAdd` defensively no-ops when `milestone` is picked on root (or `initiative` on a sub-canvas), but the *menu options* are still presented, which is misleading. Fix: thread the current scope (already tracked as `currentRef` for the HiddenLivePill gate) into `renderAddNodeButton` and filter:
+   - Root canvas (`currentRef === ""`) — show `initiative`, `note`, `decision`, `text`. Hide `milestone`.
+   - Initiative timeline (`currentRef.startsWith("initiative:")`) — show `milestone`, `note`, `decision`, `text`. Hide `initiative`.
+   - Workspace sub-canvas (`currentRef.startsWith("ws:")`) — show `note`, `decision`, `text`. Hide `initiative` and `milestone`.
+   - Cleanest path is a small helper `categoryAllowedOnScope(categoryId, ref): boolean` colocated with `canvas-categories.ts`. The user-side filter and the existing defensive guards in `startInitiativeCreate` / `startMilestoneCreate` then share one rule.
+
+2. **Reorder milestones by dragging on the timeline.** Today the canvas only persists position overlays for live ids — sequence stays whatever the projector emitted. Goal: when a user drops a milestone card to the **left or right of an adjacent milestone**, recompute the sequence numbers and PATCH the milestone reorder endpoint (`POST /initiatives/:id/milestones/reorder`, already wired with Pusher). Sketch:
+   - In `handleNodeUpdate` (or a dedicated `onNodeDragEnd` if the library exposes one), detect a `milestone:` id whose `x` crossed a sibling's `x`. Compute the new sequence ordering by sorting milestones by their current canvas `x`.
+   - Fire the reorder API call. Pusher emits `CANVAS_UPDATED` for `initiative:<id>` and the projector re-emits with new `sequence` values; the next default-placement render snaps the cards to their new home, but the user's positions persist as `positions[liveId]` overlays so the canvas stays where they put it.
+   - Edge case: if a card is dragged way off the timeline (e.g. into the "Past Due" column purely for spatial annotation), don't change sequence. Heuristic: only renumber when the dragged card's center crosses a sibling's center on the x-axis.
+   - Stretch: also drag-to-change-due-date based on which time-window column the milestone is dropped in. Cleaner side-channel, but requires coupling sequence and due-date semantics — defer.
+
+3. **Milestone sub-canvas** projecting linked Features and (optionally) their Tasks. `ref: "milestone:<cuid>"`. Each Feature appears as a `feature:<id>` node; clicking drills into the existing feature page or a feature-detail sub-canvas. **The agent's main job here is documentation:** linking existing Features to the right Milestones, drawing dependency edges, leaving status notes — annotating and tracking the structure humans created.
+
+4. **Agent annotation tools** (read-only over structure, write over annotation):
    - `link_feature_to_milestone(featureId, milestoneId)` — sets `Feature.milestoneId`. Annotation, not creation.
    - `unlink_feature_from_milestone(featureId)`.
    - These let the agent help organize the Features humans have already created, without ever creating Features or Milestones themselves.
-3. **"Promote a note to a Milestone"** — a button on an authored note that opens the milestone create-dialog with the note text pre-filled. The roadmap-is-the-product pattern's missing primitive.
-4. **Workspace rollup** — workspace cards on the root canvas could carry an aggregate "N initiatives in flight" footer. Same pattern as the milestone-count footer on initiatives.
-5. **Parent-canvas refresh on child edits** — when a milestone changes, the root initiative card's rollup needs refreshing. The Pusher fan-out (root + initiative) handles this; verify in practice.
-6. **Live-node edit drawer** — double-clicking an initiative or milestone opens an edit drawer (or routes to the table UI's edit dialog). Not wired yet.
+
+5. **"Promote a note to a Milestone"** — a button on an authored note that opens the milestone create-dialog with the note text pre-filled. The roadmap-is-the-product pattern's missing primitive.
+
+6. **Workspace rollup** — workspace cards on the root canvas could carry an aggregate "N initiatives in flight" footer. Same pattern as the milestone-count footer on initiatives.
+
+7. **Parent-canvas refresh on child edits** — when a milestone changes, the root initiative card's rollup needs refreshing. The Pusher fan-out (root + initiative) handles this; verify in practice.
+
+8. **Live-node edit drawer** — double-clicking an initiative or milestone opens an edit drawer (or routes to the table UI's edit dialog). Not wired yet.
 
 ## Success criteria
 
