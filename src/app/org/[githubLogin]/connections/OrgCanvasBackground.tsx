@@ -618,18 +618,29 @@ export function OrgCanvasBackground({
         return;
       }
       const created: InitiativeResponse = await res.json();
-      // Pin the new initiative to the click position. Fire-and-forget;
-      // if it fails, the projector will default-place and the user can
-      // drag it.
-      void savePositionForLiveId(
+      // Pin the new initiative to the click position before refetching
+      // so the refetched canvas already has the position overlay
+      // applied. If the position write fails, the projector falls back
+      // to default placement and the user can drag.
+      await savePositionForLiveId(
         pendingAdd.canvasRef,
         `initiative:${created.id}`,
         pendingAdd.x,
         pendingAdd.y,
       );
-      // The Pusher CANVAS_UPDATED event from the POST will trigger the
-      // root refetch and the new card will appear. We don't refetch
-      // manually here — keeping a single source of truth.
+      // Local refetch: don't wait for the Pusher fan-out (300ms delay
+      // + WebSocket round-trip + dirtyRef guard). The user just took
+      // an explicit action; the new card should appear immediately.
+      // Pusher still handles other tabs / users.
+      try {
+        const data = await fetchRoot(githubLogin);
+        setRoot(data);
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] refetch after create initiative failed",
+          err,
+        );
+      }
     },
     [githubLogin, pendingAdd, savePositionForLiveId],
   );
@@ -663,12 +674,25 @@ export function OrgCanvasBackground({
         return { error: "Failed to create milestone." };
       }
       const created: MilestoneResponse = await res.json();
-      void savePositionForLiveId(
-        pendingAdd.canvasRef,
+      // Same pattern as initiative create: position-save first so the
+      // refetch already reflects it, then refresh the timeline locally
+      // for snappy UX. Pusher still notifies other tabs.
+      const subRef = pendingAdd.canvasRef;
+      await savePositionForLiveId(
+        subRef,
         `milestone:${created.id}`,
         pendingAdd.x,
         pendingAdd.y,
       );
+      try {
+        const data = await fetchSub(githubLogin, subRef);
+        setSubCanvases((prev) => ({ ...prev, [subRef]: data }));
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] refetch after create milestone failed",
+          err,
+        );
+      }
       return {};
     },
     [githubLogin, pendingAdd, savePositionForLiveId],

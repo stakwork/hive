@@ -88,19 +88,6 @@ const baseCard = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Accepts "38%", 0.38, and 38 — all coerce to 0.38. Returns 0 otherwise. */
-function parsePercent(raw: unknown): number {
-  if (typeof raw === "number") return raw > 1 ? raw / 100 : raw;
-  if (typeof raw === "string") {
-    const m = raw.match(/(-?\d+(?:\.\d+)?)/);
-    if (!m) return 0;
-    const n = Number(m[1]);
-    if (Number.isNaN(n)) return 0;
-    return n > 1 ? n / 100 : n;
-  }
-  return 0;
-}
-
 /** Rough monospace glyph-width estimate, good enough for relative placement. */
 function estimateTextWidth(text: string, fontSize: number): number {
   return text.length * fontSize * 0.62;
@@ -168,13 +155,21 @@ function renderMetricsFooter(
 //
 // An initiative carries:
 //   - `text` — the initiative name (DB).
-//   - `customData.primary` → progress bar fill + first footer metric.
-//     Computed by the projector as percent of milestones COMPLETED.
-//   - `customData.secondary` → second footer metric ("3/7 milestones").
+//   - `customData.primary` → progress percent ("50%"), shown in the
+//     footer alongside the milestone count.
+//   - `customData.secondary` → milestone count ("3/7 milestones") or
+//     "no milestones yet" when empty.
 //
 // No status pill, no border-color-by-status. Initiatives can run for
 // quarters or be open-ended; a traffic-light would lie. The border
 // stays the default sky-blue accent so they read as a coherent layer.
+//
+// We deliberately do NOT render a progress bar in `bodyTop`: the body
+// region is shared with the title text, and a bar there overlaps the
+// initiative name (the title doesn't shrink to make room for it the
+// way it does when there's a `topRight` pill). The footer carries the
+// numeric form ("50% · 3/7 milestones") instead — same information,
+// no visual collision.
 //
 // `ref` is set by the projector to `initiative:<id>`, which makes the
 // card clickable (drill-in) — that wiring lives in the system-canvas
@@ -189,10 +184,6 @@ const initiativeCategory: CategoryDefinition = {
   fill: hexAlpha(ACCENT.initiative, 0.05),
   slots: {
     header: { kind: "text", value: "INITIATIVE", color: ACCENT.initiative },
-    bodyTop: {
-      kind: "progress",
-      value: (ctx: SlotContext) => parsePercent(ctx.node.customData?.primary),
-    },
     footer: {
       kind: "custom",
       render: (ctx: SlotContext) =>
