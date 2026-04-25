@@ -42,12 +42,20 @@ export interface CanvasBlob {
    */
   edges: CanvasEdge[];
   /**
-   * Per-canvas placement for live nodes. Key = live id (e.g. `ws:abc`);
-   * value = `{ x, y }`. A missing key means "use the projector's
-   * default placement." Never contains authored ids — those nodes carry
-   * their own `x` / `y` directly.
+   * Per-canvas overlay for live nodes. Key = live id (e.g. `ws:abc`);
+   * value = `{ x, y, width?, height? }`. A missing key means "use the
+   * projector's defaults." Width/height are optional — set only when
+   * the user has explicitly resized the card; otherwise the renderer
+   * falls back to the category's theme default. Never contains
+   * authored ids: those nodes carry their own coords/size directly.
+   *
+   * Field name kept as `positions` for backward-compat with existing
+   * blobs; semantically it's now "live-node overlay."
    */
-  positions?: Record<string, { x: number; y: number }>;
+  positions?: Record<
+    string,
+    { x: number; y: number; width?: number; height?: number }
+  >;
   /**
    * Live nodes the user has chosen to hide on this canvas. Absence from
    * this list means visible. Unrelated to deletion — hidden entities
