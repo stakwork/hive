@@ -89,6 +89,8 @@ model User {
   lightningPayments        LightningPayment[]
   workspaceAccessRequests  WorkspaceAccessRequest[]
   resolvedAccessRequests   WorkspaceAccessRequest[] @relation("AccessRequestResolver")
+  initiativeAssignments    Initiative[]            @relation("InitiativeAssignee")
+  milestoneAssignments     Milestone[]             @relation("MilestoneAssignee")
 
   @@index([createdAt])
   @@index([deleted])
@@ -157,6 +159,7 @@ model SourceControlOrg {
   sharedConversations  SharedConversation[]
   connections          Connection[]
   canvases             Canvas[]
+  initiatives          Initiative[]
 
   @@index([githubLogin])
   @@index([githubInstallationId])
@@ -706,12 +709,14 @@ model Feature {
   isFastTrack         Boolean               @default(false) @map("is_fast_track")
   planUpdatedAt       DateTime?             @map("plan_updated_at")
   model               String?
+  milestoneId         String?               @map("milestone_id")
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
   assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])
   createdBy           User                  @relation("FeatureCreator", fields: [createdById], references: [id])
   updatedBy           User                  @relation("FeatureUpdater", fields: [updatedById], references: [id])
   workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  milestone           Milestone?            @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
   notifications       NotificationTrigger[]
   phases              Phase[]
   scorerDigest        ScorerDigest?
@@ -726,6 +731,7 @@ model Feature {
   @@index([createdById])
   @@index([status])
   @@index([deleted])
+  @@index([milestoneId])
   @@map("features")
 }
 
@@ -1496,4 +1502,58 @@ model ScorerInsight {
   @@index([createdAt])
   @@index([dismissedAt])
   @@map("scorer_insights")
+}
+
+enum InitiativeStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum MilestoneStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model Initiative {
+  id          String           @id @default(cuid())
+  orgId       String           @map("org_id")
+  name        String
+  description String?
+  status      InitiativeStatus @default(DRAFT)
+  assigneeId  String?          @map("assignee_id")
+  startDate   DateTime?        @map("start_date")
+  targetDate  DateTime?        @map("target_date")
+  completedAt DateTime?        @map("completed_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  org         SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  assignee    User?            @relation("InitiativeAssignee", fields: [assigneeId], references: [id])
+  milestones  Milestone[]
+
+  @@index([orgId])
+  @@map("initiatives")
+}
+
+model Milestone {
+  id           String          @id @default(cuid())
+  initiativeId String          @map("initiative_id")
+  name         String
+  description  String?
+  status       MilestoneStatus @default(NOT_STARTED)
+  sequence     Int
+  dueDate      DateTime?       @map("due_date")
+  completedAt  DateTime?       @map("completed_at")
+  assigneeId   String?         @map("assignee_id")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+  initiative   Initiative      @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  assignee     User?           @relation("MilestoneAssignee", fields: [assigneeId], references: [id])
+  features     Feature[]
+
+  @@unique([initiativeId, sequence])
+  @@index([initiativeId])
+  @@map("milestones")
 }
