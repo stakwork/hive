@@ -6,7 +6,24 @@ import { Prisma } from "@prisma/client";
 
 const MILESTONE_INCLUDE = {
   assignee: { select: { id: true, name: true } },
+  features: {
+    select: {
+      id: true,
+      title: true,
+      workspace: { select: { id: true, name: true } },
+    },
+    take: 1,
+  },
 } as const;
+
+type MilestoneWithRelations = {
+  features: { id: string; title: string; workspace: { id: string; name: string } }[];
+  [key: string]: unknown;
+};
+
+function serializeMilestone({ features, ...rest }: MilestoneWithRelations) {
+  return { ...rest, feature: features[0] ?? null };
+}
 
 export async function POST(
   request: NextRequest,
@@ -62,7 +79,7 @@ export async function POST(
       include: MILESTONE_INCLUDE,
     });
 
-    return NextResponse.json(milestone, { status: 201 });
+    return NextResponse.json(serializeMilestone(milestone as MilestoneWithRelations), { status: 201 });
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
