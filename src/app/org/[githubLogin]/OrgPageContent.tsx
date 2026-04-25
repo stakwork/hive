@@ -11,6 +11,7 @@ import { Building2, Calendar, ExternalLink, Link2, Pencil, Users } from "lucide-
 import Link from "next/link";
 import { GraphPortal } from "@/components/GraphPortal";
 import { OrgChat } from "./OrgChat";
+import { OrgInitiatives } from "./OrgInitiatives";
 import { OrgSchematic } from "./OrgSchematic";
 import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
@@ -394,6 +395,7 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
               <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
               <TabsTrigger value="chat">Chat</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
+              <TabsTrigger value="initiatives">Initiatives</TabsTrigger>
               <TabsTrigger value="schematic">Schematic</TabsTrigger>
               <TabsTrigger value="graph">Graph</TabsTrigger>
             </TabsList>
@@ -483,6 +485,11 @@ export function OrgPageContent({ githubLogin, orgName, avatarUrl }: OrgPageConte
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          {/* Initiatives Tab */}
+          <TabsContent value="initiatives">
+            <OrgInitiatives githubLogin={githubLogin} />
           </TabsContent>
 
         </div>
