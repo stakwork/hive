@@ -47,10 +47,24 @@ const ACCENT = {
   // below the teal workspace container so a repo on a workspace sub-
   // canvas is legibly "part of" its workspace without color-clashing.
   repository: "#818cf8",
-  // Sky-blue — reads as "strategic / ongoing." Distinct from the
-  // milestone IN_PROGRESS blue (slightly lighter) and the workspace
-  // teal (more saturated cyan).
-  initiative: "#7dd3fc",
+  // Soft violet — reads as "strategic / aspirational." Borrows the
+  // showcase "12-month vision" palette: a gradient blue→indigo title
+  // sits inside a faint-purple-bordered card. Distinct from the
+  // milestone IN_PROGRESS sky-blue and the workspace teal.
+  initiative: "#a78bfa",
+} as const;
+
+/**
+ * Sky-blue → indigo gradient painted across the initiative title text.
+ * Pulled from the showcase's "12-month vision" card so the card reads
+ * as "the big strategic frame" — the title is the visual centerpiece
+ * of the card, not the kicker or the metric. Cooler on the left,
+ * resolves into a violet that's close enough to the card's accent
+ * color that the shift reads as subtle.
+ */
+const INITIATIVE_GRADIENT = {
+  from: "#60a5fa", // sky-400
+  to: "#818cf8", // indigo-400
 } as const;
 
 /**
@@ -77,6 +91,12 @@ const MONO_FONT =
 const CARD_W = 240;
 const CARD_H = 104;
 const SMALL_W = 220;
+
+// Initiative cards run wider and taller than standard so the gradient
+// title (rendered in `body` at ~135% of base font) has room to breathe.
+// Mirrors the showcase "12-month vision" card dimensions.
+const INITIATIVE_W = 340;
+const INITIATIVE_H = 116;
 
 const baseCard = {
   fill: SURFACE,
@@ -150,40 +170,103 @@ function renderMetricsFooter(
 }
 
 // ---------------------------------------------------------------------------
-// Initiative card — DB-projected, shows milestone-completion progress
+// Initiative card — DB-projected, "vision"-style strategic frame
 // ---------------------------------------------------------------------------
 //
-// An initiative carries:
-//   - `text` — the initiative name (DB).
-//   - `customData.primary` → progress percent ("50%"), shown in the
-//     footer alongside the milestone count.
-//   - `customData.secondary` → milestone count ("3/7 milestones") or
-//     "no milestones yet" when empty.
+// Visual model borrowed from the showcase's "12-month vision" card:
+// a wider/taller box, a faint purple chrome (border + fill), a small
+// uppercase kicker ("INITIATIVE"), and a **gradient title** rendered
+// at ~135% of base font in the body region. The title IS the card —
+// not a metric or a status pill.
 //
-// No status pill, no border-color-by-status. Initiatives can run for
-// quarters or be open-ended; a traffic-light would lie. The border
-// stays the default sky-blue accent so they read as a coherent layer.
+// `text` carries the initiative name (DB). `\n` in the name renders
+// as a line break in the gradient title, so longer initiatives can
+// wrap intentionally; we do not auto-wrap (auto-wrap would fight the
+// projector's deterministic layout).
 //
-// We deliberately do NOT render a progress bar in `bodyTop`: the body
-// region is shared with the title text, and a bar there overlaps the
-// initiative name (the title doesn't shrink to make room for it the
-// way it does when there's a `topRight` pill). The footer carries the
-// numeric form ("50% · 3/7 milestones") instead — same information,
-// no visual collision.
+// `customData.primary` (percent) and `customData.secondary` (count)
+// land in the footer via `renderMetricsFooter`, the same renderer
+// used for the workspace card so the two layers read as one family.
+//
+// No status pill, no border-by-status, no progress bar. Initiatives
+// can run for quarters or be open-ended; a traffic-light would lie,
+// and a bodyTop progress bar collides with the title text.
 //
 // `ref` is set by the projector to `initiative:<id>`, which makes the
 // card clickable (drill-in) — that wiring lives in the system-canvas
 // library, not the theme.
 
+/**
+ * Render the initiative title in the `body` region with a sky-blue →
+ * indigo gradient fill, sized up to ~135% of the theme's base font.
+ * Reads from `node.text` so the projector populates it as the
+ * Initiative.name. Honors `\n` as a line break.
+ *
+ * Each node gets its own `<linearGradient>` def keyed by node id —
+ * cheap, and avoids the "all gradients share one rect" bug you'd hit
+ * if we used a single shared id across the SVG.
+ */
+function renderInitiativeBody(ctx: SlotContext): React.ReactNode {
+  const { region, node, theme } = ctx;
+  const raw = node.text ?? "";
+  const lines = raw.split("\n").filter(Boolean);
+  if (lines.length === 0) return null;
+  const fs = Math.round(theme.node.fontSize * 1.35);
+  const lineHeight = fs + 4;
+  const font = theme.node.labelFont ?? theme.node.fontFamily;
+  const baseY = region.y + fs;
+  const gradId = `initiative-title-grad-${node.id}`;
+  return createElement(
+    "g",
+    { pointerEvents: "none" },
+    createElement(
+      "defs",
+      null,
+      createElement(
+        "linearGradient",
+        { id: gradId, x1: "0", y1: "0", x2: "1", y2: "0" },
+        createElement("stop", {
+          offset: "0%",
+          stopColor: INITIATIVE_GRADIENT.from,
+        }),
+        createElement("stop", {
+          offset: "100%",
+          stopColor: INITIATIVE_GRADIENT.to,
+        }),
+      ),
+    ),
+    ...lines.map((line, i) =>
+      createElement(
+        "text",
+        {
+          key: i,
+          x: region.x,
+          y: baseY + i * lineHeight,
+          fill: `url(#${gradId})`,
+          fontSize: fs,
+          fontWeight: 600,
+          fontFamily: font,
+          pointerEvents: "none",
+        },
+        line,
+      ),
+    ),
+  );
+}
+
 const initiativeCategory: CategoryDefinition = {
   ...baseCard,
-  defaultWidth: CARD_W,
-  defaultHeight: CARD_H,
+  defaultWidth: INITIATIVE_W,
+  defaultHeight: INITIATIVE_H,
   type: "text",
-  stroke: hexAlpha(ACCENT.initiative, 0.55),
+  stroke: hexAlpha(ACCENT.initiative, 0.35),
   fill: hexAlpha(ACCENT.initiative, 0.05),
   slots: {
     header: { kind: "text", value: "INITIATIVE", color: ACCENT.initiative },
+    body: {
+      kind: "custom",
+      render: (ctx: SlotContext) => renderInitiativeBody(ctx),
+    },
     footer: {
       kind: "custom",
       render: (ctx: SlotContext) =>

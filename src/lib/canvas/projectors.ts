@@ -39,11 +39,13 @@ function defaultRepoPosition(index: number): { x: number; y: number } {
 }
 
 // Initiative row on the org root canvas, sitting one band below the
-// workspace row. Same horizontal step as workspaces so the two layers
-// align visually when there's a 1:N relationship between them.
+// workspace row. Step is wider than the workspace row's because the
+// initiative card itself is wider (340px vs 240px — see
+// `INITIATIVE_W` in canvas-theme.ts) — the gradient "vision-style"
+// title wants room to breathe.
 const INITIATIVE_ROW_Y = 220;
 const INITIATIVE_ROW_X0 = 40;
-const INITIATIVE_ROW_STEP = 260;
+const INITIATIVE_ROW_STEP = 360;
 
 function defaultInitiativePosition(index: number): { x: number; y: number } {
   return {
