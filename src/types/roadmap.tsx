@@ -386,6 +386,7 @@ export interface UpdateFeatureRequest {
   status?: FeatureStatus;
   priority?: FeaturePriority;
   assigneeId?: string | null;
+  milestoneId?: string | null;
 }
 
 export interface CreateUserStoryRequest {
