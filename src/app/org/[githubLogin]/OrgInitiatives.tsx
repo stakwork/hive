@@ -54,11 +54,14 @@ import {
   ChevronDown,
   ChevronRight,
   GripVertical,
+  Link2,
   MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
+import { LinkFeatureModal } from "./LinkFeatureModal";
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 
@@ -425,12 +428,14 @@ function MilestoneDialog({
 
 interface SortableMilestoneRowProps {
   milestone: MilestoneResponse;
-  siblingSequences: number[]; // all sequences in the initiative, excluding this milestone's own
+  siblingSequences: number[];
   githubLogin: string;
   initiativeId: string;
   onEdit: (m: MilestoneResponse) => void;
   onDelete: (m: MilestoneResponse) => void;
   onMilestoneUpdated: (m: MilestoneResponse) => void;
+  onLinkFeature: (m: MilestoneResponse) => void;
+  onUnlinkFeature: (m: MilestoneResponse) => void;
   onInsertBefore: (m: MilestoneResponse) => void;
   onInsertAfter: (m: MilestoneResponse) => void;
 }
@@ -443,6 +448,8 @@ function SortableMilestoneRow({
   onEdit,
   onDelete,
   onMilestoneUpdated,
+  onLinkFeature,
+  onUnlinkFeature,
   onInsertBefore,
   onInsertAfter,
 }: SortableMilestoneRowProps) {
@@ -456,13 +463,11 @@ function SortableMilestoneRow({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  // Inline sequence editing state
   const [seqValue, setSeqValue] = useState(String(milestone.sequence));
   const [seqError, setSeqError] = useState<string | null>(null);
   const [seqFocused, setSeqFocused] = useState(false);
   const prevSeqRef = useRef(String(milestone.sequence));
 
-  // Keep seqValue in sync when milestone prop changes (e.g. after drag reorder)
   useEffect(() => {
     if (!seqFocused) {
       setSeqValue(String(milestone.sequence));
@@ -489,7 +494,6 @@ function SortableMilestoneRow({
     }
     setSeqError(null);
 
-    // Optimistic update
     onMilestoneUpdated({ ...milestone, sequence: newSeq });
     prevSeqRef.current = String(newSeq);
 
@@ -587,7 +591,35 @@ function SortableMilestoneRow({
 
       {/* Actions */}
       <TableCell>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
+          {milestone.feature ? (
+            <div className="flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-xs">
+              <span className="text-blue-900 dark:text-blue-100 font-medium max-w-[100px] truncate">
+                {milestone.feature.title}
+              </span>
+              <span className="text-blue-600 dark:text-blue-400 mx-0.5">·</span>
+              <span className="text-blue-700 dark:text-blue-300 max-w-[70px] truncate">
+                {milestone.feature.workspace.name}
+              </span>
+              <button
+                className="ml-1 text-blue-500 hover:text-blue-700"
+                title="Unlink feature"
+                onClick={() => onUnlinkFeature(milestone)}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              title="Link feature"
+              onClick={() => onLinkFeature(milestone)}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -648,11 +680,10 @@ function MilestonesTable({
   const [editTarget, setEditTarget] = useState<MilestoneResponse | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MilestoneResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<MilestoneResponse | null>(null);
 
-  // Insert before/after state
   const [insertDialogOpen, setInsertDialogOpen] = useState(false);
   const [insertSequence, setInsertSequence] = useState<number | undefined>(undefined);
-  // usedSequences for insert dialog reflects the shifted state (after making room)
   const [insertUsedSequences, setInsertUsedSequences] = useState<number[]>([]);
 
   const sorted = [...initiative.milestones].sort((a, b) => a.sequence - b.sequence);
@@ -727,6 +758,18 @@ function MilestonesTable({
     }
   };
 
+  const handleUnlink = async (m: MilestoneResponse) => {
+    const res = await fetch(`${baseUrl}/${m.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ featureId: null }),
+    });
+    if (res.ok) {
+      const updated: MilestoneResponse = await res.json();
+      onMilestoneUpdated(initiative.id, updated);
+    }
+  };
+
   const handleInsertBefore = async (m: MilestoneResponse) => {
     const insertPos = m.sequence;
     await shiftAndOpenInsert(insertPos);
@@ -738,7 +781,6 @@ function MilestonesTable({
   };
 
   const shiftAndOpenInsert = async (insertPos: number) => {
-    // Milestones that need to shift up (sequence >= insertPos)
     const toShift = sorted.filter((m) => m.sequence >= insertPos);
 
     if (toShift.length > 0) {
@@ -746,7 +788,6 @@ function MilestonesTable({
         m.sequence >= insertPos ? { ...m, sequence: m.sequence + 1 } : m
       );
 
-      // Optimistically update
       onMilestonesReordered(initiative.id, shifted);
 
       try {
@@ -758,13 +799,11 @@ function MilestonesTable({
           }),
         });
         if (!res.ok) {
-          // Revert
           onMilestonesReordered(initiative.id, sorted);
           return;
         }
         const updated: MilestoneResponse[] = await res.json();
         onMilestonesReordered(initiative.id, updated);
-        // Build usedSequences from the updated list (insertPos is now free)
         setInsertUsedSequences(updated.map((m) => m.sequence));
       } catch {
         onMilestonesReordered(initiative.id, sorted);
@@ -778,10 +817,7 @@ function MilestonesTable({
     setInsertDialogOpen(true);
   };
 
-  // usedSequences for add dialog: all existing sequences
   const addUsedSequences = sorted.map((m) => m.sequence);
-
-  // usedSequences for edit dialog: all sequences except the current one being edited
   const editUsedSequences = editTarget
     ? sorted.filter((m) => m.id !== editTarget.id).map((m) => m.sequence)
     : [];
@@ -819,6 +855,8 @@ function MilestonesTable({
                     onEdit={setEditTarget}
                     onDelete={setDeleteTarget}
                     onMilestoneUpdated={(updated) => onMilestoneUpdated(initiative.id, updated)}
+                    onLinkFeature={setLinkTarget}
+                    onUnlinkFeature={handleUnlink}
                     onInsertBefore={handleInsertBefore}
                     onInsertAfter={handleInsertAfter}
                   />
@@ -888,6 +926,18 @@ function MilestonesTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <LinkFeatureModal
+        open={!!linkTarget}
+        onClose={() => setLinkTarget(null)}
+        githubLogin={githubLogin}
+        initiativeId={initiative.id}
+        milestoneId={linkTarget?.id ?? ""}
+        onLinked={(updated) => {
+          onMilestoneUpdated(initiative.id, updated);
+          setLinkTarget(null);
+        }}
+      />
     </div>
   );
 }
@@ -904,7 +954,6 @@ export function OrgInitiatives({ githubLogin }: OrgInitiativesProps) {
   const [error, setError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-  // Initiative dialog state
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<InitiativeResponse | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InitiativeResponse | null>(null);
@@ -1005,7 +1054,6 @@ export function OrgInitiatives({ githubLogin }: OrgInitiativesProps) {
     );
   };
 
-  // Receives the full updated sibling list after ?renumber=true delete
   const handleMilestoneDeleted = (initiativeId: string, updatedSiblings: MilestoneResponse[]) => {
     setInitiatives((prev) =>
       prev.map((i) =>
