@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
+import { notifyCanvasUpdatedByLogin } from "@/lib/canvas";
 
 const INITIATIVE_INCLUDE = {
   assignee: { select: { id: true, name: true } },
@@ -79,6 +80,12 @@ export async function POST(
         ...(completedAt !== undefined && { completedAt: completedAt ? new Date(completedAt) : null }),
       },
       include: INITIATIVE_INCLUDE,
+    });
+
+    // Tell open canvases the root projection changed. Fire-and-forget;
+    // a Pusher hiccup mustn't fail the user-visible POST.
+    void notifyCanvasUpdatedByLogin(githubLogin, "", "initiative-created", {
+      initiativeId: initiative.id,
     });
 
     return NextResponse.json(initiative, { status: 201 });

@@ -14,11 +14,12 @@ export {
   readHiddenLive,
 } from "./io";
 export type { HiddenLiveEntry } from "./io";
-export {
-  summarizeChildObjectives,
-  computeChildRollups,
-} from "./rollups";
 export { parseScope, isLiveId, ROOT_REF } from "./scope";
+export {
+  notifyCanvasUpdated,
+  notifyCanvasUpdatedByLogin,
+  notifyCanvasesUpdatedByLogin,
+} from "./pusher";
 export type {
   CanvasBlob,
   Scope,
