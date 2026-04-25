@@ -497,16 +497,17 @@ describe("executePodScalerRuns", () => {
   });
 
   it("does not scale up when utilisation below threshold and no over-queued tasks", async () => {
-    // 3/5 = 60% < 80 threshold → no trigger; targetVms = floor = 2 (no change)
+    // 2/5 = 40% < 80 threshold → no trigger; targetVms = floor = 2 (no change)
+    // usedVms=2 equals floor so usedVms protection doesn't interfere
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
       .mockResolvedValueOnce(0)  // todoCount
       .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
-      usedVms: 3,
+      usedVms: 2,
       runningVms: 5,
-      unusedVms: 2,
+      unusedVms: 3,
       pendingVms: 0,
       failedVms: 0,
       queuedCount: 0,
@@ -666,16 +667,17 @@ describe("executePodScalerRuns", () => {
   });
 
   it("does not scale up when pendingVms === 0 but ratio 75% < 80% threshold", async () => {
-    // usedVms=3, runningVms=4, pendingVms=0 → ratio=75% < 80% → no trigger
+    // usedVms=2, runningVms=4, pendingVms=0 → ratio=50% < 80% → no trigger
+    // usedVms=2 equals floor so usedVms protection doesn't interfere
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
       .mockResolvedValueOnce(0)  // todoCount
       .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
-      usedVms: 3,
+      usedVms: 2,
       runningVms: 4,
-      unusedVms: 1,
+      unusedVms: 2,
       pendingVms: 0,
       failedVms: 0,
       queuedCount: 0,
@@ -781,6 +783,78 @@ describe("executePodScalerRuns", () => {
     expect("createdAt" in inProgressCall.where).toBe(false);
     expect(inProgressCall.where.status).toBe("IN_PROGRESS");
     expect(inProgressCall.where.podId).toBeNull();
+  });
+
+  // ── Active pod protection (usedVms floor) tests ──────────────────────────
+
+  it("usedVms equals floor — targetVms stays at floor (edge case, no change to existing behaviour)", async () => {
+    // minimumVms=8, minimumPods=2, overQueuedCount=0, usedVms=2/runningVms=8 → 25% < 80% → no utilisation trigger
+    // Math.max(floor=2, usedVms=2) = 2 → scale down from 8 to 2
+    const swarm = makeSwarm({ minimumVms: 8, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0)  // inProgressNoPodCount
+      .mockResolvedValueOnce(0); // recentlyCompletedCount (cooldown check)
+    mockedGetPoolStatus.mockResolvedValue({
+      usedVms: 2,
+      runningVms: 8,
+      unusedVms: 6,
+      pendingVms: 0,
+      failedVms: 0,
+      queuedCount: 0,
+      lastCheck: new Date().toISOString(),
+    });
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(1);
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 2, deployedPods: 2 },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://pool.example.com/api/pools/swarm-001/scale",
+      expect.objectContaining({ body: JSON.stringify({ minimum_vms: 2 }) })
+    );
+    const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
+    expect(logCalls.some((m) => m.includes("usedVmsFloor=2"))).toBe(true);
+  });
+
+  it("usedVms exceeds floor — targetVms floored by usedVms, not by minimumPods (the actual bug scenario)", async () => {
+    // minimumVms=8, minimumPods=2, overQueuedCount=0, usedVms=4/runningVms=8 → 50% < 80% → no utilisation trigger
+    // Math.max(floor=2, usedVms=4) = 4 → scale down from 8 to 4 (NOT 2)
+    const swarm = makeSwarm({ minimumVms: 8, minimumPods: 2 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0)  // inProgressNoPodCount
+      .mockResolvedValueOnce(0); // recentlyCompletedCount (cooldown check)
+    mockedGetPoolStatus.mockResolvedValue({
+      usedVms: 4,
+      runningVms: 8,
+      unusedVms: 4,
+      pendingVms: 0,
+      failedVms: 0,
+      queuedCount: 0,
+      lastCheck: new Date().toISOString(),
+    });
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(1);
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 4, deployedPods: 4 },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://pool.example.com/api/pools/swarm-001/scale",
+      expect.objectContaining({ body: JSON.stringify({ minimum_vms: 4 }) })
+    );
+    const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
+    expect(logCalls.some((m) => m.includes("usedVmsFloor=4"))).toBe(true);
   });
 
   it("cooldown guard still fires when combined overQueuedCount is 0 (todoCount=0, inProgressNoPodCount=0)", async () => {
