@@ -317,8 +317,15 @@ export function OrgCanvasBackground({
    * Hidden live entries for the ROOT canvas only. Keeps the pill's
    * data model simple (it sits on the root view). If we later surface
    * hidden entries on sub-canvases, switch this to a `Record<ref, …>`.
+   *
+   * `null` means "not yet fetched." This distinction matters because
+   * `onHiddenChange` consumers (notably `ConnectionsPage`, which seeds
+   * the chat's default workspace context from the hidden list) only
+   * read on first fire — and reading an empty stub before the fetch
+   * resolved would seed them with no filtering. Below, the notify
+   * effect skips while this is `null`.
    */
-  const [hiddenLive, setHiddenLive] = useState<HiddenLiveEntry[]>([]);
+  const [hiddenLive, setHiddenLive] = useState<HiddenLiveEntry[] | null>(null);
 
   // Keep the latest sub-canvases available to the save flusher without
   // re-creating the debounce timer every render.
@@ -443,11 +450,16 @@ export function OrgCanvasBackground({
     fetchHiddenLive(githubLogin, undefined).then(setHiddenLive);
   }, [githubLogin]);
 
-  // Notify the parent whenever the hidden-live set changes. Runs once
-  // on mount after the initial fetch resolves, and again on every
-  // subsequent toggle. Stable reference guard on `onHiddenChange` so
-  // callers that inline a lambda don't cause extra passes.
+  // Notify the parent whenever the hidden-live set changes. Skips
+  // until the initial fetch resolves (hiddenLive starts as `null`),
+  // so the parent's first non-stub callback is the real list.
+  // Critical for `ConnectionsPage`: it gates the chat mount on
+  // `hiddenInitialized`, and the chat reads `defaultExtraWorkspaceSlugs`
+  // only on mount — firing this with an empty stub would seed the
+  // chat without any hidden filtering, then the real list would land
+  // too late to take effect.
   useEffect(() => {
+    if (hiddenLive === null) return;
     onHiddenChange?.(hiddenLive);
   }, [hiddenLive, onHiddenChange]);
 
@@ -985,7 +997,13 @@ export function OrgCanvasBackground({
     async (id: string) => {
       // Optimistic: remove from the pill immediately so users don't
       // wait on a round-trip before the popover reflects their click.
-      setHiddenLive((prev) => prev.filter((e) => e.id !== id));
+      // The pill is only ever shown after the initial fetch resolved
+      // (it's mounted by `entries={hiddenLive ?? []}`), so this path
+      // can only fire while `prev` is a real array — but guard anyway
+      // so a misbehaving caller can't crash here.
+      setHiddenLive((prev) =>
+        prev === null ? prev : prev.filter((e) => e.id !== id),
+      );
       await toggleLiveVisibility(githubLogin, undefined, id, "show");
       // Refetch root to pick up the now-visible projected node. The
       // hidden-list refetch is implicit: we already removed it locally.
@@ -1132,7 +1150,10 @@ export function OrgCanvasBackground({
          */}
         {currentRef === "" && (
           <HiddenLivePill
-            entries={hiddenLive}
+            // Pre-fetch (`hiddenLive === null`) the pill is given an
+            // empty list — it auto-hides when there's nothing to show,
+            // so this just keeps it dormant until the fetch lands.
+            entries={hiddenLive ?? []}
             onRestore={handleRestoreLive}
           />
         )}

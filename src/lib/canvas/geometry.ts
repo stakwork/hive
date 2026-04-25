@@ -29,7 +29,7 @@ export const SMALL_W = 220;
  * Initiative card. Wider than the container card so the gradient
  * "vision-style" title rendered in the body slot has room to breathe.
  */
-export const INITIATIVE_W = 280;
+export const INITIATIVE_W = 300;
 export const INITIATIVE_H = 116;
 
 /** Milestone card on the initiative timeline. */
