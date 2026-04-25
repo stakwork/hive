@@ -32,6 +32,7 @@ import type {
   InitiativeResponse,
   MilestoneResponse,
 } from "@/types/initiatives";
+import { categoryAllowedOnScope } from "./canvas-categories";
 
 /**
  * Live-id detection mirrors `src/lib/canvas/scope.ts`'s `isLiveId`.
@@ -45,24 +46,17 @@ function isLiveId(id: string): boolean {
 }
 
 /**
- * Categories that should NOT appear in the user's `+` menu. Workspaces
- * and repositories come from external integrations (workspace creation
- * flow, GitHub sync) — they're not creatable from the canvas. Anything
- * else stays in the menu.
- *
- * Note that `initiative` and `milestone` are **kept in the menu** even
- * though they're DB-projected: selecting them triggers the dialog
- * interception below, which opens a creation dialog and POSTs to the
- * REST API. See `handleNodeAdd`.
- */
-const NON_USER_CREATABLE_CATEGORIES = new Set(["workspace", "repository"]);
-
-/**
  * Categories that, when picked from the `+` menu, open a creation
  * dialog instead of dropping a node onto the canvas. The dialog hits
  * the appropriate REST API; on success the projector re-emits the new
  * node, and we save the user's click position so the node lands where
  * they clicked.
+ *
+ * Whether each category is *visible* in the `+` menu on the current
+ * scope is decided by `categoryAllowedOnScope` in `canvas-categories.ts`
+ * — see `renderAddNodeButton` below. Both filters consult the same
+ * helper so a category never shows in the menu but fails the dispatch
+ * (or vice versa).
  */
 const DB_CREATING_CATEGORIES = new Set(["initiative", "milestone"]);
 
@@ -541,16 +535,12 @@ export function OrgCanvasBackground({
    * milestones so we know which sequence numbers are taken (needed
    * for the dialog's client-side validation) and what the next-free
    * sequence is to pre-populate the form.
+   *
+   * Caller (handleNodeAdd) must already have validated the scope —
+   * this function trusts that `canvasRef` is `initiative:<id>`.
    */
   const startMilestoneCreate = useCallback(
-    async (node: CanvasNode, canvasRef: string | undefined) => {
-      if (!canvasRef || !canvasRef.startsWith("initiative:")) {
-        // Defensive: milestone is only valid on an initiative sub-canvas.
-        // The renderer should never offer it elsewhere (we filter the
-        // menu by scope in renderAddNodeButton), but if it slips through
-        // we just no-op rather than crash.
-        return;
-      }
+    async (node: CanvasNode, canvasRef: string) => {
       const initiativeId = canvasRef.slice("initiative:".length);
       try {
         const res = await fetch(
@@ -581,16 +571,23 @@ export function OrgCanvasBackground({
 
   const handleNodeAdd = useCallback(
     (node: CanvasNode, canvasRef: string | undefined) => {
-      // Intercept DB-creating categories: open a dialog instead of
-      // dropping a synthetic authored node. The Pusher refresh from
-      // the API mutation will re-project the new entity into place.
-      if (DB_CREATING_CATEGORIES.has(node.category ?? "")) {
-        if (node.category === "initiative") {
+      const category = node.category ?? "";
+      const ref = canvasRef ?? "";
+
+      // DB-creating categories are routed through their dialog. The
+      // scope-aware `+` menu filter shouldn't have offered the option
+      // outside its valid scope, but check here too — a stale menu
+      // pick (e.g. user navigated mid-click) shouldn't create at the
+      // wrong scope. Single rule, two enforcement points.
+      if (DB_CREATING_CATEGORIES.has(category)) {
+        if (!categoryAllowedOnScope(category, ref)) return;
+        if (category === "initiative") {
           startInitiativeCreate(node, canvasRef);
           return;
         }
-        if (node.category === "milestone") {
-          void startMilestoneCreate(node, canvasRef);
+        if (category === "milestone") {
+          // categoryAllowedOnScope guarantees ref starts with "initiative:".
+          void startMilestoneCreate(node, ref);
           return;
         }
       }
@@ -866,20 +863,29 @@ export function OrgCanvasBackground({
    * at `bottom:16` of the canvas, which sits underneath the chat input's
    * `pointer-events-auto` wrapper and can't receive clicks.
    *
-   * Menu filtering removes only categories the user can never create
-   * from the canvas — workspaces and repositories. Initiatives and
-   * milestones stay in the menu regardless of current scope; if the
-   * user picks `milestone` while on root (where it has no target), the
-   * defensive guard in `startMilestoneCreate` no-ops. A future
-   * iteration can scope-filter the menu once the library exposes the
-   * current ref to this render hook.
+   * Menu filtering is **scope-aware**: each option is run through
+   * `categoryAllowedOnScope` against `currentRef`, so the user only
+   * sees categories that make sense at the canvas they're currently
+   * looking at:
+   *   - Root → initiative, note, decision, text/file/link/group
+   *   - Workspace sub-canvas → note, decision, text/file/link/group
+   *   - Initiative timeline → milestone, note, decision, text/...
+   *
+   * `kind: "type"` options (the library's built-in JSON-canvas types)
+   * are always shown — they're free authoring primitives and have no
+   * scope semantics.
+   *
+   * `currentRef` is captured lexically; React re-renders the component
+   * whenever the user navigates (we set it in onNavigate), and the
+   * library calls this render-prop on every render, so the menu
+   * tracks scope changes automatically.
    */
   const renderAddNodeButton = (props: AddNodeButtonRenderProps) => {
     const filtered = {
       ...props,
       options: props.options.filter((o) => {
         if (o.kind !== "category") return true;
-        return !NON_USER_CREATABLE_CATEGORIES.has(o.value);
+        return categoryAllowedOnScope(o.value, currentRef);
       }),
     };
     return (

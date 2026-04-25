@@ -223,3 +223,53 @@ export function buildPromptCategorySection(): string {
     return `${headline}\n${sub}`;
   }).join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// Scope-aware category rules
+// ---------------------------------------------------------------------------
+
+/**
+ * Decide whether a given category should be offered for user creation
+ * on the given canvas scope. A single rule consulted by both:
+ *   - The `+` menu filter in `OrgCanvasBackground.renderAddNodeButton`
+ *     (so only valid options appear).
+ *   - The defensive dispatch in `OrgCanvasBackground.handleNodeAdd`
+ *     (so a stray pick from a stale menu can't create something at
+ *     the wrong scope).
+ *
+ * `ref` follows the canvas scope convention: `""` for root, `"ws:<id>"`
+ * for a workspace sub-canvas, `"initiative:<id>"` for an initiative
+ * timeline. Anything else (opaque scopes, future kinds) takes the
+ * permissive default — only `userCreatable: false` is enforced.
+ *
+ * Hard rules (always enforced regardless of scope):
+ *   - Categories with `userCreatable: false` (workspaces, repositories
+ *     today) never appear in any `+` menu.
+ *
+ * Scope-specific rules:
+ *   - `initiative` is only offered on root. It's an org-level entity;
+ *     creating one inside a workspace or another initiative makes no
+ *     ownership sense.
+ *   - `milestone` is only offered on an initiative's sub-canvas. A
+ *     milestone always belongs to a specific initiative, so anywhere
+ *     else has no parent to attach to.
+ *   - Authored categories (`note`, `decision`, plus the library's
+ *     base `text` kind) are always allowed. They're free annotation
+ *     primitives with no DB anchor.
+ */
+export function categoryAllowedOnScope(
+  categoryId: string,
+  ref: string,
+): boolean {
+  // Hard rule: hidden from menus on every scope.
+  const spec = CATEGORY_REGISTRY.find((c) => c.id === categoryId);
+  if (spec && spec.userCreatable === false) return false;
+
+  // Scope-specific rules.
+  if (categoryId === "initiative") return ref === "";
+  if (categoryId === "milestone") return ref.startsWith("initiative:");
+
+  // Default: allow. Covers `note`, `decision`, future authored
+  // categories, and any opaque scope we don't recognize.
+  return true;
+}
