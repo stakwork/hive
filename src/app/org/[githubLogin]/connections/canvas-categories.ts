@@ -56,6 +56,20 @@ export interface CategorySpec {
    * Omit or set `true` for author-created categories (the default).
    */
   agentWritable?: boolean;
+  /**
+   * When `false`, this category is hidden from the user's `+` menu.
+   * Used for entities the user cannot create from the canvas at all
+   * (workspaces, repositories — those come from external integrations).
+   *
+   * When `true` AND `agentWritable: false`, the category IS shown in
+   * the `+` menu but the client intercepts the click to open a creation
+   * dialog that hits the appropriate REST API. Today: `initiative`
+   * (root canvas) and `milestone` (initiative sub-canvas). See
+   * `OrgCanvasBackground.tsx`'s `+` menu interception logic.
+   *
+   * Omit or set `true` for normal user-creatable categories (the default).
+   */
+  userCreatable?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,35 +77,44 @@ export interface CategorySpec {
 // ---------------------------------------------------------------------------
 
 /**
- * `customData` keys used by the `objective` category. Status is part of
- * objective, not a separate category — the user switches it via a swatch
- * toolbar on the node and the renderer reads `customData.status` to
- * color the pill, top-edge, and progress bar.
+ * `customData` keys used by the `initiative` category. Initiative
+ * cards show progress (rolled up from completed milestones) but no
+ * status pill — initiatives can be long-running or open-ended, so a
+ * traffic-light would mislead.
  */
-const OBJECTIVE_CUSTOM_DATA: CategoryCustomDataKey[] = [
-  {
-    key: "status",
-    description:
-      'one of `"ok"` | `"attn"` | `"risk"`. Drives the border color, status pill (OK/ATTN/RISK), top-edge strip, and progress-bar tint. Defaults to `"ok"` (green).',
-  },
+const INITIATIVE_CUSTOM_DATA: CategoryCustomDataKey[] = [
   {
     key: "primary",
     description:
-      'progress percent — e.g. `"38%"` or `0.38`. Drives the progress bar and shows as the first footer number.',
+      'progress percent — e.g. `"38%"` or `0.38`. Drives the progress bar and shows as the first footer number. Computed by the projector from completed-milestone count.',
   },
   {
     key: "secondary",
-    description: 'footer text — e.g. `"4 blockers"` or `"6 ppl"`.',
+    description:
+      'footer text — e.g. `"3/7 milestones"` or `"no milestones yet"`. Computed by the projector.',
+  },
+];
+
+/**
+ * `customData` keys used by the `milestone` category. Status maps
+ * directly to the `MilestoneStatus` enum in Prisma — three values, no
+ * traffic-light semantics layered on top.
+ */
+const MILESTONE_CUSTOM_DATA: CategoryCustomDataKey[] = [
+  {
+    key: "status",
+    description:
+      'one of `"NOT_STARTED"` | `"IN_PROGRESS"` | `"COMPLETED"` (mirrors the `MilestoneStatus` Prisma enum). Drives the card color: muted gray, blue, green respectively.',
   },
   {
-    key: "secondaryAccent",
+    key: "secondary",
     description:
-      "when `true`, render `secondary` in the status color (red/amber). Use for blockers or risks; leave off for neutral counts.",
+      'footer text — e.g. `"Due Mar 4 · 2 features"`. Composed by the projector from `dueDate` + linked-feature count.',
   },
   {
-    key: "count",
+    key: "sequence",
     description:
-      "number on the notched tab badge in the top-right. Use for open blocker count.",
+      "ordering integer within the parent initiative. The projector uses this for default x-axis placement on the timeline.",
   },
 ];
 
@@ -106,29 +129,53 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
       "teal container card representing a single workspace / repo in the org — the top layer",
     // Workspaces are projected live from the DB (id prefix `ws:`). The
     // agent never authors a workspace card directly; it edges OTHER
-    // nodes to the existing `ws:<id>` nodes.
+    // nodes to the existing `ws:<id>` nodes. Humans don't create
+    // workspaces from the canvas either — they come from the workspace
+    // creation flow elsewhere.
     agentWritable: false,
+    userCreatable: false,
     promptGuidance:
-      "Projected from the database — one `ws:<id>` node per live workspace. Do NOT create these yourself. Draw edges from objectives to them to show which workspace an initiative belongs to.",
+      "Projected from the database — one `ws:<id>` node per live workspace. Do NOT create these yourself. Draw edges from initiatives or notes to them to show which workspace something belongs to.",
   },
   {
     id: "repository",
     agentDescription:
       "slate-indigo card representing a GitHub repository inside a workspace",
     // Repositories are projected live from the DB (id prefix `repo:`)
-    // on a workspace's sub-canvas. Like workspaces, the agent never
-    // authors them.
+    // on a workspace's sub-canvas. Like workspaces, neither the agent
+    // nor the user creates them from the canvas — they sync from
+    // GitHub.
     agentWritable: false,
+    userCreatable: false,
     promptGuidance:
       "Projected from the database — one `repo:<id>` node per repository on a workspace sub-canvas. Do NOT create these yourself.",
   },
   {
-    id: "objective",
+    id: "initiative",
     agentDescription:
-      "an initiative / objective — card with a title, progress bar, status pill (OK / ATTN / RISK), and optional blocker count",
+      "a strategic initiative on the org root canvas — title, milestone-completion progress bar, and a footer like `3/7 milestones`",
+    // Initiatives are projected from the DB (id prefix `initiative:`)
+    // BUT the user can add new ones from the `+` menu — selecting
+    // `initiative` opens a dialog and hits POST /api/.../initiatives.
+    // The agent must not author initiative nodes directly.
+    agentWritable: false,
+    userCreatable: true,
     promptGuidance:
-      'Set `customData.status` to `"ok"` | `"attn"` | `"risk"` to color the border, top-edge strip, progress bar, and pill. Defaults to `"ok"` (green). Use this category for both top-level north-stars and the active initiatives beneath them.',
-    customDataKeys: OBJECTIVE_CUSTOM_DATA,
+      "Projected from the `Initiative` Prisma model — one `initiative:<id>` node per row. Carries `ref: \"initiative:<id>\"` so clicking drills into the milestone timeline. Humans create initiatives via the canvas `+` menu (which opens a dialog) or the OrgInitiatives table UI; the agent must NEVER create or edit them. The agent's job around initiatives is annotation: edge them to the workspaces they belong to, leave notes about dependencies, draw blockers.",
+    customDataKeys: INITIATIVE_CUSTOM_DATA,
+  },
+  {
+    id: "milestone",
+    agentDescription:
+      "a milestone on an initiative's timeline — small card with a status color (gray / blue / green) and a due-date footer",
+    // Milestones are projected from the DB (id prefix `milestone:`) on
+    // the initiative sub-canvas. Same `+ menu opens a dialog` pattern
+    // as initiative.
+    agentWritable: false,
+    userCreatable: true,
+    promptGuidance:
+      "Projected from the `Milestone` Prisma model on an initiative sub-canvas. Laid out left-to-right by `sequence`. Humans create milestones via the canvas `+` menu (which opens a dialog) or the OrgInitiatives table UI; the agent must NEVER create or edit them. Same annotation-only role as initiatives.",
+    customDataKeys: MILESTONE_CUSTOM_DATA,
   },
   {
     id: "note",

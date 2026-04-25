@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
+import { notifyCanvasesUpdatedByLogin } from "@/lib/canvas";
 import { Prisma } from "@prisma/client";
 
 const MILESTONE_INCLUDE = {
@@ -94,6 +95,16 @@ export async function PATCH(
       include: MILESTONE_INCLUDE,
     });
 
+    // Status / sequence / due-date / feature-link can all change what
+    // the projection emits. Status especially affects the root-level
+    // initiative progress rollup, so notify both.
+    void notifyCanvasesUpdatedByLogin(
+      githubLogin,
+      ["", `initiative:${initiativeId}`],
+      "milestone-updated",
+      { initiativeId, milestoneId },
+    );
+
     return NextResponse.json(serializeMilestone(milestone as MilestoneWithRelations));
   } catch (error) {
     if (
@@ -168,11 +179,28 @@ export async function DELETE(
         orderBy: { sequence: "asc" },
       });
 
+      // Renumbering shifts every milestone's `sequence`, which in turn
+      // shifts their default x-axis placement on the timeline. Refresh
+      // both the timeline and the root rollup.
+      void notifyCanvasesUpdatedByLogin(
+        githubLogin,
+        ["", `initiative:${initiativeId}`],
+        "milestone-deleted",
+        { initiativeId, milestoneId, renumbered: true },
+      );
+
       return NextResponse.json({ status: "deleted", milestones: updatedSiblings });
     }
 
     // SetNull on Feature.milestoneId is handled by DB cascade
     await db.milestone.delete({ where: { id: milestoneId } });
+
+    void notifyCanvasesUpdatedByLogin(
+      githubLogin,
+      ["", `initiative:${initiativeId}`],
+      "milestone-deleted",
+      { initiativeId, milestoneId },
+    );
 
     return NextResponse.json({ status: "deleted" });
   } catch (error) {

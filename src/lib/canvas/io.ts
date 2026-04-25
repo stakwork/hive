@@ -15,7 +15,6 @@ import type { CanvasData, CanvasEdge, CanvasNode } from "system-canvas";
 import { db } from "@/lib/db";
 import { isLiveId, parseScope } from "./scope";
 import { PROJECTORS } from "./projectors";
-import { computeChildRollups } from "./rollups";
 import type { CanvasBlob } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -139,12 +138,16 @@ async function projectAll(
  *   5. Apply stored positions to the survivors.
  *   6. Merge rollups into each live node's customData.
  *   7. Concat live + authored nodes.
- *   8. Compute child-canvas rollups for drillable authored nodes
- *      (objectives) and stamp them into customData.
- *   9. Filter edges to those with both endpoints present.
+ *   8. Filter edges to those with both endpoints present.
  *
- * See `docs/plans/org-canvas.md` § "The merge" for the spec this
- * implements.
+ * See `docs/plans/org-initiatives.md` § "Read merge / write split" for
+ * the spec this implements.
+ *
+ * NOTE: the pre-cutover plan included a step 8 that peeked into each
+ * authored objective's child canvas and stamped a progress rollup into
+ * the parent. That logic is gone: initiatives are now DB-projected, so
+ * their progress comes from the projector's own SQL count of completed
+ * milestones. `src/lib/canvas/rollups.ts` was deleted along with it.
  */
 export async function readCanvas(
   orgId: string,
@@ -159,15 +162,7 @@ export async function readCanvas(
     .map((n) => applyPosition(n, blob.positions))
     .map((n) => applyRollup(n, rollups[n.id]));
 
-  // Authored nodes get a second enrichment pass: for drillable
-  // objectives, we peek into their child canvas and roll up the
-  // progress of the mini-objectives inside. Manual customData still
-  // wins (same rule applyRollup enforces), so a user who's typed
-  // their own `status` or `primary` keeps it.
-  const childRollups = await computeChildRollups(orgId, blob.nodes);
-  const authored = blob.nodes.map((n) => applyRollup(n, childRollups[n.id]));
-
-  const nodes: CanvasNode[] = [...visibleLive, ...authored];
+  const nodes: CanvasNode[] = [...visibleLive, ...blob.nodes];
   const presentIds = new Set(nodes.map((n) => n.id));
   const edges = blob.edges.filter(
     (e) => presentIds.has(e.fromNode) && presentIds.has(e.toNode),
@@ -181,30 +176,11 @@ export async function readCanvas(
 // ---------------------------------------------------------------------------
 
 /**
- * Categories whose authored nodes get a sub-canvas. When we store one
- * of these, we auto-stamp `ref: "node:<id>"` so the library's
- * drill-in hook (`onResolveCanvas`) fires on click. The agent never
- * has to know about this — the ref always mirrors the node id.
- *
- * Adding a new drillable category: append the id here and the
- * sub-canvas lights up automatically (blank authored blob, same
- * read/write pipeline as every other canvas row).
- */
-const DRILLABLE_CATEGORIES = new Set(["objective"]);
-
-function drillableRefFor(node: CanvasNode): string {
-  return `node:${node.id}`;
-}
-
-/**
  * Reduce an incoming merged `CanvasData` to just the authored half +
  * any new position overlays for live ids. Pure; no DB access.
  *
  * Field ownership:
- *   - authored nodes: kept verbatim. Drillable categories
- *     (`DRILLABLE_CATEGORIES`) get their `ref` auto-stamped to
- *     `node:<id>` so clicking the node resolves to its sub-canvas.
- *     A non-default `ref` the caller set explicitly is preserved.
+ *   - authored nodes: kept verbatim.
  *   - live-id text / category / customData: silently dropped (owned by
  *     projection; re-derived on read).
  *   - live-id positions: merged into `blob.positions`. Omitting a live
@@ -214,6 +190,12 @@ function drillableRefFor(node: CanvasNode): string {
  *     silently lose a user's drag. Use the dedicated hide endpoint to
  *     hide a live node.
  *   - `hidden`: preserved from `previous`; never touched by this path.
+ *
+ * NOTE: the pre-cutover plan auto-stamped `ref: "node:<id>"` on
+ * authored objective nodes here so they could drill into a child
+ * canvas. That code is gone: drillable structure now lives entirely
+ * on projected entities (`ws:`, `initiative:`), which carry their own
+ * `ref` from the projector. Authored nodes don't drill.
  */
 export function splitCanvas(
   incoming: CanvasData,
@@ -229,11 +211,7 @@ export function splitCanvas(
       positions[n.id] = { x: n.x, y: n.y };
       continue;
     }
-    if (n.category && DRILLABLE_CATEGORIES.has(n.category) && !n.ref) {
-      nodes.push({ ...n, ref: drillableRefFor(n) });
-    } else {
-      nodes.push(n);
-    }
+    nodes.push(n);
   }
 
   const edges: CanvasEdge[] = incoming.edges ?? [];

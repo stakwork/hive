@@ -11,11 +11,20 @@ import { CATEGORY_REGISTRY } from "./canvas-categories";
 /**
  * Theme for the Connections-page background canvas.
  *
- * Adapted from the system-canvas showcase: keeps the inky surface, the
- * status-card pattern (OK / ATTN / RISK), and the amber-note / purple-decision
- * accent cards. Removes showcase-specific team/customer/revenue categories.
- * Renames `vision` to `objective` so this reads as a project/workstream
- * canvas rather than a company-level OKR board.
+ * Visual hierarchy:
+ *   - **Workspaces** (teal containers, top row) — projected from DB.
+ *   - **Initiatives** (sky-blue cards w/ progress bar, second row) —
+ *     projected from `Initiative` rows. No status pill (initiatives can
+ *     be long-running; a traffic-light would mislead).
+ *   - **Milestones** (small cards on initiative sub-canvas) — projected
+ *     from `Milestone` rows. Three discrete states: NOT_STARTED (muted
+ *     gray), IN_PROGRESS (cool blue), COMPLETED (green).
+ *   - **Repositories** (slate-indigo, on workspace sub-canvas) — projected.
+ *   - **Notes / decisions** — authored amber/purple accent cards.
+ *
+ * Adapted from the system-canvas showcase + roadmap theme; trims away
+ * the showcase team/customer/revenue categories and the old `objective`
+ * status-pill model in favor of the new initiative/milestone split.
  */
 
 // ---------------------------------------------------------------------------
@@ -28,23 +37,33 @@ const STROKE = "#363945";
 const TEXT = "rgba(255, 255, 255, 0.92)";
 const MUTED = "rgba(255, 255, 255, 0.45)";
 
-const STATUS = {
-  ok: "#22c55e",
-  attn: "#f59e0b",
-  risk: "#ef4444",
-} as const;
-
 const ACCENT = {
   note: "#f59e0b",
   decision: "#a78bfa",
   // Teal/cyan reads as "infrastructure / container" — distinct from the
-  // purple objective, amber note, and status greens/ambers/reds.
+  // sky-blue initiative, amber note, and milestone state colors.
   workspace: "#22d3ee",
   // Slate/indigo — reads as "source control" and sits one visual step
   // below the teal workspace container so a repo on a workspace sub-
   // canvas is legibly "part of" its workspace without color-clashing.
   repository: "#818cf8",
+  // Sky-blue — reads as "strategic / ongoing." Distinct from the
+  // milestone IN_PROGRESS blue (slightly lighter) and the workspace
+  // teal (more saturated cyan).
+  initiative: "#7dd3fc",
 } as const;
+
+/**
+ * Milestone colors. Three discrete states only — no `attn`/`risk`/`ok`
+ * traffic-light. Mirrors the `MilestoneStatus` Prisma enum exactly.
+ */
+const MILESTONE_COLORS = {
+  NOT_STARTED: MUTED,        // gray-on-gray; reads as "hasn't begun"
+  IN_PROGRESS: "#7dd3fc",    // cool blue; reads as "in flight"
+  COMPLETED: "#4ade80",      // green; reads as "done"
+} as const;
+
+type MilestoneStatus = keyof typeof MILESTONE_COLORS;
 
 const LABEL_FONT =
   "'Inter', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif";
@@ -96,7 +115,8 @@ function hexAlpha(hex: string, a: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Status-card slot renderers
+// Footer renderer — shared by initiative + workspace cards. Two-metric
+// layout: `customData.primary` left, `customData.secondary` right of it.
 // ---------------------------------------------------------------------------
 
 function renderMetricsFooter(
@@ -143,125 +163,115 @@ function renderMetricsFooter(
 }
 
 // ---------------------------------------------------------------------------
-// Status (as customData on objective)
+// Initiative card — DB-projected, shows milestone-completion progress
 // ---------------------------------------------------------------------------
 //
-// "Status" is a *property of an objective*, not a node type. It lives in
-// `customData.status` on an `objective` node and drives the pill label,
-// pill color, progress-bar tint, and top-edge accent. The toolbar on the
-// objective category lets the user flip between OK / ATTN / RISK without
-// changing the node's category.
+// An initiative carries:
+//   - `text` — the initiative name (DB).
+//   - `customData.primary` → progress bar fill + first footer metric.
+//     Computed by the projector as percent of milestones COMPLETED.
+//   - `customData.secondary` → second footer metric ("3/7 milestones").
+//
+// No status pill, no border-color-by-status. Initiatives can run for
+// quarters or be open-ended; a traffic-light would lie. The border
+// stays the default sky-blue accent so they read as a coherent layer.
+//
+// `ref` is set by the projector to `initiative:<id>`, which makes the
+// card clickable (drill-in) — that wiring lives in the system-canvas
+// library, not the theme.
 
-type StatusKey = keyof typeof STATUS;
-const STATUS_LABELS: Record<StatusKey, string> = {
-  ok: "OK",
-  attn: "ATTN",
-  risk: "RISK",
-};
-
-/** Read `customData.status`, falling back to `ok`. Unknown values also clamp to `ok`. */
-function getStatus(node: CanvasNode): StatusKey {
-  const raw = node.customData?.status;
-  if (raw === "ok" || raw === "attn" || raw === "risk") return raw;
-  return "ok";
-}
-
-function statusColor(node: CanvasNode): string {
-  return STATUS[getStatus(node)];
-}
-
-function statusLabel(node: CanvasNode): string {
-  return STATUS_LABELS[getStatus(node)];
-}
-
-/**
- * Toolbar group for the objective node: a three-swatch picker that
- * writes BOTH `customData.status` (the semantic keyword the agent
- * reads/writes) AND `node.color` (the hex that drives the library's
- * resolver, which colors the border + derived fill).
- *
- * `patch` is a function so we can shallow-merge into the existing
- * customData — the library's `updateNode` replaces `customData`
- * wholesale if you hand it a static object.
- */
-const objectiveStatusToolbar = [
-  {
-    id: "status",
-    label: "Status",
-    kind: "swatches" as const,
-    actions: (["ok", "attn", "risk"] as const).map((s) => ({
-      id: `status-${s}`,
-      label: STATUS_LABELS[s],
-      swatch: STATUS[s],
-      patch: (n: CanvasNode) => ({
-        color: STATUS[s],
-        customData: { ...(n.customData ?? {}), status: s },
-      }),
-      isActive: (n: CanvasNode) => getStatus(n) === s,
-    })),
-  },
-];
-
-// ---------------------------------------------------------------------------
-// Objective card
-// ---------------------------------------------------------------------------
-
-/**
- * The one initiative card. An objective carries:
- *   - `text` — the card title, rendered by the library's default label
- *     renderer (no custom body).
- *   - `customData.status` → pill label (OK/ATTN/RISK). The toolbar that
- *     sets status ALSO sets `node.color` to the matching hex, so the
- *     resolver colors the border + derived fill automatically — every
- *     slot that defaults to `node.resolvedStroke` (topEdge, pill,
- *     progress, count) follows along for free.
- *   - `customData.primary`   → progress bar + first footer metric.
- *   - `customData.secondary` → second footer metric (e.g. "4 blockers").
- *   - `customData.count`     → blocker-count badge (top-right notch).
- *
- * Default category `stroke` is the "ok" green so a brand-new objective
- * (before any status has been set) reads as on-track and the node still
- * has a visible border.
- */
-const objectiveCategory: CategoryDefinition = {
+const initiativeCategory: CategoryDefinition = {
   ...baseCard,
   defaultWidth: CARD_W,
   defaultHeight: CARD_H,
-  stroke: STATUS.ok,
   type: "text",
-  toolbar: objectiveStatusToolbar,
-  // Seed new objectives so they start life in a coherent "OK / on
-  // track" state that lines up with the default category stroke above.
-  defaultCustomData: { status: "ok" },
+  stroke: hexAlpha(ACCENT.initiative, 0.55),
+  fill: hexAlpha(ACCENT.initiative, 0.05),
   slots: {
-    // All slots below omit `color` on purpose — they inherit
-    // `node.resolvedStroke`, which is driven by `node.color` (set by
-    // the status toolbar). Change the status once → everything recolors.
-    topEdge: { kind: "color", extent: "full" },
+    header: { kind: "text", value: "INITIATIVE", color: ACCENT.initiative },
     bodyTop: {
       kind: "progress",
-      value: (ctx: SlotContext) =>
-        parsePercent(ctx.node.customData?.primary),
-    },
-    topRight: {
-      kind: "pill",
-      value: (ctx: SlotContext) => statusLabel(ctx.node),
-    },
-    topRightOuter: {
-      kind: "count",
-      value: (ctx: SlotContext) =>
-        (ctx.node.customData?.count as number | undefined) ?? 0,
+      value: (ctx: SlotContext) => parsePercent(ctx.node.customData?.primary),
     },
     footer: {
       kind: "custom",
       render: (ctx: SlotContext) =>
-        renderMetricsFooter(ctx, ctx.node.resolvedStroke),
+        renderMetricsFooter(ctx, ACCENT.initiative),
     },
   },
 } as CategoryDefinition;
 
 // ---------------------------------------------------------------------------
-// Note / decision accent cards
+// Milestone card — DB-projected, three discrete states
+// ---------------------------------------------------------------------------
+//
+// Compact card (smaller than initiative; sits on the timeline below).
+// `customData.status` carries the raw `MilestoneStatus` enum value
+// (`NOT_STARTED` | `IN_PROGRESS` | `COMPLETED`); we map it to one of
+// three colors.
+//
+// Slot strategy: a thin top-edge band carries the status color so the
+// card reads at a glance even when zoomed out. The header label
+// reflects the status word too, in case the band gets clipped.
+
+function getMilestoneStatus(node: CanvasNode): MilestoneStatus {
+  const raw = node.customData?.status;
+  if (raw === "NOT_STARTED" || raw === "IN_PROGRESS" || raw === "COMPLETED") {
+    return raw;
+  }
+  // Defensive fallback for older blob data or unknown values: treat
+  // as not started (the most muted color, least likely to mislead).
+  return "NOT_STARTED";
+}
+
+function milestoneStatusColor(node: CanvasNode): string {
+  return MILESTONE_COLORS[getMilestoneStatus(node)];
+}
+
+function milestoneStatusLabel(node: CanvasNode): string {
+  // Human-readable rendition for the header band. Keep terse —
+  // the card is only ~200px wide.
+  const map: Record<MilestoneStatus, string> = {
+    NOT_STARTED: "NOT STARTED",
+    IN_PROGRESS: "IN PROGRESS",
+    COMPLETED: "COMPLETED",
+  };
+  return map[getMilestoneStatus(node)];
+}
+
+const milestoneCategory: CategoryDefinition = {
+  ...baseCard,
+  defaultWidth: SMALL_W,
+  defaultHeight: 88,
+  type: "text",
+  // Default stroke is the muted "not started" tone; the topEdge slot
+  // below repaints with the live status color on every render, so this
+  // only matters for the brief moment before customData is populated.
+  stroke: STROKE,
+  fill: SURFACE,
+  slots: {
+    // Thin top-edge band tinted by status. Reads at a glance from
+    // across the timeline.
+    topEdge: {
+      kind: "color",
+      extent: "full",
+      color: (ctx: SlotContext) => milestoneStatusColor(ctx.node),
+    },
+    header: {
+      kind: "text",
+      value: (ctx: SlotContext) => milestoneStatusLabel(ctx.node),
+      color: (ctx: SlotContext) => milestoneStatusColor(ctx.node),
+    },
+    footer: {
+      kind: "custom",
+      render: (ctx: SlotContext) =>
+        renderMetricsFooter(ctx, milestoneStatusColor(ctx.node)),
+    },
+  },
+} as CategoryDefinition;
+
+// ---------------------------------------------------------------------------
+// Note / decision accent cards (authored)
 // ---------------------------------------------------------------------------
 
 function accentNote(color: string, kicker: string): CategoryDefinition {
@@ -279,9 +289,9 @@ function accentNote(color: string, kicker: string): CategoryDefinition {
 }
 
 // ---------------------------------------------------------------------------
-// Workspace card — a "container" category sitting above objectives. Same
-// footprint as a status card so layers line up, but no progress / pill /
-// blocker slots: it's purely an identity label for the workspace.
+// Workspace card — projected from DB on root canvas. "Container"
+// category sitting above initiatives. Same footprint as an initiative
+// card so layers line up; pure identity label (no progress).
 // ---------------------------------------------------------------------------
 
 const workspaceCategory: CategoryDefinition = {
@@ -294,8 +304,8 @@ const workspaceCategory: CategoryDefinition = {
   slots: {
     header: { kind: "text", value: "WORKSPACE", color: ACCENT.workspace },
     // Footer summary, e.g. "3 repos". Populated by the root projector
-    // from `customData.secondary`; shares the objective-card footer
-    // renderer so workspace + objective cards read as one family.
+    // from `customData.secondary`; shares the initiative-card footer
+    // renderer so workspace + initiative cards read as one family.
     footer: {
       kind: "custom",
       render: (ctx: SlotContext) =>
@@ -305,10 +315,10 @@ const workspaceCategory: CategoryDefinition = {
 } as CategoryDefinition;
 
 // ---------------------------------------------------------------------------
-// Repository card — projected from the DB on a workspace's sub-canvas.
-// Compact footprint: repos are leaves (not containers), and a workspace
-// often has several of them, so we want a row of small cards rather
-// than a grid of full-width objectives.
+// Repository card — projected from DB on a workspace sub-canvas.
+// Compact: repos are leaves (not containers), and a workspace often has
+// several of them, so we want a row of small cards rather than a grid
+// of full-width containers.
 // ---------------------------------------------------------------------------
 
 const repositoryCategory: CategoryDefinition = {
@@ -335,7 +345,8 @@ const repositoryCategory: CategoryDefinition = {
 const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
   workspace: workspaceCategory,
   repository: repositoryCategory,
-  objective: objectiveCategory,
+  initiative: initiativeCategory,
+  milestone: milestoneCategory,
   note: accentNote(ACCENT.note, "NOTE"),
   decision: accentNote(ACCENT.decision, "DECISION"),
 };

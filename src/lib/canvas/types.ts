@@ -62,8 +62,18 @@ export interface CanvasBlob {
  */
 export type Scope =
   | { kind: "root" }
+  /**
+   * Legacy authored-sub scope from the pre-cutover "objectives" plan
+   * (see `docs/plans/org-canvas.md`). Drillable authored objectives
+   * are gone, but we keep parsing the `node:<id>` prefix so any
+   * orphaned blobs round-trip without errors. Projectors no-op on it.
+   */
   | { kind: "authored"; nodeId: string }
   | { kind: "workspace"; workspaceId: string }
+  | { kind: "initiative"; initiativeId: string }
+  /** Reserved — milestone-level features/tasks projection is v2. */
+  | { kind: "milestone"; milestoneId: string }
+  /** Reserved — feature deep-dive projection is unshipped. */
   | { kind: "feature"; featureId: string }
   /**
    * A ref we don't recognize. We still accept it — it addresses a

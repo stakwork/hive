@@ -20,6 +20,18 @@ import {
 import { connectionsTheme } from "./canvas-theme";
 import { HiddenLivePill, type HiddenLiveEntry } from "./HiddenLivePill";
 import { getOrgChannelName, getPusherClient, PUSHER_EVENTS } from "@/lib/pusher";
+import {
+  InitiativeDialog,
+  type InitiativeForm,
+} from "@/components/initiatives/InitiativeDialog";
+import {
+  MilestoneDialog,
+  type MilestoneForm,
+} from "@/components/initiatives/MilestoneDialog";
+import type {
+  InitiativeResponse,
+  MilestoneResponse,
+} from "@/types/initiatives";
 
 /**
  * Live-id detection mirrors `src/lib/canvas/scope.ts`'s `isLiveId`.
@@ -27,17 +39,32 @@ import { getOrgChannelName, getPusherClient, PUSHER_EVENTS } from "@/lib/pusher"
  * only need the prefix check on the client. Keep the prefix list in sync
  * with `LIVE_ID_PREFIXES` there.
  */
-const LIVE_ID_PREFIXES = ["ws:", "feature:", "repo:"];
+const LIVE_ID_PREFIXES = ["ws:", "feature:", "repo:", "initiative:", "milestone:"];
 function isLiveId(id: string): boolean {
   return LIVE_ID_PREFIXES.some((p) => id.startsWith(p));
 }
 
 /**
- * Categories projected from the DB — the agent can't author them and
- * the user shouldn't either (any node they'd create would be a fake
- * that vanishes on refresh). Filtered out of the `+` menu below.
+ * Categories that should NOT appear in the user's `+` menu. Workspaces
+ * and repositories come from external integrations (workspace creation
+ * flow, GitHub sync) — they're not creatable from the canvas. Anything
+ * else stays in the menu.
+ *
+ * Note that `initiative` and `milestone` are **kept in the menu** even
+ * though they're DB-projected: selecting them triggers the dialog
+ * interception below, which opens a creation dialog and POSTs to the
+ * REST API. See `handleNodeAdd`.
  */
-const PROJECTED_CATEGORIES = new Set(["workspace", "repository"]);
+const NON_USER_CREATABLE_CATEGORIES = new Set(["workspace", "repository"]);
+
+/**
+ * Categories that, when picked from the `+` menu, open a creation
+ * dialog instead of dropping a node onto the canvas. The dialog hits
+ * the appropriate REST API; on success the projector re-emits the new
+ * node, and we save the user's click position so the node lands where
+ * they clicked.
+ */
+const DB_CREATING_CATEGORIES = new Set(["initiative", "milestone"]);
 
 /**
  * Full-screen interactive system-canvas background for the Connections page.
@@ -380,11 +407,271 @@ export function OrgCanvasBackground({
     [markDirty],
   );
 
+  // -------------------------------------------------------------------
+  // DB-creating `+` menu interception
+  //
+  // When the user picks `Initiative` or `Milestone` from the `+` menu,
+  // the library hands us a freshly-synthesized authored node. We do
+  // NOT add it to the canvas blob. Instead we open the matching
+  // creation dialog with the click position cached, hit the REST API
+  // on save, then save the click position into `Canvas.data.positions`
+  // for the projected node id so the new card lands where the user
+  // clicked. The Pusher `CANVAS_UPDATED` event from the API then
+  // re-projects the new entity onto the canvas.
+  //
+  // Cancel: nothing happens. No node was added.
+  // -------------------------------------------------------------------
+
+  /**
+   * Pending dialog state for an interception. Carries the click
+   * position so we can save it once the API returns the new entity id.
+   * `canvasRef` tracks which canvas the click came from — root for
+   * initiatives, `initiative:<id>` for milestones.
+   */
+  type PendingInitiativeAdd = {
+    kind: "initiative";
+    x: number;
+    y: number;
+    canvasRef: string | undefined;
+  };
+  type PendingMilestoneAdd = {
+    kind: "milestone";
+    x: number;
+    y: number;
+    /** Always an `initiative:<id>` ref — milestones can only be added inside one. */
+    canvasRef: string;
+    initiativeId: string;
+    /** Sequence numbers already taken on this initiative; pre-fetched for the dialog. */
+    usedSequences: number[];
+    defaultSequence: number;
+  };
+  type PendingAdd = PendingInitiativeAdd | PendingMilestoneAdd;
+
+  const [pendingAdd, setPendingAdd] = useState<PendingAdd | null>(null);
+
+  /**
+   * Save a freshly-created live node's click position into the canvas
+   * blob so it lands where the user clicked. Fire-and-forget: the API
+   * response from POST already returned the new id, so we can write
+   * the position before the projector re-emits the node — by the time
+   * Pusher fires the refresh, the position overlay is already in place.
+   */
+  const savePositionForLiveId = useCallback(
+    async (
+      canvasRef: string | undefined,
+      liveId: string,
+      x: number,
+      y: number,
+    ) => {
+      try {
+        // Read-modify-write the relevant canvas. We read first so we
+        // don't clobber other position overlays the user already set.
+        const url = canvasRef
+          ? `/api/orgs/${githubLogin}/canvas/${encodeURIComponent(canvasRef)}`
+          : `/api/orgs/${githubLogin}/canvas`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const body = await res.json();
+        const data: CanvasData = body.data ?? { nodes: [], edges: [] };
+        // Append a stub node carrying the position. The server's
+        // splitter will treat its live id as a positions overlay and
+        // discard everything else (text/category/customData). It
+        // doesn't matter that the projector hasn't emitted the real
+        // node yet — the position survives independently.
+        const existingNodes = data.nodes ?? [];
+        const nextNodes: CanvasNode[] = [
+          ...existingNodes.filter((n) => n.id !== liveId),
+          {
+            id: liveId,
+            type: "text",
+            category: "",
+            text: "",
+            x,
+            y,
+          },
+        ];
+        await fetch(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: { ...data, nodes: nextNodes } }),
+        });
+      } catch (err) {
+        // Non-fatal: the node will appear at the projector's default
+        // position and the user can drag it.
+        console.error(
+          "[OrgCanvasBackground] savePositionForLiveId failed",
+          err,
+        );
+      }
+    },
+    [githubLogin],
+  );
+
+  /**
+   * Open the InitiativeDialog with the click position cached. Caller
+   * passes the synthetic node from the library so we can pull `x`/`y`
+   * off it.
+   */
+  const startInitiativeCreate = useCallback(
+    (node: CanvasNode, canvasRef: string | undefined) => {
+      setPendingAdd({
+        kind: "initiative",
+        x: node.x,
+        y: node.y,
+        canvasRef,
+      });
+    },
+    [],
+  );
+
+  /**
+   * Open the MilestoneDialog. Pre-fetch the initiative's existing
+   * milestones so we know which sequence numbers are taken (needed
+   * for the dialog's client-side validation) and what the next-free
+   * sequence is to pre-populate the form.
+   */
+  const startMilestoneCreate = useCallback(
+    async (node: CanvasNode, canvasRef: string | undefined) => {
+      if (!canvasRef || !canvasRef.startsWith("initiative:")) {
+        // Defensive: milestone is only valid on an initiative sub-canvas.
+        // The renderer should never offer it elsewhere (we filter the
+        // menu by scope in renderAddNodeButton), but if it slips through
+        // we just no-op rather than crash.
+        return;
+      }
+      const initiativeId = canvasRef.slice("initiative:".length);
+      try {
+        const res = await fetch(
+          `/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones`,
+        );
+        const list: MilestoneResponse[] = res.ok ? await res.json() : [];
+        const usedSequences = list.map((m) => m.sequence);
+        const defaultSequence =
+          usedSequences.length === 0 ? 1 : Math.max(...usedSequences) + 1;
+        setPendingAdd({
+          kind: "milestone",
+          x: node.x,
+          y: node.y,
+          canvasRef,
+          initiativeId,
+          usedSequences,
+          defaultSequence,
+        });
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] failed to fetch milestones for dialog seed",
+          err,
+        );
+      }
+    },
+    [githubLogin],
+  );
+
   const handleNodeAdd = useCallback(
     (node: CanvasNode, canvasRef: string | undefined) => {
+      // Intercept DB-creating categories: open a dialog instead of
+      // dropping a synthetic authored node. The Pusher refresh from
+      // the API mutation will re-project the new entity into place.
+      if (DB_CREATING_CATEGORIES.has(node.category ?? "")) {
+        if (node.category === "initiative") {
+          startInitiativeCreate(node, canvasRef);
+          return;
+        }
+        if (node.category === "milestone") {
+          void startMilestoneCreate(node, canvasRef);
+          return;
+        }
+      }
       applyMutation(canvasRef, (c) => addNode(c, node));
     },
-    [applyMutation],
+    [applyMutation, startInitiativeCreate, startMilestoneCreate],
+  );
+
+  // -------------------------------------------------------------------
+  // Dialog save handlers
+  // -------------------------------------------------------------------
+
+  const handleSaveInitiative = useCallback(
+    async (form: InitiativeForm): Promise<void> => {
+      if (pendingAdd?.kind !== "initiative") return;
+      const body: Record<string, unknown> = {
+        name: form.name,
+        description: form.description || undefined,
+        status: form.status,
+        startDate: form.startDate || undefined,
+        targetDate: form.targetDate || undefined,
+        completedAt: form.completedAt || undefined,
+      };
+      const res = await fetch(`/api/orgs/${githubLogin}/initiatives`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        // Surface enough info to console; the dialog's `onSave` swallows
+        // the throw so this is the user-visible signal we have today.
+        // A toast belongs here when we add the global toast system.
+        console.error(
+          "[OrgCanvasBackground] create initiative failed",
+          res.status,
+        );
+        return;
+      }
+      const created: InitiativeResponse = await res.json();
+      // Pin the new initiative to the click position. Fire-and-forget;
+      // if it fails, the projector will default-place and the user can
+      // drag it.
+      void savePositionForLiveId(
+        pendingAdd.canvasRef,
+        `initiative:${created.id}`,
+        pendingAdd.x,
+        pendingAdd.y,
+      );
+      // The Pusher CANVAS_UPDATED event from the POST will trigger the
+      // root refetch and the new card will appear. We don't refetch
+      // manually here — keeping a single source of truth.
+    },
+    [githubLogin, pendingAdd, savePositionForLiveId],
+  );
+
+  const handleSaveMilestone = useCallback(
+    async (form: MilestoneForm): Promise<{ error?: string }> => {
+      if (pendingAdd?.kind !== "milestone") return {};
+      const body: Record<string, unknown> = {
+        name: form.name,
+        description: form.description || undefined,
+        status: form.status,
+        sequence: parseInt(form.sequence, 10),
+        dueDate: form.dueDate || undefined,
+        completedAt: form.completedAt || undefined,
+      };
+      const res = await fetch(
+        `/api/orgs/${githubLogin}/initiatives/${pendingAdd.initiativeId}/milestones`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      if (res.status === 409) {
+        return {
+          error:
+            "A milestone with that sequence already exists in this initiative.",
+        };
+      }
+      if (!res.ok) {
+        return { error: "Failed to create milestone." };
+      }
+      const created: MilestoneResponse = await res.json();
+      void savePositionForLiveId(
+        pendingAdd.canvasRef,
+        `milestone:${created.id}`,
+        pendingAdd.x,
+        pendingAdd.y,
+      );
+      return {};
+    },
+    [githubLogin, pendingAdd, savePositionForLiveId],
   );
   const handleNodeUpdate = useCallback(
     (id: string, patch: NodeUpdate, canvasRef: string | undefined) => {
@@ -479,18 +766,21 @@ export function OrgCanvasBackground({
    * at `bottom:16` of the canvas, which sits underneath the chat input's
    * `pointer-events-auto` wrapper and can't receive clicks.
    *
-   * We also filter out projected categories (`workspace`, `repository`)
-   * from the menu — authoring those would create ghost nodes that
-   * vanish on the next read. Restore-from-hidden lives on its own pill
-   * (see `HiddenLivePill`); creating a real workspace happens through
-   * the normal workspace-creation UI.
+   * Menu filtering removes only categories the user can never create
+   * from the canvas — workspaces and repositories. Initiatives and
+   * milestones stay in the menu regardless of current scope; if the
+   * user picks `milestone` while on root (where it has no target), the
+   * defensive guard in `startMilestoneCreate` no-ops. A future
+   * iteration can scope-filter the menu once the library exposes the
+   * current ref to this render hook.
    */
   const renderAddNodeButton = (props: AddNodeButtonRenderProps) => {
     const filtered = {
       ...props,
-      options: props.options.filter(
-        (o) => !(o.kind === "category" && PROJECTED_CATEGORIES.has(o.value)),
-      ),
+      options: props.options.filter((o) => {
+        if (o.kind !== "category") return true;
+        return !NON_USER_CREATABLE_CATEGORIES.has(o.value);
+      }),
     };
     return (
       <div
@@ -555,6 +845,31 @@ export function OrgCanvasBackground({
           onRestore={handleRestoreLive}
         />
       </div>
+
+      {/*
+       * Creation dialogs for DB-backed categories. Mounted at the
+       * component's top level (not inside the canvas container) so they
+       * render as full-page modals rather than getting clipped by the
+       * canvas's positioning shim. Closing without saving (cancel,
+       * Esc, click-outside) just clears `pendingAdd` — no node was
+       * ever added to the canvas.
+       */}
+      <InitiativeDialog
+        open={pendingAdd?.kind === "initiative"}
+        onClose={() => setPendingAdd(null)}
+        onSave={handleSaveInitiative}
+      />
+      <MilestoneDialog
+        open={pendingAdd?.kind === "milestone"}
+        onClose={() => setPendingAdd(null)}
+        defaultSequence={
+          pendingAdd?.kind === "milestone" ? pendingAdd.defaultSequence : undefined
+        }
+        usedSequences={
+          pendingAdd?.kind === "milestone" ? pendingAdd.usedSequences : []
+        }
+        onSave={handleSaveMilestone}
+      />
     </>
   );
 }
