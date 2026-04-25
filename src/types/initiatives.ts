@@ -8,6 +8,7 @@ export interface MilestoneResponse {
   dueDate: string | null;
   completedAt: string | null;
   assignee: { id: string; name: string | null } | null;
+  feature: { id: string; title: string; workspace: { id: string; name: string } } | null;
   createdAt: string;
   updatedAt: string;
 }
