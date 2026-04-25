@@ -17,10 +17,13 @@ import {
   updateEdge,
   updateNode,
 } from "system-canvas";
-import { db } from "@/lib/db";
-import { getOrgChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { buildCategoryDescription } from "@/app/org/[githubLogin]/connections/canvas-categories";
-import { readCanvas, writeCanvas, ROOT_REF } from "@/lib/canvas";
+import {
+  notifyCanvasUpdated,
+  readCanvas,
+  ROOT_REF,
+  writeCanvas,
+} from "@/lib/canvas";
 
 /**
  * Canvas tools for the Connections-page agent.
@@ -68,57 +71,6 @@ async function persistCanvas(
   await writeCanvas(orgId, ref, data);
 }
 
-/**
- * Delay before firing the Pusher trigger. On a brand-new page the client
- * lazily opens its Pusher WebSocket the first time `getPusherClient()`
- * runs, and `channel.subscribe()` resolves BEFORE the server confirms the
- * subscription. Events published during that window are dropped silently
- * (non-presence channels don't replay). Giving the client a short head
- * start makes first-canvas updates reliably land live instead of only on
- * refresh. 300ms is invisible to users (the agent has just finished a
- * multi-second reasoning turn) but comfortably longer than the typical
- * handshake.
- */
-const CANVAS_NOTIFY_DELAY_MS = 300;
-
-async function notifyCanvasUpdated(
-  orgId: string,
-  ref: string,
-  action: string,
-  detail?: Record<string, unknown>,
-): Promise<void> {
-  try {
-    const org = await db.sourceControlOrg.findUnique({
-      where: { id: orgId },
-      select: { githubLogin: true },
-    });
-    if (!org) {
-      console.warn(
-        "[canvasTools] notifyCanvasUpdated: no SourceControlOrg for orgId",
-        orgId,
-      );
-      return;
-    }
-    const channelName = getOrgChannelName(org.githubLogin);
-    await new Promise((r) => setTimeout(r, CANVAS_NOTIFY_DELAY_MS));
-    await pusherServer.trigger(channelName, PUSHER_EVENTS.CANVAS_UPDATED, {
-      // `null` == root canvas; a non-empty string addresses a sub-canvas
-      // (mirrors the API's empty-string sentinel). The client routes
-      // refetches off this.
-      ref: ref === ROOT_REF ? null : ref,
-      action,
-      ...(detail ?? {}),
-      timestamp: Date.now(),
-    });
-    console.log(
-      `[canvasTools] CANVAS_UPDATED → ${channelName} (${action}, ref=${ref || "root"})`,
-      detail ?? {},
-    );
-  } catch (e) {
-    console.error("[canvasTools] failed to send canvas update:", e);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Zod schemas shared between update_canvas and patch_canvas
 // ---------------------------------------------------------------------------
@@ -133,24 +85,16 @@ async function notifyCanvasUpdated(
  */
 const CATEGORY_DESCRIPTION = buildCategoryDescription();
 
-const customDataSchema = z
-  .object({
-    /**
-     * Objective status — drives the pill (OK/ATTN/RISK), top-edge accent,
-     * and progress-bar tint. Defaults to "ok" when omitted.
-     */
-    status: z.enum(["ok", "attn", "risk"]).optional(),
-    /** Progress percent, e.g. "38%" or 0.38. Used by `objective`. */
-    primary: z.union([z.string(), z.number()]).optional(),
-    /** Footer text, e.g. "4 blockers" or "6 ppl". Used by `objective`. */
-    secondary: z.string().optional(),
-    /** When true, `secondary` is rendered in the status color (red/amber). */
-    secondaryAccent: z.boolean().optional(),
-    /** Blocker-tab badge number. Used by `objective`. */
-    count: z.number().int().nonnegative().optional(),
-  })
-  .passthrough()
-  .optional();
+/**
+ * Free-form `customData` bag. The agent only authors `note` and
+ * `decision` nodes today — neither uses structured customData. Projected
+ * categories (`initiative`, `milestone`, etc.) DO consume customData,
+ * but those are populated by the projector, not the agent. We accept
+ * any shape here so the agent can round-trip projected nodes through
+ * `update_canvas` without losing data; the server's splitter then
+ * discards customData on live ids and keeps it on authored ones.
+ */
+const customDataSchema = z.object({}).passthrough().optional();
 
 const nodeInputSchema = z.object({
   /**
@@ -162,7 +106,7 @@ const nodeInputSchema = z.object({
   id: z.string().optional(),
   type: z.literal("text").default("text"),
   category: z.string().describe(CATEGORY_DESCRIPTION),
-  text: z.string().describe("Visible label. Use \\n for multi-line (objective)."),
+  text: z.string().describe("Visible label. Use \\n for multi-line where the renderer supports it."),
   x: z.number().describe("Canvas-space x (pixels). See prompt for layout guide."),
   y: z.number().describe("Canvas-space y (pixels). See prompt for layout guide."),
   width: z.number().positive().optional(),
@@ -417,9 +361,9 @@ export function buildCanvasTools(orgId: string): ToolSet {
     patch_canvas: tool({
       description:
         "Apply one or more small ops (add/update/remove node/edge) to a " +
-        "canvas. Use this for targeted changes like 'mark initiative X " +
-        "as at-risk' or 'add a blocker count'. Each op is applied in " +
-        "order; if one fails, later ops in the same call still run.",
+        "canvas. Use this for targeted changes like 'add a note explaining " +
+        "milestone M' or 'edge initiative A to workspace W'. Each op is " +
+        "applied in order; if one fails, later ops in the same call still run.",
       inputSchema: z.object({
         ref: z.string().describe(REF_DESCRIPTION).optional(),
         ops: z.array(patchOpSchema).min(1),

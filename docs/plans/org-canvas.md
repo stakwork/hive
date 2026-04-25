@@ -1,8 +1,14 @@
 # Org Canvas — Live + Authored
 
+> ⚠️ **SUPERSEDED — see [`org-initiatives.md`](./org-initiatives.md)**
+>
+> This doc describes the v1/v1.1 model where strategic structure was authored as JSON `objective` nodes with drillable child canvases. That model has been replaced wholesale: Initiatives and Milestones are now real Prisma models (`Initiative`, `Milestone`) projected onto the canvas like Workspaces and Repositories. Authored objectives are gone.
+>
+> This doc is preserved for historical context — particularly the "Three concepts" framing (Scope / Projection / Authored blob), the merge/split pipeline, and the "edges are decoration, not load-bearing" rationale, all of which carry forward unchanged. Anything below about authored objectives, `node:<id>` refs, `DRILLABLE_CATEGORIES`, or `computeChildRollups` is **out of date**; read `org-initiatives.md` for the current model.
+
 A design for the org-level canvas where DB entities (workspaces, repositories, later features/members/tasks) live side-by-side with human/LLM-authored content (objectives, notes, decisions) on the same infinite whiteboard, navigable via zoom.
 
-Status: **shipping**. v1 (root projection of workspaces) and v1.1 (workspace sub-canvas projecting repositories, drillable authored objectives with child-canvas rollup) are in. v2+ (feature projection, member projection) are unshipped.
+Status: **superseded by `org-initiatives.md`**. The v1/v1.1 ship described here (root projection of workspaces, workspace sub-canvas projecting repositories, drillable authored objectives with child-canvas rollup) shipped, then was replaced when Initiatives and Milestones became real DB models.
 
 ## Goal
 

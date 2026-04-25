@@ -18,7 +18,13 @@ export const ROOT_REF = "";
  * new entity kind is a single edit here plus a new projector. Anything
  * not in this set is treated as an authored id.
  */
-const LIVE_ID_PREFIXES = ["ws:", "feature:", "repo:"] as const;
+const LIVE_ID_PREFIXES = [
+  "ws:",
+  "feature:",
+  "repo:",
+  "initiative:",
+  "milestone:",
+] as const;
 
 /** True iff `id` is prefixed with a known live-id kind. */
 export function isLiveId(id: string): boolean {
@@ -32,11 +38,18 @@ export function isLiveId(id: string): boolean {
  * Parse a `Canvas.ref` column value into a Scope.
  *
  *   ""                   → root
- *   "node:<id>"          → authored-sub (zoom into an authored node)
- *   "ws:<cuid>"          → workspace team view (v3; projector is a
- *                          no-op in v1 but the parser accepts it so we
- *                          don't have to change refs later)
- *   "feature:<cuid>"     → feature deep-dive (same, v3+)
+ *   "ws:<cuid>"          → workspace sub-canvas (repos)
+ *   "initiative:<cuid>"  → initiative timeline (milestones)
+ *   "node:<id>"          → legacy authored-sub. The pre-cutover plan
+ *                          (`docs/plans/org-canvas.md`) used these for
+ *                          drillable authored objectives. Those are
+ *                          gone, but we still parse the prefix so any
+ *                          orphaned blobs round-trip through reads
+ *                          without crashing — projection no-ops on
+ *                          this scope kind.
+ *   "feature:<cuid>"     → feature deep-dive (reserved; no projector)
+ *   "milestone:<cuid>"   → milestone deep-dive (reserved; no projector
+ *                          in v1 — features/tasks projection is v2)
  *   anything else        → opaque (stored verbatim, no projection)
  *
  * Opaque scopes exist because sub-canvases predate the projection
@@ -52,6 +65,12 @@ export function parseScope(ref: string): Scope {
   } else if (ref.startsWith("ws:")) {
     const workspaceId = ref.slice("ws:".length);
     if (workspaceId) return { kind: "workspace", workspaceId };
+  } else if (ref.startsWith("initiative:")) {
+    const initiativeId = ref.slice("initiative:".length);
+    if (initiativeId) return { kind: "initiative", initiativeId };
+  } else if (ref.startsWith("milestone:")) {
+    const milestoneId = ref.slice("milestone:".length);
+    if (milestoneId) return { kind: "milestone", milestoneId };
   } else if (ref.startsWith("feature:")) {
     const featureId = ref.slice("feature:".length);
     if (featureId) return { kind: "feature", featureId };
