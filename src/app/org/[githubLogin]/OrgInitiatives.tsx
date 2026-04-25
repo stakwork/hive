@@ -40,7 +40,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { formatRelativeOrDate } from "@/lib/date-utils";
 import type { InitiativeResponse, MilestoneResponse } from "@/types/initiatives";
-import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Link2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { LinkFeatureModal } from "./LinkFeatureModal";
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 
@@ -403,8 +404,21 @@ function MilestonesTable({
   const [editTarget, setEditTarget] = useState<MilestoneResponse | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MilestoneResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<MilestoneResponse | null>(null);
 
   const baseUrl = `/api/orgs/${githubLogin}/initiatives/${initiative.id}/milestones`;
+
+  const handleUnlink = async (m: MilestoneResponse) => {
+    const res = await fetch(`${baseUrl}/${m.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ featureId: null }),
+    });
+    if (res.ok) {
+      const updated: MilestoneResponse = await res.json();
+      onMilestoneUpdated(initiative.id, updated);
+    }
+  };
 
   const handleAdd = async (form: MilestoneForm): Promise<{ error?: string }> => {
     const body: Record<string, unknown> = {
@@ -498,7 +512,35 @@ function MilestonesTable({
                   {m.assignee?.name ?? "—"}
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {m.feature ? (
+                      <div className="flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-xs">
+                        <span className="text-blue-900 dark:text-blue-100 font-medium max-w-[120px] truncate">
+                          {m.feature.title}
+                        </span>
+                        <span className="text-blue-600 dark:text-blue-400 mx-0.5">·</span>
+                        <span className="text-blue-700 dark:text-blue-300 max-w-[80px] truncate">
+                          {m.feature.workspace.name}
+                        </span>
+                        <button
+                          className="ml-1 text-blue-500 hover:text-blue-700"
+                          title="Unlink feature"
+                          onClick={() => handleUnlink(m)}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        title="Link feature"
+                        onClick={() => setLinkTarget(m)}
+                      >
+                        <Link2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -563,6 +605,18 @@ function MilestonesTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <LinkFeatureModal
+        open={!!linkTarget}
+        onClose={() => setLinkTarget(null)}
+        githubLogin={githubLogin}
+        initiativeId={initiative.id}
+        milestoneId={linkTarget?.id ?? ""}
+        onLinked={(updated) => {
+          onMilestoneUpdated(initiative.id, updated);
+          setLinkTarget(null);
+        }}
+      />
     </div>
   );
 }
