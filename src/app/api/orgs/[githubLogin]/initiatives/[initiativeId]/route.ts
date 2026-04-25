@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
+import { notifyCanvasesUpdatedByLogin } from "@/lib/canvas";
 
 const INITIATIVE_INCLUDE = {
   assignee: { select: { id: true, name: true } },
@@ -56,6 +57,16 @@ export async function PATCH(
       include: INITIATIVE_INCLUDE,
     });
 
+    // The initiative card on root may need to redraw (name/status), AND
+    // the timeline sub-canvas (`initiative:<id>`) is anchored on this
+    // initiative — both are stale until refetched.
+    void notifyCanvasesUpdatedByLogin(
+      githubLogin,
+      ["", `initiative:${initiativeId}`],
+      "initiative-updated",
+      { initiativeId },
+    );
+
     return NextResponse.json(initiative);
   } catch (error) {
     console.error("[PATCH /api/orgs/[githubLogin]/initiatives/[initiativeId]] Error:", error);
@@ -91,6 +102,15 @@ export async function DELETE(
 
     // DB cascade removes Milestones; SetNull handles Feature.milestoneId
     await db.initiative.delete({ where: { id: initiativeId } });
+
+    // Initiative card disappears from root; its timeline sub-canvas is
+    // also gone (stale state in any open viewer needs a refetch).
+    void notifyCanvasesUpdatedByLogin(
+      githubLogin,
+      ["", `initiative:${initiativeId}`],
+      "initiative-deleted",
+      { initiativeId },
+    );
 
     return NextResponse.json({ status: "deleted" });
   } catch (error) {
