@@ -9,6 +9,8 @@ import {
   StakworkRunType,
   WorkflowStatus,
   WorkspaceRole,
+  InitiativeStatus,
+  MilestoneStatus,
 } from "@prisma/client";
 import { config as dotenvConfig } from "dotenv";
 import { seedDeploymentTracking } from "./seed-deployment-tracking";
@@ -1225,6 +1227,138 @@ async function seedPlatformConfig() {
   console.log('✓ Seeded PlatformConfig: hiveAmountUsd=50, graphmindsetAmountUsd=50');
 }
 
+async function seedInitiativesAndMilestones(
+  users: Array<{ id: string; email: string }>,
+) {
+  // Idempotent: skip if any initiatives already exist
+  const existingCount = await prisma.initiative.count();
+  if (existingCount > 0) {
+    console.log("Initiatives already seeded, skipping.");
+    return;
+  }
+
+  // Find or create a SourceControlOrg for seeding
+  let org = await prisma.sourceControlOrg.findFirst();
+  if (!org) {
+    org = await prisma.sourceControlOrg.create({
+      data: {
+        githubLogin: "seed-org",
+        githubInstallationId: 888001,
+        name: "Seed Organization",
+        type: "ORG",
+      },
+    });
+    console.log("✓ Created seed SourceControlOrg");
+  }
+
+  const assigneeId = users[0]?.id ?? null;
+
+  // Create 3 initiatives
+  const initiative1 = await prisma.initiative.create({
+    data: {
+      orgId: org.id,
+      name: "Q1 Platform Reliability",
+      description: "Improve system reliability and reduce incident rate across all services.",
+      status: InitiativeStatus.ACTIVE,
+      assigneeId,
+      startDate: new Date("2025-01-01"),
+      targetDate: new Date("2025-03-31"),
+    },
+  });
+
+  const initiative2 = await prisma.initiative.create({
+    data: {
+      orgId: org.id,
+      name: "Mobile Launch",
+      description: "Ship the first version of the mobile application to production.",
+      status: InitiativeStatus.DRAFT,
+      targetDate: new Date("2025-06-30"),
+    },
+  });
+
+  const initiative3 = await prisma.initiative.create({
+    data: {
+      orgId: org.id,
+      name: "Legacy Migration",
+      description: "Migrate all legacy services to the new infrastructure.",
+      status: InitiativeStatus.COMPLETED,
+      assigneeId,
+      startDate: new Date("2024-09-01"),
+      targetDate: new Date("2024-12-31"),
+      completedAt: new Date("2024-12-31"),
+    },
+  });
+
+  // Create 4 milestones spread across initiatives
+  const milestone1 = await prisma.milestone.create({
+    data: {
+      initiativeId: initiative1.id,
+      name: "Observability Stack",
+      description: "Set up centralized logging, tracing, and alerting.",
+      status: MilestoneStatus.COMPLETED,
+      sequence: 10,
+      dueDate: new Date("2025-01-31"),
+      completedAt: new Date("2025-01-28"),
+      assigneeId,
+    },
+  });
+
+  await prisma.milestone.create({
+    data: {
+      initiativeId: initiative1.id,
+      name: "SLO Definitions",
+      description: "Define and document SLOs for all critical services.",
+      status: MilestoneStatus.IN_PROGRESS,
+      sequence: 20,
+      dueDate: new Date("2025-02-28"),
+      assigneeId,
+    },
+  });
+
+  await prisma.milestone.create({
+    data: {
+      initiativeId: initiative1.id,
+      name: "Incident Runbooks",
+      description: "Create runbooks for top 10 incident types.",
+      status: MilestoneStatus.NOT_STARTED,
+      sequence: 30,
+      dueDate: new Date("2025-03-31"),
+    },
+  });
+
+  await prisma.milestone.create({
+    data: {
+      initiativeId: initiative3.id,
+      name: "Database Migration",
+      description: "Migrate all legacy databases to managed PostgreSQL.",
+      status: MilestoneStatus.COMPLETED,
+      sequence: 10,
+      dueDate: new Date("2024-11-30"),
+      completedAt: new Date("2024-11-25"),
+      assigneeId,
+    },
+  });
+
+  // Link 1-2 existing features to a milestone
+  const features = await prisma.feature.findMany({ take: 2, where: { deleted: false } });
+  if (features.length > 0) {
+    await prisma.feature.update({
+      where: { id: features[0].id },
+      data: { milestoneId: milestone1.id },
+    });
+    if (features.length > 1) {
+      await prisma.feature.update({
+        where: { id: features[1].id },
+        data: { milestoneId: milestone1.id },
+      });
+    }
+  }
+
+  console.log(
+    `✓ Seeded 3 initiatives, 4 milestones, linked ${Math.min(features.length, 2)} feature(s) to milestone`,
+  );
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1237,6 +1371,7 @@ async function main() {
   await seedAgentLogs();
   await seedDashboardConversations(users);
   await seedPlatformConfig();
+  await seedInitiativesAndMilestones(users);
 
   console.log("Seed completed.");
 }
