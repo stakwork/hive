@@ -12,7 +12,7 @@
  * the dialog reusable for "create" and "edit" without baking in
  * routing knowledge.
  */
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

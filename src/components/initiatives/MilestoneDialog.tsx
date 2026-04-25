@@ -12,7 +12,7 @@
  * `usedSequences` so the dialog can validate the sequence number
  * client-side before round-tripping.
  */
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
