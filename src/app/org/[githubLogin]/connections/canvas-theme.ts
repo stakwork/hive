@@ -464,6 +464,24 @@ export const connectionsTheme: CanvasTheme = resolveTheme(
       ...darkTheme.grid,
       color: "rgba(255, 255, 255, 0.03)",
     },
+    // Subtle alternating background bands for projector-emitted
+    // columns/rows (today: the milestone-timeline's quarterly columns).
+    // Built on the dark theme's defaults but pulled even further down
+    // in opacity so the bands read as "structure, not chrome" — they
+    // help the user think in time, but never compete with the
+    // milestone cards or with edges.
+    lanes: {
+      ...darkTheme.lanes,
+      bandFillEven: "rgba(255, 255, 255, 0.018)",
+      bandFillOdd: "rgba(255, 255, 255, 0.005)",
+      dividerColor: "rgba(255, 255, 255, 0.06)",
+      dividerWidth: 1,
+      headerBackground: "rgba(15, 17, 22, 0.85)",
+      headerTextColor: MUTED,
+      headerFontFamily: LABEL_FONT,
+      headerFontSize: 11,
+      headerSize: 26,
+    },
     // Build the renderer's category map by joining the category
     // registry (id + agent docs) with the local renderer definitions.
     // The registry is the single source of truth for which categories

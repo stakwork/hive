@@ -68,3 +68,16 @@ export const REPO_ROW_STEP = SMALL_W + ROW_GAP;
 export const MILESTONE_ROW_Y = 80;
 export const MILESTONE_ROW_X0 = 40;
 export const MILESTONE_ROW_STEP = MILESTONE_W + ROW_GAP;
+
+/**
+ * Width of each column band on the milestone timeline (Past Due,
+ * This Quarter, Next Quarter, Later). The bands are decorative
+ * background chrome — milestone cards never snap to them. We pick a
+ * width that comfortably fits 1-2 milestone cards side-by-side so a
+ * busy column reads as "occupied" without forcing horizontal scroll
+ * past 4 × 460 = 1840px (a typical laptop viewport at zoom 1.0).
+ */
+export const TIMELINE_COL_W = 460;
+export const TIMELINE_COL_X0 = 0;
+/** First-render y-band for the column header strip. */
+export const TIMELINE_HEADER_Y = 0;

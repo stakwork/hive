@@ -9,7 +9,12 @@
  *
  * This file defines the shapes. The merge/split logic lives in `./io`.
  */
-import type { CanvasData, CanvasEdge, CanvasNode } from "system-canvas";
+import type {
+  CanvasData,
+  CanvasEdge,
+  CanvasLane,
+  CanvasNode,
+} from "system-canvas";
 
 /**
  * What gets persisted in `Canvas.data` (one row per `(orgId, ref)`).
@@ -85,13 +90,27 @@ export type Scope =
   | { kind: "opaque"; ref: string };
 
 /**
- * What a projector emits. `rollups` is keyed by live id and merged into
- * the live node's `customData`; existing authored keys win (see the
- * "manual customData wins; rollup fills the gaps" rule in the plan).
+ * What a projector emits.
+ *
+ * - `nodes` — the live nodes produced for this scope.
+ * - `rollups` — keyed by live id and merged into the live node's
+ *   `customData`; existing authored keys win (see the "manual
+ *   customData wins; rollup fills the gaps" rule in the plan).
+ * - `columns` / `rows` — optional background bands rendered behind
+ *   the canvas. Used for timeline/swim-lane decorations (e.g. the
+ *   "Past Due / This Quarter / Next Quarter / Later" bands on the
+ *   milestone timeline). They are **decorative chrome only** —
+ *   the renderer paints them as tinted backgrounds + headers but
+ *   does NOT snap nodes to them. Cards keep their projector- or
+ *   user-assigned positions independently. Only one projector per
+ *   scope should emit lanes; the merge picks the first non-empty
+ *   set it sees.
  */
 export interface ProjectionResult {
   nodes: CanvasNode[];
   rollups?: Record<string, Record<string, unknown>>;
+  columns?: CanvasLane[];
+  rows?: CanvasLane[];
 }
 
 export interface Projector {
@@ -100,4 +119,4 @@ export interface Projector {
 }
 
 /** Re-export the library's runtime shape so callers don't need two imports. */
-export type { CanvasData, CanvasEdge, CanvasNode };
+export type { CanvasData, CanvasEdge, CanvasLane, CanvasNode };

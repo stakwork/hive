@@ -399,6 +399,78 @@ describe("readCanvas (initiative scope — milestone timeline)", () => {
     expect(m1?.x).toBe(1234);
     expect(m1?.y).toBe(567);
   });
+
+  it("emits four timeline columns (Past Due / This Quarter / Next Quarter / Later)", async () => {
+    // Columns are decorative chrome rendered behind milestone cards.
+    // We assert the four column ids are stable; their labels include
+    // a calendar-quarter suffix that varies by run date, so we don't
+    // pin the exact label text.
+    mockBlob(null);
+    mockOwnedInitiative("i1");
+    mockMilestones([]);
+
+    const data = await readCanvas("org-1", "initiative:i1");
+    expect(data.columns?.map((c) => c.id)).toEqual([
+      "past-due",
+      "this-quarter",
+      "next-quarter",
+      "later",
+    ]);
+    // Column labels surface the quarter suffix only on the middle two.
+    expect(data.columns?.[0].label).toBe("Past Due");
+    expect(data.columns?.[1].label).toMatch(/^This Quarter · Q[1-4] \d{4}$/);
+    expect(data.columns?.[2].label).toMatch(/^Next Quarter · Q[1-4] \d{4}$/);
+    expect(data.columns?.[3].label).toBe("Later");
+    // Columns are evenly sized and laid out left-to-right.
+    const widths = data.columns?.map((c) => c.size) ?? [];
+    expect(new Set(widths).size).toBe(1);
+    const starts = data.columns?.map((c) => c.start) ?? [];
+    expect(starts).toEqual(
+      [...starts].sort((a, b) => a - b),
+    );
+  });
+
+  it("does NOT emit timeline columns on the root canvas", async () => {
+    mockBlob(null);
+    mockWorkspaces([{ id: "w1", name: "Alpha" }]);
+
+    const data = await readCanvas("org-1", "");
+    expect(data.columns).toBeUndefined();
+  });
+});
+
+describe("buildTimelineColumns (quarter math)", () => {
+  // Imported lazily so the projector module's side-effect-free helper
+  // is exercised directly without relying on `new Date()` inside the
+  // projector's `project` call.
+  it("computes 'next quarter' across a year boundary", async () => {
+    const { buildTimelineColumns } = await import(
+      "@/lib/canvas/projectors"
+    );
+    // 2026-12-15 is in Q4 (quarter index 3); next quarter wraps to
+    // Q1 2027.
+    const cols = buildTimelineColumns(new Date("2026-12-15T12:00:00Z"));
+    expect(cols.find((c) => c.id === "this-quarter")?.label).toBe(
+      "This Quarter · Q4 2026",
+    );
+    expect(cols.find((c) => c.id === "next-quarter")?.label).toBe(
+      "Next Quarter · Q1 2027",
+    );
+  });
+
+  it("uses calendar quarters (Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec)", async () => {
+    const { buildTimelineColumns } = await import(
+      "@/lib/canvas/projectors"
+    );
+    // 2026-04-01: first day of Q2.
+    const cols = buildTimelineColumns(new Date("2026-04-01T12:00:00Z"));
+    expect(cols.find((c) => c.id === "this-quarter")?.label).toContain(
+      "Q2 2026",
+    );
+    expect(cols.find((c) => c.id === "next-quarter")?.label).toContain(
+      "Q3 2026",
+    );
+  });
 });
 
 describe("readCanvas (workspace scope)", () => {

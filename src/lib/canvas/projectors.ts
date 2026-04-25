@@ -9,7 +9,7 @@
  * the cost of a few extra no-op calls — a cost we're happy to pay.
  */
 import { db } from "@/lib/db";
-import type { CanvasNode } from "system-canvas";
+import type { CanvasLane, CanvasNode } from "system-canvas";
 import type { Projector, ProjectionResult, Scope } from "./types";
 import {
   INITIATIVE_ROW_STEP,
@@ -21,6 +21,8 @@ import {
   REPO_ROW_STEP,
   REPO_ROW_X0,
   REPO_ROW_Y,
+  TIMELINE_COL_W,
+  TIMELINE_COL_X0,
   WORKSPACE_ROW_STEP,
   WORKSPACE_ROW_X0,
   WORKSPACE_ROW_Y,
@@ -251,7 +253,74 @@ export const initiativeProjector: Projector = {
 // orgId in the where clause to prevent cross-org reads via cuid
 // guessing (the ref travels through the URL and isn't validated against
 // orgId otherwise — same pattern as workspaceProjector).
+//
+// Also emits four time-window **columns** as decorative background
+// chrome:
+//   - Past Due — overdue, not completed
+//   - This Quarter — calendar quarter containing today
+//   - Next Quarter — the calendar quarter after that
+//   - Later — anything beyond next quarter
+//
+// Columns are positional reference frames, NOT snap targets. Cards
+// keep their projector-assigned x positions (sequence-based) and
+// users drag freely; the columns just paint background bands so users
+// can think in time.
 // ---------------------------------------------------------------------------
+
+/**
+ * Calendar-quarter boundary helper. Returns the index of the quarter
+ * (0-3) and the year, so we can compute "next quarter" cleanly across
+ * year boundaries.
+ */
+function quarterOf(d: Date): { year: number; quarter: 0 | 1 | 2 | 3 } {
+  const m = d.getMonth(); // 0..11
+  return {
+    year: d.getFullYear(),
+    quarter: Math.floor(m / 3) as 0 | 1 | 2 | 3,
+  };
+}
+
+/** Short label for a (year, quarter) tuple, e.g. "Q3 2026". */
+function quarterLabel(year: number, quarter: 0 | 1 | 2 | 3): string {
+  return `Q${quarter + 1} ${year}`;
+}
+
+/**
+ * Emit the four time-window columns for the milestone timeline.
+ * Pure: takes `now` so tests can pin the date and assert against
+ * stable column labels.
+ */
+export function buildTimelineColumns(now: Date): CanvasLane[] {
+  const { year: y, quarter: q } = quarterOf(now);
+  const nextQ = ((q + 1) % 4) as 0 | 1 | 2 | 3;
+  const nextY = q === 3 ? y + 1 : y;
+  return [
+    {
+      id: "past-due",
+      label: "Past Due",
+      start: TIMELINE_COL_X0 + 0 * TIMELINE_COL_W,
+      size: TIMELINE_COL_W,
+    },
+    {
+      id: "this-quarter",
+      label: `This Quarter · ${quarterLabel(y, q)}`,
+      start: TIMELINE_COL_X0 + 1 * TIMELINE_COL_W,
+      size: TIMELINE_COL_W,
+    },
+    {
+      id: "next-quarter",
+      label: `Next Quarter · ${quarterLabel(nextY, nextQ)}`,
+      start: TIMELINE_COL_X0 + 2 * TIMELINE_COL_W,
+      size: TIMELINE_COL_W,
+    },
+    {
+      id: "later",
+      label: "Later",
+      start: TIMELINE_COL_X0 + 3 * TIMELINE_COL_W,
+      size: TIMELINE_COL_W,
+    },
+  ];
+}
 
 export const milestoneTimelineProjector: Projector = {
   async project(scope: Scope, orgId: string): Promise<ProjectionResult> {
@@ -319,7 +388,7 @@ export const milestoneTimelineProjector: Projector = {
       };
     });
 
-    return { nodes };
+    return { nodes, columns: buildTimelineColumns(new Date()) };
   },
 };
 

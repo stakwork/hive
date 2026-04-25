@@ -11,7 +11,12 @@
  * root, authored-vs-live split) are applied in exactly one place.
  */
 import { Prisma } from "@prisma/client";
-import type { CanvasData, CanvasEdge, CanvasNode } from "system-canvas";
+import type {
+  CanvasData,
+  CanvasEdge,
+  CanvasLane,
+  CanvasNode,
+} from "system-canvas";
 import { db } from "@/lib/db";
 import { isLiveId, parseScope } from "./scope";
 import { PROJECTORS } from "./projectors";
@@ -110,6 +115,8 @@ async function projectAll(
 ): Promise<{
   liveNodes: CanvasNode[];
   rollups: Record<string, Record<string, unknown>>;
+  columns: CanvasLane[] | undefined;
+  rows: CanvasLane[] | undefined;
 }> {
   const scope = parseScope(ref);
   const results = await Promise.all(
@@ -117,6 +124,13 @@ async function projectAll(
   );
   const liveNodes: CanvasNode[] = [];
   const rollups: Record<string, Record<string, unknown>> = {};
+  // Lanes are decorative chrome attached to a scope, not a per-node
+  // concept. We expect at most one projector per scope to emit lanes;
+  // first non-empty set wins. Multiple projectors emitting on the same
+  // scope is a config error — we'd just silently use one — so we don't
+  // try to merge.
+  let columns: CanvasLane[] | undefined;
+  let rows: CanvasLane[] | undefined;
   for (const r of results) {
     for (const n of r.nodes) liveNodes.push(n);
     if (r.rollups) {
@@ -124,8 +138,10 @@ async function projectAll(
         rollups[id] = { ...(rollups[id] ?? {}), ...data };
       }
     }
+    if (!columns && r.columns && r.columns.length > 0) columns = r.columns;
+    if (!rows && r.rows && r.rows.length > 0) rows = r.rows;
   }
-  return { liveNodes, rollups };
+  return { liveNodes, rollups, columns, rows };
 }
 
 /**
@@ -154,7 +170,7 @@ export async function readCanvas(
   ref: string,
 ): Promise<CanvasData> {
   const blob = await loadBlob(orgId, ref);
-  const { liveNodes, rollups } = await projectAll(ref, orgId);
+  const { liveNodes, rollups, columns, rows } = await projectAll(ref, orgId);
 
   const hidden = new Set(blob.hidden ?? []);
   const visibleLive = liveNodes
@@ -168,7 +184,13 @@ export async function readCanvas(
     (e) => presentIds.has(e.fromNode) && presentIds.has(e.toNode),
   );
 
-  return { nodes, edges };
+  // Columns/rows are decorative — paint background bands behind nodes,
+  // never snap nodes to them. Omitted from the response when no
+  // projector emitted any.
+  const result: CanvasData = { nodes, edges };
+  if (columns) result.columns = columns;
+  if (rows) result.rows = rows;
+  return result;
 }
 
 // ---------------------------------------------------------------------------
