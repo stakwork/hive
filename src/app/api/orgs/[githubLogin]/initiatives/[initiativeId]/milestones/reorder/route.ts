@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
+import { notifyCanvasUpdatedByLogin } from "@/lib/canvas";
 
 const MILESTONE_INCLUDE = {
   assignee: { select: { id: true, name: true } },
@@ -87,6 +88,17 @@ export async function POST(
       include: MILESTONE_INCLUDE,
       orderBy: { sequence: "asc" },
     });
+
+    // Reorder only changes the timeline's x-axis layout (sequence drives
+    // default placement). The root rollup is unaffected (count of
+    // COMPLETED milestones doesn't depend on order), so we don't fan
+    // out to the root canvas — keeps the refetch surface minimal.
+    void notifyCanvasUpdatedByLogin(
+      githubLogin,
+      `initiative:${initiativeId}`,
+      "milestones-reordered",
+      { initiativeId, count: milestones.length },
+    );
 
     return NextResponse.json(updatedMilestones);
   } catch (error) {

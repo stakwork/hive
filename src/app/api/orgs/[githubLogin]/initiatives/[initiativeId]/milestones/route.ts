@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
+import { notifyCanvasesUpdatedByLogin } from "@/lib/canvas";
 import { Prisma } from "@prisma/client";
 
 const MILESTONE_INCLUDE = {
@@ -78,6 +79,16 @@ export async function POST(
       },
       include: MILESTONE_INCLUDE,
     });
+
+    // The new milestone appears on the timeline sub-canvas; the
+    // root-level initiative card's milestone-completion footer also
+    // changes (denominator went up), so refresh both.
+    void notifyCanvasesUpdatedByLogin(
+      githubLogin,
+      ["", `initiative:${initiativeId}`],
+      "milestone-created",
+      { initiativeId, milestoneId: milestone.id },
+    );
 
     return NextResponse.json(serializeMilestone(milestone as MilestoneWithRelations), { status: 201 });
   } catch (error) {
