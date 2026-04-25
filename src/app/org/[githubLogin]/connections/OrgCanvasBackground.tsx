@@ -191,6 +191,18 @@ export function OrgCanvasBackground({
   const [subCanvases, setSubCanvases] = useState<Record<string, CanvasData>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   /**
+   * Current canvas scope as the user has it open. `""` is root; any
+   * non-empty value is a sub-canvas ref (e.g. `"ws:abc"` or
+   * `"initiative:xyz"`). Driven by the library's `onNavigate` callback;
+   * defaults to root.
+   *
+   * We track this so chrome that's only meaningful at the org level
+   * (notably the "N hidden" restore pill, which lists hidden workspaces)
+   * stays out of the way when the user has drilled into a sub-canvas
+   * and is focused on a smaller scope.
+   */
+  const [currentRef, setCurrentRef] = useState<string>("");
+  /**
    * Hidden live entries for the ROOT canvas only. Keeps the pill's
    * data model simple (it sits on the root view). If we later surface
    * hidden entries on sub-canvases, switch this to a `Record<ref, …>`.
@@ -913,6 +925,7 @@ export function OrgCanvasBackground({
           theme={connectionsTheme}
           editable
           onResolveCanvas={onResolveCanvas}
+          onNavigate={setCurrentRef}
           onNodeAdd={handleNodeAdd}
           onNodeUpdate={handleNodeUpdate}
           onNodeDelete={handleNodeDelete}
@@ -923,15 +936,21 @@ export function OrgCanvasBackground({
           rootLabel={orgName || githubLogin}
         />
         {/*
-         * Restore pill — top-right of the canvas area. Hides itself
-         * when nothing is hidden, so the 99% case is zero chrome. Sits
-         * inside the canvas container so it tracks `rightInset`
+         * Restore pill — top-right of the canvas area. Only shown on
+         * the root canvas: the hidden-list it surfaces is workspace-
+         * scoped (org-level chrome), and a sub-canvas like a
+         * workspace's repos page or an initiative's milestone timeline
+         * has no use for restoring workspaces. Hides itself when
+         * nothing is hidden, so the 99% case on root is zero chrome.
+         * Sits inside the canvas container so it tracks `rightInset`
          * alongside the canvas itself (stays clear of the sidebar).
          */}
-        <HiddenLivePill
-          entries={hiddenLive}
-          onRestore={handleRestoreLive}
-        />
+        {currentRef === "" && (
+          <HiddenLivePill
+            entries={hiddenLive}
+            onRestore={handleRestoreLive}
+          />
+        )}
       </div>
 
       {/*
