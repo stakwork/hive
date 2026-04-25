@@ -157,16 +157,19 @@ export async function executePodScalerRuns(): Promise<PodScalerResult> {
 
       const floor = swarm.minimumPods ?? swarm.minimumVms;
       const targetVms = Math.min(
-        overQueuedCount > 0
-          ? floor + overQueuedCount + scaleUpBuffer  // over-queue path (unchanged)
-          : utilisationTriggered
-            ? floor + scaleUpBuffer                  // utilisation path (new)
-            : floor,                                 // no trigger
+        Math.max(
+          overQueuedCount > 0
+            ? floor + overQueuedCount + scaleUpBuffer  // over-queue path (unchanged)
+            : utilisationTriggered
+              ? floor + scaleUpBuffer                  // utilisation path (new)
+              : floor,                                 // no trigger
+          usedVms   // never scale below actively running pods
+        ),
         maxVmCeiling
       );
 
       console.log(
-        `${LOG_PREFIX} Swarm ${swarm.id} scaling calc: floor=${floor}, targetVms=${targetVms}, currentMinimumVms=${swarm.minimumVms}`
+        `${LOG_PREFIX} Swarm ${swarm.id} scaling calc: floor=${floor}, usedVmsFloor=${usedVms}, targetVms=${targetVms}, currentMinimumVms=${swarm.minimumVms}`
       );
 
       // Cooldown guard: skip scale-down if tasks completed recently
