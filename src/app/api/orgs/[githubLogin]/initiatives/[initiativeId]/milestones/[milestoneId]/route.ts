@@ -6,7 +6,24 @@ import { Prisma } from "@prisma/client";
 
 const MILESTONE_INCLUDE = {
   assignee: { select: { id: true, name: true } },
+  features: {
+    select: {
+      id: true,
+      title: true,
+      workspace: { select: { id: true, name: true } },
+    },
+    take: 1,
+  },
 } as const;
+
+type MilestoneWithRelations = {
+  features: { id: string; title: string; workspace: { id: string; name: string } }[];
+  [key: string]: unknown;
+};
+
+function serializeMilestone({ features, ...rest }: MilestoneWithRelations) {
+  return { ...rest, feature: features[0] ?? null };
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -39,7 +56,24 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, description, status, sequence, dueDate, assigneeId, completedAt } = body;
+    const { name, description, status, sequence, dueDate, assigneeId, completedAt, featureId } = body;
+
+    // If a featureId is being connected, verify it belongs to a workspace in this org
+    // before any write to prevent cross-org feature linking (IDOR).
+    if (featureId) {
+      const orgWorkspaces = await db.workspace.findMany({
+        where: { deleted: false, sourceControlOrgId: orgId },
+        select: { id: true },
+      });
+      const orgWorkspaceIds = orgWorkspaces.map((w) => w.id);
+      const targetFeature = await db.feature.findFirst({
+        where: { id: featureId, deleted: false, workspaceId: { in: orgWorkspaceIds } },
+        select: { id: true },
+      });
+      if (!targetFeature) {
+        return NextResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+    }
 
     const milestone = await db.milestone.update({
       where: { id: milestoneId },
@@ -51,11 +85,16 @@ export async function PATCH(
         ...(assigneeId !== undefined && { assigneeId }),
         ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
         ...(completedAt !== undefined && { completedAt: completedAt ? new Date(completedAt) : null }),
+        ...(featureId !== undefined && {
+          features: featureId
+            ? { connect: { id: featureId } }
+            : { set: [] },
+        }),
       },
       include: MILESTONE_INCLUDE,
     });
 
-    return NextResponse.json(milestone);
+    return NextResponse.json(serializeMilestone(milestone as MilestoneWithRelations));
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -99,6 +138,37 @@ export async function DELETE(
     });
     if (!existing) {
       return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
+    }
+
+    const renumber = request.nextUrl.searchParams.get("renumber") === "true";
+
+    if (renumber) {
+      // Fetch sequence before deletion, then delete + renumber siblings atomically
+      const toDelete = await db.milestone.findUnique({
+        where: { id: milestoneId },
+        select: { sequence: true },
+      });
+      if (!toDelete) {
+        return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
+      }
+
+      const deletedSequence = toDelete.sequence;
+
+      await db.$transaction([
+        db.milestone.delete({ where: { id: milestoneId } }),
+        db.milestone.updateMany({
+          where: { initiativeId, sequence: { gt: deletedSequence } },
+          data: { sequence: { decrement: 1 } },
+        }),
+      ]);
+
+      const updatedSiblings = await db.milestone.findMany({
+        where: { initiativeId },
+        include: MILESTONE_INCLUDE,
+        orderBy: { sequence: "asc" },
+      });
+
+      return NextResponse.json({ status: "deleted", milestones: updatedSiblings });
     }
 
     // SetNull on Feature.milestoneId is handled by DB cascade
