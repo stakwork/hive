@@ -381,7 +381,13 @@ export function OrgCanvasBackground({
     const handle = canvasHandleRef.current;
     if (!handle) return;
     initialNavAppliedRef.current = true;
-    void handle.zoomIntoNode(targetRef).catch((err) => {
+    // `durationMs: 0` skips the camera dive-in animation. For a deep
+    // link the user just wants to land on the sub-canvas — a 900ms
+    // cinematic zoom every time they refresh would feel sluggish.
+    // (Drilling in via a click still gets the default animation; that
+    // path uses the library's internal navigation flow, not this
+    // imperative call.)
+    void handle.zoomIntoNode(targetRef, { durationMs: 0 }).catch((err) => {
       console.error(
         "[OrgCanvasBackground] zoomIntoNode failed for URL ref",
         targetRef,
