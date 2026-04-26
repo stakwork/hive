@@ -3,16 +3,33 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { notifyCanvasesUpdatedByLogin } from "@/lib/canvas";
+import {
+  MILESTONE_INCLUDE,
+  serializeMilestone,
+  type MilestoneWithFeatures,
+} from "@/lib/initiatives/milestone-serialize";
 
+// Reuse the milestone include shape so nested-on-initiative reads
+// surface the same `features` array as the dedicated milestone routes.
 const INITIATIVE_INCLUDE = {
   assignee: { select: { id: true, name: true } },
   milestones: {
     orderBy: { sequence: "asc" as const },
-    include: {
-      assignee: { select: { id: true, name: true } },
-    },
+    include: MILESTONE_INCLUDE,
   },
 } as const;
+
+type InitiativeWithMilestones = {
+  milestones: MilestoneWithFeatures[];
+  [key: string]: unknown;
+};
+
+function serializeInitiative(initiative: InitiativeWithMilestones) {
+  return {
+    ...initiative,
+    milestones: initiative.milestones.map(serializeMilestone),
+  };
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -67,7 +84,9 @@ export async function PATCH(
       { initiativeId },
     );
 
-    return NextResponse.json(initiative);
+    return NextResponse.json(
+      serializeInitiative(initiative as InitiativeWithMilestones),
+    );
   } catch (error) {
     console.error("[PATCH /api/orgs/[githubLogin]/initiatives/[initiativeId]] Error:", error);
     return NextResponse.json({ error: "Failed to update initiative" }, { status: 500 });
