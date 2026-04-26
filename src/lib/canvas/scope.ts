@@ -17,6 +17,11 @@ export const ROOT_REF = "";
  * Known live-id prefixes. Listed explicitly (not inferred) so adding a
  * new entity kind is a single edit here plus a new projector. Anything
  * not in this set is treated as an authored id.
+ *
+ * `task:` is registered as live but has no `parseScope` branch — tasks
+ * are leaves on the milestone sub-canvas and don't get drilled into.
+ * Listing the prefix here is what makes the splitter strip authored
+ * fields off task nodes on save (DB rows are never authored).
  */
 const LIVE_ID_PREFIXES = [
   "ws:",
@@ -24,6 +29,7 @@ const LIVE_ID_PREFIXES = [
   "repo:",
   "initiative:",
   "milestone:",
+  "task:",
 ] as const;
 
 /** True iff `id` is prefixed with a known live-id kind. */

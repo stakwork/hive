@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateFeatureAccess } from "@/services/roadmap/utils";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
+import { notifyFeatureCanvasRefresh } from "@/services/roadmap/feature-canvas-notify";
 import { db } from "@/lib/db";
 import { SystemAssigneeType } from "@prisma/client";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
@@ -131,6 +132,11 @@ export async function POST(
 
     // Step 9: Update feature status from tasks
     await updateFeatureStatusFromTasks(featureId);
+
+    // Org canvas refresh — assigning a batch of tasks typically
+    // moves them from PENDING (idle) into IN_PROGRESS (agent
+    // running), which the milestone's agent-count badge surfaces.
+    void notifyFeatureCanvasRefresh(featureId, "tasks-assigned");
 
     // Step 10: Return success response
     return NextResponse.json<AssignAllResponse>(

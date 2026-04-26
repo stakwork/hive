@@ -42,7 +42,7 @@ import { categoryAllowedOnScope } from "./canvas-categories";
  * only need the prefix check on the client. Keep the prefix list in sync
  * with `LIVE_ID_PREFIXES` there.
  */
-const LIVE_ID_PREFIXES = ["ws:", "feature:", "repo:", "initiative:", "milestone:"];
+const LIVE_ID_PREFIXES = ["ws:", "feature:", "repo:", "initiative:", "milestone:", "task:"];
 function isLiveId(id: string): boolean {
   return LIVE_ID_PREFIXES.some((p) => id.startsWith(p));
 }
