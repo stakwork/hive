@@ -237,7 +237,8 @@ function makeMilestone(overrides: Partial<MilestoneResponse> = {}): MilestoneRes
     dueDate: null,
     completedAt: null,
     assignee: null,
-    feature: null,
+    features: [],
+    feature: null, // legacy 1:1 shim — kept on the wire until callers fully migrate
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,
