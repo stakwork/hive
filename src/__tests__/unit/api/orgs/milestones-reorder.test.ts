@@ -65,6 +65,19 @@ const updatedMilestones = [
   { id: "ms-3", sequence: 3, name: "Gamma", assignee: null },
 ];
 
+/**
+ * What the route emits via `serializeMilestone` (every milestone
+ * endpoint now returns the canonical 1:N shape with the legacy `feature`
+ * shim). The Prisma mock returns the bare rows above without a
+ * `features` field; the serializer fills in `features: []` +
+ * `feature: null` for the wire response.
+ */
+const expectedSerializedMilestones = updatedMilestones.map((m) => ({
+  ...m,
+  features: [],
+  feature: null,
+}));
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("POST /milestones/reorder", () => {
@@ -151,6 +164,6 @@ describe("POST /milestones/reorder", () => {
     const res = await POST(makeRequest({ milestones: milestonePayload }), baseParams);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual(updatedMilestones);
+    expect(body).toEqual(expectedSerializedMilestones);
   });
 });

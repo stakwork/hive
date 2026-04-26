@@ -20,7 +20,13 @@ vi.mock("@/lib/db", () => ({
     workspace: { findMany: vi.fn(), findFirst: vi.fn() },
     repository: { findMany: vi.fn() },
     initiative: { findMany: vi.fn(), findFirst: vi.fn() },
-    milestone: { findMany: vi.fn() },
+    // The milestone-timeline projector uses findMany. The new
+    // milestone sub-canvas projector uses findFirst (the
+    // org-ownership guard).
+    milestone: { findMany: vi.fn(), findFirst: vi.fn() },
+    // The milestone sub-canvas projector pulls features (with their
+    // tasks) for the milestone-scope read path.
+    feature: { findMany: vi.fn() },
   },
 }));
 
@@ -42,7 +48,11 @@ const dbMock = db as unknown as {
     findMany: ReturnType<typeof vi.fn>;
     findFirst: ReturnType<typeof vi.fn>;
   };
-  milestone: { findMany: ReturnType<typeof vi.fn> };
+  milestone: {
+    findMany: ReturnType<typeof vi.fn>;
+    findFirst: ReturnType<typeof vi.fn>;
+  };
+  feature: { findMany: ReturnType<typeof vi.fn> };
 };
 
 function mockBlob(blob: CanvasBlob | null) {
@@ -90,11 +100,20 @@ function mockInitiatives(
 beforeEach(() => {
   vi.resetAllMocks();
   // Default: empty projections so any projector that runs without a
-  // test-specific mock gets `[]` instead of throwing.
+  // test-specific mock gets `[]` instead of throwing. Each `findMany`
+  // is run unconditionally for its scope by `readCanvas`, so they
+  // must all resolve to *something*.
   dbMock.canvas.findMany.mockResolvedValue([]);
   dbMock.workspace.findMany.mockResolvedValue([]);
   dbMock.initiative.findMany.mockResolvedValue([]);
   dbMock.milestone.findMany.mockResolvedValue([]);
+  dbMock.feature.findMany.mockResolvedValue([]);
+  // `findFirst` calls in projectors are scope-gated; default to null
+  // (no-such-record) so unintended calls fail fast and surface as a
+  // test bug rather than a silent leak.
+  dbMock.milestone.findFirst.mockResolvedValue(null);
+  dbMock.initiative.findFirst.mockResolvedValue(null);
+  dbMock.workspace.findFirst.mockResolvedValue(null);
 });
 
 async function read(orgId: string, ref: string) {
@@ -305,6 +324,27 @@ describe("readCanvas (initiative scope — milestone timeline)", () => {
     dbMock.initiative.findFirst.mockResolvedValue(id ? { id } : null);
   }
 
+  /**
+   * Mock the milestone projector's Prisma read. The projector pulls
+   * each linked feature's `status` (for progress) plus a per-feature
+   * `_count.tasks` filtered to PENDING+IN_PROGRESS workflow status
+   * (for the "agent active" badge).
+   *
+   * Tests can specify either:
+   *   - `featureStatuses` — explicit list of feature statuses
+   *   - `featureCount` — denominator only; statuses default to BACKLOG
+   *
+   * For agent-count testing, pass `featureAgentCounts` aligned 1:1 with
+   * `featureStatuses` (or `featureCount`). Defaults to zero per
+   * feature when omitted.
+   */
+  /**
+   * Compact team-member shape used in milestone mocks. Matches the
+   * minimal Prisma `select` the projector emits for `assignee` /
+   * `createdBy` (id + name + image).
+   */
+  type MockUser = { id: string; name: string | null; image?: string | null };
+
   function mockMilestones(
     list: Array<{
       id: string;
@@ -313,14 +353,35 @@ describe("readCanvas (initiative scope — milestone timeline)", () => {
       sequence: number;
       dueDate?: Date | null;
       featureCount?: number;
+      featureStatuses?: string[];
+      featureAgentCounts?: number[];
+      // Per-feature assignee / createdBy. Aligned 1:1 with featureStatuses
+      // (or featureCount). Default is null both → no team members for
+      // tests that don't care about avatars.
+      featureAssignees?: Array<MockUser | null>;
+      featureCreators?: Array<MockUser | null>;
     }>,
   ) {
     dbMock.milestone.findMany.mockResolvedValue(
-      list.map((m) => ({
-        ...m,
-        dueDate: m.dueDate ?? null,
-        _count: { features: m.featureCount ?? 0 },
-      })),
+      list.map((m) => {
+        const statuses =
+          m.featureStatuses ??
+          Array.from({ length: m.featureCount ?? 0 }, () => "BACKLOG");
+        const agentCounts = m.featureAgentCounts ?? [];
+        const assignees = m.featureAssignees ?? [];
+        const creators = m.featureCreators ?? [];
+        return {
+          ...m,
+          dueDate: m.dueDate ?? null,
+          features: statuses.map((status, i) => ({
+            id: `${m.id}-f${i}`,
+            status,
+            _count: { tasks: agentCounts[i] ?? 0 },
+            assignee: assignees[i] ?? null,
+            createdBy: creators[i] ?? null,
+          })),
+        };
+      }),
     );
   }
 
@@ -341,7 +402,7 @@ describe("readCanvas (initiative scope — milestone timeline)", () => {
     expect(nodes[1].customData?.status).toBe("NOT_STARTED");
   });
 
-  it("includes due date and feature count in the footer when present", async () => {
+  it("includes due date and a done/total feature counter in the footer when present", async () => {
     mockBlob(null);
     mockOwnedInitiative("i1");
     mockMilestones([
@@ -351,7 +412,8 @@ describe("readCanvas (initiative scope — milestone timeline)", () => {
         status: "IN_PROGRESS",
         sequence: 1,
         dueDate: new Date("2026-03-04T00:00:00Z"),
-        featureCount: 2,
+        // 1 of 2 features done → "1/2 features" in the footer.
+        featureStatuses: ["COMPLETED", "IN_PROGRESS"],
       },
       // No due date and no features → no `secondary` key.
       { id: "m2", name: "Bare", status: "NOT_STARTED", sequence: 2 },
@@ -362,8 +424,158 @@ describe("readCanvas (initiative scope — milestone timeline)", () => {
     // The exact date string depends on the locale of the host running
     // tests; assert a stable substring that doesn't depend on TZ.
     expect(byId["milestone:m1"].customData?.secondary).toMatch(/Due /);
-    expect(byId["milestone:m1"].customData?.secondary).toMatch(/2 features/);
+    expect(byId["milestone:m1"].customData?.secondary).toMatch(/1\/2 features/);
     expect(byId["milestone:m2"].customData?.secondary).toBeUndefined();
+  });
+
+  it("emits a 0..1 progress fraction and feature counters in customData", async () => {
+    // The bodyTop progress slot consumes `customData.progress`
+    // (NodeAccessor<number> in 0..1) and gates display on
+    // `customData.featureCount`. Pin the projector contract so the
+    // theme code can rely on these fields existing.
+    mockBlob(null);
+    mockOwnedInitiative("i1");
+    mockMilestones([
+      // 2 of 4 done → 50%
+      {
+        id: "m-half",
+        name: "Half",
+        status: "IN_PROGRESS",
+        sequence: 1,
+        featureStatuses: ["COMPLETED", "COMPLETED", "IN_PROGRESS", "BACKLOG"],
+      },
+      // 0 of 0 → progress=0, featureCount=0 (theme hides bar)
+      { id: "m-empty", name: "Empty", status: "NOT_STARTED", sequence: 2 },
+      // 3 of 3 → 100%
+      {
+        id: "m-full",
+        name: "Full",
+        status: "COMPLETED",
+        sequence: 3,
+        featureStatuses: ["COMPLETED", "COMPLETED", "COMPLETED"],
+      },
+    ]);
+
+    const { nodes } = await read("org-1", "initiative:i1");
+    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+    expect(byId["milestone:m-half"].customData?.progress).toBe(0.5);
+    expect(byId["milestone:m-half"].customData?.featureCount).toBe(4);
+    expect(byId["milestone:m-half"].customData?.featureDone).toBe(2);
+
+    expect(byId["milestone:m-empty"].customData?.progress).toBe(0);
+    expect(byId["milestone:m-empty"].customData?.featureCount).toBe(0);
+    expect(byId["milestone:m-empty"].customData?.featureDone).toBe(0);
+
+    expect(byId["milestone:m-full"].customData?.progress).toBe(1);
+    expect(byId["milestone:m-full"].customData?.featureCount).toBe(3);
+    expect(byId["milestone:m-full"].customData?.featureDone).toBe(3);
+  });
+
+  it("sums per-feature agent-in-flight task counts into customData.agentCount", async () => {
+    // The topRightOuter count badge consumes `customData.agentCount`.
+    // It's the SUM across linked features of tasks where workflowStatus
+    // ∈ {PENDING, IN_PROGRESS} — the kanban definition of "in flight."
+    // The Prisma `_count.tasks` filter happens at query time; the
+    // projector just sums the per-feature counts.
+    mockBlob(null);
+    mockOwnedInitiative("i1");
+    mockMilestones([
+      {
+        id: "m-busy",
+        name: "Busy",
+        status: "IN_PROGRESS",
+        sequence: 1,
+        featureStatuses: ["IN_PROGRESS", "BACKLOG", "IN_PROGRESS"],
+        featureAgentCounts: [2, 0, 1], // sum = 3
+      },
+      // Linked features but no agents running anywhere → 0 (badge hidden).
+      {
+        id: "m-quiet",
+        name: "Quiet",
+        status: "NOT_STARTED",
+        sequence: 2,
+        featureStatuses: ["BACKLOG", "PLANNED"],
+        featureAgentCounts: [0, 0],
+      },
+      // No features at all → 0.
+      { id: "m-empty", name: "Empty", status: "NOT_STARTED", sequence: 3 },
+    ]);
+
+    const { nodes } = await read("org-1", "initiative:i1");
+    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+    expect(byId["milestone:m-busy"].customData?.agentCount).toBe(3);
+    expect(byId["milestone:m-quiet"].customData?.agentCount).toBe(0);
+    expect(byId["milestone:m-empty"].customData?.agentCount).toBe(0);
+  });
+
+  it("unions feature.assignee + feature.createdBy across linked features into customData.team", async () => {
+    // Team stack contract: distinct user ids only; visible portion
+    // capped at 3 with the remainder surfaced as `teamOverflow`.
+    mockBlob(null);
+    mockOwnedInitiative("i1");
+    mockMilestones([
+      {
+        id: "m-team",
+        name: "Big team",
+        status: "IN_PROGRESS",
+        sequence: 1,
+        featureStatuses: ["BACKLOG", "BACKLOG", "BACKLOG", "BACKLOG"],
+        // Five DISTINCT users involved across four features:
+        //   f0: assignee=alice, createdBy=bob
+        //   f1: assignee=alice, createdBy=carol   (alice dedup'd)
+        //   f2: assignee=null,  createdBy=dave
+        //   f3: assignee=eve,   createdBy=alice   (alice dedup'd again)
+        // Five total; three visible; overflow=2.
+        featureAssignees: [
+          { id: "u-alice", name: "Alice", image: null },
+          { id: "u-alice", name: "Alice", image: null },
+          null,
+          { id: "u-eve", name: "Eve", image: null },
+        ],
+        featureCreators: [
+          { id: "u-bob", name: "Bob", image: null },
+          { id: "u-carol", name: "Carol", image: null },
+          { id: "u-dave", name: "Dave", image: null },
+          { id: "u-alice", name: "Alice", image: null },
+        ],
+      },
+      // No assignees/creators → empty team, zero overflow.
+      {
+        id: "m-solo",
+        name: "Solo",
+        status: "NOT_STARTED",
+        sequence: 2,
+      },
+    ]);
+
+    const { nodes } = await read("org-1", "initiative:i1");
+    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+    const team = byId["milestone:m-team"].customData?.team as Array<{ id: string }>;
+    expect(team).toHaveLength(3); // visible cap
+    expect(byId["milestone:m-team"].customData?.teamOverflow).toBe(2); // 5 - 3
+    // Alice is in there exactly once (deduplicated across features).
+    expect(team.filter((u) => u.id === "u-alice")).toHaveLength(1);
+
+    expect(byId["milestone:m-solo"].customData?.team).toEqual([]);
+    expect(byId["milestone:m-solo"].customData?.teamOverflow).toBe(0);
+  });
+
+  it("milestone nodes carry ref: \"milestone:<id>\" so they can be drilled into", async () => {
+    // The milestone sub-canvas (Slice 5) projects features+tasks at
+    // `ref: \"milestone:<id>\"`. The card has to advertise that ref or
+    // the library won't render it as navigable.
+    mockBlob(null);
+    mockOwnedInitiative("i1");
+    mockMilestones([
+      { id: "m-x", name: "Beta", status: "IN_PROGRESS", sequence: 1 },
+    ]);
+
+    const { nodes } = await read("org-1", "initiative:i1");
+    const m = nodes.find((n) => n.id === "milestone:m-x");
+    expect(m?.ref).toBe("milestone:m-x");
   });
 
   it("returns no projected nodes when the initiative isn't owned by this org", async () => {
@@ -543,5 +755,194 @@ describe("readCanvas (workspace scope)", () => {
     expect(nodes.map((n) => n.id)).toEqual(["repo:r1"]);
     expect(dbMock.initiative.findMany).not.toHaveBeenCalled();
     expect(dbMock.milestone.findMany).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Milestone sub-canvas — Features + Tasks projection
+// ---------------------------------------------------------------------------
+
+describe("readCanvas (milestone scope — features + tasks)", () => {
+  function mockOwnedMilestone(id: string | null) {
+    // The milestone projector's org guard goes through the
+    // initiative relation: `milestone.initiative.orgId === orgId`.
+    // The mock returns the bare id (or null when ownership fails).
+    dbMock.milestone.findFirst.mockResolvedValue(id ? { id } : null);
+  }
+
+  /**
+   * Mock the projector's `feature.findMany` payload. Each entry is a
+   * Feature plus its (already-filtered) Tasks; Prisma's `where` on the
+   * nested `tasks` is applied at query time so tests pass exactly the
+   * tasks they want surfaced.
+   */
+  function mockMilestoneFeatures(
+    list: Array<{
+      id: string;
+      title: string;
+      status?: string;
+      workflowStatus?: string | null;
+      tasks?: Array<{
+        id: string;
+        title: string;
+        status?: string;
+        workflowStatus?: string | null;
+        assigneeId?: string | null;
+      }>;
+    }>,
+  ) {
+    dbMock.feature.findMany.mockResolvedValue(
+      list.map((f) => ({
+        id: f.id,
+        title: f.title,
+        status: f.status ?? "BACKLOG",
+        workflowStatus: f.workflowStatus ?? null,
+        tasks: (f.tasks ?? []).map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status ?? "TODO",
+          workflowStatus: t.workflowStatus ?? null,
+          assigneeId: t.assigneeId ?? null,
+        })),
+      })),
+    );
+  }
+
+  it("projects each linked Feature as feature:<id> and its Tasks as task:<id> stacked underneath", async () => {
+    mockBlob(null);
+    mockOwnedMilestone("m1");
+    mockMilestoneFeatures([
+      {
+        id: "f1",
+        title: "Login",
+        status: "IN_PROGRESS",
+        tasks: [
+          { id: "t1a", title: "OAuth", status: "DONE" },
+          { id: "t1b", title: "MFA", status: "IN_PROGRESS" },
+        ],
+      },
+      {
+        id: "f2",
+        title: "Dashboard",
+        status: "BACKLOG",
+        tasks: [{ id: "t2a", title: "Skeleton", status: "TODO" }],
+      },
+    ]);
+
+    const { nodes } = await read("org-1", "milestone:m1");
+    expect(nodes.map((n) => n.id)).toEqual([
+      "feature:f1",
+      "task:t1a",
+      "task:t1b",
+      "feature:f2",
+      "task:t2a",
+    ]);
+    expect(nodes[0].category).toBe("feature");
+    expect(nodes[1].category).toBe("task");
+  });
+
+  it("rolls up taskDone/taskCount into the feature card's customData", async () => {
+    mockBlob(null);
+    mockOwnedMilestone("m1");
+    mockMilestoneFeatures([
+      {
+        id: "f1",
+        title: "Login",
+        tasks: [
+          { id: "t1", status: "DONE", title: "A" },
+          { id: "t2", status: "DONE", title: "B" },
+          { id: "t3", status: "IN_PROGRESS", title: "C" },
+        ],
+      },
+      // Empty feature → no `secondary` line on the card; counters still
+      // present so consumers can branch without `??`-ing through.
+      { id: "f2", title: "Empty" },
+    ]);
+
+    const { nodes } = await read("org-1", "milestone:m1");
+    const f1 = nodes.find((n) => n.id === "feature:f1");
+    const f2 = nodes.find((n) => n.id === "feature:f2");
+    expect(f1?.customData?.taskCount).toBe(3);
+    expect(f1?.customData?.taskDone).toBe(2);
+    expect(f1?.customData?.secondary).toBe("2/3 tasks");
+    expect(f2?.customData?.taskCount).toBe(0);
+    expect(f2?.customData?.taskDone).toBe(0);
+    expect(f2?.customData?.secondary).toBeUndefined();
+  });
+
+  it("skips projection when the milestone isn't owned by this org", async () => {
+    // Org-ownership guard: a guessed cuid for another org's milestone
+    // must not leak features. The projector calls findFirst with the
+    // initiative.orgId in the where clause; if that returns null the
+    // feature read should be skipped entirely.
+    mockBlob(null);
+    mockOwnedMilestone(null);
+    // Mock features anyway so a regression that drops the guard
+    // surfaces as the test seeing them.
+    mockMilestoneFeatures([
+      { id: "leaked", title: "Should not appear" },
+    ]);
+
+    const { nodes } = await read("other-org", "milestone:m1");
+    expect(nodes).toEqual([]);
+    expect(dbMock.feature.findMany).not.toHaveBeenCalled();
+  });
+
+  it("preserves both status enums on task cards so the theme can pick which to render", async () => {
+    // The kanban groups by workflowStatus; the feature roll-up uses
+    // status. The milestone sub-canvas exposes both so future visual
+    // tweaks don't require a projector change.
+    mockBlob(null);
+    mockOwnedMilestone("m1");
+    mockMilestoneFeatures([
+      {
+        id: "f1",
+        title: "Login",
+        tasks: [
+          {
+            id: "t1",
+            title: "OAuth",
+            status: "IN_PROGRESS",
+            workflowStatus: "IN_PROGRESS",
+            assigneeId: "u-alice",
+          },
+        ],
+      },
+    ]);
+
+    const { nodes } = await read("org-1", "milestone:m1");
+    const t1 = nodes.find((n) => n.id === "task:t1");
+    expect(t1?.customData?.status).toBe("IN_PROGRESS");
+    expect(t1?.customData?.workflowStatus).toBe("IN_PROGRESS");
+    expect(t1?.customData?.assigneeId).toBe("u-alice");
+  });
+
+  it("applies stored positions on top of default column/stack placement", async () => {
+    // Per-canvas position overlays (the same mechanism as workspaces
+    // and milestones) win over the projector's default layout.
+    mockBlob({
+      nodes: [],
+      edges: [],
+      positions: {
+        "feature:f1": { x: 999, y: 111 },
+        "task:t1": { x: 555, y: 222 },
+      },
+    });
+    mockOwnedMilestone("m1");
+    mockMilestoneFeatures([
+      {
+        id: "f1",
+        title: "Login",
+        tasks: [{ id: "t1", title: "OAuth" }],
+      },
+    ]);
+
+    const { nodes } = await read("org-1", "milestone:m1");
+    const f1 = nodes.find((n) => n.id === "feature:f1");
+    const t1 = nodes.find((n) => n.id === "task:t1");
+    expect(f1?.x).toBe(999);
+    expect(f1?.y).toBe(111);
+    expect(t1?.x).toBe(555);
+    expect(t1?.y).toBe(222);
   });
 });

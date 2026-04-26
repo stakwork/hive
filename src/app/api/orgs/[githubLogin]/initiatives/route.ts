@@ -3,16 +3,35 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { notifyCanvasUpdatedByLogin } from "@/lib/canvas";
+import {
+  MILESTONE_INCLUDE,
+  serializeMilestone,
+  type MilestoneWithFeatures,
+} from "@/lib/initiatives/milestone-serialize";
 
+// Reuse the milestone include shape so nested-on-initiative reads
+// surface the same `features` array (and legacy `feature` shim) as
+// the dedicated milestone routes. Keeps the wire shape consistent
+// regardless of which endpoint a client uses to discover a milestone.
 const INITIATIVE_INCLUDE = {
   assignee: { select: { id: true, name: true } },
   milestones: {
     orderBy: { sequence: "asc" as const },
-    include: {
-      assignee: { select: { id: true, name: true } },
-    },
+    include: MILESTONE_INCLUDE,
   },
 } as const;
+
+type InitiativeWithMilestones = {
+  milestones: MilestoneWithFeatures[];
+  [key: string]: unknown;
+};
+
+function serializeInitiative(initiative: InitiativeWithMilestones) {
+  return {
+    ...initiative,
+    milestones: initiative.milestones.map(serializeMilestone),
+  };
+}
 
 export async function GET(
   request: NextRequest,
@@ -37,7 +56,9 @@ export async function GET(
       include: INITIATIVE_INCLUDE,
     });
 
-    return NextResponse.json(initiatives);
+    return NextResponse.json(
+      initiatives.map((i) => serializeInitiative(i as InitiativeWithMilestones)),
+    );
   } catch (error) {
     console.error("[GET /api/orgs/[githubLogin]/initiatives] Error:", error);
     return NextResponse.json({ error: "Failed to fetch initiatives" }, { status: 500 });
@@ -88,7 +109,10 @@ export async function POST(
       initiativeId: initiative.id,
     });
 
-    return NextResponse.json(initiative, { status: 201 });
+    return NextResponse.json(
+      serializeInitiative(initiative as InitiativeWithMilestones),
+      { status: 201 },
+    );
   } catch (error) {
     console.error("[POST /api/orgs/[githubLogin]/initiatives] Error:", error);
     return NextResponse.json({ error: "Failed to create initiative" }, { status: 500 });

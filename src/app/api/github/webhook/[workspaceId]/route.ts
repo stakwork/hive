@@ -10,6 +10,7 @@ import { parseOwnerRepo } from "@/lib/ai/utils";
 import { releaseTaskPod } from "@/lib/pods/utils";
 import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
+import { notifyFeatureCanvasRefresh } from "@/services/roadmap/feature-canvas-notify";
 import { createAndSendNotification } from "@/services/notifications";
 import { triggerLearningRun } from "@/services/learning-run";
 
@@ -629,6 +630,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               });
               // Continue processing - don't fail webhook on feature sync error
             }
+            // PR merge typically flips a task to DONE and the parent
+            // feature toward COMPLETED. Both are progress signals the
+            // milestone canvas needs to reflect.
+            void notifyFeatureCanvasRefresh(featureId, "pr-merged", { delivery });
           }
 
           // Trigger learning analysis (fire-and-forget)
