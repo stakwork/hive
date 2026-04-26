@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
+import { notifyFeatureCanvasRefresh } from "@/services/roadmap/feature-canvas-notify";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
@@ -118,6 +119,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           console.error('Failed to sync feature status:', error);
           // Don't fail the request if feature sync fails
         }
+        // Org canvas refresh — milestone progress + agent count may
+        // have shifted regardless of whether the feature's status did.
+        // `taskId` from the route param; `updatedTask` only carried
+        // `featureId` in its select.
+        void notifyFeatureCanvasRefresh(updatedTask.featureId, "task-messages-saved", {
+          taskId,
+        });
       }
     }
 
