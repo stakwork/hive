@@ -12,6 +12,9 @@ import { db } from "@/lib/db";
 import type { CanvasLane, CanvasNode } from "system-canvas";
 import type { Projector, ProjectionResult, Scope } from "./types";
 import {
+  FEATURE_ROW_STEP,
+  FEATURE_ROW_X0,
+  FEATURE_ROW_Y,
   INITIATIVE_ROW_STEP,
   INITIATIVE_ROW_X0,
   INITIATIVE_ROW_Y,
@@ -21,6 +24,9 @@ import {
   REPO_ROW_STEP,
   REPO_ROW_X0,
   REPO_ROW_Y,
+  TASK_STACK_STEP_Y,
+  TASK_STACK_X_OFFSET,
+  TASK_STACK_Y0,
   TIMELINE_COL_W,
   TIMELINE_COL_X0,
   WORKSPACE_ROW_STEP,
@@ -59,6 +65,29 @@ function defaultMilestonePosition(index: number): { x: number; y: number } {
   return {
     x: MILESTONE_ROW_X0 + index * MILESTONE_ROW_STEP,
     y: MILESTONE_ROW_Y,
+  };
+}
+
+/** Default placement for a Feature card on the milestone sub-canvas.
+ *  Features lay out in a horizontal row; columnIndex is their order
+ *  within the milestone (createdAt asc). */
+function defaultFeaturePosition(columnIndex: number): { x: number; y: number } {
+  return {
+    x: FEATURE_ROW_X0 + columnIndex * FEATURE_ROW_STEP,
+    y: FEATURE_ROW_Y,
+  };
+}
+
+/** Default placement for a Task card on the milestone sub-canvas.
+ *  Tasks stack vertically beneath their parent feature, centered on
+ *  the feature column's x. */
+function defaultTaskPosition(
+  columnIndex: number,
+  rowIndex: number,
+): { x: number; y: number } {
+  return {
+    x: FEATURE_ROW_X0 + columnIndex * FEATURE_ROW_STEP + TASK_STACK_X_OFFSET,
+    y: TASK_STACK_Y0 + rowIndex * TASK_STACK_STEP_Y,
   };
 }
 
@@ -341,19 +370,97 @@ export const milestoneTimelineProjector: Projector = {
         status: true,
         sequence: true,
         dueDate: true,
-        _count: { select: { features: true } },
+        // Pull each linked feature's status so we can compute a real
+        // progress fraction (% of features COMPLETED). Cheaper than a
+        // separate `_count` plus a `findMany` since it's one join either
+        // way; we just keep the `status` alongside the id.
+        //
+        // Filter out soft-deleted features at the source so the
+        // denominator stays honest — a deleted feature shouldn't count
+        // toward "X of Y" on the milestone card.
+        //
+        // The nested `_count.tasks` aggregates task-level "agent in
+        // flight" signals (kanban definition: PENDING + IN_PROGRESS,
+        // mirrored from `src/components/tasks/KanbanView.tsx:25-73`)
+        // through one extra join so we don't need a separate
+        // `task.findMany`. Soft-deleted and archived tasks are
+        // filtered at the predicate level — an in-progress agent on
+        // an archived task isn't "active" for milestone purposes.
+        features: {
+          select: {
+            id: true,
+            status: true,
+            _count: {
+              select: {
+                tasks: {
+                  where: {
+                    deleted: false,
+                    archived: false,
+                    workflowStatus: { in: ["PENDING", "IN_PROGRESS"] },
+                  },
+                },
+              },
+            },
+            // Pull each feature's assignee + createdBy so we can build
+            // a "humans involved" set for the team-stack badge. We
+            // intentionally limit to these two relations in v1 — task
+            // assignees and chat-message authors would N+1 the read
+            // and aren't required for the v1 visual. Avatars/initials
+            // resolve from `User.name` and `User.image`.
+            assignee: { select: { id: true, name: true, image: true } },
+            createdBy: { select: { id: true, name: true, image: true } },
+          },
+          where: { deleted: false },
+        },
       },
     });
 
     const nodes: CanvasNode[] = milestones.map((m, index) => {
       const liveId = `milestone:${m.id}`;
       const pos = defaultMilestonePosition(index);
-      // Defensive `_count` access for the same reason as workspaceProjector
-      // (production Prisma always returns it; some test mocks omit it).
-      const featureCount = m._count?.features ?? 0;
+      // Defensive features access for the same reason as workspaceProjector
+      // (production Prisma always returns the array; some test mocks omit it).
+      const features = m.features ?? [];
+      const featureCount = features.length;
+      const featureDone = features.filter((f) => f.status === "COMPLETED").length;
+      // Fraction in 0..1 — the system-canvas `ProgressSlot` wants this
+      // shape (NodeAccessor<number>) directly. Keep it as a number, not
+      // a "67%" string; the slot renderer formats display itself.
+      const progress = featureCount === 0 ? 0 : featureDone / featureCount;
+      // Sum of "agent in flight" tasks across all linked features.
+      // Single number for the topRightOuter count badge; if/when we
+      // grow per-agent identity surfacing, this becomes the badge's
+      // accessibility label / hover detail rather than the visible
+      // count.
+      const agentCount = features.reduce(
+        (sum, f) => sum + (f._count?.tasks ?? 0),
+        0,
+      );
 
-      // Footer: "Due Mar 4 · 2 features", or just one half if the other
-      // is missing. Keep it terse — the milestone card is small.
+      // Union of "humans involved" across linked features. v1 scope:
+      // assignee + createdBy per feature (skipping nulls). Dedup by
+      // user id so a single person who created and was assigned the
+      // same feature only appears once. Cap the visible portion at 3
+      // and surface the overflow count separately so the renderer can
+      // draw a "+N" pill when the team is larger than the stack fits.
+      const involvedById = new Map<
+        string,
+        { id: string; name: string | null; image: string | null }
+      >();
+      for (const f of features) {
+        if (f.assignee) involvedById.set(f.assignee.id, f.assignee);
+        if (f.createdBy && !involvedById.has(f.createdBy.id)) {
+          involvedById.set(f.createdBy.id, f.createdBy);
+        }
+      }
+      const TEAM_VISIBLE = 3;
+      const involved = Array.from(involvedById.values());
+      const team = involved.slice(0, TEAM_VISIBLE);
+      const teamOverflow = Math.max(0, involved.length - TEAM_VISIBLE);
+
+      // Footer: "Due Mar 4 · 2/3 features", or just whichever halves
+      // are populated. With a denominator we surface the rollup; without
+      // features the count line falls back to silence.
       const footerParts: string[] = [];
       if (m.dueDate) {
         footerParts.push(
@@ -365,7 +472,7 @@ export const milestoneTimelineProjector: Projector = {
       }
       if (featureCount > 0) {
         footerParts.push(
-          `${featureCount} feature${featureCount === 1 ? "" : "s"}`,
+          `${featureDone}/${featureCount} feature${featureCount === 1 ? "" : "s"}`,
         );
       }
 
@@ -373,9 +480,11 @@ export const milestoneTimelineProjector: Projector = {
         id: liveId,
         type: "text",
         category: "milestone",
+        // Drill into the milestone sub-canvas (Features + Tasks). The
+        // scope parser already recognizes `milestone:<id>`; the projector
+        // for that scope ships with Slice 5.
+        ref: liveId,
         text: m.name,
-        // No `ref` in v1 — drilling into a milestone (to see its
-        // features/tasks) is v2 work.
         x: pos.x,
         y: pos.y,
         customData: {
@@ -383,12 +492,150 @@ export const milestoneTimelineProjector: Projector = {
           // (NOT_STARTED → muted, IN_PROGRESS → blue, COMPLETED → green).
           status: m.status,
           sequence: m.sequence,
+          // Progress signals consumed by the milestone-card slots:
+          //   - `progress` drives the bodyTop ProgressSlot fill (0..1).
+          //   - `featureCount` gates whether the bar is shown at all
+          //     (a 0% bar on an empty milestone reads as "behind",
+          //     which is misleading).
+          //   - `featureDone` is exposed for any future slot that wants
+          //     to show the raw counter without re-computing it.
+          progress,
+          featureCount,
+          featureDone,
+          // Drives the topRightOuter count badge. The `count` slot
+          // hides itself when the value is 0 (built-in `hideWhenEmpty`),
+          // so a milestone with no active agents shows no badge at all.
+          agentCount,
+          // Drives the topRight team-stack custom slot. Up to 3 users
+          // are rendered as overlapping avatars; `teamOverflow` shows
+          // as a "+N" pill when the actual involved count exceeds the
+          // visible portion.
+          team,
+          teamOverflow,
           ...(footerParts.length > 0 && { secondary: footerParts.join(" · ") }),
         },
       };
     });
 
     return { nodes, columns: buildTimelineColumns(new Date()) };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Milestone sub-canvas projector — Features + Tasks at one drill.
+//
+// Reached by clicking a `milestone:<cuid>` node on an initiative
+// timeline. Per the milestone-progress plan (Q6), the v2 design is a
+// SINGLE flat layout: each linked Feature owns a column, with its
+// Tasks stacked underneath. No second drill click required to see
+// task progress.
+//
+// Org-ownership guard travels through the milestone → initiative
+// chain: a guessed milestoneId can't read another org's content.
+//
+// Tasks are leaves — `task:` is registered as a live id prefix (so
+// authored fields are stripped on save) but `parseScope` never
+// resolves to a task scope. Drilling into a task happens through the
+// existing task pages (`/w/<slug>/task/<id>`), not on the canvas.
+// ---------------------------------------------------------------------------
+
+export const milestoneProjector: Projector = {
+  async project(scope: Scope, orgId: string): Promise<ProjectionResult> {
+    if (scope.kind !== "milestone") return { nodes: [] };
+
+    // Org-ownership guard: the milestone must belong to an initiative
+    // that belongs to this org. Without this check, any cuid in the
+    // URL would surface that milestone's features regardless of org
+    // membership.
+    const milestone = await db.milestone.findFirst({
+      where: { id: scope.milestoneId, initiative: { orgId } },
+      select: { id: true },
+    });
+    if (!milestone) return { nodes: [] };
+
+    // Pull each linked Feature with its non-deleted, non-archived
+    // Tasks. We carry both `status` (FeatureStatus / TaskStatus) and
+    // `workflowStatus` (the WorkflowStatus enum) so the theme can
+    // render either signal — different visual treatments may want
+    // either one (e.g. the kanban groups by workflowStatus, while the
+    // feature roll-up uses status).
+    const features = await db.feature.findMany({
+      where: { milestoneId: milestone.id, deleted: false },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        workflowStatus: true,
+        tasks: {
+          where: { deleted: false, archived: false },
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            workflowStatus: true,
+            assigneeId: true,
+          },
+        },
+      },
+    });
+
+    const nodes: CanvasNode[] = [];
+    features.forEach((f, columnIndex) => {
+      const fpos = defaultFeaturePosition(columnIndex);
+      const taskCount = f.tasks.length;
+      const taskDone = f.tasks.filter((t) => t.status === "DONE").length;
+
+      nodes.push({
+        id: `feature:${f.id}`,
+        type: "text",
+        category: "feature",
+        text: f.title,
+        // No `ref` in v1 — drilling into a feature from the canvas
+        // doesn't have a destination yet. The library renders the card
+        // as non-navigable; the existing `/w/<slug>/plan/<id>` page
+        // remains the way to jump into a feature's full view.
+        x: fpos.x,
+        y: fpos.y,
+        customData: {
+          status: f.status,
+          workflowStatus: f.workflowStatus,
+          taskCount,
+          taskDone,
+          // Same shape as the milestone's footer — "X/Y tasks" reads
+          // as a sibling of "X/Y features" on the parent milestone
+          // card. Skip when the feature has no tasks (a 0/0 line on a
+          // freshly-created feature reads as misleading "behind").
+          ...(taskCount > 0 && {
+            secondary: `${taskDone}/${taskCount} task${taskCount === 1 ? "" : "s"}`,
+          }),
+        },
+      });
+
+      f.tasks.forEach((t, rowIndex) => {
+        const tpos = defaultTaskPosition(columnIndex, rowIndex);
+        nodes.push({
+          id: `task:${t.id}`,
+          type: "text",
+          category: "task",
+          text: t.title,
+          x: tpos.x,
+          y: tpos.y,
+          customData: {
+            // Both status enums travel; the theme picks which one
+            // drives the color band. Default expectation: workflow
+            // status (PENDING/IN_PROGRESS/COMPLETED/ERROR/HALTED)
+            // since that's the kanban-board signal.
+            status: t.status,
+            workflowStatus: t.workflowStatus,
+            ...(t.assigneeId && { assigneeId: t.assigneeId }),
+          },
+        });
+      });
+    });
+
+    return { nodes };
   },
 };
 
@@ -402,4 +649,5 @@ export const PROJECTORS: Projector[] = [
   workspaceProjector,
   initiativeProjector,
   milestoneTimelineProjector,
+  milestoneProjector,
 ];

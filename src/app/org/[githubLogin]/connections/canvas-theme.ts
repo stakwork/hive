@@ -8,14 +8,19 @@ import type {
   SlotContext,
 } from "system-canvas";
 import { darkTheme, resolveTheme } from "system-canvas";
+import { NodeProgressBar } from "system-canvas-react/primitives";
 import {
   CARD_H,
   CARD_W,
+  FEATURE_H,
+  FEATURE_W,
   INITIATIVE_H,
   INITIATIVE_W,
   MILESTONE_H,
   MILESTONE_W,
   SMALL_W,
+  TASK_H,
+  TASK_W,
 } from "@/lib/canvas/geometry";
 import { CATEGORY_REGISTRY } from "./canvas-categories";
 
@@ -63,6 +68,11 @@ const ACCENT = {
   // sits inside a faint-purple-bordered card. Distinct from the
   // milestone IN_PROGRESS sky-blue and the workspace teal.
   initiative: "#a78bfa",
+  // Warm amber — chosen for the "agent active" badge so it pops
+  // against the cool blues/greens of milestone status colors. Reads
+  // unambiguously as "attention-worthy now," matching the kanban's
+  // `Loader2` spinner amber.
+  agent: "#fbbf24",
 } as const;
 
 /**
@@ -381,6 +391,254 @@ const milestoneStatusToolbar: NodeActionGroup[] = [
   },
 ];
 
+/**
+ * Compact, two-letter initials from a user's display name. Falls back
+ * to "?" when name is empty or null so we never render an empty pill.
+ *
+ * Examples:
+ *   "Evan Feenstra"  → "EF"
+ *   "evan"            → "EV"
+ *   ""                → "?"
+ *   null              → "?"
+ */
+function userInitials(name: string | null | undefined): string {
+  if (!name) return "?";
+  const trimmed = name.trim();
+  if (!trimmed) return "?";
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return trimmed.slice(0, 2).toUpperCase();
+}
+
+/**
+ * Stable color for a user, derived from their id. Same user → same
+ * background tone across the canvas; different users → enough variation
+ * that small overlapping circles read as distinct people, not a
+ * uniform blob. Pulls from a small palette tuned for dark backgrounds.
+ */
+const TEAM_AVATAR_PALETTE = [
+  "#60a5fa", // sky
+  "#34d399", // emerald
+  "#f472b6", // pink
+  "#fbbf24", // amber
+  "#a78bfa", // violet
+  "#22d3ee", // cyan
+  "#fb7185", // rose
+  "#a3e635", // lime
+];
+
+function teamAvatarColor(userId: string): string {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash * 31 + userId.charCodeAt(i)) | 0;
+  }
+  return TEAM_AVATAR_PALETTE[Math.abs(hash) % TEAM_AVATAR_PALETTE.length];
+}
+
+interface TeamMember {
+  id: string;
+  name: string | null;
+  image: string | null;
+}
+
+/**
+ * Render an overlapping avatar stack for the milestone's team. Up to
+ * `TEAM_VISIBLE` (3) circles followed by an optional "+N" pill when
+ * `teamOverflow > 0`. Each circle is an SVG `<circle>` carrying either:
+ *
+ *   - the user's profile `<image>` clipped to a circle, or
+ *   - a colored fill + initials when no image URL is available
+ *
+ * Positioning: hangs off the topRight corner slot but extends leftward
+ * so the rightmost avatar aligns with the slot's right edge — that
+ * way the stack reads as "anchored to the corner" without colliding
+ * with the (separate) topRightOuter agent badge.
+ *
+ * Always-on by design (per the milestone-progress plan, Q7): zoomed
+ * out the circles read as small accent dots; zoomed in they resolve
+ * into recognizable initials/avatars. No library zoom hook needed.
+ */
+function renderTeamStack(ctx: SlotContext): React.ReactNode {
+  const { region, node } = ctx;
+  const team = (node.customData?.team as TeamMember[] | undefined) ?? [];
+  const overflow = Number(node.customData?.teamOverflow ?? 0);
+  if (team.length === 0 && overflow === 0) return null;
+
+  // Circle geometry. Smaller than the corner slot (which is ~16-20px
+  // square at default settings) so the stack feels tucked into the
+  // corner rather than overflowing it. Overlap of 8px on a 16px
+  // diameter (~50%) reads as "stacked" without circles disappearing
+  // behind each other.
+  const radius = 8;
+  const overlapStep = 12;
+  const overflowPadding = 4;
+  const totalCircles = team.length;
+
+  // Anchor: align the RIGHTMOST circle's right edge to the slot's
+  // right edge. Each circle to its left moves by `overlapStep`.
+  const rightEdgeX = region.x + region.width;
+  const baseCx = rightEdgeX - radius;
+  const cy = region.y + region.height / 2;
+
+  const elements: React.ReactNode[] = [];
+
+  // Draw left-to-right so the leftmost circle is rendered first and
+  // the rightmost (top of the stack visually) is rendered last —
+  // matches the natural z-order users expect from overlapping avatars.
+  team.forEach((member, i) => {
+    // Position from the right: index 0 is rightmost (front).
+    const positionFromRight = i;
+    const cx = baseCx - positionFromRight * overlapStep;
+    const fill = teamAvatarColor(member.id);
+    const clipId = `team-avatar-clip-${node.id}-${member.id}`;
+
+    if (member.image) {
+      // <clipPath> + <image> approach. Square image is fitted into the
+      // circle bounding box; preserveAspectRatio defaults to xMidYMid
+      // meet which centers within. Most user images are square-ish.
+      elements.push(
+        createElement(
+          "g",
+          { key: `${member.id}-img`, pointerEvents: "none" },
+          createElement(
+            "defs",
+            null,
+            createElement(
+              "clipPath",
+              { id: clipId },
+              createElement("circle", { cx, cy, r: radius }),
+            ),
+          ),
+          createElement("circle", {
+            cx,
+            cy,
+            r: radius,
+            fill,
+            stroke: "rgba(0,0,0,0.4)",
+            strokeWidth: 1,
+          }),
+          createElement("image", {
+            href: member.image,
+            x: cx - radius,
+            y: cy - radius,
+            width: radius * 2,
+            height: radius * 2,
+            clipPath: `url(#${clipId})`,
+            preserveAspectRatio: "xMidYMid slice",
+          }),
+        ),
+      );
+    } else {
+      elements.push(
+        createElement(
+          "g",
+          { key: `${member.id}-init`, pointerEvents: "none" },
+          createElement("circle", {
+            cx,
+            cy,
+            r: radius,
+            fill,
+            stroke: "rgba(0,0,0,0.4)",
+            strokeWidth: 1,
+          }),
+          createElement(
+            "text",
+            {
+              x: cx,
+              y: cy + 3, // visual baseline nudge for centering small text
+              textAnchor: "middle",
+              fontSize: 8,
+              fontWeight: 700,
+              fontFamily: LABEL_FONT,
+              fill: "#0a0a0a",
+              pointerEvents: "none",
+            },
+            userInitials(member.name),
+          ),
+        ),
+      );
+    }
+  });
+
+  // "+N" overflow pill, drawn to the LEFT of the leftmost circle.
+  if (overflow > 0) {
+    const overflowText = `+${overflow}`;
+    const charWidth = 5;
+    const pillWidth = Math.max(radius * 2, overflowText.length * charWidth + 6);
+    const leftmostCx = baseCx - totalCircles * overlapStep;
+    const pillCx = leftmostCx - overflowPadding - pillWidth / 2;
+    const pillY = cy - radius;
+    elements.push(
+      createElement(
+        "g",
+        { key: "team-overflow", pointerEvents: "none" },
+        createElement("rect", {
+          x: pillCx - pillWidth / 2,
+          y: pillY,
+          width: pillWidth,
+          height: radius * 2,
+          rx: radius,
+          fill: "rgba(255,255,255,0.12)",
+          stroke: "rgba(255,255,255,0.2)",
+          strokeWidth: 1,
+        }),
+        createElement(
+          "text",
+          {
+            x: pillCx,
+            y: cy + 3,
+            textAnchor: "middle",
+            fontSize: 8,
+            fontWeight: 600,
+            fontFamily: LABEL_FONT,
+            fill: TEXT,
+            pointerEvents: "none",
+          },
+          overflowText,
+        ),
+      ),
+    );
+  }
+
+  return createElement("g", { pointerEvents: "none" }, ...elements);
+}
+
+/**
+ * Milestone progress bar. Sits in the native `bodyTop` slot — a thin
+ * horizontal strip purpose-built for inline progress under the header
+ * (see `system-canvas/dist/slots.js:84-95`). Reads two `customData`
+ * fields populated by the projector:
+ *
+ *   - `progress`     — fraction in 0..1, % of linked features completed
+ *   - `featureCount` — total linked features (denominator)
+ *
+ * **Why not the declarative `kind: "progress"` slot?** That would render
+ * a 0% bar on a milestone with no features yet, which reads as "behind."
+ * Returning `null` here when `featureCount === 0` keeps the card
+ * honest: empty means empty.
+ *
+ * The bar's color tracks the milestone's status color, so a COMPLETED
+ * milestone with 100% bar reads green-on-green and a NOT_STARTED
+ * milestone shows a muted track even at 0%. We reuse the library's
+ * `NodeProgressBar` primitive so the visual matches every other native
+ * progress slot pixel-for-pixel.
+ */
+function renderMilestoneProgress(ctx: SlotContext): React.ReactNode {
+  const { node } = ctx;
+  const featureCount = Number(node.customData?.featureCount ?? 0);
+  if (featureCount <= 0) return null;
+  const raw = Number(node.customData?.progress ?? 0);
+  const value = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
+  return createElement(NodeProgressBar, {
+    region: ctx.region,
+    value,
+    color: milestoneStatusColor(node),
+    bgColor: hexAlpha("#FFFFFF", 0.08),
+  });
+}
+
 const milestoneCategory: CategoryDefinition = {
   ...baseCard,
   defaultWidth: MILESTONE_W,
@@ -410,10 +668,172 @@ const milestoneCategory: CategoryDefinition = {
       value: (ctx: SlotContext) => milestoneStatusLabel(ctx.node),
       color: (ctx: SlotContext) => milestoneStatusColor(ctx.node),
     },
+    // Progress bar between the status header and the title text. Lives
+    // in `bodyTop` (NOT `body`) so it composes cleanly with the
+    // text-wrapping body renderer applied by `withWrappedBody` below.
+    bodyTop: {
+      kind: "custom",
+      render: renderMilestoneProgress,
+    },
+    // "Agent active" tab badge hanging off the top-right corner.
+    // `topRightOuter` is system-canvas's purpose-built slot for
+    // notification-style badges that clip into the node's stroke
+    // (see `system-canvas/dist/slots.js:96-105`). The native `count`
+    // slot's `hideWhenEmpty` does the right thing here — when no
+    // agents are running, no badge renders. Color is amber so it
+    // reads as "happening now" against the cool blue/green status
+    // tones; we don't follow the milestone status color because the
+    // signal is orthogonal (an agent can be running on any state).
+    topRightOuter: {
+      kind: "count",
+      value: (ctx: SlotContext) => {
+        const v = ctx.node.customData?.agentCount;
+        return typeof v === "number" ? v : 0;
+      },
+      color: ACCENT.agent,
+      hideWhenEmpty: true,
+    },
+    // Team avatar stack inside the top-right corner. Sits in the
+    // INNER `topRight` slot so it doesn't collide with the agent tab
+    // badge in the OUTER `topRightOuter` slot. Renders nothing when
+    // no humans are involved with any linked feature.
+    topRight: {
+      kind: "custom",
+      render: renderTeamStack,
+    },
     footer: {
       kind: "custom",
       render: (ctx: SlotContext) =>
         renderMetricsFooter(ctx, milestoneStatusColor(ctx.node)),
+    },
+  },
+} as CategoryDefinition;
+
+// ---------------------------------------------------------------------------
+// Feature card — DB-projected on a milestone sub-canvas
+// ---------------------------------------------------------------------------
+//
+// One per linked Feature. Reads `Feature.status` from `customData.status`
+// (the projector passes it through verbatim). The `topEdge` color
+// band tracks status; the footer renderer picks up `customData.secondary`
+// (the "X/Y tasks" line) and shows it in muted-on-accent treatment so
+// it parallels the milestone card's footer.
+//
+// Color palette mirrors what the workspace plan page uses for its
+// status badges: BACKLOG (muted), PLANNED (slate), IN_PROGRESS (blue),
+// COMPLETED (green), CANCELLED (muted dashed), ERROR (red), BLOCKED
+// (amber). Defensively maps unknown values to the muted "BACKLOG"
+// tone so a Prisma schema addition doesn't crash the renderer.
+
+const FEATURE_STATUS_COLORS: Record<string, string> = {
+  BACKLOG: MUTED,
+  PLANNED: "#94a3b8",      // slate-400
+  IN_PROGRESS: "#7dd3fc",  // sky-300 (matches milestone IN_PROGRESS for visual rhyme)
+  COMPLETED: "#4ade80",    // emerald-400 (matches milestone COMPLETED)
+  CANCELLED: MUTED,
+  ERROR: "#f87171",        // red-400
+  BLOCKED: "#fbbf24",      // amber-400
+};
+
+function featureStatusColor(node: CanvasNode): string {
+  const raw = node.customData?.status;
+  if (typeof raw === "string" && raw in FEATURE_STATUS_COLORS) {
+    return FEATURE_STATUS_COLORS[raw];
+  }
+  return MUTED;
+}
+
+const featureCategory: CategoryDefinition = {
+  ...baseCard,
+  defaultWidth: FEATURE_W,
+  defaultHeight: FEATURE_H,
+  type: "text",
+  stroke: STROKE,
+  fill: SURFACE,
+  // Features are DB rows, not authored canvas content — same posture
+  // as milestones. Hide the trash button so users don't expect
+  // canvas delete to mean feature delete.
+  hideToolbarDelete: true,
+  slots: {
+    topEdge: {
+      kind: "color",
+      extent: "full",
+      color: (ctx: SlotContext) => featureStatusColor(ctx.node),
+    },
+    header: {
+      kind: "text",
+      value: "FEATURE",
+      color: (ctx: SlotContext) => featureStatusColor(ctx.node),
+    },
+    footer: {
+      kind: "custom",
+      render: (ctx: SlotContext) =>
+        renderMetricsFooter(ctx, featureStatusColor(ctx.node)),
+    },
+  },
+} as CategoryDefinition;
+
+// ---------------------------------------------------------------------------
+// Task card — DB-projected on a milestone sub-canvas
+// ---------------------------------------------------------------------------
+//
+// Compact card; stacked beneath its parent feature. Color band tracks
+// `customData.workflowStatus` (the kanban-board signal: PENDING /
+// IN_PROGRESS / COMPLETED / ERROR / HALTED / FAILED) since that's the
+// "what's happening with this task right now" axis. The header text
+// is the workflow word, in the same color, so users can read state
+// even when the band is clipped or zoomed out to a single pixel.
+
+const TASK_WORKFLOW_COLORS: Record<string, string> = {
+  PENDING: "#7dd3fc",      // queued is treated as in-flight by the kanban (KanbanView.tsx:62)
+  IN_PROGRESS: "#7dd3fc",
+  COMPLETED: "#4ade80",
+  ERROR: "#f87171",
+  FAILED: "#f87171",        // collapses to ERROR per the kanban
+  HALTED: "#fbbf24",
+};
+
+function taskWorkflowColor(node: CanvasNode): string {
+  const raw = node.customData?.workflowStatus;
+  if (typeof raw === "string" && raw in TASK_WORKFLOW_COLORS) {
+    return TASK_WORKFLOW_COLORS[raw];
+  }
+  // Default to muted (no agent run yet) — same posture as the kanban
+  // when workflowStatus is null.
+  return MUTED;
+}
+
+function taskWorkflowLabel(node: CanvasNode): string {
+  const raw = node.customData?.workflowStatus;
+  if (typeof raw === "string") {
+    return raw.replace(/_/g, " ");
+  }
+  // Fall back to TaskStatus when no workflow has been kicked off.
+  const status = node.customData?.status;
+  if (typeof status === "string") {
+    return status.replace(/_/g, " ");
+  }
+  return "TASK";
+}
+
+const taskCategory: CategoryDefinition = {
+  ...baseCard,
+  defaultWidth: TASK_W,
+  defaultHeight: TASK_H,
+  type: "text",
+  stroke: STROKE,
+  fill: SURFACE,
+  hideToolbarDelete: true,
+  slots: {
+    topEdge: {
+      kind: "color",
+      extent: "full",
+      color: (ctx: SlotContext) => taskWorkflowColor(ctx.node),
+    },
+    header: {
+      kind: "text",
+      value: (ctx: SlotContext) => taskWorkflowLabel(ctx.node),
+      color: (ctx: SlotContext) => taskWorkflowColor(ctx.node),
     },
   },
 } as CategoryDefinition;
@@ -619,6 +1039,8 @@ const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
   repository: withWrappedBody(repositoryCategory),
   initiative: withWrappedBody(initiativeCategory),
   milestone:  withWrappedBody(milestoneCategory),
+  feature:    withWrappedBody(featureCategory),
+  task:       withWrappedBody(taskCategory),
   note:       withWrappedBody(accentNote(ACCENT.note, "NOTE")),
   decision:   withWrappedBody(accentNote(ACCENT.decision, "DECISION")),
 };

@@ -56,6 +56,14 @@ const baseParams = {
 
 const sibling = { id: "ms-2", sequence: 1, name: "Sibling", assignee: null };
 
+/**
+ * Wire shape after `serializeMilestone`: every milestone endpoint now
+ * emits the canonical 1:N `features` array plus the legacy `feature`
+ * shim (= `features[0] ?? null`). The Prisma mock returns bare rows
+ * without a `features` field; the serializer fills these in.
+ */
+const expectedSibling = { ...sibling, features: [], feature: null };
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("DELETE /milestones/[milestoneId]", () => {
@@ -109,7 +117,7 @@ describe("DELETE /milestones/[milestoneId]", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("deleted");
-    expect(body.milestones).toEqual([sibling]);
+    expect(body.milestones).toEqual([expectedSibling]);
   });
 
   it("runs delete + updateMany in $transaction when renumber=true", async () => {
