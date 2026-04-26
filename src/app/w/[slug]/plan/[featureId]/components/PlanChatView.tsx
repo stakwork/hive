@@ -5,6 +5,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
+import { usePlanFavicon } from "@/hooks/usePlanFavicon";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { usePusherConnection, type FeatureTitleUpdateEvent, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
@@ -154,6 +155,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   // Real-time presence tracking
   const { collaborators } = usePlanPresence({ featureId });
+
+  // Update favicon based on feature workflow status
+  usePlanFavicon({ workflowStatus });
 
   const fetchFeature = useCallback(async (id: string) => {
     const response = await fetch(`/api/features/${id}`);
