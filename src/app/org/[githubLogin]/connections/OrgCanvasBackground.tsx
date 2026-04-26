@@ -636,9 +636,8 @@ export function OrgCanvasBackground({
     /** Always an `initiative:<id>` ref — milestones can only be added inside one. */
     canvasRef: string;
     initiativeId: string;
-    /** Sequence numbers already taken on this initiative; pre-fetched for the dialog. */
-    usedSequences: number[];
-    defaultSequence: number;
+    /** Count + 1 from the server; undefined if fetch failed (dialog opens with empty field). */
+    defaultSequence?: number;
   };
   type PendingAdd = PendingInitiativeAdd | PendingMilestoneAdd;
 
@@ -735,17 +734,14 @@ export function OrgCanvasBackground({
         const res = await fetch(
           `/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones`,
         );
-        const list: MilestoneResponse[] = res.ok ? await res.json() : [];
-        const usedSequences = list.map((m) => m.sequence);
-        const defaultSequence =
-          usedSequences.length === 0 ? 1 : Math.max(...usedSequences) + 1;
+        const data = res.ok ? await res.json() : null;
+        const defaultSequence = data ? data.count + 1 : undefined;
         setPendingAdd({
           kind: "milestone",
           x: node.x,
           y: node.y,
           canvasRef,
           initiativeId,
-          usedSequences,
           defaultSequence,
         });
       } catch (err) {
@@ -753,6 +749,14 @@ export function OrgCanvasBackground({
           "[OrgCanvasBackground] failed to fetch milestones for dialog seed",
           err,
         );
+        setPendingAdd({
+          kind: "milestone",
+          x: node.x,
+          y: node.y,
+          canvasRef,
+          initiativeId,
+          defaultSequence: undefined,
+        });
       }
     },
     [githubLogin],
@@ -1202,9 +1206,6 @@ export function OrgCanvasBackground({
         onClose={() => setPendingAdd(null)}
         defaultSequence={
           pendingAdd?.kind === "milestone" ? pendingAdd.defaultSequence : undefined
-        }
-        usedSequences={
-          pendingAdd?.kind === "milestone" ? pendingAdd.usedSequences : []
         }
         onSave={handleSaveMilestone}
       />
