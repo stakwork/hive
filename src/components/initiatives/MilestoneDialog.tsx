@@ -82,7 +82,7 @@ export interface MilestoneDialogProps {
    * one being edited, when in edit mode). Used for client-side
    * collision validation.
    */
-  usedSequences: number[];
+  usedSequences?: number[];
   /**
    * Caller-controlled save. Resolve with `{ error?: string }` —
    * non-empty `error` keeps the dialog open and surfaces the message.
@@ -123,7 +123,7 @@ export function MilestoneDialog({
     if (!form.name.trim() || !form.sequence) return;
 
     const seqNum = parseInt(form.sequence, 10);
-    if (usedSequences.includes(seqNum)) {
+    if ((usedSequences ?? []).includes(seqNum)) {
       setError("Sequence already in use — choose another number.");
       return;
     }
