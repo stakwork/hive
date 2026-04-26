@@ -96,7 +96,12 @@ interface SortableMilestoneRowProps {
   onDelete: (m: MilestoneResponse) => void;
   onMilestoneUpdated: (m: MilestoneResponse) => void;
   onLinkFeature: (m: MilestoneResponse) => void;
-  onUnlinkFeature: (m: MilestoneResponse) => void;
+  /**
+   * Unlink a single feature from this milestone. Receives the milestone
+   * AND the specific featureId to remove — a milestone may carry many
+   * linked features, so a top-level `unlinkAll` would be too coarse.
+   */
+  onUnlinkFeature: (m: MilestoneResponse, featureId: string) => void;
   onInsertBefore: (m: MilestoneResponse) => void;
   onInsertAfter: (m: MilestoneResponse) => void;
 }
@@ -253,34 +258,41 @@ function SortableMilestoneRow({
       {/* Actions */}
       <TableCell>
         <div className="flex items-center gap-1 flex-wrap">
-          {milestone.feature ? (
-            <div className="flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-xs">
+          {/*
+           * 1:N linked features. Render one chip per feature with its
+           * own unlink button; the trailing `+` button always opens the
+           * link dialog so users can keep adding without removing first.
+           */}
+          {milestone.features.map((feature) => (
+            <div
+              key={feature.id}
+              className="flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-xs"
+            >
               <span className="text-blue-900 dark:text-blue-100 font-medium max-w-[100px] truncate">
-                {milestone.feature.title}
+                {feature.title}
               </span>
               <span className="text-blue-600 dark:text-blue-400 mx-0.5">·</span>
               <span className="text-blue-700 dark:text-blue-300 max-w-[70px] truncate">
-                {milestone.feature.workspace.name}
+                {feature.workspace.name}
               </span>
               <button
                 className="ml-1 text-blue-500 hover:text-blue-700"
                 title="Unlink feature"
-                onClick={() => onUnlinkFeature(milestone)}
+                onClick={() => onUnlinkFeature(milestone, feature.id)}
               >
                 <X className="h-3 w-3" />
               </button>
             </div>
-          ) : (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              title="Link feature"
-              onClick={() => onLinkFeature(milestone)}
-            >
-              <Link2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          ))}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            title={milestone.features.length === 0 ? "Link feature" : "Link another feature"}
+            onClick={() => onLinkFeature(milestone)}
+          >
+            <Link2 className="h-3.5 w-3.5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -420,11 +432,15 @@ function MilestonesTable({
     }
   };
 
-  const handleUnlink = async (m: MilestoneResponse) => {
+  // Disconnect a single feature without touching the others. Uses the
+  // 1:N incremental endpoint (`removeFeatureId`); the legacy
+  // `featureId: null` would unlink ALL linked features, which is wrong
+  // when a milestone has multiple.
+  const handleUnlink = async (m: MilestoneResponse, featureId: string) => {
     const res = await fetch(`${baseUrl}/${m.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ featureId: null }),
+      body: JSON.stringify({ removeFeatureId: featureId }),
     });
     if (res.ok) {
       const updated: MilestoneResponse = await res.json();

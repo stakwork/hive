@@ -135,12 +135,15 @@ export function LinkFeatureModal({
     if (!selected) return;
     setSaving(true);
     try {
+      // Use the incremental 1:N endpoint so adding this feature doesn't
+      // clobber any features the milestone is already linked to. The
+      // legacy `{ featureId }` field would have replaced the whole set.
       const res = await fetch(
         `/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones/${milestoneId}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ featureId: selected.id }),
+          body: JSON.stringify({ addFeatureId: selected.id }),
         }
       );
       if (res.ok) {
