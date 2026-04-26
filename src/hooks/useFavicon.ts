@@ -1,20 +1,36 @@
 import { useEffect, useState } from 'react';
 import { isDevelopmentMode } from '@/lib/runtime';
 
+type OverlayType = 'none' | 'busy' | 'waiting' | 'done';
+
 interface UseFaviconOptions {
   workspaceLogoUrl?: string | null;
   enabled?: boolean;
+  /** @deprecated Use overlayType instead. Maps to overlayType: 'busy'. */
   showNotificationDot?: boolean;
+  overlayType?: OverlayType;
 }
 
 /**
  * Hook to dynamically update the browser favicon based on workspace logo.
  * When a workspace has a custom logo, it replaces the default favicon.
  * When no custom logo is available, it reverts to the default favicon.
- * Optionally adds a yellow notification dot overlay when showNotificationDot is true.
+ * Optionally adds an overlay badge:
+ *   - 'busy'    — yellow dot (same as legacy showNotificationDot)
+ *   - 'waiting' — blue circle with white '?' character
+ *   - 'done'    — green circle with white '✓' character
+ *   - 'none'    — no overlay
  */
-export function useFavicon({ workspaceLogoUrl, enabled = true, showNotificationDot = false }: UseFaviconOptions) {
+export function useFavicon({
+  workspaceLogoUrl,
+  enabled = true,
+  showNotificationDot = false,
+  overlayType,
+}: UseFaviconOptions) {
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Resolve effective overlay: explicit overlayType wins; fallback to legacy showNotificationDot
+  const effectiveOverlay: OverlayType = overlayType ?? (showNotificationDot ? 'busy' : 'none');
 
   useEffect(() => {
     if (!enabled) return;
@@ -23,59 +39,64 @@ export function useFavicon({ workspaceLogoUrl, enabled = true, showNotificationD
       setIsUpdating(true);
       try {
         // Get all favicon link elements
-        const faviconLinks = document.querySelectorAll<HTMLLinkElement>(
-          'link[rel*="icon"], link[rel="apple-touch-icon"]'
+        let faviconLinks = Array.from(
+          document.querySelectorAll<HTMLLinkElement>(
+            'link[rel*="icon"], link[rel="apple-touch-icon"]'
+          )
         );
 
-        // Determine the base favicon URL
-        let baseFaviconUrl: string;
-        if (workspaceLogoUrl) {
-          baseFaviconUrl = workspaceLogoUrl;
-        } else {
-          const isDevMode = isDevelopmentMode();
-          const faviconPath = isDevMode ? '/dev' : '';
-          baseFaviconUrl = `${faviconPath}/favicon-32x32.png`;
+        // Fallback: if no favicon links found (Next.js App Router timing edge case),
+        // create and append one so we always have something to update.
+        if (faviconLinks.length === 0) {
+          const fallback = document.createElement('link');
+          fallback.rel = 'icon';
+          fallback.type = 'image/png';
+          document.head.appendChild(fallback);
+          faviconLinks = [fallback];
         }
 
-        // If notification dot is needed, create canvas overlay
-        let finalFaviconUrl = baseFaviconUrl;
-        if (showNotificationDot) {
+        // Local default favicon path — always same-origin, never S3
+        const isDevMode = isDevelopmentMode();
+        const localDefaultFavicon = `${isDevMode ? '/dev' : ''}/favicon-32x32.png`;
+
+        // Determine the base favicon URL for non-overlay cases
+        const baseFaviconUrl = workspaceLogoUrl ?? localDefaultFavicon;
+
+        // Build the final favicon URL
+        let finalFaviconUrl: string;
+
+        if (effectiveOverlay !== 'none') {
+          // Overlay compositing always uses the local default favicon as base (CORS-safe)
           try {
-            finalFaviconUrl = await createFaviconWithNotificationDot(baseFaviconUrl);
+            finalFaviconUrl = await createFaviconWithBadge(localDefaultFavicon, effectiveOverlay);
           } catch (error) {
-            console.error('Failed to create notification dot with workspace logo, falling back to default:', error);
-            // Fallback to default favicon WITH notification dot
-            const isDevMode = isDevelopmentMode();
-            const defaultFavicon = `${isDevMode ? '/dev' : ''}/favicon-32x32.png`;
-            try {
-              finalFaviconUrl = await createFaviconWithNotificationDot(defaultFavicon);
-            } catch (fallbackError) {
-              console.error('Failed to create notification dot on default favicon:', fallbackError);
-              finalFaviconUrl = defaultFavicon;
-            }
+            console.error('Failed to create favicon badge overlay:', error);
+            finalFaviconUrl = localDefaultFavicon;
           }
+        } else if (workspaceLogoUrl) {
+          finalFaviconUrl = workspaceLogoUrl;
+        } else {
+          finalFaviconUrl = localDefaultFavicon;
         }
 
         // Update all favicon links
+        const shouldOverride = !!workspaceLogoUrl || effectiveOverlay !== 'none';
+
         faviconLinks.forEach((link) => {
-          if (workspaceLogoUrl || showNotificationDot) {
+          if (shouldOverride) {
             // Store original href before changing it (if not already stored)
             if (!link.dataset.originalHref) {
               link.dataset.originalHref = link.href;
             }
-            // Update to workspace logo or notification version
             link.href = finalFaviconUrl;
           } else {
             // Revert to default favicons
-            const isDevMode = isDevelopmentMode();
-            const faviconPath = isDevMode ? '/dev' : '';
+            const faviconPath = isDevelopmentMode() ? '/dev' : '';
 
-            // If we have stored original href, use it
             if (link.dataset.originalHref) {
               link.href = link.dataset.originalHref;
               delete link.dataset.originalHref;
             } else {
-              // Otherwise reconstruct the default path
               const rel = link.rel;
               if (rel === 'apple-touch-icon') {
                 link.href = `${faviconPath}/apple-touch-icon.png`;
@@ -87,7 +108,6 @@ export function useFavicon({ workspaceLogoUrl, enabled = true, showNotificationD
                   link.href = `${faviconPath}/favicon-32x32.png`;
                 }
               } else {
-                // Default favicon.ico
                 link.href = `${faviconPath}/favicon.ico`;
               }
             }
@@ -101,88 +121,100 @@ export function useFavicon({ workspaceLogoUrl, enabled = true, showNotificationD
     };
 
     updateFavicon();
-  }, [workspaceLogoUrl, enabled, showNotificationDot]);
+  }, [workspaceLogoUrl, enabled, effectiveOverlay]);
 
   return { isUpdating };
 }
 
 /**
- * Creates a favicon with a yellow notification dot overlay
- * @param baseIconUrl - The base favicon URL to overlay the dot on
- * @returns Data URL of the canvas with notification dot
+ * Draws the appropriate badge onto a 32×32 canvas loaded with the base favicon.
+ * The badge is drawn in the top-right corner (x≈22, y≈5, r=5) — same position
+ * as the legacy notification dot.
+ *
+ * Always pass a same-origin `baseIconUrl` to avoid CORS canvas-taint errors.
  */
-async function createFaviconWithNotificationDot(baseIconUrl: string): Promise<string> {
+async function createFaviconWithBadge(
+  baseIconUrl: string,
+  overlay: 'busy' | 'waiting' | 'done'
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
     const ctx = canvas.getContext('2d');
-    
+
     if (!ctx) {
       reject(new Error('Could not get canvas context'));
       return;
     }
 
-    // Set canvas size
-    canvas.width = 32;
-    canvas.height = 32;
-
-    // Load the base favicon image
     const img = new Image();
-    img.crossOrigin = 'anonymous';
-    
+    // No crossOrigin attribute needed — base is always same-origin
+
     img.onload = () => {
       try {
-        // Draw the base favicon
+        // Draw base favicon
         ctx.drawImage(img, 0, 0, 32, 32);
 
-        // Draw notification dot at top-right corner
-        // Yellow dot with slight shadow for better visibility
+        // Badge position (top-right corner)
         const dotX = 22;
         const dotY = 5;
         const dotRadius = 5;
 
-        // Draw shadow
+        // Shadow for depth
         ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
         ctx.shadowBlur = 2;
         ctx.shadowOffsetX = 1;
         ctx.shadowOffsetY = 1;
 
-        // Draw dot
-        ctx.fillStyle = '#FFD700';
-        ctx.beginPath();
-        ctx.arc(dotX, dotY, dotRadius, 0, 2 * Math.PI);
-        ctx.fill();
+        if (overlay === 'busy') {
+          // Yellow filled circle — matches legacy notification dot exactly
+          ctx.fillStyle = '#FFD700';
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, dotRadius, 0, 2 * Math.PI);
+          ctx.fill();
 
-        // Draw border for better visibility
-        ctx.shadowColor = 'transparent';
-        ctx.strokeStyle = '#FFA500';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(dotX, dotY, dotRadius, 0, 2 * Math.PI);
-        ctx.stroke();
+          ctx.shadowColor = 'transparent';
+          ctx.strokeStyle = '#FFA500';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, dotRadius, 0, 2 * Math.PI);
+          ctx.stroke();
+        } else if (overlay === 'waiting') {
+          // Blue circle with white '?'
+          ctx.fillStyle = '#3B82F6';
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, dotRadius, 0, 2 * Math.PI);
+          ctx.fill();
 
-        // Convert canvas to data URL
-        const dataUrl = canvas.toDataURL('image/png');
-        resolve(dataUrl);
+          ctx.shadowColor = 'transparent';
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 7px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('?', dotX, dotY + 0.5);
+        } else if (overlay === 'done') {
+          // Green circle with white '✓'
+          ctx.fillStyle = '#22C55E';
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, dotRadius, 0, 2 * Math.PI);
+          ctx.fill();
+
+          ctx.shadowColor = 'transparent';
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 7px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('✓', dotX, dotY + 0.5);
+        }
+
+        resolve(canvas.toDataURL('image/png'));
       } catch (error) {
         reject(error);
       }
     };
 
-    img.onerror = () => {
-      // If this was already a fallback attempt with default favicon, reject
-      const isDevMode = isDevelopmentMode();
-      const defaultFavicon = `${isDevMode ? '/dev' : ''}/favicon-32x32.png`;
-      
-      if (baseIconUrl === defaultFavicon || baseIconUrl.startsWith('data:')) {
-        // Already using default or data URL, can't fallback further
-        reject(new Error('Failed to load base favicon image'));
-      } else {
-        // Try with default favicon to avoid infinite loop
-        resolve(createFaviconWithNotificationDot(defaultFavicon));
-      }
-    };
-
-    // Handle data URLs and regular URLs
+    img.onerror = () => reject(new Error(`Failed to load base favicon: ${baseIconUrl}`));
     img.src = baseIconUrl;
   });
 }
