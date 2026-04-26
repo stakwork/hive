@@ -302,6 +302,43 @@ describe("MilestoneDialog – auto-sequence and duplicate guard", () => {
     expect((seqInput as HTMLInputElement).value).toBe("4");
   });
 
+  it("still shows correct nextSequence after cancel and re-open", async () => {
+    const initiative = makeInitiative([
+      makeMilestone({ id: "m-1", sequence: 1 }),
+      makeMilestone({ id: "m-2", sequence: 2 }),
+      makeMilestone({ id: "m-3", sequence: 3 }),
+    ]);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn().mockResolvedValue([initiative]),
+    });
+
+    const user = userEvent.setup();
+    render(<OrgInitiatives githubLogin="test-org" />);
+
+    await waitFor(() => screen.getByText("Test Initiative"));
+    await user.click(screen.getByText("Test Initiative"));
+
+    // First open — sequence should be 4
+    await user.click(screen.getByRole("button", { name: /add milestone/i }));
+    const seqInput = screen.getByLabelText(/sequence/i);
+    expect((seqInput as HTMLInputElement).value).toBe("4");
+
+    // Cancel via the Cancel button (Escape is not reliable in jsdom/Radix)
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    // Wait for the dialog to close before re-clicking
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /^cancel$/i })).not.toBeInTheDocument()
+    );
+
+    // Re-open — sequence should still be 4
+    await user.click(screen.getByRole("button", { name: /add milestone/i }));
+    const seqInputAgain = screen.getByLabelText(/sequence/i);
+    expect((seqInputAgain as HTMLInputElement).value).toBe("4");
+  });
+
   it("pre-fills sequence with 1 when no milestones exist", async () => {
     const initiative = makeInitiative([]);
 
