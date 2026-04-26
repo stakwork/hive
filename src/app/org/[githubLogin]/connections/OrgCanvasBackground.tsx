@@ -42,7 +42,7 @@ import { categoryAllowedOnScope } from "./canvas-categories";
  * only need the prefix check on the client. Keep the prefix list in sync
  * with `LIVE_ID_PREFIXES` there.
  */
-const LIVE_ID_PREFIXES = ["ws:", "feature:", "repo:", "initiative:", "milestone:"];
+const LIVE_ID_PREFIXES = ["ws:", "feature:", "repo:", "initiative:", "milestone:", "task:"];
 function isLiveId(id: string): boolean {
   return LIVE_ID_PREFIXES.some((p) => id.startsWith(p));
 }
@@ -314,18 +314,28 @@ export function OrgCanvasBackground({
   );
 
   /**
-   * Hidden live entries for the ROOT canvas only. Keeps the pill's
-   * data model simple (it sits on the root view). If we later surface
-   * hidden entries on sub-canvases, switch this to a `Record<ref, …>`.
+   * Hidden live entries for the CURRENT canvas (whatever `currentRef`
+   * points at). Drives the HiddenLivePill, which surfaces "restore"
+   * for whatever scope the user is looking at — workspaces on root,
+   * repos on a workspace sub-canvas, etc. Refetched whenever
+   * `currentRef` changes (see effect below).
    *
-   * `null` means "not yet fetched." This distinction matters because
-   * `onHiddenChange` consumers (notably `ConnectionsPage`, which seeds
-   * the chat's default workspace context from the hidden list) only
-   * read on first fire — and reading an empty stub before the fetch
-   * resolved would seed them with no filtering. Below, the notify
-   * effect skips while this is `null`.
+   * `null` means "not yet fetched on the current scope." We render
+   * the pill as `entries={hiddenLive ?? []}` so the brief gap during
+   * a refetch reads as "no entries" rather than flashing a stale list
+   * from the previous canvas.
    */
   const [hiddenLive, setHiddenLive] = useState<HiddenLiveEntry[] | null>(null);
+  /**
+   * Hidden live entries for the ROOT canvas specifically — independent
+   * of `currentRef`. The chat workspace seed in `ConnectionsPage` only
+   * cares about hidden workspaces (which only live on root); piping the
+   * current-scope list through `onHiddenChange` would re-seed the chat
+   * with repo/milestone entries when the user drills into a sub-canvas.
+   * `null` means "not yet fetched"; the notify effect short-circuits
+   * while null so the parent's first non-stub callback is the real list.
+   */
+  const [rootHiddenLive, setRootHiddenLive] = useState<HiddenLiveEntry[] | null>(null);
 
   // Keep the latest sub-canvases available to the save flusher without
   // re-creating the debounce timer every render.
@@ -337,6 +347,15 @@ export function OrgCanvasBackground({
   useEffect(() => {
     rootRef.current = root;
   }, [root]);
+  // Mirror of `currentRef` for callbacks that need to read it without
+  // re-binding (Pusher handler, refresh helpers). The Pusher subscription
+  // effect intentionally only depends on `githubLogin` so we don't tear
+  // down + resubscribe every navigation; reading through this ref keeps
+  // the handler pointed at the user's current scope.
+  const currentRefRef = useRef(currentRef);
+  useEffect(() => {
+    currentRefRef.current = currentRef;
+  }, [currentRef]);
 
   // Map keyed by ROOT_KEY or sub-canvas ref -> latest data waiting to flush.
   const dirtyRef = useRef<DirtyMap>(new Map());
@@ -378,13 +397,41 @@ export function OrgCanvasBackground({
           setLoadError("Failed to load canvas");
         }
       });
+    // Root hidden list seeds both `rootHiddenLive` (which drives the
+    // chat workspace context via `onHiddenChange`) and `hiddenLive`
+    // (the pill's current-scope list — equal to the root list while
+    // we're still on root). When the user navigates into a sub-canvas
+    // the per-ref effect below replaces `hiddenLive`; `rootHiddenLive`
+    // stays put.
     fetchHiddenLive(githubLogin, undefined).then((entries) => {
-      if (!cancelled) setHiddenLive(entries);
+      if (cancelled) return;
+      setRootHiddenLive(entries);
+      setHiddenLive(entries);
     });
     return () => {
       cancelled = true;
     };
   }, [githubLogin]);
+
+  // Refetch the current canvas's hidden list whenever the user drills
+  // into / out of a sub-canvas. Skips the root case — the initial-load
+  // effect above already populates `hiddenLive` for `currentRef === ""`,
+  // and re-running on every root visit would just duplicate that work.
+  // The pill auto-hides when entries are empty, so a sub-canvas with
+  // nothing hidden still costs zero chrome.
+  useEffect(() => {
+    if (currentRef === "") return;
+    let cancelled = false;
+    // Optimistic clear so the previous canvas's list never flashes
+    // on the new scope.
+    setHiddenLive(null);
+    fetchHiddenLive(githubLogin, currentRef).then((entries) => {
+      if (!cancelled) setHiddenLive(entries);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [githubLogin, currentRef]);
 
   // Initial drill-in from `?canvas=<ref>`. Runs once after the root
   // canvas has loaded — `zoomIntoNode` requires the projected node
@@ -446,12 +493,30 @@ export function OrgCanvasBackground({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root]);
 
+  // Refetch the current canvas's hidden list. Used after a hide on a
+  // sub-canvas (so the pill picks up the fresh entry) and as the
+  // reconcile path when an optimistic restore's follow-up read fails.
   const refreshHiddenLive = useCallback(() => {
-    fetchHiddenLive(githubLogin, undefined).then(setHiddenLive);
+    const ref = currentRefRef.current;
+    fetchHiddenLive(githubLogin, ref === "" ? undefined : ref).then(
+      setHiddenLive,
+    );
   }, [githubLogin]);
 
-  // Notify the parent whenever the hidden-live set changes. Skips
-  // until the initial fetch resolves (hiddenLive starts as `null`),
+  // Refetch the ROOT hidden list specifically. Drives `onHiddenChange`,
+  // which seeds the chat workspace context — that contract is root-only
+  // (workspaces only exist at root), independent of the user's current
+  // scope. Used by the Pusher handler when a root-level update arrives.
+  const refreshRootHiddenLive = useCallback(() => {
+    fetchHiddenLive(githubLogin, undefined).then((entries) => {
+      setRootHiddenLive(entries);
+      // If the user is still on root, keep the pill in sync too.
+      if (currentRefRef.current === "") setHiddenLive(entries);
+    });
+  }, [githubLogin]);
+
+  // Notify the parent whenever the ROOT hidden-live set changes. Skips
+  // until the initial fetch resolves (`rootHiddenLive` starts as `null`),
   // so the parent's first non-stub callback is the real list.
   // Critical for `ConnectionsPage`: it gates the chat mount on
   // `hiddenInitialized`, and the chat reads `defaultExtraWorkspaceSlugs`
@@ -459,9 +524,9 @@ export function OrgCanvasBackground({
   // chat without any hidden filtering, then the real list would land
   // too late to take effect.
   useEffect(() => {
-    if (hiddenLive === null) return;
-    onHiddenChange?.(hiddenLive);
-  }, [hiddenLive, onHiddenChange]);
+    if (rootHiddenLive === null) return;
+    onHiddenChange?.(rootHiddenLive);
+  }, [rootHiddenLive, onHiddenChange]);
 
   // Flush any pending saves on unmount so we don't lose the last edit.
   useEffect(() => {
@@ -526,9 +591,14 @@ export function OrgCanvasBackground({
               err,
             );
           });
-        // Hidden list can shift too (agent hid/unhid a node, another
+        // Root hidden list can shift (agent hid/unhid a node, another
         // tab toggled it). Cheap call — one row read + Set lookup.
-        fetchHiddenLive(githubLogin, undefined).then(setHiddenLive);
+        // Mirror into `hiddenLive` too when the user is currently on
+        // root, so the pill stays in sync with `rootHiddenLive`.
+        fetchHiddenLive(githubLogin, undefined).then((entries) => {
+          setRootHiddenLive(entries);
+          if (currentRefRef.current === "") setHiddenLive(entries);
+        });
         return;
       }
       // Only refetch sub-canvases we've actually opened. The cache is
@@ -545,6 +615,12 @@ export function OrgCanvasBackground({
             err,
           );
         });
+      // If the update is for the canvas the user is currently looking
+      // at, refresh its hidden list too — agents can hide live nodes
+      // on sub-canvases just like on root.
+      if (ref === currentRefRef.current) {
+        fetchHiddenLive(githubLogin, ref).then(setHiddenLive);
+      }
     };
 
     channel.bind(PUSHER_EVENTS.CANVAS_UPDATED, handleCanvasUpdated);
@@ -981,24 +1057,36 @@ export function OrgCanvasBackground({
         applyMutation(canvasRef, (c) => removeNode(c, id));
         void toggleLiveVisibility(githubLogin, canvasRef, id, "hide").then(
           () => {
-            if (!canvasRef) refreshHiddenLive();
+            // Refresh whichever hidden list this hide affected so the
+            // pill picks up the new entry. Hides on root also feed the
+            // chat workspace seed (`rootHiddenLive`).
+            if (!canvasRef) {
+              refreshRootHiddenLive();
+            } else if (canvasRef === currentRefRef.current) {
+              refreshHiddenLive();
+            }
           },
         );
         return;
       }
       applyMutation(canvasRef, (c) => removeNode(c, id));
     },
-    [applyMutation, githubLogin, refreshHiddenLive],
+    [applyMutation, githubLogin, refreshHiddenLive, refreshRootHiddenLive],
   );
 
   /**
-   * Restore a hidden workspace. Fire-and-forget the server call, then
-   * refetch the root canvas so the newly-unhidden live node gets its
-   * full projection (name, ref, rollups) rather than the stub we have
-   * in `hiddenLive`. Cheap and keeps the pill's state model tiny.
+   * Restore a hidden live node on the canvas the user is currently
+   * looking at. Fire-and-forget the server call, then refetch that
+   * canvas so the newly-unhidden node gets its full projection (name,
+   * ref, rollups) rather than the stub we have in `hiddenLive`.
+   * Works for any scope: workspaces on root, repos on a workspace
+   * sub-canvas, etc. — `currentRef` decides which canvas the
+   * `/canvas/hide` endpoint mutates.
    */
   const handleRestoreLive = useCallback(
     async (id: string) => {
+      const ref = currentRefRef.current;
+      const isRoot = ref === "";
       // Optimistic: remove from the pill immediately so users don't
       // wait on a round-trip before the popover reflects their click.
       // The pill is only ever shown after the initial fetch resolved
@@ -1008,20 +1096,39 @@ export function OrgCanvasBackground({
       setHiddenLive((prev) =>
         prev === null ? prev : prev.filter((e) => e.id !== id),
       );
-      await toggleLiveVisibility(githubLogin, undefined, id, "show");
-      // Refetch root to pick up the now-visible projected node. The
-      // hidden-list refetch is implicit: we already removed it locally.
+      // Mirror the optimistic removal into `rootHiddenLive` too when
+      // we're on root so the chat seed stays in sync without a refetch.
+      if (isRoot) {
+        setRootHiddenLive((prev) =>
+          prev === null ? prev : prev.filter((e) => e.id !== id),
+        );
+      }
+      await toggleLiveVisibility(
+        githubLogin,
+        isRoot ? undefined : ref,
+        id,
+        "show",
+      );
+      // Refetch the canvas the restore happened on so the newly-visible
+      // projected node renders. Hidden-list refetch is implicit — we
+      // already removed it locally.
       try {
-        const data = await fetchRoot(githubLogin);
-        setRoot(data);
+        if (isRoot) {
+          const data = await fetchRoot(githubLogin);
+          setRoot(data);
+        } else {
+          const data = await fetchSub(githubLogin, ref);
+          setSubCanvases((prev) => ({ ...prev, [ref]: data }));
+        }
       } catch (err) {
         console.error("[OrgCanvasBackground] refetch after restore failed", err);
         // Reconcile the pill if the refetch dropped out — the server's
         // current state is the source of truth.
         refreshHiddenLive();
+        if (isRoot) refreshRootHiddenLive();
       }
     },
-    [githubLogin, refreshHiddenLive],
+    [githubLogin, refreshHiddenLive, refreshRootHiddenLive],
   );
   const handleEdgeAdd = useCallback(
     (edge: CanvasEdge, canvasRef: string | undefined) => {
@@ -1143,24 +1250,24 @@ export function OrgCanvasBackground({
           rootLabel={orgName || githubLogin}
         />
         {/*
-         * Restore pill — top-right of the canvas area. Only shown on
-         * the root canvas: the hidden-list it surfaces is workspace-
-         * scoped (org-level chrome), and a sub-canvas like a
-         * workspace's repos page or an initiative's milestone timeline
-         * has no use for restoring workspaces. Hides itself when
-         * nothing is hidden, so the 99% case on root is zero chrome.
-         * Sits inside the canvas container so it tracks `rightInset`
-         * alongside the canvas itself (stays clear of the sidebar).
+         * Restore pill — top-right of the canvas area. Shown on any
+         * canvas with at least one hidden live node: workspaces on
+         * root, repos on a workspace sub-canvas, milestones on an
+         * initiative sub-canvas. The pill auto-hides when entries are
+         * empty, so the 99% steady-state is zero chrome regardless of
+         * scope. Hidden lists are per-canvas (`Canvas.data.hidden` is
+         * a per-ref overlay), so `hiddenLive` is refetched on every
+         * `currentRef` change. Sits inside the canvas container so it
+         * tracks `rightInset` alongside the canvas itself.
          */}
-        {currentRef === "" && (
-          <HiddenLivePill
-            // Pre-fetch (`hiddenLive === null`) the pill is given an
-            // empty list — it auto-hides when there's nothing to show,
-            // so this just keeps it dormant until the fetch lands.
-            entries={hiddenLive ?? []}
-            onRestore={handleRestoreLive}
-          />
-        )}
+        <HiddenLivePill
+          // Pre-fetch (`hiddenLive === null`) the pill is given an
+          // empty list — it auto-hides when there's nothing to show,
+          // so this just keeps it dormant until the fetch lands.
+          entries={hiddenLive ?? []}
+          onRestore={handleRestoreLive}
+        />
+
 
         {/*
          * Deep-link load overlay. When the page loads with a `?canvas=`

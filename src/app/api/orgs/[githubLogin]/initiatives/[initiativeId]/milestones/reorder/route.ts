@@ -3,10 +3,11 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { notifyCanvasUpdatedByLogin } from "@/lib/canvas";
-
-const MILESTONE_INCLUDE = {
-  assignee: { select: { id: true, name: true } },
-} as const;
+import {
+  MILESTONE_INCLUDE,
+  serializeMilestone,
+  type MilestoneWithFeatures,
+} from "@/lib/initiatives/milestone-serialize";
 
 export async function POST(
   request: NextRequest,
@@ -100,7 +101,15 @@ export async function POST(
       { initiativeId, count: milestones.length },
     );
 
-    return NextResponse.json(updatedMilestones);
+    // Run the response through the shared serializer so callers get the
+    // canonical shape (`features` array + legacy `feature` shim) on
+    // every milestone endpoint. Previously this route emitted bare DB
+    // rows missing the linked-features field altogether.
+    return NextResponse.json(
+      updatedMilestones.map((m) =>
+        serializeMilestone(m as MilestoneWithFeatures),
+      ),
+    );
   } catch (error) {
     console.error("[POST /api/orgs/[githubLogin]/initiatives/[initiativeId]/milestones/reorder] Error:", error);
     return NextResponse.json({ error: "Failed to reorder milestones" }, { status: 500 });

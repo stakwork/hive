@@ -3,27 +3,42 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { notifyCanvasesUpdatedByLogin } from "@/lib/canvas";
+import {
+  MILESTONE_INCLUDE,
+  serializeMilestone,
+  type MilestoneWithFeatures,
+} from "@/lib/initiatives/milestone-serialize";
 import { Prisma } from "@prisma/client";
 
-const MILESTONE_INCLUDE = {
-  assignee: { select: { id: true, name: true } },
-  features: {
-    select: {
-      id: true,
-      title: true,
-      workspace: { select: { id: true, name: true } },
+/**
+ * Resolve a list of feature ids that belong to workspaces in this org.
+ * Used to gate every connect/disconnect on the milestone↔feature relation
+ * so a guessed cuid can't link a feature from another org (IDOR).
+ *
+ * Returns the set of valid ids (filters out unknown / cross-org ones)
+ * rather than throwing — callers decide whether a partial set is OK
+ * or should 404.
+ */
+async function filterFeaturesInOrg(
+  orgId: string,
+  candidateIds: string[],
+): Promise<Set<string>> {
+  if (candidateIds.length === 0) return new Set();
+  const orgWorkspaces = await db.workspace.findMany({
+    where: { deleted: false, sourceControlOrgId: orgId },
+    select: { id: true },
+  });
+  const orgWorkspaceIds = orgWorkspaces.map((w) => w.id);
+  if (orgWorkspaceIds.length === 0) return new Set();
+  const validFeatures = await db.feature.findMany({
+    where: {
+      id: { in: candidateIds },
+      deleted: false,
+      workspaceId: { in: orgWorkspaceIds },
     },
-    take: 1,
-  },
-} as const;
-
-type MilestoneWithRelations = {
-  features: { id: string; title: string; workspace: { id: string; name: string } }[];
-  [key: string]: unknown;
-};
-
-function serializeMilestone({ features, ...rest }: MilestoneWithRelations) {
-  return { ...rest, feature: features[0] ?? null };
+    select: { id: true },
+  });
+  return new Set(validFeatures.map((f) => f.id));
 }
 
 export async function PATCH(
@@ -57,22 +72,82 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, description, status, sequence, dueDate, assigneeId, completedAt, featureId } = body;
+    const {
+      name,
+      description,
+      status,
+      sequence,
+      dueDate,
+      assigneeId,
+      completedAt,
+      // ── Feature linking ──
+      // 1:N API. All three of these are accepted; the legacy `featureId`
+      // singular is kept as a back-compat shim for the next release.
+      addFeatureId,        // string  → connect one feature
+      removeFeatureId,     // string  → disconnect one feature
+      featureIds,          // string[] → full replace via { set: [...] }
+      featureId,           // legacy 1:1; treated as { set: [id] } / { set: [] }
+    } = body;
 
-    // If a featureId is being connected, verify it belongs to a workspace in this org
-    // before any write to prevent cross-org feature linking (IDOR).
-    if (featureId) {
-      const orgWorkspaces = await db.workspace.findMany({
-        where: { deleted: false, sourceControlOrgId: orgId },
-        select: { id: true },
-      });
-      const orgWorkspaceIds = orgWorkspaces.map((w) => w.id);
-      const targetFeature = await db.feature.findFirst({
-        where: { id: featureId, deleted: false, workspaceId: { in: orgWorkspaceIds } },
-        select: { id: true },
-      });
-      if (!targetFeature) {
+    // ── Feature link mutation: build the Prisma `features` clause ──
+    //
+    // Precedence (top wins): featureIds (full replace) > addFeatureId/removeFeatureId
+    // (incremental) > featureId (legacy full-replace shim). Mixing
+    // featureIds with add/remove in one request is ambiguous and rejected.
+    let featuresClause:
+      | Prisma.FeatureUpdateManyWithoutMilestoneNestedInput
+      | undefined = undefined;
+
+    const usingArrayReplace = Array.isArray(featureIds);
+    const usingIncremental = addFeatureId !== undefined || removeFeatureId !== undefined;
+    const usingLegacy = featureId !== undefined;
+
+    if (usingArrayReplace && usingIncremental) {
+      return NextResponse.json(
+        { error: "Specify either featureIds or addFeatureId/removeFeatureId, not both" },
+        { status: 400 },
+      );
+    }
+
+    if (usingArrayReplace) {
+      if (!featureIds.every((v: unknown) => typeof v === "string")) {
+        return NextResponse.json({ error: "featureIds must be string[]" }, { status: 400 });
+      }
+      const valid = await filterFeaturesInOrg(orgId, featureIds);
+      if (valid.size !== featureIds.length) {
         return NextResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+      featuresClause = { set: featureIds.map((id: string) => ({ id })) };
+    } else if (usingIncremental) {
+      const candidates = [addFeatureId, removeFeatureId].filter(
+        (v): v is string => typeof v === "string" && v.length > 0,
+      );
+      if (candidates.length > 0) {
+        const valid = await filterFeaturesInOrg(orgId, candidates);
+        if (valid.size !== candidates.length) {
+          return NextResponse.json({ error: "Feature not found" }, { status: 404 });
+        }
+      }
+      const ops: Prisma.FeatureUpdateManyWithoutMilestoneNestedInput = {};
+      if (typeof addFeatureId === "string" && addFeatureId.length > 0) {
+        ops.connect = [{ id: addFeatureId }];
+      }
+      if (typeof removeFeatureId === "string" && removeFeatureId.length > 0) {
+        ops.disconnect = [{ id: removeFeatureId }];
+      }
+      featuresClause = ops;
+    } else if (usingLegacy) {
+      // Legacy: { featureId: "x" } meant "set the single linked feature
+      // to x"; { featureId: null } meant "unlink everything." Map both
+      // to the new full-replace semantics.
+      if (featureId === null) {
+        featuresClause = { set: [] };
+      } else if (typeof featureId === "string" && featureId.length > 0) {
+        const valid = await filterFeaturesInOrg(orgId, [featureId]);
+        if (!valid.has(featureId)) {
+          return NextResponse.json({ error: "Feature not found" }, { status: 404 });
+        }
+        featuresClause = { set: [{ id: featureId }] };
       }
     }
 
@@ -86,26 +161,25 @@ export async function PATCH(
         ...(assigneeId !== undefined && { assigneeId }),
         ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
         ...(completedAt !== undefined && { completedAt: completedAt ? new Date(completedAt) : null }),
-        ...(featureId !== undefined && {
-          features: featureId
-            ? { connect: { id: featureId } }
-            : { set: [] },
-        }),
+        ...(featuresClause !== undefined && { features: featuresClause }),
       },
       include: MILESTONE_INCLUDE,
     });
 
     // Status / sequence / due-date / feature-link can all change what
     // the projection emits. Status especially affects the root-level
-    // initiative progress rollup, so notify both.
+    // initiative progress rollup (root) and the milestone card itself
+    // on the timeline (`initiative:<id>`); a feature-link change in
+    // particular flips what the milestone sub-canvas (`milestone:<id>`)
+    // projects, so include that ref too.
     void notifyCanvasesUpdatedByLogin(
       githubLogin,
-      ["", `initiative:${initiativeId}`],
+      ["", `initiative:${initiativeId}`, `milestone:${milestoneId}`],
       "milestone-updated",
       { initiativeId, milestoneId },
     );
 
-    return NextResponse.json(serializeMilestone(milestone as MilestoneWithRelations));
+    return NextResponse.json(serializeMilestone(milestone as MilestoneWithFeatures));
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -189,7 +263,12 @@ export async function DELETE(
         { initiativeId, milestoneId, renumbered: true },
       );
 
-      return NextResponse.json({ status: "deleted", milestones: updatedSiblings });
+      return NextResponse.json({
+        status: "deleted",
+        milestones: updatedSiblings.map((m) =>
+          serializeMilestone(m as MilestoneWithFeatures),
+        ),
+      });
     }
 
     // SetNull on Feature.milestoneId is handled by DB cascade
