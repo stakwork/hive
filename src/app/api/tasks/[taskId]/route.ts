@@ -7,6 +7,7 @@ import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
 import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
+import { notifyFeatureCanvasRefresh } from "@/services/roadmap/feature-canvas-notify";
 
 export async function PATCH(
   request: NextRequest,
@@ -221,6 +222,12 @@ export async function PATCH(
           console.error('Failed to sync feature status:', error);
           // Don't fail the request if feature sync fails
         }
+        // Refresh org canvases that show this feature's milestone.
+        // No-op when the feature isn't linked to a milestone. Fire-
+        // and-forget; the helper swallows its own errors.
+        void notifyFeatureCanvasRefresh(updatedTask.featureId, "task-updated", {
+          taskId: updatedTask.id,
+        });
       }
 
       // Broadcast status update to real-time subscribers

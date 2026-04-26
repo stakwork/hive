@@ -107,9 +107,39 @@ const MILESTONE_CUSTOM_DATA: CategoryCustomDataKey[] = [
       'one of `"NOT_STARTED"` | `"IN_PROGRESS"` | `"COMPLETED"` (mirrors the `MilestoneStatus` Prisma enum). Drives the card color: muted gray, blue, green respectively.',
   },
   {
+    key: "progress",
+    description:
+      "fraction (0..1) of linked features whose `Feature.status === COMPLETED`. Drives the bodyTop progress bar. Computed by the projector; never authored.",
+  },
+  {
+    key: "featureCount",
+    description:
+      "total non-deleted linked features. The progress bar is hidden when this is 0 (a 0% bar on an empty milestone reads as 'behind' rather than 'no work yet').",
+  },
+  {
+    key: "featureDone",
+    description:
+      "count of linked features whose `Feature.status === COMPLETED`. Exposed for slots that want the raw counter without re-deriving it from `progress * featureCount`.",
+  },
+  {
     key: "secondary",
     description:
-      'footer text — e.g. `"Due Mar 4 · 2 features"`. Composed by the projector from `dueDate` + linked-feature count.',
+      'footer text — e.g. `"Due Mar 4 · 2/3 features"`. Composed by the projector from `dueDate` + linked-feature progress.',
+  },
+  {
+    key: "agentCount",
+    description:
+      'count of tasks under any linked feature with `Task.workflowStatus ∈ {PENDING, IN_PROGRESS}` (the kanban definition of "in flight"). Drives the topRightOuter agent badge; hidden when 0.',
+  },
+  {
+    key: "team",
+    description:
+      "array of distinct involved users — the union of each linked feature's `assignee` and `createdBy`, capped at 3 visible. Drives the topRight avatar stack.",
+  },
+  {
+    key: "teamOverflow",
+    description:
+      'count of involved users beyond the 3 visible avatars. Renders as a "+N" pill to the left of the stack when > 0.',
   },
   {
     key: "sequence",
@@ -176,6 +206,72 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
     promptGuidance:
       "Projected from the `Milestone` Prisma model on an initiative sub-canvas. Laid out left-to-right by `sequence`. Humans create milestones via the canvas `+` menu (which opens a dialog) or the OrgInitiatives table UI; the agent must NEVER create or edit them. Same annotation-only role as initiatives.",
     customDataKeys: MILESTONE_CUSTOM_DATA,
+  },
+  {
+    id: "feature",
+    agentDescription:
+      "a feature on a milestone sub-canvas — column header card with a task progress counter",
+    // Features are projected from the DB (id prefix `feature:`) on
+    // the milestone sub-canvas. Created from the workspace plan page,
+    // not from the canvas — neither the agent nor a `+` menu pick
+    // creates these.
+    agentWritable: false,
+    userCreatable: false,
+    promptGuidance:
+      "Projected from the `Feature` Prisma model on a milestone sub-canvas. One column per linked feature, with that feature's tasks stacked beneath it. The agent must NEVER create or edit features; they're created from the workspace plan page. Annotation-only.",
+    customDataKeys: [
+      {
+        key: "status",
+        description:
+          'one of `"BACKLOG"` | `"PLANNED"` | `"IN_PROGRESS"` | `"COMPLETED"` | `"CANCELLED"` | `"ERROR"` | `"BLOCKED"` (mirrors the `FeatureStatus` Prisma enum). Drives the card color.',
+      },
+      {
+        key: "workflowStatus",
+        description:
+          "the planning-workflow status (`PENDING | IN_PROGRESS | COMPLETED | ERROR | HALTED | FAILED`). Set when an AI plan-mode run is active for this feature.",
+      },
+      {
+        key: "taskCount",
+        description: "total non-deleted/archived tasks under this feature.",
+      },
+      {
+        key: "taskDone",
+        description: 'count of tasks where `Task.status === "DONE"`.',
+      },
+      {
+        key: "secondary",
+        description: 'footer text — e.g. `"2/3 tasks"`. Hidden when `taskCount === 0`.',
+      },
+    ],
+  },
+  {
+    id: "task",
+    agentDescription:
+      "a task under a feature on a milestone sub-canvas — compact card colored by workflow status",
+    // Tasks are projected from the DB (id prefix `task:`) on the
+    // milestone sub-canvas. Tasks are leaves (no drill); creation
+    // happens from a feature's chat. Neither the agent nor a `+`
+    // menu pick creates them.
+    agentWritable: false,
+    userCreatable: false,
+    promptGuidance:
+      "Projected from the `Task` Prisma model on a milestone sub-canvas. Stacked underneath their parent feature. The agent must NEVER create or edit tasks. Annotation-only.",
+    customDataKeys: [
+      {
+        key: "status",
+        description:
+          'one of `"TODO"` | `"IN_PROGRESS"` | `"DONE"` | `"CANCELLED"` | `"BLOCKED"` (the `TaskStatus` Prisma enum).',
+      },
+      {
+        key: "workflowStatus",
+        description:
+          'one of `"PENDING"` | `"IN_PROGRESS"` | `"COMPLETED"` | `"ERROR"` | `"HALTED"` | `"FAILED"` (the `WorkflowStatus` Prisma enum). Drives the card color band — kanban-style: blue, green, red, amber.',
+      },
+      {
+        key: "assigneeId",
+        description: "the assigned user's id, when set. Drives any future avatar slot.",
+      },
+    ],
   },
   {
     id: "note",
