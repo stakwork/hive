@@ -215,13 +215,22 @@ function renderMetricsFooter(
 function renderInitiativeBody(ctx: SlotContext): React.ReactNode {
   const { region, node, theme } = ctx;
   const raw = node.text ?? "";
-  const lines = raw.split("\n").filter(Boolean);
-  if (lines.length === 0) return null;
+  if (!raw) return null;
   const fs = Math.round(theme.node.fontSize * 1.35);
   const lineHeight = fs + 4;
   const font = theme.node.labelFont ?? theme.node.fontFamily;
-  const baseY = region.y + fs;
+  const maxWidth = (region.width > 0 ? region.width : INITIATIVE_W) - 16;
   const gradId = `initiative-title-grad-${node.id}`;
+  const clipId = `initiative-clip-${node.id}`;
+
+  // Expand each \n-separated paragraph through word-wrap.
+  const allLines: string[] = [];
+  for (const para of raw.split("\n")) {
+    allLines.push(...wrapWords(para || " ", maxWidth, fs));
+  }
+  if (allLines.length === 0) return null;
+
+  const baseY = region.y + fs;
   return createElement(
     "g",
     { pointerEvents: "none" },
@@ -240,21 +249,35 @@ function renderInitiativeBody(ctx: SlotContext): React.ReactNode {
           stopColor: INITIATIVE_GRADIENT.to,
         }),
       ),
-    ),
-    ...lines.map((line, i) =>
       createElement(
-        "text",
-        {
-          key: i,
+        "clipPath",
+        { id: clipId },
+        createElement("rect", {
           x: region.x,
-          y: baseY + i * lineHeight,
-          fill: `url(#${gradId})`,
-          fontSize: fs,
-          fontWeight: 600,
-          fontFamily: font,
-          pointerEvents: "none",
-        },
-        line,
+          y: region.y,
+          width: region.width,
+          height: region.height,
+        }),
+      ),
+    ),
+    createElement(
+      "g",
+      { clipPath: `url(#${clipId})`, pointerEvents: "none" },
+      ...allLines.map((line, i) =>
+        createElement(
+          "text",
+          {
+            key: i,
+            x: region.x,
+            y: baseY + i * lineHeight,
+            fill: `url(#${gradId})`,
+            fontSize: fs,
+            fontWeight: 600,
+            fontFamily: font,
+            pointerEvents: "none",
+          },
+          line,
+        ),
       ),
     ),
   );
@@ -423,7 +446,7 @@ export function wrapWords(text: string, maxWidth: number, fontSize: number): str
 }
 
 /**
- * Render the note/decision card body text with word-wrap and clip.
+ * Generic body renderer: word-wrap + SVG clip for any card type.
  *
  * - Reads `node.text`, splits on `\n` for explicit paragraphs.
  * - Word-wraps each paragraph to fit within `region.width`
@@ -434,7 +457,7 @@ export function wrapWords(text: string, maxWidth: number, fontSize: number): str
  *
  * Exported for unit testing.
  */
-export function renderNoteBody(ctx: SlotContext): React.ReactNode {
+export function renderWrappedBody(ctx: SlotContext): React.ReactNode {
   const { region, node, theme } = ctx;
   const raw = node.text ?? "";
   if (!raw) return null;
@@ -496,6 +519,29 @@ export function renderNoteBody(ctx: SlotContext): React.ReactNode {
   );
 }
 
+/** @deprecated Use `renderWrappedBody` instead. Kept for test back-compat. */
+export const renderNoteBody = renderWrappedBody;
+
+/**
+ * Wraps a `CategoryDefinition` with a default word-wrap+clip body renderer.
+ * If the definition already has a `body` slot, it is returned unchanged so
+ * custom renderers (e.g. initiative gradient title) are never overridden.
+ *
+ * Apply this to every entry in `CATEGORY_DEFINITIONS` so any new category
+ * that spreads `...baseCard` and omits `slots.body` automatically inherits
+ * text wrapping without extra wiring.
+ */
+function withWrappedBody(def: CategoryDefinition): CategoryDefinition {
+  if (def.slots?.body) return def; // already has a custom body — don't override
+  return {
+    ...def,
+    slots: {
+      ...def.slots,
+      body: { kind: "custom", render: renderWrappedBody },
+    },
+  };
+}
+
 function accentNote(color: string, kicker: string): CategoryDefinition {
   return {
     ...baseCard,
@@ -508,7 +554,7 @@ function accentNote(color: string, kicker: string): CategoryDefinition {
       header: { kind: "text", value: kicker, color },
       body: {
         kind: "custom",
-        render: (ctx: SlotContext) => renderNoteBody(ctx),
+        render: (ctx: SlotContext) => renderWrappedBody(ctx),
       },
     },
   } as CategoryDefinition;
@@ -569,12 +615,12 @@ const repositoryCategory: CategoryDefinition = {
  * the `resolveTheme` call below checks this and throws on mismatch.
  */
 const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
-  workspace: workspaceCategory,
-  repository: repositoryCategory,
-  initiative: initiativeCategory,
-  milestone: milestoneCategory,
-  note: accentNote(ACCENT.note, "NOTE"),
-  decision: accentNote(ACCENT.decision, "DECISION"),
+  workspace:  withWrappedBody(workspaceCategory),
+  repository: withWrappedBody(repositoryCategory),
+  initiative: withWrappedBody(initiativeCategory),
+  milestone:  withWrappedBody(milestoneCategory),
+  note:       withWrappedBody(accentNote(ACCENT.note, "NOTE")),
+  decision:   withWrappedBody(accentNote(ACCENT.decision, "DECISION")),
 };
 
 // ---------------------------------------------------------------------------
