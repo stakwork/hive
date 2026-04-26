@@ -51,6 +51,13 @@ vi.mock("@/lib/canvas/geometry", () => ({
   MILESTONE_H: 86,
   MILESTONE_W: 220,
   SMALL_W: 220,
+  // Milestone sub-canvas (feature columns + task stacks). Values
+  // mirror the production constants — kept here as a static fixture
+  // so the theme module imports successfully under vi.mock.
+  FEATURE_H: 100,
+  FEATURE_W: 260,
+  TASK_H: 64,
+  TASK_W: 180,
 }));
 
 // canvas-categories registry – only needs to satisfy the keys check
@@ -62,6 +69,10 @@ vi.mock(
       { id: "repository" },
       { id: "initiative" },
       { id: "milestone" },
+      // Milestone sub-canvas projection: each id paired with a
+      // CategoryDefinition in the theme module under test.
+      { id: "feature" },
+      { id: "task" },
       { id: "note" },
       { id: "decision" },
     ],

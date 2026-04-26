@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import {
+  InitiativeStatus,
+  MilestoneStatus,
   PodState,
   PoolState,
   RepositoryStatus,
@@ -419,12 +421,32 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
   const MOCK_ORG_LOGIN = "mock-org";
   const MOCK_ORG_INSTALLATION_ID = 999001;
 
-  // Idempotency: if org already exists, just ensure connections are seeded
+  // Idempotency: if org already exists, top up the auxiliary seed
+  // steps (each guarded individually so re-runs are cheap). This path
+  // also backfills features+tasks for users who signed in before
+  // workspace-level seeding was added — `seedMockData` is a no-op
+  // when the workspace already has features.
   const existing = await db.sourceControlOrg.findUnique({
     where: { githubLogin: MOCK_ORG_LOGIN },
   });
   if (existing) {
+    const orgWorkspaces = await db.workspace.findMany({
+      where: {
+        sourceControlOrgId: existing.id,
+        slug: { in: ["mock-org-frontend", "mock-org-backend"] },
+        deleted: false,
+      },
+      select: { id: true },
+    });
+    for (const ws of orgWorkspaces) {
+      try {
+        await seedMockData(userId, ws.id);
+      } catch (error) {
+        console.error("[MockSetup] Failed to backfill mock-org workspace data:", error);
+      }
+    }
     await ensureMockConnectionData(existing.id, userId);
+    await ensureMockOrgInitiatives(existing.id, userId);
     return;
   }
 
@@ -438,7 +460,7 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
     // Encryption not required for mock
   }
 
-  const orgId = await db.$transaction(async (tx) => {
+  const workspace = await db.$transaction(async (tx) => {
     // 1. Create the org
     const org = await tx.sourceControlOrg.create({
       data: {
@@ -525,13 +547,28 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
       return ws;
     };
 
-    await createOrgWorkspace("mock-org-frontend", "Mock Org Frontend", [member1.id, member2.id]);
-    await createOrgWorkspace("mock-org-backend", "Mock Org Backend", [member1.id]);
+    const frontendWs = await createOrgWorkspace("mock-org-frontend", "Mock Org Frontend", [member1.id, member2.id]);
+    const backendWs = await createOrgWorkspace("mock-org-backend", "Mock Org Backend", [member1.id]);
 
-    return org.id;
+    return { orgId: org.id, workspaceIds: [frontendWs.id, backendWs.id] };
   });
 
-  await ensureMockConnectionData(orgId, userId);
+  // Seed features + tasks into both org workspaces so the milestone
+  // sub-canvas has real content to project. Runs OUTSIDE the
+  // transaction (matches the pattern used for the user's personal
+  // mock-stakgraph workspace) — workspace creation succeeds even if
+  // seeding has a hiccup. Each call is idempotent on its own
+  // (`seedMockData` early-returns when features already exist).
+  for (const wsId of workspace.workspaceIds) {
+    try {
+      await seedMockData(userId, wsId);
+    } catch (error) {
+      console.error("[MockSetup] Failed to seed mock-org workspace data:", error);
+    }
+  }
+
+  await ensureMockConnectionData(workspace.orgId, userId);
+  await ensureMockOrgInitiatives(workspace.orgId, userId);
 }
 
 async function ensureMockConnectionData(orgId: string, userId: string): Promise<void> {
@@ -651,4 +688,218 @@ async function ensureMockConnectionData(orgId: string, userId: string): Promise<
       orgId,
     },
   });
+}
+
+/**
+ * Seeds two strategic Initiatives onto Mock Organization with a
+ * realistic spread of milestones (NOT_STARTED / IN_PROGRESS / COMPLETED
+ * + due dates spanning past-due, this-quarter, next-quarter, later)
+ * and links a subset of mock features to them. Designed to showcase
+ * the org-canvas milestone-progress visuals end-to-end:
+ *
+ *   - **Progress bar**       — milestones land at 0%, partial, and 100%
+ *   - **Agent-active badge** — at least one milestone has linked
+ *                              features whose tasks are IN_PROGRESS
+ *                              (the seed reuses `seedMockData`'s task
+ *                              fixtures, several of which are mid-run)
+ *   - **Team avatars**       — features are split across both org
+ *                              workspaces, so milestones inherit team
+ *                              members from cross-workspace assignees
+ *
+ * Idempotent: bails when initiatives already exist for this org. Safe
+ * to call on every sign-in.
+ */
+async function ensureMockOrgInitiatives(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  // Idempotency check — if any initiative exists for this org we
+  // assume seeding has already run. A repeated seed would create
+  // duplicate timeline rows and a `sequence` unique-constraint
+  // violation on milestones.
+  const existingCount = await db.initiative.count({ where: { orgId } });
+  if (existingCount > 0) return;
+
+  // Resolve the two org workspaces' features so we can link them
+  // into milestones. We look these up by slug (set by `ensureMockOrgData`)
+  // — by the time this runs `seedMockData` has populated 5 features
+  // per workspace.
+  const orgWorkspaces = await db.workspace.findMany({
+    where: {
+      sourceControlOrgId: orgId,
+      slug: { in: ["mock-org-frontend", "mock-org-backend"] },
+      deleted: false,
+    },
+    select: {
+      id: true,
+      slug: true,
+      features: {
+        where: { deleted: false },
+        select: { id: true, title: true, status: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  const allFeatures = orgWorkspaces.flatMap((w) => w.features);
+  // Helper to grab a feature by index across the merged list — keeps
+  // the linking sites readable.
+  const f = (i: number) => allFeatures[i];
+
+  // Date helpers — `seedMockData` runs at sign-in, so "today" varies.
+  // We anchor due dates relative to now so the timeline columns
+  // (Past Due / This Quarter / Next Quarter / Later) get a card
+  // each on every fresh seed.
+  const now = new Date();
+  const daysFromNow = (d: number) =>
+    new Date(now.getTime() + d * 24 * 60 * 60 * 1000);
+
+  // ── Initiative 1: "Q4 Platform Modernization" — actively in flight ──
+  // Mix of done, in-progress, and upcoming milestones. The first
+  // milestone is past-due to demonstrate the timeline's left-most
+  // band, the middle two are this/next quarter, and the last is later.
+  const platform = await db.initiative.create({
+    data: {
+      orgId,
+      name: "Q4 Platform Modernization",
+      description:
+        "Lift the platform off legacy infrastructure: migrate auth, ship a faster dashboard, and harden the public API.",
+      status: InitiativeStatus.ACTIVE,
+      assigneeId: userId,
+      startDate: daysFromNow(-60),
+      targetDate: daysFromNow(120),
+    },
+  });
+
+  // Build the milestone payloads in order. Sequence MUST be unique
+  // within an initiative; the projector lays out by sequence on the
+  // timeline x-axis so 1..N reads as left-to-right.
+  const platformMilestones = [
+    {
+      name: "Auth migration",
+      status: MilestoneStatus.COMPLETED,
+      sequence: 1,
+      dueDate: daysFromNow(-30),
+      completedAt: daysFromNow(-25),
+      // Link the COMPLETED auth feature → 1/1 = 100% progress
+      featureIds: f(0) ? [f(0).id] : [],
+    },
+    {
+      name: "Dashboard overhaul",
+      status: MilestoneStatus.IN_PROGRESS,
+      sequence: 2,
+      // Past-due to show the "Past Due" band on the timeline.
+      dueDate: daysFromNow(-3),
+      // 2 features linked, only 1 done → 50% progress bar.
+      // Also: the "Dashboard Analytics" feature is IN_PROGRESS in
+      // mock data, with mid-run tasks → agent-count badge fires.
+      featureIds: [f(0)?.id, f(1)?.id].filter((x): x is string => !!x),
+    },
+    {
+      name: "API rate limiting",
+      status: MilestoneStatus.IN_PROGRESS,
+      sequence: 3,
+      // This-quarter band.
+      dueDate: daysFromNow(20),
+      featureIds: f(2) ? [f(2).id] : [],
+    },
+    {
+      name: "Search & filters",
+      status: MilestoneStatus.NOT_STARTED,
+      sequence: 4,
+      // Next-quarter band.
+      dueDate: daysFromNow(95),
+      featureIds: f(3) ? [f(3).id] : [],
+    },
+    {
+      name: "Cross-region failover",
+      status: MilestoneStatus.NOT_STARTED,
+      sequence: 5,
+      // Later band — no feature link yet (the empty progress-bar
+      // case: the bar is hidden when featureCount === 0).
+      dueDate: daysFromNow(180),
+      featureIds: [],
+    },
+  ];
+
+  for (const m of platformMilestones) {
+    await db.milestone.create({
+      data: {
+        initiativeId: platform.id,
+        name: m.name,
+        status: m.status,
+        sequence: m.sequence,
+        dueDate: m.dueDate,
+        completedAt: m.completedAt ?? null,
+        assigneeId: userId,
+        ...(m.featureIds.length > 0 && {
+          features: { connect: m.featureIds.map((id) => ({ id })) },
+        }),
+      },
+    });
+  }
+
+  // ── Initiative 2: "Trust & Safety" — early-stage, mostly not-started ──
+  // Smaller initiative with fewer milestones. Demonstrates a "young"
+  // initiative on the canvas: low progress, fewer features linked.
+  const trust = await db.initiative.create({
+    data: {
+      orgId,
+      name: "Trust & Safety",
+      description:
+        "Rate-limit abuse vectors, ship audit logs, and start an incident-response runbook.",
+      status: InitiativeStatus.ACTIVE,
+      assigneeId: userId,
+      startDate: daysFromNow(-7),
+      targetDate: daysFromNow(150),
+    },
+  });
+
+  const trustMilestones = [
+    {
+      name: "Threat model",
+      status: MilestoneStatus.COMPLETED,
+      sequence: 1,
+      dueDate: daysFromNow(-2),
+      completedAt: daysFromNow(-1),
+      featureIds: [],
+    },
+    {
+      name: "Audit log v1",
+      status: MilestoneStatus.IN_PROGRESS,
+      sequence: 2,
+      dueDate: daysFromNow(45),
+      // Cross-link a backend feature so the milestone team-stack
+      // surfaces a different set of avatars from initiative 1.
+      featureIds: f(5) ? [f(5).id] : [],
+    },
+    {
+      name: "Incident runbook",
+      status: MilestoneStatus.NOT_STARTED,
+      sequence: 3,
+      dueDate: daysFromNow(110),
+      featureIds: [],
+    },
+  ];
+
+  for (const m of trustMilestones) {
+    await db.milestone.create({
+      data: {
+        initiativeId: trust.id,
+        name: m.name,
+        status: m.status,
+        sequence: m.sequence,
+        dueDate: m.dueDate,
+        completedAt: m.completedAt ?? null,
+        assigneeId: userId,
+        ...(m.featureIds.length > 0 && {
+          features: { connect: m.featureIds.map((id) => ({ id })) },
+        }),
+      },
+    });
+  }
+
+  console.log(
+    `[MockSetup] Seeded ${platformMilestones.length + trustMilestones.length} milestones across 2 initiatives for mock-org`,
+  );
 }

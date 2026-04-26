@@ -5,6 +5,7 @@ import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceCh
 import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
+import { notifyFeatureCanvasRefresh } from "@/services/roadmap/feature-canvas-notify";
 import { createAndSendNotification } from "@/services/notifications";
 import { retryWorkflowEditorTask } from "@/services/workflow-editor-retry";
 
@@ -275,6 +276,12 @@ export async function POST(request: NextRequest) {
         console.error('Failed to sync feature status:', error);
         // Don't fail the request if feature sync fails
       }
+      // Stakwork webhook fires on every workflow status transition,
+      // including PENDING→IN_PROGRESS and IN_PROGRESS→COMPLETED. Both
+      // change the milestone's agent count. Refresh the canvas.
+      void notifyFeatureCanvasRefresh(updatedTask.featureId, "stakwork-status", {
+        taskId: finalTaskId,
+      });
     }
 
     try {
