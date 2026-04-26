@@ -26,6 +26,39 @@ function serializeMilestone({ features, ...rest }: MilestoneWithRelations) {
   return { ...rest, feature: features[0] ?? null };
 }
 
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ githubLogin: string; initiativeId: string }> },
+) {
+  const context = getMiddlewareContext(request);
+  const userOrResponse = requireAuth(context);
+  if (userOrResponse instanceof NextResponse) return userOrResponse;
+
+  const { githubLogin, initiativeId } = await params;
+  const userId = userOrResponse.id;
+
+  try {
+    const orgId = await resolveAuthorizedOrgId(githubLogin, userId, false);
+    if (!orgId) {
+      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+    }
+
+    const initiative = await db.initiative.findFirst({
+      where: { id: initiativeId, orgId },
+      select: { id: true },
+    });
+    if (!initiative) {
+      return NextResponse.json({ error: "Initiative not found" }, { status: 404 });
+    }
+
+    const count = await db.milestone.count({ where: { initiativeId } });
+    return NextResponse.json({ count });
+  } catch (error) {
+    console.error("[GET /api/orgs/[githubLogin]/initiatives/[initiativeId]/milestones] Error:", error);
+    return NextResponse.json({ error: "Failed to fetch milestone count" }, { status: 500 });
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ githubLogin: string; initiativeId: string }> },
