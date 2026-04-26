@@ -365,7 +365,7 @@ function MilestonesTable({
   const baseUrl = `/api/orgs/${githubLogin}/initiatives/${initiative.id}/milestones`;
   const reorderUrl = `${baseUrl}/reorder`;
 
-  const nextSequence = Math.max(0, ...initiative.milestones.map((m) => m.sequence)) + 1;
+  const [addDefaultSequence, setAddDefaultSequence] = useState<number | undefined>(undefined);
 
   const { sensors, milestoneIds, handleDragEnd, collisionDetection } = useReorderMilestones({
     milestones: sorted,
@@ -547,7 +547,14 @@ function MilestonesTable({
         <p className="text-sm text-muted-foreground py-2">No milestones yet.</p>
       )}
 
-      <Button variant="outline" size="sm" className="mt-2" onClick={() => { setAddOpenKey(k => k + 1); setAddOpen(true); }}>
+      <Button variant="outline" size="sm" className="mt-2" onClick={() => {
+        setAddOpenKey(k => k + 1);
+        setAddOpen(true);
+        fetch(`/api/orgs/${githubLogin}/initiatives/${initiative.id}/milestones`)
+          .then(res => res.ok ? res.json() : null)
+          .then(data => { if (data) setAddDefaultSequence(data.count + 1); })
+          .catch(() => {}); // on failure, leave undefined — user types manually
+      }}>
         <Plus className="h-3.5 w-3.5 mr-1" />
         Add Milestone
       </Button>
@@ -557,7 +564,7 @@ function MilestonesTable({
         key={addOpenKey}
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        defaultSequence={nextSequence}
+        defaultSequence={addDefaultSequence}
         usedSequences={addUsedSequences}
         onSave={handleAdd}
       />

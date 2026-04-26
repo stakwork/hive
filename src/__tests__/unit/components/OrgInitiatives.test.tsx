@@ -262,6 +262,27 @@ function makeInitiative(milestones: MilestoneResponse[] = []): InitiativeRespons
   };
 }
 
+/** Mock the GET /initiatives list fetch */
+function mockInitiativesFetch(initiatives: InitiativeResponse[]) {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    json: vi.fn().mockResolvedValue(initiatives),
+  });
+}
+
+/** Mock the GET /milestones count fetch (server-driven sequence) */
+function mockMilestoneCountFetch(count: number) {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    json: vi.fn().mockResolvedValue({ count }),
+  });
+}
+
+/** Mock a failed GET /milestones count fetch */
+function mockMilestoneCountFetchFail() {
+  mockFetch.mockResolvedValueOnce({ ok: false });
+}
+
 // ── Import after mocks are set up ─────────────────────────────────────────────
 
 // We test via the OrgInitiatives component which renders MilestoneDialog and MilestonesTable
@@ -269,51 +290,88 @@ import { OrgInitiatives } from "@/app/org/[githubLogin]/OrgInitiatives";
 
 // ── MilestoneDialog tests (via OrgInitiatives integration) ─────────────────
 
-describe("MilestoneDialog – auto-sequence and duplicate guard", () => {
+describe("MilestoneDialog – server-driven sequence default", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("pre-fills sequence with nextSequence (max + 1) when milestones exist", async () => {
+  it("pre-fills sequence with count + 1 when milestones exist", async () => {
     const initiative = makeInitiative([
       makeMilestone({ id: "m-1", sequence: 1 }),
       makeMilestone({ id: "m-2", sequence: 2 }),
       makeMilestone({ id: "m-3", sequence: 3 }),
     ]);
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn().mockResolvedValue([initiative]),
-    });
+    mockInitiativesFetch([initiative]);
+    // Count fetch returns 3 → sequence default = 4
+    mockMilestoneCountFetch(3);
 
     const user = userEvent.setup();
     render(<OrgInitiatives githubLogin="test-org" />);
 
-    // Wait for initiatives to load
     await waitFor(() => screen.getByText("Test Initiative"));
-
-    // Expand the initiative row
     await user.click(screen.getByText("Test Initiative"));
-
-    // Click "Add Milestone"
     await user.click(screen.getByRole("button", { name: /add milestone/i }));
 
-    // The sequence input should be pre-filled with 4 (max 3 + 1)
-    const seqInput = screen.getByLabelText(/sequence/i);
-    expect((seqInput as HTMLInputElement).value).toBe("4");
+    // Wait for async count fetch to resolve and populate the field
+    await waitFor(() => {
+      const seqInput = screen.getByLabelText(/sequence/i) as HTMLInputElement;
+      expect(seqInput.value).toBe("4");
+    });
   });
 
-  it("still shows correct nextSequence after cancel and re-open", async () => {
+  it("pre-fills sequence with 1 when no milestones exist (count = 0)", async () => {
+    const initiative = makeInitiative([]);
+
+    mockInitiativesFetch([initiative]);
+    mockMilestoneCountFetch(0);
+
+    const user = userEvent.setup();
+    render(<OrgInitiatives githubLogin="test-org" />);
+
+    await waitFor(() => screen.getByText("Test Initiative"));
+    await user.click(screen.getByText("Test Initiative"));
+    await user.click(screen.getByRole("button", { name: /add milestone/i }));
+
+    await waitFor(() => {
+      const seqInput = screen.getByLabelText(/sequence/i) as HTMLInputElement;
+      expect(seqInput.value).toBe("1");
+    });
+  });
+
+  it("leaves sequence empty when count fetch fails (user types manually)", async () => {
+    const initiative = makeInitiative([
+      makeMilestone({ id: "m-1", sequence: 1 }),
+    ]);
+
+    mockInitiativesFetch([initiative]);
+    mockMilestoneCountFetchFail();
+
+    const user = userEvent.setup();
+    render(<OrgInitiatives githubLogin="test-org" />);
+
+    await waitFor(() => screen.getByText("Test Initiative"));
+    await user.click(screen.getByText("Test Initiative"));
+    await user.click(screen.getByRole("button", { name: /add milestone/i }));
+
+    // Give the failed fetch a moment to settle
+    await waitFor(() => screen.getByLabelText(/sequence/i));
+    const seqInput = screen.getByLabelText(/sequence/i) as HTMLInputElement;
+    expect(seqInput.value).toBe("");
+  });
+
+  it("still shows correct sequence after cancel and re-open", async () => {
     const initiative = makeInitiative([
       makeMilestone({ id: "m-1", sequence: 1 }),
       makeMilestone({ id: "m-2", sequence: 2 }),
       makeMilestone({ id: "m-3", sequence: 3 }),
     ]);
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn().mockResolvedValue([initiative]),
-    });
+    mockInitiativesFetch([initiative]);
+    // First open: count = 3 → sequence = 4
+    mockMilestoneCountFetch(3);
+    // Re-open: count = 3 → sequence = 4
+    mockMilestoneCountFetch(3);
 
     const user = userEvent.setup();
     render(<OrgInitiatives githubLogin="test-org" />);
@@ -321,42 +379,23 @@ describe("MilestoneDialog – auto-sequence and duplicate guard", () => {
     await waitFor(() => screen.getByText("Test Initiative"));
     await user.click(screen.getByText("Test Initiative"));
 
-    // First open — sequence should be 4
+    // First open
     await user.click(screen.getByRole("button", { name: /add milestone/i }));
-    const seqInput = screen.getByLabelText(/sequence/i);
-    expect((seqInput as HTMLInputElement).value).toBe("4");
+    await waitFor(() => {
+      expect((screen.getByLabelText(/sequence/i) as HTMLInputElement).value).toBe("4");
+    });
 
-    // Cancel via the Cancel button (Escape is not reliable in jsdom/Radix)
+    // Cancel
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
-
-    // Wait for the dialog to close before re-clicking
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: /^cancel$/i })).not.toBeInTheDocument()
     );
 
-    // Re-open — sequence should still be 4
+    // Re-open
     await user.click(screen.getByRole("button", { name: /add milestone/i }));
-    const seqInputAgain = screen.getByLabelText(/sequence/i);
-    expect((seqInputAgain as HTMLInputElement).value).toBe("4");
-  });
-
-  it("pre-fills sequence with 1 when no milestones exist", async () => {
-    const initiative = makeInitiative([]);
-
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn().mockResolvedValue([initiative]),
+    await waitFor(() => {
+      expect((screen.getByLabelText(/sequence/i) as HTMLInputElement).value).toBe("4");
     });
-
-    const user = userEvent.setup();
-    render(<OrgInitiatives githubLogin="test-org" />);
-
-    await waitFor(() => screen.getByText("Test Initiative"));
-    await user.click(screen.getByText("Test Initiative"));
-    await user.click(screen.getByRole("button", { name: /add milestone/i }));
-
-    const seqInput = screen.getByLabelText(/sequence/i);
-    expect((seqInput as HTMLInputElement).value).toBe("1");
   });
 
   it("shows inline error and blocks submission when sequence is already in use", async () => {
@@ -365,10 +404,9 @@ describe("MilestoneDialog – auto-sequence and duplicate guard", () => {
       makeMilestone({ id: "m-2", sequence: 2 }),
     ]);
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn().mockResolvedValue([initiative]),
-    });
+    mockInitiativesFetch([initiative]);
+    // Count fetch → 2 existing milestones → default = 3
+    mockMilestoneCountFetch(2);
 
     const user = userEvent.setup();
     render(<OrgInitiatives githubLogin="test-org" />);
@@ -376,11 +414,10 @@ describe("MilestoneDialog – auto-sequence and duplicate guard", () => {
     await waitFor(() => screen.getByText("Test Initiative"));
     await user.click(screen.getByText("Test Initiative"));
 
-    // Click the "Add Milestone" table button (not the dialog submit)
-    const addBtn = screen.getByRole("button", { name: /add milestone/i });
-    await user.click(addBtn);
+    await user.click(screen.getByRole("button", { name: /add milestone/i }));
+    // Wait for dialog and default sequence to load
+    await waitFor(() => screen.getByLabelText(/name \*/i));
 
-    // Fill in name
     await user.type(screen.getByLabelText(/name \*/i), "New Milestone");
 
     // Change sequence to 1 (already used)
@@ -388,7 +425,7 @@ describe("MilestoneDialog – auto-sequence and duplicate guard", () => {
     await user.clear(seqInput);
     await user.type(seqInput, "1");
 
-    // Click dialog submit button (last "Add Milestone" button — table + dialog both visible)
+    // Click dialog submit button
     const allAddBtns = screen.getAllByRole("button", { name: /add milestone/i });
     await user.click(allAddBtns[allAddBtns.length - 1]);
 
@@ -397,7 +434,7 @@ describe("MilestoneDialog – auto-sequence and duplicate guard", () => {
       expect(screen.getByText(/sequence already in use/i)).toBeDefined()
     );
 
-    // fetch should NOT have been called with POST (only the initial GET)
+    // fetch should NOT have been called with POST (only the initial GETs)
     const postCalls = mockFetch.mock.calls.filter((c) => c[1]?.method === "POST");
     expect(postCalls).toHaveLength(0);
   });
@@ -407,10 +444,8 @@ describe("MilestoneDialog – auto-sequence and duplicate guard", () => {
       makeMilestone({ id: "m-1", sequence: 1 }),
     ]);
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn().mockResolvedValue([initiative]),
-    });
+    mockInitiativesFetch([initiative]);
+    mockMilestoneCountFetch(1);
 
     const user = userEvent.setup();
     render(<OrgInitiatives githubLogin="test-org" />);
@@ -418,8 +453,8 @@ describe("MilestoneDialog – auto-sequence and duplicate guard", () => {
     await waitFor(() => screen.getByText("Test Initiative"));
     await user.click(screen.getByText("Test Initiative"));
 
-    const addBtn = screen.getByRole("button", { name: /add milestone/i });
-    await user.click(addBtn);
+    await user.click(screen.getByRole("button", { name: /add milestone/i }));
+    await waitFor(() => screen.getByLabelText(/name \*/i));
 
     await user.type(screen.getByLabelText(/name \*/i), "New Milestone");
 
@@ -445,10 +480,7 @@ describe("MilestoneDialog – auto-sequence and duplicate guard", () => {
     const m2 = makeMilestone({ id: "m-2", sequence: 2, name: "Beta" });
     const initiative = makeInitiative([m1, m2]);
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn().mockResolvedValue([initiative]),
-    });
+    mockInitiativesFetch([initiative]);
     // Mock successful PATCH
     mockFetch.mockResolvedValue({
       ok: true,
@@ -495,10 +527,7 @@ describe("MilestonesTable – delete with ?renumber=true", () => {
     const m3 = makeMilestone({ id: "m-3", sequence: 3, name: "Gamma" });
     const initiative = makeInitiative([m1, m2, m3]);
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn().mockResolvedValue([initiative]),
-    });
+    mockInitiativesFetch([initiative]);
 
     // After deleting m-2, siblings are m1(seq=1) and m3 renumbered to seq=2
     const siblings = [

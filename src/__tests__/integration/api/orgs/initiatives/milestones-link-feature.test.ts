@@ -320,6 +320,14 @@ describe("PATCH /api/orgs/[githubLogin]/initiatives/[initiativeId]/milestones/[m
     const org = await createOrg(`ms-lf-org-${generateUniqueId()}`);
     createdOrgIds.push(org.id);
 
+    // The PATCH endpoint's `resolveAuthorizedOrgId(..., requireMember=true)`
+    // requires the user to be a member of at least one workspace under
+    // this org — without a workspace the authorization check 404s
+    // before our mutual-exclusion guard can fire. Create one to land
+    // squarely on the body-validation path.
+    const workspace = await createWorkspaceInOrg(user.id, org.id);
+    createdWorkspaceIds.push(workspace.id);
+
     const initiative = await createInitiative(org.id);
     createdInitiativeIds.push(initiative.id);
 
