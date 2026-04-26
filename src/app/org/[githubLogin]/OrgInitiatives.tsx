@@ -338,6 +338,7 @@ function MilestonesTable({
   onMilestonesReordered,
 }: MilestonesTableProps) {
   const [addOpen, setAddOpen] = useState(false);
+  const [addOpenKey, setAddOpenKey] = useState(0);
   const [editTarget, setEditTarget] = useState<MilestoneResponse | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MilestoneResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -530,13 +531,14 @@ function MilestonesTable({
         <p className="text-sm text-muted-foreground py-2">No milestones yet.</p>
       )}
 
-      <Button variant="outline" size="sm" className="mt-2" onClick={() => setAddOpen(true)}>
+      <Button variant="outline" size="sm" className="mt-2" onClick={() => { setAddOpenKey(k => k + 1); setAddOpen(true); }}>
         <Plus className="h-3.5 w-3.5 mr-1" />
         Add Milestone
       </Button>
 
       {/* Add dialog */}
       <MilestoneDialog
+        key={addOpenKey}
         open={addOpen}
         onClose={() => setAddOpen(false)}
         defaultSequence={nextSequence}
