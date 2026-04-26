@@ -399,6 +399,103 @@ const milestoneCategory: CategoryDefinition = {
 // Note / decision accent cards (authored)
 // ---------------------------------------------------------------------------
 
+/**
+ * Word-wrap a single paragraph string into lines that fit within `maxWidth`
+ * pixels, using `estimateTextWidth` for glyph-width approximation.
+ *
+ * Exported for unit testing.
+ */
+export function wrapWords(text: string, maxWidth: number, fontSize: number): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (estimateTextWidth(candidate, fontSize) > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+/**
+ * Render the note/decision card body text with word-wrap and clip.
+ *
+ * - Reads `node.text`, splits on `\n` for explicit paragraphs.
+ * - Word-wraps each paragraph to fit within `region.width`
+ *   (falls back to `SMALL_W - 16` when region width is unavailable).
+ * - Renders each line as an SVG `<text>` element.
+ * - Clips the whole group to the region rect so no text bleeds past
+ *   the card boundary, horizontally or vertically.
+ *
+ * Exported for unit testing.
+ */
+export function renderNoteBody(ctx: SlotContext): React.ReactNode {
+  const { region, node, theme } = ctx;
+  const raw = node.text ?? "";
+  if (!raw) return null;
+
+  const fs = theme.node.fontSize;
+  const lineHeight = fs + 3;
+  const font = theme.node.fontFamily;
+  const maxWidth = (region.width > 0 ? region.width : SMALL_W) - 16;
+  const clipId = `note-clip-${node.id}`;
+
+  // Expand each newline-separated paragraph through word-wrap.
+  const paragraphs = raw.split("\n");
+  const allLines: string[] = [];
+  for (const para of paragraphs) {
+    const wrapped = wrapWords(para || " ", maxWidth, fs);
+    allLines.push(...wrapped);
+  }
+
+  const baseY = region.y + fs;
+
+  return createElement(
+    "g",
+    { pointerEvents: "none" },
+    // Define the clip rect keyed to this node so multiple cards
+    // each have an independent clip region.
+    createElement(
+      "defs",
+      null,
+      createElement(
+        "clipPath",
+        { id: clipId },
+        createElement("rect", {
+          x: region.x,
+          y: region.y,
+          width: region.width,
+          height: region.height,
+        }),
+      ),
+    ),
+    createElement(
+      "g",
+      { clipPath: `url(#${clipId})`, pointerEvents: "none" },
+      ...allLines.map((line, i) =>
+        createElement(
+          "text",
+          {
+            key: i,
+            x: region.x,
+            y: baseY + i * lineHeight,
+            fill: TEXT,
+            fontSize: fs,
+            fontFamily: font,
+            pointerEvents: "none",
+          },
+          line,
+        ),
+      ),
+    ),
+  );
+}
+
 function accentNote(color: string, kicker: string): CategoryDefinition {
   return {
     ...baseCard,
@@ -409,6 +506,10 @@ function accentNote(color: string, kicker: string): CategoryDefinition {
     fill: hexAlpha(color, 0.05),
     slots: {
       header: { kind: "text", value: kicker, color },
+      body: {
+        kind: "custom",
+        render: (ctx: SlotContext) => renderNoteBody(ctx),
+      },
     },
   } as CategoryDefinition;
 }
