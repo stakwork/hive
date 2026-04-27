@@ -343,11 +343,11 @@ export function useWhiteboardCollaborationViaRelay({
           );
           const hasChanges = remoteElements.some((remoteEl) => {
             const localEl = localById.get(remoteEl.id);
-            return (
-              !localEl ||
-              remoteEl.version > localEl.version ||
-              remoteEl.isDeleted !== localEl.isDeleted
-            );
+            if (!localEl) return true;
+            if (remoteEl.version > localEl.version) return true;
+            // Normalize: production elements always have boolean isDeleted,
+            // but defensive coercion avoids `false !== undefined` false-positives.
+            return Boolean(remoteEl.isDeleted) !== Boolean(localEl.isDeleted);
           });
           if (!hasChanges) return;
 
