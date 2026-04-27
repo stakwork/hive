@@ -81,30 +81,37 @@ export async function PATCH(
       assigneeId,
       completedAt,
       // ── Feature linking ──
-      // 1:N API. All three of these are accepted; the legacy `featureId`
+      // 1:N API. All variants below are accepted; the legacy `featureId`
       // singular is kept as a back-compat shim for the next release.
-      addFeatureId,        // string  → connect one feature
-      removeFeatureId,     // string  → disconnect one feature
+      addFeatureId,        // string   → connect one feature
+      addFeatureIds,       // string[] → connect many features in one shot
+      removeFeatureId,     // string   → disconnect one feature
+      removeFeatureIds,    // string[] → disconnect many features in one shot
       featureIds,          // string[] → full replace via { set: [...] }
       featureId,           // legacy 1:1; treated as { set: [id] } / { set: [] }
     } = body;
 
     // ── Feature link mutation: build the Prisma `features` clause ──
     //
-    // Precedence (top wins): featureIds (full replace) > addFeatureId/removeFeatureId
-    // (incremental) > featureId (legacy full-replace shim). Mixing
-    // featureIds with add/remove in one request is ambiguous and rejected.
+    // Precedence (top wins): featureIds (full replace) > add/remove
+    // (incremental, single or array) > featureId (legacy full-replace shim).
+    // Mixing featureIds with any incremental field in one request is
+    // ambiguous and rejected.
     let featuresClause:
       | Prisma.FeatureUpdateManyWithoutMilestoneNestedInput
       | undefined = undefined;
 
     const usingArrayReplace = Array.isArray(featureIds);
-    const usingIncremental = addFeatureId !== undefined || removeFeatureId !== undefined;
+    const usingIncremental =
+      addFeatureId !== undefined ||
+      removeFeatureId !== undefined ||
+      addFeatureIds !== undefined ||
+      removeFeatureIds !== undefined;
     const usingLegacy = featureId !== undefined;
 
     if (usingArrayReplace && usingIncremental) {
       return NextResponse.json(
-        { error: "Specify either featureIds or addFeatureId/removeFeatureId, not both" },
+        { error: "Specify either featureIds or add/remove fields, not both" },
         { status: 400 },
       );
     }
@@ -119,21 +126,48 @@ export async function PATCH(
       }
       featuresClause = { set: featureIds.map((id: string) => ({ id })) };
     } else if (usingIncremental) {
-      const candidates = [addFeatureId, removeFeatureId].filter(
-        (v): v is string => typeof v === "string" && v.length > 0,
-      );
+      // Normalize singles + arrays into two id lists. Dedup so we never
+      // emit `{ connect: [{id:x},{id:x}] }` which Prisma would reject.
+      const toAdd = new Set<string>();
+      const toRemove = new Set<string>();
+
+      const addOne = (v: unknown, set: Set<string>) => {
+        if (typeof v === "string" && v.length > 0) set.add(v);
+      };
+      const addArr = (v: unknown, set: Set<string>, label: string) => {
+        if (v === undefined) return null;
+        if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) {
+          return label;
+        }
+        v.forEach((id) => set.add(id));
+        return null;
+      };
+
+      addOne(addFeatureId, toAdd);
+      addOne(removeFeatureId, toRemove);
+      const badAdd = addArr(addFeatureIds, toAdd, "addFeatureIds");
+      const badRemove = addArr(removeFeatureIds, toRemove, "removeFeatureIds");
+      const badField = badAdd ?? badRemove;
+      if (badField) {
+        return NextResponse.json(
+          { error: `${badField} must be string[]` },
+          { status: 400 },
+        );
+      }
+
+      const candidates = [...toAdd, ...toRemove];
       if (candidates.length > 0) {
         const valid = await filterFeaturesInOrg(orgId, candidates);
-        if (valid.size !== candidates.length) {
+        if (valid.size !== new Set(candidates).size) {
           return NextResponse.json({ error: "Feature not found" }, { status: 404 });
         }
       }
       const ops: Prisma.FeatureUpdateManyWithoutMilestoneNestedInput = {};
-      if (typeof addFeatureId === "string" && addFeatureId.length > 0) {
-        ops.connect = [{ id: addFeatureId }];
+      if (toAdd.size > 0) {
+        ops.connect = [...toAdd].map((id) => ({ id }));
       }
-      if (typeof removeFeatureId === "string" && removeFeatureId.length > 0) {
-        ops.disconnect = [{ id: removeFeatureId }];
+      if (toRemove.size > 0) {
+        ops.disconnect = [...toRemove].map((id) => ({ id }));
       }
       featuresClause = ops;
     } else if (usingLegacy) {
