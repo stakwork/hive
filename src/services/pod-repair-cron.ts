@@ -307,7 +307,12 @@ async function getRepairHistory(workspaceId: string) {
   });
 
   return previousRuns.map((run) => {
-    let result = run.result as Record<string, unknown> | null;
+    let result: Record<string, unknown> | null = null;
+    try {
+      result = run.result ? (JSON.parse(run.result) as Record<string, unknown>) : null;
+    } catch {
+      result = null;
+    }
 
     if (result && typeof result === "object" && result.containerFiles) {
       const rawFiles = result.containerFiles as Record<string, string>;
