@@ -5,7 +5,7 @@ import { ArrowLeft, FileText, GitBranch, BookOpen, Code2, Loader2 } from "lucide
 import { Button } from "@/components/ui/button";
 import { DiagramViewer } from "@/app/w/[slug]/learn/components/DiagramViewer";
 import ReactMarkdown from "react-markdown";
-import type { ConnectionData } from "./ConnectionsPage";
+import type { ConnectionData } from "./types";
 
 interface ConnectionViewerProps {
   connection: ConnectionData;

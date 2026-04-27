@@ -39,9 +39,30 @@ interface DashboardChatProps {
   orgSlug?: string;
   orgId?: string;
   maxExtraWorkspaces?: number;
+  /**
+   * Current canvas scope the user is viewing on the org canvas page
+   * (`""` for root, `"initiative:<id>"` etc. for sub-canvases). Sent
+   * to `/api/ask/quick` so the prompt can tell the agent which scope
+   * to default tool calls to. Only meaningful when `orgId` is also
+   * set; ignored elsewhere.
+   */
+  currentCanvasRef?: string;
+  /**
+   * Live id of the canvas node the user has currently selected. Lets
+   * the agent resolve "this" / "here" references in chat. Sent only
+   * when non-null.
+   */
+  selectedNodeId?: string | null;
 }
 
-export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId, maxExtraWorkspaces }: DashboardChatProps = {}) {
+export function DashboardChat({
+  defaultExtraWorkspaceSlugs,
+  orgSlug,
+  orgId,
+  maxExtraWorkspaces,
+  currentCanvasRef,
+  selectedNodeId,
+}: DashboardChatProps = {}) {
   const { slug, workspace } = useWorkspace();
   const { data: session } = useSession();
   const router = useRouter();
@@ -273,6 +294,14 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId, maxE
             ? { workspaceSlug: slug }
             : { workspaceSlugs: [slug, ...extraWorkspaceSlugs].filter(Boolean) }),
           ...(orgId ? { orgId } : {}),
+          // Canvas scope hints for the org canvas page. The agent uses
+          // these to route tool calls to the right ref and resolve
+          // "this" references. Both are optional and ignored server-side
+          // when `orgId` isn't set.
+          ...(currentCanvasRef !== undefined
+            ? { currentCanvasRef }
+            : {}),
+          ...(selectedNodeId ? { selectedNodeId } : {}),
         }),
       });
 
@@ -324,8 +353,14 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId, maxE
               status: string;
             };
 
-            // Debug logging: on /connections pages or when window.DEBUG is set
-            if (typeof window !== "undefined" && (window.location.pathname.includes("/connections") || (window as any).DEBUG)) {
+            // Debug logging: on the org canvas page (`/org/<login>`) or
+            // when `window.DEBUG` is set. Matches the route where canvas
+            // tool calls are most relevant.
+            if (
+              typeof window !== "undefined" &&
+              (/^\/org\/[^/]+$/.test(window.location.pathname) ||
+                (window as Window & { DEBUG?: boolean }).DEBUG)
+            ) {
               const callKey = `${toolCall.id}-${toolCall.status}`;
               if (!loggedToolCalls.has(callKey)) {
                 loggedToolCalls.add(callKey);
