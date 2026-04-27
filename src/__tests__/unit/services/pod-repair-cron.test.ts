@@ -240,7 +240,7 @@ describe("getRepairHistory — containerFiles decoding", () => {
       {
         id: "run-hist-1",
         status: WorkflowStatus.COMPLETED,
-        result: { containerFiles: { "Dockerfile": encoded } },
+        result: JSON.stringify({ containerFiles: { "Dockerfile": encoded } }),
         feedback: null,
         createdAt: new Date("2024-01-01T00:00:00Z"),
         updatedAt: new Date("2024-01-01T01:00:00Z"),
@@ -286,7 +286,7 @@ describe("getRepairHistory — containerFiles decoding", () => {
       {
         id: "run-hist-3",
         status: WorkflowStatus.COMPLETED,
-        result: resultWithoutFiles,
+        result: JSON.stringify(resultWithoutFiles),
         feedback: null,
         createdAt: new Date("2024-01-01T00:00:00Z"),
         updatedAt: new Date("2024-01-01T01:00:00Z"),
