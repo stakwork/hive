@@ -324,8 +324,14 @@ export function DashboardChat({ defaultExtraWorkspaceSlugs, orgSlug, orgId, maxE
               status: string;
             };
 
-            // Debug logging: on /connections pages or when window.DEBUG is set
-            if (typeof window !== "undefined" && (window.location.pathname.includes("/connections") || (window as any).DEBUG)) {
+            // Debug logging: on the org canvas page (`/org/<login>`) or
+            // when `window.DEBUG` is set. Matches the route where canvas
+            // tool calls are most relevant.
+            if (
+              typeof window !== "undefined" &&
+              (/^\/org\/[^/]+$/.test(window.location.pathname) ||
+                (window as Window & { DEBUG?: boolean }).DEBUG)
+            ) {
               const callKey = `${toolCall.id}-${toolCall.status}`;
               if (!loggedToolCalls.has(callKey)) {
                 loggedToolCalls.add(callKey);

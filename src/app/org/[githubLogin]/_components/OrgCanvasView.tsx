@@ -1,69 +1,60 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { CanvasNode } from "system-canvas";
 import { OrgChat } from "../OrgChat";
-import { ConnectionsSidebar } from "./ConnectionsSidebar";
-import { ConnectionViewer } from "./ConnectionViewer";
-import { OrgCanvasBackground } from "./OrgCanvasBackground";
-import type { HiddenLiveEntry } from "./HiddenLivePill";
+import { ConnectionViewer } from "../connections/ConnectionViewer";
+import { OrgCanvasBackground } from "../connections/OrgCanvasBackground";
+import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
+import type { ConnectionData } from "../connections/types";
+import { OrgRightPanel } from "./OrgRightPanel";
 
 /** Strip the `ws:` prefix from a live workspace id. */
 function stripWsPrefix(liveId: string): string {
   return liveId.startsWith("ws:") ? liveId.slice(3) : liveId;
 }
 
-export interface ConnectionData {
-  id: string;
-  slug: string;
-  name: string;
-  summary: string;
-  diagram: string | null;
-  architecture: string | null;
-  openApiSpec: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface ConnectionsPageProps {
+interface OrgCanvasViewProps {
   githubLogin: string;
   orgId: string;
   orgName: string | null;
 }
 
-export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPageProps) {
+/**
+ * The org canvas view — the default `/org/[githubLogin]` route.
+ *
+ * Three layers:
+ *   1. Interactive system-canvas in the background (z-0).
+ *   2. Chat overlay column with `pointer-events:none` so the canvas
+ *      stays draggable through it; chat input + pills re-enable
+ *      interactivity on themselves.
+ *   3. Right tabbed panel (z-20, w-80, fixed) — Details / Connections.
+ *
+ * The connection-viewer (when a connection doc is opened) covers the
+ * canvas with an opaque overlay; the canvas keeps state behind it.
+ */
+export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  /**
-   * All workspaces in the org the user has access to. We keep both
-   * `id` and `slug` because the canvas expresses "hidden" with
-   * `ws:<id>` while the chat takes slugs; having both lets us bridge
-   * without refetching.
-   */
+  const pathname = usePathname();
+
   const [workspaces, setWorkspaces] = useState<{ id: string; slug: string }[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
-  /**
-   * Hidden workspace ids (raw, without the `ws:` prefix). Populated
-   * from the canvas's hidden-list and kept live via `OrgCanvasBackground`'s
-   * `onHiddenChange`. Used to filter the chat's default context set so
-   * "hidden on canvas" and "default-in-chat-context" stay aligned.
-   */
   const [hiddenWorkspaceIds, setHiddenWorkspaceIds] = useState<Set<string>>(
     () => new Set(),
   );
-  /**
-   * The canvas's `onHiddenChange` fires once after its initial fetch
-   * resolves. We gate the chat's first mount on this so the seed for
-   * `defaultExtraWorkspaceSlugs` is already filtered — `DashboardChat`
-   * only reads that prop on mount (by design, so user pill edits
-   * aren't clobbered), so mounting too early would leak hidden
-   * workspaces into the default set until the next fresh chat.
-   */
   const [hiddenInitialized, setHiddenInitialized] = useState(false);
   const [connections, setConnections] = useState<ConnectionData[]>([]);
   const [loadingConnections, setLoadingConnections] = useState(true);
   const [activeConnection, setActiveConnection] = useState<ConnectionData | null>(null);
+  const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(null);
 
+  /**
+   * Update the `?c=<slug>` URL param without changing routes. Stay on
+   * the current pathname so writing the param doesn't bounce the
+   * user across routes.
+   */
   const setUrlSlug = useCallback(
     (slug: string | null) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -72,12 +63,12 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
       } else {
         params.delete("c");
       }
-      router.replace(`/org/${githubLogin}/connections?${params.toString()}`, { scroll: false });
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     },
-    [router, githubLogin, searchParams]
+    [router, pathname, searchParams],
   );
 
-  // Fetch workspaces for the org.
   useEffect(() => {
     fetch(`/api/orgs/${githubLogin}/workspaces`)
       .then((res) => res.json())
@@ -94,12 +85,6 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
       .finally(() => setLoadingWorkspaces(false));
   }, [githubLogin]);
 
-  /**
-   * Fires from `OrgCanvasBackground` on every hidden-list change
-   * (initial load, user hide/restore, Pusher refresh). We reduce to
-   * just workspace ids — feature/repo hides aren't part of the chat
-   * context story.
-   */
   const handleHiddenChange = useCallback((entries: HiddenLiveEntry[]) => {
     const ids = new Set(
       entries.filter((e) => e.kind === "ws").map((e) => stripWsPrefix(e.id)),
@@ -108,12 +93,6 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
     setHiddenInitialized(true);
   }, []);
 
-  /**
-   * Workspace slugs passed to the chat as default context. Recompute
-   * whenever the workspace list or the hidden set changes. "Hidden on
-   * the canvas" means "not part of the default chat context" — the
-   * user can still opt back in via the chat's own pill row.
-   */
   const chatWorkspaceSlugs = useMemo(
     () =>
       workspaces
@@ -122,7 +101,6 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
     [workspaces, hiddenWorkspaceIds],
   );
 
-  // Fetch connections for the org
   const fetchConnections = useCallback(async () => {
     try {
       const res = await fetch(`/api/orgs/${githubLogin}/connections`);
@@ -140,7 +118,6 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
     return [];
   }, [githubLogin]);
 
-  // Initial load: fetch connections then resolve URL slug
   useEffect(() => {
     fetchConnections().then((list) => {
       const slug = searchParams.get("c");
@@ -162,33 +139,38 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
     setUrlSlug(null);
   };
 
-  const handleConnectionCreated = () => {
+  // Stable identities so child effects (notably the Pusher binding in
+  // `ConnectionsListBody`) don't re-run on every parent render.
+  const handleConnectionCreated = useCallback(() => {
     fetchConnections();
-  };
+  }, [fetchConnections]);
 
-  const handleConnectionDeleted = (connectionId: string) => {
-    setConnections((prev) => prev.filter((c) => c.id !== connectionId));
-    if (activeConnection?.id === connectionId) {
-      setActiveConnection(null);
-      setUrlSlug(null);
-    }
-  };
+  const handleConnectionDeleted = useCallback(
+    (connectionId: string) => {
+      setConnections((prev) => prev.filter((c) => c.id !== connectionId));
+      if (activeConnection?.id === connectionId) {
+        setActiveConnection(null);
+        setUrlSlug(null);
+      }
+    },
+    [activeConnection?.id, setUrlSlug],
+  );
 
-  // Interactive system-canvas background. Lives in absolute layer behind
-  // the chat + sidebar so pan/zoom/edit happens wherever the UI doesn't
-  // occlude it. The overlay layer below uses pointer-events:none by
-  // default; each real UI surface re-enables them on itself.
+  const handleNodeSelect = useCallback((node: CanvasNode | null) => {
+    setSelectedNode(node);
+  }, []);
+
   return (
-    <div className="relative flex h-screen w-full overflow-hidden">
+    <div className="relative flex h-full w-full overflow-hidden">
       <OrgCanvasBackground
         githubLogin={githubLogin}
         rightInset={320}
         orgName={orgName}
         onHiddenChange={handleHiddenChange}
+        onNodeSelect={handleNodeSelect}
       />
 
-      {/* Hide the background entirely while a specific connection is open —
-          that view has its own dense UI and shouldn't sit over the canvas. */}
+      {/* Hide the canvas behind a connection viewer while one is open. */}
       {activeConnection && (
         <div className="absolute inset-0 bg-background z-10" aria-hidden />
       )}
@@ -196,10 +178,7 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
       <div className="relative z-20 flex flex-1 mr-80 flex-col h-full pointer-events-none">
         {activeConnection ? (
           <div className="pointer-events-auto flex-1 flex flex-col h-full">
-            <ConnectionViewer
-              connection={activeConnection}
-              onBack={handleBack}
-            />
+            <ConnectionViewer connection={activeConnection} onBack={handleBack} />
           </div>
         ) : loadingWorkspaces || !hiddenInitialized ? (
           <div className="flex-1 flex items-center justify-center">
@@ -210,16 +189,12 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
             No workspaces available.
           </div>
         ) : (
-          // DashboardChat's root is already `pointer-events-none` and each
-          // interactive surface inside (input, pill row, provenance sidebar)
-          // re-enables pointer events on itself. We must NOT wrap it in a
-          // `pointer-events-auto` div: that would claim the whole chat
-          // column's bounding box and block clicks on the canvas FAB that
-          // sits in the same bottom-right region.
-          //
-          // `chatWorkspaceSlugs` excludes any workspace hidden on the
-          // canvas — hiding a workspace card removes it from both
-          // surfaces at once, restoring puts it back.
+          // DashboardChat's root is already `pointer-events-none` and
+          // each interactive surface inside (input, pill row,
+          // provenance sidebar) re-enables pointer events on itself.
+          // We must NOT wrap it in `pointer-events-auto`: that would
+          // claim the whole chat column's bounding box and block clicks
+          // on the canvas FAB that sits in the same bottom-right region.
           <div className="flex-1 flex flex-col justify-end pb-4">
             <OrgChat
               workspaceSlugs={chatWorkspaceSlugs}
@@ -230,10 +205,10 @@ export function ConnectionsPage({ githubLogin, orgId, orgName }: ConnectionsPage
         )}
       </div>
 
-      {/* Right sidebar — opaque, always interactive */}
       <div className="relative z-20 pointer-events-auto">
-        <ConnectionsSidebar
+        <OrgRightPanel
           githubLogin={githubLogin}
+          selectedNode={selectedNode}
           connections={connections}
           activeConnectionId={activeConnection?.id ?? null}
           onConnectionClick={handleConnectionClick}
