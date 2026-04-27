@@ -313,6 +313,130 @@ describe("PATCH /api/orgs/[githubLogin]/initiatives/[initiativeId]/milestones/[m
     expect(body.features.map((f: { id: string }) => f.id)).toEqual([featureB.id]);
   });
 
+  it("links many features in one request via addFeatureIds array", async () => {
+    // The UI's multi-select flow batches all picked features into a
+    // single PATCH; verify the array form connects them all without
+    // requiring N round-trips and without clobbering already-linked
+    // features.
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+
+    const org = await createOrg(`ms-lf-org-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+
+    const workspace = await createWorkspaceInOrg(user.id, org.id);
+    createdWorkspaceIds.push(workspace.id);
+
+    const initiative = await createInitiative(org.id);
+    createdInitiativeIds.push(initiative.id);
+
+    const featureSeed = await createTestFeature({
+      workspaceId: workspace.id,
+      createdById: user.id,
+      updatedById: user.id,
+      title: "Already linked",
+    });
+    createdFeatureIds.push(featureSeed.id);
+
+    const milestone = await db.milestone.create({
+      data: {
+        initiativeId: initiative.id,
+        name: `Milestone ${generateUniqueId()}`,
+        sequence: 7,
+        status: "NOT_STARTED",
+        features: { connect: [{ id: featureSeed.id }] },
+      },
+    });
+    createdMilestoneIds.push(milestone.id);
+
+    const featureA = await createTestFeature({
+      workspaceId: workspace.id,
+      createdById: user.id,
+      updatedById: user.id,
+      title: "Batch A",
+    });
+    createdFeatureIds.push(featureA.id);
+    const featureB = await createTestFeature({
+      workspaceId: workspace.id,
+      createdById: user.id,
+      updatedById: user.id,
+      title: "Batch B",
+    });
+    createdFeatureIds.push(featureB.id);
+    const featureC = await createTestFeature({
+      workspaceId: workspace.id,
+      createdById: user.id,
+      updatedById: user.id,
+      title: "Batch C",
+    });
+    createdFeatureIds.push(featureC.id);
+
+    const req = createAuthenticatedPatchRequest(
+      `http://localhost/api/orgs/${org.githubLogin}/initiatives/${initiative.id}/milestones/${milestone.id}`,
+      { addFeatureIds: [featureA.id, featureB.id, featureC.id] },
+      user,
+    );
+    const res = await PATCH(req, { params: makeParams(org.githubLogin, initiative.id, milestone.id) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const linkedIds = body.features.map((f: { id: string }) => f.id).sort();
+    expect(linkedIds).toEqual(
+      [featureSeed.id, featureA.id, featureB.id, featureC.id].sort(),
+    );
+  });
+
+  it("rejects addFeatureIds when any id refers to a feature outside the org", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+
+    const org = await createOrg(`ms-lf-org-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const otherOrg = await createOrg(`ms-lf-org-${generateUniqueId()}`);
+    createdOrgIds.push(otherOrg.id);
+
+    const workspace = await createWorkspaceInOrg(user.id, org.id);
+    createdWorkspaceIds.push(workspace.id);
+    const otherWorkspace = await createWorkspaceInOrg(user.id, otherOrg.id);
+    createdWorkspaceIds.push(otherWorkspace.id);
+
+    const initiative = await createInitiative(org.id);
+    createdInitiativeIds.push(initiative.id);
+    const milestone = await createMilestone(initiative.id);
+    createdMilestoneIds.push(milestone.id);
+
+    const ownFeature = await createTestFeature({
+      workspaceId: workspace.id,
+      createdById: user.id,
+      updatedById: user.id,
+      title: "Same org",
+    });
+    createdFeatureIds.push(ownFeature.id);
+    const crossFeature = await createTestFeature({
+      workspaceId: otherWorkspace.id,
+      createdById: user.id,
+      updatedById: user.id,
+      title: "Other org",
+    });
+    createdFeatureIds.push(crossFeature.id);
+
+    // Mixing one valid + one cross-org id must reject the whole batch.
+    const req = createAuthenticatedPatchRequest(
+      `http://localhost/api/orgs/${org.githubLogin}/initiatives/${initiative.id}/milestones/${milestone.id}`,
+      { addFeatureIds: [ownFeature.id, crossFeature.id] },
+      user,
+    );
+    const res = await PATCH(req, { params: makeParams(org.githubLogin, initiative.id, milestone.id) });
+    expect(res.status).toBe(404);
+
+    // And nothing was linked — the operation is atomic on validation
+    // failure (no partial connect of the valid id).
+    const after = await db.milestone.findUnique({
+      where: { id: milestone.id },
+      include: { features: { select: { id: true } } },
+    });
+    expect(after?.features ?? []).toEqual([]);
+  });
+
   it("rejects mixing featureIds with addFeatureId/removeFeatureId in one request", async () => {
     const user = await createTestUser();
     createdUserIds.push(user.id);
