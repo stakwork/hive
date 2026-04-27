@@ -230,7 +230,29 @@ export default function WhiteboardDetailPage() {
               if (latestRes.ok) {
                 const latestBody = await latestRes.json();
                 const serverElements = (latestBody?.data?.elements ?? []) as ExcalidrawElement[];
+
+                const localDeletedIds = new Set(
+                  elements.filter((el) => el.isDeleted).map((el) => el.id),
+                );
+
                 mergedElements = mergeElementsByVersion(elements, serverElements);
+
+                if (localDeletedIds.size > 0) {
+                  const mergedById = new Map(
+                    mergedElements.map((el) => [el.id, el]),
+                  );
+                  const survived: string[] = [];
+                  const lost: string[] = [];
+                  for (const id of localDeletedIds) {
+                    const m = mergedById.get(id);
+                    if (!m || m.isDeleted) survived.push(id);
+                    else lost.push(id);
+                  }
+                  console.info("[whiteboard-409] delete-vs-server merge", {
+                    survived,
+                    lost,
+                  });
+                }
 
                 // Reflect the merged state on the canvas so the user sees the
                 // other client's changes. Mark this as a programmatic update
