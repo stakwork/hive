@@ -835,6 +835,7 @@ const taskCategory: CategoryDefinition = {
       value: (ctx: SlotContext) => taskWorkflowLabel(ctx.node),
       color: (ctx: SlotContext) => taskWorkflowColor(ctx.node),
     },
+    body: { kind: "custom", render: renderTaskBody }, // custom smaller font
   },
 } as CategoryDefinition;
 
@@ -941,6 +942,69 @@ export function renderWrappedBody(ctx: SlotContext): React.ReactNode {
 
 /** @deprecated Use `renderWrappedBody` instead. Kept for test back-compat. */
 export const renderNoteBody = renderWrappedBody;
+
+/**
+ * Task-specific body renderer — identical to `renderWrappedBody` but uses a
+ * smaller font size (11px) to fit within the compact task card (180×64px).
+ */
+export function renderTaskBody(ctx: SlotContext): React.ReactNode {
+  const { region, node, theme } = ctx;
+  const raw = node.text ?? "";
+  if (!raw) return null;
+
+  const fs = 11; // smaller than the global 13px to fit the compact task card
+  const lineHeight = fs + 3;
+  const font = theme.node.fontFamily;
+  const maxWidth = (region.width > 0 ? region.width : SMALL_W) - 16;
+  const clipId = `note-clip-${node.id}`;
+
+  const paragraphs = raw.split("\n");
+  const allLines: string[] = [];
+  for (const para of paragraphs) {
+    const wrapped = wrapWords(para || " ", maxWidth, fs);
+    allLines.push(...wrapped);
+  }
+
+  const baseY = region.y + fs;
+
+  return createElement(
+    "g",
+    { pointerEvents: "none" },
+    createElement(
+      "defs",
+      null,
+      createElement(
+        "clipPath",
+        { id: clipId },
+        createElement("rect", {
+          x: region.x,
+          y: region.y,
+          width: region.width,
+          height: region.height,
+        }),
+      ),
+    ),
+    createElement(
+      "g",
+      { clipPath: `url(#${clipId})`, pointerEvents: "none" },
+      ...allLines.map((line, i) =>
+        createElement(
+          "text",
+          {
+            key: i,
+            x: region.x,
+            y: baseY + i * lineHeight,
+            fill: TEXT,
+            fontSize: fs,
+            fontFamily: font,
+            pointerEvents: "none",
+          },
+          line,
+        ),
+      ),
+    ),
+  );
+}
 
 /**
  * Wraps a `CategoryDefinition` with a default word-wrap+clip body renderer.
