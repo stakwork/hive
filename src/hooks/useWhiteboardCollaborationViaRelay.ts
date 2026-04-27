@@ -158,6 +158,15 @@ export function useWhiteboardCollaborationViaRelay({
       ) => {
         const changed = computeElementsDelta(els);
         if (changed.length === 0) return;
+        const deletedIds = changed
+          .filter((el) => el.isDeleted)
+          .map((el) => el.id);
+        if (deletedIds.length > 0) {
+          console.info("[whiteboard-relay] broadcasting deletes", {
+            ids: deletedIds,
+            totalChanged: changed.length,
+          });
+        }
         socket.emit("elements:update", {
           elements: changed,
           appState: {
@@ -325,16 +334,30 @@ export function useWhiteboardCollaborationViaRelay({
           const api = excalidrawAPIRef.current;
           if (!api) return;
 
-          const currentElements = api.getSceneElements();
+          // Use *including-deleted* so the merge sees local tombstones and
+          // can refuse to resurrect a just-deleted element.
+          const currentElements = api.getSceneElementsIncludingDeleted();
           const remoteElements = data.elements;
           const localById = new Map(
             currentElements.map((el) => [el.id, el]),
           );
           const hasChanges = remoteElements.some((remoteEl) => {
             const localEl = localById.get(remoteEl.id);
-            return !localEl || remoteEl.version > localEl.version;
+            return (
+              !localEl ||
+              remoteEl.version > localEl.version ||
+              remoteEl.isDeleted !== localEl.isDeleted
+            );
           });
           if (!hasChanges) return;
+
+          const remoteDeleted = remoteElements.filter((el) => el.isDeleted);
+          if (remoteDeleted.length > 0) {
+            console.info("[whiteboard-relay] received deletes", {
+              ids: remoteDeleted.map((el) => el.id),
+              totalRemote: remoteElements.length,
+            });
+          }
 
           const merged = mergeElementsByVersion(
             currentElements,
