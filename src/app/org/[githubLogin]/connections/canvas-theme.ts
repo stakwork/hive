@@ -887,7 +887,26 @@ export const connectionsTheme: CanvasTheme = resolveTheme(
       fontSize: 13,
       sublabelFontSize: 11,
       strokeWidth: 1,
+      // Bigger drill-in affordance: the carved-corner chevron that
+      // appears on cards with a `ref` (workspace, initiative,
+      // milestone). Default is 18px; 28px makes it easier to spot
+      // and tap, especially on dense root canvases. Glyph color is
+      // a slightly cooler slate so it reads against the dark
+      // surface without competing with the card's accent stroke.
+      refIndicator: {
+        ...darkTheme.node.refIndicator,
+        icon: "chevron",
+        color: "#cbd5e1",
+        size: 28,
+      },
     },
+    // Anchor the floating node toolbar to the node's left edge
+    // instead of the library default (centered). Our cards skew
+    // wider than tall (initiatives, workspaces) and sit close to
+    // the right-side connections sidebar — left-aligned keeps the
+    // toolbar from drifting under the sidebar on a selected
+    // initiative.
+    toolbarAlign: "left",
     group: {
       ...darkTheme.group,
       fill: "rgba(255,255,255,0.02)",
