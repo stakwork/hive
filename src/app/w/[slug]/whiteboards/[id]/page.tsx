@@ -16,7 +16,7 @@ import { computeVersionChanges } from "@/lib/whiteboard/version-utils";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
 import type { AppState, BinaryFileData, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { ArrowLeft, Check, Loader2, Maximize2, Minimize2, Pencil, Scan, Wifi, WifiOff, X } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Maximize2, Minimize2, Pencil, Scan, X } from "lucide-react";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
@@ -694,15 +694,6 @@ export default function WhiteboardDetailPage() {
           <div className="flex items-center gap-3">
             {/* Collaborators */}
             <CollaboratorAvatars collaborators={collaborators} />
-
-            {/* Connection status */}
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-              {isConnected ? (
-                <Wifi className="w-4 h-4 text-green-500" />
-              ) : (
-                <WifiOff className="w-4 h-4 text-red-500" />
-              )}
-            </div>
 
             {/* Save status */}
             <TooltipProvider delayDuration={200}>
