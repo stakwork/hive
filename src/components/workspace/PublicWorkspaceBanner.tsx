@@ -1,15 +1,18 @@
 "use client";
 
+import React from "react";
 import { Globe, LogIn } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export function PublicWorkspaceBanner() {
   const { status } = useSession();
+  const { loading } = useWorkspace();
 
-  if (status !== "unauthenticated") return null;
+  if (status === "loading" || loading || status !== "unauthenticated") return null;
 
   return (
     <Alert className="rounded-none border-x-0 border-t-0 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
