@@ -789,6 +789,12 @@ function accentNote(color: string, kicker: string): CategoryDefinition {
       body: {
         kind: "text",
         value: (ctx: SlotContext) => ctx.node.text ?? "",
+        // Authored notes/decisions are scratchpad content — keep the
+        // body text at normal weight + a touch smaller so it reads as
+        // casual prose, not a bolded title. (Library defaults: weight
+        // 600, fontSize = theme.node.fontSize × 1.35 = ~18px.)
+        fontWeight: 400,
+        fontSize: (ctx: SlotContext) => Math.round(ctx.theme.node.fontSize * 1.05),
       },
     },
   } as CategoryDefinition;
