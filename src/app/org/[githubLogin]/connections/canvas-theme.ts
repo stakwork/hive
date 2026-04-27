@@ -8,7 +8,6 @@ import type {
   SlotContext,
 } from "system-canvas";
 import { darkTheme, resolveTheme } from "system-canvas";
-import { NodeProgressBar } from "system-canvas-react/primitives";
 import {
   CARD_H,
   CARD_W,
@@ -29,7 +28,7 @@ import { CATEGORY_REGISTRY } from "./canvas-categories";
  *
  * Visual hierarchy:
  *   - **Workspaces** (teal containers, top row) — projected from DB.
- *   - **Initiatives** (sky-blue cards w/ progress bar, second row) —
+ *   - **Initiatives** (sky-blue cards w/ gradient title, second row) —
  *     projected from `Initiative` rows. No status pill (initiatives can
  *     be long-running; a traffic-light would mislead).
  *   - **Milestones** (small cards on initiative sub-canvas) — projected
@@ -38,9 +37,15 @@ import { CATEGORY_REGISTRY } from "./canvas-categories";
  *   - **Repositories** (slate-indigo, on workspace sub-canvas) — projected.
  *   - **Notes / decisions** — authored amber/purple accent cards.
  *
- * Adapted from the system-canvas showcase + roadmap theme; trims away
- * the showcase team/customer/revenue categories and the old `objective`
- * status-pill model in favor of the new initiative/milestone split.
+ * **Implementation note (post system-canvas 0.1.3 / react 0.1.4):** body
+ * text wrapping, gradient title fills, and `hideWhenZero` progress bars
+ * are now declarative slot features in the library. This file used to
+ * carry ~250 lines of custom React renderers (`renderWrappedBody`,
+ * `renderInitiativeBody`, `renderTaskBody`, `renderMilestoneProgress`,
+ * `wrapWords`, `withWrappedBody`) — all gone. The only remaining custom
+ * renderers are `renderMetricsFooter` (two-cell layout reading
+ * `customData.primary` / `secondary`) and `renderTeamStack` (avatar
+ * stack), both genuinely domain-specific.
  */
 
 // ---------------------------------------------------------------------------
@@ -82,6 +87,9 @@ const ACCENT = {
  * of the card, not the kicker or the metric. Cooler on the left,
  * resolves into a violet that's close enough to the card's accent
  * color that the shift reads as subtle.
+ *
+ * Now consumed declaratively by the library's `TextSlot.fill` field —
+ * see `initiativeCategory.slots.body` below.
  */
 const INITIATIVE_GRADIENT = {
   from: "#60a5fa", // sky-400
@@ -124,11 +132,6 @@ const baseCard = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Rough monospace glyph-width estimate, good enough for relative placement. */
-function estimateTextWidth(text: string, fontSize: number): number {
-  return text.length * fontSize * 0.62;
-}
-
 function hexAlpha(hex: string, a: number): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
@@ -138,8 +141,15 @@ function hexAlpha(hex: string, a: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Footer renderer — shared by initiative + workspace cards. Two-metric
-// layout: `customData.primary` left, `customData.secondary` right of it.
+// Footer renderer — shared by initiative + workspace + milestone +
+// feature cards. Two-metric layout: `customData.primary` on the left,
+// `customData.secondary` to its right. The right cell can render in
+// the accent color when `customData.secondaryAccent` is true.
+//
+// Kept as `kind: 'custom'` because it's a genuine multi-cell layout —
+// the library's single-`value` text slot would force us to merge both
+// strings into one (and lose the per-cell color). If we ever generalize
+// `kind: 'text'` to accept multi-segment value arrays this can fold in.
 // ---------------------------------------------------------------------------
 
 function renderMetricsFooter(
@@ -157,6 +167,10 @@ function renderMetricsFooter(
   const y = region.y + region.height / 2 + fs * 0.36;
   const font = theme.node.fontFamily;
 
+  // Use the same rough glyph-width estimate the library uses internally
+  // (0.62 ratio) — close enough at 11px for relative cell placement.
+  const primaryWidth = primary.length * fs * 0.62;
+
   const primaryProps = {
     x: region.x,
     y,
@@ -166,9 +180,8 @@ function renderMetricsFooter(
     fontWeight: 500,
     pointerEvents: "none" as const,
   };
-  const secondaryX = region.x + estimateTextWidth(primary, fs) + 8;
   const secondaryProps = {
-    x: secondaryX,
+    x: region.x + primaryWidth + 8,
     y,
     fill: secondaryAccent ? accent : MUTED,
     fontSize: fs,
@@ -190,108 +203,22 @@ function renderMetricsFooter(
 // ---------------------------------------------------------------------------
 //
 // Visual model borrowed from the showcase's "12-month vision" card:
-// a wider/taller box, a faint purple chrome (border + fill), a small
+// a wider/taller box, faint purple chrome (border + fill), a small
 // uppercase kicker ("INITIATIVE"), and a **gradient title** rendered
-// at ~135% of base font in the body region. The title IS the card —
-// not a metric or a status pill.
+// at ~135% of base font in the body region.
 //
-// `text` carries the initiative name (DB). `\n` in the name renders
-// as a line break in the gradient title, so longer initiatives can
-// wrap intentionally; we do not auto-wrap (auto-wrap would fight the
-// projector's deterministic layout).
+// `text` carries the initiative name (DB) and the library auto-wraps
+// it to fit `region.width` and honors `\n` for explicit paragraph
+// breaks. The gradient is declared via `TextSlot.fill` — the library
+// generates a per-node `<linearGradient>` and paints the text with it.
 //
 // `customData.primary` (percent) and `customData.secondary` (count)
 // land in the footer via `renderMetricsFooter`, the same renderer
 // used for the workspace card so the two layers read as one family.
 //
-// No status pill, no border-by-status, no progress bar. Initiatives
-// can run for quarters or be open-ended; a traffic-light would lie,
-// and a bodyTop progress bar collides with the title text.
-//
 // `ref` is set by the projector to `initiative:<id>`, which makes the
 // card clickable (drill-in) — that wiring lives in the system-canvas
 // library, not the theme.
-
-/**
- * Render the initiative title in the `body` region with a sky-blue →
- * indigo gradient fill, sized up to ~135% of the theme's base font.
- * Reads from `node.text` so the projector populates it as the
- * Initiative.name. Honors `\n` as a line break.
- *
- * Each node gets its own `<linearGradient>` def keyed by node id —
- * cheap, and avoids the "all gradients share one rect" bug you'd hit
- * if we used a single shared id across the SVG.
- */
-function renderInitiativeBody(ctx: SlotContext): React.ReactNode {
-  const { region, node, theme } = ctx;
-  const raw = node.text ?? "";
-  if (!raw) return null;
-  const fs = Math.round(theme.node.fontSize * 1.35);
-  const lineHeight = fs + 4;
-  const font = theme.node.labelFont ?? theme.node.fontFamily;
-  const maxWidth = (region.width > 0 ? region.width : INITIATIVE_W) - 16;
-  const gradId = `initiative-title-grad-${node.id}`;
-  const clipId = `initiative-clip-${node.id}`;
-
-  // Expand each \n-separated paragraph through word-wrap.
-  const allLines: string[] = [];
-  for (const para of raw.split("\n")) {
-    allLines.push(...wrapWords(para || " ", maxWidth, fs));
-  }
-  if (allLines.length === 0) return null;
-
-  const baseY = region.y + fs;
-  return createElement(
-    "g",
-    { pointerEvents: "none" },
-    createElement(
-      "defs",
-      null,
-      createElement(
-        "linearGradient",
-        { id: gradId, x1: "0", y1: "0", x2: "1", y2: "0" },
-        createElement("stop", {
-          offset: "0%",
-          stopColor: INITIATIVE_GRADIENT.from,
-        }),
-        createElement("stop", {
-          offset: "100%",
-          stopColor: INITIATIVE_GRADIENT.to,
-        }),
-      ),
-      createElement(
-        "clipPath",
-        { id: clipId },
-        createElement("rect", {
-          x: region.x,
-          y: region.y,
-          width: region.width,
-          height: region.height,
-        }),
-      ),
-    ),
-    createElement(
-      "g",
-      { clipPath: `url(#${clipId})`, pointerEvents: "none" },
-      ...allLines.map((line, i) =>
-        createElement(
-          "text",
-          {
-            key: i,
-            x: region.x,
-            y: baseY + i * lineHeight,
-            fill: `url(#${gradId})`,
-            fontSize: fs,
-            fontWeight: 600,
-            fontFamily: font,
-            pointerEvents: "none",
-          },
-          line,
-        ),
-      ),
-    ),
-  );
-}
 
 const initiativeCategory: CategoryDefinition = {
   ...baseCard,
@@ -303,8 +230,16 @@ const initiativeCategory: CategoryDefinition = {
   slots: {
     header: { kind: "text", value: "INITIATIVE", color: ACCENT.initiative },
     body: {
-      kind: "custom",
-      render: (ctx: SlotContext) => renderInitiativeBody(ctx),
+      kind: "text",
+      value: (ctx: SlotContext) => ctx.node.text ?? "",
+      // Per-node sky→indigo gradient. The library wires the
+      // `<linearGradient>` def and `fill="url(#…)"` for us.
+      fill: INITIATIVE_GRADIENT,
+      // Slightly larger than the default body fontSize multiplier
+      // (1.35×) — keeps the title visually dominant on the wider
+      // initiative card.
+      fontSize: (ctx: SlotContext) => Math.round(ctx.theme.node.fontSize * 1.35),
+      fontWeight: 600,
     },
     footer: {
       kind: "custom",
@@ -325,7 +260,10 @@ const initiativeCategory: CategoryDefinition = {
 //
 // Slot strategy: a thin top-edge band carries the status color so the
 // card reads at a glance even when zoomed out. The header label
-// reflects the status word too, in case the band gets clipped.
+// reflects the status word too, in case the band gets clipped. A
+// `bodyTop` progress slot sits between the header and the title;
+// `hideWhenZero: true` makes it disappear when there are no linked
+// features (an empty 0% bar would read as "behind" rather than "no data").
 
 function getMilestoneStatus(node: CanvasNode): MilestoneStatus {
   const raw = node.customData?.status;
@@ -605,40 +543,6 @@ function renderTeamStack(ctx: SlotContext): React.ReactNode {
   return createElement("g", { pointerEvents: "none" }, ...elements);
 }
 
-/**
- * Milestone progress bar. Sits in the native `bodyTop` slot — a thin
- * horizontal strip purpose-built for inline progress under the header
- * (see `system-canvas/dist/slots.js:84-95`). Reads two `customData`
- * fields populated by the projector:
- *
- *   - `progress`     — fraction in 0..1, % of linked features completed
- *   - `featureCount` — total linked features (denominator)
- *
- * **Why not the declarative `kind: "progress"` slot?** That would render
- * a 0% bar on a milestone with no features yet, which reads as "behind."
- * Returning `null` here when `featureCount === 0` keeps the card
- * honest: empty means empty.
- *
- * The bar's color tracks the milestone's status color, so a COMPLETED
- * milestone with 100% bar reads green-on-green and a NOT_STARTED
- * milestone shows a muted track even at 0%. We reuse the library's
- * `NodeProgressBar` primitive so the visual matches every other native
- * progress slot pixel-for-pixel.
- */
-function renderMilestoneProgress(ctx: SlotContext): React.ReactNode {
-  const { node } = ctx;
-  const featureCount = Number(node.customData?.featureCount ?? 0);
-  if (featureCount <= 0) return null;
-  const raw = Number(node.customData?.progress ?? 0);
-  const value = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
-  return createElement(NodeProgressBar, {
-    region: ctx.region,
-    value,
-    color: milestoneStatusColor(node),
-    bgColor: hexAlpha("#FFFFFF", 0.08),
-  });
-}
-
 const milestoneCategory: CategoryDefinition = {
   ...baseCard,
   defaultWidth: MILESTONE_W,
@@ -670,10 +574,27 @@ const milestoneCategory: CategoryDefinition = {
     },
     // Progress bar between the status header and the title text. Lives
     // in `bodyTop` (NOT `body`) so it composes cleanly with the
-    // text-wrapping body renderer applied by `withWrappedBody` below.
+    // library's auto-wrapping body text.
+    //
+    // `hideWhenZero: true` skips the empty track when no features are
+    // linked yet — the empty bar would otherwise read as "0% complete"
+    // rather than "no data yet."
     bodyTop: {
-      kind: "custom",
-      render: renderMilestoneProgress,
+      kind: "progress",
+      value: (ctx: SlotContext) => {
+        const featureCount = Number(ctx.node.customData?.featureCount ?? 0);
+        if (featureCount <= 0) return 0;
+        const raw = Number(ctx.node.customData?.progress ?? 0);
+        return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
+      },
+      color: (ctx: SlotContext) => milestoneStatusColor(ctx.node),
+      bgColor: hexAlpha("#FFFFFF", 0.08),
+      hideWhenZero: true,
+    },
+    // Library auto-wraps body text now — no custom React needed.
+    body: {
+      kind: "text",
+      value: (ctx: SlotContext) => ctx.node.text ?? "",
     },
     // "Agent active" tab badge hanging off the top-right corner.
     // `topRightOuter` is system-canvas's purpose-built slot for
@@ -765,6 +686,10 @@ const featureCategory: CategoryDefinition = {
       value: "FEATURE",
       color: (ctx: SlotContext) => featureStatusColor(ctx.node),
     },
+    body: {
+      kind: "text",
+      value: (ctx: SlotContext) => ctx.node.text ?? "",
+    },
     footer: {
       kind: "custom",
       render: (ctx: SlotContext) =>
@@ -835,196 +760,21 @@ const taskCategory: CategoryDefinition = {
       value: (ctx: SlotContext) => taskWorkflowLabel(ctx.node),
       color: (ctx: SlotContext) => taskWorkflowColor(ctx.node),
     },
-    body: { kind: "custom", render: renderTaskBody }, // custom smaller font
+    // Smaller body font (11px instead of the theme default 13px×1.35
+    // multiplier) to fit within the compact 180×64 task card. The
+    // library still wraps and clips — just at this smaller size.
+    body: {
+      kind: "text",
+      value: (ctx: SlotContext) => ctx.node.text ?? "",
+      fontSize: 11,
+      fontWeight: 500,
+    },
   },
 } as CategoryDefinition;
 
 // ---------------------------------------------------------------------------
 // Note / decision accent cards (authored)
 // ---------------------------------------------------------------------------
-
-/**
- * Word-wrap a single paragraph string into lines that fit within `maxWidth`
- * pixels, using `estimateTextWidth` for glyph-width approximation.
- *
- * Exported for unit testing.
- */
-export function wrapWords(text: string, maxWidth: number, fontSize: number): string[] {
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (estimateTextWidth(candidate, fontSize) > maxWidth && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = candidate;
-    }
-  }
-  if (current) lines.push(current);
-  return lines;
-}
-
-/**
- * Generic body renderer: word-wrap + SVG clip for any card type.
- *
- * - Reads `node.text`, splits on `\n` for explicit paragraphs.
- * - Word-wraps each paragraph to fit within `region.width`
- *   (falls back to `SMALL_W - 16` when region width is unavailable).
- * - Renders each line as an SVG `<text>` element.
- * - Clips the whole group to the region rect so no text bleeds past
- *   the card boundary, horizontally or vertically.
- *
- * Exported for unit testing.
- */
-export function renderWrappedBody(ctx: SlotContext): React.ReactNode {
-  const { region, node, theme } = ctx;
-  const raw = node.text ?? "";
-  if (!raw) return null;
-
-  const fs = theme.node.fontSize;
-  const lineHeight = fs + 3;
-  const font = theme.node.fontFamily;
-  const maxWidth = (region.width > 0 ? region.width : SMALL_W) - 16;
-  const clipId = `note-clip-${node.id}`;
-
-  // Expand each newline-separated paragraph through word-wrap.
-  const paragraphs = raw.split("\n");
-  const allLines: string[] = [];
-  for (const para of paragraphs) {
-    const wrapped = wrapWords(para || " ", maxWidth, fs);
-    allLines.push(...wrapped);
-  }
-
-  const baseY = region.y + fs;
-
-  return createElement(
-    "g",
-    { pointerEvents: "none" },
-    // Define the clip rect keyed to this node so multiple cards
-    // each have an independent clip region.
-    createElement(
-      "defs",
-      null,
-      createElement(
-        "clipPath",
-        { id: clipId },
-        createElement("rect", {
-          x: region.x,
-          y: region.y,
-          width: region.width,
-          height: region.height,
-        }),
-      ),
-    ),
-    createElement(
-      "g",
-      { clipPath: `url(#${clipId})`, pointerEvents: "none" },
-      ...allLines.map((line, i) =>
-        createElement(
-          "text",
-          {
-            key: i,
-            x: region.x,
-            y: baseY + i * lineHeight,
-            fill: TEXT,
-            fontSize: fs,
-            fontFamily: font,
-            pointerEvents: "none",
-          },
-          line,
-        ),
-      ),
-    ),
-  );
-}
-
-/** @deprecated Use `renderWrappedBody` instead. Kept for test back-compat. */
-export const renderNoteBody = renderWrappedBody;
-
-/**
- * Task-specific body renderer — identical to `renderWrappedBody` but uses a
- * smaller font size (11px) to fit within the compact task card (180×64px).
- */
-export function renderTaskBody(ctx: SlotContext): React.ReactNode {
-  const { region, node, theme } = ctx;
-  const raw = node.text ?? "";
-  if (!raw) return null;
-
-  const fs = 11; // smaller than the global 13px to fit the compact task card
-  const lineHeight = fs + 3;
-  const font = theme.node.fontFamily;
-  const maxWidth = (region.width > 0 ? region.width : SMALL_W) - 16;
-  const clipId = `note-clip-${node.id}`;
-
-  const paragraphs = raw.split("\n");
-  const allLines: string[] = [];
-  for (const para of paragraphs) {
-    const wrapped = wrapWords(para || " ", maxWidth, fs);
-    allLines.push(...wrapped);
-  }
-
-  const baseY = region.y + fs;
-
-  return createElement(
-    "g",
-    { pointerEvents: "none" },
-    createElement(
-      "defs",
-      null,
-      createElement(
-        "clipPath",
-        { id: clipId },
-        createElement("rect", {
-          x: region.x,
-          y: region.y,
-          width: region.width,
-          height: region.height,
-        }),
-      ),
-    ),
-    createElement(
-      "g",
-      { clipPath: `url(#${clipId})`, pointerEvents: "none" },
-      ...allLines.map((line, i) =>
-        createElement(
-          "text",
-          {
-            key: i,
-            x: region.x,
-            y: baseY + i * lineHeight,
-            fill: TEXT,
-            fontSize: fs,
-            fontFamily: font,
-            pointerEvents: "none",
-          },
-          line,
-        ),
-      ),
-    ),
-  );
-}
-
-/**
- * Wraps a `CategoryDefinition` with a default word-wrap+clip body renderer.
- * If the definition already has a `body` slot, it is returned unchanged so
- * custom renderers (e.g. initiative gradient title) are never overridden.
- *
- * Apply this to every entry in `CATEGORY_DEFINITIONS` so any new category
- * that spreads `...baseCard` and omits `slots.body` automatically inherits
- * text wrapping without extra wiring.
- */
-function withWrappedBody(def: CategoryDefinition): CategoryDefinition {
-  if (def.slots?.body) return def; // already has a custom body — don't override
-  return {
-    ...def,
-    slots: {
-      ...def.slots,
-      body: { kind: "custom", render: renderWrappedBody },
-    },
-  };
-}
 
 function accentNote(color: string, kicker: string): CategoryDefinition {
   return {
@@ -1037,8 +787,8 @@ function accentNote(color: string, kicker: string): CategoryDefinition {
     slots: {
       header: { kind: "text", value: kicker, color },
       body: {
-        kind: "custom",
-        render: (ctx: SlotContext) => renderWrappedBody(ctx),
+        kind: "text",
+        value: (ctx: SlotContext) => ctx.node.text ?? "",
       },
     },
   } as CategoryDefinition;
@@ -1059,6 +809,10 @@ const workspaceCategory: CategoryDefinition = {
   fill: hexAlpha(ACCENT.workspace, 0.05),
   slots: {
     header: { kind: "text", value: "WORKSPACE", color: ACCENT.workspace },
+    body: {
+      kind: "text",
+      value: (ctx: SlotContext) => ctx.node.text ?? "",
+    },
     // Footer summary, e.g. "3 repos". Populated by the root projector
     // from `customData.secondary`; shares the initiative-card footer
     // renderer so workspace + initiative cards read as one family.
@@ -1086,6 +840,10 @@ const repositoryCategory: CategoryDefinition = {
   fill: hexAlpha(ACCENT.repository, 0.05),
   slots: {
     header: { kind: "text", value: "REPO", color: ACCENT.repository },
+    body: {
+      kind: "text",
+      value: (ctx: SlotContext) => ctx.node.text ?? "",
+    },
   },
 } as CategoryDefinition;
 
@@ -1099,14 +857,14 @@ const repositoryCategory: CategoryDefinition = {
  * the `resolveTheme` call below checks this and throws on mismatch.
  */
 const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
-  workspace:  withWrappedBody(workspaceCategory),
-  repository: withWrappedBody(repositoryCategory),
-  initiative: withWrappedBody(initiativeCategory),
-  milestone:  withWrappedBody(milestoneCategory),
-  feature:    withWrappedBody(featureCategory),
-  task:       withWrappedBody(taskCategory),
-  note:       withWrappedBody(accentNote(ACCENT.note, "NOTE")),
-  decision:   withWrappedBody(accentNote(ACCENT.decision, "DECISION")),
+  workspace:  workspaceCategory,
+  repository: repositoryCategory,
+  initiative: initiativeCategory,
+  milestone:  milestoneCategory,
+  feature:    featureCategory,
+  task:       taskCategory,
+  note:       accentNote(ACCENT.note, "NOTE"),
+  decision:   accentNote(ACCENT.decision, "DECISION"),
 };
 
 // ---------------------------------------------------------------------------
