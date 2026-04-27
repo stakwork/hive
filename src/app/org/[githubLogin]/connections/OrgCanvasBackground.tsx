@@ -77,6 +77,23 @@ const AUTOSAVE_MS = 600;
 
 type DirtyMap = Map<string, CanvasData>;
 
+type LastAction =
+  | {
+      kind: "blob";
+      canvasRef: string | undefined; // undefined = root
+      prev: CanvasData; // snapshot before the mutation
+    }
+  | {
+      kind: "hide"; // user hid a live node → undo = show
+      canvasRef: string | undefined;
+      id: string;
+    }
+  | {
+      kind: "show"; // user restored a live node → undo = hide
+      canvasRef: string | undefined;
+      id: string;
+    };
+
 async function fetchRoot(githubLogin: string): Promise<CanvasData> {
   const res = await fetch(`/api/orgs/${githubLogin}/canvas`);
   if (!res.ok) throw new Error(`Failed to load canvas: ${res.status}`);
@@ -360,6 +377,7 @@ export function OrgCanvasBackground({
   // Map keyed by ROOT_KEY or sub-canvas ref -> latest data waiting to flush.
   const dirtyRef = useRef<DirtyMap>(new Map());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastActionRef = useRef<LastAction | null>(null);
 
   const scheduleFlush = useCallback(() => {
     if (flushTimer.current) clearTimeout(flushTimer.current);
@@ -664,6 +682,7 @@ export function OrgCanvasBackground({
       if (!canvasRef) {
         const current = rootRef.current;
         if (!current) return;
+        lastActionRef.current = { kind: "blob", canvasRef, prev: current };
         const next = mutate(current);
         setRoot(next);
         markDirty(undefined, next);
@@ -671,6 +690,7 @@ export function OrgCanvasBackground({
       }
       const current = subCanvasesRef.current[canvasRef];
       if (!current) return;
+      lastActionRef.current = { kind: "blob", canvasRef, prev: current };
       const next = mutate(current);
       setSubCanvases((prev) => ({ ...prev, [canvasRef]: next }));
       markDirty(canvasRef, next);
@@ -1054,6 +1074,7 @@ export function OrgCanvasBackground({
       // endpoint is idempotent, so a race with a concurrent hide is
       // harmless.
       if (isLiveId(id)) {
+        lastActionRef.current = { kind: "hide", canvasRef, id };
         applyMutation(canvasRef, (c) => removeNode(c, id));
         void toggleLiveVisibility(githubLogin, canvasRef, id, "hide").then(
           () => {
@@ -1087,6 +1108,11 @@ export function OrgCanvasBackground({
     async (id: string) => {
       const ref = currentRefRef.current;
       const isRoot = ref === "";
+      lastActionRef.current = {
+        kind: "show",
+        canvasRef: isRoot ? undefined : ref,
+        id,
+      };
       // Optimistic: remove from the pill immediately so users don't
       // wait on a round-trip before the popover reflects their click.
       // The pill is only ever shown after the initial fetch resolved
@@ -1130,6 +1156,72 @@ export function OrgCanvasBackground({
     },
     [githubLogin, refreshHiddenLive, refreshRootHiddenLive],
   );
+
+  const handleUndo = useCallback(async () => {
+    const action = lastActionRef.current;
+    if (!action) return;
+    lastActionRef.current = null; // consume — ctrl-z twice is a no-op
+
+    if (action.kind === "blob") {
+      if (!action.canvasRef) {
+        setRoot(action.prev);
+        markDirty(undefined, action.prev);
+      } else {
+        setSubCanvases((prev) => ({
+          ...prev,
+          [action.canvasRef!]: action.prev,
+        }));
+        markDirty(action.canvasRef, action.prev);
+      }
+      return;
+    }
+
+    if (action.kind === "hide") {
+      // Undo a hide → reuse the existing handleRestoreLive path exactly
+      await handleRestoreLive(action.id);
+      return;
+    }
+
+    if (action.kind === "show") {
+      // Undo a restore → re-hide (mirror of handleNodeDelete live path)
+      const ref = action.canvasRef;
+      applyMutation(ref, (c) => removeNode(c, action.id));
+      await toggleLiveVisibility(githubLogin, ref, action.id, "hide");
+      if (!ref) {
+        refreshRootHiddenLive();
+      } else if (ref === currentRefRef.current) {
+        refreshHiddenLive();
+      }
+    }
+  }, [
+    markDirty,
+    applyMutation,
+    githubLogin,
+    handleRestoreLive,
+    refreshHiddenLive,
+    refreshRootHiddenLive,
+  ]);
+
+  // Ctrl-Z / Cmd-Z undo listener — scoped to canvas mount lifetime.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key !== "z") return;
+      // Don't intercept undo inside text inputs / rich-text editors
+      const tag = (e.target as HTMLElement).tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (e.target as HTMLElement).isContentEditable
+      )
+        return;
+      e.preventDefault();
+      void handleUndo();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [handleUndo]);
+
   const handleEdgeAdd = useCallback(
     (edge: CanvasEdge, canvasRef: string | undefined) => {
       applyMutation(canvasRef, (c) => addEdge(c, edge));
