@@ -79,7 +79,7 @@ vi.mock(
   }),
 );
 
-import { renderNoteBody, wrapWords } from "@/app/org/[githubLogin]/connections/canvas-theme";
+import { renderNoteBody, renderTaskBody, wrapWords } from "@/app/org/[githubLogin]/connections/canvas-theme";
 import type { SlotContext } from "system-canvas";
 
 // ---------------------------------------------------------------------------
@@ -269,5 +269,65 @@ describe("renderNoteBody", () => {
     const [defs] = el.props.children as React.ReactElement[];
     const clipPath = defs.props.children as React.ReactElement;
     expect(clipPath.props.id).toBe("note-clip-unique-abc");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderTaskBody – compact task card body renderer (fs=11)
+// ---------------------------------------------------------------------------
+
+describe("renderTaskBody", () => {
+  it("returns null for empty node.text", () => {
+    const ctx = makeCtx("", { x: 0, y: 20, width: 164, height: 40 });
+    expect(renderTaskBody(ctx)).toBeNull();
+  });
+
+  it("renders text elements with fontSize 11, not the theme fontSize (13)", () => {
+    const ctx = makeCtx("Task title text", { x: 0, y: 20, width: 164, height: 40 });
+    const el = renderTaskBody(ctx) as React.ReactElement;
+    expect(el).not.toBeNull();
+
+    const [, innerG] = el.props.children as React.ReactElement[];
+    const rawLines = innerG.props.children;
+    const textLines: React.ReactElement[] = Array.isArray(rawLines) ? rawLines : [rawLines];
+
+    // Every <text> element must use fontSize 11
+    for (const line of textLines) {
+      expect(line.props.fontSize).toBe(11);
+    }
+  });
+
+  it("wraps long task text into multiple lines", () => {
+    const longText = "This is a longer task description that should wrap in the compact card";
+    const ctx = makeCtx(longText, { x: 0, y: 20, width: 164, height: 40 });
+    const el = renderTaskBody(ctx) as React.ReactElement;
+    const [, innerG] = el.props.children as React.ReactElement[];
+    const lines = innerG.props.children as React.ReactElement[];
+    expect(lines.length).toBeGreaterThan(1);
+    // All text lines use fs=11
+    for (const line of lines) {
+      expect(line.props.fontSize).toBe(11);
+    }
+  });
+
+  it("sets up a clipPath keyed to the node id", () => {
+    const ctx = makeCtx("task body", { x: 0, y: 20, width: 164, height: 40 }, "task-node-42");
+    const el = renderTaskBody(ctx) as React.ReactElement;
+    const [defs] = el.props.children as React.ReactElement[];
+    const clipPath = defs.props.children as React.ReactElement;
+    expect(clipPath.props.id).toBe("note-clip-task-node-42");
+  });
+
+  it("does not use theme.node.fontSize (13) for task body", () => {
+    // Confirms renderTaskBody ignores the theme fontSize and always uses 11
+    const ctx = makeCtx("Check font size", { x: 0, y: 20, width: 164, height: 40 });
+    const el = renderTaskBody(ctx) as React.ReactElement;
+    const [, innerG] = el.props.children as React.ReactElement[];
+    const rawLines = innerG.props.children;
+    const textLines: React.ReactElement[] = Array.isArray(rawLines) ? rawLines : [rawLines];
+    for (const line of textLines) {
+      expect(line.props.fontSize).not.toBe(13);
+      expect(line.props.fontSize).toBe(11);
+    }
   });
 });
