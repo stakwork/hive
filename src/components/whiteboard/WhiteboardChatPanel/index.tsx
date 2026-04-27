@@ -115,7 +115,7 @@ export function WhiteboardChatPanel({
   const [input, setInput] = useState("");
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [layout, setLayout] = useState<LayoutAlgorithm>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(`whiteboard-layout-${whiteboardId}`);

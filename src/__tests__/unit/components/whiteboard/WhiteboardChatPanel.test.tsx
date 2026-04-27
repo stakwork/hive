@@ -54,6 +54,14 @@ const mockExcalidrawAPI = {
   updateScene: vi.fn(),
 };
 
+// Helper: render the component and expand the chat panel
+async function renderAndExpand(props: any) {
+  const result = render(<WhiteboardChatPanel {...props} />);
+  const user = userEvent.setup();
+  await user.click(screen.getByTitle("Expand chat"));
+  return { ...result, user };
+}
+
 describe("WhiteboardChatPanel", () => {
   const defaultProps = {
     whiteboardId: "wb-123",
@@ -102,13 +110,32 @@ describe("WhiteboardChatPanel", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders empty state when message list is empty", async () => {
+  it("starts collapsed on initial render", () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ success: true, data: [] }),
     } as Response);
 
     render(<WhiteboardChatPanel {...defaultProps} />);
+
+    // Only the expand button should be visible; full panel should not be rendered
+    expect(screen.getByTitle("Expand chat")).toBeInTheDocument();
+    expect(screen.queryByText("Chat")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/ask to update the diagram/i)).not.toBeInTheDocument();
+  });
+
+  it("renders empty state when message list is empty", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true, data: [] }),
+    } as Response);
+
+    render(<WhiteboardChatPanel {...defaultProps} />);
+
+    // Expand the panel first
+    await user.click(screen.getByTitle("Expand chat"));
 
     await waitFor(() => {
       expect(screen.getByText(/no messages yet/i)).toBeInTheDocument();
@@ -138,7 +165,7 @@ describe("WhiteboardChatPanel", () => {
       json: async () => ({ success: true, data: messages }),
     } as Response);
 
-    render(<WhiteboardChatPanel {...defaultProps} />);
+    await renderAndExpand(defaultProps);
 
     await waitFor(() => {
       expect(screen.getByText("User message")).toBeInTheDocument();
@@ -154,8 +181,6 @@ describe("WhiteboardChatPanel", () => {
   });
 
   it("appends an optimistic message on send and clears input", async () => {
-    const user = userEvent.setup();
-
     vi.mocked(global.fetch)
       .mockResolvedValueOnce({
         ok: true,
@@ -179,7 +204,7 @@ describe("WhiteboardChatPanel", () => {
         }),
       } as Response);
 
-    render(<WhiteboardChatPanel {...defaultProps} />);
+    const { user } = await renderAndExpand(defaultProps);
 
     await waitFor(() => {
       expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -201,8 +226,6 @@ describe("WhiteboardChatPanel", () => {
   });
 
   it("shows spinner when generating is true", async () => {
-    const user = userEvent.setup();
-
     vi.mocked(global.fetch)
       .mockResolvedValueOnce({
         ok: true,
@@ -226,7 +249,7 @@ describe("WhiteboardChatPanel", () => {
         }),
       } as Response);
 
-    render(<WhiteboardChatPanel {...defaultProps} />);
+    const { user } = await renderAndExpand(defaultProps);
 
     await waitFor(() => {
       expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -245,8 +268,6 @@ describe("WhiteboardChatPanel", () => {
   });
 
   it("shows toast and removes optimistic message on 409 conflict", async () => {
-    const user = userEvent.setup();
-
     vi.mocked(global.fetch)
       .mockResolvedValueOnce({
         ok: true,
@@ -258,7 +279,7 @@ describe("WhiteboardChatPanel", () => {
         json: async () => ({ error: "Diagram generation in progress" }),
       } as Response);
 
-    render(<WhiteboardChatPanel {...defaultProps} />);
+    const { user } = await renderAndExpand(defaultProps);
 
     await waitFor(() => {
       expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -343,7 +364,7 @@ describe("WhiteboardChatPanel", () => {
       json: async () => ({ success: true, data: [] }),
     } as Response);
 
-    render(<WhiteboardChatPanel {...defaultProps} featureId={null} />);
+    await renderAndExpand({ ...defaultProps, featureId: null });
 
     await waitFor(() => {
       expect(screen.queryByText(/link this whiteboard to a feature/i)).not.toBeInTheDocument();
@@ -357,8 +378,6 @@ describe("WhiteboardChatPanel", () => {
   });
 
   it("sends message successfully when featureId is null", async () => {
-    const user = userEvent.setup();
-
     vi.mocked(global.fetch)
       .mockResolvedValueOnce({
         ok: true,
@@ -384,7 +403,7 @@ describe("WhiteboardChatPanel", () => {
         }),
       } as Response);
 
-    render(<WhiteboardChatPanel {...defaultProps} featureId={null} />);
+    const { user } = await renderAndExpand({ ...defaultProps, featureId: null });
 
     await waitFor(() => {
       expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -417,8 +436,6 @@ describe("WhiteboardChatPanel", () => {
   });
 
   it("disables input and Send button when generating is true", async () => {
-    const user = userEvent.setup();
-
     vi.mocked(global.fetch)
       .mockResolvedValueOnce({
         ok: true,
@@ -428,7 +445,7 @@ describe("WhiteboardChatPanel", () => {
         new Promise(() => {}) // Never resolves to keep generating state
       );
 
-    render(<WhiteboardChatPanel {...defaultProps} />);
+    const { user } = await renderAndExpand(defaultProps);
 
     await waitFor(() => {
       expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -457,25 +474,26 @@ describe("WhiteboardChatPanel", () => {
 
     render(<WhiteboardChatPanel {...defaultProps} />);
 
+    // Panel starts collapsed — expand it first
+    const expandButton = screen.getByTitle("Expand chat");
+    await user.click(expandButton);
+
     await waitFor(() => {
       expect(screen.getByText("Chat")).toBeInTheDocument();
     });
 
-    // Find and click collapse button
+    // Now collapse it
     const collapseButton = screen.getByTitle("Collapse chat");
     await user.click(collapseButton);
 
-    // Panel should collapse - only expand button visible
     await waitFor(() => {
       expect(screen.queryByText("Chat")).not.toBeInTheDocument();
       expect(screen.getByTitle("Expand chat")).toBeInTheDocument();
     });
 
-    // Click expand button
-    const expandButton = screen.getByTitle("Expand chat");
-    await user.click(expandButton);
+    // Expand again
+    await user.click(screen.getByTitle("Expand chat"));
 
-    // Panel should expand again
     await waitFor(() => {
       expect(screen.getByText("Chat")).toBeInTheDocument();
     });
@@ -490,7 +508,7 @@ describe("WhiteboardChatPanel", () => {
         json: async () => ({ success: true, data: [] }),
       } as Response);
 
-      render(<WhiteboardChatPanel {...defaultProps} />);
+      await renderAndExpand(defaultProps);
 
       await waitFor(() => {
         expect(screen.getByTestId("mic-button")).toBeInTheDocument();
@@ -505,7 +523,7 @@ describe("WhiteboardChatPanel", () => {
         json: async () => ({ success: true, data: [] }),
       } as Response);
 
-      render(<WhiteboardChatPanel {...defaultProps} />);
+      await renderAndExpand(defaultProps);
 
       await waitFor(() => {
         expect(screen.getByText(/no messages yet/i)).toBeInTheDocument();
@@ -523,7 +541,7 @@ describe("WhiteboardChatPanel", () => {
         json: async () => ({ success: true, data: [] }),
       } as Response);
 
-      render(<WhiteboardChatPanel {...defaultProps} />);
+      await renderAndExpand(defaultProps);
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText("Listening...")).toBeInTheDocument();
@@ -534,8 +552,6 @@ describe("WhiteboardChatPanel", () => {
       mockSpeechRecognition.isSupported = true;
       mockSpeechRecognition.isListening = false;
 
-      const user = userEvent.setup();
-
       vi.mocked(global.fetch)
         .mockResolvedValueOnce({
           ok: true,
@@ -545,7 +561,7 @@ describe("WhiteboardChatPanel", () => {
           new Promise(() => {}) // Never resolves to keep generating state
         );
 
-      render(<WhiteboardChatPanel {...defaultProps} />);
+      const { user } = await renderAndExpand(defaultProps);
 
       await waitFor(() => {
         expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -570,7 +586,7 @@ describe("WhiteboardChatPanel", () => {
         json: async () => ({ success: true, data: [] }),
       } as Response);
 
-      render(<WhiteboardChatPanel {...defaultProps} />);
+      await renderAndExpand(defaultProps);
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/ask to update the diagram/i)).toBeInTheDocument();
@@ -595,7 +611,7 @@ describe("WhiteboardChatPanel", () => {
         json: async () => ({ success: true, data: [] }),
       } as Response);
 
-      render(<WhiteboardChatPanel {...defaultProps} />);
+      await renderAndExpand(defaultProps);
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/ask to update the diagram/i)).toBeInTheDocument();
@@ -619,7 +635,7 @@ describe("WhiteboardChatPanel", () => {
         json: async () => ({ success: true, data: [] }),
       } as Response);
 
-      render(<WhiteboardChatPanel {...defaultProps} />);
+      await renderAndExpand(defaultProps);
 
       await waitFor(() => {
         expect(screen.getByRole("combobox")).toBeInTheDocument();
@@ -653,8 +669,7 @@ describe("WhiteboardChatPanel", () => {
           }),
         } as Response);
 
-      const user = userEvent.setup();
-      render(<WhiteboardChatPanel {...defaultProps} />);
+      const { user } = await renderAndExpand(defaultProps);
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/ask to update the diagram/i)).toBeInTheDocument();
@@ -764,12 +779,7 @@ describe("WhiteboardChatPanel", () => {
         json: async () => ({ success: true, data: [] }),
       } as Response);
 
-      render(
-        <WhiteboardChatPanel
-          {...defaultProps}
-          excalidrawAPI={mockExcalidrawWithUpdate as any}
-        />
-      );
+      await renderAndExpand({ ...defaultProps, excalidrawAPI: mockExcalidrawWithUpdate });
 
       await waitFor(() => {
         expect(screen.getByRole("combobox")).toBeInTheDocument();
@@ -786,12 +796,7 @@ describe("WhiteboardChatPanel", () => {
         json: async () => ({ success: true, data: [] }),
       } as Response);
 
-      render(
-        <WhiteboardChatPanel
-          {...defaultProps}
-          excalidrawAPI={null}
-        />
-      );
+      await renderAndExpand({ ...defaultProps, excalidrawAPI: null });
 
       await waitFor(() => {
         expect(screen.getByRole("combobox")).toBeInTheDocument();
@@ -971,7 +976,7 @@ describe("WhiteboardChatPanel", () => {
           json: async () => ({ success: true, data: [] }),
         } as Response);
 
-        render(<WhiteboardChatPanel {...defaultProps} />);
+        await renderAndExpand(defaultProps);
 
         await waitFor(() => {
           expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -988,7 +993,7 @@ describe("WhiteboardChatPanel", () => {
           json: async () => ({ success: true, data: [] }),
         } as Response);
 
-        render(<WhiteboardChatPanel {...defaultProps} />);
+        await renderAndExpand(defaultProps);
 
         await waitFor(() => {
           expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -1006,7 +1011,7 @@ describe("WhiteboardChatPanel", () => {
           json: async () => ({ success: true, data: [] }),
         } as Response);
 
-        render(<WhiteboardChatPanel {...defaultProps} />);
+        await renderAndExpand(defaultProps);
 
         await waitFor(() => {
           expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -1033,7 +1038,7 @@ describe("WhiteboardChatPanel", () => {
           json: async () => ({ success: true, data: [] }),
         } as Response);
 
-        render(<WhiteboardChatPanel {...defaultProps} />);
+        await renderAndExpand(defaultProps);
 
         await waitFor(() => {
           expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -1066,7 +1071,7 @@ describe("WhiteboardChatPanel", () => {
           json: async () => ({ success: true, data: [] }),
         } as Response);
 
-        const { unmount } = render(<WhiteboardChatPanel {...defaultProps} />);
+        const { unmount } = await renderAndExpand(defaultProps);
 
         await waitFor(() => {
           expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -1083,7 +1088,7 @@ describe("WhiteboardChatPanel", () => {
           json: async () => ({ success: true, data: [] }),
         } as Response);
 
-        render(<WhiteboardChatPanel {...defaultProps} whiteboardId="wb-456" />);
+        await renderAndExpand({ ...defaultProps, whiteboardId: "wb-456" });
 
         await waitFor(() => {
           expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -1118,7 +1123,7 @@ describe("WhiteboardChatPanel", () => {
           json: async () => ({ success: true, data: [] }),
         } as Response);
 
-        render(<WhiteboardChatPanel {...defaultProps} />);
+        await renderAndExpand(defaultProps);
 
         await waitFor(() => {
           expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -1152,7 +1157,7 @@ describe("WhiteboardChatPanel", () => {
           json: async () => ({ success: true, data: [] }),
         } as Response);
 
-        render(<WhiteboardChatPanel {...defaultProps} />);
+        await renderAndExpand(defaultProps);
 
         await waitFor(() => {
           expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -1173,7 +1178,7 @@ describe("WhiteboardChatPanel", () => {
           json: async () => ({ success: true, data: [] }),
         } as Response);
 
-        const { container } = render(<WhiteboardChatPanel {...defaultProps} />);
+        const { container } = await renderAndExpand(defaultProps);
 
         await waitFor(() => {
           expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -1222,12 +1227,7 @@ describe("WhiteboardChatPanel", () => {
 
         const onReloadWhiteboard = vi.fn().mockResolvedValue(undefined);
 
-        render(
-          <WhiteboardChatPanel
-            {...defaultProps}
-            onReloadWhiteboard={onReloadWhiteboard}
-          />
-        );
+        await renderAndExpand({ ...defaultProps, onReloadWhiteboard });
 
         await waitFor(() => {
           expect(mockPusher.subscribe).toHaveBeenCalled();
@@ -1274,7 +1274,7 @@ describe("WhiteboardChatPanel", () => {
           json: async () => ({ success: true, data: [] }),
         } as Response);
 
-        render(<WhiteboardChatPanel {...defaultProps} />);
+        await renderAndExpand(defaultProps);
 
         await waitFor(() => {
           expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
@@ -1311,9 +1311,8 @@ describe("WhiteboardChatPanel", () => {
         render(<WhiteboardChatPanel {...defaultProps} />);
       }).not.toThrow();
 
-      await waitFor(() => {
-        expect(screen.queryByText(/no messages yet/i)).toBeInTheDocument();
-      });
+      // Panel starts collapsed — no panel content visible yet, but no crash
+      expect(screen.getByTitle("Expand chat")).toBeInTheDocument();
 
       // No subscription should be attempted
       expect(mockPusherClient.subscribe).not.toHaveBeenCalled();
