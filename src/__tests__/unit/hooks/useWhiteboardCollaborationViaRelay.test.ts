@@ -52,6 +52,7 @@ vi.mock("socket.io-client", () => ({
 const mockExcalidrawAPI = {
   updateScene: vi.fn(),
   getSceneElements: vi.fn(() => []),
+  getSceneElementsIncludingDeleted: vi.fn(() => []),
   getAppState: vi.fn(() => ({ viewBackgroundColor: "#ffffff" })),
 };
 
@@ -264,6 +265,9 @@ describe("useWhiteboardCollaborationViaRelay", () => {
       mockExcalidrawAPI.getSceneElements.mockReturnValue([
         { id: "a", version: 1 },
       ] as never);
+      mockExcalidrawAPI.getSceneElementsIncludingDeleted.mockReturnValue([
+        { id: "a", version: 1 },
+      ] as never);
 
       act(() => {
         currentSocket.__fire("elements:update", {
@@ -282,6 +286,9 @@ describe("useWhiteboardCollaborationViaRelay", () => {
       await mountAndConnect();
 
       mockExcalidrawAPI.getSceneElements.mockReturnValue([
+        { id: "a", version: 5 },
+      ] as never);
+      mockExcalidrawAPI.getSceneElementsIncludingDeleted.mockReturnValue([
         { id: "a", version: 5 },
       ] as never);
 
