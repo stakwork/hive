@@ -200,6 +200,12 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               workspaceSlugs={chatWorkspaceSlugs}
               githubLogin={githubLogin}
               orgId={orgId}
+              // Tell the agent what the user is looking at right now so
+              // tool calls default to the right canvas scope (e.g.
+              // "add a note here" while drilled into an initiative
+              // sub-canvas should target that initiative, not root).
+              currentCanvasRef={searchParams.get("canvas") ?? ""}
+              selectedNodeId={selectedNode?.id ?? null}
             />
           </div>
         )}
