@@ -6,6 +6,7 @@ import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import { buildWorkspaceConfigs, fetchConceptsForWorkspaces } from "@/lib/ai/workspaceConfig";
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
+import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import { validateUserBelongsToOrg } from "@/services/workspace";
 import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
@@ -177,6 +178,7 @@ export async function POST(request: NextRequest) {
           ...tools,
           ...buildConnectionTools(orgId, userOrResponse.id),
           ...buildCanvasTools(orgId),
+          ...buildInitiativeTools(orgId, userOrResponse.id),
         };
       }
 
