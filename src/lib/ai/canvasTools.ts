@@ -26,7 +26,10 @@ import {
 } from "@/lib/canvas";
 
 /**
- * Canvas tools for the Connections-page agent.
+ * Canvas tools for the org canvas agent (default `/org/[githubLogin]`
+ * route). The system prompt threads the user's current canvas scope
+ * + selected node into the agent so tool calls default to the right
+ * `ref`; see `getCanvasScopeHint` in `@/lib/constants/prompt`.
  *
  * Three tools in increasing granularity:
  *
