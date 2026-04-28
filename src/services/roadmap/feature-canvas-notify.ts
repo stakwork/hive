@@ -102,3 +102,108 @@ export async function notifyFeatureCanvasRefresh(
     console.error("[feature-canvas-notify] failed to notify:", e);
   }
 }
+
+/**
+ * Fan-out helper for **feature reassignment** (canvas drag-and-drop or
+ * any other path that changes `milestoneId` / `initiativeId`). Differs
+ * from `notifyFeatureCanvasRefresh` in two ways:
+ *
+ *   1. It accepts an explicit `before` snapshot — both the previous
+ *      milestone/initiative ids — so we can refresh the canvas the
+ *      feature **left** in addition to the canvas it landed on.
+ *   2. It always touches root (initiative-card progress rollups shift
+ *      whenever a feature changes milestone-membership).
+ *
+ * Every milestone/initiative the feature was attached to before AND
+ * after the change is included; root is always added; duplicates are
+ * de-duped by `notifyCanvasesUpdatedByLogin`. Initiative-only and
+ * loose-feature canvases are covered too: when a feature lives on
+ * `milestoneTimelineProjector` (initiative set, milestone null) or
+ * `workspaceProjector` (both null), reassigning it on/off a milestone
+ * changes which projector emits it — we refresh those scopes too.
+ *
+ * Errors are swallowed for the same resilience reason as
+ * `notifyFeatureCanvasRefresh`.
+ */
+export async function notifyFeatureReassignmentRefresh(
+  featureId: string,
+  before: {
+    milestoneId: string | null;
+    initiativeId: string | null;
+    workspaceId: string;
+  },
+  detail?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    // Pull the post-change feature + its org login. The org login is
+    // resolved through the **workspace** because either anchor pair
+    // (initiative or milestone+initiative) might be null after the
+    // change — workspace is the only always-present link to an org.
+    const feature = await db.feature.findUnique({
+      where: { id: featureId },
+      select: {
+        milestoneId: true,
+        initiativeId: true,
+        workspaceId: true,
+        workspace: {
+          select: {
+            sourceControlOrg: { select: { githubLogin: true } },
+          },
+        },
+        milestone: { select: { initiativeId: true } },
+      },
+    });
+    const githubLogin = feature?.workspace?.sourceControlOrg?.githubLogin;
+    if (!githubLogin) {
+      // No org → no org canvas to refresh. Quiet no-op.
+      return;
+    }
+
+    const refs = new Set<string>();
+    // Root: initiative-card progress rollups always shift.
+    refs.add("");
+
+    // Workspace canvas projects loose features (no initiative/milestone).
+    // Add it whenever the feature was, or now is, loose so the
+    // workspaceProjector pulls a fresh list. Cheaper to always add than
+    // to reason about every case — the projector will simply not find
+    // it on the workspace canvas if neither side was loose.
+    refs.add(`ws:${before.workspaceId}`);
+    if (feature.workspaceId !== before.workspaceId) {
+      // Defensive: workspace reassignment isn't supported by the canvas
+      // UI today, but the helper is general — cover it for free.
+      refs.add(`ws:${feature.workspaceId}`);
+    }
+
+    // Both anchored initiatives (before + after) project initiative-loose
+    // and host milestone timelines. Either could change.
+    if (before.initiativeId) {
+      refs.add(`initiative:${before.initiativeId}`);
+    }
+    if (feature.initiativeId) {
+      refs.add(`initiative:${feature.initiativeId}`);
+    }
+
+    // Both milestones (before + after) need their feature column lists
+    // re-projected. Either may be null when the feature is being
+    // attached to / detached from a milestone.
+    if (before.milestoneId) {
+      refs.add(`milestone:${before.milestoneId}`);
+    }
+    if (feature.milestoneId) {
+      refs.add(`milestone:${feature.milestoneId}`);
+    }
+
+    await notifyCanvasesUpdatedByLogin(
+      githubLogin,
+      Array.from(refs),
+      "feature-reassigned",
+      { featureId, ...(detail ?? {}) },
+    );
+  } catch (e) {
+    console.error(
+      "[feature-canvas-notify] notifyFeatureReassignmentRefresh failed:",
+      e,
+    );
+  }
+}

@@ -70,6 +70,30 @@ function isLiveId(id: string): boolean {
 const DB_CREATING_CATEGORIES = new Set(["initiative", "milestone", "feature"]);
 
 /**
+ * Authored category ids the user can drop onto a live container card
+ * (workspace / initiative / milestone) to move the authored node from
+ * the current canvas blob to the target's sub-canvas blob. Stays in
+ * lock-step with `canvas-categories.ts` — anything authored (not
+ * `agentWritable: false`) and free-floating belongs here. `text` is
+ * the library's base type used by the `+ Text` menu pick; including
+ * it lets users shuffle plain text cards too.
+ *
+ * Module-level so the arrays' identity stays stable across renders
+ * and `useCallback` deps don't churn.
+ */
+const AUTHORED_DROPPABLE_CATEGORIES = ["note", "decision", "text"];
+
+/**
+ * Live container categories that own a sub-canvas an authored node
+ * can be moved into. Mirrors the `ref: liveId` projections in
+ * `src/lib/canvas/projectors.ts` — workspaces, initiatives, and
+ * milestones each drill. Features intentionally don't (no `ref` in
+ * v1 per the projector); attempting to move an authored node onto a
+ * feature would have nowhere to land.
+ */
+const LIVE_CONTAINER_CATEGORIES = ["workspace", "initiative", "milestone"];
+
+/**
  * Full-screen interactive system-canvas background for the Connections page.
  *
  * Single-owner state model: this component owns both the root canvas and a
@@ -1501,6 +1525,243 @@ export function OrgCanvasBackground({
     [applyMutation],
   );
 
+  // -------------------------------------------------------------------
+  // Drop-on-node — two pairings today:
+  //
+  //   1. **Feature → Milestone (DB reassign).** Drag a `feature:` card
+  //      onto a `milestone:` card to PATCH `Feature.milestoneId`. The
+  //      server derives `initiativeId` and fans out CANVAS_UPDATED on
+  //      every affected canvas; the projector re-emits the feature on
+  //      the most-specific scope.
+  //
+  //   2. **Authored callout → Live container (canvas move).** Drag a
+  //      `note` / `decision` / base-`text` node onto a `workspace:` /
+  //      `initiative:` / `milestone:` card to MOVE the authored node
+  //      from its current canvas blob onto the target's sub-canvas
+  //      blob. Lets the user accumulate loose thoughts on the root
+  //      canvas, then organize them under the workspace / initiative /
+  //      milestone they belong to without retyping. The note's text +
+  //      category + customData survive the move (it's a blob-to-blob
+  //      hop, not a DB write).
+  //
+  // Library-side hooks: `canDropNodeOn` is the per-frame predicate
+  // during drag (must be cheap — id-prefix sniff + category check, no
+  // fetches, no setState); `onNodeDrop` is the release handler. The
+  // library snaps the source back to its pre-drag position before
+  // firing `onNodeDrop`, so we never commit a canvas-position update.
+  //
+  // Self-drop is filtered library-side, but we keep an explicit
+  // `source.id !== target.id` line for defensive readability.
+  //
+  // The lookup arrays (`AUTHORED_DROPPABLE_CATEGORIES`,
+  // `LIVE_CONTAINER_CATEGORIES`) live at module scope above so
+  // `useCallback` deps stay stable.
+  // -------------------------------------------------------------------
+  const canDropNodeOn = useCallback(
+    (sources: CanvasNode[], target: CanvasNode): boolean => {
+      const source = sources[0];
+      if (!source || source.id === target.id) return false;
+
+      // Pairing 1: feature → milestone (DB reassign).
+      if (
+        source.category === "feature" &&
+        target.category === "milestone" &&
+        source.id.startsWith("feature:") &&
+        target.id.startsWith("milestone:")
+      ) {
+        return true;
+      }
+
+      // Pairing 2: authored callout → live container (canvas move).
+      // The source must be authored (not a live id) and the target
+      // must be a container with a sub-canvas to land in.
+      if (
+        AUTHORED_DROPPABLE_CATEGORIES.includes(source.category ?? "") &&
+        !isLiveId(source.id) &&
+        LIVE_CONTAINER_CATEGORIES.includes(target.category ?? "") &&
+        isLiveId(target.id)
+      ) {
+        return true;
+      }
+
+      return false;
+    },
+    [],
+  );
+
+  /**
+   * Fire-and-forget PATCH that reassigns a feature to a different
+   * milestone. The server derives the new `initiativeId` from the
+   * milestone (via the coherence rule we shipped in `updateFeature`)
+   * and fans out `CANVAS_UPDATED` on every affected canvas (root,
+   * both initiatives, both milestones, workspace). We don't refetch
+   * locally — the Pusher fan-out handler in this component already
+   * pulls fresh data for whichever canvas the user is currently
+   * looking at, plus root.
+   *
+   * On error we surface to the console; the user's drop visually
+   * snapped back (the library handled that), so there's no stuck
+   * "ghost card" to clean up. A toast belongs here when we add the
+   * global toast system.
+   */
+  const reassignFeatureToMilestone = useCallback(
+    async (featureId: string, milestoneId: string) => {
+      try {
+        const res = await fetch(`/api/features/${featureId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ milestoneId }),
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          console.error(
+            "[OrgCanvasBackground] reassign feature failed",
+            res.status,
+            detail,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] reassign feature threw",
+          err,
+        );
+      }
+    },
+    [],
+  );
+
+  /**
+   * Move an authored node from the source canvas blob to the target's
+   * sub-canvas blob. Two side-effects:
+   *
+   *   1. **Remove** the node from `currentRef` (the canvas the user is
+   *      looking at). Routes through `applyMutation` so it's
+   *      optimistic, undoable via Ctrl-Z, and rides the standard
+   *      autosave flush that already covers in-flight blob writes.
+   *
+   *   2. **Add** the node to the target's sub-canvas via a direct
+   *      read-modify-write PUT. The target canvas may not be cached
+   *      locally (the user might never have drilled into it), so
+   *      we use the same pattern as `savePositionForLiveId`: fetch
+   *      the latest blob, append the node, PUT it back. The PUT
+   *      emits `CANVAS_UPDATED` server-side; both canvases (the one
+   *      we removed from + the one we added to) refetch via the
+   *      existing Pusher handler, so the user sees the move land on
+   *      the target if they drill in.
+   *
+   * The node's `id` / `text` / `category` / `customData` survive the
+   * move verbatim. Position is preserved as-is from the source — the
+   * user can drag it once they drill into the target. Resetting `(x,
+   * y)` to a projector-default would be marginally nicer but means
+   * computing each target's empty-canvas anchor; not worth the
+   * complexity for v1.
+   *
+   * On a server-side write failure, the source-canvas remove already
+   * landed locally. The autosave will eventually flush that removal,
+   * leaving the user with a "lost note" if the target write also
+   * failed. Acceptable for v1 (Ctrl-Z undoes the source removal); a
+   * proper rollback would need the consumer-side undo stack to track
+   * cross-canvas paired actions, which is overkill here.
+   */
+  const moveAuthoredNodeToCanvas = useCallback(
+    async (
+      sourceCanvasRef: string | undefined,
+      sourceNode: CanvasNode,
+      targetCanvasRef: string,
+    ) => {
+      // Step 1: optimistic remove from source canvas. `applyMutation`
+      // also stamps `lastActionRef` so Ctrl-Z restores the node to
+      // its pre-move position on the source canvas.
+      applyMutation(sourceCanvasRef, (c) => removeNode(c, sourceNode.id));
+
+      // Step 2: read-modify-write add to target canvas. Direct fetch
+      // (not `applyMutation`) because the target canvas may not be
+      // in `subCanvases` yet — the user could be on root and dropping
+      // onto an initiative they've never drilled into.
+      try {
+        const url = `/api/orgs/${githubLogin}/canvas/${encodeURIComponent(targetCanvasRef)}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.error(
+            "[OrgCanvasBackground] moveAuthoredNodeToCanvas read failed",
+            res.status,
+          );
+          return;
+        }
+        const body = await res.json();
+        const data: CanvasData = body.data ?? { nodes: [], edges: [] };
+        const existingNodes = data.nodes ?? [];
+        // De-dupe by id in case the user did rapid double-drops or a
+        // Pusher refresh interleaved — same id should never appear
+        // twice on a single canvas.
+        const nextNodes: CanvasNode[] = [
+          ...existingNodes.filter((n) => n.id !== sourceNode.id),
+          sourceNode,
+        ];
+        const putRes = await fetch(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: { ...data, nodes: nextNodes } }),
+        });
+        if (!putRes.ok) {
+          console.error(
+            "[OrgCanvasBackground] moveAuthoredNodeToCanvas write failed",
+            putRes.status,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] moveAuthoredNodeToCanvas threw",
+          err,
+        );
+      }
+    },
+    [applyMutation, githubLogin],
+  );
+
+  const handleNodeDrop = useCallback(
+    (
+      sources: CanvasNode[],
+      target: CanvasNode,
+      ctx: { canvasRef: string | undefined },
+    ) => {
+      const source = sources[0];
+      if (!source) return;
+
+      // Pairing 1: feature → milestone (DB reassign). The predicate
+      // ran during drag, but a mid-drag agent edit could have changed
+      // the categories — re-check defensively, then derive the DB
+      // ids from the canvas-id strings.
+      if (
+        source.category === "feature" &&
+        target.category === "milestone" &&
+        source.id.startsWith("feature:") &&
+        target.id.startsWith("milestone:")
+      ) {
+        const featureId = source.id.slice("feature:".length);
+        const milestoneId = target.id.slice("milestone:".length);
+        void reassignFeatureToMilestone(featureId, milestoneId);
+        return;
+      }
+
+      // Pairing 2: authored callout → live container (canvas move).
+      // The target's `ref` is the sub-canvas to move the authored
+      // node into. Defensive: if the projector ever stops emitting a
+      // `ref` on a container we'd silently no-op, which is the right
+      // failure mode (better than writing to an unknown scope).
+      if (
+        AUTHORED_DROPPABLE_CATEGORIES.includes(source.category ?? "") &&
+        !isLiveId(source.id) &&
+        LIVE_CONTAINER_CATEGORIES.includes(target.category ?? "") &&
+        target.ref
+      ) {
+        void moveAuthoredNodeToCanvas(ctx.canvasRef, source, target.ref);
+        return;
+      }
+    },
+    [reassignFeatureToMilestone, moveAuthoredNodeToCanvas],
+  );
+
   const canvasForRender = useMemo<CanvasData>(
     () => root ?? { nodes: [], edges: [] },
     [root],
@@ -1652,6 +1913,8 @@ export function OrgCanvasBackground({
           onEdgeAdd={handleEdgeAdd}
           onEdgeUpdate={handleEdgeUpdate}
           onEdgeDelete={handleEdgeDelete}
+          canDropNodeOn={canDropNodeOn}
+          onNodeDrop={handleNodeDrop}
           nodeContextMenu={nodeContextMenu}
           renderAddNodeButton={renderAddNodeButton}
           rootLabel={orgName || githubLogin}
