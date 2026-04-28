@@ -86,7 +86,17 @@ export async function POST(request: NextRequest) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { messages, workspaceSlug, workspaceSlugs, orgId } = body;
+    const {
+      messages,
+      workspaceSlug,
+      workspaceSlugs,
+      orgId,
+      // Canvas page hints — only meaningful with `orgId`. Both
+      // optional; the prompt builder injects them as a small "current
+      // scope" section when present.
+      currentCanvasRef,
+      selectedNodeId,
+    } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       throw validationError("Missing required parameter: messages (must be a non-empty array)");
@@ -158,7 +168,18 @@ export async function POST(request: NextRequest) {
         features.push(...(conceptsByWorkspace[ws.slug] || []));
       }
 
-      prefixMessages = getMultiWorkspacePrefixMessages(workspaceConfigs, conceptsByWorkspace, [], orgId);
+      prefixMessages = getMultiWorkspacePrefixMessages(
+        workspaceConfigs,
+        conceptsByWorkspace,
+        [],
+        orgId,
+        {
+          currentCanvasRef:
+            typeof currentCanvasRef === "string" ? currentCanvasRef : undefined,
+          selectedNodeId:
+            typeof selectedNodeId === "string" ? selectedNodeId : undefined,
+        },
+      );
       primarySwarmUrl = workspaceConfigs[0].swarmUrl;
       primarySwarmApiKey = workspaceConfigs[0].swarmApiKey;
     } else {
