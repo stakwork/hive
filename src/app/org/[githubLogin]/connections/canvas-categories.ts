@@ -210,15 +210,18 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
   {
     id: "feature",
     agentDescription:
-      "a feature on a milestone sub-canvas — column header card with a task progress counter",
-    // Features are projected from the DB (id prefix `feature:`) on
-    // the milestone sub-canvas. Created from the workspace plan page,
-    // not from the canvas — neither the agent nor a `+` menu pick
-    // creates these.
+      "a feature card — milestone column on a milestone sub-canvas, free-floating elsewhere",
+    // Features are projected from the DB (id prefix `feature:`). They
+    // can be created by the user from any canvas via the `+` menu (the
+    // dialog hits POST /api/features); the agent must never author
+    // one. Where the new feature renders is the "most specific place"
+    // by anchor: milestoneId set → milestone sub-canvas; only
+    // initiativeId set → initiative sub-canvas; neither set →
+    // workspace sub-canvas.
     agentWritable: false,
-    userCreatable: false,
+    userCreatable: true,
     promptGuidance:
-      "Projected from the `Feature` Prisma model on a milestone sub-canvas. One column per linked feature, with that feature's tasks stacked beneath it. The agent must NEVER create or edit features; they're created from the workspace plan page. Annotation-only.",
+      "Projected from the `Feature` Prisma model. On a milestone sub-canvas it appears as a column header with tasks stacked beneath it; on workspace and initiative sub-canvases it appears as a free-floating card. Humans create features via the canvas `+` menu (which opens a dialog) or the workspace plan page; the agent must NEVER create or edit them. Annotation-only.",
     customDataKeys: [
       {
         key: "status",
@@ -349,6 +352,13 @@ export function buildPromptCategorySection(): string {
  *   - `milestone` is only offered on an initiative's sub-canvas. A
  *     milestone always belongs to a specific initiative, so anywhere
  *     else has no parent to attach to.
+ *   - `feature` is allowed on every scope (root, workspace,
+ *     initiative, milestone). Where the new feature renders depends
+ *     on which anchors the dialog captured — see the "most specific
+ *     place wins" rule in `services/roadmap/createFeature` and the
+ *     workspace/initiative/milestone projectors. The dialog itself
+ *     is responsible for resolving the right `(workspaceId,
+ *     initiativeId, milestoneId)` triple per scope.
  *   - Authored categories (`note`, `decision`, plus the library's
  *     base `text` kind) are always allowed. They're free annotation
  *     primitives with no DB anchor.
@@ -365,7 +375,12 @@ export function categoryAllowedOnScope(
   if (categoryId === "initiative") return ref === "";
   if (categoryId === "milestone") return ref.startsWith("initiative:");
 
-  // Default: allow. Covers `note`, `decision`, future authored
-  // categories, and any opaque scope we don't recognize.
+  // `feature` falls through to the default branch — allowed on every
+  // scope. The dialog handles per-scope field locking (workspace
+  // dropdown locked on `ws:`, initiative locked on `initiative:`,
+  // both locked on `milestone:`, both required on root).
+
+  // Default: allow. Covers `feature`, `note`, `decision`, future
+  // authored categories, and any opaque scope we don't recognize.
   return true;
 }
