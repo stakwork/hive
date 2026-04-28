@@ -246,27 +246,30 @@ describe("GET /api/cron/pod-scaler", () => {
         workspaceId: workspace.id,
         poolApiKey: "test-pool-key",
         minimumVms: 1,
-      } as any);
+        minimumPods: 1,
+      });
 
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
-      // Create a fresh task that satisfies ALL filters
-      await db.task.create({
-        data: {
-          title: "Fresh coordinator task",
-          workspaceId: workspace.id,
-          createdById: user.id,
-          updatedById: user.id,
-          status: "TODO",
-          systemAssigneeType: "TASK_COORDINATOR",
-          deleted: false,
-          archived: false,
-          sourceType: "SYSTEM",
-          // createdAt must be > 5 min ago (lt: fiveMinutesAgo means created before fiveMinutesAgo)
-          createdAt: tenMinutesAgo,
-          updatedAt: tenMinutesAgo,
-        },
-      });
+      // Create two fresh tasks so rawDemand=2 > floor=1 → triggers scale-up
+      for (let i = 0; i < 2; i++) {
+        await db.task.create({
+          data: {
+            title: `Fresh coordinator task ${i}`,
+            workspaceId: workspace.id,
+            createdById: user.id,
+            updatedById: user.id,
+            status: "TODO",
+            systemAssigneeType: "TASK_COORDINATOR",
+            deleted: false,
+            archived: false,
+            sourceType: "SYSTEM",
+            // createdAt must be > 5 min ago (lt: fiveMinutesAgo means created before fiveMinutesAgo)
+            createdAt: tenMinutesAgo,
+            updatedAt: tenMinutesAgo,
+          },
+        });
+      }
 
       const request = createMockRequest("Bearer test-scaler-secret");
       const response = await GET(request);
@@ -275,7 +278,7 @@ describe("GET /api/cron/pod-scaler", () => {
       const body = await response.json();
       expect(body.success).toBe(true);
       expect(body.swarmsProcessed).toBe(1);
-      // Fresh task is counted → overQueuedCount = 1 → targetVms > floor → scale up
+      // Two fresh tasks → overQueuedCount=2, rawDemand=2 > floor=1 → scale up
       expect(body.swarmsScaled).toBe(1);
       // Pool Manager was called to scale up
       expect(mockFetch).toHaveBeenCalled();
