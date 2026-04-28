@@ -16,6 +16,7 @@ import {
   type CanvasEdge,
   type CanvasNode,
   type EdgeUpdate,
+  type NodeContextMenuConfig,
   type NodeUpdate,
   type SystemCanvasHandle,
 } from "system-canvas-react";
@@ -1292,6 +1293,47 @@ export function OrgCanvasBackground({
   };
 
   /**
+   * Right-click menu on canvas nodes. Today this is a stub: a single
+   * "Promote to Plan…" item that matches notes only and does nothing
+   * on select beyond logging. The surface is in place so we can land
+   * the per-scope behavior atomically once the team settles the open
+   * questions in `docs/plans/org-plans.md`.
+   *
+   * `useMemo` keeps the config object reference stable across renders;
+   * `<SystemCanvas>` reads it on every render to filter items per node,
+   * but a fresh config every render would force the library's internal
+   * effects to re-bind unnecessarily.
+   */
+  const nodeContextMenu = useMemo<NodeContextMenuConfig>(
+    () => ({
+      items: [
+        {
+          id: "promote-to-plan",
+          label: "Promote to Plan…",
+          // Only notes are promotable. Other categories (decisions,
+          // projected live nodes, base text/file/link/group) get no
+          // menu — the library treats "zero matched items" as "don't
+          // open", so right-clicking them is a silent no-op.
+          match: { categories: ["note"] },
+        },
+      ],
+      onSelect: (itemId, node, ctx) => {
+        // Stub. Full per-scope behavior is pending the open questions
+        // in `docs/plans/org-plans.md` (which scopes project Plans,
+        // schema decisions on `Feature.initiativeId`, dialog UX). The
+        // log makes it easy to verify the wiring is correct in dev.
+        console.log("[OrgCanvasBackground] context menu select", {
+          itemId,
+          nodeId: node.id,
+          category: node.category,
+          canvasRef: ctx.canvasRef,
+        });
+      },
+    }),
+    [],
+  );
+
+  /**
    * Replace the library's default FAB container so we can hoist the
    * button above the chat-input bar. The library would otherwise place it
    * at `bottom:16` of the canvas, which sits underneath the chat input's
@@ -1375,6 +1417,7 @@ export function OrgCanvasBackground({
           onEdgeAdd={handleEdgeAdd}
           onEdgeUpdate={handleEdgeUpdate}
           onEdgeDelete={handleEdgeDelete}
+          nodeContextMenu={nodeContextMenu}
           renderAddNodeButton={renderAddNodeButton}
           rootLabel={orgName || githubLogin}
         />
