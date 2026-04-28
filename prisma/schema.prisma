@@ -710,6 +710,7 @@ model Feature {
   planUpdatedAt       DateTime?             @map("plan_updated_at")
   model               String?
   milestoneId         String?               @map("milestone_id")
+  initiativeId        String?               @map("initiative_id")
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
   assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])
@@ -717,6 +718,7 @@ model Feature {
   updatedBy           User                  @relation("FeatureUpdater", fields: [updatedById], references: [id])
   workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   milestone           Milestone?            @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  initiative          Initiative?           @relation(fields: [initiativeId], references: [id], onDelete: SetNull)
   notifications       NotificationTrigger[]
   phases              Phase[]
   scorerDigest        ScorerDigest?
@@ -732,6 +734,7 @@ model Feature {
   @@index([status])
   @@index([deleted])
   @@index([milestoneId])
+  @@index([initiativeId])
   @@map("features")
 }
 
@@ -1532,6 +1535,7 @@ model Initiative {
   org         SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
   assignee    User?            @relation("InitiativeAssignee", fields: [assigneeId], references: [id])
   milestones  Milestone[]
+  features    Feature[]
 
   @@index([orgId])
   @@map("initiatives")

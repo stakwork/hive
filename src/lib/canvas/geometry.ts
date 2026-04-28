@@ -117,3 +117,26 @@ export const TASK_STACK_Y0 = FEATURE_ROW_Y + FEATURE_H + 24;
 
 /** Vertical step between adjacent tasks in the same column. */
 export const TASK_STACK_STEP_Y = TASK_H + 12;
+
+// ---------------------------------------------------------------------------
+// Loose-feature placement — features created on workspace or initiative
+// canvases (no milestone). On those scopes a feature isn't part of a
+// task-stack column, just a card in a row. Sits well below the
+// scope's primary band (repos on workspace, milestones on initiative)
+// so the default first-render lands in empty space rather than colliding
+// with the projected primaries.
+//
+// The user can drag freely after creation (position overlay survives);
+// these defaults only matter for the very first render before the user
+// has interacted with the card.
+// ---------------------------------------------------------------------------
+
+/** Loose-feature row on a workspace's sub-canvas — under the repo row. */
+export const LOOSE_FEATURE_WS_ROW_Y = REPO_ROW_Y + CARD_H + 80;
+export const LOOSE_FEATURE_WS_ROW_X0 = 40;
+export const LOOSE_FEATURE_WS_ROW_STEP = FEATURE_W + ROW_GAP;
+
+/** Loose-feature row on an initiative's sub-canvas — under the milestone timeline. */
+export const LOOSE_FEATURE_INIT_ROW_Y = MILESTONE_ROW_Y + MILESTONE_H + 80;
+export const LOOSE_FEATURE_INIT_ROW_X0 = 40;
+export const LOOSE_FEATURE_INIT_ROW_STEP = FEATURE_W + ROW_GAP;

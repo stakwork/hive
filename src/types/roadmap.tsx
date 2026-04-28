@@ -375,6 +375,21 @@ export interface CreateFeatureRequest {
   assigneeId?: string;
   isFastTrack?: boolean;
   model?: string | null;
+  /**
+   * Optional initiative anchor for canvas-created features. When set,
+   * the feature shows up on the initiative's sub-canvas. If
+   * `milestoneId` is also set, it must match `milestone.initiativeId`
+   * (the service derives/validates this so projectors can trust the
+   * pair).
+   */
+  initiativeId?: string | null;
+  /**
+   * Optional milestone anchor. When set, the feature shows up on the
+   * milestone's sub-canvas (existing behavior). The service auto-fills
+   * `initiativeId` from `milestone.initiativeId` if it's not provided
+   * by the caller.
+   */
+  milestoneId?: string | null;
 }
 
 export interface UpdateFeatureRequest {
