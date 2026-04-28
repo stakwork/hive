@@ -92,10 +92,13 @@ export async function POST(request: NextRequest) {
       workspaceSlug,
       workspaceSlugs,
       orgId,
-      // Canvas page hints — only meaningful with `orgId`. Both
+      // Canvas page hints — only meaningful with `orgId`. All
       // optional; the prompt builder injects them as a small "current
-      // scope" section when present.
+      // scope" section when present. The breadcrumb is a precomputed
+      // human-readable trail (e.g. "Acme › Auth Refactor") so the
+      // agent can refer to the scope by name in replies.
       currentCanvasRef,
+      currentCanvasBreadcrumb,
       selectedNodeId,
     } = body;
 
@@ -187,6 +190,10 @@ export async function POST(request: NextRequest) {
         {
           currentCanvasRef:
             typeof currentCanvasRef === "string" ? currentCanvasRef : undefined,
+          currentCanvasBreadcrumb:
+            typeof currentCanvasBreadcrumb === "string"
+              ? currentCanvasBreadcrumb
+              : undefined,
           selectedNodeId:
             typeof selectedNodeId === "string" ? selectedNodeId : undefined,
         },
