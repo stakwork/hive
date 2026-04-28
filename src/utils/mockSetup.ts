@@ -430,6 +430,42 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
     where: { githubLogin: MOCK_ORG_LOGIN },
   });
   if (existing) {
+    // Backfill: users who signed in before the SourceControlToken
+    // seed landed have the org but no token, which 404s the
+    // org-canvas ask flow. Cheap upsert on every login.
+    try {
+      const encryptionService = EncryptionService.getInstance();
+      const encryptedToken = JSON.stringify(
+        encryptionService.encryptField("access_token", `gho_mock_org_token`)
+      );
+      const encryptedRefresh = JSON.stringify(
+        encryptionService.encryptField("refresh_token", `ghr_mock_org_refresh`)
+      );
+      await db.sourceControlToken.upsert({
+        where: {
+          userId_sourceControlOrgId: {
+            userId,
+            sourceControlOrgId: existing.id,
+          },
+        },
+        create: {
+          userId,
+          sourceControlOrgId: existing.id,
+          token: encryptedToken,
+          refreshToken: encryptedRefresh,
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+          scopes: ["repo", "user", "read:org"],
+        },
+        update: {
+          token: encryptedToken,
+          refreshToken: encryptedRefresh,
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+        },
+      });
+    } catch (error) {
+      console.error("[MockSetup] Failed to backfill mock-org SourceControlToken:", error);
+    }
+
     const orgWorkspaces = await db.workspace.findMany({
       where: {
         sourceControlOrgId: existing.id,
@@ -451,10 +487,25 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
   }
 
   let encryptedPoolApiKey: string | null = null;
+  let encryptedOrgGitHubToken: string | null = null;
+  let encryptedOrgGitHubRefreshToken: string | null = null;
   try {
     const encryptionService = EncryptionService.getInstance();
     encryptedPoolApiKey = JSON.stringify(
       encryptionService.encryptField("poolApiKey", "mock-org-pool-api-key")
+    );
+    // Mock GitHub App tokens for the (user × mock-org) pair. The
+    // org-canvas chat (`/api/ask/quick`) calls
+    // `getGithubUsernameAndPAT(userId, slug)` for every workspace it
+    // queries, which requires a `SourceControlToken` row scoped to
+    // the workspace's `SourceControlOrg`. Without this, the ask flow
+    // 404s before reaching the LLM. Token value is opaque — local
+    // canvas tools never call the GitHub API with it.
+    encryptedOrgGitHubToken = JSON.stringify(
+      encryptionService.encryptField("access_token", `gho_mock_org_token`)
+    );
+    encryptedOrgGitHubRefreshToken = JSON.stringify(
+      encryptionService.encryptField("refresh_token", `ghr_mock_org_refresh`)
     );
   } catch {
     // Encryption not required for mock
@@ -471,6 +522,21 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
         avatarUrl: `https://avatars.githubusercontent.com/u/999001?v=4`,
       },
     });
+
+    // 1b. Token for the (user × mock-org) pair. See encryption block
+    // above for why this exists.
+    if (encryptedOrgGitHubToken) {
+      await tx.sourceControlToken.create({
+        data: {
+          userId,
+          sourceControlOrgId: org.id,
+          token: encryptedOrgGitHubToken,
+          refreshToken: encryptedOrgGitHubRefreshToken,
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+          scopes: ["repo", "user", "read:org"],
+        },
+      });
+    }
 
     // 2. Create two team-member User records
     const member1 = await tx.user.create({

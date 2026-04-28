@@ -1,0 +1,295 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Send, Share2, X } from "lucide-react";
+import { toast } from "sonner";
+import { useShallow } from "zustand/react/shallow";
+import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
+import { Button } from "@/components/ui/button";
+import { SidebarChatMessage } from "./SidebarChatMessage";
+import {
+  useCanvasChatStore,
+  type CanvasChatMessage,
+  type ToolCall,
+} from "../_state/canvasChatStore";
+import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+
+/**
+ * Org-canvas sidebar chat. Renders the active conversation from the
+ * canvas chat store; never owns chat state itself. Mounting and
+ * unmounting (e.g. when the user switches to the Details tab) is
+ * cheap and idempotent — the store survives.
+ *
+ * The conversation's *lifecycle* (creation, share preload, auto-
+ * save) is owned by `OrgCanvasView`. This component only handles:
+ *   - rendering the message scroll
+ *   - sending new messages (via `useSendCanvasChatMessage`)
+ *   - the Share + Clear header actions
+ *
+ * Reuses `ToolCallIndicator` and `useStreamProcessor` from the
+ * dashboard chat unchanged. Bubbles are rendered by the local
+ * `SidebarChatMessage` instead — the dashboard's `ChatMessage`
+ * centers everything, which doesn't fit a narrow sidebar where we
+ * want user messages right-aligned and assistant messages left-
+ * aligned.
+ */
+interface SidebarChatProps {
+  /** Slug of the org. Used by the Share button to scope the POST. */
+  githubLogin: string;
+}
+
+export function SidebarChat({ githubLogin }: SidebarChatProps) {
+  // ─── Selectors — narrow on purpose ─────────────────────────────────
+  // Each selector returns a primitive or a stable reference so
+  // streaming text-deltas don't trigger re-renders in selectors that
+  // didn't change. Never select the whole conversation object — the
+  // header's "Share" button only needs `messages.length > 0`, the
+  // message list needs `messages` + `activeToolCalls` + `isLoading`.
+  const activeId = useCanvasChatStore((s) => s.activeConversationId);
+  const messages = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.messages : undefined) ?? EMPTY_MESSAGES,
+  );
+  const isLoading = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.isLoading : false) ?? false,
+  );
+  const activeToolCalls = useCanvasChatStore(
+    (s) =>
+      (activeId ? s.conversations[activeId]?.activeToolCalls : undefined) ??
+      EMPTY_TOOL_CALLS,
+  );
+
+  const sendMessage = useSendCanvasChatMessage();
+  const inputClearRef = useRef<(() => void) | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Scroll the messages container (not the page) to the bottom on
+  // updates. `scrollTop = scrollHeight` instead of `scrollIntoView`
+  // so the page never gets dragged when a streaming delta lands.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages, activeToolCalls]);
+
+  const handleSend = async (content: string, clearInput: () => void) => {
+    if (!activeId) return;
+    inputClearRef.current = clearInput;
+    await sendMessage({
+      conversationId: activeId,
+      content,
+      onResponseStart: () => clearInput(),
+    });
+  };
+
+  const handleClear = () => {
+    useCanvasChatStore.getState().clearActiveConversation();
+  };
+
+  const handleShare = async () => {
+    if (!activeId) return;
+    if (messages.length === 0) return;
+    try {
+      const firstUserMessage = messages.find(
+        (m) => m.role === "user" && m.content.trim(),
+      );
+      const title = firstUserMessage
+        ? firstUserMessage.content.slice(0, 50) +
+          (firstUserMessage.content.length > 50 ? "..." : "")
+        : "Shared Conversation";
+
+      const res = await fetch(`/api/org/${githubLogin}/chat/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          title,
+          // The endpoint requires this field; we have nothing to
+          // share. `[]` is truthy in JS so the falsy guard accepts it.
+          followUpQuestions: [],
+          source: "org-canvas",
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to share conversation");
+      }
+      const data = await res.json();
+      // Use the forking URL shape `?chat=<shareId>` rather than the
+      // standalone read-only viewer at `/chat/shared/<shareId>` that
+      // the server returns. The viewer page still works for anyone
+      // who lands on it directly.
+      const url = `${window.location.origin}/org/${githubLogin}?chat=${data.shareId}`;
+      await navigator.clipboard.writeText(url);
+      toast.success("Share link copied to clipboard!");
+    } catch (error) {
+      console.error("Error sharing conversation:", error);
+      toast.error("Failed to share conversation", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  };
+
+  const hasMessages = messages.length > 0;
+
+  return (
+    <div className="flex h-full flex-col min-h-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b">
+        <span className="text-xs font-medium text-muted-foreground">Agent</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={handleShare}
+            disabled={!hasMessages}
+            title="Copy share link"
+            className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={!hasMessages}
+            title="Clear conversation"
+            className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+        {!hasMessages && activeToolCalls.length === 0 && (
+          <div className="h-full flex items-center justify-center px-4 text-center text-muted-foreground text-sm">
+            Ask the agent about anything on this canvas.
+          </div>
+        )}
+        <div className="space-y-2">
+          {messages.map((message, index) => {
+            const isLastMessage = index === messages.length - 1;
+            const isMessageStreaming = isLastMessage && isLoading;
+            return (
+              <div key={message.id}>
+                <SidebarChatMessage
+                  message={message}
+                  isStreaming={isMessageStreaming}
+                />
+                <MessageArtifacts artifactIds={message.artifactIds} />
+              </div>
+            );
+          })}
+          {activeToolCalls.length > 0 && (
+            <ToolCallIndicator toolCalls={activeToolCalls} />
+          )}
+        </div>
+      </div>
+
+      <div className="border-t p-2">
+        <SidebarChatInput onSend={handleSend} disabled={isLoading} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Stable empty-array references so the selectors above return the
+ * same reference when the active conversation is missing — Zustand's
+ * `Object.is` bail-out skips re-renders on identity equality.
+ */
+const EMPTY_MESSAGES: CanvasChatMessage[] = [];
+const EMPTY_TOOL_CALLS: ToolCall[] = [];
+
+/**
+ * Forward-compat dispatch point for rich agent artifacts. Selects
+ * `state.artifacts` by id and renders nothing in PR 1. When the
+ * first artifact type ships, this becomes the single switch arm —
+ * no fork through `SidebarChatMessage` required.
+ *
+ * Uses `useShallow` to derive the artifact slice — without it, every
+ * store update (incl. text-deltas during streaming) would create a
+ * fresh array and force a re-render here. With it, this component
+ * only re-renders when *its* artifacts change.
+ */
+function MessageArtifacts({ artifactIds }: { artifactIds?: string[] }) {
+  const ids = artifactIds ?? EMPTY_ARTIFACT_IDS;
+  const _artifacts = useCanvasChatStore(
+    useShallow((s) => ids.map((id) => s.artifacts[id]).filter(Boolean)),
+  );
+  if (ids.length === 0) return null;
+  // Renders nothing in PR 1 — when the first artifact type ships,
+  // dispatch on `_artifacts[i].type` here.
+  return null;
+}
+
+const EMPTY_ARTIFACT_IDS: string[] = [];
+
+interface SidebarChatInputProps {
+  onSend: (message: string, clearInput: () => void) => Promise<void>;
+  disabled?: boolean;
+}
+
+/**
+ * Minimal chat input for the sidebar. Auto-growing textarea (1–6
+ * rows), Enter-to-send, Shift+Enter for newline. Intentionally
+ * separate from `DashboardChat/ChatInput` — the prop surface
+ * diverges far enough that sharing would require ugly conditionals
+ * (no image upload, no workspace pills, no `+ workspace` button).
+ */
+function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
+  const [input, setInput] = useState("");
+  const [rows, setRows] = useState(1);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!input) {
+      setRows(1);
+      return;
+    }
+    const lineCount = (input.match(/\n/g) || []).length + 1;
+    setRows(Math.max(1, Math.min(6, lineCount)));
+  }, [input]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || disabled) return;
+    const message = input.trim();
+    await onSend(message, () => {
+      setInput("");
+      inputRef.current?.focus();
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void handleSubmit(e as unknown as React.FormEvent);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex items-end gap-2">
+      <div className="relative flex-1 min-w-0">
+        <textarea
+          ref={inputRef}
+          placeholder="Ask the agent…"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+          rows={rows}
+          className={`w-full px-3 py-2 pr-10 rounded-xl bg-background border border-border/50 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${
+            disabled ? "opacity-50 cursor-not-allowed" : ""
+          }`}
+        />
+        <Button
+          type="submit"
+          size="icon"
+          disabled={!input.trim() || disabled}
+          className="absolute right-1 bottom-1 h-7 w-7 rounded-full"
+        >
+          <Send className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    </form>
+  );
+}
