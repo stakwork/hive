@@ -8,7 +8,10 @@ import type { WorkspaceConfig } from "@/lib/ai/workspaceConfig";
  *      (otherwise canvas tools aren't loaded and the hint would be noise),
  *   2. names the current canvas ref so the agent defaults tool calls
  *      there, and
- *   3. includes the selected node id when one is provided.
+ *   3. includes the selected node id when one is provided, and
+ *   4. surfaces a human-readable breadcrumb (org name on root, parent ›
+ *      child on a sub-canvas) so the agent can refer to the scope by
+ *      name in replies instead of echoing an opaque ref id.
  */
 
 const makeWs = (slug: string): WorkspaceConfig =>
@@ -105,5 +108,53 @@ describe("canvas scope hint in system prompt", () => {
     const sys = systemContent(messages);
     expect(sys).toContain("Current canvas scope");
     expect(sys).toContain("`ws:zzz`");
+  });
+
+  it("includes the breadcrumb name on the root canvas", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      { currentCanvasRef: "", currentCanvasBreadcrumb: "Acme" },
+    );
+    const sys = systemContent(messages);
+    expect(sys).toContain("**Acme**");
+    expect(sys).toContain("the org root canvas");
+    // The agent should be told to refer to the scope by name, not ref id.
+    expect(sys).toContain('use the name "Acme"');
+  });
+
+  it("includes a parent › child breadcrumb on a sub-canvas", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      {
+        currentCanvasRef: "initiative:abc",
+        currentCanvasBreadcrumb: "Acme › Auth Refactor",
+      },
+    );
+    const sys = systemContent(messages);
+    expect(sys).toContain("**Acme › Auth Refactor**");
+    // Ref id is still surfaced for tool calls.
+    expect(sys).toContain("`initiative:abc` sub-canvas");
+    expect(sys).toContain('ref: "initiative:abc"');
+    expect(sys).toContain('use the name "Acme › Auth Refactor"');
+  });
+
+  it("falls back to ref-only when no breadcrumb is provided", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      { currentCanvasRef: "initiative:abc" },
+    );
+    const sys = systemContent(messages);
+    expect(sys).toContain("`initiative:abc` sub-canvas");
+    // No name-based instruction when there's no name.
+    expect(sys).not.toContain('use the name "');
   });
 });
