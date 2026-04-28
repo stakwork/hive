@@ -12,6 +12,7 @@ import {
   updateEdge,
   updateNode,
   type AddNodeButtonRenderProps,
+  type BreadcrumbEntry,
   type CanvasData,
   type CanvasEdge,
   type CanvasNode,
@@ -204,6 +205,18 @@ interface OrgCanvasBackgroundProps {
    * `category`, `text`, and `customData` without a follow-up lookup.
    */
   onNodeSelect?: (node: CanvasNode | null) => void;
+  /**
+   * Fires when the user navigates between canvases. Receives a human
+   * readable breadcrumb trail joined with ` › ` — e.g. `"Acme"` on
+   * root, `"Acme › Auth Refactor"` on a sub-canvas. Used by the chat
+   * overlay to tell the agent which scope the user is on by name (the
+   * ref id flows separately via `currentCanvasRef`).
+   *
+   * Today we only nest one level deep, so the trail is always 1 or 2
+   * entries. If/when we support multi-level drill-in, we'll need to
+   * track the parent stack here — see the TODO in `handleBreadcrumbClick`.
+   */
+  onCanvasBreadcrumbChange?: (breadcrumb: string) => void;
 }
 
 export function OrgCanvasBackground({
@@ -212,6 +225,7 @@ export function OrgCanvasBackground({
   orgName,
   onHiddenChange,
   onNodeSelect,
+  onCanvasBreadcrumbChange,
 }: OrgCanvasBackgroundProps) {
   const [root, setRoot] = useState<CanvasData | null>(null);
   const [subCanvases, setSubCanvases] = useState<Record<string, CanvasData>>({});
@@ -313,21 +327,19 @@ export function OrgCanvasBackground({
   );
 
   /**
-   * Library callback: user drilled into a sub-canvas. Update both
-   * local state (gates the HiddenLivePill, scope-aware `+` menu, etc.)
-   * and the URL (so the deep link is shareable + browser refresh
-   * lands the user on the same scope).
+   * Library callback: user drilled into a sub-canvas. Scope state
+   * (`currentRef`, URL) is now driven by `onBreadcrumbsChange` —
+   * which also covers back-navigation and arbitrary-depth breadcrumb
+   * clicks — so this handler only owns the side-effect of clearing
+   * the selected node. The previously-selected node may not even
+   * exist on the new scope; the parent right-panel reverts to its
+   * default body.
    */
   const handleSystemCanvasNavigate = useCallback(
-    (ref: string) => {
-      setCurrentRef(ref);
-      writeCanvasUrlParam(ref);
-      // Drilling into a sub-canvas (or popping back) drops the
-      // selection — the previously-selected node may not even exist on
-      // the new scope. Parent right-panel reverts to its default body.
+    (_ref: string) => {
       onNodeSelect?.(null);
     },
-    [writeCanvasUrlParam, onNodeSelect],
+    [onNodeSelect],
   );
 
   /**
@@ -348,21 +360,24 @@ export function OrgCanvasBackground({
   /**
    * Library callback: user clicked a breadcrumb. The library does NOT
    * fire `onNavigate` for back-navigation (only for drill-in), so we
-   * have to track scope changes here too. `index === 0` means the
-   * root crumb; we don't currently surface multi-level deep canvases,
-   * so any non-zero index from `onBreadcrumbClick` is a no-op today
-   * (kept simple; the day we have nested sub-canvases this needs to
-   * walk a stored breadcrumb stack to recover the intermediate ref).
+   * have to track scope changes here too. The lib has already
+   * truncated its internal stack by the time it calls us; we mirror
+   * that into our own state via `onBreadcrumbsChange` (see
+   * `handleBreadcrumbsChange` below) — that path is the single source
+   * of truth for `currentRef` and the URL across both drill-in and
+   * back-out.
+   *
+   * What this handler still owns: dropping the selected node when
+   * scope changes. The previously-selected node may not exist on the
+   * new scope (selection survives `setCurrentRef`, but the parent
+   * right-panel should reset to its default body when the user
+   * navigates away).
    */
   const handleBreadcrumbClick = useCallback(
-    (index: number) => {
-      if (index === 0) {
-        setCurrentRef("");
-        writeCanvasUrlParam("");
-        onNodeSelect?.(null);
-      }
+    (_index: number) => {
+      onNodeSelect?.(null);
     },
-    [writeCanvasUrlParam, onNodeSelect],
+    [onNodeSelect],
   );
 
   /**
@@ -408,6 +423,48 @@ export function OrgCanvasBackground({
   useEffect(() => {
     currentRefRef.current = currentRef;
   }, [currentRef]);
+
+  // -------------------------------------------------------------------
+  // Single source of truth for canvas scope: the library's breadcrumb
+  // trail.
+  //
+  // The lib emits this on every navigation event — drill-in,
+  // breadcrumb click, programmatic `zoomIntoNode`, `navigateBack` —
+  // for any depth (root → initiative → milestone today, deeper if we
+  // nest further). We mirror three things off it:
+  //
+  //   1. `currentRef`: the deepest entry's ref, or `""` for root.
+  //      Drives the HiddenLivePill, scope-aware `+` menu, etc.
+  //   2. The `?canvas=` URL param: mirrors `currentRef` so deep links
+  //      survive refresh and tab-shares.
+  //   3. The breadcrumb string forwarded to the chat overlay so the
+  //      AI agent can name the user's scope ("Acme › Auth Refactor ›
+  //      M1") rather than echoing an opaque ref id.
+  //
+  // The library always emits at least the root entry on initial
+  // mount, so subscribers don't need to wait for navigation.
+  // -------------------------------------------------------------------
+  const handleBreadcrumbsChange = useCallback(
+    (entries: BreadcrumbEntry[]) => {
+      // Last entry's ref is the deepest scope. The root entry has no
+      // `ref` field, so an empty trail (or root-only trail) collapses
+      // to `""` — which is our convention for "on root."
+      const deepest = entries[entries.length - 1]?.ref ?? "";
+      // Only touch state / URL when the scope actually changed. The
+      // lib emits this on every render of its navigation hook; the
+      // breadcrumb-string forward below is cheap enough to run every
+      // time, but skipping the URL/state writes here matters for the
+      // initial deep-link path: the lib fires the root-only trail
+      // before its async drill-in completes, and writing `""` would
+      // briefly clobber the user's `?canvas=` param.
+      setCurrentRef((prev) => (prev === deepest ? prev : deepest));
+      if (currentRefRef.current !== deepest) {
+        writeCanvasUrlParam(deepest);
+      }
+      onCanvasBreadcrumbChange?.(entries.map((e) => e.label).join(" › "));
+    },
+    [writeCanvasUrlParam, onCanvasBreadcrumbChange],
+  );
 
   // Map keyed by ROOT_KEY or sub-canvas ref -> latest data waiting to flush.
   const dirtyRef = useRef<DirtyMap>(new Map());
@@ -1410,6 +1467,7 @@ export function OrgCanvasBackground({
           onResolveCanvas={onResolveCanvas}
           onNavigate={handleSystemCanvasNavigate}
           onBreadcrumbClick={handleBreadcrumbClick}
+          onBreadcrumbsChange={handleBreadcrumbsChange}
           onNodeClick={handleNodeClick}
           onNodeAdd={handleNodeAdd}
           onNodeUpdate={handleNodeUpdate}
