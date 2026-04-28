@@ -414,7 +414,19 @@ export async function createFeature(
 }
 
 /**
- * Updates a feature
+ * Updates a feature.
+ *
+ * `initiativeId` / `milestoneId` follow the same coherence rule as
+ * `createFeature`: when `milestoneId` is provided, the service derives
+ * `initiativeId` from the milestone (mirror, never the user-supplied
+ * value, when the two disagree). Setting `milestoneId: null` detaches
+ * the feature from a milestone but preserves any `initiativeId` the
+ * caller passes (or leaves the existing one in place if omitted).
+ *
+ * The drag-and-drop "assign feature to milestone" UI on the org canvas
+ * only sends `milestoneId` — `initiativeId` is derived server-side so
+ * the projectors' invariant `feature.initiativeId === milestone.initiativeId`
+ * is never violated.
  */
 export async function updateFeature(
   featureId: string,
@@ -429,6 +441,21 @@ export async function updateFeature(
     architecture?: string | null;
     personas?: string[];
     model?: string | null;
+    /**
+     * Reassign the feature to (or detach from) a milestone. `null`
+     * detaches; a string reassigns. When set, the service derives
+     * `initiativeId` from the milestone — any caller-provided
+     * `initiativeId` must match or be omitted.
+     */
+    milestoneId?: string | null;
+    /**
+     * Reassign the feature to (or detach from) an initiative directly.
+     * Mostly redundant with `milestoneId` (which derives this), but
+     * exposed so callers can detach a milestone yet keep the
+     * initiative anchor (`milestoneId: null, initiativeId: "x"`) or
+     * move an unmilestoned feature between initiatives.
+     */
+    initiativeId?: string | null;
   }
 ) {
   // Validates access and throws specific "Feature not found" or "Access denied" errors
@@ -487,6 +514,89 @@ export async function updateFeature(
   }
   if (data.model !== undefined) {
     updateData.model = data.model;
+  }
+
+  // Canvas anchors: same coherence rule as createFeature — when
+  // milestoneId is set, derive initiativeId from the milestone (and
+  // reject mismatch with caller-supplied initiativeId). Detaching from
+  // a milestone (`milestoneId: null`) leaves initiativeId alone unless
+  // the caller separately overrides it. Both fields are skipped
+  // entirely when neither is in `data`, so existing callers that don't
+  // touch canvas anchors are unaffected.
+  if (data.milestoneId !== undefined || data.initiativeId !== undefined) {
+    // Pull the feature's current workspace + anchors so we can validate
+    // the new pairing. We need workspace.sourceControlOrgId for the
+    // org-coherence check, and the existing milestone/initiative refs
+    // so the patch can omit either field without losing the other.
+    const existing = await db.feature.findUnique({
+      where: { id: featureId },
+      select: {
+        workspaceId: true,
+        initiativeId: true,
+        milestoneId: true,
+        workspace: { select: { sourceControlOrgId: true } },
+      },
+    });
+    if (!existing) {
+      // validateFeatureAccess already verified existence, but Prisma
+      // could race with a concurrent delete. Surface as a "not found".
+      throw new Error("Feature not found");
+    }
+
+    let resolvedInitiativeId: string | null =
+      data.initiativeId !== undefined
+        ? data.initiativeId
+        : existing.initiativeId;
+    let resolvedMilestoneId: string | null =
+      data.milestoneId !== undefined ? data.milestoneId : existing.milestoneId;
+
+    if (resolvedMilestoneId) {
+      const milestone = await db.milestone.findFirst({
+        where: { id: resolvedMilestoneId },
+        select: {
+          id: true,
+          initiativeId: true,
+          initiative: { select: { orgId: true } },
+        },
+      });
+      if (!milestone) {
+        throw new Error("Milestone not found");
+      }
+      // When the caller explicitly passed both, they must match. When
+      // the caller passed only a milestoneId, we silently take the
+      // milestone's initiative (the canvas drag-drop path).
+      if (
+        data.initiativeId !== undefined &&
+        data.initiativeId !== null &&
+        data.initiativeId !== milestone.initiativeId
+      ) {
+        throw new Error(
+          "initiativeId does not match the milestone's parent initiative",
+        );
+      }
+      resolvedInitiativeId = milestone.initiativeId;
+    }
+
+    if (resolvedInitiativeId) {
+      const initiative = await db.initiative.findFirst({
+        where: { id: resolvedInitiativeId },
+        select: { id: true, orgId: true },
+      });
+      if (!initiative) {
+        throw new Error("Initiative not found");
+      }
+      if (
+        existing.workspace.sourceControlOrgId &&
+        existing.workspace.sourceControlOrgId !== initiative.orgId
+      ) {
+        throw new Error(
+          "Initiative belongs to a different org than the workspace",
+        );
+      }
+    }
+
+    updateData.initiativeId = resolvedInitiativeId;
+    updateData.milestoneId = resolvedMilestoneId;
   }
 
   // Stamp planUpdatedAt only when user explicitly edits plan content
