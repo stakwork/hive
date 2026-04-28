@@ -264,6 +264,15 @@ export async function createFeature(
     personas?: string[];
     isFastTrack?: boolean;
     model?: string | null;
+    /**
+     * Optional canvas anchors. When `milestoneId` is provided, the
+     * service looks up the milestone and uses its `initiativeId` —
+     * any caller-provided `initiativeId` must match (or be omitted).
+     * `initiativeId` alone is also fine (loose feature on an
+     * initiative's sub-canvas, no milestone yet).
+     */
+    initiativeId?: string | null;
+    milestoneId?: string | null;
   }
 ) {
   const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
@@ -299,6 +308,60 @@ export async function createFeature(
     }
   }
 
+  // Canvas anchors: derive a coherent (initiativeId, milestoneId) pair.
+  //   - milestoneId set      → derive initiativeId from milestone; reject
+  //                            mismatch with caller-supplied initiativeId.
+  //   - initiativeId only    → must belong to the same org as the workspace.
+  //   - both null            → loose feature; renders on the workspace canvas.
+  // The projectors trust this invariant (no cross-org leakage, no
+  // dangling milestone→wrong-initiative pairs).
+  let resolvedInitiativeId: string | null = data.initiativeId ?? null;
+  let resolvedMilestoneId: string | null = data.milestoneId ?? null;
+
+  if (resolvedMilestoneId) {
+    const milestone = await db.milestone.findFirst({
+      where: { id: resolvedMilestoneId },
+      select: { id: true, initiativeId: true, initiative: { select: { orgId: true } } },
+    });
+    if (!milestone) {
+      throw new Error("Milestone not found");
+    }
+    if (
+      resolvedInitiativeId &&
+      resolvedInitiativeId !== milestone.initiativeId
+    ) {
+      throw new Error(
+        "initiativeId does not match the milestone's parent initiative",
+      );
+    }
+    resolvedInitiativeId = milestone.initiativeId;
+  }
+
+  if (resolvedInitiativeId) {
+    // Org-coherence check: the initiative must belong to the same org
+    // as the feature's workspace. Without this, root-canvas creates
+    // could cross orgs by passing an arbitrary initiativeId.
+    const initiative = await db.initiative.findFirst({
+      where: { id: resolvedInitiativeId },
+      select: { id: true, orgId: true },
+    });
+    if (!initiative) {
+      throw new Error("Initiative not found");
+    }
+    const workspace = await db.workspace.findUnique({
+      where: { id: data.workspaceId },
+      select: { sourceControlOrgId: true },
+    });
+    if (
+      workspace?.sourceControlOrgId &&
+      workspace.sourceControlOrgId !== initiative.orgId
+    ) {
+      throw new Error(
+        "Initiative belongs to a different org than the workspace",
+      );
+    }
+  }
+
   const feature = await db.feature.create({
     data: {
       title: data.title.trim(),
@@ -312,6 +375,8 @@ export async function createFeature(
       assigneeId: data.assigneeId || null,
       isFastTrack: data.isFastTrack ?? false,
       model: data.model ?? null,
+      initiativeId: resolvedInitiativeId,
+      milestoneId: resolvedMilestoneId,
       createdById: userId,
       updatedById: userId,
       phases: {
