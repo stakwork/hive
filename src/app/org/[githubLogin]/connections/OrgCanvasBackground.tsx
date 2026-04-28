@@ -1731,6 +1731,13 @@ export function OrgCanvasBackground({
           pendingAdd?.kind === "feature" ? pendingAdd.canvasRef ?? "" : ""
         }
         prefill={pendingAdd?.kind === "feature" ? pendingAdd.prefill : undefined}
+        // The Promote-to-Feature path sets `sourceNoteId` on `pendingAdd`
+        // to the originating note's id. Threaded through so the dialog
+        // can pre-select fields based on edges incident to that note
+        // (e.g. note → initiative on root pre-selects the initiative).
+        sourceNodeId={
+          pendingAdd?.kind === "feature" ? pendingAdd.sourceNoteId : undefined
+        }
         onSave={handleSaveFeature}
       />
     </>

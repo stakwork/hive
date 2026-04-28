@@ -93,11 +93,46 @@ export interface CreateFeatureCanvasDialogProps {
    * Title is truncated to ~80 chars; description gets the full text.
    */
   prefill?: { title?: string; brief?: string };
+  /**
+   * Optional id of the canvas node that triggered the dialog (typically
+   * a `note` from the right-click "Promote to Feature" path). When set,
+   * the dialog inspects edges incident to this node on the source
+   * canvas and uses them to pre-select fields the scope hasn't already
+   * locked: a `note ↔ initiative:<x>` edge pre-selects initiative `<x>`
+   * on root scope; a `note ↔ ws:<y>` edge pre-selects workspace `<y>`
+   * on any scope where the workspace isn't locked.
+   *
+   * The intuition: if the user has visually linked a note to an
+   * initiative or workspace, promoting that note should treat the
+   * link as an explicit "this belongs to that thing" hint.
+   */
+  sourceNodeId?: string;
   /** Caller-controlled save. Resolve to close the dialog. */
   onSave: (form: FeatureCreateForm) => Promise<void>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch a canvas blob's edges. Returns `[]` on any failure so callers
+ * fall back to the no-pre-selection default cleanly.
+ */
+async function fetchCanvasEdges(
+  githubLogin: string,
+  canvasRef: string,
+): Promise<Array<{ fromNode?: string; toNode?: string }>> {
+  try {
+    const url = canvasRef
+      ? `/api/orgs/${githubLogin}/canvas/${encodeURIComponent(canvasRef)}`
+      : `/api/orgs/${githubLogin}/canvas`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const body = await res.json();
+    return Array.isArray(body?.data?.edges) ? body.data.edges : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Read the root canvas blob to discover which workspaces the user has
@@ -112,33 +147,64 @@ async function fetchLinkedWorkspaceIds(
   githubLogin: string,
   initiativeId: string,
 ): Promise<string[]> {
-  try {
-    const res = await fetch(`/api/orgs/${githubLogin}/canvas`);
-    if (!res.ok) return [];
-    const body = await res.json();
-    const edges: Array<{ fromNode?: string; toNode?: string }> = Array.isArray(
-      body?.data?.edges,
-    )
-      ? body.data.edges
-      : [];
-    const target = `initiative:${initiativeId}`;
-    const linked: string[] = [];
-    for (const e of edges) {
-      const from = e.fromNode ?? "";
-      const to = e.toNode ?? "";
-      // Match either direction; either endpoint may be the workspace.
-      const wsId =
-        from.startsWith("ws:") && to === target
-          ? from.slice("ws:".length)
-          : to.startsWith("ws:") && from === target
-          ? to.slice("ws:".length)
-          : null;
-      if (wsId && !linked.includes(wsId)) linked.push(wsId);
-    }
-    return linked;
-  } catch {
-    return [];
+  const edges = await fetchCanvasEdges(githubLogin, "");
+  const target = `initiative:${initiativeId}`;
+  const linked: string[] = [];
+  for (const e of edges) {
+    const from = e.fromNode ?? "";
+    const to = e.toNode ?? "";
+    // Match either direction; either endpoint may be the workspace.
+    const wsId =
+      from.startsWith("ws:") && to === target
+        ? from.slice("ws:".length)
+        : to.startsWith("ws:") && from === target
+        ? to.slice("ws:".length)
+        : null;
+    if (wsId && !linked.includes(wsId)) linked.push(wsId);
   }
+  return linked;
+}
+
+/**
+ * Read the source canvas's edges to find live entities the source
+ * node (typically a `note`) is connected to. Used by the
+ * Promote-to-Feature path so the dialog can pre-select fields the
+ * user has already implicitly chosen by drawing edges.
+ *
+ * Returned ids are de-duped and ordered by edge appearance (first
+ * edge wins on ties — same stability rule as `fetchLinkedWorkspaceIds`).
+ *
+ * Both arrays are returned so the caller can decide which apply per
+ * scope (e.g. workspace ids are useful on every scope where workspace
+ * isn't locked; initiative ids only matter on root).
+ */
+async function fetchSourceNodeLinks(
+  githubLogin: string,
+  sourceCanvasRef: string,
+  sourceNodeId: string,
+): Promise<{ initiativeIds: string[]; workspaceIds: string[] }> {
+  const edges = await fetchCanvasEdges(githubLogin, sourceCanvasRef);
+  const initiativeIds: string[] = [];
+  const workspaceIds: string[] = [];
+  for (const e of edges) {
+    const from = e.fromNode ?? "";
+    const to = e.toNode ?? "";
+    // Pull out whichever endpoint is the OTHER node — i.e. the live
+    // entity the source is linked to. Skip edges where the source
+    // doesn't appear as either endpoint.
+    let other: string | null = null;
+    if (from === sourceNodeId) other = to;
+    else if (to === sourceNodeId) other = from;
+    if (!other) continue;
+    if (other.startsWith("initiative:")) {
+      const id = other.slice("initiative:".length);
+      if (id && !initiativeIds.includes(id)) initiativeIds.push(id);
+    } else if (other.startsWith("ws:")) {
+      const id = other.slice("ws:".length);
+      if (id && !workspaceIds.includes(id)) workspaceIds.push(id);
+    }
+  }
+  return { initiativeIds, workspaceIds };
 }
 
 /**
@@ -181,6 +247,7 @@ export function CreateFeatureCanvasDialog({
   githubLogin,
   scope,
   prefill,
+  sourceNodeId,
   onSave,
 }: CreateFeatureCanvasDialogProps) {
   const scopeKind = useMemo<
@@ -292,21 +359,74 @@ export function CreateFeatureCanvasDialog({
         effectiveInitiativeId = lockedInitiativeIdFromScope;
       }
 
-      // Edge-aware workspace pre-selection. Only meaningful when the
-      // dialog has an initiative anchor (initiative/milestone scopes).
-      if (effectiveInitiativeId && !lockedWorkspaceId) {
-        const linked = await fetchLinkedWorkspaceIds(
+      // Source-incident edges (Promote-to-Feature path). The source
+      // node — typically a `note` — may already be edged to live
+      // entities on its canvas; treat those edges as explicit
+      // "this belongs to that thing" hints.
+      //   - `note ↔ initiative:<x>` on root → pre-select initiative `<x>`.
+      //   - `note ↔ ws:<y>` on any scope → pre-select workspace `<y>`.
+      // Pre-selections are silent suggestions; user can change them
+      // before saving.
+      let sourceWorkspaceIds: string[] = [];
+      if (sourceNodeId) {
+        const links = await fetchSourceNodeLinks(
           githubLogin,
-          effectiveInitiativeId,
+          scope,
+          sourceNodeId,
         );
         if (cancelled) return;
-        // Filter against the live workspace list — an edge to a
-        // since-deleted workspace shouldn't preselect a phantom id.
+        sourceWorkspaceIds = links.workspaceIds;
+        // On root scope, an edge from the source note to an
+        // initiative pre-selects that initiative AND feeds the
+        // existing initiative-anchored workspace lookup so the user
+        // gets a coherent default for both fields in one go.
+        if (scopeKind === "root" && links.initiativeIds.length > 0) {
+          const liveInit = new Set(normalizedInits.map((i) => i.id));
+          const firstValidInit = links.initiativeIds.find((id) =>
+            liveInit.has(id),
+          );
+          if (firstValidInit) {
+            setInitiativeId(firstValidInit);
+            effectiveInitiativeId = firstValidInit;
+          }
+        }
+      }
+
+      // Edge-aware workspace pre-selection. Two sources, in priority
+      // order:
+      //   1. Workspaces directly edged to the source note (highest
+      //      specificity — the user pointed at "this workspace" with
+      //      a deliberate annotation).
+      //   2. Workspaces edged to the dialog's effective initiative
+      //      on the root canvas (next best — the user said "this
+      //      initiative involves these workspaces"; pick the first).
+      // Skipped when the workspace is locked by scope.
+      if (!lockedWorkspaceId) {
         const liveSet = new Set(normalizedWs.map((w) => w.id));
-        const validLinked = linked.filter((id) => liveSet.has(id));
-        setLinkedWorkspaceIds(validLinked);
-        if (validLinked.length > 0) {
-          setWorkspaceId(validLinked[0]);
+        const validSourceWs = sourceWorkspaceIds.filter((id) => liveSet.has(id));
+
+        let initiativeWs: string[] = [];
+        if (effectiveInitiativeId) {
+          const linked = await fetchLinkedWorkspaceIds(
+            githubLogin,
+            effectiveInitiativeId,
+          );
+          if (cancelled) return;
+          initiativeWs = linked.filter((id) => liveSet.has(id));
+        }
+
+        // De-dupe across the two sources, source-incident first so
+        // direct annotations win the "starred" treatment in the UI.
+        const seen = new Set<string>();
+        const merged: string[] = [];
+        for (const id of [...validSourceWs, ...initiativeWs]) {
+          if (seen.has(id)) continue;
+          seen.add(id);
+          merged.push(id);
+        }
+        setLinkedWorkspaceIds(merged);
+        if (merged.length > 0) {
+          setWorkspaceId(merged[0]);
         }
       }
 
@@ -320,10 +440,12 @@ export function CreateFeatureCanvasDialog({
   }, [
     open,
     githubLogin,
+    scope,
     scopeKind,
     lockedMilestoneId,
     lockedInitiativeIdFromScope,
     lockedWorkspaceId,
+    sourceNodeId,
   ]);
 
   // ─── Derived ────────────────────────────────────────────────────────────────
