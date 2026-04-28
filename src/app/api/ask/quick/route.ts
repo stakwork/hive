@@ -100,6 +100,11 @@ export async function POST(request: NextRequest) {
       currentCanvasRef,
       currentCanvasBreadcrumb,
       selectedNodeId,
+      // When true, skip the post-stream `after()` enrichment block
+      // (follow-up questions + provenance). Surfaces that don't render
+      // either (e.g. the org-canvas SidebarChat) opt in to save tokens
+      // and avoid an unnecessary stakgraph round-trip.
+      skipEnrichments,
     } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -248,6 +253,10 @@ export async function POST(request: NextRequest) {
       });
 
       after(async () => {
+        // Surfaces that don't render follow-ups or provenance opt out
+        // of computing them. Saves a `generateObject` round-trip and
+        // a `${swarmUrl}/gitree/provenance` POST per turn.
+        if (skipEnrichments) return;
         // Generate follow-up questions
         try {
           const followUpSchema = z.object({

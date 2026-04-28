@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { CanvasNode } from "system-canvas";
-import { OrgChat } from "../OrgChat";
 import { ConnectionViewer } from "../connections/ConnectionViewer";
 import { OrgCanvasBackground } from "../connections/OrgCanvasBackground";
 import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
 import type { ConnectionData } from "../connections/types";
 import { OrgRightPanel } from "./OrgRightPanel";
+import type { SidebarMessage } from "./SidebarChat";
 
 /** Strip the `ws:` prefix from a live workspace id. */
 function stripWsPrefix(liveId: string): string {
@@ -24,12 +24,11 @@ interface OrgCanvasViewProps {
 /**
  * The org canvas view — the default `/org/[githubLogin]` route.
  *
- * Three layers:
- *   1. Interactive system-canvas in the background (z-0).
- *   2. Chat overlay column with `pointer-events:none` so the canvas
- *      stays draggable through it; chat input + pills re-enable
- *      interactivity on themselves.
- *   3. Right tabbed panel (z-20, w-80, fixed) — Details / Connections.
+ * Two layers:
+ *   1. Full-bleed system-canvas (`OrgCanvasBackground`) on the left.
+ *   2. Fixed-width tabbed right panel (`OrgRightPanel`) on the right
+ *      with three tabs — **Chat** (`SidebarChat`, default landing
+ *      tab), **Details**, **Connections**.
  *
  * The connection-viewer (when a connection doc is opened) covers the
  * canvas with an opaque overlay; the canvas keeps state behind it.
@@ -52,13 +51,22 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   /**
    * Human-readable breadcrumb for the canvas the user is currently
    * looking at — e.g. `"Acme"` on root or `"Acme › Auth Refactor"`
-   * on a sub-canvas. Sourced from `OrgCanvasBackground`, which has
-   * the canvas data needed to resolve a parent node's display name.
-   * Threaded into the chat so the agent can refer to the scope by
-   * name in replies. Empty string until the canvas reports its first
-   * scope (single render gap on initial mount).
+   * on a sub-canvas. Sourced from `OrgCanvasBackground`. Threaded
+   * into the chat so the agent can refer to the scope by name in
+   * replies.
    */
   const [currentCanvasBreadcrumb, setCurrentCanvasBreadcrumb] = useState("");
+
+  // Optional `?chat=<shareId>` preload — fetches a shared
+  // conversation server-side and seeds the sidebar chat with its
+  // messages. The user gets a forkable conversation; their first new
+  // message creates a fresh `isShared: false` row, leaving the source
+  // share row untouched. Used by the canvas's "copy share link"
+  // action which writes URLs of the shape `/org/<login>?chat=<id>`.
+  const sharedChatId = searchParams.get("chat");
+  const [chatInitialMessages, setChatInitialMessages] =
+    useState<SidebarMessage[] | null>(null);
+  const [chatLoadComplete, setChatLoadComplete] = useState(false);
 
   /**
    * Update the `?c=<slug>` URL param without changing routes. Stay on
@@ -94,6 +102,44 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       .catch(() => setWorkspaces([]))
       .finally(() => setLoadingWorkspaces(false));
   }, [githubLogin]);
+
+  // Resolve the optional `?chat=<shareId>` preload before mounting
+  // the chat. Failure falls through to an empty conversation —
+  // a broken share link shouldn't gate chat usability. Mount-only
+  // effect (deps are stable identifiers); we don't re-fetch when the
+  // user navigates within the canvas.
+  useEffect(() => {
+    if (!sharedChatId) {
+      setChatLoadComplete(true);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/org/${githubLogin}/chat/shared/${sharedChatId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.messages && Array.isArray(data.messages)) {
+          // The DB stores `timestamp` as an ISO string in the JSON
+          // blob; rehydrate to Date so `ChatMessage` (which doesn't
+          // reach into the field today) and any future consumer get
+          // a real Date instance.
+          const seeded: SidebarMessage[] = (data.messages as SidebarMessage[]).map(
+            (m) => ({
+              ...m,
+              timestamp: new Date(m.timestamp as unknown as string),
+            }),
+          );
+          setChatInitialMessages(seeded);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setChatLoadComplete(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sharedChatId, githubLogin]);
 
   const handleHiddenChange = useCallback((entries: HiddenLiveEntry[]) => {
     const ids = new Set(
@@ -176,11 +222,17 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     setCurrentCanvasBreadcrumb(breadcrumb);
   }, []);
 
+  const chatReady =
+    !loadingWorkspaces && hiddenInitialized && chatLoadComplete;
+
   return (
     <div className="relative flex h-full w-full overflow-hidden">
       <OrgCanvasBackground
         githubLogin={githubLogin}
-        rightInset={320}
+        // Inset the canvas's right edge so the wider sidebar (`w-96`
+        // = 384px) doesn't cover canvas chrome. Bumped from 320 with
+        // the chat-as-sidebar move.
+        rightInset={384}
         orgName={orgName}
         onHiddenChange={handleHiddenChange}
         onNodeSelect={handleNodeSelect}
@@ -192,49 +244,31 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         <div className="absolute inset-0 bg-background z-10" aria-hidden />
       )}
 
-      <div className="relative z-20 flex flex-1 mr-80 flex-col h-full pointer-events-none">
-        {activeConnection ? (
-          <div className="pointer-events-auto flex-1 flex flex-col h-full">
-            <ConnectionViewer connection={activeConnection} onBack={handleBack} />
-          </div>
-        ) : loadingWorkspaces || !hiddenInitialized ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-          </div>
-        ) : workspaces.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground">
-            No workspaces available.
-          </div>
-        ) : (
-          // DashboardChat's root is already `pointer-events-none` and
-          // each interactive surface inside (input, pill row,
-          // provenance sidebar) re-enables pointer events on itself.
-          // We must NOT wrap it in `pointer-events-auto`: that would
-          // claim the whole chat column's bounding box and block clicks
-          // on the canvas FAB that sits in the same bottom-right region.
-          <div className="flex-1 flex flex-col justify-end pb-4">
-            <OrgChat
-              workspaceSlugs={chatWorkspaceSlugs}
-              githubLogin={githubLogin}
-              orgId={orgId}
-              // Tell the agent what the user is looking at right now so
-              // tool calls default to the right canvas scope (e.g.
-              // "add a note here" while drilled into an initiative
-              // sub-canvas should target that initiative, not root).
-              // The ref id is the tool-call address; the breadcrumb is
-              // the human-readable name the agent uses in replies.
-              currentCanvasRef={searchParams.get("canvas") ?? ""}
-              currentCanvasBreadcrumb={currentCanvasBreadcrumb}
-              selectedNodeId={selectedNode?.id ?? null}
-            />
-          </div>
-        )}
-      </div>
+      {/* Connection viewer lives in its own z-20 layer (used to be
+          nested inside the chat overlay column). `mr-96` matches the
+          new sidebar width so it doesn't underlap the right panel. */}
+      {activeConnection && (
+        <div className="relative z-20 flex flex-1 mr-96 flex-col h-full">
+          <ConnectionViewer connection={activeConnection} onBack={handleBack} />
+        </div>
+      )}
 
-      <div className="relative z-20 pointer-events-auto">
+      <div className="relative z-20">
         <OrgRightPanel
           githubLogin={githubLogin}
+          orgId={orgId}
           selectedNode={selectedNode}
+          chatWorkspaceSlugs={chatWorkspaceSlugs}
+          // Tell the agent what the user is looking at right now so
+          // tool calls default to the right canvas scope (e.g.
+          // "add a note here" while drilled into an initiative
+          // sub-canvas should target that initiative, not root). The
+          // ref id is the tool-call address; the breadcrumb is the
+          // human-readable name the agent uses in replies.
+          currentCanvasRef={searchParams.get("canvas") ?? ""}
+          currentCanvasBreadcrumb={currentCanvasBreadcrumb}
+          chatReady={chatReady}
+          chatInitialMessages={chatInitialMessages ?? undefined}
           connections={connections}
           activeConnectionId={activeConnection?.id ?? null}
           onConnectionClick={handleConnectionClick}
