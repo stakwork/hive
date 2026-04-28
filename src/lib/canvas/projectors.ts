@@ -18,6 +18,12 @@ import {
   INITIATIVE_ROW_STEP,
   INITIATIVE_ROW_X0,
   INITIATIVE_ROW_Y,
+  LOOSE_FEATURE_INIT_ROW_STEP,
+  LOOSE_FEATURE_INIT_ROW_X0,
+  LOOSE_FEATURE_INIT_ROW_Y,
+  LOOSE_FEATURE_WS_ROW_STEP,
+  LOOSE_FEATURE_WS_ROW_X0,
+  LOOSE_FEATURE_WS_ROW_Y,
   MILESTONE_ROW_STEP,
   MILESTONE_ROW_X0,
   MILESTONE_ROW_Y,
@@ -88,6 +94,72 @@ function defaultTaskPosition(
   return {
     x: FEATURE_ROW_X0 + columnIndex * FEATURE_ROW_STEP + TASK_STACK_X_OFFSET,
     y: TASK_STACK_Y0 + rowIndex * TASK_STACK_STEP_Y,
+  };
+}
+
+/**
+ * Default placement for a loose feature card on a workspace sub-canvas.
+ * "Loose" = the feature has `workspaceId` but no `initiativeId` /
+ * `milestoneId`. Lays out in a horizontal row below the repo row.
+ */
+function defaultLooseFeatureWorkspacePosition(index: number): { x: number; y: number } {
+  return {
+    x: LOOSE_FEATURE_WS_ROW_X0 + index * LOOSE_FEATURE_WS_ROW_STEP,
+    y: LOOSE_FEATURE_WS_ROW_Y,
+  };
+}
+
+/**
+ * Default placement for a loose feature card on an initiative sub-canvas.
+ * "Loose" here = `initiativeId` set but `milestoneId` null. Lays out in
+ * a horizontal row below the milestone timeline.
+ */
+function defaultLooseFeatureInitiativePosition(index: number): { x: number; y: number } {
+  return {
+    x: LOOSE_FEATURE_INIT_ROW_X0 + index * LOOSE_FEATURE_INIT_ROW_STEP,
+    y: LOOSE_FEATURE_INIT_ROW_Y,
+  };
+}
+
+/**
+ * Build a `feature` canvas node from a Feature row. Shared between
+ * `milestoneProjector` (column features), `workspaceProjector` (loose
+ * workspace features), and `milestoneTimelineProjector` (initiative-
+ * anchored, milestone-less features). Centralizing the shape ensures
+ * card slots (`status`, `secondary`, etc.) read identically regardless
+ * of which canvas the feature renders on.
+ *
+ * `pos` is the projector's default placement; the io layer overlays any
+ * user-saved `Canvas.data.positions[feature:<id>]` on top of it.
+ */
+function buildFeatureNode(
+  feature: {
+    id: string;
+    title: string;
+    status: string;
+    workflowStatus: string | null;
+    tasks?: Array<{ status: string }>;
+  },
+  pos: { x: number; y: number },
+): CanvasNode {
+  const taskCount = feature.tasks?.length ?? 0;
+  const taskDone = feature.tasks?.filter((t) => t.status === "DONE").length ?? 0;
+  return {
+    id: `feature:${feature.id}`,
+    type: "text",
+    category: "feature",
+    text: feature.title,
+    x: pos.x,
+    y: pos.y,
+    customData: {
+      status: feature.status,
+      workflowStatus: feature.workflowStatus,
+      taskCount,
+      taskDone,
+      ...(taskCount > 0 && {
+        secondary: `${taskDone}/${taskCount} task${taskCount === 1 ? "" : "s"}`,
+      }),
+    },
   };
 }
 
@@ -198,6 +270,35 @@ export const workspaceProjector: Projector = {
         x: pos.x,
         y: pos.y,
       };
+    });
+
+    // Loose features — workspaceId is set but the feature has no
+    // initiative or milestone anchor. By the "most specific place
+    // wins" rule, these render on the workspace sub-canvas and
+    // nowhere else. Features with an initiativeId are emitted by
+    // the milestone-timeline (initiative scope) or milestone
+    // projector instead — never here, otherwise we'd double-render.
+    const looseFeatures = await db.feature.findMany({
+      where: {
+        workspaceId: workspace.id,
+        initiativeId: null,
+        milestoneId: null,
+        deleted: false,
+      },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        workflowStatus: true,
+        tasks: {
+          where: { deleted: false, archived: false },
+          select: { status: true },
+        },
+      },
+    });
+    looseFeatures.forEach((f, index) => {
+      nodes.push(buildFeatureNode(f, defaultLooseFeatureWorkspacePosition(index)));
     });
 
     return { nodes };
@@ -515,6 +616,35 @@ export const milestoneTimelineProjector: Projector = {
           ...(footerParts.length > 0 && { secondary: footerParts.join(" · ") }),
         },
       };
+    });
+
+    // Loose features on this initiative — `initiativeId` set but
+    // `milestoneId` null. By the "most specific place wins" rule, these
+    // render on the initiative timeline and nowhere else; features
+    // attached to a milestone render on that milestone's sub-canvas
+    // (via `milestoneProjector`) instead.
+    const looseFeatures = await db.feature.findMany({
+      where: {
+        initiativeId: initiative.id,
+        milestoneId: null,
+        deleted: false,
+      },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        workflowStatus: true,
+        tasks: {
+          where: { deleted: false, archived: false },
+          select: { status: true },
+        },
+      },
+    });
+    looseFeatures.forEach((f, index) => {
+      nodes.push(
+        buildFeatureNode(f, defaultLooseFeatureInitiativePosition(index)),
+      );
     });
 
     return { nodes, columns: buildTimelineColumns(new Date()) };
