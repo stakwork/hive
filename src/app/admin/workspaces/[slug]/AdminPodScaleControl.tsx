@@ -16,12 +16,10 @@ export default function AdminPodScaleControl({
   initialMinimumVms,
   initialMinimumPods,
 }: AdminPodScaleControlProps) {
-  const [pendingVms, setPendingVms] = useState(initialMinimumVms);
   const [pendingPods, setPendingPods] = useState(initialMinimumPods ?? 2);
   const [saving, setSaving] = useState(false);
 
-  const hasChanged =
-    pendingVms !== initialMinimumVms || pendingPods !== (initialMinimumPods ?? 2);
+  const hasChanged = pendingPods !== (initialMinimumPods ?? 2);
 
   const handleSave = async () => {
     setSaving(true);
@@ -29,7 +27,7 @@ export default function AdminPodScaleControl({
       const response = await fetch(`/api/w/${slug}/pool/config`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ minimumVms: pendingVms, minimumPods: pendingPods }),
+        body: JSON.stringify({ minimumPods: pendingPods }),
       });
 
       if (!response.ok) {
@@ -47,17 +45,11 @@ export default function AdminPodScaleControl({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-3">
-        <p className="text-sm text-muted-foreground w-36">Minimum Pods</p>
-        <Input
-          type="number"
-          min={1}
-          className="w-20"
-          value={pendingVms}
-          onChange={(e) => setPendingVms(Number(e.target.value))}
-        />
+        <p className="text-sm text-muted-foreground w-36">Deployed Pods</p>
+        <p className="text-sm font-medium">{initialMinimumVms}</p>
       </div>
       <div className="flex items-center gap-3">
-        <p className="text-sm text-muted-foreground w-36">Minimum Pods Floor</p>
+        <p className="text-sm text-muted-foreground w-36">Desired Pod Count</p>
         <Input
           type="number"
           min={1}
