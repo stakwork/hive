@@ -49,6 +49,16 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [loadingConnections, setLoadingConnections] = useState(true);
   const [activeConnection, setActiveConnection] = useState<ConnectionData | null>(null);
   const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(null);
+  /**
+   * Human-readable breadcrumb for the canvas the user is currently
+   * looking at — e.g. `"Acme"` on root or `"Acme › Auth Refactor"`
+   * on a sub-canvas. Sourced from `OrgCanvasBackground`, which has
+   * the canvas data needed to resolve a parent node's display name.
+   * Threaded into the chat so the agent can refer to the scope by
+   * name in replies. Empty string until the canvas reports its first
+   * scope (single render gap on initial mount).
+   */
+  const [currentCanvasBreadcrumb, setCurrentCanvasBreadcrumb] = useState("");
 
   /**
    * Update the `?c=<slug>` URL param without changing routes. Stay on
@@ -160,6 +170,12 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     setSelectedNode(node);
   }, []);
 
+  // Stable so `OrgCanvasBackground`'s notify effect doesn't re-fire on
+  // every parent render.
+  const handleCanvasBreadcrumbChange = useCallback((breadcrumb: string) => {
+    setCurrentCanvasBreadcrumb(breadcrumb);
+  }, []);
+
   return (
     <div className="relative flex h-full w-full overflow-hidden">
       <OrgCanvasBackground
@@ -168,6 +184,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         orgName={orgName}
         onHiddenChange={handleHiddenChange}
         onNodeSelect={handleNodeSelect}
+        onCanvasBreadcrumbChange={handleCanvasBreadcrumbChange}
       />
 
       {/* Hide the canvas behind a connection viewer while one is open. */}
@@ -204,7 +221,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               // tool calls default to the right canvas scope (e.g.
               // "add a note here" while drilled into an initiative
               // sub-canvas should target that initiative, not root).
+              // The ref id is the tool-call address; the breadcrumb is
+              // the human-readable name the agent uses in replies.
               currentCanvasRef={searchParams.get("canvas") ?? ""}
+              currentCanvasBreadcrumb={currentCanvasBreadcrumb}
               selectedNodeId={selectedNode?.id ?? null}
             />
           </div>

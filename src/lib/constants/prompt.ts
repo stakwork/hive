@@ -327,6 +327,16 @@ export interface CanvasScopeHint {
    */
   currentCanvasRef?: string;
   /**
+   * Human-readable breadcrumb trail for the current scope, joined with
+   * ` › ` — e.g. `"Acme"` on root, `"Acme › Auth Refactor"` on a
+   * sub-canvas. Surfaced to the agent so it can refer to the user's
+   * scope by name in replies (e.g. "I'll add it on Auth Refactor")
+   * rather than echoing an opaque ref id. The ref id is still the
+   * authoritative tool-call target — this is purely for natural
+   * language. Optional; omitted hint just falls back to ref-only.
+   */
+  currentCanvasBreadcrumb?: string;
+  /**
    * Live id of the canvas node the user has currently selected — e.g.
    * `"initiative:abc"`, `"ws:xyz"`, or an authored note id. Lets the
    * agent resolve "this" / "here" references in chat without guessing.
@@ -411,17 +421,32 @@ function getCanvasScopeHint(scope?: CanvasScopeHint): string {
   const refProvided = scope.currentCanvasRef !== undefined;
   const ref = scope.currentCanvasRef ?? "";
   const selected = scope.selectedNodeId;
+  const breadcrumb = scope.currentCanvasBreadcrumb?.trim();
   if (!refProvided && !selected) return "";
 
-  const refDescription = ref
-    ? `\`${ref}\` sub-canvas`
-    : "the org root canvas";
+  // Compose the human-friendly description. The breadcrumb (when
+  // available) is the agent's preferred way to *talk about* the scope
+  // in replies; the ref is the tool-call address. Showing both keeps
+  // the two roles explicit so the agent doesn't accidentally use the
+  // ref id as a name.
+  let refDescription: string;
+  if (breadcrumb) {
+    refDescription = ref
+      ? `**${breadcrumb}** (\`${ref}\` sub-canvas)`
+      : `**${breadcrumb}** (the org root canvas)`;
+  } else {
+    refDescription = ref ? `\`${ref}\` sub-canvas` : "the org root canvas";
+  }
 
   const lines = [
     "",
     "## Current canvas scope",
     "",
-    `The user is viewing **${refDescription}** right now. Default canvas tool calls (\`read_canvas\`, \`patch_canvas\`, \`update_canvas\`) to \`ref: "${ref}"\` unless the user explicitly asks about a different scope. When they say "this", "here", or "this canvas", they mean this scope.`,
+    `The user is viewing ${refDescription} right now. Default canvas tool calls (\`read_canvas\`, \`patch_canvas\`, \`update_canvas\`) to \`ref: "${ref}"\` unless the user explicitly asks about a different scope. When they say "this", "here", or "this canvas", they mean this scope.${
+      breadcrumb
+        ? ` When you need to refer to it in your reply, use the name "${breadcrumb}" — not the ref id.`
+        : ""
+    }`,
   ];
 
   if (selected) {
