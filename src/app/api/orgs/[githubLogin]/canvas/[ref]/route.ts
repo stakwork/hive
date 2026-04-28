@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { validateUserBelongsToOrg } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { readCanvas, writeCanvas } from "@/lib/canvas";
 
@@ -41,6 +42,11 @@ export async function GET(
     return NextResponse.json({ error: "Invalid ref" }, { status: 400 });
   }
 
+  const isMember = await validateUserBelongsToOrg(githubLogin, userOrResponse.id);
+  if (!isMember) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
   try {
     const org = await findOrg(githubLogin);
     if (!org) {
@@ -68,6 +74,11 @@ export async function PUT(
   const ref = decodeURIComponent(rawRef);
   if (!validateRef(ref)) {
     return NextResponse.json({ error: "Invalid ref" }, { status: 400 });
+  }
+
+  const isMember = await validateUserBelongsToOrg(githubLogin, userOrResponse.id);
+  if (!isMember) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
   }
 
   try {
