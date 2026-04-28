@@ -345,7 +345,7 @@ describe('VMConfigSection', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { minimumVms: 3, isSuperAdmin: true },
+              data: { minimumPods: 3, isSuperAdmin: true },
             }),
           });
         }
@@ -421,7 +421,7 @@ describe('VMConfigSection', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { minimumVms: 3, isSuperAdmin: true },
+              data: { minimumPods: 3, isSuperAdmin: true },
             }),
           });
         }
@@ -449,13 +449,13 @@ describe('VMConfigSection', () => {
           expect.objectContaining({
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ minimumVms: 5 }),
+            body: JSON.stringify({ minimumPods: 5 }),
           })
         );
       });
     });
 
-    it('should disable Save button when pendingVms equals minimumVms', async () => {
+    it('should disable Save button when pendingPods equals minimumPods', async () => {
       renderWithSession(<VMConfigSection />, true);
 
       await waitFor(() => {
@@ -498,7 +498,7 @@ describe('VMConfigSection', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { minimumVms: 3, isSuperAdmin: true },
+              data: { minimumPods: 3, isSuperAdmin: true },
             }),
           });
         }
@@ -557,7 +557,7 @@ describe('VMConfigSection', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { minimumVms: 3, isSuperAdmin: true },
+              data: { minimumPods: 3, isSuperAdmin: true },
             }),
           });
         }
@@ -636,7 +636,7 @@ describe('VMConfigSection', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { minimumVms: 3, isSuperAdmin: true },
+              data: { minimumPods: 3, isSuperAdmin: true },
             }),
           });
         }
