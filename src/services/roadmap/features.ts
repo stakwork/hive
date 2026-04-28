@@ -595,8 +595,15 @@ export async function updateFeature(
       }
     }
 
-    updateData.initiativeId = resolvedInitiativeId;
-    updateData.milestoneId = resolvedMilestoneId;
+    // Use relation form (connect/disconnect) — the rest of `updateData`
+    // already uses relation form (`updatedBy: { connect }`), and Prisma's
+    // strict `FeatureUpdateInput` rejects raw scalar FKs in that shape.
+    updateData.initiative = resolvedInitiativeId
+      ? { connect: { id: resolvedInitiativeId } }
+      : { disconnect: true };
+    updateData.milestone = resolvedMilestoneId
+      ? { connect: { id: resolvedMilestoneId } }
+      : { disconnect: true };
   }
 
   // Stamp planUpdatedAt only when user explicitly edits plan content
