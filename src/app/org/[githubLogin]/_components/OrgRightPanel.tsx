@@ -7,29 +7,22 @@ import { Badge } from "@/components/ui/badge";
 import { MousePointerClick } from "lucide-react";
 import { NodeDetail } from "./NodeDetail";
 import { ConnectionsListBody } from "./ConnectionsListBody";
-import { SidebarChat, type SidebarMessage } from "./SidebarChat";
+import { SidebarChat } from "./SidebarChat";
 import type { ConnectionData } from "../connections/types";
 
 type Tab = "chat" | "details" | "connections";
 
 interface OrgRightPanelProps {
   githubLogin: string;
-  orgId: string;
   selectedNode: CanvasNode | null;
-  // Chat tab inputs — passed straight to <SidebarChat />.
-  chatWorkspaceSlugs: string[];
-  currentCanvasRef: string;
-  currentCanvasBreadcrumb: string;
   /**
-   * True once workspaces + initial hidden list have loaded AND the
-   * optional `?chat=<shareId>` preload has resolved (success or
-   * fail). While false, the chat tab renders a spinner so we don't
-   * mount with a half-loaded preload or with `workspaceSlugs` empty
-   * before the hidden filter arrives.
+   * True once the canvas chat conversation has been initialized in
+   * the store (workspaces loaded + hidden list ready + optional
+   * `?chat=<shareId>` preload resolved). While false, the chat tab
+   * renders a spinner. The conversation itself lives in the store —
+   * no per-conversation props flow through this panel.
    */
   chatReady: boolean;
-  /** Preloaded messages from a `?chat=<shareId>` deep link. */
-  chatInitialMessages?: SidebarMessage[];
   connections: ConnectionData[];
   activeConnectionId: string | null;
   onConnectionClick: (connection: ConnectionData) => void;
@@ -43,23 +36,22 @@ interface OrgRightPanelProps {
  *
  * - **Chat** — `<SidebarChat />`. The default landing tab; the
  *   agent's home base on the canvas page.
- * - **Details** — node summary (description + kind-specific extras
- *   + deep links). Auto-selected when the user clicks a node.
+ * - **Details** — node summary. Auto-selected when a node is clicked.
  * - **Connections** — the connection-doc list.
  *
- * Switching tabs is purely panel-local; canvas selection state is
- * unaffected, so the user can flip back and forth without losing
- * which node they were inspecting.
+ * **All three tabs stay mounted.** Inactive tabs are hidden via the
+ * `hidden` attribute rather than unmounted. This is load-bearing for
+ * `<SidebarChat />`: even though chat state lives in the canvas chat
+ * store (so tab switches wouldn't *lose* state), keeping the
+ * component mounted preserves things like scroll position, input
+ * focus, in-flight streaming, and any future imperative refs without
+ * needing to plumb them through the store. It also prevents a
+ * remount-storm when the user pings between Chat and Details.
  */
 export function OrgRightPanel({
   githubLogin,
-  orgId,
   selectedNode,
-  chatWorkspaceSlugs,
-  currentCanvasRef,
-  currentCanvasBreadcrumb,
   chatReady,
-  chatInitialMessages,
   connections,
   activeConnectionId,
   onConnectionClick,
@@ -70,17 +62,11 @@ export function OrgRightPanel({
   // Default to Chat — the canvas's primary agent surface. Auto-flip
   // to Details when the user clicks a node. Manual tab clicks
   // override this until the next selection change. Keying on
-  // `selectedNode?.id` (not the object identity) so reselecting the
-  // same node from elsewhere on the canvas still re-fires the flip.
+  // `selectedNode?.id` (not the object identity) so the canvas
+  // re-emitting the same node object on reselect still re-fires.
   const [tab, setTab] = useState<Tab>("chat");
   useEffect(() => {
     if (selectedNode) setTab("details");
-    // Keying on `selectedNode?.id` (not `selectedNode`) so the canvas
-    // re-emitting the same node object on reselect still re-fires
-    // the flip-to-Details. The lint rule wants us to depend on the
-    // whole object, but that would also re-fire on every parent
-    // render that produces a new wrapper — which is the behavior we
-    // explicitly don't want here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id]);
 
@@ -110,28 +96,30 @@ export function OrgRightPanel({
         />
       </div>
 
-      <div className="flex-1 min-h-0">
-        {tab === "chat" ? (
-          chatReady ? (
-            <SidebarChat
-              githubLogin={githubLogin}
-              orgId={orgId}
-              workspaceSlugs={chatWorkspaceSlugs}
-              currentCanvasRef={currentCanvasRef}
-              currentCanvasBreadcrumb={currentCanvasBreadcrumb}
-              selectedNodeId={selectedNode?.id ?? null}
-              initialMessages={chatInitialMessages}
-            />
+      <div className="flex-1 min-h-0 relative">
+        {/* Chat tab — always mounted, hidden when inactive. */}
+        <TabBody hidden={tab !== "chat"}>
+          {chatReady ? (
+            <SidebarChat githubLogin={githubLogin} />
           ) : (
             <ChatLoadingState />
-          )
-        ) : tab === "details" ? (
-          selectedNode ? (
+          )}
+        </TabBody>
+
+        {/* Details tab — also kept mounted so node-detail fetches
+            don't restart when the user flips back. */}
+        <TabBody hidden={tab !== "details"}>
+          {selectedNode ? (
             <NodeDetail node={selectedNode} githubLogin={githubLogin} />
           ) : (
             <EmptyDetailsHint />
-          )
-        ) : (
+          )}
+        </TabBody>
+
+        {/* Connections tab — kept mounted to preserve its Pusher
+            subscription and avoid re-fetching the connection list on
+            every tab flip. */}
+        <TabBody hidden={tab !== "connections"}>
           <ConnectionsListBody
             githubLogin={githubLogin}
             connections={connections}
@@ -141,8 +129,30 @@ export function OrgRightPanel({
             onConnectionDeleted={onConnectionDeleted}
             isLoading={isLoading}
           />
-        )}
+        </TabBody>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A tab body that's always mounted but visually hidden when
+ * `hidden`. Uses `hidden` (the HTML attribute, which `display: none`s
+ * the element) so off-screen tabs cost zero layout but keep their
+ * React state. Cheaper and less surprising than `display: none`
+ * via Tailwind classes — the `hidden` attribute also short-circuits
+ * the accessibility tree.
+ */
+function TabBody({
+  hidden,
+  children,
+}: {
+  hidden: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div hidden={hidden} className={hidden ? "" : "absolute inset-0"}>
+      {children}
     </div>
   );
 }

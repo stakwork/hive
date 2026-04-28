@@ -1,403 +1,92 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ModelMessage } from "ai";
 import { Send, Share2, X } from "lucide-react";
 import { toast } from "sonner";
-import { useSession } from "next-auth/react";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { useStreamProcessor } from "@/lib/streaming";
-import { ChatMessage } from "@/components/dashboard/DashboardChat/ChatMessage";
+import { useShallow } from "zustand/react/shallow";
 import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
 import { Button } from "@/components/ui/button";
+import { SidebarChatMessage } from "./SidebarChatMessage";
+import {
+  useCanvasChatStore,
+  type CanvasChatMessage,
+  type ToolCall,
+} from "../_state/canvasChatStore";
+import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 
 /**
- * The org-canvas sidebar chat. Lives in the third tab of
- * `OrgRightPanel` and replaces the bottom-anchored `DashboardChat`
- * overlay that used to share the canvas column.
+ * Org-canvas sidebar chat. Renders the active conversation from the
+ * canvas chat store; never owns chat state itself. Mounting and
+ * unmounting (e.g. when the user switches to the Details tab) is
+ * cheap and idempotent — the store survives.
  *
- * This is a *different* product surface from `DashboardChat`: no
- * image upload, no multi-workspace pills, no follow-up questions, no
- * provenance sidebar, no Generate Plan / Recent Chats / Read-only
- * affordances. The agent's home base on the canvas — designed to
- * grow toward rich artifacts (live task status, PR cards, propose-
- * canvas-change, deep-research handles), not toward the dashboard's
- * workspace-question UX.
+ * The conversation's *lifecycle* (creation, share preload, auto-
+ * save) is owned by `OrgCanvasView`. This component only handles:
+ *   - rendering the message scroll
+ *   - sending new messages (via `useSendCanvasChatMessage`)
+ *   - the Share + Clear header actions
  *
- * Reuses `ChatMessage`, `ToolCallIndicator`, and `useStreamProcessor`
- * from the dashboard chat unchanged.
+ * Reuses `ToolCallIndicator` and `useStreamProcessor` from the
+ * dashboard chat unchanged. Bubbles are rendered by the local
+ * `SidebarChatMessage` instead — the dashboard's `ChatMessage`
+ * centers everything, which doesn't fit a narrow sidebar where we
+ * want user messages right-aligned and assistant messages left-
+ * aligned.
  */
-interface ToolCall {
-  id: string;
-  toolName: string;
-  input?: unknown;
-  status: string;
-  output?: unknown;
-  errorText?: string;
-}
-
-export interface SidebarMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-  toolCalls?: ToolCall[];
-  /**
-   * Forward-compat slot for rich agent artifacts (task-status cards,
-   * PR lists, propose-canvas-change, deep-research handles). Not yet
-   * rendered — `<MessageArtifacts />` below is the single dispatch
-   * point that grows when the first artifact type ships. Intentionally
-   * `unknown[]`: typed when the first artifact is built.
-   */
-  artifacts?: unknown[];
-}
-
 interface SidebarChatProps {
-  /** Slug of the org (the `[githubLogin]` route param). */
+  /** Slug of the org. Used by the Share button to scope the POST. */
   githubLogin: string;
-  /** Canvas org id, used to scope agent tool calls. */
-  orgId: string;
-  /**
-   * Workspace slugs the agent should be allowed to read from. Derived
-   * by `OrgCanvasView` from non-hidden workspaces on the canvas. The
-   * user cannot edit this from the sidebar; hidden state is owned by
-   * the canvas's `HiddenLivePill`.
-   */
-  workspaceSlugs: string[];
-  /**
-   * Current canvas scope (`""` for root, `"initiative:<id>"` /
-   * `"ws:<id>"` for sub-canvases). Threaded into `/api/ask/quick` so
-   * tool calls default to the right ref.
-   */
-  currentCanvasRef: string;
-  /** Human-readable breadcrumb for the current scope. */
-  currentCanvasBreadcrumb: string;
-  /** Selected canvas node id, or null. Lets the agent resolve "this". */
-  selectedNodeId: string | null;
-  /**
-   * Optional preloaded message history (e.g. from a `?chat=<shareId>`
-   * deep link). When set, used as the initial value of `messages`.
-   * No "loaded from share" tracking — the user just continues from
-   * here; auto-save creates a fresh `isShared: false` row on their
-   * first message.
-   */
-  initialMessages?: SidebarMessage[];
 }
 
-export function SidebarChat({
-  githubLogin,
-  orgId,
-  workspaceSlugs,
-  currentCanvasRef,
-  currentCanvasBreadcrumb,
-  selectedNodeId,
-  initialMessages,
-}: SidebarChatProps) {
-  const { slug } = useWorkspace();
-  const { data: _session } = useSession();
-  const [messages, setMessages] = useState<SidebarMessage[]>(initialMessages ?? []);
-  const [isLoading, setIsLoading] = useState(false);
-  const [activeToolCalls, setActiveToolCalls] = useState<ToolCall[]>([]);
-  const conversationIdRef = useRef<string | null>(null);
-  const hasReceivedContentRef = useRef(false);
-  const assistantMsgsRef = useRef<SidebarMessage[]>([]);
+export function SidebarChat({ githubLogin }: SidebarChatProps) {
+  // ─── Selectors — narrow on purpose ─────────────────────────────────
+  // Each selector returns a primitive or a stable reference so
+  // streaming text-deltas don't trigger re-renders in selectors that
+  // didn't change. Never select the whole conversation object — the
+  // header's "Share" button only needs `messages.length > 0`, the
+  // message list needs `messages` + `activeToolCalls` + `isLoading`.
+  const activeId = useCanvasChatStore((s) => s.activeConversationId);
+  const messages = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.messages : undefined) ?? EMPTY_MESSAGES,
+  );
+  const isLoading = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.isLoading : false) ?? false,
+  );
+  const activeToolCalls = useCanvasChatStore(
+    (s) =>
+      (activeId ? s.conversations[activeId]?.activeToolCalls : undefined) ??
+      EMPTY_TOOL_CALLS,
+  );
+
+  const sendMessage = useSendCanvasChatMessage();
+  const inputClearRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
-  const { processStream } = useStreamProcessor();
 
   // Scroll the messages container (not the page) to the bottom on
-  // updates. Using `scrollTop = scrollHeight` instead of
-  // `scrollIntoView` so the page never gets dragged when a streaming
-  // delta lands and the inner anchor isn't the nearest scrollable.
+  // updates. `scrollTop = scrollHeight` instead of `scrollIntoView`
+  // so the page never gets dragged when a streaming delta lands.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages, activeToolCalls]);
 
-  // Fire-and-forget auto-save helpers. The endpoint is keyed on the
-  // user's *current workspace* slug, matching `DashboardChat`'s
-  // behavior — there's no org-scoped chat conversation table.
-  const autoSaveCreate = (msgs: SidebarMessage[]) => {
-    if (!slug) return;
-    fetch(`/api/workspaces/${slug}/chat/conversations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: msgs,
-        settings: { extraWorkspaceSlugs: workspaceSlugs },
-        source: "org-canvas",
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.id) conversationIdRef.current = data.id;
-      })
-      .catch(() => {});
-  };
-
-  const autoSaveAppend = (msgs: SidebarMessage[]) => {
-    if (!slug || !conversationIdRef.current) return;
-    fetch(
-      `/api/workspaces/${slug}/chat/conversations/${conversationIdRef.current}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: msgs,
-          settings: { extraWorkspaceSlugs: workspaceSlugs },
-        }),
-      },
-    ).catch(() => {});
-  };
-
   const handleSend = async (content: string, clearInput: () => void) => {
-    if (!content.trim()) return;
-
-    const userMessage: SidebarMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: content.trim(),
-      timestamp: new Date(),
-    };
-    const updatedMessages = [...messages, userMessage];
-
-    setMessages(updatedMessages);
-    setIsLoading(true);
-    hasReceivedContentRef.current = false;
-
-    // Auto-save: create on first message, append delta thereafter.
-    // The server PUT reads existing JSON, concatenates, writes back —
-    // so we send only the new message on append, never the full array.
-    if (conversationIdRef.current === null) {
-      autoSaveCreate(updatedMessages);
-    } else {
-      autoSaveAppend([userMessage]);
-    }
-
-    try {
-      const response = await fetch(`/api/ask/quick`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: updatedMessages
-            .filter((m) => m.content.trim() || m.toolCalls)
-            .flatMap((m): ModelMessage[] => {
-              if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-                const out: ModelMessage[] = [];
-                out.push({
-                  role: m.role,
-                  content: m.toolCalls.map((tc) => ({
-                    type: "tool-call" as const,
-                    toolCallId: tc.id,
-                    toolName: tc.toolName,
-                    input: tc.input || {},
-                  })),
-                });
-                const toolResults = m.toolCalls.filter(
-                  (tc) => tc.output !== undefined || tc.errorText !== undefined,
-                );
-                if (toolResults.length > 0) {
-                  out.push({
-                    role: "tool" as const,
-                    content: toolResults.map((tc) => {
-                      let wrappedOutput = tc.output;
-                      if (
-                        tc.output &&
-                        typeof tc.output === "object" &&
-                        !("type" in tc.output)
-                      ) {
-                        wrappedOutput = { type: "json", value: tc.output };
-                      }
-                      return {
-                        type: "tool-result" as const,
-                        toolCallId: tc.id,
-                        toolName: tc.toolName,
-                        output: wrappedOutput as never,
-                      };
-                    }),
-                  } satisfies ModelMessage);
-                }
-                if (m.content) {
-                  out.push({ role: m.role, content: m.content });
-                }
-                return out;
-              }
-              return [{ role: m.role, content: m.content }];
-            }),
-          // The org canvas always sends a multi-workspace request
-          // (the agent's `read from these workspaces` is the
-          // visible-on-canvas list); when none are visible, fall
-          // back to the user's current workspace slug.
-          ...(workspaceSlugs.length > 0
-            ? { workspaceSlugs: [slug, ...workspaceSlugs].filter(Boolean) }
-            : { workspaceSlug: slug }),
-          orgId,
-          currentCanvasRef,
-          ...(currentCanvasBreadcrumb ? { currentCanvasBreadcrumb } : {}),
-          ...(selectedNodeId ? { selectedNodeId } : {}),
-          // Skip the `after()` enrichment block server-side: this
-          // surface renders neither follow-up questions nor a
-          // provenance tree, so computing them would be wasted tokens.
-          skipEnrichments: true,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const messageId = (Date.now() + 1).toString();
-      const loggedToolCalls = new Set<string>();
-
-      await processStream(response, messageId, (updatedMessage) => {
-        if (!hasReceivedContentRef.current) {
-          hasReceivedContentRef.current = true;
-          setIsLoading(false);
-          clearInput();
-        }
-
-        const timeline = updatedMessage.timeline || [];
-        const timelineMessages: SidebarMessage[] = [];
-        let currentText = "";
-        let currentToolCalls: ToolCall[] = [];
-        let msgCounter = 0;
-
-        for (const item of timeline) {
-          if (item.type === "text") {
-            currentText += (item.data as { content: string }).content;
-          } else if (item.type === "toolCall") {
-            if (currentText.trim()) {
-              timelineMessages.push({
-                id: `${messageId}-${msgCounter++}`,
-                role: "assistant",
-                content: currentText,
-                timestamp: new Date(),
-              });
-              currentText = "";
-            }
-            const toolCall = item.data as {
-              id: string;
-              toolName: string;
-              input?: unknown;
-              output?: unknown;
-              status: string;
-            };
-
-            // Debug logging on the org canvas page or when DEBUG is
-            // set. Same gate as `DashboardChat` so canvas tool-call
-            // traces stay easy to read while bringing this up.
-            if (
-              typeof window !== "undefined" &&
-              (/^\/org\/[^/]+$/.test(window.location.pathname) ||
-                (window as Window & { DEBUG?: boolean }).DEBUG)
-            ) {
-              const callKey = `${toolCall.id}-${toolCall.status}`;
-              if (!loggedToolCalls.has(callKey)) {
-                loggedToolCalls.add(callKey);
-                if (toolCall.status === "call") {
-                  console.log(
-                    `%c[TOOL CALL] ${toolCall.toolName}`,
-                    "color: #4fc3f7; font-weight: bold",
-                    JSON.stringify(toolCall.input),
-                  );
-                }
-                if (toolCall.output !== undefined) {
-                  console.log(
-                    `%c[TOOL RESULT] ${toolCall.toolName}`,
-                    "color: #81c784; font-weight: bold",
-                    JSON.stringify(toolCall.output),
-                  );
-                }
-                if (toolCall.status === "output-error") {
-                  console.log(
-                    `%c[TOOL ERROR] ${toolCall.toolName}`,
-                    "color: #e57373; font-weight: bold",
-                    JSON.stringify(toolCall.output),
-                  );
-                }
-              }
-            }
-
-            currentToolCalls.push({
-              id: toolCall.id,
-              toolName: toolCall.toolName,
-              input: toolCall.input,
-              status: toolCall.status,
-              output: toolCall.output,
-              errorText:
-                toolCall.status === "output-error" ? "Tool call failed" : undefined,
-            });
-          }
-        }
-
-        if (currentToolCalls.length > 0) {
-          timelineMessages.push({
-            id: `${messageId}-${msgCounter++}`,
-            role: "assistant",
-            content: "",
-            timestamp: new Date(),
-            toolCalls: currentToolCalls,
-          });
-          currentToolCalls = [];
-        }
-
-        if (currentText.trim()) {
-          timelineMessages.push({
-            id: `${messageId}-${msgCounter++}`,
-            role: "assistant",
-            content: currentText,
-            timestamp: new Date(),
-          });
-        }
-
-        const lastMsg = timelineMessages[timelineMessages.length - 1];
-        if (lastMsg?.toolCalls && lastMsg.toolCalls.length > 0) {
-          setActiveToolCalls(lastMsg.toolCalls);
-        } else {
-          setActiveToolCalls([]);
-        }
-
-        assistantMsgsRef.current = timelineMessages;
-
-        setMessages((prev) => {
-          const filteredPrev = prev.filter((m) => !m.id.startsWith(messageId));
-          return [...filteredPrev, ...timelineMessages];
-        });
-      });
-
-      setActiveToolCalls([]);
-    } catch (error) {
-      console.error("Error calling ask API:", error);
-      const errorMessage: SidebarMessage = {
-        id: (Date.now() + 1).toString(),
-        content:
-          "I'm sorry, but I encountered an error while processing your question. Please try again later.",
-        role: "assistant",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      setActiveToolCalls([]);
-    } finally {
-      setIsLoading(false);
-      if (conversationIdRef.current) {
-        const assistantMsgs = assistantMsgsRef.current;
-        if (assistantMsgs.length > 0) {
-          autoSaveAppend(assistantMsgs);
-        }
-      }
-      assistantMsgsRef.current = [];
-    }
+    if (!activeId) return;
+    inputClearRef.current = clearInput;
+    await sendMessage({
+      conversationId: activeId,
+      content,
+      onResponseStart: () => clearInput(),
+    });
   };
 
   const handleClear = () => {
-    setMessages([]);
-    conversationIdRef.current = null;
-    assistantMsgsRef.current = [];
-    setActiveToolCalls([]);
+    useCanvasChatStore.getState().clearActiveConversation();
   };
 
   const handleShare = async () => {
+    if (!activeId) return;
     if (messages.length === 0) return;
     try {
       const firstUserMessage = messages.find(
@@ -445,9 +134,6 @@ export function SidebarChat({
 
   return (
     <div className="flex h-full flex-col min-h-0">
-      {/* Header: Share + Clear actions. Kept minimal — there's no
-          conversation title or tab affordance here; tabs live on the
-          parent panel. */}
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <span className="text-xs font-medium text-muted-foreground">Agent</span>
         <div className="flex items-center gap-1">
@@ -472,8 +158,7 @@ export function SidebarChat({
         </div>
       </div>
 
-      {/* Message list */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-2 py-3">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
         {!hasMessages && activeToolCalls.length === 0 && (
           <div className="h-full flex items-center justify-center px-4 text-center text-muted-foreground text-sm">
             Ask the agent about anything on this canvas.
@@ -485,22 +170,20 @@ export function SidebarChat({
             const isMessageStreaming = isLastMessage && isLoading;
             return (
               <div key={message.id}>
-                <ChatMessage
+                <SidebarChatMessage
                   message={message}
                   isStreaming={isMessageStreaming}
                 />
-                <MessageArtifacts artifacts={message.artifacts} />
+                <MessageArtifacts artifactIds={message.artifactIds} />
               </div>
             );
           })}
           {activeToolCalls.length > 0 && (
             <ToolCallIndicator toolCalls={activeToolCalls} />
           )}
-          <div ref={endRef} />
         </div>
       </div>
 
-      {/* Input */}
       <div className="border-t p-2">
         <SidebarChatInput onSend={handleSend} disabled={isLoading} />
       </div>
@@ -509,23 +192,36 @@ export function SidebarChat({
 }
 
 /**
- * Forward-compat dispatch point for rich agent artifacts. Renders
- * nothing in PR 1 — added here so every artifact type addition lands
- * as one switch arm and one renderer file rather than a fork through
- * `ChatMessage`. See `docs/plans/canvas-sidebar-chat.md` ("Long-term:
- * rich artifacts") for the planned types (task-status, pr-list,
- * propose-canvas-change, deep-research).
- *
- * Note re: `useStreamProcessor`: the timeline today only emits
- * `text` / `reasoning` / `toolCall`. When the first artifact ships,
- * the cheapest path is to ride on top of specific tool-result names
- * (e.g. `propose_canvas_change` → artifact) and bucket them in this
- * component, rather than forking the hook.
+ * Stable empty-array references so the selectors above return the
+ * same reference when the active conversation is missing — Zustand's
+ * `Object.is` bail-out skips re-renders on identity equality.
  */
-function MessageArtifacts({ artifacts }: { artifacts?: unknown[] }) {
-  if (!artifacts || artifacts.length === 0) return null;
+const EMPTY_MESSAGES: CanvasChatMessage[] = [];
+const EMPTY_TOOL_CALLS: ToolCall[] = [];
+
+/**
+ * Forward-compat dispatch point for rich agent artifacts. Selects
+ * `state.artifacts` by id and renders nothing in PR 1. When the
+ * first artifact type ships, this becomes the single switch arm —
+ * no fork through `SidebarChatMessage` required.
+ *
+ * Uses `useShallow` to derive the artifact slice — without it, every
+ * store update (incl. text-deltas during streaming) would create a
+ * fresh array and force a re-render here. With it, this component
+ * only re-renders when *its* artifacts change.
+ */
+function MessageArtifacts({ artifactIds }: { artifactIds?: string[] }) {
+  const ids = artifactIds ?? EMPTY_ARTIFACT_IDS;
+  const _artifacts = useCanvasChatStore(
+    useShallow((s) => ids.map((id) => s.artifacts[id]).filter(Boolean)),
+  );
+  if (ids.length === 0) return null;
+  // Renders nothing in PR 1 — when the first artifact type ships,
+  // dispatch on `_artifacts[i].type` here.
   return null;
 }
+
+const EMPTY_ARTIFACT_IDS: string[] = [];
 
 interface SidebarChatInputProps {
   onSend: (message: string, clearInput: () => void) => Promise<void>;

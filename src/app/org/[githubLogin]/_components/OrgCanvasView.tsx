@@ -3,12 +3,17 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { CanvasNode } from "system-canvas";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { ConnectionViewer } from "../connections/ConnectionViewer";
 import { OrgCanvasBackground } from "../connections/OrgCanvasBackground";
 import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
 import type { ConnectionData } from "../connections/types";
 import { OrgRightPanel } from "./OrgRightPanel";
-import type { SidebarMessage } from "./SidebarChat";
+import {
+  useCanvasChatStore,
+  type CanvasChatMessage,
+} from "../_state/canvasChatStore";
+import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
 
 /** Strip the `ws:` prefix from a live workspace id. */
 function stripWsPrefix(liveId: string): string {
@@ -30,13 +35,19 @@ interface OrgCanvasViewProps {
  *      with three tabs — **Chat** (`SidebarChat`, default landing
  *      tab), **Details**, **Connections**.
  *
- * The connection-viewer (when a connection doc is opened) covers the
- * canvas with an opaque overlay; the canvas keeps state behind it.
+ * This component owns the canvas chat *lifecycle*: starting the
+ * active conversation in the store, keeping its `context` up to
+ * date as the user navigates the canvas, preloading from
+ * `?chat=<shareId>`, and mounting the auto-save subscription. The
+ * conversation's *contents* (messages, loading, tool calls) live in
+ * the store; `<SidebarChat />` reads them directly without prop
+ * drilling.
  */
 export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
+  const { slug: workspaceSlug } = useWorkspace();
 
   const [workspaces, setWorkspaces] = useState<{ id: string; slug: string }[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
@@ -50,37 +61,24 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(null);
   /**
    * Human-readable breadcrumb for the canvas the user is currently
-   * looking at — e.g. `"Acme"` on root or `"Acme › Auth Refactor"`
-   * on a sub-canvas. Sourced from `OrgCanvasBackground`. Threaded
-   * into the chat so the agent can refer to the scope by name in
-   * replies.
+   * looking at. Threaded into the chat so the agent can refer to the
+   * scope by name in replies.
    */
   const [currentCanvasBreadcrumb, setCurrentCanvasBreadcrumb] = useState("");
 
-  // Optional `?chat=<shareId>` preload — fetches a shared
-  // conversation server-side and seeds the sidebar chat with its
-  // messages. The user gets a forkable conversation; their first new
-  // message creates a fresh `isShared: false` row, leaving the source
-  // share row untouched. Used by the canvas's "copy share link"
-  // action which writes URLs of the shape `/org/<login>?chat=<id>`.
+  // Optional `?chat=<shareId>` preload — the canvas's "copy share
+  // link" action writes URLs of this shape; landing on one preloads
+  // the conversation into a fresh forkable chat.
   const sharedChatId = searchParams.get("chat");
   const [chatInitialMessages, setChatInitialMessages] =
-    useState<SidebarMessage[] | null>(null);
+    useState<CanvasChatMessage[] | null>(null);
   const [chatLoadComplete, setChatLoadComplete] = useState(false);
 
-  /**
-   * Update the `?c=<slug>` URL param without changing routes. Stay on
-   * the current pathname so writing the param doesn't bounce the
-   * user across routes.
-   */
   const setUrlSlug = useCallback(
     (slug: string | null) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (slug) {
-        params.set("c", slug);
-      } else {
-        params.delete("c");
-      }
+      if (slug) params.set("c", slug);
+      else params.delete("c");
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     },
@@ -103,11 +101,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       .finally(() => setLoadingWorkspaces(false));
   }, [githubLogin]);
 
-  // Resolve the optional `?chat=<shareId>` preload before mounting
-  // the chat. Failure falls through to an empty conversation —
-  // a broken share link shouldn't gate chat usability. Mount-only
-  // effect (deps are stable identifiers); we don't re-fetch when the
-  // user navigates within the canvas.
+  // Resolve the optional `?chat=<shareId>` preload before starting
+  // the conversation. Mount-only effect (deps are stable identifiers).
   useEffect(() => {
     if (!sharedChatId) {
       setChatLoadComplete(true);
@@ -119,16 +114,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       .then((data) => {
         if (cancelled) return;
         if (data?.messages && Array.isArray(data.messages)) {
-          // The DB stores `timestamp` as an ISO string in the JSON
-          // blob; rehydrate to Date so `ChatMessage` (which doesn't
-          // reach into the field today) and any future consumer get
-          // a real Date instance.
-          const seeded: SidebarMessage[] = (data.messages as SidebarMessage[]).map(
-            (m) => ({
-              ...m,
-              timestamp: new Date(m.timestamp as unknown as string),
-            }),
-          );
+          // The DB stores `timestamp` as an ISO string; rehydrate to
+          // Date so future consumers (artifacts, telemetry) get a
+          // real Date instance.
+          const seeded: CanvasChatMessage[] = (
+            data.messages as CanvasChatMessage[]
+          ).map((m) => ({
+            ...m,
+            timestamp: new Date(m.timestamp as unknown as string),
+          }));
           setChatInitialMessages(seeded);
         }
       })
@@ -195,8 +189,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     setUrlSlug(null);
   };
 
-  // Stable identities so child effects (notably the Pusher binding in
-  // `ConnectionsListBody`) don't re-run on every parent render.
   const handleConnectionCreated = useCallback(() => {
     fetchConnections();
   }, [fetchConnections]);
@@ -216,22 +208,76 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     setSelectedNode(node);
   }, []);
 
-  // Stable so `OrgCanvasBackground`'s notify effect doesn't re-fire on
-  // every parent render.
   const handleCanvasBreadcrumbChange = useCallback((breadcrumb: string) => {
     setCurrentCanvasBreadcrumb(breadcrumb);
   }, []);
 
+  // ─── Canvas chat conversation lifecycle ─────────────────────────────
+  // Start the active conversation once everything we need is loaded.
+  // Subsequent canvas-scope changes (drilling in, selecting a node)
+  // update the conversation's `context` rather than recreating it.
+  const [conversationStarted, setConversationStarted] = useState(false);
+  const currentCanvasRef = searchParams.get("canvas") ?? "";
   const chatReady =
     !loadingWorkspaces && hiddenInitialized && chatLoadComplete;
+
+  useEffect(() => {
+    if (!chatReady || conversationStarted) return;
+    useCanvasChatStore.getState().startConversation(
+      {
+        workspaceSlug,
+        workspaceSlugs: chatWorkspaceSlugs,
+        orgId,
+        githubLogin,
+        currentCanvasRef,
+        currentCanvasBreadcrumb,
+        selectedNodeId: selectedNode?.id ?? null,
+      },
+      chatInitialMessages ?? undefined,
+      sharedChatId ?? undefined,
+    );
+    setConversationStarted(true);
+    // Mount-once on chat-ready. Subsequent context changes go through
+    // the patch effect below, not by restarting the conversation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatReady]);
+
+  // Keep the active conversation's `context` in sync with what the
+  // user is currently looking at. The store does an Object.is check
+  // on each field — if nothing changed, no re-render fires.
+  useEffect(() => {
+    if (!conversationStarted) return;
+    useCanvasChatStore.getState().updateActiveContext({
+      workspaceSlug,
+      workspaceSlugs: chatWorkspaceSlugs,
+      orgId,
+      githubLogin,
+      currentCanvasRef,
+      currentCanvasBreadcrumb,
+      selectedNodeId: selectedNode?.id ?? null,
+    });
+  }, [
+    conversationStarted,
+    workspaceSlug,
+    chatWorkspaceSlugs,
+    orgId,
+    githubLogin,
+    currentCanvasRef,
+    currentCanvasBreadcrumb,
+    selectedNode?.id,
+  ]);
+
+  // Mount auto-save (write-through to `chat_conversations`). Lives at
+  // the page level, not inside `SidebarChat`, so tab switches and
+  // chat unmounts don't lose pending saves.
+  useCanvasChatAutoSave({ workspaceSlug });
 
   return (
     <div className="relative flex h-full w-full overflow-hidden">
       <OrgCanvasBackground
         githubLogin={githubLogin}
         // Inset the canvas's right edge so the wider sidebar (`w-96`
-        // = 384px) doesn't cover canvas chrome. Bumped from 320 with
-        // the chat-as-sidebar move.
+        // = 384px) doesn't cover canvas chrome.
         rightInset={384}
         orgName={orgName}
         onHiddenChange={handleHiddenChange}
@@ -256,19 +302,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       <div className="relative z-20">
         <OrgRightPanel
           githubLogin={githubLogin}
-          orgId={orgId}
           selectedNode={selectedNode}
-          chatWorkspaceSlugs={chatWorkspaceSlugs}
-          // Tell the agent what the user is looking at right now so
-          // tool calls default to the right canvas scope (e.g.
-          // "add a note here" while drilled into an initiative
-          // sub-canvas should target that initiative, not root). The
-          // ref id is the tool-call address; the breadcrumb is the
-          // human-readable name the agent uses in replies.
-          currentCanvasRef={searchParams.get("canvas") ?? ""}
-          currentCanvasBreadcrumb={currentCanvasBreadcrumb}
-          chatReady={chatReady}
-          chatInitialMessages={chatInitialMessages ?? undefined}
+          chatReady={chatReady && conversationStarted}
           connections={connections}
           activeConnectionId={activeConnection?.id ?? null}
           onConnectionClick={handleConnectionClick}
