@@ -19,12 +19,19 @@ import {
 } from "aieo";
 import type { LanguageModel } from "ai";
 
+// Opt-in escape hatch: when USE_REAL_LLM=true, bypass the Anthropic
+// mock even if USE_MOCKS=true. Lets us run the real model locally
+// (to exercise the canvas tools end-to-end) while keeping every
+// other mock — GitHub OAuth, Stakwork, swarm, pool manager, etc. —
+// intact. All other `USE_MOCKS` branches are unchanged.
+const USE_REAL_LLM = process.env.USE_REAL_LLM === "true";
+
 /**
  * Get API key for provider with mock support
  */
 export function getApiKeyForProvider(provider: Provider): string {
   // In mock mode, return mock key for Anthropic
-  if (config.USE_MOCKS && provider === "anthropic") {
+  if (config.USE_MOCKS && !USE_REAL_LLM && provider === "anthropic") {
     return "mock-anthropic-key-12345";
   }
 
@@ -44,8 +51,9 @@ export function getModel(
   _workspaceSlug?: string,
   modelType?: string
 ): LanguageModel {
-  // In mock mode for Anthropic, override baseURL
-  if (config.USE_MOCKS && provider === "anthropic") {
+  // In mock mode for Anthropic, override baseURL (unless the real-LLM
+  // escape hatch is set — see USE_REAL_LLM at top of file).
+  if (config.USE_MOCKS && !USE_REAL_LLM && provider === "anthropic") {
     // Dynamic import not needed for sync function; use require pattern
     const { createAnthropic } = require("@ai-sdk/anthropic");
 
@@ -75,8 +83,12 @@ export function getProviderTool(
   apiKey: string,
   toolName: ProviderTool
 ) {
-  // In mock mode, return a mock tool
-  if (config.USE_MOCKS && provider === "anthropic") {
+  // In mock mode, return a mock tool — UNLESS the real-LLM escape
+  // hatch is set, in which case we hand back the real provider tool
+  // so the model receives a well-formed `input_schema`. The mock
+  // shape (`parameters: {}`) is missing fields Anthropic requires
+  // and would 400 the whole stream.
+  if (config.USE_MOCKS && !USE_REAL_LLM && provider === "anthropic") {
     return {
       description: `Mock ${toolName} tool`,
       parameters: {},
