@@ -23,8 +23,8 @@ export function VMConfigSection() {
   const [poolStatus, setPoolStatus] = useState<PoolStatusResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [minimumVms, setMinimumVms] = useState<number>(2);
-  const [pendingVms, setPendingVms] = useState<number>(2);
+  const [minimumPods, setMinimumPods] = useState<number>(2);
+  const [pendingPods, setPendingPods] = useState<number>(2);
   const [saving, setSaving] = useState(false);
 
   const isPoolActive = workspace?.poolState === "COMPLETE";
@@ -37,8 +37,8 @@ export function VMConfigSection() {
       const res = await fetch(`/api/w/${slug}/pool/config`);
       const result = await res.json();
       if (result.success) {
-        setMinimumVms(result.data.minimumVms);
-        setPendingVms(result.data.minimumVms);
+        setMinimumPods(result.data.minimumPods);
+        setPendingPods(result.data.minimumPods);
       }
     } catch {
       // Silently fail - not critical
@@ -78,17 +78,17 @@ export function VMConfigSection() {
     fetchPoolConfig();
   }, [fetchPoolStatus, fetchPoolConfig]);
 
-  const handleSaveMinimumVms = async () => {
+  const handleSaveMinimumPods = async () => {
     setSaving(true);
     try {
       const res = await fetch(`/api/w/${slug}/pool/config`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ minimumVms: pendingVms }),
+        body: JSON.stringify({ minimumPods: pendingPods }),
       });
       const result = await res.json();
       if (result.success) {
-        setMinimumVms(pendingVms);
+        setMinimumPods(pendingPods);
         toast.success("Amount of Pods updated");
       } else {
         toast.error("Failed to update Amount of Pods");
@@ -176,15 +176,15 @@ export function VMConfigSection() {
                     id="minimum-vms"
                     type="number"
                     min={1}
-                    value={pendingVms}
-                    onChange={(e) => setPendingVms(Math.max(1, parseInt(e.target.value) || 1))}
+                    value={pendingPods}
+                    onChange={(e) => setPendingPods(Math.max(1, parseInt(e.target.value) || 1))}
                     className="w-20 h-8"
                     disabled={saving}
                   />
                   <Button
                     size="sm"
-                    onClick={handleSaveMinimumVms}
-                    disabled={saving || pendingVms === minimumVms}
+                    onClick={handleSaveMinimumPods}
+                    disabled={saving || pendingPods === minimumPods}
                   >
                     {saving ? "Saving..." : "Save"}
                   </Button>
