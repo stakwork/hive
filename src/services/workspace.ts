@@ -1438,6 +1438,33 @@ export async function updateWorkspace(
  * Gets all organizations the user has access to via workspace membership or ownership.
  * Returns deduplicated list of SourceControlOrg records.
  */
+/**
+ * Returns the org if the user owns or is a member of at least one workspace
+ * in that org. Returns null when the user has no access, so callers can
+ * return 403/404 as appropriate without leaking org existence.
+ */
+export async function getUserOrgAccess(
+  userId: string,
+  githubLogin: string,
+): Promise<{ id: string; githubLogin: string } | null> {
+  const org = await db.sourceControlOrg.findUnique({
+    where: {
+      githubLogin,
+      workspaces: {
+        some: {
+          deleted: false,
+          OR: [
+            { ownerId: userId },
+            { members: { some: { userId, leftAt: null } } },
+          ],
+        },
+      },
+    },
+    select: { id: true, githubLogin: true },
+  });
+  return org ?? null;
+}
+
 export async function getUserOrganizations(userId: string): Promise<OrgResponse[]> {
   const orgs = await db.sourceControlOrg.findMany({
     where: {

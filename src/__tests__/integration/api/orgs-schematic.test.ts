@@ -6,7 +6,7 @@ import {
   createPutRequest,
   generateUniqueId,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/factories";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/factories";
 import { db } from "@/lib/db";
 import { GET, PUT } from "@/app/api/orgs/[githubLogin]/schematic/route";
 import { WorkspaceRole } from "@prisma/client";
@@ -77,6 +77,26 @@ afterEach(async () => {
   }
 });
 
+async function createOrgWithUserWorkspace(githubLogin: string) {
+  const org = await createOrg(githubLogin);
+  createdOrgIds.push(org.id);
+
+  const user = await createTestUser({
+    email: `schematic-${generateUniqueId()}@example.com`,
+    idempotent: false,
+  });
+  createdUserIds.push(user.id);
+
+  const workspace = await createTestWorkspace({
+    ownerId: user.id,
+    sourceControlOrgId: org.id,
+    slug: `ws-${generateUniqueId()}`,
+  });
+  createdWorkspaceIds.push(workspace.id);
+
+  return { org, user, workspace };
+}
+
 // ─── GET /api/orgs/[githubLogin]/schematic ────────────────────────────────────
 
 describe("GET /api/orgs/[githubLogin]/schematic", () => {
@@ -92,17 +112,7 @@ describe("GET /api/orgs/[githubLogin]/schematic", () => {
 
   it("returns { schematic: null } for org with no schematic (authorized member)", async () => {
     const githubLogin = `test-org-${generateUniqueId()}`;
-    const org = await createOrg(githubLogin);
-    createdOrgIds.push(org.id);
-
-    const user = await createTestUser({
-      email: `schematic-get-${generateUniqueId()}@example.com`,
-      idempotent: false,
-    });
-    createdUserIds.push(user.id);
-
-    const ws = await createWorkspaceInOrg(user.id, org.id);
-    createdWorkspaceIds.push(ws.id);
+    const { user } = await createOrgWithUserWorkspace(githubLogin);
 
     const req = createAuthenticatedGetRequest(
       `/api/orgs/${githubLogin}/schematic`,
@@ -115,23 +125,13 @@ describe("GET /api/orgs/[githubLogin]/schematic", () => {
 
   it("returns saved schematic after update (authorized member)", async () => {
     const githubLogin = `test-org-${generateUniqueId()}`;
-    const org = await createOrg(githubLogin);
-    createdOrgIds.push(org.id);
+    const { org, user } = await createOrgWithUserWorkspace(githubLogin);
 
     const mermaidBody = "graph TD\n  A --> B";
     await db.sourceControlOrg.update({
       where: { id: org.id },
       data: { schematic: mermaidBody },
     });
-
-    const user = await createTestUser({
-      email: `schematic-get2-${generateUniqueId()}@example.com`,
-      idempotent: false,
-    });
-    createdUserIds.push(user.id);
-
-    const ws = await createWorkspaceInOrg(user.id, org.id);
-    createdWorkspaceIds.push(ws.id);
 
     const req = createAuthenticatedGetRequest(
       `/api/orgs/${githubLogin}/schematic`,
@@ -215,17 +215,7 @@ describe("PUT /api/orgs/[githubLogin]/schematic", () => {
 
   it("persists value and returns it (workspace OWNER)", async () => {
     const githubLogin = `test-org-${generateUniqueId()}`;
-    const org = await createOrg(githubLogin);
-    createdOrgIds.push(org.id);
-
-    const user = await createTestUser({
-      email: `schematic-put-${generateUniqueId()}@example.com`,
-      idempotent: false,
-    });
-    createdUserIds.push(user.id);
-
-    const ws = await createWorkspaceInOrg(user.id, org.id);
-    createdWorkspaceIds.push(ws.id);
+    const { org, user } = await createOrgWithUserWorkspace(githubLogin);
 
     const mermaidBody = "graph LR\n  X --> Y\n  Y --> Z";
 

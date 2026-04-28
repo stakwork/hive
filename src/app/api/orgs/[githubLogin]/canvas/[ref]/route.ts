@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { readCanvas, writeCanvas } from "@/lib/canvas";
+import { getUserOrgAccess } from "@/services/workspace";
 
 /** Refs are user-chosen opaque strings; we refuse empty + over-long. */
 function validateRef(ref: string): boolean {
@@ -17,13 +18,6 @@ function validateCanvasData(value: unknown): value is {
   if (v.nodes != null && !Array.isArray(v.nodes)) return false;
   if (v.edges != null && !Array.isArray(v.edges)) return false;
   return true;
-}
-
-async function findOrg(githubLogin: string) {
-  return db.sourceControlOrg.findUnique({
-    where: { githubLogin },
-    select: { id: true },
-  });
 }
 
 /** Fetch a merged sub-canvas (authored blob + live projection). */
@@ -42,7 +36,7 @@ export async function GET(
   }
 
   try {
-    const org = await findOrg(githubLogin);
+    const org = await getUserOrgAccess(userOrResponse.id, githubLogin);
     if (!org) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
@@ -77,7 +71,7 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid canvas data" }, { status: 400 });
     }
 
-    const org = await findOrg(githubLogin);
+    const org = await getUserOrgAccess(userOrResponse.id, githubLogin);
     if (!org) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }

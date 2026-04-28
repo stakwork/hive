@@ -33,3 +33,8 @@ export function getInitials(name: string | null, pubkey: string | null): string 
   if (pubkey) return pubkey.slice(0, 2).toUpperCase();
   return "??";
 }
+
+/** Strips any _routeHint suffix, returning only the bare pubkey. */
+export function extractPubkey(raw: string): string {
+  return raw.split("_")[0].trim();
+}

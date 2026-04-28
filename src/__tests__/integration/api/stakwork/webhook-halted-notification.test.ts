@@ -133,6 +133,7 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
     const record = await waitForNotification({
       notificationType: NotificationTriggerType.WORKFLOW_HALTED,
       featureId: feature.id,
+      sendAfter: { not: null },
     });
 
     expect(record).not.toBeNull();

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { validationError, serverError, isApiError } from "@/types/errors";
+import { validationError, serverError, isApiError, forbiddenError } from "@/types/errors";
 import { getQuickAskPrefixMessages, getMultiWorkspacePrefixMessages } from "@/lib/constants/prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import { buildWorkspaceConfigs, fetchConceptsForWorkspaces } from "@/lib/ai/workspaceConfig";
+import { db } from "@/lib/db";
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
 import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
@@ -154,6 +155,22 @@ export async function POST(request: NextRequest) {
       // agent to pick based on intent (document-an-integration vs
       // draw-a-diagram).
       if (orgId) {
+        // Verify the caller actually belongs to the supplied orgId by
+        // confirming it is linked to at least one workspace they already
+        // have verified access to (workspaceConfigs only contains
+        // workspaces that passed validateWorkspaceAccess above).
+        const verifiedWorkspaceIds = workspaceConfigs.map((c) => c.workspaceId);
+        const orgWorkspace = await db.workspace.findFirst({
+          where: {
+            id: { in: verifiedWorkspaceIds },
+            sourceControlOrgId: orgId,
+          },
+          select: { id: true },
+        });
+        if (!orgWorkspace) {
+          throw forbiddenError("Access denied for org");
+        }
+
         tools = {
           ...tools,
           ...buildConnectionTools(orgId, userOrResponse.id),
