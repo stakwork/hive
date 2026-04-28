@@ -33,6 +33,10 @@ import {
   MilestoneDialog,
   type MilestoneForm,
 } from "@/components/initiatives/MilestoneDialog";
+import {
+  CreateFeatureCanvasDialog,
+  type FeatureCreateForm,
+} from "../_components/CreateFeatureCanvasDialog";
 import type {
   InitiativeResponse,
   MilestoneResponse,
@@ -63,7 +67,7 @@ function isLiveId(id: string): boolean {
  * helper so a category never shows in the menu but fails the dispatch
  * (or vice versa).
  */
-const DB_CREATING_CATEGORIES = new Set(["initiative", "milestone"]);
+const DB_CREATING_CATEGORIES = new Set(["initiative", "milestone", "feature"]);
 
 /**
  * Full-screen interactive system-canvas background for the Connections page.
@@ -829,7 +833,29 @@ export function OrgCanvasBackground({
     /** Count + 1 from the server; undefined if fetch failed (dialog opens with empty field). */
     defaultSequence?: number;
   };
-  type PendingAdd = PendingInitiativeAdd | PendingMilestoneAdd;
+  /**
+   * Pending feature-create from either the `+` menu or a "Promote to
+   * Feature" right-click on a note. `canvasRef` is the scope the user
+   * triggered from — the dialog uses it to lock fields. `prefill` is
+   * set on the Promote path; the note's text seeds title + brief.
+   */
+  type PendingFeatureAdd = {
+    kind: "feature";
+    x: number;
+    y: number;
+    /** Empty string ("") means root canvas; otherwise the sub-canvas ref. */
+    canvasRef: string | undefined;
+    prefill?: { title?: string; brief?: string };
+    /**
+     * If set, the dialog was opened by promoting a note. After save we
+     * delete the source note from its canvas (the user "consumed" it).
+     */
+    sourceNoteId?: string;
+  };
+  type PendingAdd =
+    | PendingInitiativeAdd
+    | PendingMilestoneAdd
+    | PendingFeatureAdd;
 
   const [pendingAdd, setPendingAdd] = useState<PendingAdd | null>(null);
 
@@ -952,6 +978,32 @@ export function OrgCanvasBackground({
     [githubLogin],
   );
 
+  /**
+   * Open the CreateFeatureCanvasDialog. Unlike initiative/milestone
+   * dialogs, feature creation has no scope-bound pre-fetch: the dialog
+   * itself loads workspaces / initiatives / edge hints lazily on open.
+   * The caller passes `prefill` only when this is a promote-from-note
+   * path (so the dialog seeds its title + description).
+   */
+  const startFeatureCreate = useCallback(
+    (
+      node: CanvasNode,
+      canvasRef: string | undefined,
+      prefill?: { title?: string; brief?: string },
+      sourceNoteId?: string,
+    ) => {
+      setPendingAdd({
+        kind: "feature",
+        x: node.x,
+        y: node.y,
+        canvasRef,
+        prefill,
+        sourceNoteId,
+      });
+    },
+    [],
+  );
+
   const handleNodeAdd = useCallback(
     (node: CanvasNode, canvasRef: string | undefined) => {
       const category = node.category ?? "";
@@ -973,10 +1025,17 @@ export function OrgCanvasBackground({
           void startMilestoneCreate(node, ref);
           return;
         }
+        if (category === "feature") {
+          // Allowed on every scope per `categoryAllowedOnScope`. The
+          // dialog handles per-scope field locking; we just hand off
+          // the click position.
+          startFeatureCreate(node, canvasRef);
+          return;
+        }
       }
       applyMutation(canvasRef, (c) => addNode(c, node));
     },
-    [applyMutation, startInitiativeCreate, startMilestoneCreate],
+    [applyMutation, startInitiativeCreate, startMilestoneCreate, startFeatureCreate],
   );
 
   // -------------------------------------------------------------------
@@ -1089,6 +1148,113 @@ export function OrgCanvasBackground({
     },
     [githubLogin, pendingAdd, savePositionForLiveId],
   );
+
+  /**
+   * Save handler for the CreateFeatureCanvasDialog. Hits POST
+   * /api/features with the resolved `(workspaceId, initiativeId,
+   * milestoneId)` triple, then routes the click-position save and
+   * canvas refetch to the **target** canvas — which is the most
+   * specific scope the new feature lives on, NOT the canvas the user
+   * triggered from. Example: user creates from root and picks an
+   * initiative → the new feature card appears on the initiative's
+   * sub-canvas, so we save the position there and refetch that
+   * sub-canvas (not root).
+   *
+   * If the dialog was opened via "Promote to Feature" on a note,
+   * `pendingAdd.sourceNoteId` is set and we remove that note from the
+   * originating canvas after the feature is created — the user
+   * "consumed" the note when they promoted it.
+   */
+  const handleSaveFeature = useCallback(
+    async (form: FeatureCreateForm): Promise<void> => {
+      if (pendingAdd?.kind !== "feature") return;
+      const body: Record<string, unknown> = {
+        title: form.title,
+        workspaceId: form.workspaceId,
+        ...(form.brief ? { brief: form.brief } : {}),
+        ...(form.initiativeId ? { initiativeId: form.initiativeId } : {}),
+        ...(form.milestoneId ? { milestoneId: form.milestoneId } : {}),
+      };
+      const res = await fetch(`/api/features`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        // Surface enough info to console; toast lands here when the
+        // global toast system arrives (same gap as initiative/milestone).
+        const detail = await res.text().catch(() => "");
+        console.error(
+          "[OrgCanvasBackground] create feature failed",
+          res.status,
+          detail,
+        );
+        return;
+      }
+      const payload = await res.json();
+      const created: { id: string } = payload?.data ?? payload;
+
+      // Resolve the target canvas ref by the "most specific place
+      // wins" rule. This must mirror the projector emission rules:
+      //   - milestoneId set       → milestone:<id>
+      //   - initiativeId only set → initiative:<id>
+      //   - neither set           → ws:<id>
+      // Mismatch here would save the position overlay on the wrong
+      // canvas, the projected node would render at the projector
+      // default, and the user's click position would silently vanish.
+      const targetRef: string = form.milestoneId
+        ? `milestone:${form.milestoneId}`
+        : form.initiativeId
+        ? `initiative:${form.initiativeId}`
+        : `ws:${form.workspaceId}`;
+
+      // Save the click position before refetching so the position
+      // overlay is already in the blob by the time the canvas reads.
+      // Note we pass the **target** ref, not the source canvas ref —
+      // the position lives on the canvas the feature renders on.
+      await savePositionForLiveId(
+        targetRef,
+        `feature:${created.id}`,
+        pendingAdd.x,
+        pendingAdd.y,
+      );
+
+      // Promote-from-note path: remove the source note. We do this
+      // through the same `applyMutation` flow as a regular delete so
+      // the autosave + Pusher broadcast follow the standard path.
+      if (pendingAdd.sourceNoteId) {
+        applyMutation(pendingAdd.canvasRef, (c) =>
+          removeNode(c, pendingAdd.sourceNoteId!),
+        );
+      }
+
+      // Local refetch of the **target** canvas so the new feature
+      // shows up immediately. If the target is the same canvas the
+      // user is on, this is the natural refresh; if it's elsewhere
+      // (e.g. created on root, lands on initiative), the user will
+      // see the card on first drill-in. Pusher fan-out handles other
+      // tabs/users.
+      try {
+        if (targetRef === "") {
+          // Defensive: today no feature lands on root (the matrix
+          // above always picks a sub-canvas), but keep this branch
+          // so the code stays correct if the rules expand.
+          const data = await fetchRoot(githubLogin);
+          setRoot(data);
+        } else {
+          const data = await fetchSub(githubLogin, targetRef);
+          setSubCanvases((prev) => ({ ...prev, [targetRef]: data }));
+        }
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] refetch after create feature failed",
+          err,
+        );
+      }
+    },
+    [githubLogin, pendingAdd, savePositionForLiveId, applyMutation],
+  );
+
   /**
    * Persist a milestone status change to the DB. Fire-and-forget; on
    * success the API route emits CANVAS_UPDATED which round-trips through
@@ -1350,11 +1516,14 @@ export function OrgCanvasBackground({
   };
 
   /**
-   * Right-click menu on canvas nodes. Today this is a stub: a single
-   * "Promote to Plan…" item that matches notes only and does nothing
-   * on select beyond logging. The surface is in place so we can land
-   * the per-scope behavior atomically once the team settles the open
-   * questions in `docs/plans/org-plans.md`.
+   * Right-click menu on canvas nodes. Currently surfaces one item:
+   * **"Promote to Feature…"** on note nodes. Selecting it opens the
+   * `CreateFeatureCanvasDialog` with the note's `text` pre-filled
+   * (truncated for the title, full text as the description) and the
+   * source note id stashed on `pendingAdd` so we delete the note
+   * after the feature is created — the user "consumed" the note
+   * when they promoted it. Allowed on every scope; the dialog handles
+   * per-scope field locking.
    *
    * `useMemo` keeps the config object reference stable across renders;
    * `<SystemCanvas>` reads it on every render to filter items per node,
@@ -1365,8 +1534,8 @@ export function OrgCanvasBackground({
     () => ({
       items: [
         {
-          id: "promote-to-plan",
-          label: "Promote to Plan…",
+          id: "promote-to-feature",
+          label: "Promote to Feature…",
           // Only notes are promotable. Other categories (decisions,
           // projected live nodes, base text/file/link/group) get no
           // menu — the library treats "zero matched items" as "don't
@@ -1375,19 +1544,27 @@ export function OrgCanvasBackground({
         },
       ],
       onSelect: (itemId, node, ctx) => {
-        // Stub. Full per-scope behavior is pending the open questions
-        // in `docs/plans/org-plans.md` (which scopes project Plans,
-        // schema decisions on `Feature.initiativeId`, dialog UX). The
-        // log makes it easy to verify the wiring is correct in dev.
-        console.log("[OrgCanvasBackground] context menu select", {
-          itemId,
-          nodeId: node.id,
-          category: node.category,
-          canvasRef: ctx.canvasRef,
-        });
+        if (itemId !== "promote-to-feature") return;
+        const text = (node.text ?? "").trim();
+        // Title pre-fill: first non-empty line, capped to fit the
+        // dialog's input. Full text always seeds the description so
+        // the user doesn't lose context when the title gets truncated.
+        const firstLine = text.split(/\r?\n/).find((l) => l.trim()) ?? "";
+        const titleSeed = firstLine.slice(0, 80);
+        const briefSeed = text;
+        // The library types `ctx.canvasRef` as `string | null` (null
+        // for the root canvas); the rest of OrgCanvasBackground uses
+        // `string | undefined`. Coerce so `startFeatureCreate`'s
+        // signature matches the `+` menu path.
+        startFeatureCreate(
+          node,
+          ctx.canvasRef ?? undefined,
+          { title: titleSeed, brief: briefSeed },
+          node.id,
+        );
       },
     }),
-    [],
+    [startFeatureCreate],
   );
 
   /**
@@ -1545,6 +1722,16 @@ export function OrgCanvasBackground({
           pendingAdd?.kind === "milestone" ? pendingAdd.defaultSequence : undefined
         }
         onSave={handleSaveMilestone}
+      />
+      <CreateFeatureCanvasDialog
+        open={pendingAdd?.kind === "feature"}
+        onClose={() => setPendingAdd(null)}
+        githubLogin={githubLogin}
+        scope={
+          pendingAdd?.kind === "feature" ? pendingAdd.canvasRef ?? "" : ""
+        }
+        prefill={pendingAdd?.kind === "feature" ? pendingAdd.prefill : undefined}
+        onSave={handleSaveFeature}
       />
     </>
   );
