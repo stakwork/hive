@@ -316,11 +316,30 @@ Assign every node to a class. No unstyled nodes.
 - Make sure to create valid mermaid syntax, avoid special characters in node names in general.`;
 }
 
+export interface CanvasScopeHint {
+  /**
+   * Canvas ref the user is currently viewing on the org canvas page.
+   * `""` (or undefined) means the org root canvas; non-empty values are
+   * sub-canvas refs like `"initiative:<id>"`, `"ws:<id>"`,
+   * `"node:<id>"`. Threaded into the system prompt so the agent
+   * defaults canvas tool calls to this scope instead of always
+   * targeting root.
+   */
+  currentCanvasRef?: string;
+  /**
+   * Live id of the canvas node the user has currently selected — e.g.
+   * `"initiative:abc"`, `"ws:xyz"`, or an authored note id. Lets the
+   * agent resolve "this" / "here" references in chat without guessing.
+   */
+  selectedNodeId?: string;
+}
+
 export function getMultiWorkspacePrefixMessages(
   workspaces: WorkspaceConfig[],
   conceptsByWorkspace: Record<string, Record<string, unknown>[]>,
   clueMsgs: ModelMessage[] | null,
-  orgId?: string
+  orgId?: string,
+  scope?: CanvasScopeHint,
 ): ModelMessage[] {
   // Build pre-filled tool calls for each workspace's concepts
   const toolCalls: ModelMessage[] = [];
@@ -368,7 +387,8 @@ export function getMultiWorkspacePrefixMessages(
   const systemPrompt = orgId
     ? getMultiWorkspaceSystemPrompt(workspaces) +
       getConnectionPromptSuffix() +
-      getCanvasPromptSuffix()
+      getCanvasPromptSuffix() +
+      getCanvasScopeHint(scope)
     : getMultiWorkspaceSystemPrompt(workspaces);
 
   return [
@@ -376,4 +396,40 @@ export function getMultiWorkspacePrefixMessages(
     ...toolCalls,
     ...(clueMsgs || []),
   ];
+}
+
+/**
+ * Render the user's current canvas scope as a short prompt section.
+ * Returns the empty string when no hint is provided so we don't bloat
+ * the prompt for non-canvas chats.
+ */
+function getCanvasScopeHint(scope?: CanvasScopeHint): string {
+  if (!scope) return "";
+  // Distinguish "field omitted" from "explicitly empty" — `""` is the
+  // root canvas and the agent benefits from being told that, just as
+  // much as it benefits from being told a sub-canvas ref.
+  const refProvided = scope.currentCanvasRef !== undefined;
+  const ref = scope.currentCanvasRef ?? "";
+  const selected = scope.selectedNodeId;
+  if (!refProvided && !selected) return "";
+
+  const refDescription = ref
+    ? `\`${ref}\` sub-canvas`
+    : "the org root canvas";
+
+  const lines = [
+    "",
+    "## Current canvas scope",
+    "",
+    `The user is viewing **${refDescription}** right now. Default canvas tool calls (\`read_canvas\`, \`patch_canvas\`, \`update_canvas\`) to \`ref: "${ref}"\` unless the user explicitly asks about a different scope. When they say "this", "here", or "this canvas", they mean this scope.`,
+  ];
+
+  if (selected) {
+    lines.push(
+      "",
+      `They have selected node \`${selected}\` on the canvas. Treat "this node", "this initiative/workspace/milestone", or "it" as referring to that node when context is otherwise ambiguous.`,
+    );
+  }
+
+  return lines.join("\n");
 }
