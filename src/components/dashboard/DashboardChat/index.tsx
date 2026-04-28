@@ -48,6 +48,14 @@ interface DashboardChatProps {
    */
   currentCanvasRef?: string;
   /**
+   * Human-readable breadcrumb trail for the current canvas (e.g.
+   * `"Acme"` on root, `"Acme › Auth Refactor"` on a sub-canvas).
+   * Sent alongside `currentCanvasRef` so the agent can refer to the
+   * scope by name in replies instead of echoing the opaque ref id.
+   * Only meaningful when `orgId` is also set; safe to omit.
+   */
+  currentCanvasBreadcrumb?: string;
+  /**
    * Live id of the canvas node the user has currently selected. Lets
    * the agent resolve "this" / "here" references in chat. Sent only
    * when non-null.
@@ -61,6 +69,7 @@ export function DashboardChat({
   orgId,
   maxExtraWorkspaces,
   currentCanvasRef,
+  currentCanvasBreadcrumb,
   selectedNodeId,
 }: DashboardChatProps = {}) {
   const { slug, workspace } = useWorkspace();
@@ -300,6 +309,9 @@ export function DashboardChat({
           // when `orgId` isn't set.
           ...(currentCanvasRef !== undefined
             ? { currentCanvasRef }
+            : {}),
+          ...(currentCanvasBreadcrumb
+            ? { currentCanvasBreadcrumb }
             : {}),
           ...(selectedNodeId ? { selectedNodeId } : {}),
         }),
