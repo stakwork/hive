@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { validationError, serverError, isApiError } from "@/types/errors";
+import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { getQuickAskPrefixMessages, getMultiWorkspacePrefixMessages } from "@/lib/constants/prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import { buildWorkspaceConfigs, fetchConceptsForWorkspaces } from "@/lib/ai/workspaceConfig";
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
+import { validateUserBelongsToOrg } from "@/services/workspace";
 import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
 import { z } from "zod";
@@ -91,10 +92,13 @@ export async function POST(request: NextRequest) {
       workspaceSlug,
       workspaceSlugs,
       orgId,
-      // Canvas page hints — only meaningful with `orgId`. Both
+      // Canvas page hints — only meaningful with `orgId`. All
       // optional; the prompt builder injects them as a small "current
-      // scope" section when present.
+      // scope" section when present. The breadcrumb is a precomputed
+      // human-readable trail (e.g. "Acme › Auth Refactor") so the
+      // agent can refer to the scope by name in replies.
       currentCanvasRef,
+      currentCanvasBreadcrumb,
       selectedNodeId,
     } = body;
 
@@ -154,6 +158,16 @@ export async function POST(request: NextRequest) {
       // agent to pick based on intent (document-an-integration vs
       // draw-a-diagram).
       if (orgId) {
+        // Verify the authenticated caller actually belongs to the supplied org
+        // before granting canvas/connection write tools for it.
+        const orgBelongsToCaller = await validateUserBelongsToOrg(
+          orgId,
+          userOrResponse.id,
+          "id",
+        );
+        if (!orgBelongsToCaller) {
+          throw forbiddenError("Access denied for the specified organization");
+        }
         tools = {
           ...tools,
           ...buildConnectionTools(orgId, userOrResponse.id),
@@ -176,6 +190,10 @@ export async function POST(request: NextRequest) {
         {
           currentCanvasRef:
             typeof currentCanvasRef === "string" ? currentCanvasRef : undefined,
+          currentCanvasBreadcrumb:
+            typeof currentCanvasBreadcrumb === "string"
+              ? currentCanvasBreadcrumb
+              : undefined,
           selectedNodeId:
             typeof selectedNodeId === "string" ? selectedNodeId : undefined,
         },
