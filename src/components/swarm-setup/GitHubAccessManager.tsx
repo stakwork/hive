@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -7,6 +8,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
+  EmptyDescription,
   EmptyContent,
 } from "@/components/ui/empty";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -24,27 +26,71 @@ function extractRepoName(url: string): string {
   return match ? match[1] : url;
 }
 
-function getButtonText(errorType: string, error: string | null): string {
-  if (errorType === "reauth" || error?.includes("token is invalid or expired")) {
-    return "Reconnect GitHub";
+function getStateContent(
+  errorType: string,
+  error: string | null,
+): { title: string; description: string; buttonText?: string } {
+  if (errorType === "reauth") {
+    return {
+      title: "GitHub Connection Expired",
+      description: "Your GitHub token is no longer valid. Reconnect your account to restore access.",
+      buttonText: "Reconnect GitHub",
+    };
   }
+
   if (errorType === "installation-update") {
-    return "Grant Access on GitHub";
+    return {
+      title: "Repository Not Accessible",
+      description: "This repository hasn't been added to the GitHub App. Grant access to continue.",
+      buttonText: "Grant Access on GitHub",
+    };
   }
-  return "Install GitHub App";
+
+  if (errorType === "no-cta") {
+    if (error === "user_not_authorised") {
+      return {
+        title: "Access Not Granted",
+        description:
+          "You're a member of this workspace but don't have access to this repository. Contact a workspace admin.",
+      };
+    }
+    return {
+      title: "Insufficient Permissions",
+      description:
+        "You don't have write access to this repository. Contact a workspace admin to be granted the correct permissions.",
+    };
+  }
+
+  // errorType === 'other'
+  if (error === "Failed to check repository access") {
+    return {
+      title: "Something Went Wrong",
+      description: "We couldn't check your repository access. Refresh the page to try again.",
+    };
+  }
+
+  return {
+    title: "GitHub App Not Installed",
+    description: "The GitHub App needs to be installed for this organisation to continue.",
+    buttonText: "Install GitHub App",
+  };
 }
 
 export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAccessManagerProps) {
   const { workspace } = useWorkspace();
-  const [accessState, setAccessState] = useState<'checking' | 'no-access' | 'reconnecting'>('checking');
+  const [accessState, setAccessState] = useState<"checking" | "no-access" | "reconnecting">(
+    "checking",
+  );
   const [installationId, setInstallationId] = useState<number | undefined>();
-  const [errorType, setErrorType] = useState<'reauth' | 'installation-update' | 'other'>('other');
+  const [errorType, setErrorType] = useState<
+    "reauth" | "installation-update" | "other" | "no-cta"
+  >("other");
   const [error, setError] = useState<string | null>(null);
   const [installationLink, setInstallationLink] = useState<string | null>(null);
 
   useEffect(() => {
     const checkAccess = async () => {
-      setAccessState('checking');
+      setAccessState("checking");
 
       try {
         const result = await checkRepositoryAccess(repositoryUrl);
@@ -54,22 +100,26 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
           onAccessError(false);
         } else {
           onAccessError(true);
-          setAccessState('no-access');
+          setAccessState("no-access");
           setInstallationId(result.installationId);
 
           if (result.requiresReauth) {
-            setErrorType('reauth');
+            setErrorType("reauth");
           } else if (result.requiresInstallationUpdate) {
-            setErrorType('installation-update');
+            setErrorType("installation-update");
+          } else if (result.error === "user_not_authorised") {
+            setErrorType("no-cta");
+          } else if (!result.error && !result.hasAccess) {
+            setErrorType("no-cta");
           } else {
-            setErrorType('other');
+            setErrorType("other");
           }
 
           setError(result.error || null);
         }
       } catch (err) {
         console.error("Error checking repository access:", err);
-        setAccessState('no-access');
+        setAccessState("no-access");
         onAccessError(true);
         setError("Failed to check repository access");
       }
@@ -94,7 +144,7 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
           workspaceSlug: workspace.slug,
           repositoryUrl,
           installationId,
-          isExtend: errorType === 'installation-update',
+          isExtend: errorType === "installation-update",
         }),
       });
 
@@ -112,45 +162,50 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
   }, [repositoryUrl, workspace?.slug, installationId, errorType, onAccessError]);
 
   useEffect(() => {
-    if (accessState === 'no-access' && !installationLink) {
+    if (accessState === "no-access" && !installationLink && errorType !== "no-cta") {
       getInstallationLink();
     }
-  }, [accessState, installationLink, getInstallationLink]);
+  }, [accessState, installationLink, errorType, getInstallationLink]);
 
-  if (accessState === 'checking') {
+  if (accessState === "checking") {
     return null;
   }
 
-  if (accessState === 'no-access') {
+  if (accessState === "no-access") {
+    const { title, description, buttonText } = getStateContent(errorType, error);
+
     return (
       <Empty className="py-12">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <Github className="size-5" />
           </EmptyMedia>
-          <EmptyTitle>Repository Access Required</EmptyTitle>
+          <EmptyTitle>{title}</EmptyTitle>
+          <EmptyDescription>{description}</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
           <Badge variant="outline" className="font-mono text-xs">
             {extractRepoName(repositoryUrl)}
           </Badge>
 
-          {installationLink ? (
-            <Button asChild>
-              <a href={installationLink} target="_blank" rel="noopener noreferrer">
-                {getButtonText(errorType, error)}
-              </a>
-            </Button>
-          ) : (
-            <Button disabled>
-              <Loader2 className="animate-spin" />
-              Loading...
-            </Button>
-          )}
+          {buttonText && (
+            <>
+              {installationLink ? (
+                <Button asChild>
+                  <a href={installationLink} target="_blank" rel="noopener noreferrer">
+                    {buttonText}
+                  </a>
+                </Button>
+              ) : (
+                <Button disabled>
+                  <Loader2 className="animate-spin" />
+                  Loading...
+                </Button>
+              )}
 
-          <p className="text-xs text-muted-foreground">
-            After granting access, refresh this page.
-          </p>
+              <p className="text-xs text-muted-foreground">After granting access, refresh this page.</p>
+            </>
+          )}
         </EmptyContent>
       </Empty>
     );
