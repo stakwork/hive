@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 import { updateFeature, deleteFeature } from "@/services/roadmap";
+import { notifyFeatureReassignmentRefresh } from "@/services/roadmap/feature-canvas-notify";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { TaskStatus } from "@prisma/client";
@@ -277,9 +278,20 @@ export async function PATCH(
     const { featureId } = await params;
     const body = await request.json();
 
+    // Snapshot the feature's canvas anchors BEFORE the update so we can
+    // fan out CANVAS_UPDATED on both the canvas the feature left AND
+    // the one it landed on. We need this for the drag-and-drop
+    // assignment path (consumer PATCHes `milestoneId`), but pulling it
+    // here keeps the route's contract identical for callers that
+    // aren't touching anchors — `notifyFeatureReassignmentRefresh` is
+    // only fired when at least one anchor field appears in the body.
     const featureLookup = await db.feature.findUnique({
       where: { id: featureId },
-      select: { workspaceId: true },
+      select: {
+        workspaceId: true,
+        milestoneId: true,
+        initiativeId: true,
+      },
     });
     const userOrResponse = await requireAuthOrApiToken(request, featureLookup?.workspaceId);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
@@ -297,6 +309,25 @@ export async function PATCH(
       } catch (pusherError) {
         console.error("Failed to broadcast feature title update:", pusherError);
       }
+    }
+
+    // Canvas reassignment fan-out. Only fires when the body actually
+    // touched a canvas anchor — covers drag-and-drop on the org canvas
+    // (milestone reassign), board moves, and any future API caller that
+    // moves a feature between initiative/milestone scopes. The helper
+    // resolves both `before` and `after` refs and emits CANVAS_UPDATED
+    // on every affected canvas (root, both initiatives, both milestones,
+    // workspace) with sensible de-duping. Fire-and-forget — Pusher
+    // hiccups must not fail the PATCH that triggered them.
+    if (
+      featureLookup &&
+      (body.milestoneId !== undefined || body.initiativeId !== undefined)
+    ) {
+      void notifyFeatureReassignmentRefresh(featureId, {
+        milestoneId: featureLookup.milestoneId,
+        initiativeId: featureLookup.initiativeId,
+        workspaceId: featureLookup.workspaceId,
+      });
     }
 
     return NextResponse.json(
