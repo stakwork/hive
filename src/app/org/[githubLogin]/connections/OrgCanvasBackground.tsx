@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   AddNodeButton,
   SystemCanvas,
@@ -21,7 +21,8 @@ import {
 } from "system-canvas-react";
 import { connectionsTheme } from "./canvas-theme";
 import { HiddenLivePill, type HiddenLiveEntry } from "./HiddenLivePill";
-import { getOrgChannelName, getPusherClient, PUSHER_EVENTS } from "@/lib/pusher";
+import { getOrgChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { usePusherChannel } from "@/hooks/usePusherChannel";
 import {
   InitiativeDialog,
   type InitiativeForm,
@@ -192,6 +193,16 @@ interface OrgCanvasBackgroundProps {
    * The callback is called with a fresh array every time; don't mutate.
    */
   onHiddenChange?: (entries: HiddenLiveEntry[]) => void;
+  /**
+   * Fires when the user clicks a node (selection) or navigates to a
+   * different canvas (clears selection). Lets the parent render a
+   * details panel for the currently-selected node.
+   *
+   * `null` means "no node selected" (clicked an edge, navigated, etc.).
+   * Receives the full `CanvasNode` so consumers can read `id`,
+   * `category`, `text`, and `customData` without a follow-up lookup.
+   */
+  onNodeSelect?: (node: CanvasNode | null) => void;
 }
 
 export function OrgCanvasBackground({
@@ -199,6 +210,7 @@ export function OrgCanvasBackground({
   rightInset = 0,
   orgName,
   onHiddenChange,
+  onNodeSelect,
 }: OrgCanvasBackgroundProps) {
   const [root, setRoot] = useState<CanvasData | null>(null);
   const [subCanvases, setSubCanvases] = useState<Record<string, CanvasData>>({});
@@ -240,6 +252,11 @@ export function OrgCanvasBackground({
   // -------------------------------------------------------------------
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Stay on the current route when writing canvas URL params. The
+  // canvas only lives at `/org/{login}` today, but reading the
+  // pathname keeps the URL writer route-agnostic if we ever mount
+  // it elsewhere again.
+  const pathname = usePathname();
   /** Imperative handle for `SystemCanvas`; used to drill into a ref from a URL param. */
   const canvasHandleRef = useRef<SystemCanvasHandle | null>(null);
   /**
@@ -289,12 +306,9 @@ export function OrgCanvasBackground({
         params.set("canvas", ref);
       }
       const qs = params.toString();
-      router.replace(
-        `/org/${githubLogin}/connections${qs ? `?${qs}` : ""}`,
-        { scroll: false },
-      );
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     },
-    [router, githubLogin, searchParams],
+    [router, pathname, searchParams],
   );
 
   /**
@@ -307,8 +321,27 @@ export function OrgCanvasBackground({
     (ref: string) => {
       setCurrentRef(ref);
       writeCanvasUrlParam(ref);
+      // Drilling into a sub-canvas (or popping back) drops the
+      // selection — the previously-selected node may not even exist on
+      // the new scope. Parent right-panel reverts to its default body.
+      onNodeSelect?.(null);
     },
-    [writeCanvasUrlParam],
+    [writeCanvasUrlParam, onNodeSelect],
+  );
+
+  /**
+   * User clicked a node. Forward it to the parent so a side-panel can
+   * render details for it. The library does NOT call `onNodeClick`
+   * for clicks on empty canvas — that means there's no built-in way
+   * to clear selection by clicking the background. We accept that:
+   * navigating away (drill-in, breadcrumb) clears selection, and
+   * clicking another node replaces it.
+   */
+  const handleNodeClick = useCallback(
+    (node: CanvasNode) => {
+      onNodeSelect?.(node);
+    },
+    [onNodeSelect],
   );
 
   /**
@@ -325,9 +358,10 @@ export function OrgCanvasBackground({
       if (index === 0) {
         setCurrentRef("");
         writeCanvasUrlParam("");
+        onNodeSelect?.(null);
       }
     },
-    [writeCanvasUrlParam],
+    [writeCanvasUrlParam, onNodeSelect],
   );
 
   /**
@@ -345,7 +379,7 @@ export function OrgCanvasBackground({
   const [hiddenLive, setHiddenLive] = useState<HiddenLiveEntry[] | null>(null);
   /**
    * Hidden live entries for the ROOT canvas specifically — independent
-   * of `currentRef`. The chat workspace seed in `ConnectionsPage` only
+   * of `currentRef`. The chat workspace seed in `OrgCanvasView` only
    * cares about hidden workspaces (which only live on root); piping the
    * current-scope list through `onHiddenChange` would re-seed the chat
    * with repo/milestone entries when the user drills into a sub-canvas.
@@ -536,7 +570,7 @@ export function OrgCanvasBackground({
   // Notify the parent whenever the ROOT hidden-live set changes. Skips
   // until the initial fetch resolves (`rootHiddenLive` starts as `null`),
   // so the parent's first non-stub callback is the real list.
-  // Critical for `ConnectionsPage`: it gates the chat mount on
+  // Critical for `OrgCanvasView`: it gates the chat mount on
   // `hiddenInitialized`, and the chat reads `defaultExtraWorkspaceSlugs`
   // only on mount — firing this with an empty stub would seed the
   // chat without any hidden filtering, then the real list would land
@@ -573,12 +607,16 @@ export function OrgCanvasBackground({
   // pending — the user's in-flight changes would be silently clobbered
   // by a read of stale remote state. The autosave flush will propagate
   // our edits shortly, and if a collision happens, last-write-wins.
+  //
+  // Subscription lifecycle is owned by `usePusherChannel` (refcounted)
+  // so this component coexists safely with other consumers of the same
+  // org channel — notably `ConnectionsListBody`, which used to call
+  // `pusher.unsubscribe` directly and orphan our handler on every
+  // parent re-render.
+  const channelName = getOrgChannelName(githubLogin);
+  const channel = usePusherChannel(channelName);
   useEffect(() => {
-    if (!process.env.NEXT_PUBLIC_PUSHER_KEY) return;
-
-    const channelName = getOrgChannelName(githubLogin);
-    const pusher = getPusherClient();
-    const channel = pusher.subscribe(channelName);
+    if (!channel) return;
 
     // Diagnostic: log the subscription lifecycle so we can tell, in the
     // field, whether an agent-driven update arrived before or after the
@@ -594,7 +632,6 @@ export function OrgCanvasBackground({
     channel.bind("pusher:subscription_error", handleSubError);
 
     const handleCanvasUpdated = (payload: { ref?: string | null }) => {
-      console.log("[OrgCanvasBackground] CANVAS_UPDATED received", payload);
       // Don't clobber unsaved local edits — our autosave flush will
       // propagate them shortly. On collision, last-write-wins.
       if (dirtyRef.current.size > 0) return;
@@ -646,9 +683,8 @@ export function OrgCanvasBackground({
       channel.unbind("pusher:subscription_succeeded", handleSubSucceeded);
       channel.unbind("pusher:subscription_error", handleSubError);
       channel.unbind(PUSHER_EVENTS.CANVAS_UPDATED, handleCanvasUpdated);
-      pusher.unsubscribe(channelName);
     };
-  }, [githubLogin]);
+  }, [channel, channelName, githubLogin]);
 
   // Resolve a sub-canvas ref: serve from cache if present, otherwise fetch.
   const onResolveCanvas = useCallback(
@@ -1332,6 +1368,7 @@ export function OrgCanvasBackground({
           onResolveCanvas={onResolveCanvas}
           onNavigate={handleSystemCanvasNavigate}
           onBreadcrumbClick={handleBreadcrumbClick}
+          onNodeClick={handleNodeClick}
           onNodeAdd={handleNodeAdd}
           onNodeUpdate={handleNodeUpdate}
           onNodeDelete={handleNodeDelete}
