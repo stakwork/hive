@@ -96,7 +96,7 @@ describe("executePodScalerRuns", () => {
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
-      .mockResolvedValueOnce(3)  // todoCount → 3 over-queued → targetVms = 2 + 3 + 2 = 7
+      .mockResolvedValueOnce(3)  // todoCount → rawDemand=3 > floor=2 → 3 + 2 = 5
       .mockResolvedValueOnce(0); // inProgressNoPodCount
 
     const result = await executePodScalerRuns();
@@ -108,14 +108,14 @@ describe("executePodScalerRuns", () => {
 
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 7, deployedPods: 7 },
+      data: { minimumVms: 5, deployedPods: 5 },
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://pool.example.com/api/pools/swarm-001/scale",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ minimum_vms: 7 }),
+        body: JSON.stringify({ minimum_vms: 5 }),
         headers: expect.objectContaining({
           Authorization: "Bearer decrypted-enc-key-abc",
         }),
@@ -227,18 +227,18 @@ describe("executePodScalerRuns", () => {
     const swarm = makeSwarm({ minimumVms: 3, minimumPods: null });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
-      .mockResolvedValueOnce(1)  // todoCount → 1 over-queued → targetVms = 3 + 1 + 2 = 6
+      .mockResolvedValueOnce(1)  // todoCount → rawDemand=1 ≤ floor=3 → stays at floor=3 (no-op)
       .mockResolvedValueOnce(0); // inProgressNoPodCount
 
     const result = await executePodScalerRuns();
 
     expect(result.swarmsProcessed).toBe(1);
-    expect(result.swarmsScaled).toBe(1);
-    expect(fetchMock).toHaveBeenCalled();
+    expect(result.swarmsScaled).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
 
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 6, deployedPods: 6 },
+      data: { minimumVms: 3, deployedPods: 3 },
     });
   });
 
@@ -360,11 +360,11 @@ describe("executePodScalerRuns", () => {
   });
 
   it("cooldown does not block scale-up", async () => {
-    // overQueuedCount=3 → scale-up; recentlyCompletedCount should never be queried
+    // overQueuedCount=3 → rawDemand=0+3=3 > floor=2 → targetVms = 3+2=5; recentlyCompletedCount should never be queried
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
-      .mockResolvedValueOnce(3)  // todoCount → targetVms = 2+3+2=7
+      .mockResolvedValueOnce(3)  // todoCount → rawDemand=3 > floor=2 → 3 + 2 = 5
       .mockResolvedValueOnce(0)  // inProgressNoPodCount
       .mockResolvedValueOnce(5); // recentlyCompletedCount (should NOT be called)
 
@@ -377,7 +377,7 @@ describe("executePodScalerRuns", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://pool.example.com/api/pools/swarm-001/scale",
       expect.objectContaining({
-        body: JSON.stringify({ minimum_vms: 7 }),
+        body: JSON.stringify({ minimum_vms: 5 }),
       })
     );
   });
@@ -464,7 +464,7 @@ describe("executePodScalerRuns", () => {
   // ── Utilisation threshold tests ───────────────────────────────────────────
 
   it("scales up by scaleUpBuffer when utilisation >= threshold and no over-queued tasks", async () => {
-    // 4/5 = 80% >= 80 threshold → utilisationTriggered; targetVms = floor(2) + scaleUpBuffer(2) = 4
+    // 4/5 = 80% >= 80 threshold → utilisationTriggered; rawDemand=4 > floor=2 → targetVms = 4 + 2 = 6
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
@@ -486,11 +486,11 @@ describe("executePodScalerRuns", () => {
     expect(result.swarmsScaled).toBe(1);
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 4, deployedPods: 4 },
+      data: { minimumVms: 6, deployedPods: 6 },
     });
     expect(fetchMock).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ body: JSON.stringify({ minimum_vms: 4 }) })
+      expect.objectContaining({ body: JSON.stringify({ minimum_vms: 6 }) })
     );
     const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
     expect(logCalls.some((m) => m.includes("utilisation threshold"))).toBe(true);
@@ -526,7 +526,7 @@ describe("executePodScalerRuns", () => {
   });
 
   it("over-queue path takes precedence over utilisation trigger", async () => {
-    // overQueuedCount=3 → targetVms = 2+3+2 = 7; utilisation also triggered but over-queue wins
+    // usedVms=4, overQueuedCount=3 → rawDemand=7 > floor=2 → targetVms = 7 + 2 = 9
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
@@ -546,26 +546,26 @@ describe("executePodScalerRuns", () => {
 
     expect(result.swarmsProcessed).toBe(1);
     expect(result.swarmsScaled).toBe(1);
-    // over-queue: 2 + 3 + 2 = 7 vs utilisation: 2 + 2 = 4 → 7 wins
+    // rawDemand=7 > floor=2 → 7 + 2 = 9
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 7, deployedPods: 7 },
+      data: { minimumVms: 9, deployedPods: 9 },
     });
     const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
     expect(logCalls.some((m) => m.includes("over-queued tasks"))).toBe(true);
   });
 
   it("respects maxVmCeiling when utilisation triggers scale-up", async () => {
-    // floor=19, scaleUpBuffer=2 → 19+2=21, capped at 20
+    // floor=19, usedVms=21 (>floor), overQueuedCount=0, util=true → rawDemand=21>19 → 21+2=23, capped at 20
     const swarm = makeSwarm({ minimumVms: 19, minimumPods: 19 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
       .mockResolvedValueOnce(0)  // todoCount
       .mockResolvedValueOnce(0); // inProgressNoPodCount
     mockedGetPoolStatus.mockResolvedValue({
-      usedVms: 4,
-      runningVms: 5,
-      unusedVms: 1,
+      usedVms: 21,
+      runningVms: 21,
+      unusedVms: 0,
       pendingVms: 0,
       failedVms: 0,
       queuedCount: 0,
@@ -635,7 +635,8 @@ describe("executePodScalerRuns", () => {
   });
 
   it("fires utilisationTriggered when pendingVms === 0 and usedVms/runningVms >= threshold", async () => {
-    // usedVms=1, runningVms=1, pendingVms=0 → ratio=100% >= 80% → scale-up
+    // usedVms=1, runningVms=1, pendingVms=0 → ratio=100% >= 80% → utilisationTriggered
+    // but rawDemand=1 ≤ floor=2, and usedVms=1 ≤ floor=2 → no scale-up, stays at floor=2 (no change)
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
@@ -654,16 +655,12 @@ describe("executePodScalerRuns", () => {
     const result = await executePodScalerRuns();
 
     expect(result.swarmsProcessed).toBe(1);
-    expect(result.swarmsScaled).toBe(1);
-    // floor(2) + scaleUpBuffer(2) = 4
+    expect(result.swarmsScaled).toBe(0); // floor=2 already covers demand
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 4, deployedPods: 4 },
+      data: { minimumVms: 2, deployedPods: 2 },
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ body: JSON.stringify({ minimum_vms: 4 }) })
-    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not scale up when pendingVms === 0 but ratio 75% < 80% threshold", async () => {
@@ -692,7 +689,8 @@ describe("executePodScalerRuns", () => {
   });
 
   it("reads podUtilisationThreshold from platformConfig override and triggers at 50%", async () => {
-    // Threshold overridden to 50; 3/5 = 60% >= 50 → trigger
+    // Threshold overridden to 50; 3/5 = 60% >= 50 → utilisationTriggered
+    // rawDemand=3 > floor=2 → targetVms = 3 + 2 = 5
     mockedDb.platformConfig.findMany.mockResolvedValue([
       makePlatformConfig("podScalerUtilisationThreshold", "50"),
     ] as never);
@@ -715,17 +713,17 @@ describe("executePodScalerRuns", () => {
     const result = await executePodScalerRuns();
 
     expect(result.swarmsScaled).toBe(1);
-    // floor(2) + scaleUpBuffer(2) = 4
+    // rawDemand=3 > floor=2 → 3 + 2 = 5
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 4, deployedPods: 4 },
+      data: { minimumVms: 5, deployedPods: 5 },
     });
   });
 
   // ── New IN_PROGRESS / no-pod demand signal tests ──────────────────────────
 
   it("scales up when only IN_PROGRESS/no-pod tasks exist (todoCount=0, inProgressNoPodCount=2)", async () => {
-    // targetVms = floor(2) + 2 + scaleUpBuffer(2) = 6
+    // rawDemand=0+2=2, floor=2 → 2 ≤ 2 → targetVms=floor=2 (no-op, floor covers)
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
@@ -735,22 +733,16 @@ describe("executePodScalerRuns", () => {
     const result = await executePodScalerRuns();
 
     expect(result.swarmsProcessed).toBe(1);
-    expect(result.swarmsScaled).toBe(1);
+    expect(result.swarmsScaled).toBe(0);
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 6, deployedPods: 6 },
+      data: { minimumVms: 2, deployedPods: 2 },
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://pool.example.com/api/pools/swarm-001/scale",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ minimum_vms: 6 }),
-      })
-    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("combined count drives correct targetVms (todoCount=2, inProgressNoPodCount=1 → overQueuedCount=3)", async () => {
-    // targetVms = floor(2) + 3 + scaleUpBuffer(2) = 7
+    // rawDemand=0+3=3 > floor=2 → targetVms = 3 + 2 = 5
     const swarm = makeSwarm({ minimumVms: 2, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
@@ -763,7 +755,7 @@ describe("executePodScalerRuns", () => {
     expect(result.swarmsScaled).toBe(1);
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 7, deployedPods: 7 },
+      data: { minimumVms: 5, deployedPods: 5 },
     });
   });
 
@@ -822,9 +814,9 @@ describe("executePodScalerRuns", () => {
     expect(logCalls.some((m) => m.includes("usedVmsFloor=2"))).toBe(true);
   });
 
-  it("usedVms exceeds floor — targetVms floored by usedVms, not by minimumPods (the actual bug scenario)", async () => {
+  it("usedVms exceeds floor — rawDemand > floor triggers scale-up with buffer", async () => {
     // minimumVms=8, minimumPods=2, overQueuedCount=0, usedVms=4/runningVms=8 → 50% < 80% → no utilisation trigger
-    // Math.max(floor=2, usedVms=4) = 4 → scale down from 8 to 4 (NOT 2)
+    // rawDemand=4+0=4 > floor=2 → targetVms = 4 + 2 = 6 (scales down from 8 → 6, never below usedVms=4)
     const swarm = makeSwarm({ minimumVms: 8, minimumPods: 2 });
     mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
     mockedDb.task.count
@@ -847,11 +839,11 @@ describe("executePodScalerRuns", () => {
     expect(result.swarmsScaled).toBe(1);
     expect(mockedDb.swarm.update).toHaveBeenCalledWith({
       where: { id: "swarm-001" },
-      data: { minimumVms: 4, deployedPods: 4 },
+      data: { minimumVms: 6, deployedPods: 6 },
     });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://pool.example.com/api/pools/swarm-001/scale",
-      expect.objectContaining({ body: JSON.stringify({ minimum_vms: 4 }) })
+      expect.objectContaining({ body: JSON.stringify({ minimum_vms: 6 }) })
     );
     const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
     expect(logCalls.some((m) => m.includes("usedVmsFloor=4"))).toBe(true);
@@ -873,5 +865,97 @@ describe("executePodScalerRuns", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
     expect(logCalls.some((m) => m.includes("Skipping scale-down"))).toBe(true);
+  });
+
+  // ── Demand-aware targetVms truth-table tests ──────────────────────────────
+
+  it("floor covers demand — stays at floor (floor=5, usedVms=1, overQueued=2, buffer=2)", async () => {
+    // rawDemand=1+2=3, floor=5 → 3 ≤ 5 → targetVms=5 (no change from minimumVms=5)
+    const swarm = makeSwarm({ minimumVms: 5, minimumPods: 5 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(2)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
+    mockedGetPoolStatus.mockResolvedValue({
+      usedVms: 1,
+      runningVms: 5,
+      unusedVms: 4,
+      pendingVms: 0,
+      failedVms: 0,
+      queuedCount: 0,
+      lastCheck: new Date().toISOString(),
+    });
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(0); // no change — floor covers demand
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 5, deployedPods: 5 },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("demand exceeds floor — scales to demand + buffer (floor=5, usedVms=4, overQueued=2, buffer=2)", async () => {
+    // rawDemand=4+2=6 > floor=5 → targetVms = 6 + 2 = 8
+    const swarm = makeSwarm({ minimumVms: 5, minimumPods: 5 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(2)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
+    mockedGetPoolStatus.mockResolvedValue({
+      usedVms: 4,
+      runningVms: 5,
+      unusedVms: 1,
+      pendingVms: 0,
+      failedVms: 0,
+      queuedCount: 0,
+      lastCheck: new Date().toISOString(),
+    });
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(1);
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 8, deployedPods: 8 },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ body: JSON.stringify({ minimum_vms: 8 }) })
+    );
+  });
+
+  it("utilisation busts floor — scales to usedVms + buffer (floor=5, usedVms=8, overQueued=0, utilisationTriggered=true, buffer=2)", async () => {
+    // rawDemand=8+0=8 > floor=5 → targetVms = 8 + 2 = 10 (rawDemand path, which also satisfies usedVms > floor)
+    const swarm = makeSwarm({ minimumVms: 5, minimumPods: 5 });
+    mockedDb.swarm.findMany.mockResolvedValue([swarm] as never);
+    mockedDb.task.count
+      .mockResolvedValueOnce(0)  // todoCount
+      .mockResolvedValueOnce(0); // inProgressNoPodCount
+    mockedGetPoolStatus.mockResolvedValue({
+      usedVms: 8,
+      runningVms: 8,
+      unusedVms: 0,
+      pendingVms: 0,
+      failedVms: 0,
+      queuedCount: 0,
+      lastCheck: new Date().toISOString(),
+    });
+
+    const result = await executePodScalerRuns();
+
+    expect(result.swarmsProcessed).toBe(1);
+    expect(result.swarmsScaled).toBe(1);
+    expect(mockedDb.swarm.update).toHaveBeenCalledWith({
+      where: { id: "swarm-001" },
+      data: { minimumVms: 10, deployedPods: 10 },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ body: JSON.stringify({ minimum_vms: 10 }) })
+    );
   });
 });
