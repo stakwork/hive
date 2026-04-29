@@ -36,6 +36,8 @@ vi.mock("@/lib/pusher", () => ({
   PUSHER_EVENTS: {
     PLAN_USER_JOIN: "plan-user-join",
     PLAN_USER_LEAVE: "plan-user-leave",
+    PLAN_TYPING_START: "plan-typing-start",
+    PLAN_TYPING_STOP: "plan-typing-stop",
   },
 }));
 
@@ -481,6 +483,152 @@ describe("usePlanPresence", () => {
       await waitFor(() => {
         expect(result.current.collaborators).toHaveLength(1);
       });
+    });
+  });
+
+  describe("typing indicator state", () => {
+    it("should bind PLAN_TYPING_START and PLAN_TYPING_STOP events", async () => {
+      renderHook(() => usePlanPresence({ featureId }));
+
+      expect(mockChannel.bind).toHaveBeenCalledWith("plan-typing-start", expect.any(Function));
+      expect(mockChannel.bind).toHaveBeenCalledWith("plan-typing-stop", expect.any(Function));
+    });
+
+    it("should add user name to typingUsers on PLAN_TYPING_START", async () => {
+      const { result } = renderHook(() => usePlanPresence({ featureId }));
+
+      const typingStartCallback = getEventCallback("plan-typing-start");
+
+      act(() => {
+        typingStartCallback?.({ userId: "user-456", name: "Alice" });
+      });
+
+      await waitFor(() => {
+        expect(result.current.typingUsers).toEqual(["Alice"]);
+      });
+    });
+
+    it("should remove user from typingUsers on PLAN_TYPING_STOP", async () => {
+      const { result } = renderHook(() => usePlanPresence({ featureId }));
+
+      const typingStartCallback = getEventCallback("plan-typing-start");
+      const typingStopCallback = getEventCallback("plan-typing-stop");
+
+      act(() => {
+        typingStartCallback?.({ userId: "user-456", name: "Alice" });
+      });
+
+      await waitFor(() => {
+        expect(result.current.typingUsers).toEqual(["Alice"]);
+      });
+
+      act(() => {
+        typingStopCallback?.({ userId: "user-456" });
+      });
+
+      await waitFor(() => {
+        expect(result.current.typingUsers).toEqual([]);
+      });
+    });
+
+    it("should self-exclude own userId from typingUsers", async () => {
+      const { result } = renderHook(() => usePlanPresence({ featureId }));
+
+      const typingStartCallback = getEventCallback("plan-typing-start");
+
+      act(() => {
+        // user-123 is the current user (from mockSession)
+        typingStartCallback?.({ userId: "user-123", name: "Test User" });
+      });
+
+      await waitFor(() => {
+        expect(result.current.typingUsers).toEqual([]);
+      });
+    });
+
+    it("should handle multiple typing users", async () => {
+      const { result } = renderHook(() => usePlanPresence({ featureId }));
+
+      const typingStartCallback = getEventCallback("plan-typing-start");
+
+      act(() => {
+        typingStartCallback?.({ userId: "user-a", name: "Alice" });
+        typingStartCallback?.({ userId: "user-b", name: "Bob" });
+      });
+
+      await waitFor(() => {
+        expect(result.current.typingUsers).toEqual(["Alice", "Bob"]);
+      });
+    });
+
+    it("should not duplicate a user already in typingUsers", async () => {
+      const { result } = renderHook(() => usePlanPresence({ featureId }));
+
+      const typingStartCallback = getEventCallback("plan-typing-start");
+
+      act(() => {
+        typingStartCallback?.({ userId: "user-a", name: "Alice" });
+        typingStartCallback?.({ userId: "user-a", name: "Alice" });
+      });
+
+      await waitFor(() => {
+        expect(result.current.typingUsers).toHaveLength(1);
+      });
+    });
+
+    it("sendTyping(true) POSTs typing-start with userId and first name", async () => {
+      const { result } = renderHook(() => usePlanPresence({ featureId }));
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled(); // initial join
+      });
+      vi.mocked(global.fetch).mockClear();
+
+      act(() => {
+        result.current.sendTyping(true);
+      });
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          `/api/features/${featureId}/presence`,
+          expect.objectContaining({
+            method: "POST",
+            body: expect.stringContaining('"type":"typing-start"'),
+          })
+        );
+      });
+
+      const call = vi.mocked(global.fetch).mock.calls[0];
+      const body = JSON.parse(call[1]?.body as string);
+      expect(body.type).toBe("typing-start");
+      expect(body.name).toBe("Test"); // first name only from "Test User"
+    });
+
+    it("sendTyping(false) POSTs typing-stop with userId", async () => {
+      const { result } = renderHook(() => usePlanPresence({ featureId }));
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled();
+      });
+      vi.mocked(global.fetch).mockClear();
+
+      act(() => {
+        result.current.sendTyping(false);
+      });
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          `/api/features/${featureId}/presence`,
+          expect.objectContaining({
+            method: "POST",
+            body: expect.stringContaining('"type":"typing-stop"'),
+          })
+        );
+      });
+
+      const call = vi.mocked(global.fetch).mock.calls[0];
+      const body = JSON.parse(call[1]?.body as string);
+      expect(body.type).toBe("typing-stop");
     });
   });
 

@@ -1,6 +1,6 @@
 import React from "react";
-import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatInput } from "@/app/w/[slug]/task/[...taskParams]/components/ChatInput";
 import { WorkflowStatus } from "@/lib/chat";
@@ -1173,6 +1173,117 @@ describe("ChatInput - uploadToS3 branching", () => {
 });
 
 // ── @mention autocomplete tests ────────────────────────────────────────────────
+
+describe("ChatInput - typing indicator debounce (plan chat)", () => {
+  const onSend = vi.fn().mockResolvedValue(undefined);
+  const onTypingStart = vi.fn();
+  const onTypingStop = vi.fn();
+
+  const props = {
+    onSend,
+    isPlanChat: true,
+    onTypingStart,
+    onTypingStop,
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Helper: simulate typing into the textarea using synchronous fireEvent
+  function typeInto(textarea: HTMLElement, value: string) {
+    fireEvent.change(textarea, { target: { value } });
+  }
+
+  test("onTypingStart fires only on the first keystroke, not on every keystroke", () => {
+    render(<ChatInput {...props} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    typeInto(textarea, "a");
+    expect(onTypingStart).toHaveBeenCalledTimes(1);
+
+    typeInto(textarea, "ab");
+    typeInto(textarea, "abc");
+    expect(onTypingStart).toHaveBeenCalledTimes(1);
+  });
+
+  test("onTypingStop fires after 4 seconds of inactivity", () => {
+    render(<ChatInput {...props} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    typeInto(textarea, "hello");
+    expect(onTypingStop).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+
+    expect(onTypingStop).toHaveBeenCalledTimes(1);
+  });
+
+  test("inactivity timer resets on each change (fires only once after last change)", () => {
+    render(<ChatInput {...props} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    typeInto(textarea, "h");
+    act(() => { vi.advanceTimersByTime(3000); });
+
+    // Not yet fired — timer reset
+    expect(onTypingStop).not.toHaveBeenCalled();
+
+    typeInto(textarea, "hi");
+    act(() => { vi.advanceTimersByTime(4000); });
+
+    // Fired once after the last change's timer expires
+    expect(onTypingStop).toHaveBeenCalledTimes(1);
+  });
+
+  test("onTypingStop fires immediately when input is cleared", () => {
+    render(<ChatInput {...props} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    typeInto(textarea, "hello");
+    expect(onTypingStop).not.toHaveBeenCalled();
+
+    // Clear by setting empty value
+    typeInto(textarea, "");
+    expect(onTypingStop).toHaveBeenCalledTimes(1);
+  });
+
+  test("onTypingStop fires on submit before message is sent", async () => {
+    render(<ChatInput {...props} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    typeInto(textarea, "send this");
+    expect(onTypingStop).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("chat-message-submit"));
+
+    // Allow async onSend to resolve
+    await act(async () => {});
+
+    expect(onTypingStop).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalled();
+  });
+
+  test("onTypingStart fires again after inactivity stop + new typing", () => {
+    render(<ChatInput {...props} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    typeInto(textarea, "first");
+    act(() => { vi.advanceTimersByTime(4000); }); // stop fires
+    expect(onTypingStop).toHaveBeenCalledTimes(1);
+
+    // Type again — onTypingStart should fire once more
+    typeInto(textarea, "firstsecond");
+    expect(onTypingStart).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe("ChatInput - @mention autocomplete (plan chat)", () => {
   const planProps = {

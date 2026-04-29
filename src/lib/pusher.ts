@@ -63,6 +63,9 @@ export const PUSHER_EVENTS = {
   // Plan presence events
   PLAN_USER_JOIN: "plan-user-join",
   PLAN_USER_LEAVE: "plan-user-leave",
+  // Plan typing indicator events
+  PLAN_TYPING_START: "plan-typing-start",
+  PLAN_TYPING_STOP: "plan-typing-stop",
   // Connection events
   CONNECTION_UPDATED: "connection-updated",
   // Canvas events (system-canvas document on the org)

@@ -1611,10 +1611,12 @@ describe("CompactTasksList", () => {
         />
       );
 
-      // Wait specifically for the model select (data-value="") to appear after llm-models fetch resolves
+      // Wait until the model select (data-value="") is present — it only renders once
+      // llmModels loads from the async fetch, so we must wait inside waitFor.
+      let modelSelect: HTMLElement | undefined;
       await waitFor(() => {
         const selects = screen.getAllByTestId("select");
-        const modelSelect = selects.find((s) => s.getAttribute("data-value") === "");
+        modelSelect = selects.find((s) => s.getAttribute("data-value") === "");
         expect(modelSelect).toBeDefined();
       });
     });
