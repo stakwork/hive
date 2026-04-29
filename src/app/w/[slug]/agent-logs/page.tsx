@@ -28,9 +28,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/ui/page-header";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentLogsTable } from "@/components/agent-logs";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { AgentLogRecord, AgentLogsResponse } from "@/types/agent-logs";
+import type { ConversationListItem } from "@/types/shared-conversation";
 import { FileText, Search, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import Link from "next/link";
@@ -73,6 +75,10 @@ export default function AgentLogsPage() {
   const slug = params.slug as string;
   const { workspace, id: workspaceId } = useWorkspace();
 
+  const [activeTab, setActiveTab] = useState<"agents" | "chats">(
+    (searchParams?.get("tab") as "agents" | "chats") ?? "agents"
+  );
+
   const [logs, setLogs] = useState<AgentLogRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +87,13 @@ export default function AgentLogsPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Chats tab state
+  const [chatLogs, setChatLogs] = useState<AgentLogRecord[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [chatPage, setChatPage] = useState(1);
+  const [chatHasMore, setChatHasMore] = useState(false);
 
   // Mirror searchParams into a ref so goToPage can read the latest value
   // without listing searchParams as a reactive dep (which would cause a loop)
@@ -171,8 +184,86 @@ export default function AgentLogsPage() {
     fetchLogs();
   }, [workspaceId, page, timeRange, debouncedSearch]);
 
+  // Fetch chats when chats tab is active
+  useEffect(() => {
+    if (activeTab !== "chats") return;
+    if (!slug) return;
+
+    const fetchChats = async () => {
+      setChatLoading(true);
+      setChatError(null);
+
+      try {
+        const response = await fetch(
+          `/api/workspaces/${slug}/chat/conversations?page=${chatPage}&limit=20`
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch chats");
+        }
+
+        const data: { items: ConversationListItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } } = await response.json();
+
+        const mapped: AgentLogRecord[] = data.items.map((conv) => ({
+          id: conv.id,
+          agent: "chat",
+          blobUrl: "",
+          createdAt: new Date(conv.lastMessageAt ?? conv.createdAt),
+          featureTitle: conv.title,
+          stakworkRunId: null,
+          taskId: null,
+        }));
+
+        setChatLogs(mapped);
+        setChatHasMore(chatPage < data.pagination.totalPages);
+      } catch (err) {
+        console.error("Error fetching chats:", err);
+        setChatError(err instanceof Error ? err.message : "Failed to fetch chats");
+      } finally {
+        setChatLoading(false);
+      }
+    };
+
+    fetchChats();
+  }, [activeTab, slug, chatPage]);
+
+  const handleTabChange = (value: string) => {
+    const next = value === "chats" ? "chats" : "agents";
+    setActiveTab(next);
+    const params = new URLSearchParams(searchParamsRef.current?.toString() || "");
+    params.set("tab", next);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const handleChatDownload = async (log: AgentLogRecord) => {
+    try {
+      const res = await fetch(
+        `/api/workspaces/${slug}/chat/conversations/${log.id}`
+      );
+      if (!res.ok) throw new Error("Failed to fetch conversation");
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chat-${log.id}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Chat download failed:", err);
+    }
+  };
+
   const handleRowClick = (logId: string) => {
     router.push(`/w/${slug}/agent-logs/${logId}`);
+  };
+
+  const handleChatRowClick = (convId: string) => {
+    router.push(`/w/${slug}/agent-logs/chat/${convId}`);
   };
 
   return (
@@ -190,42 +281,51 @@ export default function AgentLogsPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Execution Logs</CardTitle>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search logs..."
-                  value={searchKeyword}
-                  onChange={(e) => setSearchKeyword(e.target.value)}
-                  className="pl-9"
-                />
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <CardHeader>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                <CardTitle>Execution Logs</CardTitle>
+                <TabsList>
+                  <TabsTrigger value="agents">Agents</TabsTrigger>
+                  <TabsTrigger value="chats">Chats</TabsTrigger>
+                </TabsList>
               </div>
-              <Select
-                value={timeRange}
-                onValueChange={(value) => {
-                  setTimeRange(value as TimeRange);
-                  goToPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="24h">Last 24 hours</SelectItem>
-                  <SelectItem value="7d">Last 7 days</SelectItem>
-                  <SelectItem value="30d">Last 30 days</SelectItem>
-                  <SelectItem value="all">All time</SelectItem>
-                </SelectContent>
-              </Select>
+              {activeTab === "agents" && (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search logs..."
+                      value={searchKeyword}
+                      onChange={(e) => setSearchKeyword(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select
+                    value={timeRange}
+                    onValueChange={(value) => {
+                      setTimeRange(value as TimeRange);
+                      goToPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-full sm:w-[180px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="24h">Last 24 hours</SelectItem>
+                      <SelectItem value="7d">Last 7 days</SelectItem>
+                      <SelectItem value="30d">Last 30 days</SelectItem>
+                      <SelectItem value="all">All time</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
-          </div>
-        </CardHeader>
+          </CardHeader>
 
         <CardContent>
-          {loading && (
+          {activeTab === "agents" && loading && (
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -254,18 +354,18 @@ export default function AgentLogsPage() {
             </div>
           )}
 
-          {error && !loading && (
+          {activeTab === "agents" && error && !loading && (
             <div className="text-center py-12">
               <p className="text-destructive mb-2">Error loading agent logs</p>
               <p className="text-sm text-muted-foreground">{error}</p>
             </div>
           )}
 
-          {!loading && !error && (
+          {activeTab === "agents" && !loading && !error && (
             <AgentLogsTable logs={logs} onRowClick={handleRowClick} />
           )}
 
-          {!loading && !error && logs.length > 0 && (
+          {activeTab === "agents" && !loading && !error && logs.length > 0 && (
             <div className="mt-6">
               <Pagination>
                 <PaginationContent>
@@ -340,7 +440,101 @@ export default function AgentLogsPage() {
               </Pagination>
             </div>
           )}
+
+          {activeTab === "chats" && chatLoading && (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Agent Name</TableHead>
+                    <TableHead>Feature</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Skeleton className="h-5 w-48" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-5 w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-5 w-28" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {activeTab === "chats" && chatError && !chatLoading && (
+            <div className="text-center py-12">
+              <p className="text-destructive mb-2">Error loading chats</p>
+              <p className="text-sm text-muted-foreground">{chatError}</p>
+            </div>
+          )}
+
+          {activeTab === "chats" && !chatLoading && !chatError && (
+            <AgentLogsTable
+              logs={chatLogs}
+              onRowClick={handleChatRowClick}
+              onDownload={handleChatDownload}
+            />
+          )}
+
+          {activeTab === "chats" && !chatLoading && !chatError && chatLogs.length > 0 && (
+            <div className="mt-6">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <Button
+                      variant="ghost"
+                      size="default"
+                      onClick={() => setChatPage(Math.max(1, chatPage - 1))}
+                      disabled={chatPage === 1}
+                      className="gap-1 pl-2.5"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span>Previous</span>
+                    </Button>
+                  </PaginationItem>
+
+                  <PaginationItem>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className={buttonVariants({
+                        variant: "outline",
+                        size: "icon",
+                      })}
+                      disabled
+                    >
+                      {chatPage}
+                    </Button>
+                  </PaginationItem>
+
+                  {chatHasMore && (
+                    <PaginationItem>
+                      <Button
+                        variant="ghost"
+                        size="default"
+                        onClick={() => setChatPage(chatPage + 1)}
+                        className="gap-1 pr-2.5"
+                      >
+                        <span>Next</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </PaginationItem>
+                  )}
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
         </CardContent>
+        </Tabs>
       </Card>
 
     </div>
