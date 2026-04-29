@@ -252,9 +252,10 @@ describe("GET /api/llm-models - Integration Tests", () => {
         expect(model).toHaveProperty("provider");
         expect(model).toHaveProperty("providerLabel");
         expect(model).toHaveProperty("isPublic");
-        // Pricing fields should NOT be in the response (select only returns id/name/provider/providerLabel)
-        expect(model).not.toHaveProperty("inputPricePer1M");
-        expect(model).not.toHaveProperty("outputPricePer1M");
+        expect(model).toHaveProperty("inputPricePer1M");
+        expect(typeof model.inputPricePer1M).toBe("number");
+        expect(model).toHaveProperty("outputPricePer1M");
+        expect(typeof model.outputPricePer1M).toBe("number");
         expect(model).not.toHaveProperty("createdAt");
       }
     });
