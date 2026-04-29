@@ -12,9 +12,12 @@ export {
   hideLiveNode,
   showLiveNode,
   readHiddenLive,
+  setLivePosition,
 } from "./io";
 export type { HiddenLiveEntry } from "./io";
 export { parseScope, isLiveId, ROOT_REF } from "./scope";
+export { featureProjectsOn, mostSpecificRef } from "./feature-projection";
+export type { FeaturePlacementPayload } from "./feature-projection";
 export {
   notifyCanvasUpdated,
   notifyCanvasUpdatedByLogin,
