@@ -306,7 +306,7 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
           )}
           {slug && (
             <FooterLink
-              href={`/w/${slug}/feature/${detail.id}`}
+              href={`/w/${slug}/plan/${detail.id}`}
               label="Open feature"
             />
           )}

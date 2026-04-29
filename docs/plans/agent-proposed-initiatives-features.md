@@ -1,231 +1,271 @@
 # Agent-Proposed Initiatives & Features
 
-Let the org canvas chat agent **propose** new `Initiative` and `Feature` rows as chat artifacts that the user explicitly approves before any DB write happens. Approval flips the proposal into a real `Initiative` / `Feature` (creation flows the agent already cannot drive), without ever giving the agent direct create access.
+Let the org canvas chat agent **propose** new `Initiative` and `Feature` rows directly in chat. The user explicitly approves each proposal before any DB write happens. The chat is an ephemeral scratchpad where the user and agent draft and refine; only on approval does a real `Initiative` / `Feature` row appear and project onto the canvas.
 
-> **Companion docs:** read first.
-> - `src/app/org/[githubLogin]/CANVAS.md` — org canvas + chat orientation. Notes the reserved `state.proposals` slot in `useCanvasChatStore` and the "agent does NOT create initiatives or milestones" invariant this plan preserves.
-> - `docs/plans/org-initiatives.md` — design of the live initiative/milestone projection. The DB-creating-categories pattern (line 28) is what we're extending.
+> **Companion docs — read first.**
+> - `src/app/org/[githubLogin]/CANVAS.md` — org canvas + chat orientation. The "agent does NOT create initiatives or milestones" invariant this plan preserves; the projector contract; the canvas chat persistence model (`SharedConversation.messages` JSON blob).
+> - `docs/plans/org-initiatives.md` — design of the live initiative/milestone projection. The DB-creating-categories pattern is what we're extending.
 > - `src/lib/ai/initiativeTools.ts` — the existing "organize, don't create" agent tool (`assign_feature_to_initiative`). The new tools live alongside it and follow the same org-ownership validation pattern.
 >
 > **Out of scope (deliberately):** proposing milestones, proposing edges, drag-from-chat-onto-canvas, ghost nodes on the canvas, multi-user approval workflows. Each is reachable from this design without rewrites — see "Future seams."
 
 ## Goal
 
-The canonical scenario: a user opens the org canvas chat and says *"I'm spinning up an Onboarding Revamp initiative — propose 3-5 features we should ship for it."* Today the agent has no way to do that without writing to the DB, which violates the human-only-creates rule. With this plan the agent emits a structured **proposal artifact** in chat; the user approves (or rejects) each row; only on approval does a real `Initiative` / `Feature` row appear and project onto the canvas.
+The canonical scenario: a user opens the org canvas chat and says *"I'm spinning up an Onboarding Revamp initiative — propose 3-5 features we should ship for it."* Today the agent has no way to do that without writing to the DB, which violates the human-only-creates rule.
 
-The animating principle: **proposals are chat output, not data**. They live inside the message that produced them, ride along when the conversation is shared/forked, and disappear from product surfaces the moment they're approved (because at that point the real DB row carries the meaning). No new table.
+With this plan the agent calls `propose_initiative` / `propose_feature` tools that **don't write to the DB** — they just validate and emit a structured tool result that lands in the conversation. The user approves (or rejects) each proposal by clicking a button that appends a normal user message carrying the approval intent. The `/api/ask/quick` route detects that intent and creates the row server-side before the LLM runs (or instead of it). On approval, the new node projects onto the canvas via the existing Pusher path.
 
-## The four ideas the design rests on
+## The animating principle
 
-1. **Proposal = chat artifact.** A proposal is a typed entry inside `ChatMessage.artifacts` (the existing `Artifact` Prisma model — JSON `content` field). It is *not* a row in a new `Proposal` table. Persistence comes for free via `useCanvasChatAutoSave`; rehydration comes for free on conversation load.
+**The chat is the source of truth.** Proposals are just tool-call outputs in the conversation transcript. Approvals/rejections are user messages carrying structured intent. Nothing gets stored "as a proposal" in the database — the conversation IS the database for proposal lifecycle.
 
-2. **Payload shape = create-API input shape.** A proposal's `payload` field carries exactly the fields the corresponding create endpoint expects. Approval is a thin `validate → create → patch artifact` step with no translation layer. This is the load-bearing decision: it keeps the UI swappable (list today, real cards later) and makes drag-to-place a future additive feature, not a refactor.
+This means:
+- No new tables, no new columns, no schema migration.
+- No notion of "artifact" or "proposal record" — there's just messages and tool calls, which the canvas chat already round-trips through `SharedConversation.messages` as JSON.
+- Status is **derived**, not stored. To answer "is proposal X approved?" you scan the conversation's messages.
+- Forking a chat (per CANVAS.md's share-fork flow) automatically forks the proposal trail — the fork's transcript is self-describing.
+- Idempotency is bounded by the conversation's append-only nature: re-clicking Approve appends another approval message; the server's idempotency scan finds the prior approval's `createdEntityId` and short-circuits.
 
-3. **Approval is a one-way door.** Once approved, the proposal artifact stamps `status: "approved"`, `createdEntityId`, `resolvedAt`. The real DB row owns the data from then on. Rejection is also terminal (`status: "rejected"`) — the artifact stays in chat history for context but is dimmed in the UI.
-
-4. **Idempotency by `proposalId`.** The agent generates a stable `proposalId` per proposal. The approval endpoint treats it as an idempotency key: a second approve call returns the existing `createdEntityId` instead of double-creating. Cheap, no new table, survives the "user double-clicks Approve" race and the "two browser tabs both approve" race.
-
-## What's authored vs. what's projected vs. proposed
+## What's authored vs. projected vs. proposed
 
 | Concept | Source | Where data lives | Lifecycle |
 | --- | --- | --- | --- |
 | `note`, `decision`, free `text` | authored | `Canvas.data` blob | Manual edit / delete |
 | `workspace`, `repository` | DB-projected | DB tables | Existing flows |
 | `initiative`, `milestone`, `feature` | DB-projected | DB tables | Human creates via `+` menu dialog (`docs/plans/org-initiatives.md`) **OR** human approves an agent proposal (this doc) |
-| `propose-initiative`, `propose-feature` artifacts | agent output | `ChatMessage.artifacts` JSON | Pending → Approved (creates DB row) / Rejected (terminal) |
+| Pending proposals | agent tool output | `SharedConversation.messages` JSON (inside `message.toolCalls[]`) | Pending → Approved (creates DB row) / Rejected (terminal). Status derived from later messages in the same conversation. |
 
-The agent's tool surface gains two **non-creating** tools — `propose_initiative` and `propose_feature` — that emit artifacts on the streaming response. The agent still cannot write to the `Initiative` / `Feature` tables directly. The human approval step is the only path from chat to DB.
+The agent's tool surface gains two **non-creating** tools — `propose_initiative` and `propose_feature`. The agent still cannot write to the `Initiative` / `Feature` tables directly. The human approval click is the only path from chat to DB.
 
-## The artifact shape
+## How chat persistence already works (re-cap)
 
-Lives inside an existing `ChatMessage.artifacts` row (model: `Artifact`, `content: Json`). One artifact per proposal — the agent typically emits several per assistant message, so a single message ends up with multiple artifacts.
+This is the foundation; the design only works because of it.
+
+- The canvas chat persists conversations to `SharedConversation.messages` as a single opaque JSON blob (`schema.prisma:498`). It does **not** use the `ChatMessage` / `Artifact` Prisma models — those are for tasks/features.
+- `useCanvasChatAutoSave.ts` POSTs / PUTs message deltas; the PUT endpoint blindly concatenates (`[conversationId]/route.ts:186`).
+- `useSendCanvasChatMessage.ts:185-208` already lifts every tool call (id, toolName, input, output, status) into `CanvasChatMessage.toolCalls[]`.
+- `processStream` in `useStreamProcessor.ts` already populates `toolCall.output` from `tool-result` events (line 329+).
+
+Therefore: **whatever a tool returns from `execute(...)` is already in the message; whatever fields we add to `CanvasChatMessage` already round-trip through the DB.** No new persistence path needed.
+
+## The proposal shape (= tool output shape)
+
+Just the return value of the propose tools. Lives at `message.toolCalls[i].output` for free.
 
 ```ts
-type ProposalArtifact =
-  | InitiativeProposal
-  | FeatureProposal;
+type ProposalOutput =
+  | { kind: "initiative"; proposalId: string; payload: InitiativePayload; rationale?: string }
+  | { kind: "feature";    proposalId: string; payload: FeaturePayload;    rationale?: string };
 
-type ProposalBase = {
-  type: "proposal";
-  proposalId: string;            // agent-supplied; stable; idempotency key
-  status: "pending" | "approved" | "rejected";
-  resolvedAt?: string;           // ISO timestamp; set on approve/reject
-  resolvedBy?: string;           // userId; set on approve/reject (relevant for forked chats)
-  createdEntityId?: string;      // populated on approval; the real Initiative / Feature id
-  rationale?: string;            // optional one-liner the agent supplies for "why this?"
+type InitiativePayload = {
+  name: string;
+  description?: string;
+  status?: "DRAFT" | "ACTIVE";
+  assigneeId?: string;
+  startDate?: string;
+  targetDate?: string;
 };
 
-type InitiativeProposal = ProposalBase & {
-  kind: "initiative";
-  payload: {
-    name: string;                // required
-    description?: string;
-    status?: "DRAFT" | "ACTIVE";
-    assigneeId?: string;
-    startDate?: string;          // ISO
-    targetDate?: string;
-  };
-};
-
-type FeatureProposal = ProposalBase & {
-  kind: "feature";
-  payload: {
-    title: string;               // required
-    description?: string;
-    workspaceId: string;         // required — agent picks from per-workspace context
-    initiativeId?: string;       // optional — agent links to an existing initiative
-    milestoneId?: string;        // optional — agent links to an existing milestone
-    parentProposalId?: string;   // optional — references an InitiativeProposal in the
-                                 // same conversation, so "feature under proposed
-                                 // initiative" can resolve at approval time
-  };
+type FeaturePayload = {
+  title: string;
+  description?: string;
+  workspaceId: string;
+  initiativeId?: string;       // existing initiative
+  milestoneId?: string;        // existing milestone
+  parentProposalId?: string;   // sibling proposal_initiative in this conversation
 };
 ```
 
-**`parentProposalId` is the key cross-proposal link.** When the agent proposes "initiative X with features A, B, C," the features carry `parentProposalId: <X's proposalId>`. The approval handler treats this specially:
+`payload` matches the create-API input shape. Approval reads it back verbatim and feeds it to `Initiative.create` / `createFeature(...)`. Inline-edit overrides ride along on the approval intent (see below) and never mutate the original tool call's output — chat history shows what the agent actually proposed.
 
-- Approving the initiative first → `createdEntityId` is stamped; later feature approvals look up the parent's `createdEntityId` and use it as `initiativeId`.
-- Approving a feature whose parent is still pending → API returns 409 with a clear message; UI shows "approve the parent initiative first" with a single "Approve initiative + this feature" combo button.
-- Rejecting the parent does NOT auto-reject children — the agent might have proposed features that stand on their own. The UI surfaces this clearly.
+`parentProposalId` lets the agent group features under a not-yet-approved initiative. At approval time the server resolves it by scanning the conversation for the parent's approval; if the parent is still pending → 409.
 
-## Storage & rehydration
+## The approval intent (= structured field on a user message)
 
-**Storage:** the agent's tool execution returns a structured tool-result; the streaming pipeline (`useStreamProcessor` → `canvasChatStore`) writes the artifact into the assistant message's `artifacts` array. `useCanvasChatAutoSave` persists messages to `chat_conversations`; the `Artifact` rows fall out for free.
-
-**Rehydration:** when a conversation loads, the existing message-load path already populates `message.artifacts`. We add a step that scans incoming artifacts for `type === "proposal"` and indexes them into the store's `proposals` map (keyed by `proposalId`).
+Extend `CanvasChatMessage` (`canvasChatStore.ts:73-84`) with two optional fields. They round-trip through `SharedConversation.messages` for free.
 
 ```ts
-// useCanvasChatStore — sketch of the slice
-type ProposalsSlice = {
-  proposals: Map<string, ProposalArtifact>;   // keyed by proposalId
+export interface CanvasChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+  toolCalls?: ToolCall[];
 
-  ingestArtifacts: (artifacts: ProposalArtifact[]) => void;
-  setProposalStatus: (
-    proposalId: string,
-    patch: Pick<ProposalBase, "status" | "resolvedAt" | "resolvedBy" | "createdEntityId">,
-  ) => void;
-};
+  /** User clicked Approve on a proposal. Set on user messages only. */
+  approval?: {
+    proposalId: string;
+    payload?: Partial<InitiativePayload | FeaturePayload>; // inline-edit overrides
+    currentRef?: string;                                   // canvas the user is on
+    viewport?: { x: number; y: number };                   // placement hint
+  };
+
+  /** User clicked Reject on a proposal. Set on user messages only. */
+  rejection?: { proposalId: string };
+
+  /** Synthetic assistant message describing an approval outcome. Set by the API route. */
+  approvalResult?: {
+    proposalId: string;
+    kind: "initiative" | "feature";
+    createdEntityId: string;
+    landedOn: string;            // canvas ref the new node landed on
+  };
+}
 ```
 
-The store is the canvas-side **denormalized view**. The chat renders proposals from `message.artifacts` directly (so message ordering and artifact ordering are preserved). The store is for cross-cutting concerns (canvas badges/halos in future work, "is this proposal still pending?" lookups).
+The card's UI sends a user message carrying `approval` (no special API endpoint, no new fetch path — uses the existing send pipeline). The API route detects it, runs the side effect, and writes a synthetic assistant message back carrying `approvalResult`.
 
-**Performance contract** (per CANVAS.md line 38): selectors that pull from the proposals map must use `useShallow`, fall back to a module-level empty-Map sentinel, and select narrowly. The chat list renders from the conversation's messages (already a stable selector), not from `state.proposals`.
+## Status derivation (the load-bearing scan)
+
+The card's UI never asks "is this approved?" by hitting an endpoint. It scans the conversation:
+
+```ts
+function getProposalStatus(
+  conversation: CanvasChatMessage[],
+  proposalId: string,
+): { status: "pending" | "approved" | "rejected"; result?: CanvasChatMessage["approvalResult"] } {
+  for (const msg of conversation) {
+    if (msg.rejection?.proposalId === proposalId) return { status: "rejected" };
+    if (msg.approvalResult?.proposalId === proposalId) {
+      return { status: "approved", result: msg.approvalResult };
+    }
+    // Note: an `approval` without a matching `approvalResult` later means
+    // "approve was clicked but server hasn't written the confirmation yet" —
+    // treat as pending in flight; UI shows a spinner.
+  }
+  return { status: "pending" };
+}
+```
+
+This is the entire state machine. No DB lookup, no store-side bookkeeping, no rehydration logic. Loading a conversation re-runs the scan against the loaded JSON.
+
+For multi-row "Approve all" the same scan answers everything in one O(n) pass keyed by `proposalId`.
 
 ## The agent tools
 
-Add to `src/lib/ai/initiativeTools.ts` (same file, same `buildInitiativeTools(orgId, userId)` factory).
+Add to `src/lib/ai/initiativeTools.ts`. Same `buildInitiativeTools(orgId, userId)` factory. Already wired into `/api/ask/quick:181`.
 
 ### `propose_initiative`
 
 ```
 description:
-  "Propose a new initiative for this org. Emits a chat artifact the user
-   must approve — does NOT create the initiative. Use when the user asks
-   you to suggest, draft, or sketch initiatives. After the user approves,
-   you can attach features under it via `assign_feature_to_initiative`
-   or by proposing features with parentProposalId set."
+  "Propose a new initiative for this org. Does NOT create the
+   initiative — the user must approve in chat. Use when the user
+   asks you to suggest, draft, or sketch initiatives."
 
 inputSchema:
-  proposalId: string            // agent-generated; format: cuid-ish; stable
+  proposalId: string         // agent-generated; format: cuid-ish; stable
   name: string
   description?: string
-  status?: "DRAFT" | "ACTIVE"   // default DRAFT
+  status?: "DRAFT" | "ACTIVE"
   assigneeId?: string
   startDate?: string
   targetDate?: string
-  rationale?: string            // 1 line: why suggest this?
+  rationale?: string
 
-execute: returns the artifact JSON; the streaming handler attaches it.
+execute:
+  // No DB writes. Just validate + return the structured proposal.
+  return { kind: "initiative", proposalId, payload: { ... }, rationale };
 ```
 
 ### `propose_feature`
 
 ```
 description:
-  "Propose a new feature in a specific workspace, optionally under an
-   existing or proposed initiative/milestone. Emits a chat artifact the
-   user must approve. To group multiple features under a single
-   not-yet-approved initiative, set parentProposalId to that initiative
-   proposal's id; the approval step will wire them up automatically."
+  "Propose a new feature in a specific workspace, optionally under
+   an existing or proposed initiative/milestone. Does NOT create
+   the feature — the user must approve. To group features under
+   a proposed (not-yet-approved) initiative, set parentProposalId
+   to that initiative proposal's id."
 
 inputSchema:
   proposalId: string
   title: string
   description?: string
-  workspaceId: string           // required
-  initiativeId?: string         // existing initiative
-  milestoneId?: string          // existing milestone
-  parentProposalId?: string     // sibling InitiativeProposal in this conversation
+  workspaceId: string
+  initiativeId?: string
+  milestoneId?: string
+  parentProposalId?: string
   rationale?: string
+
+execute:
+  // Validate org ownership of workspace + (if set) initiativeId,
+  // milestoneId. parentProposalId is NOT validated here — the
+  // conversation isn't visible to the tool. Approval-time validates it.
 ```
 
-**Validation in `execute`** (cheap, returns an error string if it fails — the agent retries):
-- Workspace exists and belongs to this org. (Same `sourceControlOrgId` check pattern as `assign_feature_to_initiative`.)
+**Validation in `execute`** (cheap; same `sourceControlOrgId` pattern as `assign_feature_to_initiative`):
+- Workspace exists and belongs to this org.
 - If `initiativeId` is supplied, it belongs to this org.
-- If `milestoneId` is supplied, it belongs to that initiative (transitive via the existing `updateFeature` invariant).
-- `parentProposalId` is **not** validated here — the conversation transcript isn't available to the tool. Validation happens at approval time on the server.
+- If `milestoneId` is supplied, it belongs to that initiative (transitive via `updateFeature`'s invariant).
 
-**Wiring** is already done: `src/app/api/ask/quick/route.ts` line 181 spreads `buildInitiativeTools(orgId, userId)` into the toolset for org-scoped chat. The two new tools join the existing `assign_feature_to_initiative` automatically.
+If validation fails the tool returns `{ error }` and the agent retries — same pattern as `assign_feature_to_initiative`. No tool call result lands in the conversation as a "proposal" until validation passes.
 
-**Prompt update:** `src/lib/constants/prompt.ts` `getCanvasPromptSuffix()` gains a paragraph teaching the agent *when* to propose vs. *when* to organize:
+**Prompt update** in `src/lib/constants/prompt.ts` `getCanvasPromptSuffix()`:
 
 > "When the user asks you to suggest, draft, or sketch new initiatives or features, use `propose_initiative` and `propose_feature`. These do NOT create anything — they emit proposals the user reviews. When the user has already created an initiative and asks you to file existing features under it, use `assign_feature_to_initiative` instead. Never use `update_canvas` to author live nodes."
 
-## The approval API
+## The approval handler (lives in `/api/ask/quick`)
 
-Single new endpoint, both kinds:
+Why in `/api/ask/quick` and not a new endpoint: the chat is the source of truth, and that route already owns the conversation, auth, org gating, and tool routing. Bolting on a parallel REST path would split that ownership.
 
-### `POST /api/orgs/[githubLogin]/proposals/[proposalId]/approve`
-
-**Request body** (the artifact's `payload`, optionally with overrides — the user can edit the proposal before approving):
+Pre-LLM step in the route handler. Pseudocode:
 
 ```ts
-{
-  payload: InitiativeProposal["payload"] | FeatureProposal["payload"];
+// Inside POST /api/ask/quick, after auth + org validation, BEFORE LLM stream.
+const lastMessage = messages[messages.length - 1];
 
-  // What canvas the user is currently looking at when they approve.
-  // The chat already has this from `OrgCanvasView.updateActiveContext`
-  // (CANVAS.md line 37). Used so the new node lands on the canvas the
-  // user is staring at, when projection rules allow it.
-  currentRef?: string;
-
-  // Sensible default placement coords on `currentRef`'s canvas.
-  // Today the UI sends viewport-center; future drag-from-chat would
-  // send drop coords. Server treats this as a hint, not a command.
-  viewport?: { x: number; y: number };
+if (lastMessage.role === "user" && lastMessage.approval) {
+  const result = await handleApproval({
+    orgId,
+    userId,
+    conversation: messages,                  // full message list for scans
+    intent: lastMessage.approval,
+  });
+  // Stream a synthetic assistant message and return — skip the LLM entirely.
+  return streamSyntheticAssistantMessage({
+    approvalResult: result,
+    text: formatApprovalText(result),       // "Created initiative Onboarding Revamp ↗"
+  });
 }
+
+if (lastMessage.role === "user" && lastMessage.rejection) {
+  // No DB side effect. Just stream a brief acknowledgment.
+  // (We don't even need the LLM for this — keep it deterministic.)
+  return streamSyntheticAssistantMessage({
+    text: "Got it — I won't create that.",
+  });
+}
+
+// Otherwise: normal LLM flow with the existing toolset.
 ```
 
-**Behavior:**
+`handleApproval` does:
 
-1. Look up the message+artifact by `proposalId` (server-side scan via `chat_conversations` join — small N per conversation; index later if needed).
-2. **Idempotency check:** if the artifact already has `status: "approved"` and a `createdEntityId`, return `{ status: "already_approved", entityId, landedOn }` immediately.
-3. Validate org ownership of the caller (existing pattern from `initiativeTools.ts:97`).
-4. Validate `payload` references (workspace belongs to org, etc.).
-5. **Resolve `parentProposalId`** if present: look up the parent artifact in the same conversation; if it's `pending` → 409. If `approved` → use `parent.createdEntityId` as `initiativeId`. If `rejected` → 409 with a clear message.
-6. Create the row inside a Prisma `$transaction`:
+1. **Find the proposal in the conversation.** Scan `messages` backward for an assistant message with a `toolCalls[]` entry whose `toolName` is `propose_initiative` or `propose_feature` and whose `output.proposalId === intent.proposalId`. If not found → 404.
+2. **Idempotency scan.** Scan forward for any prior assistant message with `approvalResult.proposalId === intent.proposalId`. If found, return its `{ createdEntityId, landedOn, kind }` immediately. Re-clicking Approve is now a no-op that produces the same confirmation.
+3. **Resolve `parentProposalId`** if the proposal has one:
+   - Find the parent's `approvalResult`. If found → use `parent.createdEntityId` as `initiativeId`.
+   - If the parent has been rejected (rejection message exists) → 409 "parent was rejected."
+   - If the parent is still pending → 409 "approve the parent initiative first." UI surfaces a "Approve initiative + this feature" combo button (which sends two approvals in sequence).
+4. **Merge inline-edit overrides.** Effective payload = `{ ...proposal.output.payload, ...intent.payload }`. Edits never touch the original proposal.
+5. **Validate the effective payload.** Workspace belongs to org; initiative belongs to org; milestone belongs to initiative. Same checks as the propose tool, re-run in case the override changed anything.
+6. **Create the row inside a transaction:**
    - `kind === "initiative"` → `prisma.initiative.create({ data: { ...payload, orgId } })`.
    - `kind === "feature"` → `createFeature(...)` from the existing roadmap service (preserves the `feature.initiativeId === milestone.initiativeId` invariant).
-7. **Place on the user's current canvas, when legal** (features only — initiatives only ever project on root, where positions are auto-laid-out by the projector; future-us can revisit if root layout grows custom).
+7. **Place on the user's current canvas, when legal** (features only — initiatives only project on root, where the projector auto-lays-out):
    - Compute `landedOn`:
-     - If `currentRef` is supplied AND `featureProjectsOn(currentRef, payload)` is true (see helper below) → `landedOn = currentRef`. Read the current canvas's `Canvas.data` blob, write `positions[<feature liveId>] = viewport ?? autoCascade(currentRef)`, save in the same transaction.
-     - Otherwise → `landedOn = mostSpecificRef(payload)` (milestone if set, else initiative, else workspace — the existing projector rule). No position overlay written; the projector's row/column auto-layout handles it.
-   - This is the same side-channel `Canvas.data` write the `+` button does (CANVAS.md gotcha line 24, line 27 — "side-channel DB writes from canvas interactions").
-8. **Patch the artifact** in the same transaction: `status: "approved"`, `resolvedAt: now`, `resolvedBy: userId`, `createdEntityId: <new row id>`. Save the parent message.
-9. Fan out `CANVAS_UPDATED` on the affected canvases via the existing helpers — for features, `notifyFeatureReassignmentRefresh` already covers root, both initiatives, both milestones, and the workspace; if `landedOn === currentRef` and the position overlay was written, that ref is in the fan-out set already so the position update goes out without an extra emit. For initiatives, `notifyCanvasUpdatedByLogin` on the root ref.
-10. Return `{ status: "approved", entityId, landedOn, artifact }`. The chat UI uses `landedOn` to render either "Created on this canvas ✓" (when `landedOn === currentRef`) or "Created on Onboarding Revamp ↗" with a one-click `?canvas=<landedOn>` deep link (CANVAS.md gotcha line 33) when the feature landed elsewhere.
+     - If `intent.currentRef` is supplied AND `featureProjectsOn(intent.currentRef, payload)` is true → `landedOn = intent.currentRef`. Read the current canvas's `Canvas.data` blob, write `positions[<feature liveId>] = intent.viewport ?? autoCascade(currentRef)`, save in the same transaction.
+     - Else → `landedOn = mostSpecificRef(payload)` (milestone if set, else initiative, else workspace). No position overlay; the projector's auto-layout handles it.
+   - This is the same side-channel `Canvas.data` write the `+` button does (CANVAS.md gotchas: side-channel DB writes from canvas interactions).
+8. **Fan out `CANVAS_UPDATED`.** For features, `notifyFeatureReassignmentRefresh` covers root, both initiatives, both milestones, the workspace; if `landedOn === currentRef` and the position overlay was written, that ref is in the fan-out so the position update goes out without an extra emit. For initiatives, `notifyCanvasUpdatedByLogin` on the root ref.
+9. **Return** `{ proposalId, kind, createdEntityId, landedOn }`. The route writes this into the synthetic assistant message's `approvalResult` field; the autosave path persists it as part of the message; the card UI's status scan picks it up and flips to "approved."
 
-**`POST /api/orgs/[githubLogin]/proposals/[proposalId]/reject`**
-
-1. Idempotency: if already rejected → no-op success.
-2. Patch the artifact: `status: "rejected"`, `resolvedAt`, `resolvedBy`. Save the message.
-3. No DB row, no Pusher fan-out.
-
-If `payload` is omitted on approve, the server uses the artifact's stored payload verbatim. If the user edited it in the UI, the modified payload comes through and overrides the stored one **for this approval only** — we do not retroactively patch the artifact's `payload` field, because the chat history should reflect what the agent actually proposed.
+The synthetic assistant message also has a brief `content` string ("Created initiative *Onboarding Revamp* on the root canvas. ↗") so the chat scroll reads naturally, but the structured `approvalResult` is what the card consumes.
 
 ## Shared helper: `featureProjectsOn`
 
-The "place on current canvas if legal" rule has to match the projector's logic exactly, or the position overlay becomes dead weight written to a canvas where the feature doesn't render. Put the rule in **one place** and have both the approval handler and any future caller (drag-from-chat predicate, ghost-node placement) import it.
+The "place on current canvas if legal" rule must match the projector's logic exactly, or the position overlay becomes dead weight written to a canvas where the feature doesn't render. Single source of truth in `src/lib/canvas/feature-projection.ts`.
 
 ```ts
 // src/lib/canvas/feature-projection.ts
@@ -240,14 +280,12 @@ export function featureProjectsOn(
     return payload.milestoneId === ref.slice("milestone:".length);
   }
   if (ref.startsWith("initiative:")) {
-    // initiative-loose features (initiative set, milestone null) project here
     return (
       payload.initiativeId === ref.slice("initiative:".length) &&
       !payload.milestoneId
     );
   }
   if (ref.startsWith("ws:")) {
-    // loose features (no initiative, no milestone) project on workspace
     return (
       payload.workspaceId === ref.slice("ws:".length) &&
       !payload.initiativeId &&
@@ -266,11 +304,11 @@ export function mostSpecificRef(
 }
 ```
 
-This is the canvas equivalent of `geometry.ts` — a single source of truth that prevents projector and approval logic from drifting. Tests live with the helper, not with the API route.
+Tests live with the helper.
 
 ## The chat UX (v1: simple list)
 
-Render a `<ProposalCard>` component per proposal artifact, inside the assistant message that emitted it. Multiple proposals in one message render as a small group with a header.
+Render a `<ProposalCard>` per proposal tool call, inside the assistant message that produced it. Multiple proposals in one message render as a small group with a header.
 
 ```
 ┌─ Proposed: 1 initiative, 3 features ──────────── [Approve all] ─┐
@@ -287,81 +325,93 @@ Render a `<ProposalCard>` component per proposal artifact, inside the assistant 
 └───────────────────────────────────────────────────────────────────┘
 ```
 
+**Data source:** the card receives the proposal output (`message.toolCalls[i].output`) plus the result of `getProposalStatus(allMessages, proposalId)`. No store lookup. Pure derivation.
+
 **States:**
 - `pending`: full color, both buttons enabled.
-- `approved`: dimmed-with-checkmark. Subtext shows where the new node landed:
-  - If `landedOn === currentRef` (placed on the canvas the user was looking at) → "Created on this canvas ✓".
-  - Else → "Created on **<initiative or workspace name>** ↗" — clicking the link navigates via `?canvas=<landedOn>` (CANVAS.md gotcha line 33).
+- `pending in flight` (`approval` message exists but no `approvalResult` yet): buttons disabled, spinner.
+- `approved`: dimmed-with-checkmark. Subtext from `approvalResult`:
+  - If `landedOn === currentRef` → "Created on this canvas ✓".
+  - Else → "Created on **<initiative or workspace name>** ↗" — clicking navigates via `?canvas=<landedOn>` (CANVAS.md deep-link gotcha).
 - `rejected`: faded out, "Rejected" subtext, expandable to see what was proposed.
 
-**"Approve all" button:** approves the parent initiative (if any) first, then children in `parentProposalId` order. Shows a small progress indicator if any single approval fails (rare — almost always validation), with per-row error display.
+**Approve action:** appends a user message via the existing `useSendCanvasChatMessage` path with content like `"Approved: <name>"` and the `approval` field set. The send pipeline POSTs to `/api/ask/quick`, the route detects the approval intent, runs the handler, streams the synthetic assistant message back, autosave persists it. The card's status scan now finds the `approvalResult` and re-renders as approved.
 
-**Inline edit:** click any field in a pending proposal to edit before approving. Edits are local UI state; they're sent in the approve body's `payload` override. **Edits don't mutate the artifact** — chat history shows the original proposal.
+**Reject action:** same, but with `rejection` set. The route streams a deterministic acknowledgment ("Got it — I won't create that.") with no DB write.
 
-**No drag, no auto-approve, no auto-dismiss.** The agent will be wrong sometimes; the click is the safety rail. Per the conversation that preceded this plan: "the agent's job is to make the proposal *good*, not to make approval *invisible*."
+**"Approve all" button:** sends approvals sequentially — parent first if any, then children in `parentProposalId` order. Per-row error display if any single approval 409s or 500s.
+
+**Inline edit:** click any field in a pending proposal to edit before approving. Edits are local UI state; they're sent in the `approval.payload` overrides field. **Edits don't mutate the original tool call** — chat history shows what the agent actually proposed.
+
+**No drag, no auto-approve, no auto-dismiss.** The agent will be wrong sometimes; the click is the safety rail. The agent's job is to make the proposal *good*, not to make approval *invisible*.
 
 ## Streaming flow (end-to-end)
 
 1. User: *"propose 3 features for billing v2"*.
-2. `useSendCanvasChatMessage` POSTs to `/api/ask/quick` with `orgId` set; `buildInitiativeTools` is in the toolset.
-3. Agent text-streams a brief framing message ("Here are three I'd suggest:"), then calls `propose_feature` three times.
-4. Each tool execution validates and returns a `ProposalArtifact` JSON. The streaming handler attaches each to the assistant message's `artifacts` array (existing path — same as how other tools' rich results attach).
-5. `canvasChatStore` ingests artifacts as they stream in; UI re-renders the assistant message with `<ProposalCard>` rows appearing one by one.
-6. `useCanvasChatAutoSave` persists the message + artifacts to `chat_conversations`.
-7. User clicks Approve on one row → POST to the approve endpoint → DB row created → artifact patched → Pusher fan-out → projector picks up the new row → canvas shows it.
+2. `useSendCanvasChatMessage` POSTs to `/api/ask/quick` with the conversation, `orgId`, `currentCanvasRef`, etc. `buildInitiativeTools` is in the toolset (already wired at `quick/route.ts:181`).
+3. Agent text-streams a brief framing message ("Here are three I'd suggest:"), then calls `propose_feature` three times. Each tool's `execute` validates and returns a `ProposalOutput`.
+4. The streaming reducer (already exists, no changes) lifts each tool call's output onto `message.toolCalls[i].output`.
+5. `<ProposalCard>` renders inline as the tool calls arrive (the chat already iterates `message.toolCalls` to render `ToolCallIndicator`; we extend that to render proposal cards instead when `toolName` matches).
+6. `useCanvasChatAutoSave` persists the message + tool calls to `SharedConversation.messages` JSON.
+7. User clicks Approve on one row → the card calls `useSendCanvasChatMessage` with `{ content: "Approved", approval: { proposalId, currentRef, viewport } }` → POST to `/api/ask/quick` → route's pre-LLM check sees `approval` → runs `handleApproval` → DB row created → canvas position written (if legal) → Pusher fan-out → synthetic assistant message streamed back with `approvalResult` populated → autosave persists → card's status scan flips to approved → projector picks up the new row → canvas shows it.
 
-The whole pipeline is fire-and-forget on the canvas side: the chat doesn't know or care that the canvas refreshed. That's the boundary CANVAS.md's gotcha line 36 already establishes (chat and canvas talk through the store + Pusher, not direct calls).
+The whole pipeline is fire-and-forget on the canvas side: the chat doesn't directly know or care that the canvas refreshed. That's the boundary the store + Pusher already establish.
 
 ## Forked / shared chats
 
-Per CANVAS.md line 14, the share-fork flow gives each forker their own auto-save row. That means:
+Per CANVAS.md, the share-fork flow gives each forker their own auto-save row. That means:
 
-- A fork inherits the original conversation's messages, including any proposal artifacts.
-- The fork sees `status: "approved"` and `createdEntityId` for proposals approved before the fork was made.
-- The fork can independently approve a still-`pending` proposal — it would create a new DB row and patch the fork's copy of the artifact. (The original conversation's artifact stays `pending`.)
-- This is fine and probably even useful — multiple users exploring the same agent suggestion can each act on it. If it becomes a problem, we add a global lock keyed on `proposalId` later. **Don't pre-engineer.**
+- A fork inherits the original conversation's messages, including any proposal tool calls.
+- Status derivation re-runs against the fork's own message list — proposals approved before the fork was made show as approved (the `approvalResult` message is in the inherited transcript); pending proposals stay pending.
+- The fork can independently approve a still-pending proposal — it would create a new DB row and append an `approvalResult` message to the fork's transcript only. (The original conversation's transcript is unchanged.)
+- This is fine and probably even useful — multiple users exploring the same agent suggestion can each act on it. If it becomes a problem, we add a global lock keyed on `proposalId` later. Don't pre-engineer.
 
-The endpoint scopes its artifact lookup to the calling user's `chat_conversations`, so cross-user / cross-fork interference is naturally prevented.
+The endpoint scopes its conversation lookup to the calling user's `SharedConversation` rows naturally.
 
 ## Future seams
 
 These are intentionally not built in v1, but the design above keeps the path clean:
 
-1. **Drag-from-chat-onto-canvas.** `payload` already matches canvas card props; approval endpoint already accepts `currentRef` + `viewport` (drag would just override `viewport` with drop coords and let `featureProjectsOn` validate). Adds: drag source on `<ProposalCard>`, drop target on the canvas surface (separate from the existing node-on-node drop), translation of drop coords. The placement logic on the server doesn't change.
-2. **Ghost nodes on the canvas.** Projector overlay layer reads `state.proposals`, emits faded ghost nodes at auto-suggested positions. Approval = ghost solidifies. Implemented as a presentation-time merge after `readCanvas`, so projectors stay pure (per CANVAS.md line 11's projection contract).
-3. **`propose_milestone`.** Same pattern as features. The only nuance is that milestones project on `initiative:<id>` sub-canvases, so the approval fan-out targets that ref.
-4. **`propose_edge` for connections between initiatives or features.** Edges are already authored-blob entities (`Canvas.data.edges`); a proposal would patch the blob on approval. Different path from row-creating proposals — worth a separate small plan.
-5. **Multi-user approval / review queue.** A new `Proposal` table becomes justified the moment proposals need a lifecycle independent of their conversation (e.g. "route this to a teammate"). Until that requirement appears: no table.
-6. **Real card rendering instead of list rows.** The `<ProposalCard>` swap is one component; everything around it stays. Worth doing once the UX is clearly demanded — the hierarchy-rendering question (nest? connect with line? stack?) deserves a real prototype, not an assumption.
+1. **Drag-from-chat-onto-canvas.** `payload` already matches canvas card props; the approval intent already accepts `currentRef` + `viewport` (drag would just override `viewport` with drop coords and let `featureProjectsOn` validate). Adds: drag source on `<ProposalCard>`, drop target on the canvas surface. Server logic doesn't change.
+2. **Ghost nodes on the canvas.** A canvas-side selector iterates the active conversation's pending proposals and emits faded nodes at auto-suggested positions. Approval = ghost solidifies. Implemented as a presentation-time merge after `readCanvas`, so projectors stay pure.
+3. **`propose_milestone`.** Same pattern as features. Milestones project on `initiative:<id>` sub-canvases, so the approval fan-out targets that ref.
+4. **`propose_edge`.** Edges are authored-blob entities (`Canvas.data.edges`); a proposal would patch the blob on approval. Different shape from row-creating proposals — separate small plan.
+5. **Multi-user approval / review queue.** A `Proposal` table becomes justified the moment proposals need a lifecycle independent of their conversation (route to a teammate, time-bounded review). Until then: no table.
+6. **Real card rendering instead of list rows.** The `<ProposalCard>` swap is one component; everything around it stays.
 
-## Implementation order
+## Implementation order (one PR)
 
-A pragmatic sequence that ships value early and lets each step be tested in isolation.
+Each step is independently sensible; together they're a single coherent PR.
 
-1. **Artifact shape + types** (`src/lib/ai/types.ts` or a new `src/lib/proposals/types.ts`). One file, no behavior. PR-able alone.
-2. **Store slice.** Extend `useCanvasChatStore` with `proposals` Map + `ingestArtifacts` + `setProposalStatus`. Add tests for ingestion + idempotent updates.
-3. **Agent tools.** Add `propose_initiative` and `propose_feature` to `initiativeTools.ts`. Update prompt suffix in `prompt.ts`. Verify via the existing chat — proposals appear as raw JSON tool-results until step 4 lands.
-4. **Shared helper.** Land `src/lib/canvas/feature-projection.ts` with `featureProjectsOn` + `mostSpecificRef`, plus unit tests covering each ref shape and each payload combination. PR-able alone; the approval API consumes it in step 5.
-5. **Approval API.** New routes under `/api/orgs/[githubLogin]/proposals/[proposalId]/{approve,reject}`. Includes idempotency, parent resolution, transaction, position-overlay write when `featureProjectsOn(currentRef, payload)`, Pusher fan-out. Integration test: approve with `currentRef` matching projection writes the position; approve with mismatched `currentRef` skips the overlay and returns the correct `landedOn`.
-6. **`<ProposalCard>` UI.** List rendering inside chat messages, ✓/✗ buttons, dim/fade states for resolved proposals, "Approve all" button, inline edit. Approve action sends `currentRef` (from `OrgCanvasView.updateActiveContext`) + viewport-center as `viewport`, renders the "Created on this canvas / Created on X ↗" subtext from the response's `landedOn`. The fully-styled-node version is explicitly **not** v1.
-7. **Stream-time artifact attach.** Confirm the existing `useStreamProcessor` path attaches tool results to messages correctly; if not, narrow extension to detect `type: "proposal"` and route into `artifacts`.
-8. **Rehydration.** Conversation load already populates `message.artifacts`; add a one-liner that calls `ingestArtifacts` after load completes.
-9. **Update CANVAS.md.** A new bullet under the agent-tooling section pointing here. Reference: the doc is the orientation point, this plan is the source of truth.
-10. **Smoke test the full loop:** open canvas, ask agent to propose, approve while on different scopes (root, workspace, initiative), confirm the node lands on the user's current canvas when projection allows and falls back gracefully when it doesn't. Manual for v1; a Playwright run is overkill until the UI stabilizes.
+1. **`featureProjectsOn` + `mostSpecificRef`** in `src/lib/canvas/feature-projection.ts` with unit tests. Pure functions, no dependencies.
+2. **Type extensions to `CanvasChatMessage`** in `canvasChatStore.ts`: add `approval?`, `rejection?`, `approvalResult?` fields. Add `ProposalOutput` types either here or in `src/lib/proposals/types.ts` (single shared file used by tools, route, and UI).
+3. **Two new agent tools** `propose_initiative` and `propose_feature` in `initiativeTools.ts`. Validation only, no DB writes. Both return `ProposalOutput` from `execute`.
+4. **Approval handler** as a pre-LLM block in `/api/ask/quick`. Includes:
+   - Detection of `approval` / `rejection` on the latest user message.
+   - `handleApproval` function: proposal lookup, idempotency scan, parent resolution, payload merge, validation, transactional create, canvas position overlay write, Pusher fan-out.
+   - Synthetic assistant message streaming (text + structured `approvalResult`).
+   - Skip-LLM short-circuit.
+5. **Prompt update** in `getCanvasPromptSuffix()` teaching propose vs. organize.
+6. **`<ProposalCard>` UI** in `src/app/org/[githubLogin]/_components/`:
+   - Renders inside `SidebarChat` when iterating `message.toolCalls` and the `toolName` is one of the propose tools.
+   - Pure derivation: receives the tool call output + the conversation's full message list, computes status with `getProposalStatus`.
+   - Approve/Reject buttons trigger `useSendCanvasChatMessage` with the structured intent fields.
+   - Inline edit, "Approve all," "Created on this canvas / Created on X ↗" subtext.
+7. **CANVAS.md gotcha bullet** pointing to this doc, noting the new tools and the conversation-as-source-of-truth pattern.
+8. **Smoke test the full loop:** open canvas, ask agent to propose, approve while on different scopes (root, workspace, initiative), confirm the node lands on the user's current canvas when projection allows and falls back gracefully when it doesn't.
 
-Each step except 6 is small (under ~150 LOC). Step 6 is the biggest piece and can be split into a stub-list-only PR followed by a polish PR. Don't try to ship 1-10 as one branch.
+Notably absent from this list (vs. earlier drafts): no "artifact" type, no schema migration, no new REST endpoints, no new store slices, no rehydration logic, no stream-reducer extensions. The chat infrastructure already does everything the persistence layer needs.
 
 ## What we are deliberately not building
 
-Listed once, here, to keep scope honest:
-
-- A `Proposal` Prisma table (and migration, and CRUD endpoints, and admin UI).
+- A `Proposal` Prisma table (or any schema change at all).
 - A "pending proposals" inbox or notification badge.
 - Auto-approval, auto-dismissal, or any timeout-driven state change.
 - Drag-and-drop placement.
 - Ghost nodes on the canvas.
 - Proposing milestones, edges, decisions, or anything else not explicitly listed.
-- Cross-conversation deduplication (i.e. "the agent already proposed this in another chat").
-- Versioning of proposals (i.e. "the agent revised proposal X — show diff").
+- Cross-conversation deduplication.
+- Versioning of proposals (no "agent revised proposal X — show diff").
+- A new REST endpoint for approve/reject — it goes through `/api/ask/quick` because the conversation owns the lifecycle.
 
 Each is a real feature that could become important. None is needed for the core loop *agent suggests → user approves → row appears on canvas*. Build the loop, watch usage, decide what's next from data.
