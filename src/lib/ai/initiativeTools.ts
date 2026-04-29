@@ -165,12 +165,20 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
     // pre-LLM `handleApproval` step when the user clicks ✓ on the card.
     [PROPOSE_INITIATIVE_TOOL]: tool({
       description:
-        "Propose a new initiative for this org. Does NOT create the " +
-        "initiative — emits a proposal the user must approve in chat. " +
-        "Use when the user asks you to suggest, draft, or sketch a " +
-        "new initiative. To propose features grouped under the same " +
-        "(not-yet-approved) initiative, set `parentProposalId` on each " +
-        "feature proposal to this proposal's `proposalId`.",
+        "Propose a new Initiative for this org. USE THIS whenever the " +
+        "user asks you to add, create, draft, sketch, suggest, " +
+        "brainstorm, spin up, kick off, set up, plan, or start a new " +
+        "initiative — e.g. 'add a product promotion initiative', " +
+        "'create me an onboarding revamp initiative', 'spin up Q2 " +
+        "growth', 'suggest some initiatives.' This tool does NOT " +
+        "write to the DB; it emits a proposal card in chat that the " +
+        "user explicitly approves with a click — approval is what " +
+        "creates the row. Do NOT decline initiative-creation requests " +
+        "by telling the user to use the '+' button; that advice is " +
+        "for Workspaces / Repositories / Milestones, not initiatives. " +
+        "To propose features grouped under the same not-yet-approved " +
+        "initiative, set `parentProposalId` on each feature proposal " +
+        "to this proposal's `proposalId`.",
       inputSchema: z.object({
         proposalId: z
           .string()
@@ -241,15 +249,22 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
     // by scanning the conversation for the matching `approvalResult`.
     [PROPOSE_FEATURE_TOOL]: tool({
       description:
-        "Propose a new feature in a specific workspace, optionally " +
-        "under an existing or proposed initiative/milestone. Does NOT " +
-        "create the feature — emits a proposal the user must approve. " +
-        "To group multiple features under a not-yet-approved " +
-        "initiative from this same conversation, set `parentProposalId` " +
-        "to that initiative proposal's id; the approval handler wires " +
-        "them up automatically. To file a feature under an EXISTING " +
-        "initiative or milestone, use `initiativeId` / `milestoneId` " +
-        "instead.",
+        "Propose a new Feature in a specific workspace, optionally " +
+        "under an existing or proposed initiative/milestone. USE THIS " +
+        "whenever the user asks you to add, create, draft, sketch, " +
+        "suggest, brainstorm, spin up, kick off, set up, plan, build, " +
+        "ship, or start a new feature — e.g. 'add a tiered-pricing " +
+        "feature', 'create me a setup wizard', 'propose 3 features " +
+        "for billing v2.' This tool does NOT write to the DB; it " +
+        "emits a proposal card in chat that the user explicitly " +
+        "approves with a click — approval is what creates the row. " +
+        "Do NOT decline feature-creation requests by telling the user " +
+        "to use the '+' button. To group multiple features under a " +
+        "not-yet-approved initiative from this same conversation, set " +
+        "`parentProposalId` to that initiative proposal's id; the " +
+        "approval handler wires them up automatically. To file a " +
+        "feature under an EXISTING initiative or milestone, use " +
+        "`initiativeId` / `milestoneId` instead.",
       inputSchema: z.object({
         proposalId: z.string().min(1),
         title: z.string().min(1),
