@@ -14,6 +14,15 @@ import { z } from "zod";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import {
+  handleApproval,
+  handleRejection,
+  type MessageLike,
+} from "@/lib/proposals/handleApproval";
+import type {
+  ApprovalIntent,
+  RejectionIntent,
+} from "@/lib/proposals/types";
 
 /**
  * Provenance data types
@@ -106,6 +115,18 @@ export async function POST(request: NextRequest) {
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
       // and avoid an unnecessary stakgraph round-trip.
       skipEnrichments,
+      // Agent-proposal flow (see `src/lib/proposals/`). Set on the
+      // user's send when they click Approve / Reject in a
+      // `<ProposalCard>`. The route runs the side effect synchronously
+      // BEFORE the LLM call (and skips the LLM entirely when the intent
+      // is fully self-contained). The `canvasChatMessages` field carries
+      // the chat-side raw transcript so the handler can scan for the
+      // matching propose tool call and run its idempotency check —
+      // `messages` (AI SDK ModelMessage[]) doesn't preserve the
+      // structured intent fields.
+      approvalIntent,
+      rejectionIntent,
+      canvasChatMessages,
     } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -120,6 +141,45 @@ export async function POST(request: NextRequest) {
     }
     if (slugs.length > 20) {
       throw validationError("Maximum 20 workspaces allowed per session");
+    }
+
+    // ============================================================
+    // Agent-proposal Approve / Reject flow.
+    //
+    // When the user clicks ✓ or ✗ on a `<ProposalCard>`, the chat
+    // sends a normal message that carries `approvalIntent` (or
+    // `rejectionIntent`) alongside `canvasChatMessages` (the raw
+    // chat transcript). We run the side effect synchronously here
+    // and return a small synthetic SSE stream — no LLM call.
+    //
+    // Done before tool / prefix construction because we don't need
+    // any of that for these requests, and skipping the work saves a
+    // stakgraph round-trip + token spend per click.
+    // ============================================================
+    if (approvalIntent || rejectionIntent) {
+      if (!orgId) {
+        throw validationError(
+          "approvalIntent / rejectionIntent require orgId (org canvas chat only).",
+        );
+      }
+      const orgBelongsToCaller = await validateUserBelongsToOrg(
+        orgId,
+        userOrResponse.id,
+        "id",
+      );
+      if (!orgBelongsToCaller) {
+        throw forbiddenError("Access denied for the specified organization");
+      }
+      const transcript: MessageLike[] = Array.isArray(canvasChatMessages)
+        ? canvasChatMessages
+        : [];
+      return await runProposalIntent({
+        orgId,
+        userId: userOrResponse.id,
+        transcript,
+        approvalIntent,
+        rejectionIntent,
+      });
     }
 
     const isMultiWorkspace = slugs.length > 1;
@@ -386,6 +446,119 @@ function logStep(contents: unknown) {
       console.log("TOOL RESULT:", content.toolName);
     }
   }
+}
+
+// ─── Agent-proposal: synthetic SSE stream for Approve / Reject ─────
+//
+// We don't call the LLM for these clicks — the side effect is fully
+// determined by the conversation transcript + intent. We synthesize a
+// tiny UI-message-stream-shaped response (text-start / text-delta /
+// text-end) carrying the human-readable summary, plus a custom
+// `X-Approval-Result` header carrying the structured outcome JSON.
+// The chat send hook reads that header before processing the stream
+// and stamps `approvalResult` onto the assistant message before
+// autosave persists. Forks then see the resolved state in transcript
+// because the message JSON includes the field.
+async function runProposalIntent(args: {
+  orgId: string;
+  userId: string;
+  transcript: MessageLike[];
+  approvalIntent?: ApprovalIntent;
+  rejectionIntent?: RejectionIntent;
+}): Promise<Response> {
+  const { orgId, userId, transcript, approvalIntent, rejectionIntent } = args;
+
+  let summaryText: string;
+  let approvalResultHeader: string | null = null;
+  let alreadyApproved = false;
+
+  if (approvalIntent) {
+    const outcome = await handleApproval({
+      orgId,
+      userId,
+      messages: transcript,
+      intent: approvalIntent,
+    });
+    if (!outcome.ok) {
+      // Surface validation errors as the assistant text. The card UI
+      // distinguishes "approval failed" from "approved" by checking
+      // for `approvalResult` on the message; without it, the card
+      // stays in pending-in-flight + shows the assistant text as the
+      // failure reason. The HTTP status stays 200 so the SSE stream
+      // still flushes cleanly.
+      summaryText = `I couldn't create that: ${outcome.error}`;
+    } else {
+      const r = outcome.result;
+      alreadyApproved = outcome.alreadyApproved;
+      approvalResultHeader = JSON.stringify(r);
+      const where =
+        r.landedOn === ""
+          ? "the org root canvas"
+          : r.landedOn.startsWith("ws:")
+            ? "a workspace canvas"
+            : r.landedOn.startsWith("initiative:")
+              ? "an initiative canvas"
+              : r.landedOn.startsWith("milestone:")
+                ? "a milestone canvas"
+                : "the canvas";
+      summaryText = alreadyApproved
+        ? `Already created — opening the existing ${r.kind} on ${where}.`
+        : r.kind === "initiative"
+          ? `Created the initiative on ${where}.`
+          : `Created the feature on ${where}.`;
+    }
+  } else if (rejectionIntent) {
+    const outcome = handleRejection({
+      messages: transcript,
+      intent: rejectionIntent,
+    });
+    summaryText = outcome.ok
+      ? "Got it — I won't create that."
+      : `Couldn't reject: ${outcome.error}`;
+  } else {
+    // Defensive — shouldn't happen given the caller guard.
+    summaryText = "No proposal intent provided.";
+  }
+
+  // Build a minimal SSE stream of UIMessageChunk parts.
+  const encoder = new TextEncoder();
+  const partsTextId = `proposal-result-${Date.now().toString(36)}`;
+  const parts: Array<Record<string, unknown>> = [
+    { type: "start" },
+    { type: "start-step" },
+    { type: "text-start", id: partsTextId },
+    { type: "text-delta", id: partsTextId, delta: summaryText },
+    { type: "text-end", id: partsTextId },
+    { type: "finish-step" },
+    { type: "finish" },
+  ];
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const part of parts) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(part)}\n\n`));
+      }
+      controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+      controller.close();
+    },
+  });
+
+  const headers: Record<string, string> = {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "x-vercel-ai-ui-message-stream": "v1",
+  };
+  if (approvalResultHeader) {
+    headers["X-Approval-Result"] = approvalResultHeader;
+    // Browsers expose only safelisted response headers to fetch
+    // unless the server opts in via Access-Control-Expose-Headers.
+    // The chat is same-origin so this isn't strictly required, but
+    // setting it makes the contract explicit and safe under any
+    // future origin-split.
+    headers["Access-Control-Expose-Headers"] = "X-Approval-Result";
+  }
+
+  return new Response(stream, { headers });
 }
 
 
