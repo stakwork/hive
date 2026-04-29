@@ -22,7 +22,7 @@ export const CARD_W = 240;
 /** Standard "container" card height. */
 export const CARD_H = 104;
 
-/** Compact card width (repositories, milestones, notes, decisions). */
+/** Compact card width (repositories, notes, decisions). */
 export const SMALL_W = 220;
 
 /**
@@ -32,9 +32,18 @@ export const SMALL_W = 220;
 export const INITIATIVE_W = 300;
 export const INITIATIVE_H = 116;
 
-/** Milestone card on the initiative timeline. */
-export const MILESTONE_W = SMALL_W;
-export const MILESTONE_H = 88;
+/**
+ * Milestone card on the initiative timeline. Same width as the
+ * Initiative card so milestones read as "as substantial as the
+ * strategic frame they belong to" rather than as small repo-style
+ * chips. Distinguishes them from Feature cards (260) at a glance
+ * without relying on color alone. Height is deliberately compact
+ * (kicker + title + progress bar; no on-card footer) so a row of
+ * milestones reads as a horizontal timeline strip rather than a
+ * grid of equally-weighted cards.
+ */
+export const MILESTONE_W = INITIATIVE_W;
+export const MILESTONE_H = 74;
 
 // ---------------------------------------------------------------------------
 // Row layout — each row's `STEP` derives from its card's width plus a
