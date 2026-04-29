@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, dateStart, dateEnd, isPlanDefault, isTaskDefault, isPublic } = body;
+    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, cacheReadPer1MToken, cacheWritePer1MToken, dateStart, dateEnd, isPlanDefault, isTaskDefault, isPublic } = body;
 
     if (!name || !provider || inputPricePer1M == null || outputPricePer1M == null) {
       return NextResponse.json(
@@ -54,6 +54,8 @@ export async function POST(request: NextRequest) {
         providerLabel: providerLabel ?? null,
         inputPricePer1M: Number(inputPricePer1M),
         outputPricePer1M: Number(outputPricePer1M),
+        cacheReadPer1MToken: cacheReadPer1MToken != null ? Number(cacheReadPer1MToken) : null,
+        cacheWritePer1MToken: cacheWritePer1MToken != null ? Number(cacheWritePer1MToken) : null,
         dateStart: dateStart ? new Date(dateStart) : null,
         dateEnd: dateEnd ? new Date(dateEnd) : null,
         isPlanDefault: isPlanDefault ?? false,

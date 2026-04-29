@@ -53,6 +53,8 @@ interface FormState {
   providerLabel: string;
   inputPricePer1M: string;
   outputPricePer1M: string;
+  cacheReadPer1MToken: string;
+  cacheWritePer1MToken: string;
   dateStart: string;
   dateEnd: string;
   isPlanDefault: boolean;
@@ -66,6 +68,8 @@ const emptyForm: FormState = {
   providerLabel: "",
   inputPricePer1M: "",
   outputPricePer1M: "",
+  cacheReadPer1MToken: "",
+  cacheWritePer1MToken: "",
   dateStart: "",
   dateEnd: "",
   isPlanDefault: false,
@@ -80,6 +84,8 @@ function modelToForm(model: LlmModel): FormState {
     providerLabel: model.providerLabel ?? "",
     inputPricePer1M: String(model.inputPricePer1M),
     outputPricePer1M: String(model.outputPricePer1M),
+    cacheReadPer1MToken: model.cacheReadPer1MToken != null ? String(model.cacheReadPer1MToken) : "",
+    cacheWritePer1MToken: model.cacheWritePer1MToken != null ? String(model.cacheWritePer1MToken) : "",
     dateStart: model.dateStart
       ? new Date(model.dateStart).toISOString().split("T")[0]
       : "",
@@ -141,6 +147,8 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
         providerLabel: form.provider === "OTHER" ? form.providerLabel : null,
         inputPricePer1M: parseFloat(form.inputPricePer1M),
         outputPricePer1M: parseFloat(form.outputPricePer1M),
+        cacheReadPer1MToken: form.cacheReadPer1MToken ? parseFloat(form.cacheReadPer1MToken) : null,
+        cacheWritePer1MToken: form.cacheWritePer1MToken ? parseFloat(form.cacheWritePer1MToken) : null,
         dateStart: form.dateStart || null,
         dateEnd: form.dateEnd || null,
         isPlanDefault: form.isPlanDefault,
@@ -206,6 +214,8 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
               <th className="pb-3 pr-4 font-medium">Provider</th>
               <th className="pb-3 pr-4 font-medium">Input / 1M</th>
               <th className="pb-3 pr-4 font-medium">Output / 1M</th>
+              <th className="pb-3 pr-4 font-medium">Cache Read / 1M</th>
+              <th className="pb-3 pr-4 font-medium">Cache Write / 1M</th>
               <th className="pb-3 pr-4 font-medium">Date Start</th>
               <th className="pb-3 pr-4 font-medium">Date End</th>
               <th className="pb-3 pr-4 font-medium">Defaults</th>
@@ -216,7 +226,7 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
           <tbody>
             {models.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-8 text-center text-muted-foreground">
+                <td colSpan={11} className="py-8 text-center text-muted-foreground">
                   No LLM models found. Add one to get started.
                 </td>
               </tr>
@@ -231,6 +241,8 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
                 </td>
                 <td className="py-3 pr-4">{formatPrice(model.inputPricePer1M)}</td>
                 <td className="py-3 pr-4">{formatPrice(model.outputPricePer1M)}</td>
+                <td className="py-3 pr-4">{model.cacheReadPer1MToken != null ? formatPrice(model.cacheReadPer1MToken) : "—"}</td>
+                <td className="py-3 pr-4">{model.cacheWritePer1MToken != null ? formatPrice(model.cacheWritePer1MToken) : "—"}</td>
                 <td className="py-3 pr-4">{formatDate(model.dateStart)}</td>
                 <td className="py-3 pr-4">{formatDate(model.dateEnd)}</td>
                 <td className="py-3 pr-4">
@@ -349,6 +361,33 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
                   value={form.outputPricePer1M}
                   onChange={(e) => setForm((f) => ({ ...f, outputPricePer1M: e.target.value }))}
                   placeholder="15.00"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="llm-cache-read-price">Cache Read / 1M tokens</Label>
+                <Input
+                  id="llm-cache-read-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.cacheReadPer1MToken}
+                  onChange={(e) => setForm((f) => ({ ...f, cacheReadPer1MToken: e.target.value }))}
+                  placeholder="0.50"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="llm-cache-write-price">Cache Write / 1M tokens</Label>
+                <Input
+                  id="llm-cache-write-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.cacheWritePer1MToken}
+                  onChange={(e) => setForm((f) => ({ ...f, cacheWritePer1MToken: e.target.value }))}
+                  placeholder="3.75"
                 />
               </div>
             </div>

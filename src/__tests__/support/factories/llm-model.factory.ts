@@ -7,6 +7,8 @@ export interface CreateTestLlmModelOptions {
   providerLabel?: string | null;
   inputPricePer1M?: number;
   outputPricePer1M?: number;
+  cacheReadPer1MToken?: number | null;
+  cacheWritePer1MToken?: number | null;
   dateStart?: Date | null;
   dateEnd?: Date | null;
   isPublic?: boolean;
