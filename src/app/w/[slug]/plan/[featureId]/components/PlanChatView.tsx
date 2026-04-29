@@ -154,7 +154,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   );
 
   // Real-time presence tracking
-  const { collaborators } = usePlanPresence({ featureId });
+  const { collaborators, typingUsers, sendTyping } = usePlanPresence({ featureId });
 
   // Update favicon based on feature workflow status
   usePlanFavicon({ workflowStatus });
@@ -582,6 +582,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     },
     llmModels,
     hasMessages,
+    typingUsers,
+    onTypingStart: () => sendTyping(true),
+    onTypingStop: () => sendTyping(false),
   };
 
   const artifactsPanelProps = {

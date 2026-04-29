@@ -1611,18 +1611,14 @@ describe("CompactTasksList", () => {
         />
       );
 
+      // Wait until the model select (data-value="") is present — it only renders once
+      // llmModels loads from the async fetch, so we must wait inside waitFor.
+      let modelSelect: HTMLElement | undefined;
       await waitFor(() => {
-        // Models should be loaded - find the model select by its empty value
         const selects = screen.getAllByTestId("select");
-        expect(selects.length).toBeGreaterThanOrEqual(1);
+        modelSelect = selects.find((s) => s.getAttribute("data-value") === "");
+        expect(modelSelect).toBeDefined();
       });
-
-      // Simulate onValueChange being called with a model value
-      // The Select mock renders a div with data-testid="select" and data-value
-      // We need to find the model select - it's the one with value="" (task.model is null)
-      const selects = screen.getAllByTestId("select");
-      const modelSelect = selects.find((s) => s.getAttribute("data-value") === "");
-      expect(modelSelect).toBeDefined();
     });
 
     test("shows existing model value in selector", async () => {
