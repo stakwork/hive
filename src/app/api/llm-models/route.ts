@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
       isPlanDefault: true,
       isTaskDefault: true,
       isPublic: true,
+      cacheReadPer1MToken: true,
+      cacheWritePer1MToken: true,
     },
     orderBy: { name: "asc" },
   });
