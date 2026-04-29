@@ -6,6 +6,8 @@ import { ArrowUpRight, Loader2 } from "lucide-react";
 import type { CanvasNode } from "system-canvas";
 import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
+import type { WorkflowStatus } from "@/lib/chat";
+import { FeaturePlanChat } from "./FeaturePlanChat";
 
 /**
  * Right-panel detail card for the currently-selected canvas node.
@@ -289,6 +291,9 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
       const status = (extras.status ?? "") as string;
       const taskCount = Number(extras.taskCount ?? 0);
       const slug = extras.workspaceSlug as string | undefined;
+      const workflowStatus = (extras.workflowStatus ?? null) as
+        | WorkflowStatus
+        | null;
       const assignee = extras.assignee as
         | { name: string | null }
         | null
@@ -308,6 +313,21 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
             <FooterLink
               href={`/w/${slug}/plan/${detail.id}`}
               label="Open feature"
+            />
+          )}
+          {/*
+           * Inline plan chat — reads/writes the same feature-chat API
+           * the full plan page uses, subscribes to the same Pusher
+           * channel, and renders clarifying-question artifacts inline
+           * so the planning workflow doesn't silently stall on the
+           * canvas. The "Open feature" link above is the escape
+           * hatch to the artifacts panel (PLAN/TASKS/VERIFY).
+           */}
+          {slug && (
+            <FeaturePlanChat
+              featureId={detail.id}
+              workspaceSlug={slug}
+              initialWorkflowStatus={workflowStatus}
             />
           )}
         </div>
