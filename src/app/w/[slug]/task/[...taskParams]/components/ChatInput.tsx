@@ -56,6 +56,8 @@ interface ChatInputProps {
   isRetrying?: boolean;
   isPlanChat?: boolean;
   currentWorkspaceSlug?: string;
+  onTypingStart?: () => void;
+  onTypingStop?: () => void;
   streamContext?: StreamContext | null;
   isSuperAdmin?: boolean;
   selectedModel?: string;
@@ -84,6 +86,8 @@ export function ChatInput({
   isRetrying = false,
   isPlanChat = false,
   currentWorkspaceSlug,
+  onTypingStart,
+  onTypingStop,
   streamContext = null,
   isSuperAdmin = false,
   selectedModel,
@@ -100,6 +104,14 @@ export function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const preVoiceInputRef = useRef("");
+  // Typing indicator refs
+  const isTypingRef = useRef(false);
+  const typingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stable refs so debounce callbacks don't capture stale closures
+  const onTypingStartRef = useRef(onTypingStart);
+  const onTypingStopRef = useRef(onTypingStop);
+  onTypingStartRef.current = onTypingStart;
+  onTypingStopRef.current = onTypingStop;
   const isMobile = useIsMobile();
   const { workspaces } = useWorkspace();
 
@@ -391,7 +403,17 @@ export function ChatInput({
     }
 
     const message = input.trim();
-    
+
+    // Stop typing indicator on submit
+    if (typingDebounceRef.current) {
+      clearTimeout(typingDebounceRef.current);
+      typingDebounceRef.current = null;
+    }
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      onTypingStopRef.current?.();
+    }
+
     // Construct attachments from pending images
     const attachments = pendingImages
       .filter(img => img.s3Path)
@@ -662,16 +684,45 @@ export function ChatInput({
           placeholder={isListening ? "Listening..." : "Type your message..."}
           value={input}
           onChange={(e) => {
-            setInput(e.target.value);
+            const value = e.target.value;
+            setInput(value);
             if (isPlanChat) {
-              const cursor = e.target.selectionStart ?? e.target.value.length;
-              const before = e.target.value.slice(0, cursor);
+              const cursor = e.target.selectionStart ?? value.length;
+              const before = value.slice(0, cursor);
               const match = before.match(/\B@([\w-]*)$/);
               if (match) {
                 setMentionQuery(match[1]);
                 setMentionIndex(0);
               } else {
                 setMentionQuery(null);
+              }
+
+              // Typing indicator logic
+              if (value === "") {
+                // Input cleared — fire stop immediately
+                if (isTypingRef.current) {
+                  isTypingRef.current = false;
+                  onTypingStopRef.current?.();
+                }
+                if (typingDebounceRef.current) {
+                  clearTimeout(typingDebounceRef.current);
+                  typingDebounceRef.current = null;
+                }
+              } else {
+                // First keystroke
+                if (!isTypingRef.current) {
+                  isTypingRef.current = true;
+                  onTypingStartRef.current?.();
+                }
+                // Reset 4-second inactivity timer on every keystroke
+                if (typingDebounceRef.current) {
+                  clearTimeout(typingDebounceRef.current);
+                }
+                typingDebounceRef.current = setTimeout(() => {
+                  isTypingRef.current = false;
+                  onTypingStopRef.current?.();
+                  typingDebounceRef.current = null;
+                }, 4000);
               }
             }
           }}
