@@ -210,6 +210,10 @@ async function loadDetail(
           brief: true,
           status: true,
           priority: true,
+          // Surface the live workflow status so the canvas-sidebar
+          // chat can hydrate its `inputDisabled` gate without a
+          // second per-node fetch to `/api/features/[id]`.
+          workflowStatus: true,
           assignee: { select: { id: true, name: true, image: true } },
           workspace: { select: { slug: true } },
           _count: { select: { tasks: { where: { deleted: false, archived: false } } } },
@@ -227,6 +231,7 @@ async function loadDetail(
         extras: {
           status: feat.status,
           priority: feat.priority,
+          workflowStatus: feat.workflowStatus,
           assignee: feat.assignee,
           workspaceSlug: feat.workspace.slug,
           taskCount: feat._count.tasks,
