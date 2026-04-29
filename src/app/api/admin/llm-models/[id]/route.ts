@@ -20,7 +20,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, dateStart, dateEnd, isPlanDefault, isTaskDefault, isPublic } = body;
+    const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, cacheReadPer1MToken, cacheWritePer1MToken, dateStart, dateEnd, isPlanDefault, isTaskDefault, isPublic } = body;
 
     if (isPlanDefault) {
       await db.llmModel.updateMany({ where: { isPlanDefault: true, id: { not: id } }, data: { isPlanDefault: false } });
@@ -37,6 +37,8 @@ export async function PATCH(
         ...(providerLabel !== undefined && { providerLabel }),
         ...(inputPricePer1M !== undefined && { inputPricePer1M: Number(inputPricePer1M) }),
         ...(outputPricePer1M !== undefined && { outputPricePer1M: Number(outputPricePer1M) }),
+        ...(cacheReadPer1MToken !== undefined && { cacheReadPer1MToken: cacheReadPer1MToken != null ? Number(cacheReadPer1MToken) : null }),
+        ...(cacheWritePer1MToken !== undefined && { cacheWritePer1MToken: cacheWritePer1MToken != null ? Number(cacheWritePer1MToken) : null }),
         ...(dateStart !== undefined && { dateStart: dateStart ? new Date(dateStart) : null }),
         ...(dateEnd !== undefined && { dateEnd: dateEnd ? new Date(dateEnd) : null }),
         ...(isPlanDefault !== undefined && { isPlanDefault }),
