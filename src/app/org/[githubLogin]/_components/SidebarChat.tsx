@@ -235,19 +235,14 @@ interface SidebarChatInputProps {
  * diverges far enough that sharing would require ugly conditionals
  * (no image upload, no workspace pills, no `+ workspace` button).
  */
+const MAX_ROWS = 5;
+const LINE_HEIGHT_PX = 20; // matches text-sm line-height
+const MAX_HEIGHT_PX = MAX_ROWS * LINE_HEIGHT_PX;
+
 function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
   const [input, setInput] = useState("");
-  const [rows, setRows] = useState(1);
+  const [height, setHeight] = useState<string>("auto");
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (!input) {
-      setRows(1);
-      return;
-    }
-    const lineCount = (input.match(/\n/g) || []).length + 1;
-    setRows(Math.max(1, Math.min(6, lineCount)));
-  }, [input]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -255,6 +250,7 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
     const message = input.trim();
     await onSend(message, () => {
       setInput("");
+      setHeight("auto");
       inputRef.current?.focus();
     });
   };
@@ -266,6 +262,18 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
     }
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const newHeight = Math.min(el.scrollHeight, MAX_HEIGHT_PX);
+    setHeight(`${newHeight}px`);
+  };
+
+  const overflowY =
+    height !== "auto" && parseInt(height) >= MAX_HEIGHT_PX ? "auto" : "hidden";
+
   return (
     <form onSubmit={handleSubmit} className="flex items-end gap-2">
       <div className="relative flex-1 min-w-0">
@@ -273,10 +281,11 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
           ref={inputRef}
           placeholder="Ask the agent…"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          rows={rows}
+          rows={1}
+          style={{ height, overflowY }}
           className={`w-full px-3 py-2 pr-10 rounded-xl bg-background border border-border/50 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${
             disabled ? "opacity-50 cursor-not-allowed" : ""
           }`}
