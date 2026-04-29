@@ -98,6 +98,18 @@ function defaultTaskPosition(
 }
 
 /**
+ * Cap on loose-feature projection per canvas. Workspaces / initiatives
+ * with deep backlogs (hundreds or thousands of features) would otherwise
+ * project a giant horizontal row — the canvas auto-fits and zooms out
+ * until cards are unreadable. We surface the most recently active slice
+ * (`updatedAt desc`) and trust users to drill into the workspace's full
+ * feature list for the long tail. User-positioned overrides still
+ * survive via `Canvas.data.positions[feature:<id>]` — the cap only
+ * affects which features get an *initial* slot.
+ */
+const LOOSE_FEATURE_LIMIT = 25;
+
+/**
  * Default placement for a loose feature card on a workspace sub-canvas.
  * "Loose" = the feature has `workspaceId` but no `initiativeId` /
  * `milestoneId`. Lays out in a horizontal row below the repo row.
@@ -278,6 +290,11 @@ export const workspaceProjector: Projector = {
     // nowhere else. Features with an initiativeId are emitted by
     // the milestone-timeline (initiative scope) or milestone
     // projector instead — never here, otherwise we'd double-render.
+    //
+    // Capped at LOOSE_FEATURE_LIMIT and ordered by `updatedAt desc` so
+    // workspaces with thousands of features don't blow the canvas's
+    // auto-fit out into the unreadable distance. The long tail lives in
+    // the workspace's feature list view.
     const looseFeatures = await db.feature.findMany({
       where: {
         workspaceId: workspace.id,
@@ -285,7 +302,8 @@ export const workspaceProjector: Projector = {
         milestoneId: null,
         deleted: false,
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: { updatedAt: "desc" },
+      take: LOOSE_FEATURE_LIMIT,
       select: {
         id: true,
         title: true,
@@ -623,13 +641,18 @@ export const milestoneTimelineProjector: Projector = {
     // render on the initiative timeline and nowhere else; features
     // attached to a milestone render on that milestone's sub-canvas
     // (via `milestoneProjector`) instead.
+    //
+    // Capped at LOOSE_FEATURE_LIMIT and ordered by `updatedAt desc` for
+    // the same reason as the workspace projector: deep backlogs would
+    // otherwise auto-fit-zoom the canvas out until cards are unreadable.
     const looseFeatures = await db.feature.findMany({
       where: {
         initiativeId: initiative.id,
         milestoneId: null,
         deleted: false,
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: { updatedAt: "desc" },
+      take: LOOSE_FEATURE_LIMIT,
       select: {
         id: true,
         title: true,
