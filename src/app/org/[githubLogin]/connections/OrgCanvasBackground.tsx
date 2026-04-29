@@ -1349,6 +1349,39 @@ export function OrgCanvasBackground({
     },
     [applyMutation, persistMilestoneStatus],
   );
+
+  /**
+   * Batched drag commit. Fires once per drag-end with every moved node
+   * — for a single-node drag that's a one-entry array; for a group
+   * drag it's the group plus every spatially-contained child.
+   *
+   * Why this exists: `applyMutation` reads `rootRef.current` /
+   * `subCanvasesRef.current`, both mirrored from React state via
+   * `useEffect`. The mirror runs *after* React commits, so a synchronous
+   * loop of per-node `onNodeUpdate` calls all read the same stale
+   * starting state and each `setRoot` overwrites the previous one. The
+   * visible bug: dragging a group leaves every child snapping back
+   * except the last one in the iteration order. Folding all moves
+   * into a single `applyMutation` (which chains every patch through
+   * `updateNode` against one starting state) commits the group
+   * atomically.
+   *
+   * The drag path never carries `customData` — only x/y — so we can
+   * skip the milestone status special case here. Toolbar status
+   * changes still come through `onNodeUpdate` as before.
+   */
+  const handleNodesUpdate = useCallback(
+    (
+      updates: { id: string; patch: NodeUpdate }[],
+      canvasRef: string | undefined,
+    ) => {
+      if (updates.length === 0) return;
+      applyMutation(canvasRef, (c) =>
+        updates.reduce((acc, u) => updateNode(acc, u.id, u.patch), c),
+      );
+    },
+    [applyMutation],
+  );
   const handleNodeDelete = useCallback(
     (id: string, canvasRef: string | undefined) => {
       // Live nodes (workspaces, repos, features) aren't deletable — they
@@ -1909,6 +1942,7 @@ export function OrgCanvasBackground({
           onNodeClick={handleNodeClick}
           onNodeAdd={handleNodeAdd}
           onNodeUpdate={handleNodeUpdate}
+          onNodesUpdate={handleNodesUpdate}
           onNodeDelete={handleNodeDelete}
           onEdgeAdd={handleEdgeAdd}
           onEdgeUpdate={handleEdgeUpdate}
