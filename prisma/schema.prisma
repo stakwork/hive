@@ -1348,8 +1348,10 @@ model LlmModel {
   name             String
   provider         LlmProvider
   providerLabel    String?     @map("provider_label")
-  inputPricePer1M  Float       @map("input_price_per_1m")
-  outputPricePer1M Float       @map("output_price_per_1m")
+  inputPricePer1M      Float       @map("input_price_per_1m")
+  outputPricePer1M     Float       @map("output_price_per_1m")
+  cacheReadPer1MToken  Float?      @map("cache_read_per_1m_token")
+  cacheWritePer1MToken Float?      @map("cache_write_per_1m_token")
   dateStart        DateTime?   @map("date_start")
   dateEnd          DateTime?   @map("date_end")
   isPlanDefault    Boolean     @default(false) @map("is_plan_default")
