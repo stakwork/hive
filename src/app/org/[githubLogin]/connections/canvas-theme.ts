@@ -279,17 +279,6 @@ function milestoneStatusColor(node: CanvasNode): string {
   return MILESTONE_COLORS[getMilestoneStatus(node)];
 }
 
-function milestoneStatusLabel(node: CanvasNode): string {
-  // Human-readable rendition for the header band. Keep terse —
-  // the card is only ~200px wide.
-  const map: Record<MilestoneStatus, string> = {
-    NOT_STARTED: "NOT STARTED",
-    IN_PROGRESS: "IN PROGRESS",
-    COMPLETED: "COMPLETED",
-  };
-  return map[getMilestoneStatus(node)];
-}
-
 /**
  * Toolbar swatches for the milestone node. Three swatches mirror the
  * three `MilestoneStatus` Prisma enum values; clicking one writes the
@@ -567,9 +556,17 @@ const milestoneCategory: CategoryDefinition = {
       extent: "full",
       color: (ctx: SlotContext) => milestoneStatusColor(ctx.node),
     },
+    // Kicker reads "MILESTONE" so the card type is named explicitly,
+    // parallel to the INITIATIVE / WORKSPACE / REPO / FEATURE kickers
+    // on neighboring cards. Color tracks the live status (gray /
+    // sky / green) so the kicker doubles as the status signal — the
+    // word `MILESTONE` rendered in green reads as "this milestone is
+    // complete" without needing a second status label. The
+    // top-edge color band carries the same signal at the silhouette
+    // level for zoomed-out reads.
     header: {
       kind: "text",
-      value: (ctx: SlotContext) => milestoneStatusLabel(ctx.node),
+      value: "MILESTONE",
       color: (ctx: SlotContext) => milestoneStatusColor(ctx.node),
     },
     // Progress bar between the status header and the title text. Lives
@@ -622,11 +619,13 @@ const milestoneCategory: CategoryDefinition = {
       kind: "custom",
       render: renderTeamStack,
     },
-    footer: {
-      kind: "custom",
-      render: (ctx: SlotContext) =>
-        renderMetricsFooter(ctx, milestoneStatusColor(ctx.node)),
-    },
+    // Footer intentionally omitted. The kicker, top-edge color band,
+    // progress bar, agent badge, and team avatar stack already cover
+    // the milestone's status / progress / activity / ownership story
+    // — the `customData.secondary` "Due Mar 4 · 3/5 features" line was
+    // duplicating signal and crowding the now-wider card. Keep the
+    // raw data on the node (the right panel's Details tab still
+    // renders it) but skip the on-card footer.
   },
 } as CategoryDefinition;
 
@@ -676,7 +675,14 @@ const featureCategory: CategoryDefinition = {
   // canvas delete to mean feature delete.
   hideToolbarDelete: true,
   slots: {
-    topEdge: {
+    // Status color rides on the LEFT edge (not the top edge). This
+    // is the silhouette that distinguishes Feature from Milestone:
+    // milestones carry a TOP-edge band (and a gold base accent), so
+    // a feature with a left stripe never gets confused for a
+    // milestone, even at low zoom where text is illegible. The left
+    // stripe also visually echoes a kanban "swimlane" — appropriate
+    // since features are kanban-tracked work items under a milestone.
+    leftEdge: {
       kind: "color",
       extent: "full",
       color: (ctx: SlotContext) => featureStatusColor(ctx.node),
