@@ -7,6 +7,7 @@ import { useShallow } from "zustand/react/shallow";
 import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
 import { Button } from "@/components/ui/button";
 import { SidebarChatMessage } from "./SidebarChatMessage";
+import { ProposalCard, getProposalsFromMessage } from "./ProposalCard";
 import {
   useCanvasChatStore,
   type CanvasChatMessage,
@@ -168,12 +169,40 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           {messages.map((message, index) => {
             const isLastMessage = index === messages.length - 1;
             const isMessageStreaming = isLastMessage && isLoading;
+
+            // User messages that ride structured Approve / Reject
+            // intents are not chat content for the user — the proposal
+            // card transition is the visual feedback. Suppress the
+            // bubble entirely; the message stays in the JSON for the
+            // route handler to detect on subsequent clicks and for
+            // status derivation across forks.
+            if (
+              message.role === "user" &&
+              (message.approval || message.rejection)
+            ) {
+              return null;
+            }
+
+            const proposals = getProposalsFromMessage(message);
+
             return (
-              <div key={message.id}>
+              <div key={message.id} className="space-y-1.5">
                 <SidebarChatMessage
                   message={message}
                   isStreaming={isMessageStreaming}
                 />
+                {proposals.length > 0 && (
+                  <div className="space-y-1.5">
+                    {proposals.map((p) => (
+                      <ProposalCard
+                        key={p.proposalId}
+                        proposal={p}
+                        messageId={message.id}
+                        githubLogin={githubLogin}
+                      />
+                    ))}
+                  </div>
+                )}
                 <MessageArtifacts artifactIds={message.artifactIds} />
               </div>
             );
