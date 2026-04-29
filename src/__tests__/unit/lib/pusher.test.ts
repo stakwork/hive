@@ -290,6 +290,8 @@ describe("pusher.ts", () => {
         WHITEBOARD_REFETCH: "whiteboard-refetch",
         PLAN_USER_JOIN: "plan-user-join",
         PLAN_USER_LEAVE: "plan-user-leave",
+        PLAN_TYPING_START: "plan-typing-start",
+        PLAN_TYPING_STOP: "plan-typing-stop",
         FEATURE_UPDATED: "feature-updated",
         CONNECTION_UPDATED: "connection-updated",
         CANVAS_UPDATED: "canvas-updated",
