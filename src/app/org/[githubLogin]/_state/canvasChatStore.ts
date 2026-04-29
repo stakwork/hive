@@ -56,6 +56,11 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import type { ModelMessage } from "ai";
+import type {
+  ApprovalIntent,
+  ApprovalResult,
+  RejectionIntent,
+} from "@/lib/proposals/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -81,6 +86,23 @@ export interface CanvasChatMessage {
    * Empty in PR 1; populated when the first artifact type ships.
    */
   artifactIds?: string[];
+
+  // ── Agent-proposal lifecycle (see `src/lib/proposals/types.ts`) ──
+  // The chat is the source of truth for proposal status. These fields
+  // ride along on user/assistant messages, round-trip through
+  // `SharedConversation.messages` JSON for free, and let the proposal
+  // card derive status by scanning the conversation. No DB writes
+  // happen for any of these — they're just chat metadata.
+  /** User clicked Approve on a proposal. Set on user messages only. */
+  approval?: ApprovalIntent;
+  /** User clicked Reject on a proposal. Set on user messages only. */
+  rejection?: RejectionIntent;
+  /**
+   * Synthetic assistant message describing an approval outcome. Set by
+   * `/api/ask/quick` after `handleApproval` creates the DB row; carries
+   * the new entity id and the canvas ref it landed on.
+   */
+  approvalResult?: ApprovalResult;
 }
 
 export interface CanvasConversation {

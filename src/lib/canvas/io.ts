@@ -370,3 +370,47 @@ export async function showLiveNode(
     hidden: next.length > 0 ? next : undefined,
   });
 }
+
+/**
+ * Stamp an explicit position overlay for a live id at `(orgId, ref)`.
+ *
+ * Used by the proposal-approval flow when the user approves a feature
+ * and the new node legally projects on the user's current canvas — we
+ * want the card to land where the user was looking, not at the
+ * projector's auto-laid-out default. Same overlay shape that autosave
+ * writes through `splitCanvas`, but a dedicated entry point so the
+ * approval handler doesn't have to fake a full canvas round-trip.
+ *
+ * Existing overlay entries are preserved; only the supplied id's
+ * position (and optionally size) is updated. Size defaults to "no
+ * change" — pass `width`/`height` only when you actually want to set
+ * them (proposals don't, but the signature stays open).
+ */
+export async function setLivePosition(
+  orgId: string,
+  ref: string,
+  liveId: string,
+  position: { x: number; y: number; width?: number; height?: number },
+): Promise<void> {
+  if (!isLiveId(liveId)) {
+    throw new Error(`setLivePosition called with non-live id: ${liveId}`);
+  }
+  const blob = await loadBlob(orgId, ref);
+  const positions = { ...(blob.positions ?? {}) };
+  const prev = positions[liveId];
+  positions[liveId] = {
+    x: position.x,
+    y: position.y,
+    ...(position.width !== undefined
+      ? { width: position.width }
+      : prev?.width !== undefined
+        ? { width: prev.width }
+        : {}),
+    ...(position.height !== undefined
+      ? { height: position.height }
+      : prev?.height !== undefined
+        ? { height: prev.height }
+        : {}),
+  };
+  await storeBlob(orgId, ref, { ...blob, positions });
+}
