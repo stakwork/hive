@@ -7,7 +7,9 @@ import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 
 type PresencePayload =
   | { type: "join"; user: CollaboratorInfo; rebroadcast?: boolean }
-  | { type: "leave" };
+  | { type: "leave" }
+  | { type: "typing-start"; name: string }
+  | { type: "typing-stop" };
 
 /**
  * POST /api/features/[featureId]/presence
@@ -22,7 +24,7 @@ export async function POST(
     // Get middleware context and require auth
     const middlewareContext = getMiddlewareContext(request);
     const userOrResponse = await requireAuth(middlewareContext);
-    
+
     if (userOrResponse instanceof NextResponse) {
       return userOrResponse;
     }
@@ -86,6 +88,21 @@ export async function POST(
         userId: userOrResponse.id,
       });
 
+      return NextResponse.json({ success: true });
+    }
+
+    if (body.type === "typing-start") {
+      await pusherServer.trigger(channelName, PUSHER_EVENTS.PLAN_TYPING_START, {
+        userId: userOrResponse.id,
+        name: body.name,
+      });
+      return NextResponse.json({ success: true });
+    }
+
+    if (body.type === "typing-stop") {
+      await pusherServer.trigger(channelName, PUSHER_EVENTS.PLAN_TYPING_STOP, {
+        userId: userOrResponse.id,
+      });
       return NextResponse.json({ success: true });
     }
 
