@@ -10,6 +10,7 @@ export interface JanitorConfigUpdate {
   taskCoordinatorEnabled?: boolean;
   recommendationSweepEnabled?: boolean;
   ticketSweepEnabled?: boolean;
+  deduplicationEnabled?: boolean;
   // PR Monitor settings
   prMonitorEnabled?: boolean;
   prConflictFixEnabled?: boolean;

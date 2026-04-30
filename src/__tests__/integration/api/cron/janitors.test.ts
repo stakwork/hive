@@ -50,6 +50,7 @@ vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-api-key",
     STAKWORK_JANITOR_WORKFLOW_ID: "123",
+    STAKWORK_GRAPHMINDSET_WORKFLOW_ID: "999",
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
   },
   optionalEnvVars: {
@@ -1571,6 +1572,131 @@ describe("GET /api/cron/janitors", () => {
       // Repo-B should NOT be blocked
       const repoBResult = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS, testRepositoryB.id);
       expect(repoBResult).toBe(false);
+    });
+  });
+
+  describe("GraphMindset Janitor (DEDUPLICATION)", () => {
+    let testUser: { id: string };
+    let testWorkspace: { id: string; slug: string };
+    let testSwarm: { id: string };
+
+    beforeEach(async () => {
+      await resetDatabase();
+
+      process.env.STAKWORK_API_KEY = "test-api-key";
+      process.env.STAKWORK_GRAPHMINDSET_WORKFLOW_ID = "999";
+      process.env.STAKWORK_BASE_URL = "https://api.stakwork.com/api/v1";
+
+      mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 777777 },
+      });
+
+      testUser = await db.user.create({
+        data: {
+          id: "user-gm-dedup",
+          email: "gmdedup@test.com",
+          name: "GM Dedup Test User",
+        },
+      });
+
+      testWorkspace = await db.workspace.create({
+        data: {
+          id: "ws-gm-dedup",
+          slug: "gm-dedup-workspace",
+          name: "GM Dedup Workspace",
+          ownerId: testUser.id,
+        },
+      });
+
+      testSwarm = await db.swarm.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          swarmUrl: "https://ai.sphinx.chat/api",
+          swarmSecretAlias: "my-secret-alias",
+          name: "test-swarm",
+        },
+      });
+
+      await db.janitorConfig.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          deduplicationEnabled: true,
+        },
+      });
+    });
+
+    it("should dispatch DEDUPLICATION using STAKWORK_GRAPHMINDSET_WORKFLOW_ID", async () => {
+      const { createJanitorRun } = await import("@/services/janitor");
+      await createJanitorRun(testWorkspace.slug, testUser.id, "deduplication", "MANUAL");
+
+      expect(mockStakworkRequest).toHaveBeenCalledTimes(1);
+      const [, payload] = mockStakworkRequest.mock.calls[0];
+      expect(payload.workflow_id).toBe(999);
+    });
+
+    it("should include correct vars in Stakwork payload", async () => {
+      const { createJanitorRun } = await import("@/services/janitor");
+      await createJanitorRun(testWorkspace.slug, testUser.id, "deduplication", "MANUAL");
+
+      const [, payload] = mockStakworkRequest.mock.calls[0];
+      const vars = payload.workflow_params.set_var.attributes.vars;
+
+      expect(vars.job_type).toBe("deduplication");
+      expect(vars.swarm_url).toBe("https://ai.sphinx.chat"); // stripped /api
+      expect(vars.secret).toBe("my-secret-alias");
+      expect(vars.swarm_secret_alias).toBe("my-secret-alias");
+      expect(vars["2b_base_url"]).toBe("https://ai.sphinx.chat:8444");
+      expect(vars.webhook_url).toContain("/api/janitors/webhook");
+      expect(vars.workspaceId).toBe(testWorkspace.id);
+    });
+
+    it("should create a single JanitorRun record (no per-repo loop)", async () => {
+      // Add two repos to the workspace
+      await db.repository.create({
+        data: { workspaceId: testWorkspace.id, name: "Repo A", repositoryUrl: "https://github.com/org/a", branch: "main" },
+      });
+      await db.repository.create({
+        data: { workspaceId: testWorkspace.id, name: "Repo B", repositoryUrl: "https://github.com/org/b", branch: "main" },
+      });
+
+      const { createJanitorRun } = await import("@/services/janitor");
+      await createJanitorRun(testWorkspace.slug, testUser.id, "deduplication", "MANUAL");
+
+      // Only one Stakwork call despite two repos
+      expect(mockStakworkRequest).toHaveBeenCalledTimes(1);
+
+      const runs = await db.janitorRun.findMany({
+        where: { janitorConfig: { workspaceId: testWorkspace.id }, janitorType: JanitorType.DEDUPLICATION },
+      });
+      expect(runs).toHaveLength(1);
+      expect(runs[0].repositoryId).toBeNull();
+    });
+
+    it("should fail fast if swarm has no swarmUrl", async () => {
+      // Update swarm to remove url
+      await db.swarm.update({ where: { id: testSwarm.id }, data: { swarmUrl: null } });
+
+      const { createJanitorRun } = await import("@/services/janitor");
+      await expect(
+        createJanitorRun(testWorkspace.slug, testUser.id, "deduplication", "MANUAL"),
+      ).rejects.toThrow(/no swarm URL or secret alias/i);
+    });
+
+    it("deduplicationEnabled config persists via PUT /api/workspaces/[slug]/janitors/config", async () => {
+      // Ensure starting state is false
+      await db.janitorConfig.update({
+        where: { workspaceId: testWorkspace.id },
+        data: { deduplicationEnabled: false },
+      });
+
+      const { updateJanitorConfig } = await import("@/services/janitor");
+      const updated = await updateJanitorConfig(testWorkspace.slug, testUser.id, { deduplicationEnabled: true });
+
+      expect(updated.deduplicationEnabled).toBe(true);
+
+      // Verify persistence
+      const fetched = await db.janitorConfig.findUnique({ where: { workspaceId: testWorkspace.id } });
+      expect(fetched?.deduplicationEnabled).toBe(true);
     });
   });
 });

@@ -593,6 +593,7 @@ model JanitorConfig {
   prOutOfDateFixEnabled      Boolean      @default(false) @map("pr_out_of_date_fix_enabled")
   prUseRebaseForUpdates      Boolean      @default(false) @map("pr_use_rebase_for_updates")
   prUseMergeForUpdates       Boolean      @default(true) @map("pr_use_merge_for_updates")
+  deduplicationEnabled       Boolean      @default(false) @map("deduplication_enabled")
   workspace                  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   janitorRuns                JanitorRun[]
 
@@ -1167,6 +1168,7 @@ enum JanitorType {
   SECURITY_REVIEW
   MOCK_GENERATION
   GENERAL_REFACTORING
+  DEDUPLICATION
 }
 
 enum JanitorStatus {
