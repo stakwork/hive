@@ -60,6 +60,7 @@ export async function getBasicVMDataFromPods(
         ? (portMappings.find((p) => p !== controlPort) ?? fallbackPort)
         : fallbackPort;
     const url = buildPodUrl(pod.podId, frontendPort);
+    const frontendUrl = url;
     const subdomain = pod.podId;
 
     // Map database status to pool-manager state format
@@ -101,6 +102,7 @@ export async function getBasicVMDataFromPods(
       marked_at: pod.usageStatusMarkedBy ? pod.createdAt.toISOString() : null,
       password: pod.password || undefined,
       url,
+      frontendUrl,
       repository: undefined, // Not available in basic query
       assignedTask: assignedTask
         ? {

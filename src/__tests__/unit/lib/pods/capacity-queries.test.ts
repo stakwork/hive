@@ -72,3 +72,23 @@ describe("getBasicVMDataFromPods — url construction", () => {
     expect(vm.url).not.toContain("-15552.");
   });
 });
+
+describe("getBasicVMDataFromPods — frontendUrl", () => {
+  it("frontendUrl equals url (same resolved port)", async () => {
+    mockPodFindMany.mockResolvedValue([makePod([3000, 15552])] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.frontendUrl).toBe(vm.url);
+  });
+
+  it("frontendUrl is set when portMappings is null (fallback)", async () => {
+    mockPodFindMany.mockResolvedValue([makePod(null)] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.frontendUrl).toBe("https://pod-abc-3000.workspaces.sphinx.chat");
+  });
+
+  it("frontendUrl is set when portMappings is empty (fallback)", async () => {
+    mockPodFindMany.mockResolvedValue([makePod([])] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.frontendUrl).toBe("https://pod-abc-3000.workspaces.sphinx.chat");
+  });
+});

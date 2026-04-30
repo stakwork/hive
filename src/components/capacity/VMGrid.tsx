@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Circle, MoreVertical, Copy, ExternalLink, Trash2, Loader2, User } from "lucide-react";
+import { Circle, MoreVertical, Copy, ExternalLink, Globe, Trash2, Loader2, User } from "lucide-react";
 import { VMData } from "@/types/pool-manager";
 import {
   DropdownMenu,
@@ -84,6 +84,11 @@ function VMCard({
     window.open(vm.url, "_blank", "noopener,noreferrer");
   };
 
+  const handleOpenBrowser = () => {
+    if (!vm.frontendUrl) return;
+    window.open(vm.frontendUrl, "_blank", "noopener,noreferrer");
+  };
+
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="p-4 space-y-3">
@@ -113,6 +118,12 @@ function VMCard({
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Open IDE
                   </DropdownMenuItem>
+                  {vm.frontendUrl && (
+                    <DropdownMenuItem onClick={handleOpenBrowser}>
+                      <Globe className="h-4 w-4 mr-2" />
+                      Open Browser
+                    </DropdownMenuItem>
+                  )}
                   {isAdmin && onDeletePod && (
                     <>
                       <DropdownMenuSeparator />
