@@ -14,6 +14,7 @@ import type { AgentLogRecord } from "@/types/agent-logs";
 interface AgentLogsTableProps {
   logs: AgentLogRecord[];
   onRowClick: (logId: string) => void;
+  onDownload?: (log: AgentLogRecord) => Promise<void>;
 }
 
 const formatter = new Intl.DateTimeFormat("en-US", {
@@ -24,7 +25,7 @@ const formatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
-export function AgentLogsTable({ logs, onRowClick }: AgentLogsTableProps) {
+export function AgentLogsTable({ logs, onRowClick, onDownload }: AgentLogsTableProps) {
   const handleDownload = async (logId: string, agent: string) => {
     try {
       const res = await fetch(`/api/agent-logs/${logId}/content`);
@@ -87,7 +88,11 @@ export function AgentLogsTable({ logs, onRowClick }: AgentLogsTableProps) {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDownload(log.id, log.agent);
+                    if (onDownload) {
+                      onDownload(log);
+                    } else {
+                      handleDownload(log.id, log.agent);
+                    }
                   }}
                   className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                   title="Download log"

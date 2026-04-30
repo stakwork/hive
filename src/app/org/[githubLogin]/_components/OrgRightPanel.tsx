@@ -71,7 +71,7 @@ export function OrgRightPanel({
   }, [selectedNode?.id]);
 
   return (
-    <div className="fixed right-0 top-0 bottom-0 w-96 border-l bg-background flex flex-col">
+    <div className="h-full w-full flex flex-col border-l bg-background">
       <div className="flex items-stretch border-b text-sm">
         <TabButton
           label="Chat"
