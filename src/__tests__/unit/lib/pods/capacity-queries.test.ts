@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getBasicVMDataFromPods } from "@/lib/pods/capacity-queries";
-import { POD_PORTS } from "@/lib/pods/constants";
+import { PodStatus, PodUsageStatus } from "@prisma/client";
 
-// Mock DB
 vi.mock("@/lib/db", () => ({
   db: {
     pod: {
@@ -14,89 +12,83 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-// Mock buildPodUrl to return predictable values
 vi.mock("@/lib/pods/queries", () => ({
-  buildPodUrl: vi.fn((podId: string, port: string) => `https://${podId}-${port}.example.com`),
+  buildPodUrl: vi.fn((podId: string, port: number | string) => `https://${podId}-${port}.workspaces.sphinx.chat`),
 }));
 
 import { db } from "@/lib/db";
-import { buildPodUrl } from "@/lib/pods/queries";
+import { getBasicVMDataFromPods } from "@/lib/pods/capacity-queries";
 
-const mockDb = db as { pod: { findMany: ReturnType<typeof vi.fn> }; task: { findMany: ReturnType<typeof vi.fn> } };
+const mockPodFindMany = vi.mocked(db.pod.findMany);
+const mockTaskFindMany = vi.mocked(db.task.findMany);
 
-function makeDbPod(overrides: Record<string, unknown> = {}) {
+const SWARM_ID = "swarm-test-123";
+
+function makePod(portMappings: unknown = null) {
   return {
-    podId: "pod-abc123",
-    status: "RUNNING",
-    usageStatus: "UNUSED",
+    podId: "pod-abc",
+    status: "RUNNING" as PodStatus,
+    usageStatus: "UNUSED" as PodUsageStatus,
     usageStatusMarkedBy: null,
     password: "secret",
-    createdAt: new Date("2024-01-01"),
-    portMappings: null,
-    ...overrides,
+    createdAt: new Date(),
+    portMappings,
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockDb.task.findMany.mockResolvedValue([]);
+  mockTaskFindMany.mockResolvedValue([]);
 });
 
-describe("getBasicVMDataFromPods — frontendUrl computation", () => {
-  it("returns frontendUrl using FRONTEND_FALLBACK port when portMappings is null", async () => {
-    mockDb.pod.findMany.mockResolvedValue([makeDbPod({ portMappings: null })]);
-
-    const result = await getBasicVMDataFromPods("swarm-1");
-
-    expect(result[0].frontendUrl).toBe(
-      `https://pod-abc123-${POD_PORTS.FRONTEND_FALLBACK}.example.com`
-    );
-    expect(buildPodUrl).toHaveBeenCalledWith("pod-abc123", POD_PORTS.FRONTEND_FALLBACK);
+describe("getBasicVMDataFromPods — url construction", () => {
+  it("uses first non-control port when portMappings has [3000, 15552]", async () => {
+    mockPodFindMany.mockResolvedValue([makePod([3000, 15552])] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.url).toBe("https://pod-abc-3000.workspaces.sphinx.chat");
   });
 
-  it("returns frontendUrl using FRONTEND_FALLBACK port when portMappings is empty array", async () => {
-    mockDb.pod.findMany.mockResolvedValue([makeDbPod({ portMappings: [] })]);
-
-    const result = await getBasicVMDataFromPods("swarm-1");
-
-    expect(result[0].frontendUrl).toBe(
-      `https://pod-abc123-${POD_PORTS.FRONTEND_FALLBACK}.example.com`
-    );
+  it("falls back to port 3000 when portMappings is null", async () => {
+    mockPodFindMany.mockResolvedValue([makePod(null)] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.url).toBe("https://pod-abc-3000.workspaces.sphinx.chat");
   });
 
-  it("returns frontendUrl when portMappings contains port 3000", async () => {
-    mockDb.pod.findMany.mockResolvedValue([
-      makeDbPod({ portMappings: [8080, 3000, 5000] }),
-    ]);
-
-    const result = await getBasicVMDataFromPods("swarm-1");
-
-    expect(result[0].frontendUrl).toBe(
-      `https://pod-abc123-${POD_PORTS.FRONTEND_FALLBACK}.example.com`
-    );
+  it("falls back to port 3000 when portMappings is []", async () => {
+    mockPodFindMany.mockResolvedValue([makePod([])] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.url).toBe("https://pod-abc-3000.workspaces.sphinx.chat");
   });
 
-  it("returns undefined frontendUrl when portMappings has ports but not 3000", async () => {
-    mockDb.pod.findMany.mockResolvedValue([
-      makeDbPod({ portMappings: [8080, 5000] }),
-    ]);
-
-    const result = await getBasicVMDataFromPods("swarm-1");
-
-    expect(result[0].frontendUrl).toBeUndefined();
+  it("falls back to port 3000 when portMappings is [15552] (only control port)", async () => {
+    mockPodFindMany.mockResolvedValue([makePod([15552])] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.url).toBe("https://pod-abc-3000.workspaces.sphinx.chat");
   });
 
-  it("returns frontendUrl for multiple pods independently", async () => {
-    mockDb.pod.findMany.mockResolvedValue([
-      makeDbPod({ podId: "pod-1", portMappings: [3000] }),
-      makeDbPod({ podId: "pod-2", portMappings: null }),
-      makeDbPod({ podId: "pod-3", portMappings: [8080] }),
-    ]);
+  it("does not use control port 15552 as the url port", async () => {
+    mockPodFindMany.mockResolvedValue([makePod([3000, 15552])] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.url).not.toContain("-15552.");
+  });
+});
 
-    const result = await getBasicVMDataFromPods("swarm-1");
+describe("getBasicVMDataFromPods — frontendUrl", () => {
+  it("frontendUrl equals url (same resolved port)", async () => {
+    mockPodFindMany.mockResolvedValue([makePod([3000, 15552])] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.frontendUrl).toBe(vm.url);
+  });
 
-    expect(result[0].frontendUrl).toContain("pod-1");
-    expect(result[1].frontendUrl).toContain("pod-2");
-    expect(result[2].frontendUrl).toBeUndefined();
+  it("frontendUrl is set when portMappings is null (fallback)", async () => {
+    mockPodFindMany.mockResolvedValue([makePod(null)] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.frontendUrl).toBe("https://pod-abc-3000.workspaces.sphinx.chat");
+  });
+
+  it("frontendUrl is set when portMappings is empty (fallback)", async () => {
+    mockPodFindMany.mockResolvedValue([makePod([])] as never);
+    const [vm] = await getBasicVMDataFromPods(SWARM_ID);
+    expect(vm.frontendUrl).toBe("https://pod-abc-3000.workspaces.sphinx.chat");
   });
 });
