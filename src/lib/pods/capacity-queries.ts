@@ -23,6 +23,7 @@ export async function getBasicVMDataFromPods(
       usageStatusMarkedBy: true,
       password: true,
       createdAt: true,
+      portMappings: true,
     },
     orderBy: {
       createdAt: "desc",
@@ -52,6 +53,11 @@ export async function getBasicVMDataFromPods(
 
   return pods.map((pod) => {
     const url = buildPodUrl(pod.podId, POD_PORTS.CONTROL);
+    const ports = pod.portMappings as number[] | null;
+    const frontendUrl =
+      !ports || ports.length === 0 || ports.includes(parseInt(POD_PORTS.FRONTEND_FALLBACK))
+        ? buildPodUrl(pod.podId, POD_PORTS.FRONTEND_FALLBACK)
+        : undefined;
     const subdomain = pod.podId;
 
     // Map database status to pool-manager state format
@@ -104,6 +110,7 @@ export async function getBasicVMDataFromPods(
             },
           }
         : null,
+      frontendUrl,
       resource_usage: {
         available: false, // Mark as unavailable - will be fetched from pool-manager
         requests: {
