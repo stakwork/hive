@@ -8,9 +8,12 @@ import {
   getEnabledJanitorTypes,
   createJanitorItem,
   getAllJanitorItems,
+  getAllGraphMindsetJanitorItems,
   createEnabledJanitorWhereConditions,
   getPriorityConfig,
   getJanitorIcon,
+  GRAPHMINDSET_JANITOR_TYPES,
+  GRAPHMINDSET_JOB_TYPE_MAP,
 } from "@/lib/constants/janitor";
 import { JanitorType, Priority } from "@prisma/client";
 
@@ -273,13 +276,76 @@ describe("constants/janitor", () => {
     it("should create OR conditions for all janitor types", () => {
       const conditions = createEnabledJanitorWhereConditions();
 
-      expect(conditions).toHaveLength(6);
+      expect(conditions).toHaveLength(Object.values(JanitorType).length);
       expect(conditions).toContainEqual({ unitTestsEnabled: true });
       expect(conditions).toContainEqual({ integrationTestsEnabled: true });
       expect(conditions).toContainEqual({ e2eTestsEnabled: true });
       expect(conditions).toContainEqual({ securityReviewEnabled: true });
       expect(conditions).toContainEqual({ mockGenerationEnabled: true });
       expect(conditions).toContainEqual({ generalRefactoringEnabled: true });
+      expect(conditions).toContainEqual({ deduplicationEnabled: true });
+    });
+  });
+
+  describe("GRAPHMINDSET_JANITOR_TYPES", () => {
+    it("should contain DEDUPLICATION", () => {
+      expect(GRAPHMINDSET_JANITOR_TYPES).toContain(JanitorType.DEDUPLICATION);
+    });
+
+    it("should not contain standard janitor types", () => {
+      expect(GRAPHMINDSET_JANITOR_TYPES).not.toContain(JanitorType.UNIT_TESTS);
+      expect(GRAPHMINDSET_JANITOR_TYPES).not.toContain(JanitorType.SECURITY_REVIEW);
+    });
+  });
+
+  describe("GRAPHMINDSET_JOB_TYPE_MAP", () => {
+    it("should map DEDUPLICATION to 'deduplication'", () => {
+      expect(GRAPHMINDSET_JOB_TYPE_MAP[JanitorType.DEDUPLICATION]).toBe("deduplication");
+    });
+  });
+
+  describe("getAllJanitorItems", () => {
+    it("should exclude E2E_TESTS", () => {
+      const items = getAllJanitorItems();
+      expect(items.map((i) => i.id)).not.toContain(JanitorType.E2E_TESTS);
+    });
+
+    it("should exclude GraphMindset types (DEDUPLICATION)", () => {
+      const items = getAllJanitorItems();
+      expect(items.map((i) => i.id)).not.toContain(JanitorType.DEDUPLICATION);
+    });
+
+    it("should include standard janitor types", () => {
+      const items = getAllJanitorItems();
+      const ids = items.map((i) => i.id);
+      expect(ids).toContain(JanitorType.UNIT_TESTS);
+      expect(ids).toContain(JanitorType.SECURITY_REVIEW);
+    });
+  });
+
+  describe("getAllGraphMindsetJanitorItems", () => {
+    it("should contain only GraphMindset types", () => {
+      const items = getAllGraphMindsetJanitorItems();
+      expect(items.length).toBe(GRAPHMINDSET_JANITOR_TYPES.length);
+      items.forEach((item) => {
+        expect(GRAPHMINDSET_JANITOR_TYPES).toContain(item.id);
+      });
+    });
+
+    it("should include DEDUPLICATION", () => {
+      const items = getAllGraphMindsetJanitorItems();
+      expect(items.map((i) => i.id)).toContain(JanitorType.DEDUPLICATION);
+    });
+
+    it("each item should have expected shape", () => {
+      const items = getAllGraphMindsetJanitorItems();
+      items.forEach((item) => {
+        expect(item.id).toBeDefined();
+        expect(item.name).toBeDefined();
+        expect(item.description).toBeDefined();
+        expect(item.icon).toBeDefined();
+        expect(item.configKey).toBeDefined();
+      });
     });
   });
 

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { getJarvisUrl, transformSwarmUrlToRepo2Graph, extractSwarmSuffix } from "@/lib/utils/swarm";
+import { getJarvisUrl, transformSwarmUrlToRepo2Graph, extractSwarmSuffix, getSwarmBaseUrl, getSecondBrainBaseUrl } from "@/lib/utils/swarm";
 
 describe("swarm utils", () => {
   describe("getJarvisUrl", () => {
@@ -76,6 +76,50 @@ describe("swarm utils", () => {
 
     test("returns empty string for swarm_id that is exactly 'swarm'", () => {
       expect(extractSwarmSuffix("swarm")).toBe("");
+    });
+  });
+
+  describe("getSwarmBaseUrl", () => {
+    test("strips trailing /api from swarmUrl", () => {
+      expect(getSwarmBaseUrl("https://ai.sphinx.chat/api")).toBe("https://ai.sphinx.chat");
+    });
+
+    test("returns unchanged URL when not ending with /api", () => {
+      expect(getSwarmBaseUrl("https://ai.sphinx.chat")).toBe("https://ai.sphinx.chat");
+    });
+
+    test("returns empty string for null", () => {
+      expect(getSwarmBaseUrl(null)).toBe("");
+    });
+
+    test("returns empty string for undefined", () => {
+      expect(getSwarmBaseUrl(undefined)).toBe("");
+    });
+
+    test("returns empty string for empty string", () => {
+      expect(getSwarmBaseUrl("")).toBe("");
+    });
+  });
+
+  describe("getSecondBrainBaseUrl", () => {
+    test("strips /api and appends :8444", () => {
+      expect(getSecondBrainBaseUrl("https://ai.sphinx.chat/api")).toBe("https://ai.sphinx.chat:8444");
+    });
+
+    test("appends :8444 when URL does not end with /api", () => {
+      expect(getSecondBrainBaseUrl("https://ai.sphinx.chat")).toBe("https://ai.sphinx.chat:8444");
+    });
+
+    test("returns empty string for null", () => {
+      expect(getSecondBrainBaseUrl(null)).toBe("");
+    });
+
+    test("returns empty string for undefined", () => {
+      expect(getSecondBrainBaseUrl(undefined)).toBe("");
+    });
+
+    test("returns empty string for empty string", () => {
+      expect(getSecondBrainBaseUrl("")).toBe("");
     });
   });
 });
