@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { createJanitorRun } from "@/services/janitor";
+import { GRAPHMINDSET_JANITOR_TYPES } from "@/lib/constants/janitor";
+import { JanitorType } from "@prisma/client";
 import { db } from "@/lib/db";
 
 
@@ -18,6 +20,26 @@ export async function POST(
     }
 
     const { slug, type } = await params;
+
+    // Detect GraphMindset types — dispatch once, no per-repo loop
+    const janitorTypeUpper = type.toUpperCase();
+    const isGraphMindsetType =
+      Object.values(JanitorType).includes(janitorTypeUpper as JanitorType) &&
+      GRAPHMINDSET_JANITOR_TYPES.includes(janitorTypeUpper as JanitorType);
+
+    if (isGraphMindsetType) {
+      const run = await createJanitorRun(slug, userId, type, "MANUAL");
+      return NextResponse.json({
+        success: true,
+        runs: [{
+          id: run.id,
+          janitorType: run.janitorType,
+          status: run.status,
+          triggeredBy: run.triggeredBy,
+          createdAt: run.createdAt,
+        }],
+      });
+    }
 
     // Fetch all repositories for the workspace to trigger a run per repo
     const workspace = await db.workspace.findUnique({

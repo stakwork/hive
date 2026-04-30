@@ -1,7 +1,11 @@
 import { db } from "@/lib/db";
 import { JanitorType } from "@prisma/client";
 import { createJanitorRun } from "@/services/janitor";
-import { createEnabledJanitorWhereConditions, isJanitorEnabled } from "@/lib/constants/janitor";
+import {
+  createEnabledJanitorWhereConditions,
+  isJanitorEnabled,
+  GRAPHMINDSET_JANITOR_TYPES,
+} from "@/lib/constants/janitor";
 
 export interface CronExecutionResult {
   success: boolean;
@@ -34,6 +38,11 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<
       securityReviewEnabled: boolean;
       mockGenerationEnabled: boolean;
       generalRefactoringEnabled: boolean;
+      deduplicationEnabled: boolean;
+    } | null;
+    swarm: {
+      swarmUrl: string | null;
+      swarmSecretAlias: string | null;
     } | null;
     repositories: Array<{
       id: string;
@@ -64,6 +73,13 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<
           securityReviewEnabled: true,
           mockGenerationEnabled: true,
           generalRefactoringEnabled: true,
+          deduplicationEnabled: true,
+        },
+      },
+      swarm: {
+        select: {
+          swarmUrl: true,
+          swarmSecretAlias: true,
         },
       },
       repositories: {
@@ -89,6 +105,7 @@ const SEQUENTIAL_JANITOR_TYPES: JanitorType[] = [
   JanitorType.SECURITY_REVIEW,
   JanitorType.MOCK_GENERATION,
   JanitorType.GENERAL_REFACTORING,
+  JanitorType.DEDUPLICATION,
 ];
 
 /**
@@ -137,19 +154,22 @@ export async function cleanupStaleJanitorRuns(): Promise<{
 
 /**
  * Check if a janitor run should be skipped for a workspace/type/repository.
- * Skip if there's an in-progress run, pending recommendation, OR an active task.
+ * For standard janitors: skip if there's an in-progress run, pending recommendation, OR an active task.
+ * For GraphMindset janitors (repositoryId omitted): only checks for in-progress runs by workspace+type.
  */
 export async function shouldSkipJanitorRun(
   workspaceId: string,
   janitorType: JanitorType,
-  repositoryId: string,
+  repositoryId?: string,
 ): Promise<boolean> {
+  const isGraphMindsetType = GRAPHMINDSET_JANITOR_TYPES.includes(janitorType);
+
   // Check for in-progress janitor run (PENDING or RUNNING)
   const inProgressRun = await db.janitorRun.findFirst({
     where: {
       janitorConfig: { workspaceId },
       janitorType,
-      repositoryId,
+      ...(isGraphMindsetType ? {} : { repositoryId: repositoryId ?? null }),
       status: { in: ["PENDING", "RUNNING"] },
     },
     orderBy: { createdAt: "desc" },
@@ -157,9 +177,14 @@ export async function shouldSkipJanitorRun(
 
   if (inProgressRun) {
     console.log(
-      `[JanitorCron] Skipping ${janitorType} for repo ${repositoryId}: run ${inProgressRun.id} already in progress (status: ${inProgressRun.status})`,
+      `[JanitorCron] Skipping ${janitorType}${repositoryId ? ` for repo ${repositoryId}` : ""}: run ${inProgressRun.id} already in progress (status: ${inProgressRun.status})`,
     );
     return true;
+  }
+
+  // GraphMindset types don't produce Hive recommendations or tasks — skip those checks
+  if (isGraphMindsetType) {
+    return false;
   }
 
   // Check for pending recommendations for this specific repo
@@ -167,7 +192,7 @@ export async function shouldSkipJanitorRun(
     where: {
       workspaceId,
       status: "PENDING",
-      repositoryId,
+      repositoryId: repositoryId ?? null,
       janitorRun: {
         janitorType,
       },
@@ -185,7 +210,7 @@ export async function shouldSkipJanitorRun(
     where: {
       workspaceId,
       janitorType,
-      repositoryId,
+      repositoryId: repositoryId ?? null,
       deleted: false,
     },
     include: {
@@ -282,48 +307,79 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
 
       // Process all enabled janitor types
       for (const janitorType of Object.values(JanitorType)) {
-        if (isJanitorEnabled(janitorConfig, janitorType)) {
-          if (workspace.repositories.length === 0) {
-            console.warn(`[JanitorCron] Workspace ${slug} has no repositories — skipping ${janitorType}`);
+        if (!isJanitorEnabled(janitorConfig, janitorType)) continue;
+
+        // ── GraphMindset janitors: workspace-wide, single dispatch ────────────
+        if (GRAPHMINDSET_JANITOR_TYPES.includes(janitorType)) {
+          if (!workspace.swarm?.swarmUrl) {
+            console.warn(`[JanitorCron] Workspace ${slug} has no swarm URL — skipping GraphMindset ${janitorType}`);
             result.skipped++;
             continue;
           }
 
-          for (const repository of workspace.repositories) {
-            if (!repository.repositoryUrl || repository.repositoryUrl.trim() === "") {
-              console.warn(
-                `[JanitorCron] Skipping repo ${repository.id} in workspace ${slug}: no repositoryUrl`,
-              );
+          if (SEQUENTIAL_JANITOR_TYPES.includes(janitorType)) {
+            const shouldSkip = await shouldSkipJanitorRun(workspaceId, janitorType);
+            if (shouldSkip) {
               result.skipped++;
               continue;
             }
+          }
 
-            if (SEQUENTIAL_JANITOR_TYPES.includes(janitorType)) {
-              const shouldSkip = await shouldSkipJanitorRun(workspaceId, janitorType, repository.id);
-              if (shouldSkip) {
-                result.skipped++;
-                continue;
-              }
-            }
+          try {
+            console.log(`[JanitorCron] Creating GraphMindset ${janitorType} run for workspace ${slug}`);
+            await createJanitorRun(slug, ownerId, janitorType.toLowerCase(), "SCHEDULED");
+            result.runsCreated++;
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`[JanitorCron] Error creating GraphMindset ${janitorType} run for workspace ${slug}:`, errorMessage);
+            result.errors.push({ workspaceSlug: slug, janitorType, error: errorMessage });
+            result.success = false;
+          }
+          continue;
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
-            try {
-              console.log(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}, repo ${repository.id}`);
-              await createJanitorRun(slug, ownerId, janitorType.toLowerCase(), "SCHEDULED", repository.id);
-              result.runsCreated++;
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : String(error);
-              console.error(
-                `[JanitorCron] Error creating ${janitorType} run for workspace ${slug}, repo ${repository.id}:`,
-                errorMessage,
-              );
-              result.errors.push({
-                workspaceSlug: slug,
-                janitorType,
-                repositoryId: repository.id,
-                error: errorMessage,
-              });
-              result.success = false;
+        // Standard janitors: per-repository
+        if (workspace.repositories.length === 0) {
+          console.warn(`[JanitorCron] Workspace ${slug} has no repositories — skipping ${janitorType}`);
+          result.skipped++;
+          continue;
+        }
+
+        for (const repository of workspace.repositories) {
+          if (!repository.repositoryUrl || repository.repositoryUrl.trim() === "") {
+            console.warn(
+              `[JanitorCron] Skipping repo ${repository.id} in workspace ${slug}: no repositoryUrl`,
+            );
+            result.skipped++;
+            continue;
+          }
+
+          if (SEQUENTIAL_JANITOR_TYPES.includes(janitorType)) {
+            const shouldSkip = await shouldSkipJanitorRun(workspaceId, janitorType, repository.id);
+            if (shouldSkip) {
+              result.skipped++;
+              continue;
             }
+          }
+
+          try {
+            console.log(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}, repo ${repository.id}`);
+            await createJanitorRun(slug, ownerId, janitorType.toLowerCase(), "SCHEDULED", repository.id);
+            result.runsCreated++;
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(
+              `[JanitorCron] Error creating ${janitorType} run for workspace ${slug}, repo ${repository.id}:`,
+              errorMessage,
+            );
+            result.errors.push({
+              workspaceSlug: slug,
+              janitorType,
+              repositoryId: repository.id,
+              error: errorMessage,
+            });
+            result.success = false;
           }
         }
       }

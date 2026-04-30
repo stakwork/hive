@@ -1,5 +1,5 @@
 import { JanitorType, Priority } from "@prisma/client";
-import { FlaskConical, Zap, Monitor, Shield, Boxes, Wrench, LucideIcon } from "lucide-react";
+import { FlaskConical, Zap, Monitor, Shield, Boxes, Wrench, Layers, LucideIcon } from "lucide-react";
 
 /**
  * Janitor system error messages
@@ -28,6 +28,7 @@ export interface JanitorConfigFields {
   securityReviewEnabled: boolean;
   mockGenerationEnabled: boolean;
   generalRefactoringEnabled: boolean;
+  deduplicationEnabled: boolean;
 }
 
 /**
@@ -75,7 +76,26 @@ export const JANITOR_CONFIG: Record<JanitorType, {
     icon: Wrench,
     enabledField: "generalRefactoringEnabled",
   },
+  DEDUPLICATION: {
+    name: "Deduplication",
+    description: "Identify and remove duplicate nodes in the graph.",
+    icon: Layers,
+    enabledField: "deduplicationEnabled",
+  },
 } as const;
+
+/**
+ * Janitor types that are dispatched through the GraphMindset proxy workflow.
+ * These run workspace-wide (not per-repository) and do not produce Hive recommendations.
+ */
+export const GRAPHMINDSET_JANITOR_TYPES: JanitorType[] = [JanitorType.DEDUPLICATION];
+
+/**
+ * Maps GraphMindset janitor types to the job_type variable passed in the Stakwork payload.
+ */
+export const GRAPHMINDSET_JOB_TYPE_MAP: Partial<Record<JanitorType, string>> = {
+  [JanitorType.DEDUPLICATION]: "deduplication",
+};
 
 /**
  * Get the database field name for a given janitor type
@@ -119,13 +139,21 @@ export function createJanitorItem(janitorType: JanitorType) {
 }
 
 /**
- * Get all available janitor items for UI
- * Excludes E2E_TESTS from the list
+ * Get all available janitor items for the standard janitors page.
+ * Excludes E2E_TESTS and GraphMindset-only types (e.g. DEDUPLICATION).
  */
 export function getAllJanitorItems() {
   return Object.values(JanitorType)
-    .filter(type => type !== JanitorType.E2E_TESTS)
+    .filter(type => type !== JanitorType.E2E_TESTS && !GRAPHMINDSET_JANITOR_TYPES.includes(type))
     .map(createJanitorItem);
+}
+
+/**
+ * Get all available janitor items for the GraphMindset Admin UI.
+ * Returns only the types that run through the GraphMindset proxy workflow.
+ */
+export function getAllGraphMindsetJanitorItems() {
+  return GRAPHMINDSET_JANITOR_TYPES.map(createJanitorItem);
 }
 
 /**
