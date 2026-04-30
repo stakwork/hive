@@ -1,3 +1,24 @@
+/**
+ * Strips trailing "/api" from stored swarmUrl.
+ * e.g. "https://ai.sphinx.chat/api" → "https://ai.sphinx.chat"
+ * Returns "" for nullish or empty input.
+ */
+export function getSwarmBaseUrl(swarmUrl: string | null | undefined): string {
+  if (!swarmUrl) return "";
+  return swarmUrl.endsWith("/api") ? swarmUrl.slice(0, -4) : swarmUrl;
+}
+
+/**
+ * Strips "/api" and appends ":8444" to the stored swarmUrl.
+ * e.g. "https://ai.sphinx.chat/api" → "https://ai.sphinx.chat:8444"
+ * Returns "" for nullish or empty input.
+ */
+export function getSecondBrainBaseUrl(swarmUrl: string | null | undefined): string {
+  if (!swarmUrl) return "";
+  const base = swarmUrl.endsWith("/api") ? swarmUrl.slice(0, -4) : swarmUrl;
+  return `${base}:8444`;
+}
+
 export function transformSwarmUrlToRepo2Graph(
   swarmUrl: string | null | undefined,
 ): string {

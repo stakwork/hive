@@ -15,7 +15,7 @@ import {
   JanitorRunFilters,
   JanitorRecommendationFilters,
 } from "@/types/janitor";
-import { JANITOR_ERRORS, getEnabledFieldName } from "@/lib/constants/janitor";
+import { JANITOR_ERRORS, getEnabledFieldName, GRAPHMINDSET_JANITOR_TYPES, GRAPHMINDSET_JOB_TYPE_MAP } from "@/lib/constants/janitor";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
 import { stakworkService } from "@/lib/service-factory";
@@ -23,6 +23,7 @@ import { config as envConfig } from "@/config/env";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
+import { getSwarmBaseUrl, getSecondBrainBaseUrl } from "@/lib/utils/swarm";
 
 /**
  * Get or create janitor configuration for a workspace
@@ -75,6 +76,119 @@ export async function updateJanitorConfig(
     where: { id: config.id },
     data,
   });
+}
+
+/**
+ * Internal helper: dispatch a GraphMindset-family janitor run (workspace-wide, no repo loop).
+ */
+async function createGraphMindsetJanitorRun(
+  workspaceId: string,
+  janitorType: JanitorType,
+  triggeredBy: JanitorTrigger,
+  userId: string,
+) {
+  // Fetch config
+  let config = await db.janitorConfig.findUnique({ where: { workspaceId } });
+  if (!config) {
+    config = await db.janitorConfig.create({ data: { workspaceId } });
+  }
+
+  // Fetch swarm data
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      slug: true,
+      swarm: { select: { swarmUrl: true, swarmSecretAlias: true } },
+    },
+  });
+
+  const swarm = workspace?.swarm;
+  if (!swarm?.swarmUrl || !swarm?.swarmSecretAlias) {
+    throw new Error(`[Janitor] GraphMindset ${janitorType}: workspace has no swarm URL or secret alias`);
+  }
+
+  if (!envConfig.STAKWORK_API_KEY) {
+    throw new Error("STAKWORK_API_KEY is required for janitor runs");
+  }
+  const workflowId = envConfig.STAKWORK_GRAPHMINDSET_WORKFLOW_ID;
+  if (!workflowId) {
+    throw new Error("STAKWORK_GRAPHMINDSET_WORKFLOW_ID is required for GraphMindset janitor runs");
+  }
+
+  const jobType = GRAPHMINDSET_JOB_TYPE_MAP[janitorType];
+  const swarmBase = getSwarmBaseUrl(swarm.swarmUrl);
+  const secondBrainBase = getSecondBrainBaseUrl(swarm.swarmUrl);
+  const baseUrl = envConfig.STAKWORK_BASE_URL.replace("/api/v1", "");
+  const webhookUrl = `${baseUrl}/api/janitors/webhook`;
+
+  // Create the run record
+  let janitorRun = await db.janitorRun.create({
+    data: {
+      janitorConfigId: config.id,
+      janitorType,
+      triggeredBy,
+      status: "PENDING",
+      repositoryId: null,
+      metadata: { triggeredByUserId: userId, workspaceId },
+    },
+  });
+
+  try {
+    const vars = {
+      job_type: jobType,
+      swarm_url: swarmBase,
+      swarm_secret_alias: swarm.swarmSecretAlias,
+      secret: swarm.swarmSecretAlias,
+      "2b_base_url": secondBrainBase,
+      webhook_url: webhookUrl,
+      workspaceId,
+    };
+
+    console.log(
+      `[Janitor] GraphMindset dispatch — job_type=${jobType} workflowId=${workflowId} workspaceId=${workspaceId} runId=${janitorRun.id} swarm_url=${swarmBase} 2b_base_url=${secondBrainBase}`,
+    );
+
+    const stakworkPayload = {
+      name: `graphmindset-${janitorType.toLowerCase()}-${Date.now()}`,
+      workflow_id: parseInt(workflowId),
+      workflow_params: {
+        set_var: {
+          attributes: { vars },
+        },
+      },
+    };
+
+    const stakworkProject = await stakworkService().stakworkRequest("/projects", stakworkPayload);
+    const projectId = (stakworkProject as any)?.data?.project_id;
+
+    if (!projectId) {
+      throw new Error("No project ID returned from Stakwork");
+    }
+
+    janitorRun = await db.janitorRun.update({
+      where: { id: janitorRun.id },
+      data: {
+        stakworkProjectId: projectId,
+        status: "RUNNING",
+        startedAt: new Date(),
+      },
+    });
+
+    return janitorRun;
+  } catch (err) {
+    console.error(`[Janitor] GraphMindset dispatch failed for ${janitorType}:`, err);
+    await db.janitorRun.update({
+      where: { id: janitorRun.id },
+      data: {
+        status: "FAILED",
+        completedAt: new Date(),
+        error: `Failed to initialize Stakwork project: ${err instanceof Error ? err.message : "Unknown error"}`,
+      },
+    });
+    throw new Error(
+      `Failed to start GraphMindset janitor run: ${err instanceof Error ? err.message : "Stakwork integration failed"}`,
+    );
+  }
 }
 
 /**
@@ -133,6 +247,12 @@ export async function createJanitorRun(
 
   // Allow multiple manual runs - concurrent check removed for manual triggers
   // This will be replaced by cron scheduling in the future
+
+  // ── GraphMindset proxy workflow dispatch ──────────────────────────────────
+  if (GRAPHMINDSET_JANITOR_TYPES.includes(janitorType)) {
+    return await createGraphMindsetJanitorRun(workspaceId, janitorType, triggeredBy, userId);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // First create the database record without stakwork project ID
   let janitorRun = await db.janitorRun.create({
