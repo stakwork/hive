@@ -321,22 +321,40 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
           priority: task.priority,
           status: "TODO",
           autoMerge: false,
+          dependsOnTaskIds: task.dependsOnTaskIds ?? [],
         }),
       });
       if (!response.ok) throw new Error("Failed to duplicate task");
       const result = await response.json();
-      if (result.success && defaultPhase) {
-        const updatedPhases = feature.phases.map((phase) => {
-          if (phase.id === defaultPhase.id) {
-            return {
-              ...phase,
-              tasks: [...phase.tasks, result.data],
-            };
+      if (result.success) {
+        const newTaskId = result.data.id;
+
+        // Wire downstream tasks: any task that depends on the original should also depend on the duplicate
+        const downstreamTasks = tasks.filter((t) =>
+          (t.dependsOnTaskIds ?? []).includes(task.id)
+        );
+
+        if (downstreamTasks.length > 0) {
+          const patchResults = await Promise.allSettled(
+            downstreamTasks.map((t) =>
+              fetch(`/api/tickets/${t.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  dependsOnTaskIds: [...(t.dependsOnTaskIds ?? []), newTaskId],
+                }),
+              })
+            )
+          );
+
+          const anyFailed = patchResults.some((r) => r.status === "rejected");
+          if (anyFailed) {
+            toast.warning("Task duplicated, but some dependency links could not be updated");
           }
-          return phase;
-        });
-        onUpdate({ ...feature, phases: updatedPhases });
+        }
+
         toast.success("Task duplicated");
+        await refetchFeature();
       }
     } catch (error) {
       console.error("Failed to duplicate task:", error);
