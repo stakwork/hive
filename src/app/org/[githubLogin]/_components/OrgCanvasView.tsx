@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { CanvasNode } from "system-canvas";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -14,6 +14,11 @@ import {
   type CanvasChatMessage,
 } from "../_state/canvasChatStore";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 
 /** Strip the `ws:` prefix from a live workspace id. */
 function stripWsPrefix(liveId: string): string {
@@ -48,6 +53,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const { slug: workspaceSlug } = useWorkspace();
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useState(384);
 
   const [workspaces, setWorkspaces] = useState<{ id: string; slug: string }[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
@@ -273,12 +281,12 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   useCanvasChatAutoSave({ workspaceSlug });
 
   return (
-    <div className="relative flex h-full w-full overflow-hidden">
+    <div ref={containerRef} className="relative flex h-full w-full overflow-hidden">
       <OrgCanvasBackground
         githubLogin={githubLogin}
-        // Inset the canvas's right edge so the wider sidebar (`w-96`
-        // = 384px) doesn't cover canvas chrome.
-        rightInset={384}
+        // Inset the canvas's right edge by the dynamic panel width so
+        // canvas chrome (FAB, etc.) stays outside the sidebar.
+        rightInset={panelWidth}
         orgName={orgName}
         onHiddenChange={handleHiddenChange}
         onNodeSelect={handleNodeSelect}
@@ -290,27 +298,58 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         <div className="absolute inset-0 bg-background z-10" aria-hidden />
       )}
 
-      {/* Connection viewer lives in its own z-20 layer (used to be
-          nested inside the chat overlay column). `mr-96` matches the
-          new sidebar width so it doesn't underlap the right panel. */}
+      {/* Connection viewer — tracks dynamic panel width via style. */}
       {activeConnection && (
-        <div className="relative z-20 flex flex-1 mr-96 flex-col h-full">
+        <div
+          className="relative z-20 flex flex-1 flex-col h-full"
+          style={{ marginRight: panelWidth }}
+        >
           <ConnectionViewer connection={activeConnection} onBack={handleBack} />
         </div>
       )}
 
-      <div className="relative z-20">
-        <OrgRightPanel
-          githubLogin={githubLogin}
-          selectedNode={selectedNode}
-          chatReady={chatReady && conversationStarted}
-          connections={connections}
-          activeConnectionId={activeConnection?.id ?? null}
-          onConnectionClick={handleConnectionClick}
-          onConnectionCreated={handleConnectionCreated}
-          onConnectionDeleted={handleConnectionDeleted}
-          isLoading={loadingConnections}
-        />
+      {/* Resizable sidebar overlay — sits at z-20, absolutely
+          positioned to cover the right portion of the canvas.
+          The left filler panel is transparent; only the right
+          ResizablePanel renders visible content. */}
+      <div className="absolute inset-0 z-20 pointer-events-none">
+        <ResizablePanelGroup
+          direction="horizontal"
+          autoSaveId="org-right-panel"
+          className="h-full w-full"
+        >
+          {/* Left filler — transparent, lets canvas receive events */}
+          <ResizablePanel defaultSize={76} className="pointer-events-none" />
+
+          <ResizableHandle
+            withHandle
+            className="pointer-events-auto"
+          />
+
+          {/* Right panel — the visible sidebar */}
+          <ResizablePanel
+            defaultSize={24}
+            minSize={16}
+            maxSize={37}
+            className="pointer-events-auto"
+            onResize={(percent) => {
+              const containerWidth = containerRef.current?.offsetWidth ?? 1600;
+              setPanelWidth(Math.round((percent / 100) * containerWidth));
+            }}
+          >
+            <OrgRightPanel
+              githubLogin={githubLogin}
+              selectedNode={selectedNode}
+              chatReady={chatReady && conversationStarted}
+              connections={connections}
+              activeConnectionId={activeConnection?.id ?? null}
+              onConnectionClick={handleConnectionClick}
+              onConnectionCreated={handleConnectionCreated}
+              onConnectionDeleted={handleConnectionDeleted}
+              isLoading={loadingConnections}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   );
