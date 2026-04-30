@@ -175,18 +175,47 @@ interface CanvasChatState {
   // ─── Conversations ───────────────────────────────────────────────────
   conversations: Record<string, CanvasConversation>;
   activeConversationId: string | null;
+  /**
+   * Per-conversation count of seed messages that should NOT be
+   * persisted by `useCanvasChatAutoSave`. Used by the synthetic
+   * "top items needing your attention" intro: the seed message is
+   * regenerated from live DB state on each fresh page entry, so
+   * persisting it would create stale rows and leak the original
+   * viewer's intro through `?chat=<shareId>` shares.
+   *
+   * Auto-save reads this on conversation start: when set, it primes
+   * its `savedCountRef` to this value so the first PUT/POST only
+   * sends messages added after the seed.
+   */
+  ephemeralSeedCounts: Record<string, number>;
 
   // ─── Reserved slots (empty in PR 1; canvas may already select these) ─
   proposals: Record<string, CanvasProposal>;
   subAgentRuns: Record<string, SubAgentRun>;
   artifacts: Record<string, CanvasArtifact>;
+  /**
+   * Artifacts the user has dismissed for this session. Renderers
+   * (e.g. `MessageArtifacts` in `SidebarChat`) skip ids in this set.
+   * Lives in-memory only; outer code is responsible for persisting
+   * decisions across page loads (e.g. via `sessionStorage`) when
+   * relevant.
+   */
+  dismissedArtifactIds: Record<string, true>;
 
   // ─── Conversation actions ────────────────────────────────────────────
-  /** Create + activate a fresh conversation. Returns its id. */
+  /**
+   * Create + activate a fresh conversation. Returns its id.
+   *
+   * `ephemeralSeedCount` (default = 0) tells `useCanvasChatAutoSave`
+   * how many leading seed messages to skip when computing the first
+   * autosave delta. Set this to `seedMessages.length` for synthetic
+   * messages that must not round-trip through `chat_conversations`.
+   */
   startConversation: (
     context: ConversationContext,
     seedMessages?: CanvasChatMessage[],
     forkedFromShareId?: string,
+    ephemeralSeedCount?: number,
   ) => string;
   setActiveConversation: (conversationId: string | null) => void;
   /** Update the context of the active conversation (canvas-scope changes). */
@@ -222,6 +251,18 @@ interface CanvasChatState {
     conversationId: string,
     content: string,
   ) => void;
+
+  // ─── Artifact actions ────────────────────────────────────────────────
+  /**
+   * Register a `CanvasArtifact` so that `MessageArtifacts` (and any
+   * canvas-side subscribers) can find it by id. Safe to call from
+   * outside React; no re-render cost on the chat scroll because
+   * `SidebarChat` selects only `messages` / `isLoading` /
+   * `activeToolCalls`. Idempotent — same id overwrites in place.
+   */
+  registerArtifact: (artifact: CanvasArtifact) => void;
+  /** Mark an artifact as dismissed for the lifetime of the store. */
+  dismissArtifact: (artifactId: string) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,11 +278,18 @@ export const useCanvasChatStore = create<CanvasChatState>()(
     (set) => ({
       conversations: {},
       activeConversationId: null,
+      ephemeralSeedCounts: {},
       proposals: {},
       subAgentRuns: {},
       artifacts: {},
+      dismissedArtifactIds: {},
 
-      startConversation: (context, seedMessages, forkedFromShareId) => {
+      startConversation: (
+        context,
+        seedMessages,
+        forkedFromShareId,
+        ephemeralSeedCount,
+      ) => {
         const id = newConversationId();
         const conv: CanvasConversation = {
           id,
@@ -252,10 +300,14 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           activeToolCalls: [],
           context,
         };
+        const seedSkip = ephemeralSeedCount ?? 0;
         set(
           (s) => ({
             conversations: { ...s.conversations, [id]: conv },
             activeConversationId: id,
+            ephemeralSeedCounts: seedSkip > 0
+              ? { ...s.ephemeralSeedCounts, [id]: seedSkip }
+              : s.ephemeralSeedCounts,
           }),
           false,
           "startConversation",
@@ -316,9 +368,15 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           (s) => {
             const id = s.activeConversationId;
             if (!id) return s;
-            const next = { ...s.conversations };
-            delete next[id];
-            return { conversations: next, activeConversationId: null };
+            const nextConversations = { ...s.conversations };
+            delete nextConversations[id];
+            const nextSeedCounts = { ...s.ephemeralSeedCounts };
+            delete nextSeedCounts[id];
+            return {
+              conversations: nextConversations,
+              activeConversationId: null,
+              ephemeralSeedCounts: nextSeedCounts,
+            };
           },
           false,
           "resetActiveConversation",
@@ -438,6 +496,27 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           },
           false,
           "appendAssistantError",
+        ),
+
+      registerArtifact: (artifact) =>
+        set(
+          (s) => ({
+            artifacts: { ...s.artifacts, [artifact.id]: artifact },
+          }),
+          false,
+          "registerArtifact",
+        ),
+
+      dismissArtifact: (artifactId) =>
+        set(
+          (s) => ({
+            dismissedArtifactIds: {
+              ...s.dismissedArtifactIds,
+              [artifactId]: true,
+            },
+          }),
+          false,
+          "dismissArtifact",
         ),
     }),
     { name: "canvas-chat-store" },
