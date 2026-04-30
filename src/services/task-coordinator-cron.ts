@@ -357,20 +357,26 @@ export async function releaseStaleTaskPods(): Promise<{
           return content?.status && content.status !== "DONE" && content.status !== "CANCELLED";
         });
 
-        if (hasOpenPr) {
-          console.log(
-            `[ReleaseStaleTaskPods] Skipping halt for task ${task.id} - has open PR`
-          );
-        }
+        // Base eligibility: stale IN_PROGRESS, not already HALTED
+        const isHaltEligible = task.status === "IN_PROGRESS" && task.workflowStatus !== "HALTED";
 
-        // Determine if this task should be halted (only IN_PROGRESS tasks not already halted, and no open PR)
-        const shouldHalt = task.status === "IN_PROGRESS" && task.workflowStatus !== "HALTED" && !hasOpenPr;
+        // With-pod: protect active reviewer sessions — don't halt if a PR is still open
+        const shouldHaltWithPod = isHaltEligible && !hasOpenPr;
+
+        // No-pod: pod is already gone, nothing to protect — always halt if eligible
+        const shouldHaltNoPod = isHaltEligible;
 
         if (task.podId) {
           // Task has a pod - use releaseTaskPod to release it
-          // If should halt: set to HALTED
+          // If should halt: set to HALTED (skip if PR still open — protect active reviewer session)
           // If already done/failed/etc: pass null to preserve original workflowStatus
-          const newWorkflowStatus = shouldHalt ? "HALTED" : null;
+          const newWorkflowStatus = shouldHaltWithPod ? "HALTED" : null;
+
+          if (task.podId && hasOpenPr) {
+            console.log(
+              `[ReleaseStaleTaskPods] Skipping halt for task ${task.id} - has open PR`
+            );
+          }
 
           const result = await releaseTaskPod({
             taskId: task.id,
@@ -386,20 +392,20 @@ export async function releaseStaleTaskPods(): Promise<{
             podsReleased++;
           }
 
-          if (shouldHalt && (result.success || result.taskCleared)) {
+          if (shouldHaltWithPod && (result.success || result.taskCleared)) {
             tasksHalted++;
           }
 
           console.log(
             `[ReleaseStaleTaskPods] Processed task ${task.id} (status: ${task.status}, workflowStatus: ${task.workflowStatus}): ` +
-            `pod released: ${result.podDropped}, halted: ${shouldHalt}, reassigned: ${result.reassigned || false}` +
+            `pod released: ${result.podDropped}, halted: ${shouldHaltWithPod}, reassigned: ${result.reassigned || false}` +
             (hasOpenPr ? `, skipped halt due to open PR` : "")
           );
 
           if (!result.success && result.error) {
             throw new Error(result.error);
           }
-        } else if (shouldHalt) {
+        } else if (shouldHaltNoPod) {
           // Task has no pod but is stale IN_PROGRESS - just halt it
           await haltTask(task.id, false);
           tasksHalted++;

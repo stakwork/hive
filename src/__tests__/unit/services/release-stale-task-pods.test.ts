@@ -537,7 +537,7 @@ describe("releaseStaleTaskPods", () => {
     vi.useRealTimers();
   });
 
-  test("should not halt tasks with open PRs even without pods", async () => {
+  test("should halt stale IN_PROGRESS tasks without pods even when open PR exists", async () => {
     const now = new Date("2024-10-24T12:00:00Z");
     vi.setSystemTime(now);
 
@@ -567,19 +567,32 @@ describe("releaseStaleTaskPods", () => {
     ];
 
     vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
 
     const result = await releaseStaleTaskPods();
 
     // Should NOT call releaseTaskPod (no pod to release)
     expect(mockReleaseTaskPod).not.toHaveBeenCalled();
 
-    // Should NOT call haltTask (has open PR)
-    expect(mockDb.task.update).not.toHaveBeenCalled();
+    // Should call haltTask — pod is already gone, open PR is no reason to skip halting
+    expect(mockDb.task.update).toHaveBeenCalledWith({
+      where: { id: "task-1" },
+      data: {
+        workflowStatus: "HALTED",
+        workflowCompletedAt: expect.any(Date),
+      },
+      select: {
+        workflowStartedAt: true,
+        workflowCompletedAt: true,
+        featureId: true,
+        workspace: { select: { slug: true } },
+      },
+    });
 
-    // Verify result - no pods released, no tasks halted
+    // Verify result - no pods released, 1 task halted
     expect(result.success).toBe(true);
     expect(result.podsReleased).toBe(0);
-    expect(result.tasksHalted).toBe(0);
+    expect(result.tasksHalted).toBe(1);
 
     vi.useRealTimers();
   });
