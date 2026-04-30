@@ -159,3 +159,64 @@ describe("VMGrid — dropdown actions", () => {
     );
   });
 });
+
+describe("VMGrid — Open Browser action", () => {
+  it("renders 'Open Browser' in dropdown when frontendUrl is set", async () => {
+    const user = userEvent.setup();
+    render(
+      <VMGrid
+        vms={[
+          makeVM({
+            password: "secret",
+            url: "https://ide.example.com",
+            frontendUrl: "https://pod-3000.example.com",
+          }),
+        ]}
+      />
+    );
+
+    await user.click(screen.getByRole("button"));
+    expect(screen.getByText("Open Browser")).toBeInTheDocument();
+  });
+
+  it("does not render 'Open Browser' when frontendUrl is absent", async () => {
+    const user = userEvent.setup();
+    render(
+      <VMGrid
+        vms={[
+          makeVM({
+            password: "secret",
+            url: "https://ide.example.com",
+          }),
+        ]}
+      />
+    );
+
+    await user.click(screen.getByRole("button"));
+    expect(screen.queryByText("Open Browser")).not.toBeInTheDocument();
+  });
+
+  it("calls window.open with frontendUrl when 'Open Browser' is clicked", async () => {
+    const user = userEvent.setup();
+    render(
+      <VMGrid
+        vms={[
+          makeVM({
+            password: "secret",
+            url: "https://ide.example.com",
+            frontendUrl: "https://pod-3000.example.com",
+          }),
+        ]}
+      />
+    );
+
+    await user.click(screen.getByRole("button"));
+    await user.click(screen.getByText("Open Browser"));
+
+    expect(window.open).toHaveBeenCalledWith(
+      "https://pod-3000.example.com",
+      "_blank",
+      "noopener,noreferrer"
+    );
+  });
+});
