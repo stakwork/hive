@@ -5,6 +5,7 @@ import { createJanitorRun } from "@/services/janitor";
 import { GRAPHMINDSET_JANITOR_TYPES } from "@/lib/constants/janitor";
 import { JanitorType } from "@prisma/client";
 import { db } from "@/lib/db";
+import { validateWorkspaceAccess } from "@/services/workspace";
 
 
 export async function POST(
@@ -20,6 +21,11 @@ export async function POST(
     }
 
     const { slug, type } = await params;
+
+    const access = await validateWorkspaceAccess(slug, userId);
+    if (!access.hasAccess || !access.canWrite) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // Detect GraphMindset types — dispatch once, no per-repo loop
     const janitorTypeUpper = type.toUpperCase();

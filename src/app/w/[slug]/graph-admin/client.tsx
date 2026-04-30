@@ -2,17 +2,42 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { ExternalLink, Loader2, AlertCircle, RefreshCw, Zap, Plus, Pencil, Check, Globe, Lock } from "lucide-react";
+import { ExternalLink, Loader2, AlertCircle, RefreshCw, Zap, Plus, Pencil, Check, Globe, Lock, Play } from "lucide-react";
 import { toast } from "sonner";
 import type { PaidEndpoint, BoltwallUser, GraphAdminClientProps, SecondBrainAbout } from "./types";
 import { postGraphAdminCmd, roleToNumber } from "./utils";
 import { CopyButton, UserRow, UserFormDialog, SetOwnerDialog } from "./components";
+import { getAllGraphMindsetJanitorItems } from "@/lib/constants/janitor";
+
+function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function RunStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; className: string }> = {
+    PENDING:   { label: "Pending",   className: "border-yellow-300 text-yellow-600 dark:text-yellow-400" },
+    IN_PROGRESS: { label: "Running", className: "border-blue-300 text-blue-600 dark:text-blue-400" },
+    COMPLETED: { label: "Completed", className: "border-green-300 text-green-600 dark:text-green-400" },
+    FAILED:    { label: "Failed",    className: "border-red-300 text-red-600 dark:text-red-400" },
+    ERROR:     { label: "Error",     className: "border-red-300 text-red-600 dark:text-red-400" },
+    HALTED:    { label: "Halted",    className: "border-gray-300 text-gray-600 dark:text-gray-400" },
+  };
+  const cfg = map[status] ?? { label: status, className: "border-gray-300 text-gray-600" };
+  return <Badge variant="outline" className={`text-[11px] ${cfg.className}`}>{cfg.label}</Badge>;
+}
 
 export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: GraphAdminClientProps) {
   const hostname = swarmUrl ? new URL(swarmUrl).hostname : null;
@@ -41,6 +66,13 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
   const [editingUser, setEditingUser] = useState<BoltwallUser | undefined>(undefined);
   const [setOwnerOpen, setSetOwnerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BoltwallUser | null>(null);
+
+  // ── Janitor state ──
+  const [janitorConfig, setJanitorConfig] = useState<{ deduplicationEnabled: boolean } | null>(null);
+  const [janitorConfigLoading, setJanitorConfigLoading] = useState(true);
+  const [lastDeduplicationRun, setLastDeduplicationRun] = useState<{ status: string; createdAt: string } | null>(null);
+  const [deduplicationRunning, setDeduplicationRunning] = useState(false);
+  const [janitorToggleLoading, setJanitorToggleLoading] = useState(false);
 
   // ── Graph title state ──
   const [graphTitle, setGraphTitle] = useState<string | null>(null);
@@ -132,6 +164,72 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [swarmUrl, workspaceSlug]);
+
+  // ── Load janitor config + last deduplication run ──
+  async function fetchJanitorData() {
+    setJanitorConfigLoading(true);
+    try {
+      const [configRes, runsRes] = await Promise.allSettled([
+        fetch(`/api/workspaces/${workspaceSlug}/janitors/config`).then((r) => r.json()),
+        fetch(`/api/workspaces/${workspaceSlug}/janitors/runs?type=DEDUPLICATION&limit=1`).then((r) => r.json()),
+      ]);
+      if (configRes.status === "fulfilled") {
+        setJanitorConfig({ deduplicationEnabled: configRes.value?.config?.deduplicationEnabled ?? false });
+      }
+      if (runsRes.status === "fulfilled") {
+        const runs = runsRes.value?.runs ?? [];
+        setLastDeduplicationRun(runs.length > 0 ? { status: runs[0].status, createdAt: runs[0].createdAt } : null);
+      }
+    } finally {
+      setJanitorConfigLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchJanitorData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceSlug]);
+
+  // ── Janitor toggle ──
+  async function handleJanitorToggle(enabled: boolean) {
+    setJanitorToggleLoading(true);
+    const previous = janitorConfig;
+    setJanitorConfig((prev) => (prev ? { ...prev, deduplicationEnabled: enabled } : { deduplicationEnabled: enabled }));
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceSlug}/janitors/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deduplicationEnabled: enabled }),
+      });
+      if (!res.ok) throw new Error("Failed to update config");
+    } catch {
+      setJanitorConfig(previous);
+      toast.error("Failed to update Deduplication setting");
+    } finally {
+      setJanitorToggleLoading(false);
+    }
+  }
+
+  // ── Run deduplication now ──
+  async function handleRunDeduplication() {
+    if (!janitorConfig?.deduplicationEnabled || deduplicationRunning) return;
+    setDeduplicationRunning(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceSlug}/janitors/DEDUPLICATION/run`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Failed to start run");
+      }
+      toast.success("Deduplication run started");
+      await fetchJanitorData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to start Deduplication run");
+    } finally {
+      setDeduplicationRunning(false);
+    }
+  }
 
   // ── Graph visibility ──
   async function handleVisibilityToggle(newValue: boolean) {
@@ -694,6 +792,90 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Janitors ── */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Janitors
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {janitorConfigLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : (
+            <div className="rounded-lg border">
+              {getAllGraphMindsetJanitorItems().map((item, idx) => {
+                const Icon = item.icon;
+                const isEnabled = janitorConfig?.deduplicationEnabled ?? false;
+                const lastRun = item.id === "DEDUPLICATION" ? lastDeduplicationRun : null;
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${idx > 0 ? "border-t" : ""}`}
+                  >
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                        <Icon className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{item.name}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>
+                        {lastRun ? (
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <RunStatusBadge status={lastRun.status} />
+                            <span className="text-[11px] text-muted-foreground">
+                              {formatRelativeTime(lastRun.createdAt)}
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-[11px] text-muted-foreground">No runs yet</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      {!swarmUrl ? (
+                        <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          No swarm configured — cannot run Deduplication.
+                        </p>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs"
+                          disabled={!isEnabled || deduplicationRunning}
+                          onClick={handleRunDeduplication}
+                        >
+                          {deduplicationRunning ? (
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Play className="mr-1.5 h-3.5 w-3.5" />
+                          )}
+                          Run Now
+                        </Button>
+                      )}
+                      <div className="flex items-center gap-1.5">
+                        {janitorToggleLoading && (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        )}
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={handleJanitorToggle}
+                          disabled={janitorToggleLoading}
+                          aria-label={`Toggle ${item.name}`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>
