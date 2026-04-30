@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "fs";
 import path from "path";
-import { shouldSkipJanitorRun } from "@/services/janitor-cron";
+import { shouldSkipJanitorRun, executeScheduledJanitorRuns } from "@/services/janitor-cron";
+import * as janitorService from "@/services/janitor";
 import { db } from "@/lib/db";
 import { JanitorType, TaskStatus, WorkflowStatus } from "@prisma/client";
+
+vi.mock("@/services/janitor", () => ({
+  createJanitorRun: vi.fn(),
+}));
 
 vi.mock("@/lib/db");
 
@@ -326,5 +331,128 @@ describe("shouldSkipJanitorRun", () => {
         }),
       );
     });
+  });
+
+  describe("GraphMindset type (DEDUPLICATION)", () => {
+    beforeEach(() => {
+      vi.mocked(mockedDb.janitorRun.findFirst).mockResolvedValue(null);
+    });
+
+    it("should return false (no skip) when no in-progress DEDUPLICATION run exists", async () => {
+      const result = await shouldSkipJanitorRun("ws-1", JanitorType.DEDUPLICATION);
+      expect(result).toBe(false);
+    });
+
+    it("should return true when an in-progress DEDUPLICATION run exists", async () => {
+      vi.mocked(mockedDb.janitorRun.findFirst).mockResolvedValue({
+        id: "run-ded-1",
+        status: "RUNNING",
+        janitorType: JanitorType.DEDUPLICATION,
+      } as any);
+
+      const result = await shouldSkipJanitorRun("ws-1", JanitorType.DEDUPLICATION);
+      expect(result).toBe(true);
+    });
+
+    it("should NOT check recommendations or tasks for DEDUPLICATION", async () => {
+      const result = await shouldSkipJanitorRun("ws-1", JanitorType.DEDUPLICATION);
+      expect(result).toBe(false);
+      expect(mockedDb.janitorRecommendation.findFirst).not.toHaveBeenCalled();
+      expect(mockedDb.task.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("should check in-progress run without repositoryId filter for DEDUPLICATION", async () => {
+      vi.mocked(mockedDb.janitorRun.findFirst).mockResolvedValue(null);
+
+      await shouldSkipJanitorRun("ws-1", JanitorType.DEDUPLICATION);
+
+      expect(mockedDb.janitorRun.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            janitorConfig: { workspaceId: "ws-1" },
+            janitorType: JanitorType.DEDUPLICATION,
+            status: { in: ["PENDING", "RUNNING"] },
+          }),
+        }),
+      );
+      // repositoryId should NOT be in the where clause for GraphMindset types
+      const callArg = vi.mocked(mockedDb.janitorRun.findFirst).mock.calls[0][0] as any;
+      expect(callArg.where).not.toHaveProperty("repositoryId");
+    });
+  });
+});
+
+describe("executeScheduledJanitorRuns — DEDUPLICATION", () => {
+  const mockCreateJanitorRun = vi.mocked(janitorService.createJanitorRun);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.assign(db, {
+      workspace: { findMany: vi.fn() },
+      janitorRun: { findFirst: vi.fn().mockResolvedValue(null), updateMany: vi.fn(), update: vi.fn() },
+      janitorRecommendation: { findFirst: vi.fn().mockResolvedValue(null) },
+      task: { findFirst: vi.fn().mockResolvedValue(null) },
+    });
+  });
+
+  const makeWorkspace = (overrides: Record<string, unknown> = {}) => ({
+    id: "ws-1",
+    slug: "test-ws",
+    name: "Test Workspace",
+    ownerId: "owner-1",
+    janitorConfig: {
+      id: "jc-1",
+      unitTestsEnabled: false,
+      integrationTestsEnabled: false,
+      e2eTestsEnabled: false,
+      securityReviewEnabled: false,
+      mockGenerationEnabled: false,
+      generalRefactoringEnabled: false,
+      deduplicationEnabled: true,
+    },
+    swarm: { swarmUrl: "https://ai.sphinx.chat/api", swarmSecretAlias: "alias-123" },
+    repositories: [
+      { id: "repo-1", repositoryUrl: "https://github.com/org/repo", branch: "main", ignoreDirs: null },
+      { id: "repo-2", repositoryUrl: "https://github.com/org/repo2", branch: "main", ignoreDirs: null },
+    ],
+    ...overrides,
+  });
+
+  it("should dispatch DEDUPLICATION only once per workspace (not per repo)", async () => {
+    vi.mocked(mockedDb.workspace.findMany).mockResolvedValue([makeWorkspace()] as any);
+    mockCreateJanitorRun.mockResolvedValue({ id: "run-1" });
+
+    await executeScheduledJanitorRuns();
+
+    // Should have called createJanitorRun exactly once (not once per repo)
+    expect(mockCreateJanitorRun).toHaveBeenCalledTimes(1);
+    expect(mockCreateJanitorRun).toHaveBeenCalledWith(
+      "test-ws",
+      "owner-1",
+      "deduplication",
+      "SCHEDULED",
+    );
+  });
+
+  it("should skip DEDUPLICATION when workspace has no swarm URL", async () => {
+    vi.mocked(mockedDb.workspace.findMany).mockResolvedValue([
+      makeWorkspace({ swarm: { swarmUrl: null, swarmSecretAlias: "alias" } }),
+    ] as any);
+
+    const result = await executeScheduledJanitorRuns();
+
+    expect(mockCreateJanitorRun).not.toHaveBeenCalled();
+    expect(result.skipped).toBeGreaterThan(0);
+  });
+
+  it("should skip DEDUPLICATION when workspace has no swarm at all", async () => {
+    vi.mocked(mockedDb.workspace.findMany).mockResolvedValue([
+      makeWorkspace({ swarm: null }),
+    ] as any);
+
+    const result = await executeScheduledJanitorRuns();
+
+    expect(mockCreateJanitorRun).not.toHaveBeenCalled();
+    expect(result.skipped).toBeGreaterThan(0);
   });
 });
