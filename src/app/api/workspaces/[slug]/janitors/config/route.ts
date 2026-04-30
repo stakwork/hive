@@ -14,6 +14,7 @@ const updateJanitorConfigSchema = z.object({
   taskCoordinatorEnabled: z.boolean().optional(),
   recommendationSweepEnabled: z.boolean().optional(),
   ticketSweepEnabled: z.boolean().optional(),
+  deduplicationEnabled: z.boolean().optional(),
   // PR Monitor settings
   prMonitorEnabled: z.boolean().optional(),
   prConflictFixEnabled: z.boolean().optional(),
