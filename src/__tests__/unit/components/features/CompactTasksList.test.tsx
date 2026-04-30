@@ -156,6 +156,8 @@ vi.mock("sonner", () => ({
   toast: {
     info: vi.fn(),
     error: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
   },
 }));
 
@@ -1798,6 +1800,323 @@ describe("CompactTasksList", () => {
       await waitFor(() => {
         expect(runBuildToggle).toBeChecked();
       });
+    });
+  });
+
+  describe("handleDuplicateTask — dependency mapping", () => {
+    const createMockTask = (overrides: any = {}) => ({
+      id: "task-1",
+      title: "Test Task",
+      status: "TODO" as TaskStatus,
+      createdAt: new Date("2024-01-01"),
+      updatedAt: new Date("2024-01-02"),
+      assignee: null,
+      repository: null,
+      autoMerge: false,
+      runBuild: true,
+      runTestSuite: true,
+      prArtifact: null,
+      deploymentStatus: null,
+      deployedToStagingAt: null,
+      deployedToProductionAt: null,
+      systemAssigneeType: null,
+      dependsOnTaskIds: [],
+      workflowStatus: null,
+      phaseId: "phase-1",
+      description: null,
+      priority: "MEDIUM",
+      ...overrides,
+    });
+
+    const createMockFeature = (tasks: any[] = []): any => ({
+      id: "feature-1",
+      title: "Test Feature",
+      brief: "Test Brief",
+      phases: [
+        {
+          id: "phase-1",
+          name: "Phase 1",
+          description: null,
+          order: 0,
+          featureId: "feature-1",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tasks,
+        },
+      ],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      workspaceId: "workspace-1",
+      createdBy: "user-1",
+      requirements: null,
+      architecture: null,
+      userStories: [],
+      whiteboardId: null,
+    });
+
+    const setupFetchMock = (overrides: Record<string, any> = {}) => {
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (overrides[urlStr]) {
+          return overrides[urlStr]();
+        }
+        // Default: feature refetch
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+    };
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      (useRouter as any).mockReturnValue({ push: mockPush });
+    });
+
+    test("1. no dependencies — POST body has empty dependsOnTaskIds, no PATCH calls fired", async () => {
+      const user = userEvent.setup();
+      const task = createMockTask({ id: "task-no-deps", dependsOnTaskIds: [] });
+      const feature = createMockFeature([task]);
+      const capturedBodies: any[] = [];
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          capturedBodies.push(JSON.parse(init.body));
+          return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "new-task-id", title: task.title, dependsOnTaskIds: [] } }), { status: 200 }));
+        }
+        // feature refetch
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      const duplicateBtn = await screen.findByTestId("action-duplicate");
+      await user.click(duplicateBtn);
+
+      await waitFor(() => {
+        expect(capturedBodies).toHaveLength(1);
+        expect(capturedBodies[0].dependsOnTaskIds).toEqual([]);
+      });
+
+      // No PATCH to /api/tickets/ should have been made
+      const fetchMock = vi.mocked(globalThis.fetch);
+      const patchCalls = fetchMock.mock.calls.filter(
+        ([url, init]: any) => typeof url === "string" && url.includes("/api/tickets/") && init?.method === "PATCH"
+      );
+      expect(patchCalls).toHaveLength(0);
+    });
+
+    test("2. upstream only — POST body includes original dependsOnTaskIds, no PATCH calls", async () => {
+      const user = userEvent.setup();
+      const upstream = createMockTask({ id: "upstream-1" });
+      const task = createMockTask({ id: "task-upstream", dependsOnTaskIds: ["upstream-1"] });
+      const feature = createMockFeature([upstream, task]);
+      const capturedBodies: any[] = [];
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          capturedBodies.push(JSON.parse(init.body));
+          return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "new-task-id", dependsOnTaskIds: ["upstream-1"] } }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      // Click the duplicate action for the second task (with upstream deps)
+      const duplicateBtns = await screen.findAllByTestId("action-duplicate");
+      await user.click(duplicateBtns[1]);
+
+      await waitFor(() => {
+        expect(capturedBodies).toHaveLength(1);
+        expect(capturedBodies[0].dependsOnTaskIds).toEqual(["upstream-1"]);
+      });
+
+      const fetchMock = vi.mocked(globalThis.fetch);
+      const patchCalls = fetchMock.mock.calls.filter(
+        ([url, init]: any) => typeof url === "string" && url.includes("/api/tickets/") && init?.method === "PATCH"
+      );
+      expect(patchCalls).toHaveLength(0);
+    });
+
+    test("3. downstream only — POST has empty dependsOnTaskIds, downstream task patched with new ID", async () => {
+      const user = userEvent.setup();
+      const task = createMockTask({ id: "task-original", dependsOnTaskIds: [] });
+      // downstream task depends on task-original
+      const downstream = createMockTask({ id: "task-downstream", dependsOnTaskIds: ["task-original"] });
+      const feature = createMockFeature([task, downstream]);
+      const capturedBodies: any[] = [];
+      const patchBodies: Record<string, any> = {};
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          capturedBodies.push(JSON.parse(init.body));
+          return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "new-task-id" } }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/tickets/") && init?.method === "PATCH") {
+          const taskId = urlStr.split("/api/tickets/")[1];
+          patchBodies[taskId] = JSON.parse(init.body);
+          return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      const duplicateBtns = await screen.findAllByTestId("action-duplicate");
+      await user.click(duplicateBtns[0]); // click duplicate on task-original
+
+      await waitFor(() => {
+        expect(capturedBodies).toHaveLength(1);
+        expect(capturedBodies[0].dependsOnTaskIds).toEqual([]);
+      });
+
+      await waitFor(() => {
+        expect(patchBodies["task-downstream"]).toBeDefined();
+        expect(patchBodies["task-downstream"].dependsOnTaskIds).toContain("task-original");
+        expect(patchBodies["task-downstream"].dependsOnTaskIds).toContain("new-task-id");
+      });
+    });
+
+    test("4. both directions — POST includes upstream deps, downstream tasks patched", async () => {
+      const user = userEvent.setup();
+      const upstream = createMockTask({ id: "upstream-1" });
+      const task = createMockTask({ id: "task-both", dependsOnTaskIds: ["upstream-1"] });
+      const downstream = createMockTask({ id: "task-downstream", dependsOnTaskIds: ["task-both"] });
+      const feature = createMockFeature([upstream, task, downstream]);
+      const capturedPostBodies: any[] = [];
+      const patchBodies: Record<string, any> = {};
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          capturedPostBodies.push(JSON.parse(init.body));
+          return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "new-task-id" } }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/tickets/") && init?.method === "PATCH") {
+          const taskId = urlStr.split("/api/tickets/")[1];
+          patchBodies[taskId] = JSON.parse(init.body);
+          return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      const duplicateBtns = await screen.findAllByTestId("action-duplicate");
+      await user.click(duplicateBtns[1]); // click duplicate on task-both (index 1)
+
+      await waitFor(() => {
+        expect(capturedPostBodies).toHaveLength(1);
+        expect(capturedPostBodies[0].dependsOnTaskIds).toEqual(["upstream-1"]);
+      });
+
+      await waitFor(() => {
+        expect(patchBodies["task-downstream"]).toBeDefined();
+        expect(patchBodies["task-downstream"].dependsOnTaskIds).toContain("task-both");
+        expect(patchBodies["task-downstream"].dependsOnTaskIds).toContain("new-task-id");
+      });
+    });
+
+    test("5. downstream PATCH failure — warning toast shown, duplicate not rolled back", async () => {
+      const user = userEvent.setup();
+      const { toast } = await import("sonner");
+      const task = createMockTask({ id: "task-original", dependsOnTaskIds: [] });
+      const downstream = createMockTask({ id: "task-downstream", dependsOnTaskIds: ["task-original"] });
+      const feature = createMockFeature([task, downstream]);
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "new-task-id" } }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/tickets/") && init?.method === "PATCH") {
+          return Promise.reject(new Error("Network failure"));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      const duplicateBtns = await screen.findAllByTestId("action-duplicate");
+      await user.click(duplicateBtns[0]);
+
+      await waitFor(() => {
+        expect(toast.warning).toHaveBeenCalledWith(
+          "Task duplicated, but some dependency links could not be updated"
+        );
+      });
+
+      // success toast still fires (duplicate was created)
+      expect(toast.success).toHaveBeenCalledWith("Task duplicated");
+    });
+
+    test("6. POST failure — no PATCH calls fired", async () => {
+      const user = userEvent.setup();
+      const task = createMockTask({ id: "task-original", dependsOnTaskIds: [] });
+      const downstream = createMockTask({ id: "task-downstream", dependsOnTaskIds: ["task-original"] });
+      const feature = createMockFeature([task, downstream]);
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          return Promise.resolve(new Response(JSON.stringify({ error: "Server error" }), { status: 500 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      const duplicateBtns = await screen.findAllByTestId("action-duplicate");
+      await user.click(duplicateBtns[0]);
+
+      const fetchMock = vi.mocked(globalThis.fetch);
+      await waitFor(() => {
+        // POST was called
+        const postCalls = fetchMock.mock.calls.filter(
+          ([url, init]: any) => typeof url === "string" && url.includes("/api/features/feature-1/tickets") && init?.method === "POST"
+        );
+        expect(postCalls).toHaveLength(1);
+      });
+
+      // No PATCH calls
+      const patchCalls = fetchMock.mock.calls.filter(
+        ([url, init]: any) => typeof url === "string" && url.includes("/api/tickets/") && init?.method === "PATCH"
+      );
+      expect(patchCalls).toHaveLength(0);
     });
   });
 });
