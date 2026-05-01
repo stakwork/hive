@@ -89,11 +89,7 @@ function VMCard({
   const handleOpenBrowser = async () => {
     if (!workspaceSlug || !vm.id || isOpeningBrowser) return;
 
-    // Open a blank tab synchronously so the popup blocker treats it as
-    // user-initiated. We'll set its location once the URL is resolved.
-    const newWindow = window.open("about:blank", "_blank", "noopener,noreferrer");
     setIsOpeningBrowser(true);
-
     try {
       const res = await fetch(
         `/api/w/${encodeURIComponent(workspaceSlug)}/pool/${encodeURIComponent(vm.id)}/frontend-url`,
@@ -101,17 +97,16 @@ function VMCard({
       const json = await res.json().catch(() => null);
       const url = json?.data?.frontendUrl as string | undefined;
 
-      if (url && newWindow) {
-        newWindow.location.href = url;
-      } else if (url) {
-        // Popup blocked — try a fresh window.open as a fallback.
-        window.open(url, "_blank", "noopener,noreferrer");
-      } else {
-        newWindow?.close();
+      if (!url) {
         console.error("Failed to resolve frontend URL", json);
+        return;
       }
+
+      // The fetch is same-origin and fast, so we're still within the
+      // browser's user-activation window from the menu click — popup
+      // blockers treat this as user-initiated.
+      window.open(url, "_blank", "noopener,noreferrer");
     } catch (err) {
-      newWindow?.close();
       console.error("Failed to resolve frontend URL", err);
     } finally {
       setIsOpeningBrowser(false);
