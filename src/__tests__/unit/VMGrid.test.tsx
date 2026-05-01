@@ -188,8 +188,6 @@ describe("VMGrid — Open Browser action", () => {
 
   it("fetches frontend-url and opens the resolved URL on click", async () => {
     const user = userEvent.setup();
-    const fakeWindow = { location: { href: "" }, close: vi.fn() };
-    vi.mocked(window.open).mockReturnValue(fakeWindow as unknown as Window);
 
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(
@@ -217,30 +215,23 @@ describe("VMGrid — Open Browser action", () => {
     await user.click(screen.getByRole("button"));
     await user.click(screen.getByText("Open Browser"));
 
-    // Synchronously opens about:blank to dodge popup blockers, then fetches.
-    expect(window.open).toHaveBeenCalledWith(
-      "about:blank",
-      "_blank",
-      "noopener,noreferrer",
-    );
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/w/my-workspace/pool/vm-1/frontend-url",
     );
 
-    // After the fetch resolves, the blank tab is navigated to the resolved URL.
     await vi.waitFor(() => {
-      expect(fakeWindow.location.href).toBe(
+      expect(window.open).toHaveBeenCalledWith(
         "https://vm-1-3000.workspaces.sphinx.chat",
+        "_blank",
+        "noopener,noreferrer",
       );
     });
 
     fetchSpy.mockRestore();
   });
 
-  it("closes the placeholder tab if the API returns no URL", async () => {
+  it("does not open a tab if the API returns no URL", async () => {
     const user = userEvent.setup();
-    const fakeWindow = { location: { href: "" }, close: vi.fn() };
-    vi.mocked(window.open).mockReturnValue(fakeWindow as unknown as Window);
 
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ success: false }), { status: 500 }),
@@ -257,8 +248,9 @@ describe("VMGrid — Open Browser action", () => {
     await user.click(screen.getByText("Open Browser"));
 
     await vi.waitFor(() => {
-      expect(fakeWindow.close).toHaveBeenCalled();
+      expect(fetchSpy).toHaveBeenCalled();
     });
+    expect(window.open).not.toHaveBeenCalled();
 
     fetchSpy.mockRestore();
   });
