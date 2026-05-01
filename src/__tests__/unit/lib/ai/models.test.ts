@@ -13,8 +13,30 @@ describe("models", () => {
       expect(isValidModel("haiku")).toBe(true);
     });
 
-    test("returns false for unknown model", () => {
-      expect(isValidModel("unknown-model")).toBe(false);
+    test("returns true for full provider/name format strings", () => {
+      expect(isValidModel("openrouter/moonshotai/kimi-k2.6")).toBe(true);
+      expect(isValidModel("anthropic/claude-sonnet-4-6")).toBe(true);
+      expect(isValidModel("openai/gpt-4o")).toBe(true);
+      expect(isValidModel("google/gemini-pro")).toBe(true);
+    });
+
+    test("returns true for legacy short aliases", () => {
+      expect(isValidModel("sonnet")).toBe(true);
+      expect(isValidModel("gpt")).toBe(true);
+      expect(isValidModel("gemini")).toBe(true);
+    });
+
+    test("returns true for any non-empty string (previously unknown model)", () => {
+      // isValidModel now accepts any non-empty string; the admin panel is source of truth
+      expect(isValidModel("unknown-model")).toBe(true);
+    });
+
+    test("returns false for empty string", () => {
+      expect(isValidModel("")).toBe(false);
+    });
+
+    test("returns false for whitespace-only string", () => {
+      expect(isValidModel("   ")).toBe(false);
     });
 
     test("returns false for non-string values", () => {

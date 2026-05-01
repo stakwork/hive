@@ -4,6 +4,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { poolManagerService } from "@/lib/service-factory";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { isApiError } from "@/types/errors";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -88,7 +89,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
-    // Find the swarm and verify user has access to the workspace
+    // Find the swarm to resolve the canonical workspaceId (never trust
+    // the body-supplied workspaceId alone — an attacker could pass their
+    // own workspaceId with a victim's swarmId to pass the auth check).
     const swarm = await db.swarm.findFirst({
       where: {
         ...(swarmId ? { swarmId } : {}),
@@ -99,11 +102,6 @@ export async function POST(request: NextRequest) {
           select: {
             id: true,
             slug: true,
-            ownerId: true,
-            members: {
-              where: { userId, leftAt: null },
-              select: { role: true },
-            },
           },
         },
       },
@@ -113,11 +111,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
     }
 
-    // IDOR guard: previously the owner/member check ran further down,
-    // AFTER the handler had already called `saveOrUpdateSwarm({ containerFiles })`
-    // with attacker-controlled content. Run the authz check immediately
-    // after the swarm lookup so no swarm row or secret decryption work
-    // happens on behalf of a non-member.
     if (!swarm.workspace) {
       return NextResponse.json(
         { error: "Workspace not found or access denied" },
@@ -125,9 +118,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const isOwner = swarm.workspace.ownerId === userId;
-    const isMember = swarm.workspace.members.length > 0;
-    if (!isOwner && !isMember) {
+    // IDOR + privilege guard: pool creation is an infrastructure-level
+    // operation (equivalent to delete). Require ADMIN or OWNER on the
+    // swarm's actual workspace — any lesser role (VIEWER, DEVELOPER, etc.)
+    // must not be able to provision compute resources.
+    const access = await validateWorkspaceAccessById(swarm.workspaceId, userId);
+    if (!access.hasAccess || !access.canAdmin) {
       return NextResponse.json(
         { error: "Workspace not found or access denied" },
         { status: 404 },

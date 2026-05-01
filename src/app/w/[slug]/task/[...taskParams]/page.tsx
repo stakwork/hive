@@ -45,7 +45,7 @@ import { useStreamContext } from "@/hooks/useStreamContext";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
-import type { ModelName } from "@/lib/ai/models";
+import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -149,7 +149,8 @@ export default function TaskChatPage() {
   const [isSubsequentCommit, setIsSubsequentCommit] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showBountyModal, setShowBountyModal] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
+  const [llmModels, setLlmModels] = useState<LlmModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("sonnet");
   const [isPrototypeTask, setIsPrototypeTask] = useState(false);
   const [isSavingPlan, setIsSavingPlan] = useState(false);
   const [isReconciling, setIsReconciling] = useState(false);
@@ -221,6 +222,27 @@ export default function TaskChatPage() {
     }
     onStreamStatusUpdate(update);
   }, [taskMode, onStreamStatusUpdate]);
+
+  // Fetch active LLM models for task mode selector
+  useEffect(() => {
+    const fetchLlmModels = async () => {
+      try {
+        const response = await fetch("/api/llm-models");
+        if (response.ok) {
+          const data = await response.json();
+          const models: LlmModelOption[] = data.models ?? [];
+          setLlmModels(models);
+          if (models.length > 0) {
+            const defaultModel = models.find((m) => m.isTaskDefault);
+            setSelectedModel(getModelValue(defaultModel ?? models[0]));
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching LLM models:", error);
+      }
+    };
+    fetchLlmModels();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When reconciliation polling returns a terminal state, persist it to the DB and update UI
   useEffect(() => {
@@ -911,7 +933,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string, runBuild?: boolean, runTestSuite?: boolean) => {
+  const handleStart = async (msg: string, model?: string, autoMerge?: boolean, images?: File[], repositoryId?: string, branch?: string, runBuild?: boolean, runTestSuite?: boolean) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
 
@@ -1887,6 +1909,7 @@ Plan and implement the real feature from this branch.`;
             workflowsError={workflowsError}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
+            llmModels={llmModels}
           />
         </motion.div>
       ) : (

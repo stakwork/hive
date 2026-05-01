@@ -98,25 +98,43 @@ vi.mock("@/components/ui/resizable", () => {
   return {
     ResizablePanel: ({ children }: any) => React.createElement("div", null, children),
     ResizablePanelGroup: ({ children }: any) => React.createElement("div", null, children),
-    ResizableHandle: () => React.createElement("div", null),
+    ResizableHandle: () => React.createElement("div"),
   };
 });
 
-vi.mock("framer-motion", () => {
-  const React = require("react");
-  return {
-    motion: {
-      div: ({ children, ...props }: any) => React.createElement("div", props, children),
+vi.mock("@/hooks/useWorkspaceAccess", () => ({
+  useWorkspaceAccess: () => ({
+    canRead: true,
+    canWrite: true,
+    canAdmin: false,
+    permissions: {},
+  }),
+}));
+
+vi.mock("@/contexts/StreamContext", () => ({
+  useStreamContext: () => ({
+    streamContext: null,
+    onMessage: vi.fn(),
+    onWorkflowStatusUpdate: vi.fn(),
+  }),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
+
+vi.mock("framer-motion", () => ({
+  motion: {
+    div: ({ children, ...props }: any) => {
+      const React = require("react");
+      return React.createElement("div", props, children);
     },
-    AnimatePresence: ({ children }: any) =>
-      React.createElement(React.Fragment, null, children),
-  };
-});
-
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+  },
+  AnimatePresence: ({ children }: any) => children,
+}));
 
 // ---------------------------------------------------------------------------
-// useWorkflowPolling mock — controllable per-test
+// Workflow polling mock — tests can set mockWorkflowPollingData to simulate results
 // ---------------------------------------------------------------------------
 let mockWorkflowPollingData: any = null;
 vi.mock("@/hooks/useWorkflowPolling", () => ({
@@ -167,16 +185,49 @@ function makeMessagesResponse(overrides: {
 describe("TaskChatPage — reconciliation polling", () => {
   const mockFetch = vi.fn();
 
+  // Per-test URL-keyed response queues. Fetch calls are routed by URL substring.
+  // More specific keys should be pushed first so they match before shorter keys.
+  const urlQueues: Map<string, Array<{ ok: boolean; json: () => Promise<unknown> }>> = new Map();
+
+  function pushFetchResponse(
+    urlSubstring: string,
+    response: { ok: boolean; json: () => Promise<unknown> },
+  ) {
+    if (!urlQueues.has(urlSubstring)) urlQueues.set(urlSubstring, []);
+    urlQueues.get(urlSubstring)!.push(response);
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     capturedOnWorkflowStatusUpdate = null;
     mockWorkflowPollingData = null;
+    urlQueues.clear();
+
+    // Route fetch calls by URL substring. This avoids FIFO queue conflicts between
+    // the /api/llm-models fetch (added for the LLM model selector) and the task
+    // messages fetch — both fire on mount.
+    mockFetch.mockImplementation((url: string) => {
+      if (typeof url === "string") {
+        for (const [key, queue] of urlQueues.entries()) {
+          if (url.includes(key) && queue.length > 0) {
+            return Promise.resolve(queue.shift()!);
+          }
+        }
+        // Fallback by URL pattern
+        if (url.includes("/api/llm-models")) {
+          return Promise.resolve({ ok: true, json: async () => ({ models: [] }) });
+        }
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
     global.fetch = mockFetch;
   });
 
   it("starts reconciliation when task loads with IN_PROGRESS + stakworkProjectId", async () => {
-    mockFetch.mockResolvedValue(
-      makeMessagesResponse({ workflowStatus: "IN_PROGRESS", stakworkProjectId: 42 })
+    pushFetchResponse(
+      "/api/tasks/task-abc/messages",
+      makeMessagesResponse({ workflowStatus: "IN_PROGRESS", stakworkProjectId: 42 }),
     );
 
     const { useWorkflowPolling } = await import("@/hooks/useWorkflowPolling");
@@ -204,8 +255,9 @@ describe("TaskChatPage — reconciliation polling", () => {
   });
 
   it("does not start reconciliation when task loads with COMPLETED status", async () => {
-    mockFetch.mockResolvedValue(
-      makeMessagesResponse({ workflowStatus: "COMPLETED", stakworkProjectId: 42 })
+    pushFetchResponse(
+      "/api/tasks/task-abc/messages",
+      makeMessagesResponse({ workflowStatus: "COMPLETED", stakworkProjectId: 42 }),
     );
 
     const { useWorkflowPolling } = await import("@/hooks/useWorkflowPolling");
@@ -233,8 +285,9 @@ describe("TaskChatPage — reconciliation polling", () => {
   });
 
   it("does not start reconciliation when IN_PROGRESS but no stakworkProjectId", async () => {
-    mockFetch.mockResolvedValue(
-      makeMessagesResponse({ workflowStatus: "IN_PROGRESS", stakworkProjectId: null })
+    pushFetchResponse(
+      "/api/tasks/task-abc/messages",
+      makeMessagesResponse({ workflowStatus: "IN_PROGRESS", stakworkProjectId: null }),
     );
 
     const { useWorkflowPolling } = await import("@/hooks/useWorkflowPolling");
@@ -262,12 +315,12 @@ describe("TaskChatPage — reconciliation polling", () => {
   });
 
   it("patches workflowStatus to COMPLETED and stops reconciling when polling returns 'completed'", async () => {
-    // Page loads with IN_PROGRESS
-    mockFetch.mockResolvedValueOnce(
-      makeMessagesResponse({ workflowStatus: "IN_PROGRESS", stakworkProjectId: 42 })
+    // Push more-specific URL first so messages fetch matches before the PATCH URL key
+    pushFetchResponse(
+      "/api/tasks/task-abc/messages",
+      makeMessagesResponse({ workflowStatus: "IN_PROGRESS", stakworkProjectId: 42 }),
     );
-    // PATCH call
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+    pushFetchResponse("/api/tasks/task-abc", { ok: true, json: async () => ({}) });
 
     // Simulate polling returning completed
     mockWorkflowPollingData = {
@@ -304,10 +357,11 @@ describe("TaskChatPage — reconciliation polling", () => {
   });
 
   it("patches workflowStatus to FAILED and stops reconciling when polling returns 'failed'", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeMessagesResponse({ workflowStatus: "IN_PROGRESS", stakworkProjectId: 99 })
+    pushFetchResponse(
+      "/api/tasks/task-abc/messages",
+      makeMessagesResponse({ workflowStatus: "IN_PROGRESS", stakworkProjectId: 99 }),
     );
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+    pushFetchResponse("/api/tasks/task-abc", { ok: true, json: async () => ({}) });
 
     mockWorkflowPollingData = {
       status: "failed",
@@ -335,8 +389,9 @@ describe("TaskChatPage — reconciliation polling", () => {
 
   it("stops reconciliation when Pusher WORKFLOW_STATUS_UPDATE fires, with no extra PATCH", async () => {
     // Task loads with IN_PROGRESS — reconciliation starts
-    mockFetch.mockResolvedValueOnce(
-      makeMessagesResponse({ workflowStatus: "IN_PROGRESS", stakworkProjectId: 77 })
+    pushFetchResponse(
+      "/api/tasks/task-abc/messages",
+      makeMessagesResponse({ workflowStatus: "IN_PROGRESS", stakworkProjectId: 77 }),
     );
 
     // No terminal polling data — reconciliation is active but hasn't resolved yet

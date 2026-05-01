@@ -149,6 +149,48 @@ describe("POST /api/agent Integration Tests", () => {
       expect(sessionBody.agent_name).toBeUndefined();
       expect(sessionBody.model).toBe("sonnet");
     });
+
+    test("passes full provider/name model string through to session payload (openrouter)", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({ ownerId: user.id });
+      const task = await createTestTask({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        title: "Kimi test task",
+      });
+
+      await db.task.update({
+        where: { id: task.id },
+        data: { mode: "agent", model: "openrouter/moonshotai/kimi-k2.6" },
+      });
+
+      process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = createPostRequest("http://localhost/api/agent", {
+        message: "Help me write a feature",
+        taskId: task.id,
+        model: "openrouter/moonshotai/kimi-k2.6",
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+
+      const sessionCall = mockFetch.mock.calls.find(([url]: [string]) =>
+        url.includes("/session"),
+      );
+      expect(sessionCall).toBeDefined();
+
+      const sessionBody = JSON.parse(sessionCall[1].body);
+      expect(sessionBody.model).toBe("openrouter/moonshotai/kimi-k2.6");
+      expect(sessionBody.apiKey).toBe("test-openrouter-key");
+
+      delete process.env.OPENROUTER_API_KEY;
+    });
   });
 
   // NOTE: Most tests commented out due to significant implementation gaps:
