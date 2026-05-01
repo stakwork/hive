@@ -96,20 +96,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   >(null);
   const [attentionLoadComplete, setAttentionLoadComplete] = useState(false);
 
-  /**
-   * `?select=<liveId>` reader — runtime nav from the AttentionList
-   * card pushes a live-node id onto this param. We translate it into
-   * a `selectedNode` seed so the right panel auto-flips to Details
-   * (`OrgRightPanel.tsx` keys its tab-flip on `selectedNode?.id`),
-   * which mounts `<FeaturePlanChat>` for `feature:<id>` selections.
-   *
-   * The param is one-shot: after seeding, we strip it from the URL
-   * so a refresh doesn't re-fire (and so the URL stays clean for
-   * sharing — the matching `?canvas=<ref>` is enough to deep-link
-   * the same place).
-   */
-  const selectIdParam = searchParams.get("select");
-
   const setUrlSlug = useCallback(
     (slug: string | null) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -298,49 +284,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const handleNodeSelect = useCallback((node: CanvasNode | null) => {
     setSelectedNode(node);
   }, []);
-
-  /**
-   * Consume `?select=<liveId>` once and seed `selectedNode` with a
-   * minimal stub. `NodeDetail` only reads `id`, `text`, and
-   * `category` from the node — for live ids the body fetches its
-   * own data from `/api/orgs/[githubLogin]/canvas/node/[liveId]` —
-   * so a stub with the right `id` (and best-guess `category`) is
-   * sufficient. The param is then stripped via `router.replace`
-   * (preserving `?canvas=<ref>` and any other params) so a refresh
-   * doesn't re-fire selection.
-   *
-   * Note: the user's manual canvas clicks still flow through
-   * `handleNodeSelect` from `OrgCanvasBackground` and overwrite
-   * this stub with a real `CanvasNode` — that's the desired
-   * upgrade path.
-   */
-  useEffect(() => {
-    if (!selectIdParam) return;
-    // Derive category from the live-id prefix so the Details tab
-    // header reads "FEATURE" / "TASK" / etc. on first paint, before
-    // (or even without) the canvas getting around to rendering the
-    // matching node. Fallback "node" matches what NodeDetail would
-    // pick anyway from a malformed id.
-    const colonIdx = selectIdParam.indexOf(":");
-    const category = colonIdx > 0 ? selectIdParam.slice(0, colonIdx) : "node";
-    setSelectedNode({
-      id: selectIdParam,
-      type: "text",
-      x: 0,
-      y: 0,
-      category,
-    } as CanvasNode);
-    // Strip `?select=` from the URL after consuming. We keep
-    // `?canvas=<ref>` (the camera position) and every other param
-    // so back/forward and shared links still work.
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("select");
-    const qs = params.toString();
-    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
-    // We intentionally only react to `selectIdParam` changes — the
-    // other deps in the cleanup write are stable per render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectIdParam]);
 
   const handleCanvasBreadcrumbChange = useCallback((breadcrumb: string) => {
     setCurrentCanvasBreadcrumb(breadcrumb);

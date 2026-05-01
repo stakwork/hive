@@ -631,59 +631,17 @@ export function OrgCanvasBackground({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root]);
 
-  /**
-   * Runtime-reactive `?canvas=<ref>` follower. The mount-only effect
-   * above handles the initial deep link; this one handles URL changes
-   * AFTER mount — specifically, in-page navigation from the
-   * AttentionList's "open this feature on its canvas" click handler
-   * (`AttentionList.tsx:resolveTarget`) which writes
-   * `?canvas=<ref>&select=<liveId>` via `router.replace`.
-   *
-   * **Only reacts to non-empty refs.** `urlCanvasRef === ""` is NOT a
-   * "go back to root" signal here because of a render-ordering hazard:
-   * when the lib drills into a sub-canvas, our `handleBreadcrumbsChange`
-   * synchronously sets `currentRef` AND calls `router.replace` to
-   * write `?canvas=<ref>` to the URL. Next render commits `currentRef`
-   * immediately, but Next.js's `useSearchParams` lags behind the
-   * router by at least one render — so this effect runs once with
-   * `urlCanvasRef === ""` (stale) and `currentRef === "initiative:..."`
-   * (fresh). If we fired `navigateToRoot()` on that mismatch, the
-   * library would bounce the user back out of the sub-canvas they
-   * just drilled into. Back-navigation is already handled by the
-   * library's breadcrumb-click flow (which updates our state via
-   * `onBreadcrumbsChange`); we don't need this effect to drive root.
-   *
-   * Guards:
-   *   - Wait for `initialNavAppliedRef.current` so this never races
-   *     the mount effect.
-   *   - Skip when target ref equals `currentRef` — `zoomIntoNode` is
-   *     idempotent but we'd still fire an unnecessary animation.
-   *   - Skip while `deepLinkInFlight` — back-to-back URL updates
-   *     during an in-flight drill-in would queue confusingly.
-   *   - Skip when `urlCanvasRef === ""` (see above).
-   */
-  const urlCanvasRef = searchParams.get("canvas") ?? "";
-  useEffect(() => {
-    if (!root || !initialNavAppliedRef.current) return;
-    if (deepLinkInFlight) return;
-    if (urlCanvasRef === "") return;
-    if (urlCanvasRef === currentRef) return;
-    const handle = canvasHandleRef.current;
-    if (!handle) return;
-    setDeepLinkInFlight(true);
-    void handle
-      .zoomIntoNode(urlCanvasRef, { durationMs: 0 })
-      .catch((err) => {
-        console.error(
-          "[OrgCanvasBackground] runtime zoomIntoNode failed for URL ref",
-          urlCanvasRef,
-          err,
-        );
-      })
-      .finally(() => {
-        setDeepLinkInFlight(false);
-      });
-  }, [urlCanvasRef, root, currentRef, deepLinkInFlight]);
+  // (No runtime-reactive `?canvas=` follower. We previously had one
+  // here so the AttentionList card could push `?canvas=&select=` onto
+  // the URL and have the canvas drill in to match. That sync path was
+  // fragile — `router.replace` lags `useSearchParams` by a render, so
+  // breadcrumb-back was racing with our own URL writes and bouncing
+  // the user back into the sub-canvas they just exited. AttentionList
+  // now opens the workspace-scoped page in a new tab instead, which
+  // sidesteps the sync problem entirely. The mount-only deep-link
+  // effect above is the only `?canvas=` consumer; the URL is
+  // write-only after that, and `handleBreadcrumbsChange` is the
+  // single source of truth for `currentRef`.)
 
   // Refetch the current canvas's hidden list. Used after a hide on a
   // sub-canvas (so the pill picks up the fresh entry) and as the
