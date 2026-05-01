@@ -7,9 +7,13 @@
  * see `OrgCanvasView.tsx` for the seed flow and
  * `services/attention/topItems.ts` for the data shape.
  *
- * The card is *advisory* — no actions, just a deep-linked list. Each
- * row is a `<Link>` that navigates the user to the relevant feature
- * plan or task page, where they can actually act on the item.
+ * The card is *advisory* — no actions, just a list of pointers. Each
+ * row opens the relevant feature plan or task page in a new tab,
+ * where the user can actually act on the item. We deliberately don't
+ * try to drill the org canvas in-place: that flow used to write
+ * `?canvas=&select=` and round-trip through the canvas's URL sync,
+ * which raced with the library's breadcrumb-back path and bounced
+ * the user back into sub-canvases they had just exited.
  *
  * Visual language is intentionally aligned with `<ProposalCard>` so
  * that as the chat accrues different artifact types they share a
@@ -17,9 +21,6 @@
  * uppercase tracking-wide metadata, compact text-sm titles).
  */
 import { AlertTriangle, MessageCircleQuestion, CheckCircle2, ChevronRight, X } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback } from "react";
-import { mostSpecificRef } from "@/lib/canvas/feature-projection";
 import type { AttentionItem } from "@/services/attention/topItems";
 
 interface AttentionListProps {
@@ -28,73 +29,6 @@ interface AttentionListProps {
   total?: number;
   /** Click-handler for the × button. Caller wires sessionStorage. */
   onDismiss?: () => void;
-}
-
-/**
- * Compute where to send the user when they click an attention item.
- *
- * Returns one of:
- *   - `inCanvas` — drill into the org canvas at `canvasRef`, select
- *     the live node `selectId`. Both the camera drill and the right-
- *     panel auto-flip to Details (with embedded `<FeaturePlanChat>`
- *     for features) light up automatically once `?canvas=&select=`
- *     are pushed onto the URL.
- *   - `external` — entity isn't reachable from any canvas. Today
- *     this is tasks whose parent feature has no milestone (the
- *     milestone canvas is the only place tasks project as nodes —
- *     see `projectors.ts`); orphan tasks (`featureId === null`) also
- *     fall through. Open the workspace-scoped page in a new tab so
- *     the org-canvas context survives.
- */
-function resolveTarget(
-  item: AttentionItem,
-):
-  | { kind: "inCanvas"; canvasRef: string; selectId: string }
-  | { kind: "external"; href: string } {
-  if (item.entityKind === "feature") {
-    // Every feature has a workspaceId by schema, so `mostSpecificRef`
-    // always returns a valid feature-bearing scope (`milestone:` ⊃
-    // `initiative:` ⊃ `ws:`). `feature.id` is the live node id on
-    // every projector that emits it.
-    if (!item.workspaceId) return { kind: "external", href: item.link };
-    return {
-      kind: "inCanvas",
-      canvasRef: mostSpecificRef({
-        workspaceId: item.workspaceId,
-        initiativeId: item.initiativeId,
-        milestoneId: item.milestoneId,
-      }),
-      selectId: `feature:${item.entityId}`,
-    };
-  }
-  // Task path. Tasks project as nodes only on milestone canvases
-  // (under their parent feature column). When the parent feature has
-  // a milestone, that's the natural drill-target — the task node is
-  // visible AND selecting it mounts `TaskChat` in the right panel.
-  //
-  // Without a milestone, the task isn't a canvas node anywhere, but
-  // we still want the user to land in `TaskChat` (the whole point
-  // of the AttentionList click is "answer the agent's question").
-  // Drill into the parent feature's projection canvas (initiative-
-  // loose feature → `initiative:<id>`; loose feature → `ws:<id>`)
-  // and seed the task selection. The right panel auto-flips to
-  // Details, fetches the task by id, and mounts `TaskChat` —
-  // independent of whether a `task:<id>` node renders on the canvas.
-  if (item.workspaceId) {
-    const canvasRef = mostSpecificRef({
-      workspaceId: item.workspaceId,
-      initiativeId: item.initiativeId,
-      milestoneId: item.milestoneId,
-    });
-    return {
-      kind: "inCanvas",
-      canvasRef,
-      selectId: `task:${item.entityId}`,
-    };
-  }
-  // Last resort — workspaceId missing (shouldn't happen given the
-  // schema, but defensive against partial API responses).
-  return { kind: "external", href: item.link };
 }
 
 interface TypeMeta {
@@ -153,29 +87,6 @@ function formatAge(ms: number): string {
 }
 
 export function AttentionList({ items, total, onDismiss }: AttentionListProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  /**
-   * Push `?canvas=<ref>&select=<liveId>` onto the current org-canvas
-   * URL while preserving any other query params (notably `?c=` for
-   * the connection viewer and `?chat=` for shared chats). Uses
-   * `replace` rather than `push` so the click doesn't add a history
-   * entry the user has to back-button through — this is more like
-   * "rearrange what I'm looking at" than "navigate forward."
-   */
-  const navigateInCanvas = useCallback(
-    (canvasRef: string, selectId: string) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("canvas", canvasRef);
-      params.set("select", selectId);
-      const qs = params.toString();
-      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
-    },
-    [router, pathname, searchParams],
-  );
-
   if (items.length === 0) return null;
   const overflow = total !== undefined && total > items.length
     ? total - items.length
@@ -202,16 +113,17 @@ export function AttentionList({ items, total, onDismiss }: AttentionListProps) {
         {items.map((item) => {
           const meta = TYPE_META[item.type];
           const Icon = meta.Icon;
-          const target = resolveTarget(item);
+          // Always open the workspace-scoped page in a new tab. We
+          // previously had an "in-canvas" mode that drilled to the
+          // feature/task's projection canvas via `?canvas=&select=`,
+          // but the URL-driven sync with the canvas's internal scope
+          // state proved fragile (router.replace lags useSearchParams
+          // by a render, breadcrumb-back was bouncing right back into
+          // the sub-canvas). External-tab navigation preserves the
+          // user's org-canvas state and is the path the user
+          // ultimately needs to act on the item anyway.
           const handleClick = () => {
-            if (target.kind === "inCanvas") {
-              navigateInCanvas(target.canvasRef, target.selectId);
-            } else {
-              // External fallback: open the workspace-scoped page in
-              // a new tab so the user doesn't lose their org-canvas
-              // context. `noopener,noreferrer` is the standard hygiene.
-              window.open(target.href, "_blank", "noopener,noreferrer");
-            }
+            window.open(item.link, "_blank", "noopener,noreferrer");
           };
           return (
             <li key={item.id}>
