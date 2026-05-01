@@ -526,15 +526,29 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       {/* Resizable sidebar overlay — sits at z-20, absolutely
           positioned to cover the right portion of the canvas.
           The left filler panel is transparent; only the right
-          ResizablePanel renders visible content. */}
+          ResizablePanel renders visible content.
+
+          Stable `id`s on the group + every panel are required
+          whenever `autoSaveId` is set: the library persists layout
+          keyed by panel `id`, and on remount the saved layout is
+          read back BEFORE the panels register. Without explicit
+          ids, `useId()` generates a fresh id per mount that doesn't
+          match the stored layout, the lookup throws "No group
+          element found for id" and the canvas crashes. */}
       <div className="absolute inset-0 z-20 pointer-events-none">
         <ResizablePanelGroup
+          id="org-right-panel-group"
           direction="horizontal"
           autoSaveId="org-right-panel"
           className="h-full w-full"
         >
           {/* Left filler — transparent, lets canvas receive events */}
-          <ResizablePanel defaultSize={76} className="pointer-events-none" />
+          <ResizablePanel
+            id="org-right-panel-filler"
+            order={1}
+            defaultSize={76}
+            className="pointer-events-none"
+          />
 
           <ResizableHandle
             withHandle
@@ -543,6 +557,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
 
           {/* Right panel — the visible sidebar */}
           <ResizablePanel
+            id="org-right-panel-sidebar"
+            order={2}
             defaultSize={24}
             minSize={16}
             maxSize={37}
