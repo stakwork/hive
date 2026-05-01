@@ -65,19 +65,32 @@ export function useCanvasChatAutoSave({ workspaceSlug }: AutoSaveArgs) {
       const totalMsgs = conv.messages.length;
       if (totalMsgs === 0) return;
 
-      const saved = savedCountRef.current.get(conversationId) ?? 0;
+      // Skip ephemeral seed messages (e.g. the synthetic "top items
+      // needing your attention" intro). Once set, we treat the seed
+      // as already-saved so the first POST/PUT only carries real
+      // user/assistant turns. Without this, every page entry would
+      // create a fresh `SharedConversation` row containing the
+      // synthetic seed — noisy in the DB and leaks the original
+      // viewer's intro through `?chat=<shareId>` shares.
+      const seedSkip =
+        useCanvasChatStore.getState().ephemeralSeedCounts[conversationId] ?? 0;
+      const savedRaw = savedCountRef.current.get(conversationId) ?? 0;
+      const saved = Math.max(savedRaw, seedSkip);
       if (totalMsgs <= saved) return;
 
       const delta = conv.messages.slice(saved);
       inFlightRef.current.add(conversationId);
 
       // First save → POST (create the server row); subsequent → PUT (append).
+      // POST body uses `delta` (not `conv.messages`) so seed-skipped
+      // messages never persist — the seed is `[0..seedSkip)` and we
+      // start from `saved` which is `max(savedRaw, seedSkip)`.
       if (conv.serverConversationId == null) {
         fetch(`/api/workspaces/${workspaceSlug}/chat/conversations`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: conv.messages,
+            messages: delta,
             settings: { extraWorkspaceSlugs: conv.context.workspaceSlugs },
             source: "org-canvas",
           }),

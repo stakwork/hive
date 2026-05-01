@@ -631,6 +631,50 @@ export function OrgCanvasBackground({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root]);
 
+  /**
+   * Runtime-reactive `?canvas=<ref>` follower. The mount-only effect
+   * above handles the initial deep link; this one handles URL changes
+   * AFTER mount — specifically, in-page navigation from the
+   * AttentionList's "open this feature on its canvas" click handler
+   * (`AttentionList.tsx:resolveTarget`) which writes
+   * `?canvas=<ref>&select=<liveId>` via `router.replace`.
+   *
+   * Guards:
+   *   - Wait for `initialNavAppliedRef.current` so this never races
+   *     the mount effect.
+   *   - Skip when target ref equals `currentRef` — `zoomIntoNode` is
+   *     idempotent but we'd still fire an unnecessary animation.
+   *   - Skip while `deepLinkInFlight` — back-to-back URL updates
+   *     during an in-flight drill-in would queue confusingly.
+   */
+  const urlCanvasRef = searchParams.get("canvas") ?? "";
+  useEffect(() => {
+    if (!root || !initialNavAppliedRef.current) return;
+    if (deepLinkInFlight) return;
+    if (urlCanvasRef === currentRef) return;
+    const handle = canvasHandleRef.current;
+    if (!handle) return;
+    if (urlCanvasRef === "") {
+      // Empty ref means "back to root." `navigateToRoot` is the
+      // library's matching primitive; cheap and synchronous-feeling.
+      handle.navigateToRoot();
+      return;
+    }
+    setDeepLinkInFlight(true);
+    void handle
+      .zoomIntoNode(urlCanvasRef, { durationMs: 0 })
+      .catch((err) => {
+        console.error(
+          "[OrgCanvasBackground] runtime zoomIntoNode failed for URL ref",
+          urlCanvasRef,
+          err,
+        );
+      })
+      .finally(() => {
+        setDeepLinkInFlight(false);
+      });
+  }, [urlCanvasRef, root, currentRef, deepLinkInFlight]);
+
   // Refetch the current canvas's hidden list. Used after a hide on a
   // sub-canvas (so the pill picks up the fresh entry) and as the
   // reconcile path when an optimistic restore's follow-up read fails.
