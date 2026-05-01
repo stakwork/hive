@@ -161,62 +161,105 @@ describe("VMGrid — dropdown actions", () => {
 });
 
 describe("VMGrid — Open Browser action", () => {
-  it("renders 'Open Browser' in dropdown when frontendUrl is set", async () => {
+  it("renders 'Open Browser' in dropdown when workspaceSlug is provided", async () => {
     const user = userEvent.setup();
     render(
       <VMGrid
-        vms={[
-          makeVM({
-            password: "secret",
-            url: "https://ide.example.com",
-            frontendUrl: "https://pod-3000.example.com",
-          }),
-        ]}
-      />
+        vms={[makeVM({ password: "secret", url: "https://ide.example.com" })]}
+        workspaceSlug="my-workspace"
+      />,
     );
 
     await user.click(screen.getByRole("button"));
     expect(screen.getByText("Open Browser")).toBeInTheDocument();
   });
 
-  it("does not render 'Open Browser' when frontendUrl is absent", async () => {
+  it("does not render 'Open Browser' when workspaceSlug is absent", async () => {
     const user = userEvent.setup();
     render(
       <VMGrid
-        vms={[
-          makeVM({
-            password: "secret",
-            url: "https://ide.example.com",
-          }),
-        ]}
-      />
+        vms={[makeVM({ password: "secret", url: "https://ide.example.com" })]}
+      />,
     );
 
     await user.click(screen.getByRole("button"));
     expect(screen.queryByText("Open Browser")).not.toBeInTheDocument();
   });
 
-  it("calls window.open with frontendUrl when 'Open Browser' is clicked", async () => {
+  it("fetches frontend-url and opens the resolved URL on click", async () => {
     const user = userEvent.setup();
+    const fakeWindow = { location: { href: "" }, close: vi.fn() };
+    vi.mocked(window.open).mockReturnValue(fakeWindow as unknown as Window);
+
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: { frontendUrl: "https://vm-1-3000.workspaces.sphinx.chat" },
+        }),
+        { status: 200 },
+      ),
+    );
+
     render(
       <VMGrid
         vms={[
           makeVM({
+            id: "vm-1",
             password: "secret",
             url: "https://ide.example.com",
-            frontendUrl: "https://pod-3000.example.com",
           }),
         ]}
-      />
+        workspaceSlug="my-workspace"
+      />,
     );
 
     await user.click(screen.getByRole("button"));
     await user.click(screen.getByText("Open Browser"));
 
+    // Synchronously opens about:blank to dodge popup blockers, then fetches.
     expect(window.open).toHaveBeenCalledWith(
-      "https://pod-3000.example.com",
+      "about:blank",
       "_blank",
-      "noopener,noreferrer"
+      "noopener,noreferrer",
     );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/w/my-workspace/pool/vm-1/frontend-url",
+    );
+
+    // After the fetch resolves, the blank tab is navigated to the resolved URL.
+    await vi.waitFor(() => {
+      expect(fakeWindow.location.href).toBe(
+        "https://vm-1-3000.workspaces.sphinx.chat",
+      );
+    });
+
+    fetchSpy.mockRestore();
+  });
+
+  it("closes the placeholder tab if the API returns no URL", async () => {
+    const user = userEvent.setup();
+    const fakeWindow = { location: { href: "" }, close: vi.fn() };
+    vi.mocked(window.open).mockReturnValue(fakeWindow as unknown as Window);
+
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: false }), { status: 500 }),
+    );
+
+    render(
+      <VMGrid
+        vms={[makeVM({ id: "vm-1", password: "secret", url: "https://ide.example.com" })]}
+        workspaceSlug="my-workspace"
+      />,
+    );
+
+    await user.click(screen.getByRole("button"));
+    await user.click(screen.getByText("Open Browser"));
+
+    await vi.waitFor(() => {
+      expect(fakeWindow.close).toHaveBeenCalled();
+    });
+
+    fetchSpy.mockRestore();
   });
 });
