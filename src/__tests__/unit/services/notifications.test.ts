@@ -43,7 +43,7 @@ const baseInput = {
 const userWithPubkey = { lightningPubkey: "alice-pubkey", sphinxRouteHint: null, iosDeviceToken: null };
 const userWithPubkeyAndToken = { lightningPubkey: "alice-pubkey", sphinxRouteHint: null, iosDeviceToken: "device-token-abc" };
 const userWithoutPubkey = { lightningPubkey: null, sphinxRouteHint: null, iosDeviceToken: null };
-const mockWorkspace = { slug: "test-workspace" };
+const mockWorkspace = { slug: "test-workspace", sphinxEnabled: true };
 
 const mockRecord = {
   id: "notif-1",

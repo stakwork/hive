@@ -45,11 +45,13 @@ describe("TASK_ASSIGNED notification", () => {
       data: { email: "assignee@test.com", name: "Assignee", lightningPubkey: "test-pubkey-assignee" },
     });
 
-    const { createTestWorkspace } = await import("@/__tests__/support/factories/workspace.factory");
-    workspace = await createTestWorkspace({
-      ownerId: owner.id,
-      name: "Test Workspace",
-      slug: "test-ws-task-assign",
+    workspace = await db.workspace.create({
+      data: {
+        name: "Test Workspace",
+        slug: "test-ws-task-assign",
+        ownerId: owner.id,
+        sphinxEnabled: true,
+      },
     });
 
     await db.workspaceMember.create({

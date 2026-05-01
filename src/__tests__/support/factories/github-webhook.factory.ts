@@ -52,6 +52,7 @@ export async function createWebhookTestScenario(options?: CreateWebhookTestScena
         name: `Test Workspace ${workspaceId}`,
         slug: `test-workspace-${workspaceId.toLowerCase()}`,
         ownerId: user.id,
+        sphinxEnabled: true,
       },
     });
 
