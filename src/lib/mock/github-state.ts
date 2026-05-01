@@ -405,9 +405,6 @@ class MockGitHubStateManager {
 
     // Auto-create default branches
     this.createBranch(owner, name, defaultBranch, true);
-    if (defaultBranch !== "dev") {
-      this.createBranch(owner, name, "dev", false);
-    }
 
     return repository;
   }
