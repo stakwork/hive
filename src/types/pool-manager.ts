@@ -195,7 +195,6 @@ export interface VMData {
       image: string | null;
     };
   } | null;
-  frontendUrl?: string;
 }
 
 export interface PoolWorkspacesResponse {

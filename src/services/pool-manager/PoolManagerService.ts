@@ -15,6 +15,19 @@ import { EncryptionService } from "@/lib/encryption";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
+/**
+ * Strip the `-{port}` suffix from a pod URL so it points at the bare hostname
+ * (which is proxied to code-server / the IDE).
+ *
+ * Example: `https://abc123-8444.workspaces.sphinx.chat` → `https://abc123.workspaces.sphinx.chat`
+ *
+ * Returns the input unchanged if it doesn't match the expected pattern.
+ */
+function stripPodUrlPort(url: string | null | undefined): string | undefined {
+  if (!url || typeof url !== "string") return undefined;
+  return url.replace(/^(https?:\/\/[^.\-/]+)-\d+(\.[^/]+)/, "$1$2");
+}
+
 interface IPoolManagerService {
   createUser: (user: CreateUserRequest) => Promise<PoolUserResponse>;
   deleteUser: (user: DeleteUserRequest) => Promise<void>;
@@ -165,7 +178,9 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
           user_info: vm.user_info || null,
           resource_usage: vm.resource_usage,
           marked_at: vm.marked_at || null,
-          url: vm.url,
+          // Strip the upstream port suffix so the IDE URL is the bare hostname.
+          // The frontend (browser) URL is resolved on-demand via /jlist.
+          url: stripPodUrlPort(vm.url),
           created: vm.created,
           repoName: vm.repoName,
           primaryRepo: vm.primaryRepo,
