@@ -14,6 +14,7 @@ import {
   type CanvasChatMessage,
 } from "../_state/canvasChatStore";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
+import type { AttentionItem } from "@/services/attention/topItems";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -82,6 +83,33 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     useState<CanvasChatMessage[] | null>(null);
   const [chatLoadComplete, setChatLoadComplete] = useState(false);
 
+  // Synthetic "top items needing your attention" intro — fetched
+  // server-side from /api/orgs/[githubLogin]/attention. Resolved
+  // before `startConversation` fires so the seed lands cleanly into
+  // the new conversation. Intentionally skipped when:
+  //   - `?chat=<shareId>` is present (forking — we'd be polluting
+  //     someone else's transcript with the new viewer's intro).
+  //   - The user dismissed the intro during this session (×).
+  // See `_components/AttentionList.tsx` for the rendered card.
+  const [attentionData, setAttentionData] = useState<
+    { items: AttentionItem[]; total: number } | null
+  >(null);
+  const [attentionLoadComplete, setAttentionLoadComplete] = useState(false);
+
+  /**
+   * `?select=<liveId>` reader — runtime nav from the AttentionList
+   * card pushes a live-node id onto this param. We translate it into
+   * a `selectedNode` seed so the right panel auto-flips to Details
+   * (`OrgRightPanel.tsx` keys its tab-flip on `selectedNode?.id`),
+   * which mounts `<FeaturePlanChat>` for `feature:<id>` selections.
+   *
+   * The param is one-shot: after seeding, we strip it from the URL
+   * so a refresh doesn't re-fire (and so the URL stays clean for
+   * sharing — the matching `?canvas=<ref>` is enough to deep-link
+   * the same place).
+   */
+  const selectIdParam = searchParams.get("select");
+
   const setUrlSlug = useCallback(
     (slug: string | null) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -137,6 +165,48 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       .catch(() => {})
       .finally(() => {
         if (!cancelled) setChatLoadComplete(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sharedChatId, githubLogin]);
+
+  // Resolve the synthetic intro's data BEFORE starting the
+  // conversation so the seed messages land atomically with
+  // `startConversation` (avoiding a flicker of empty chat → seed
+  // populated). Skipped when forking a share or when the user
+  // dismissed during this session.
+  useEffect(() => {
+    if (sharedChatId) {
+      // Forking someone else's conversation — never inject our intro.
+      setAttentionLoadComplete(true);
+      return;
+    }
+    // Per-session dismissal. Wrapped in a try/catch because some
+    // browsers throw on `sessionStorage` access in private modes.
+    try {
+      const dismissed = sessionStorage.getItem(
+        `hive:attention-dismissed:${githubLogin}`,
+      );
+      if (dismissed === "1") {
+        setAttentionLoadComplete(true);
+        return;
+      }
+    } catch {
+      // Storage unavailable — fall through and just always show.
+    }
+    let cancelled = false;
+    fetch(`/api/orgs/${githubLogin}/attention?limit=3`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          setAttentionData({ items: data.items, total: data.total ?? data.items.length });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setAttentionLoadComplete(true);
       });
     return () => {
       cancelled = true;
@@ -216,6 +286,49 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     setSelectedNode(node);
   }, []);
 
+  /**
+   * Consume `?select=<liveId>` once and seed `selectedNode` with a
+   * minimal stub. `NodeDetail` only reads `id`, `text`, and
+   * `category` from the node — for live ids the body fetches its
+   * own data from `/api/orgs/[githubLogin]/canvas/node/[liveId]` —
+   * so a stub with the right `id` (and best-guess `category`) is
+   * sufficient. The param is then stripped via `router.replace`
+   * (preserving `?canvas=<ref>` and any other params) so a refresh
+   * doesn't re-fire selection.
+   *
+   * Note: the user's manual canvas clicks still flow through
+   * `handleNodeSelect` from `OrgCanvasBackground` and overwrite
+   * this stub with a real `CanvasNode` — that's the desired
+   * upgrade path.
+   */
+  useEffect(() => {
+    if (!selectIdParam) return;
+    // Derive category from the live-id prefix so the Details tab
+    // header reads "FEATURE" / "TASK" / etc. on first paint, before
+    // (or even without) the canvas getting around to rendering the
+    // matching node. Fallback "node" matches what NodeDetail would
+    // pick anyway from a malformed id.
+    const colonIdx = selectIdParam.indexOf(":");
+    const category = colonIdx > 0 ? selectIdParam.slice(0, colonIdx) : "node";
+    setSelectedNode({
+      id: selectIdParam,
+      type: "text",
+      x: 0,
+      y: 0,
+      category,
+    } as CanvasNode);
+    // Strip `?select=` from the URL after consuming. We keep
+    // `?canvas=<ref>` (the camera position) and every other param
+    // so back/forward and shared links still work.
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("select");
+    const qs = params.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    // We intentionally only react to `selectIdParam` changes — the
+    // other deps in the cleanup write are stable per render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectIdParam]);
+
   const handleCanvasBreadcrumbChange = useCallback((breadcrumb: string) => {
     setCurrentCanvasBreadcrumb(breadcrumb);
   }, []);
@@ -227,11 +340,59 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [conversationStarted, setConversationStarted] = useState(false);
   const currentCanvasRef = searchParams.get("canvas") ?? "";
   const chatReady =
-    !loadingWorkspaces && hiddenInitialized && chatLoadComplete;
+    !loadingWorkspaces &&
+    hiddenInitialized &&
+    chatLoadComplete &&
+    attentionLoadComplete;
 
   useEffect(() => {
     if (!chatReady || conversationStarted) return;
-    useCanvasChatStore.getState().startConversation(
+
+    // Build the seed: forked-share messages take precedence (those
+    // are the user's prior conversation). When neither share nor
+    // attention items exist, seed is empty and we land in today's
+    // "Ask the agent…" empty state.
+    let seedMessages: CanvasChatMessage[] | undefined =
+      chatInitialMessages ?? undefined;
+    let ephemeralSeedCount = 0;
+    let attentionArtifactId: string | null = null;
+
+    if (!chatInitialMessages && attentionData && attentionData.items.length > 0) {
+      // Synthesize the intro assistant message + register a single
+      // artifact carrying the items list. Mirrors the
+      // `appendAssistantError` factory pattern (id prefix + role +
+      // timestamp), with `artifactIds` pointing at the registered
+      // entry.
+      const introId = `intro-${Date.now().toString(36)}`;
+      attentionArtifactId = `attention-${introId}`;
+      useCanvasChatStore.getState().registerArtifact({
+        id: attentionArtifactId,
+        type: "attention-list",
+        // `conversationId` is unknown at this point (the conversation
+        // doesn't exist yet); we set it after `startConversation`
+        // returns. Renderer doesn't use it today; future canvas-side
+        // subscribers may.
+        conversationId: "",
+        messageId: introId,
+        data: { items: attentionData.items, total: attentionData.total },
+      });
+      const intro: CanvasChatMessage = {
+        id: introId,
+        role: "assistant",
+        // Singular vs plural copy. The header inside the card already
+        // says "Top N for you" so the message stays short.
+        content:
+          attentionData.items.length === 1
+            ? "Here's the top item waiting on you:"
+            : `Here are the top ${attentionData.items.length} items waiting on you:`,
+        timestamp: new Date(),
+        artifactIds: [attentionArtifactId],
+      };
+      seedMessages = [intro];
+      ephemeralSeedCount = 1;
+    }
+
+    const conversationId = useCanvasChatStore.getState().startConversation(
       {
         workspaceSlug,
         workspaceSlugs: chatWorkspaceSlugs,
@@ -241,14 +402,55 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         currentCanvasBreadcrumb,
         selectedNodeId: selectedNode?.id ?? null,
       },
-      chatInitialMessages ?? undefined,
+      seedMessages,
       sharedChatId ?? undefined,
+      ephemeralSeedCount,
     );
+
+    // Backfill the artifact's `conversationId` now that we have one,
+    // so future canvas-side selectors can scope by conversation.
+    if (attentionArtifactId) {
+      const existing =
+        useCanvasChatStore.getState().artifacts[attentionArtifactId];
+      if (existing) {
+        useCanvasChatStore.getState().registerArtifact({
+          ...existing,
+          conversationId,
+        });
+      }
+    }
+
     setConversationStarted(true);
     // Mount-once on chat-ready. Subsequent context changes go through
     // the patch effect below, not by restarting the conversation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatReady]);
+
+  // When the user dismisses the synthetic intro (× button), persist
+  // that decision for the rest of the browser session so refreshes
+  // don't immediately re-seed it. Subscribes to the store rather
+  // than passing a callback through the artifact data so the
+  // dismissal flow stays a pure store mutation.
+  useEffect(() => {
+    const unsub = useCanvasChatStore.subscribe((state, prev) => {
+      const before = prev.dismissedArtifactIds;
+      const after = state.dismissedArtifactIds;
+      if (before === after) return;
+      for (const id of Object.keys(after)) {
+        if (before[id]) continue;
+        if (!id.startsWith("attention-")) continue;
+        try {
+          sessionStorage.setItem(
+            `hive:attention-dismissed:${githubLogin}`,
+            "1",
+          );
+        } catch {
+          // Storage unavailable — silently swallow.
+        }
+      }
+    });
+    return () => unsub();
+  }, [githubLogin]);
 
   // Keep the active conversation's `context` in sync with what the
   // user is currently looking at. The store does an Object.is check

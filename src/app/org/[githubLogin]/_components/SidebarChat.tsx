@@ -8,6 +8,8 @@ import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCall
 import { Button } from "@/components/ui/button";
 import { SidebarChatMessage } from "./SidebarChatMessage";
 import { ProposalCard, getProposalsFromMessage } from "./ProposalCard";
+import { AttentionList } from "./AttentionList";
+import type { AttentionItem } from "@/services/attention/topItems";
 import {
   useCanvasChatStore,
   type CanvasChatMessage,
@@ -229,25 +231,56 @@ const EMPTY_MESSAGES: CanvasChatMessage[] = [];
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
 
 /**
- * Forward-compat dispatch point for rich agent artifacts. Selects
- * `state.artifacts` by id and renders nothing in PR 1. When the
- * first artifact type ships, this becomes the single switch arm —
- * no fork through `SidebarChatMessage` required.
+ * Dispatch point for rich agent artifacts. Selects `state.artifacts`
+ * by id (via `useShallow` so streaming text-deltas don't re-render
+ * here) and switches on `artifact.type`.
  *
- * Uses `useShallow` to derive the artifact slice — without it, every
- * store update (incl. text-deltas during streaming) would create a
- * fresh array and force a re-render here. With it, this component
- * only re-renders when *its* artifacts change.
+ * Currently registered types:
+ *   - `attention-list` — synthetic intro card listing items needing
+ *     the user's attention. Seeded by `OrgCanvasView` on fresh
+ *     canvas entry; data shape is `AttentionItem[]` from
+ *     `services/attention/topItems.ts`.
+ *
+ * Future canvas-bound types (proposals' canvas halos, sub-agent
+ * status pills, etc.) layer in additional cases here.
  */
 function MessageArtifacts({ artifactIds }: { artifactIds?: string[] }) {
   const ids = artifactIds ?? EMPTY_ARTIFACT_IDS;
-  const _artifacts = useCanvasChatStore(
-    useShallow((s) => ids.map((id) => s.artifacts[id]).filter(Boolean)),
+  // Filter dismissed ids inside the selector so neither the artifact
+  // map mutation nor the dismiss-set mutation alone causes a useless
+  // re-render — only when the *visible* set changes do we rebuild.
+  const artifacts = useCanvasChatStore(
+    useShallow((s) =>
+      ids
+        .filter((id) => !s.dismissedArtifactIds[id])
+        .map((id) => s.artifacts[id])
+        .filter(Boolean),
+    ),
   );
-  if (ids.length === 0) return null;
-  // Renders nothing in PR 1 — when the first artifact type ships,
-  // dispatch on `_artifacts[i].type` here.
-  return null;
+  const dismissArtifact = useCanvasChatStore((s) => s.dismissArtifact);
+  if (ids.length === 0 || artifacts.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      {artifacts.map((artifact) => {
+        if (artifact.type === "attention-list") {
+          const data = artifact.data as
+            | { items: AttentionItem[]; total: number }
+            | undefined;
+          if (!data || !Array.isArray(data.items)) return null;
+          return (
+            <AttentionList
+              key={artifact.id}
+              items={data.items}
+              total={data.total}
+              onDismiss={() => dismissArtifact(artifact.id)}
+            />
+          );
+        }
+        // Unknown artifact type — render nothing rather than crash.
+        return null;
+      })}
+    </div>
+  );
 }
 
 const EMPTY_ARTIFACT_IDS: string[] = [];
