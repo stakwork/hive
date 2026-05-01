@@ -132,8 +132,8 @@ describe("GitHub Webhook — TASK_PR_MERGED notification", () => {
     // Route should succeed
     expect([200, 202]).toContain(res.status);
 
-    // Allow async notification to settle
-    await new Promise((r) => setTimeout(r, 300));
+    // Allow async notification to settle (fire-and-forget block runs several DB queries)
+    await new Promise((r) => setTimeout(r, 2000));
 
     const record = await db.notificationTrigger.findFirst({
       where: {
