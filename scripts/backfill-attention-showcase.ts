@@ -236,6 +236,343 @@ const VARIANTS: ShowcaseVariant[] = [
   },
 ];
 
+/**
+ * Seed a representative spread of artifacts onto the ready-to-review
+ * task so the canvas-sidebar TaskChat surfaces every render path.
+ *
+ * The mix mirrors the artifact zoo `mockSeedData.ts:seedChatMessagesWithArtifacts`
+ * builds for the personal mock workspace, just adapted to a single
+ * task and using the `seedMockData` content shapes verbatim. Idempotent
+ * by message-content match — re-running the backfill won't duplicate
+ * messages.
+ *
+ * Artifact coverage exercised:
+ *   - PULL_REQUEST → inline render via `<PullRequestArtifact>`
+ *   - CODE / DIFF / LONGFORM / BOUNTY / PUBLISH_WORKFLOW → pill →
+ *     modal (renders via reused panels from
+ *     `src/app/w/[slug]/task/[...taskParams]/artifacts/`)
+ *   - BROWSER / IDE / WORKFLOW / GRAPH / MEDIA / BUG_REPORT → pill
+ *     → external link (`window.open` to the full task page)
+ */
+async function seedReviewTaskArtifacts(taskId: string, taskTitle: string) {
+  // Idempotency key: a unique opener line tied to the task title.
+  // Safer than a separate marker row — re-runs match on this and
+  // bail without writing anything visible.
+  const OPENER = `I've finished the implementation. Here's a quick recap of what I made for "${taskTitle}":`;
+  const existing = await db.chatMessage.findFirst({
+    where: { taskId, message: OPENER },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  // Opening assistant turn introducing the work.
+  await db.chatMessage.create({
+    data: { taskId, message: OPENER, role: "ASSISTANT" },
+  });
+
+  // ── PULL_REQUEST (inline card) ────────────────────────────────────
+  const prMsg = await db.chatMessage.create({
+    data: {
+      taskId,
+      message: "Opened a pull request — CI is green, ready for review:",
+      role: "ASSISTANT",
+    },
+  });
+  const prNumber = Math.floor(Math.random() * 900) + 100;
+  await db.artifact.create({
+    data: {
+      messageId: prMsg.id,
+      type: ArtifactType.PULL_REQUEST,
+      content: {
+        repo: "stakwork/hive",
+        url: `https://github.com/stakwork/hive/pull/${prNumber}`,
+        status: "IN_PROGRESS", // open
+        number: prNumber,
+        title: `feat: ${taskTitle}`,
+        additions: 187,
+        deletions: 42,
+        changedFiles: 6,
+        progress: {
+          state: "healthy",
+          ciStatus: "success",
+          ciSummary: "12/12 checks passed",
+        },
+      },
+    },
+  });
+
+  // ── CODE artifact (pill → modal) ──────────────────────────────────
+  const codeMsg = await db.chatMessage.create({
+    data: {
+      taskId,
+      message: "Here's the core helper I extracted:",
+      role: "ASSISTANT",
+    },
+  });
+  await db.artifact.create({
+    data: {
+      messageId: codeMsg.id,
+      type: ArtifactType.CODE,
+      content: {
+        language: "typescript",
+        filename: "src/lib/billing/csv.ts",
+        snippet: `import { Readable } from "node:stream";
+import type { BillingRow } from "./types";
+
+/**
+ * Stream-write billing rows as CSV. Backpressure-friendly: the
+ * upstream Prisma cursor pulls one row at a time and we flush each
+ * line eagerly so the response holds at most one row in memory.
+ */
+export function streamBillingCsv(rows: AsyncIterable<BillingRow>): Readable {
+  return Readable.from(
+    (async function* () {
+      yield "id,workspace,plan,amount_cents,currency,billed_at\\n";
+      for await (const r of rows) {
+        yield [r.id, r.workspaceSlug, r.plan, r.amountCents, r.currency, r.billedAt.toISOString()].join(",") + "\\n";
+      }
+    })(),
+  );
+}`,
+      },
+    },
+  });
+
+  // ── DIFF artifact (pill → modal) ──────────────────────────────────
+  const diffMsg = await db.chatMessage.create({
+    data: { taskId, message: "Diff summary across the touched files:", role: "ASSISTANT" },
+  });
+  await db.artifact.create({
+    data: {
+      messageId: diffMsg.id,
+      type: ArtifactType.DIFF,
+      content: {
+        diffs: [
+          {
+            file: "src/lib/billing/csv.ts",
+            action: "create",
+            repoName: "stakwork/hive",
+            content: `--- /dev/null
++++ b/src/lib/billing/csv.ts
+@@ -0,0 +1,18 @@
++import { Readable } from "node:stream";
++import type { BillingRow } from "./types";
++
++export function streamBillingCsv(rows: AsyncIterable<BillingRow>): Readable {
++  return Readable.from(
++    (async function* () {
++      yield "id,workspace,plan,amount_cents,currency,billed_at\\n";
++      for await (const r of rows) {
++        yield [r.id, r.workspaceSlug, r.plan, r.amountCents, r.currency, r.billedAt.toISOString()].join(",") + "\\n";
++      }
++    })(),
++  );
++}`,
+          },
+          {
+            file: "src/app/api/billing/export/route.ts",
+            action: "modify",
+            repoName: "stakwork/hive",
+            content: `diff --git a/src/app/api/billing/export/route.ts b/src/app/api/billing/export/route.ts
+@@ -1,6 +1,12 @@
+-export async function GET() {
+-  const rows = await db.billingRow.findMany();
+-  const csv = rowsToCsv(rows);
+-  return new Response(csv, { headers: { "Content-Type": "text/csv" } });
++import { streamBillingCsv } from "@/lib/billing/csv";
++
++export async function GET() {
++  const cursor = db.billingRow.streamMany();
++  const stream = streamBillingCsv(cursor);
++  return new Response(stream as unknown as ReadableStream, {
++    headers: { "Content-Type": "text/csv; charset=utf-8" },
++  });
+ }`,
+          },
+        ],
+      },
+    },
+  });
+
+  // ── LONGFORM artifact (pill → modal) ──────────────────────────────
+  const longformMsg = await db.chatMessage.create({
+    data: { taskId, message: "Wrote up a quick design note:", role: "ASSISTANT" },
+  });
+  await db.artifact.create({
+    data: {
+      messageId: longformMsg.id,
+      type: ArtifactType.LONGFORM,
+      content: {
+        title: `Design note: ${taskTitle}`,
+        format: "markdown",
+        body: `# ${taskTitle}
+
+## Approach
+Streamed the row-set instead of materializing it. The previous endpoint hit a 60s Vercel limit on workspaces with > 30k rows; the streaming version finishes in single-digit seconds for any workspace size because backpressure throttles the writer to the client's read speed.
+
+## Trade-offs
+- **No total Content-Length** until the upstream finishes. CDN can't preload, but \`text/csv\` clients don't expect length.
+- **No retries on partial failure.** If the upstream cursor errors mid-stream the client sees a truncated CSV with no JSON envelope. Acceptable for an export endpoint; we add an \`x-rows-emitted\` trailer for clients that want to verify completeness.
+
+## Follow-ups
+- Add the same pattern to \`/api/billing/usage/export\` (next sprint).
+- Consider gzipping the response — 4× smaller payloads in the staging benchmark.`,
+      },
+    },
+  });
+
+  // ── BOUNTY artifact (pill → modal) ────────────────────────────────
+  const bountyMsg = await db.chatMessage.create({
+    data: { taskId, message: "Logged a small bounty for the follow-up gzip work:", role: "ASSISTANT" },
+  });
+  await db.artifact.create({
+    data: {
+      messageId: bountyMsg.id,
+      type: ArtifactType.BOUNTY,
+      content: {
+        bountyCode: "BNT-CSV-GZIP-1",
+        title: "Gzip the streaming CSV response",
+        amount: 50,
+        currency: "USD",
+        status: "open",
+        description:
+          "Wire `zlib.createGzip()` into the streaming response when the client `Accept-Encoding` includes `gzip`. Bench against the 30k-row staging fixture; expect ~4× smaller payload.",
+      },
+    },
+  });
+
+  // ── PUBLISH_WORKFLOW artifact (pill → modal) ──────────────────────
+  const publishMsg = await db.chatMessage.create({
+    data: { taskId, message: "Promoted the deploy workflow to production:", role: "ASSISTANT" },
+  });
+  await db.artifact.create({
+    data: {
+      messageId: publishMsg.id,
+      type: ArtifactType.PUBLISH_WORKFLOW,
+      content: {
+        workflowName: "Production Deploy",
+        status: "published",
+        version: "v1.2.4",
+        environment: "production",
+        triggers: ["push", "manual"],
+        steps: [
+          { name: "Checkout code", status: "completed", duration: "5s" },
+          { name: "Install deps", status: "completed", duration: "42s" },
+          { name: "Run tests", status: "completed", duration: "1m 12s" },
+          { name: "Build", status: "completed", duration: "38s" },
+          { name: "Deploy", status: "completed", duration: "1m 03s" },
+        ],
+      },
+    },
+  });
+
+  // ── BROWSER artifact (pill → external) ────────────────────────────
+  const browserMsg = await db.chatMessage.create({
+    data: { taskId, message: "Captured a quick browser session reproducing the fix:", role: "ASSISTANT" },
+  });
+  await db.artifact.create({
+    data: {
+      messageId: browserMsg.id,
+      type: ArtifactType.BROWSER,
+      content: {
+        url: "http://localhost:3000/billing/export",
+        screenshot: null,
+        title: `Preview: ${taskTitle}`,
+      },
+    },
+  });
+
+  // ── IDE artifact (pill → external) ────────────────────────────────
+  await db.artifact.create({
+    data: {
+      messageId: browserMsg.id,
+      type: ArtifactType.IDE,
+      content: {
+        files: [
+          { path: "src/lib/billing/csv.ts", language: "typescript" },
+          { path: "src/app/api/billing/export/route.ts", language: "typescript" },
+        ],
+        activeFile: "src/lib/billing/csv.ts",
+      },
+    },
+  });
+
+  // ── WORKFLOW artifact (pill → external) ───────────────────────────
+  const workflowMsg = await db.chatMessage.create({
+    data: { taskId, message: "Wired the export into the nightly billing workflow:", role: "ASSISTANT" },
+  });
+  await db.artifact.create({
+    data: {
+      messageId: workflowMsg.id,
+      type: ArtifactType.WORKFLOW,
+      content: {
+        projectId: "wf-billing-export-nightly",
+      },
+    },
+  });
+
+  // ── GRAPH artifact (pill → external) ──────────────────────────────
+  const graphMsg = await db.chatMessage.create({
+    data: { taskId, message: "Updated the dependency graph to include the new module:", role: "ASSISTANT" },
+  });
+  await db.artifact.create({
+    data: {
+      messageId: graphMsg.id,
+      type: ArtifactType.GRAPH,
+      content: {
+        nodeIds: ["billing/csv", "billing/types", "api/billing/export"],
+        focusNodeId: "billing/csv",
+      },
+    },
+  });
+
+  // ── MEDIA artifact (pill → external) ──────────────────────────────
+  const mediaMsg = await db.chatMessage.create({
+    data: { taskId, message: "Here's a chart of p95 export latency before/after:", role: "ASSISTANT" },
+  });
+  await db.artifact.create({
+    data: {
+      messageId: mediaMsg.id,
+      type: ArtifactType.MEDIA,
+      content: {
+        url: "https://placehold.co/800x500/png",
+        type: "image",
+        metadata: { width: 800, height: 500, format: "png", title: "Export latency before/after" },
+      },
+    },
+  });
+
+  // ── BUG_REPORT artifact (pill → external) ─────────────────────────
+  const bugMsg = await db.chatMessage.create({
+    data: { taskId, message: "Filed a bug report for the edge case I noticed:", role: "ASSISTANT" },
+  });
+  await db.artifact.create({
+    data: {
+      messageId: bugMsg.id,
+      type: ArtifactType.BUG_REPORT,
+      content: {
+        title: "Empty cursor produces a CSV with header-only line",
+        severity: "LOW",
+        reproduction:
+          "1. Hit /api/billing/export with a workspace that has 0 rows\n2. Response body is just the header row + LF\n3. Some downstream parsers (Looker connector) reject this as 'no data'",
+        stackTrace: "n/a — behavioral bug, no exception thrown.",
+        environment: { browser: "n/a", os: "Linux (Vercel runtime)", nodeVersion: "v20" },
+      },
+    },
+  });
+
+  // Closing assistant turn so the scroll ends on a natural prompt.
+  await db.chatMessage.create({
+    data: {
+      taskId,
+      message:
+        "All set — give the PR a look when you have a sec. Happy to revise anything before merge.",
+      role: "ASSISTANT",
+    },
+  });
+  console.log(`  + 11 chat messages with artifact spread on review task`);
+}
+
 async function backfillWorkspace(
   userId: string,
   workspaceId: string,
@@ -292,12 +629,19 @@ async function backfillWorkspace(
   }
 
   // ── READY-TO-REVIEW task (COMPLETED but not DONE) ──────────────
-  const existingReview = await db.task.findFirst({
+  // This is the "agent finished a bunch of stuff, you should look at
+  // what they made" task — we attach a representative spread of
+  // artifacts to it so the canvas-sidebar TaskChat exercises every
+  // rendering path: inline FORM, inline PR card, click-to-modal pills
+  // (CODE / DIFF / LONGFORM / BOUNTY / PUBLISH_WORKFLOW), and
+  // external-fallback pills (BROWSER / IDE / WORKFLOW / GRAPH /
+  // MEDIA / BUG_REPORT). See `seedReviewTaskArtifacts` below.
+  let reviewTask = await db.task.findFirst({
     where: { workspaceId, title: variant.review.title, deleted: false },
     select: { id: true },
   });
-  if (!existingReview) {
-    await db.task.create({
+  if (!reviewTask) {
+    reviewTask = await db.task.create({
       data: {
         title: variant.review.title,
         description: variant.review.description,
@@ -309,9 +653,11 @@ async function backfillWorkspace(
         sourceType: TaskSourceType.USER,
         priority: Priority.MEDIUM,
       },
+      select: { id: true },
     });
     console.log(`  + ready-to-review task: ${variant.review.title}`);
   }
+  await seedReviewTaskArtifacts(reviewTask.id, variant.review.title);
 
   // ── PLAN-QUESTION task with FORM artifact as latest msg ────────
   let formTask = await db.task.findFirst({
