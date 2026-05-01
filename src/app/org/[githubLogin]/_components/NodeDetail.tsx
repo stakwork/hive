@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
 import type { WorkflowStatus } from "@/lib/chat";
 import { FeaturePlanChat } from "./FeaturePlanChat";
+import { TaskChat } from "./TaskChat";
 
 /**
  * Right-panel detail card for the currently-selected canvas node.
@@ -335,23 +336,48 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
     }
     case "task": {
       const status = (extras.status ?? "") as string;
-      const workflowStatus = (extras.workflowStatus ?? "") as string;
+      const workflowStatusStr = (extras.workflowStatus ?? "") as string;
       const slug = extras.workspaceSlug as string | undefined;
       const assignee = extras.assignee as
         | { name: string | null }
         | null
         | undefined;
+      // Typed copy of `workflowStatus` for the chat seed. The string
+      // form above is what we display in the pill; `TaskChat` wants
+      // the enum (or null). Keep both — the pill stays string-driven
+      // so unknown future statuses still render their raw label.
+      const workflowStatus = (extras.workflowStatus ?? null) as
+        | WorkflowStatus
+        | null;
       return (
         <div className="space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             {status && <StatusPill value={status} />}
-            {workflowStatus && <StatusPill value={workflowStatus} variant="muted" />}
+            {workflowStatusStr && (
+              <StatusPill value={workflowStatusStr} variant="muted" />
+            )}
           </div>
           {assignee?.name && (
             <StatGrid stats={[{ label: "Owner", value: assignee.name }]} />
           )}
           {slug && (
-            <FooterLink href={`/w/${slug}/tasks/${detail.id}`} label="Open task" />
+            <FooterLink href={`/w/${slug}/task/${detail.id}`} label="Open task" />
+          )}
+          {/*
+           * Inline task chat — symmetric to the feature plan chat
+           * embedded in `case "feature":` above. Reads from
+           * `/api/tasks/[id]/messages`, posts to `/api/chat/message`,
+           * subscribes to the task's Pusher channel for live updates.
+           * Renders FORM artifacts inline so the user can answer the
+           * agent's clarifying questions without leaving the canvas
+           * — the AttentionList card's primary use case.
+           */}
+          {slug && (
+            <TaskChat
+              taskId={detail.id}
+              workspaceSlug={slug}
+              initialWorkflowStatus={workflowStatus}
+            />
           )}
         </div>
       );
