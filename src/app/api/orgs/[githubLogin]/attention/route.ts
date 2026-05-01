@@ -45,7 +45,26 @@ export async function GET(
       ? Math.min(Math.max(parsed, 1), MAX_LIMIT)
       : DEFAULT_LIMIT;
 
-    const result = await getTopAttentionItems({ githubLogin, userId, limit });
+    // Optional `?workspaceSlugs=a,b,c` allow-list. Used by the
+    // org-canvas caller to restrict attention to workspaces visible
+    // on the root canvas (i.e. excluding ones the user has hidden).
+    // Absent param = no filter (fetch across all accessible
+    // workspaces); empty string = explicit "no workspaces visible".
+    const slugsParam = request.nextUrl.searchParams.get("workspaceSlugs");
+    const allowedWorkspaceSlugs =
+      slugsParam === null
+        ? undefined
+        : slugsParam
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+
+    const result = await getTopAttentionItems({
+      githubLogin,
+      userId,
+      limit,
+      allowedWorkspaceSlugs,
+    });
     return NextResponse.json(result);
   } catch (error) {
     console.error("[GET /api/orgs/[githubLogin]/attention] Error:", error);
