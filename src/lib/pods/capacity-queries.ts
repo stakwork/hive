@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { VMData } from "@/types/pool-manager";
-import { buildPodUrl } from "./queries";
-import { POD_PORTS } from "./constants";
+import { POD_BASE_DOMAIN } from "./queries";
 
 /**
  * Fast database-only query for basic VM data
@@ -23,7 +22,6 @@ export async function getBasicVMDataFromPods(
       usageStatusMarkedBy: true,
       password: true,
       createdAt: true,
-      portMappings: true,
     },
     orderBy: {
       createdAt: "desc",
@@ -52,15 +50,11 @@ export async function getBasicVMDataFromPods(
   }
 
   return pods.map((pod) => {
-    const portMappings = pod.portMappings as number[] | null;
-    const controlPort = parseInt(POD_PORTS.CONTROL, 10);
-    const fallbackPort = parseInt(POD_PORTS.FRONTEND_FALLBACK, 10);
-    const frontendPort =
-      Array.isArray(portMappings) && portMappings.length > 0
-        ? (portMappings.find((p) => p !== controlPort) ?? fallbackPort)
-        : fallbackPort;
-    const url = buildPodUrl(pod.podId, frontendPort);
-    const frontendUrl = url;
+    // IDE URL is the bare pod hostname (proxied to code-server). No port suffix.
+    // The "Open Browser" frontend URL is resolved on-demand via /jlist (see
+    // /api/w/[slug]/pool/[podId]/frontend-url) since the frontend port is
+    // pod-specific and may not be 3000.
+    const url = `https://${pod.podId}.${POD_BASE_DOMAIN}`;
     const subdomain = pod.podId;
 
     // Map database status to pool-manager state format
@@ -102,7 +96,6 @@ export async function getBasicVMDataFromPods(
       marked_at: pod.usageStatusMarkedBy ? pod.createdAt.toISOString() : null,
       password: pod.password || undefined,
       url,
-      frontendUrl,
       repository: undefined, // Not available in basic query
       assignedTask: assignedTask
         ? {

@@ -79,14 +79,43 @@ function VMCard({
     }
   };
 
+  const [isOpeningBrowser, setIsOpeningBrowser] = useState(false);
+
   const handleOpenIDE = () => {
     if (!vm.url) return;
     window.open(vm.url, "_blank", "noopener,noreferrer");
   };
 
-  const handleOpenBrowser = () => {
-    if (!vm.frontendUrl) return;
-    window.open(vm.frontendUrl, "_blank", "noopener,noreferrer");
+  const handleOpenBrowser = async () => {
+    if (!workspaceSlug || !vm.id || isOpeningBrowser) return;
+
+    // Open a blank tab synchronously so the popup blocker treats it as
+    // user-initiated. We'll set its location once the URL is resolved.
+    const newWindow = window.open("about:blank", "_blank", "noopener,noreferrer");
+    setIsOpeningBrowser(true);
+
+    try {
+      const res = await fetch(
+        `/api/w/${encodeURIComponent(workspaceSlug)}/pool/${encodeURIComponent(vm.id)}/frontend-url`,
+      );
+      const json = await res.json().catch(() => null);
+      const url = json?.data?.frontendUrl as string | undefined;
+
+      if (url && newWindow) {
+        newWindow.location.href = url;
+      } else if (url) {
+        // Popup blocked — try a fresh window.open as a fallback.
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        newWindow?.close();
+        console.error("Failed to resolve frontend URL", json);
+      }
+    } catch (err) {
+      newWindow?.close();
+      console.error("Failed to resolve frontend URL", err);
+    } finally {
+      setIsOpeningBrowser(false);
+    }
   };
 
   return (
@@ -118,10 +147,21 @@ function VMCard({
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Open IDE
                   </DropdownMenuItem>
-                  {vm.frontendUrl && (
-                    <DropdownMenuItem onClick={handleOpenBrowser}>
-                      <Globe className="h-4 w-4 mr-2" />
-                      Open Browser
+                  {workspaceSlug && (
+                    <DropdownMenuItem
+                      onClick={handleOpenBrowser}
+                      disabled={isOpeningBrowser}
+                      onSelect={(e) => {
+                        // Keep the menu logic simple; default close-on-select is fine.
+                        if (isOpeningBrowser) e.preventDefault();
+                      }}
+                    >
+                      {isOpeningBrowser ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Globe className="h-4 w-4 mr-2" />
+                      )}
+                      {isOpeningBrowser ? "Opening..." : "Open Browser"}
                     </DropdownMenuItem>
                   )}
                   {isAdmin && onDeletePod && (
