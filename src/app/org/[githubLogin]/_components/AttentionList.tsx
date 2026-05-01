@@ -108,7 +108,12 @@ const TYPE_META: Record<AttentionItem["type"], TypeMeta> = {
   halted: {
     Icon: AlertTriangle,
     label: "Halted",
-    iconClass: "text-rose-500",
+    // Amber rather than rose: the card is advisory ("here's what
+    // needs you"), not an error state. A red icon reads as "system
+    // failure" to the user when really the workflow is just stuck
+    // waiting for them. Tonally aligned with the other warning-class
+    // signals (awaiting-reply, plan-question).
+    iconClass: "text-amber-500",
   },
   "awaiting-reply": {
     Icon: MessageCircleQuestion,
