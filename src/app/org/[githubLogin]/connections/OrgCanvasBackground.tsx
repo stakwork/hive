@@ -639,6 +639,20 @@ export function OrgCanvasBackground({
    * (`AttentionList.tsx:resolveTarget`) which writes
    * `?canvas=<ref>&select=<liveId>` via `router.replace`.
    *
+   * **Only reacts to non-empty refs.** `urlCanvasRef === ""` is NOT a
+   * "go back to root" signal here because of a render-ordering hazard:
+   * when the lib drills into a sub-canvas, our `handleBreadcrumbsChange`
+   * synchronously sets `currentRef` AND calls `router.replace` to
+   * write `?canvas=<ref>` to the URL. Next render commits `currentRef`
+   * immediately, but Next.js's `useSearchParams` lags behind the
+   * router by at least one render — so this effect runs once with
+   * `urlCanvasRef === ""` (stale) and `currentRef === "initiative:..."`
+   * (fresh). If we fired `navigateToRoot()` on that mismatch, the
+   * library would bounce the user back out of the sub-canvas they
+   * just drilled into. Back-navigation is already handled by the
+   * library's breadcrumb-click flow (which updates our state via
+   * `onBreadcrumbsChange`); we don't need this effect to drive root.
+   *
    * Guards:
    *   - Wait for `initialNavAppliedRef.current` so this never races
    *     the mount effect.
@@ -646,20 +660,16 @@ export function OrgCanvasBackground({
    *     idempotent but we'd still fire an unnecessary animation.
    *   - Skip while `deepLinkInFlight` — back-to-back URL updates
    *     during an in-flight drill-in would queue confusingly.
+   *   - Skip when `urlCanvasRef === ""` (see above).
    */
   const urlCanvasRef = searchParams.get("canvas") ?? "";
   useEffect(() => {
     if (!root || !initialNavAppliedRef.current) return;
     if (deepLinkInFlight) return;
+    if (urlCanvasRef === "") return;
     if (urlCanvasRef === currentRef) return;
     const handle = canvasHandleRef.current;
     if (!handle) return;
-    if (urlCanvasRef === "") {
-      // Empty ref means "back to root." `navigateToRoot` is the
-      // library's matching primitive; cheap and synchronous-feeling.
-      handle.navigateToRoot();
-      return;
-    }
     setDeepLinkInFlight(true);
     void handle
       .zoomIntoNode(urlCanvasRef, { durationMs: 0 })
