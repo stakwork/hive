@@ -171,48 +171,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     };
   }, [sharedChatId, githubLogin]);
 
-  // Resolve the synthetic intro's data BEFORE starting the
-  // conversation so the seed messages land atomically with
-  // `startConversation` (avoiding a flicker of empty chat → seed
-  // populated). Skipped when forking a share or when the user
-  // dismissed during this session.
-  useEffect(() => {
-    if (sharedChatId) {
-      // Forking someone else's conversation — never inject our intro.
-      setAttentionLoadComplete(true);
-      return;
-    }
-    // Per-session dismissal. Wrapped in a try/catch because some
-    // browsers throw on `sessionStorage` access in private modes.
-    try {
-      const dismissed = sessionStorage.getItem(
-        `hive:attention-dismissed:${githubLogin}`,
-      );
-      if (dismissed === "1") {
-        setAttentionLoadComplete(true);
-        return;
-      }
-    } catch {
-      // Storage unavailable — fall through and just always show.
-    }
-    let cancelled = false;
-    fetch(`/api/orgs/${githubLogin}/attention?limit=3`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        if (Array.isArray(data.items) && data.items.length > 0) {
-          setAttentionData({ items: data.items, total: data.total ?? data.items.length });
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setAttentionLoadComplete(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sharedChatId, githubLogin]);
-
   const handleHiddenChange = useCallback((entries: HiddenLiveEntry[]) => {
     const ids = new Set(
       entries.filter((e) => e.kind === "ws").map((e) => stripWsPrefix(e.id)),
@@ -228,6 +186,61 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         .map((ws) => ws.slug),
     [workspaces, hiddenWorkspaceIds],
   );
+
+  // Resolve the synthetic intro's data BEFORE starting the
+  // conversation so the seed messages land atomically with
+  // `startConversation` (avoiding a flicker of empty chat → seed
+  // populated). Skipped when forking a share or when the user
+  // dismissed during this session.
+  //
+  // We wait for `hiddenInitialized` so the slug allow-list we send
+  // matches what the user actually sees on the root canvas — without
+  // it, attention items from a hidden workspace would leak into the
+  // intro card on first paint, then jump away on the next refresh.
+  useEffect(() => {
+    if (sharedChatId) {
+      // Forking someone else's conversation — never inject our intro.
+      setAttentionLoadComplete(true);
+      return;
+    }
+    if (!hiddenInitialized) return; // wait for the hidden-workspace list
+    // Per-session dismissal. Wrapped in a try/catch because some
+    // browsers throw on `sessionStorage` access in private modes.
+    try {
+      const dismissed = sessionStorage.getItem(
+        `hive:attention-dismissed:${githubLogin}`,
+      );
+      if (dismissed === "1") {
+        setAttentionLoadComplete(true);
+        return;
+      }
+    } catch {
+      // Storage unavailable — fall through and just always show.
+    }
+    let cancelled = false;
+    // Restrict to workspaces visible on the root canvas. An empty
+    // list still flows through as `workspaceSlugs=` so the server
+    // returns zero items rather than treating the param as absent.
+    const slugsQs = `&workspaceSlugs=${encodeURIComponent(chatWorkspaceSlugs.join(","))}`;
+    fetch(`/api/orgs/${githubLogin}/attention?limit=3${slugsQs}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          setAttentionData({ items: data.items, total: data.total ?? data.items.length });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setAttentionLoadComplete(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `chatWorkspaceSlugs` identity changes whenever the visible-set
+    // shifts; we want a fresh fetch in that case (e.g. user hides a
+    // workspace, refreshes — new list reflects current root scope).
+  }, [sharedChatId, githubLogin, hiddenInitialized, chatWorkspaceSlugs]);
 
   const fetchConnections = useCallback(async () => {
     try {
