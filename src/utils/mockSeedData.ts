@@ -271,6 +271,15 @@ async function seedFeatures(
     await seedUserStories(creatorId, feature.id);
   }
 
+  // Note on attention-card showcase data: per-workspace variants for
+  // the org-canvas attention card are NOT seeded here, because every
+  // workspace would get an identical row and the org canvas would
+  // show duplicate cards. They're seeded by
+  // `scripts/backfill-attention-showcase.ts`, which cycles through
+  // distinct variants per workspace so the org canvas surfaces
+  // realistic variety. Run that script once per fresh DB to populate
+  // the showcase rows.
+
   return features;
 }
 
@@ -594,7 +603,61 @@ async function seedTasks(
       assignToTeamMember: 3, // David (DEVELOPER)
       blockingReason: "Blocked: WebSocket infrastructure deployment pending DevOps approval. Security review in progress for real-time data streaming. Expected resolution: 2 weeks.",
     },
+
+    // ─── Attention-card showcase tasks ──────────────────────────────────
+    // These exist specifically so the org-canvas synthetic-intro card
+    // (`src/services/attention/topItems.ts`) has live signals to surface.
+    // Each row maps to one of the four signal types: halted, ready-to-
+    // review, plan-question, awaiting-reply (the latter is on a feature).
+
+    // HALTED — agent stopped mid-run; needs user intervention.
+    {
+      title: "Migrate billing webhook to Stripe v2024-04-10",
+      description:
+        "Agent hit an unrecoverable error: Stripe API returned 401 on the new event signature. Needs a refreshed restricted key.",
+      status: TaskStatus.IN_PROGRESS,
+      workflowStatus: WorkflowStatus.HALTED,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+    },
+    // FAILED — workflow crashed.
+    {
+      title: "Backfill display names for legacy users",
+      description:
+        "Schema migration script raised a unique-constraint violation. Transaction rolled back; needs deterministic fallback.",
+      status: TaskStatus.IN_PROGRESS,
+      workflowStatus: WorkflowStatus.FAILED,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.MEDIUM,
+    },
+    // READY-TO-REVIEW — agent finished; user must accept (status NOT DONE).
+    {
+      title: "Add CSV export to billing reports",
+      description:
+        "Agent implemented streaming CSV export with the requested columns. PR opened; awaits human review before merge.",
+      status: TaskStatus.IN_PROGRESS, // intentionally NOT DONE — review pending
+      workflowStatus: WorkflowStatus.COMPLETED,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.MEDIUM,
+    },
+    // PLAN-QUESTION — has a FORM artifact in latest message; needs input.
+    // This task gets a FORM message attached at the end of seeding —
+    // search for `attentionFormTaskTitle` below.
+    {
+      title: "Configure new staging environment domain",
+      description:
+        "Agent paused for confirmation: which subdomain should the staging environment use, and which Vercel project owns it?",
+      status: TaskStatus.IN_PROGRESS,
+      workflowStatus: WorkflowStatus.IN_PROGRESS,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+    },
   ];
+
+  // Title used to identify the FORM-artifact target task after creation.
+  // Kept as a const so the post-loop seeding doesn't drift from the
+  // template above.
+  const attentionFormTaskTitle = "Configure new staging environment domain";
 
   const createdTasks: Array<{ id: string; title: string; status: TaskStatus; sourceType: TaskSourceType }> = [];
   const tasksWithPods: TaskWithPod[] = [];
@@ -670,6 +733,49 @@ async function seedTasks(
 
   // Add diverse PR artifacts for last 72 hours testing
   await seedPullRequestArtifacts(userId, workspaceId, features);
+
+  // Add a FORM artifact (latest message) to the showcase task so the
+  // org-canvas attention card surfaces a "plan-question" item.
+  const formTarget = createdTasks.find((t) => t.title === attentionFormTaskTitle);
+  if (formTarget) {
+    const formMsg = await db.chatMessage.create({
+      data: {
+        taskId: formTarget.id,
+        message:
+          "Before I provision the staging domain, I need a couple of decisions from you:",
+        role: "ASSISTANT",
+      },
+    });
+    await db.artifact.create({
+      data: {
+        messageId: formMsg.id,
+        type: ArtifactType.FORM,
+        content: {
+          formId: "staging-domain-config-v1",
+          title: "Staging environment configuration",
+          fields: [
+            { name: "subdomain", type: "text", required: true, label: "Subdomain (e.g. staging-eu)" },
+            {
+              name: "vercelProject",
+              type: "select",
+              required: true,
+              label: "Vercel project",
+              options: ["web-app", "marketing-site", "admin-portal"],
+            },
+          ],
+          schema: {
+            type: "object",
+            properties: {
+              subdomain: { type: "string" },
+              vercelProject: { type: "string", enum: ["web-app", "marketing-site", "admin-portal"] },
+            },
+            required: ["subdomain", "vercelProject"],
+          },
+        },
+      },
+    });
+    console.log(`[MockSeed] Added FORM artifact to attention-card showcase task`);
+  }
 
   // Second pass: Add task dependencies
   // Create diverse dependency scenarios as specified in requirements
