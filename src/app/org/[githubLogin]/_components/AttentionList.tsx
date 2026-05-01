@@ -67,17 +67,33 @@ function resolveTarget(
       selectId: `feature:${item.entityId}`,
     };
   }
-  // Task path. Tasks only project on milestone canvases (under their
-  // parent feature column). Without a parent feature, or with a
-  // parent feature that has no milestone, there's no canvas node to
-  // select → external fallback.
-  if (item.featureId && item.milestoneId) {
+  // Task path. Tasks project as nodes only on milestone canvases
+  // (under their parent feature column). When the parent feature has
+  // a milestone, that's the natural drill-target — the task node is
+  // visible AND selecting it mounts `TaskChat` in the right panel.
+  //
+  // Without a milestone, the task isn't a canvas node anywhere, but
+  // we still want the user to land in `TaskChat` (the whole point
+  // of the AttentionList click is "answer the agent's question").
+  // Drill into the parent feature's projection canvas (initiative-
+  // loose feature → `initiative:<id>`; loose feature → `ws:<id>`)
+  // and seed the task selection. The right panel auto-flips to
+  // Details, fetches the task by id, and mounts `TaskChat` —
+  // independent of whether a `task:<id>` node renders on the canvas.
+  if (item.workspaceId) {
+    const canvasRef = mostSpecificRef({
+      workspaceId: item.workspaceId,
+      initiativeId: item.initiativeId,
+      milestoneId: item.milestoneId,
+    });
     return {
       kind: "inCanvas",
-      canvasRef: `milestone:${item.milestoneId}`,
+      canvasRef,
       selectId: `task:${item.entityId}`,
     };
   }
+  // Last resort — workspaceId missing (shouldn't happen given the
+  // schema, but defensive against partial API responses).
   return { kind: "external", href: item.link };
 }
 
