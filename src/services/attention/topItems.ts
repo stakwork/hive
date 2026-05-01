@@ -100,11 +100,21 @@ const TYPE_ORDER: Record<AttentionItem["type"], number> = {
  * Resolve the workspaces inside `githubLogin` that `userId` can see.
  * Mirrors `/api/orgs/[githubLogin]/workspaces` (which already does
  * exactly this) so the attention aggregator scopes to the same set.
+ *
+ * When `allowedSlugs` is provided, the result is further restricted
+ * to only those slugs — used by the canvas caller to exclude
+ * workspaces the user has hidden on the root canvas (a hidden
+ * workspace shouldn't surface attention items in the intro card).
+ * `null` / `undefined` means "no slug filter."
  */
 async function getAccessibleWorkspaces(
   githubLogin: string,
   userId: string,
+  allowedSlugs?: string[] | null,
 ): Promise<Workspace[]> {
+  // Empty array means the caller explicitly told us "no workspaces
+  // are visible" — short-circuit before hitting the DB.
+  if (allowedSlugs && allowedSlugs.length === 0) return [];
   const rows = await db.workspace.findMany({
     where: {
       deleted: false,
@@ -113,6 +123,7 @@ async function getAccessibleWorkspaces(
         { ownerId: userId },
         { members: { some: { userId, leftAt: null } } },
       ],
+      ...(allowedSlugs ? { slug: { in: allowedSlugs } } : {}),
     },
     select: { id: true, slug: true, name: true },
   });
@@ -497,13 +508,44 @@ const PRIORITY_RANK: Record<Priority, number> = {
 };
 
 /**
- * Sort: type bucket asc → priority asc (CRITICAL first) → oldest
- * first within bucket. Older items rank higher because they have
- * been waiting longer.
+ * Items older than this are dropped before sort/cap. The intro card
+ * is a "what's relevant right now" surface — week-old halted runs and
+ * stale FORMs add clutter and mostly indicate the user has already
+ * moved on. Tunable; if it ever needs to be per-type, split into a
+ * Record<AttentionItem["type"], number>.
+ */
+const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * "On canvas" = the entity projects on a sub-canvas reachable from
+ * the org root. Initiatives appear on root, milestones appear on
+ * initiative sub-canvases — so a feature/task with `initiativeId` or
+ * `milestoneId` set lands on a canvas the user can drill into.
+ * Loose features (and tasks under them) only project on the
+ * workspace sub-canvas, which is one extra click away — they're
+ * still reachable but feel less "in front of you."
+ *
+ * Used as a sort boost so attention items aligned with the visible
+ * roadmap structure rank above orphans of the same type/priority.
+ */
+function isOnCanvas(item: AttentionItem): boolean {
+  return Boolean(item.initiativeId) || Boolean(item.milestoneId);
+}
+
+/**
+ * Sort: type bucket asc → on-canvas first → priority asc (CRITICAL
+ * first) → oldest first within bucket. The on-canvas boost slots
+ * between type and priority because "this is on the canvas you're
+ * staring at" is a stronger relevance signal than priority for the
+ * intro-card surface — a CRITICAL loose feature still loses to a
+ * HIGH feature in an initiative the user is actively tracking.
  */
 function compareItems(a: AttentionItem, b: AttentionItem): number {
   const t = TYPE_ORDER[a.type] - TYPE_ORDER[b.type];
   if (t !== 0) return t;
+  const oa = isOnCanvas(a) ? 0 : 1;
+  const ob = isOnCanvas(b) ? 0 : 1;
+  if (oa !== ob) return oa - ob;
   const pa = a.priority ? PRIORITY_RANK[a.priority] : PRIORITY_RANK.MEDIUM;
   const pb = b.priority ? PRIORITY_RANK[b.priority] : PRIORITY_RANK.MEDIUM;
   if (pa !== pb) return pa - pb;
@@ -537,10 +579,23 @@ export async function getTopAttentionItems(args: {
   githubLogin: string;
   userId: string;
   limit?: number;
+  /**
+   * Optional slug allow-list — when provided, attention items are
+   * only collected from workspaces whose slugs appear here. The
+   * canvas caller passes the visible (non-hidden) workspaces from
+   * the root canvas so hidden workspaces don't leak into the intro
+   * card. Pass `undefined` (or omit) to fetch across all accessible
+   * workspaces.
+   */
+  allowedWorkspaceSlugs?: string[] | null;
 }): Promise<{ items: AttentionItem[]; total: number }> {
-  const { githubLogin, userId, limit = 3 } = args;
+  const { githubLogin, userId, limit = 3, allowedWorkspaceSlugs } = args;
 
-  const workspaces = await getAccessibleWorkspaces(githubLogin, userId);
+  const workspaces = await getAccessibleWorkspaces(
+    githubLogin,
+    userId,
+    allowedWorkspaceSlugs,
+  );
   if (workspaces.length === 0) return { items: [], total: 0 };
 
   const results = await Promise.allSettled([
@@ -559,8 +614,12 @@ export async function getTopAttentionItems(args: {
     }
   }
 
-  merged.sort(compareItems);
-  const unique = dedupe(merged);
+  // Drop stale items before sorting — keeps `total` honest (the
+  // "+N more" hint should reflect actually-relevant items, not
+  // ancient ones we'd never surface).
+  const fresh = merged.filter((item) => item.ageMs <= MAX_AGE_MS);
+  fresh.sort(compareItems);
+  const unique = dedupe(fresh);
   return {
     items: unique.slice(0, limit),
     total: unique.length,
