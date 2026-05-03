@@ -21,6 +21,15 @@ vi.mock("@/lib/db", () => ({
     workspaceMember: {
       findUnique: vi.fn(),
     },
+    // resolveWorkspaceAccess falls back to a super-admin check via
+    // checkIsSuperAdmin when no membership is found. Mock the underlying
+    // queries so non-member tests don't crash.
+    user: {
+      findUnique: vi.fn(),
+    },
+    gitHubAuth: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
@@ -41,6 +50,9 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       isPublicViewable: false,
     });
     (db.workspaceMember.findUnique as Mock).mockResolvedValue(null);
+    // Default: not a super-admin.
+    (db.user.findUnique as Mock).mockResolvedValue({ role: "USER" });
+    (db.gitHubAuth.findUnique as Mock).mockResolvedValue(null);
   });
 
   function createAuthenticatedRequest(url: string): NextRequest {

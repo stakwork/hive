@@ -3,9 +3,8 @@ import { db } from "@/lib/db";
 import { getSwarmConfig } from "../../utils";
 import { getAllRepositories, joinRepoUrls } from "@/lib/helpers/repository";
 import { repoAgent } from "@/lib/ai/askTools";
-import { validateWorkspaceAccess } from "@/services/workspace";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
+import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 import { extractMermaidBody } from "@/lib/diagrams/mermaid-parser";
 import { resolveExtraSwarms } from "@/services/roadmap/feature-chat";
 
@@ -14,10 +13,6 @@ const MERMAID_INSTRUCTION =
 
 export async function POST(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const body = await request.json();
     const { workspace, diagramId, prompt } = body;
 
@@ -25,36 +20,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields: workspace, diagramId, prompt" }, { status: 400 });
     }
 
-    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
-    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    const access = await resolveWorkspaceAccess(request, { slug: workspace });
+    const ok = requireMemberAccess(access);
+    if (ok instanceof NextResponse) return ok;
+
+    const swarmConfig = await getSwarmConfig(ok.workspaceId);
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }
 
     const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
 
-    const workspaceAccess = await validateWorkspaceAccess(workspace, userOrResponse.id, true);
-    if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
-      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
-    }
-
     const existingDiagram = await db.diagram.findUnique({ where: { id: diagramId } });
     if (!existingDiagram) {
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
     }
 
-    const allRepos = await getAllRepositories(workspaceAccess.workspace.id);
+    const allRepos = await getAllRepositories(ok.workspaceId);
     if (allRepos.length === 0) {
       return NextResponse.json({ error: "No repositories configured for this workspace" }, { status: 404 });
     }
 
-    const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspace);
+    const githubProfile = await getGithubUsernameAndPAT(ok.userId, workspace);
     const token = githubProfile?.token;
     if (!token) {
       return NextResponse.json({ error: "GitHub PAT not found for this user" }, { status: 404 });
     }
 
-    const resolved = await resolveExtraSwarms(prompt, userOrResponse.id);
+    const resolved = await resolveExtraSwarms(prompt, ok.userId);
     const subAgents = resolved.length
       ? resolved.map((s) => ({
           name: s.name,
@@ -91,7 +84,7 @@ export async function POST(request: NextRequest) {
         name: existingDiagram.name,
         body: extractedBody,
         description: null,
-        createdBy: userOrResponse.id,
+        createdBy: ok.userId,
         groupId: existingDiagram.groupId,
       },
     });
@@ -99,7 +92,7 @@ export async function POST(request: NextRequest) {
     await db.diagramWorkspace.create({
       data: {
         diagramId: newDiagram.id,
-        workspaceId: workspaceAccess.workspace.id,
+        workspaceId: ok.workspaceId,
       },
     });
 

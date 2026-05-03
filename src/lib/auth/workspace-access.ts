@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getMiddlewareContext } from "@/lib/middleware/utils";
+import { getMiddlewareContext, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { WorkspaceRole } from "@/lib/auth/roles";
 
 /**
  * Result of resolving a request's access to a workspace.
  *
- * - `member`: authenticated user with a workspace membership.
+ * - `member`: authenticated user with a workspace membership (or super-admin —
+ *   see `superAdmin` flag on the variant).
  * - `public-viewer`: unauthenticated visitor on a workspace flagged as
  *   `isPublicViewable`. Has no userId — read-only access implied.
  * - `unauthenticated`: request has no session and the workspace is not public.
@@ -20,6 +21,11 @@ export type WorkspaceAccess =
       workspaceId: string;
       slug: string;
       role: WorkspaceRole;
+      /**
+       * True when the caller was admitted via super-admin bypass rather than
+       * an actual workspace membership row. Role is synthesized as `OWNER`.
+       */
+      superAdmin?: boolean;
     }
   | {
       kind: "public-viewer";
@@ -91,6 +97,19 @@ export async function resolveWorkspaceAccess(
         workspaceId: workspace.id,
         slug: workspace.slug,
         role: membership.role as WorkspaceRole,
+      };
+    }
+
+    // Super-admin bypass: a user with SUPER_ADMIN role (or in POOL_SUPERADMINS)
+    // gets OWNER-level access to any workspace, even without a membership row.
+    if (await checkIsSuperAdmin(userId)) {
+      return {
+        kind: "member",
+        userId,
+        workspaceId: workspace.id,
+        slug: workspace.slug,
+        role: WorkspaceRole.OWNER,
+        superAdmin: true,
       };
     }
   }

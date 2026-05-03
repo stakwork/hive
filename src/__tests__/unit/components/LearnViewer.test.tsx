@@ -14,6 +14,12 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => ({ get: mockSearchParamsGet }),
 }));
 
+// LearnViewer reads `isPublicViewer` from the workspace context purely to
+// thread through to LearnDocViewer; tests don't care about that surface.
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({ isPublicViewer: false }),
+}));
+
 // ---------------------------------------------------------------------------
 // Child component mocks
 // ---------------------------------------------------------------------------
