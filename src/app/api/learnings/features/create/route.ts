@@ -2,17 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSwarmConfig } from "../../utils";
 import { getPrimaryRepository, getRepositoryById } from "@/lib/helpers/repository";
 import { parseOwnerRepo } from "@/lib/ai/utils";
-import { validateWorkspaceAccess } from "@/services/workspace";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
+import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 
 export async function POST(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-    
-
     const body = await request.json();
     const { workspace, prompt, name, repositoryId } = body;
 
@@ -20,24 +14,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields: workspace, prompt, name" }, { status: 400 });
     }
 
-    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
-    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    const access = await resolveWorkspaceAccess(request, { slug: workspace });
+    const ok = requireMemberAccess(access);
+    if (ok instanceof NextResponse) return ok;
+
+    const swarmConfig = await getSwarmConfig(ok.workspaceId);
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }
 
     const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
 
-    // Get workspace access to retrieve workspace ID
-    const workspaceAccess = await validateWorkspaceAccess(workspace, userOrResponse.id, true);
-    if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
-      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
-    }
-
     // Get repository - use specific repositoryId if provided, otherwise fall back to primary
     const primaryRepo = repositoryId
-      ? await getRepositoryById(repositoryId, workspaceAccess.workspace.id)
-      : await getPrimaryRepository(workspaceAccess.workspace.id);
+      ? await getRepositoryById(repositoryId, ok.workspaceId)
+      : await getPrimaryRepository(ok.workspaceId);
     if (!primaryRepo) {
       return NextResponse.json({ error: "No repository configured for this workspace" }, { status: 404 });
     }
@@ -54,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get GitHub PAT for the user
-    const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspace);
+    const githubProfile = await getGithubUsernameAndPAT(ok.userId, workspace);
     const token = githubProfile?.token;
 
     if (!token) {

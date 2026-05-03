@@ -1,29 +1,32 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { validateWorkspaceAccess } from "@/services/workspace";
 
-export async function getSwarmConfig(workspaceSlug: string, userId: string, options?: { isSuperAdmin?: boolean }) {
-  const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userId, true);
-  if (!workspaceAccess.hasAccess) {
-    return { error: "Workspace not found or access denied", status: 403 };
-  }
-
+/**
+ * Resolve the swarm credentials for a workspace.
+ *
+ * NOTE: this helper does NOT perform any access control. Callers MUST
+ * authorize the request first (e.g. via `resolveWorkspaceAccess` +
+ * `requireReadAccess`/`requireMemberAccess`) and only pass the resolved
+ * workspaceId here.
+ */
+export async function getSwarmConfig(workspaceId: string) {
   const swarm = await db.swarm.findFirst({
-    where: {
-      workspaceId: workspaceAccess.workspace?.id,
-    },
+    where: { workspaceId },
   });
 
   if (!swarm) {
-    return { error: "Swarm not found for this workspace", status: 404 };
+    return { error: "Swarm not found for this workspace", status: 404 } as const;
   }
 
   if (!swarm.swarmUrl) {
-    return { error: "Swarm URL not configured", status: 404 };
+    return { error: "Swarm URL not configured", status: 404 } as const;
   }
 
   const encryptionService: EncryptionService = EncryptionService.getInstance();
-  const decryptedSwarmApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || "");
+  const decryptedSwarmApiKey = encryptionService.decryptField(
+    "swarmApiKey",
+    swarm.swarmApiKey || "",
+  );
 
   const swarmUrlObj = new URL(swarm.swarmUrl);
   let baseSwarmUrl = `https://${swarmUrlObj.hostname}:3355`;
@@ -31,5 +34,5 @@ export async function getSwarmConfig(workspaceSlug: string, userId: string, opti
     baseSwarmUrl = `http://localhost:3355`;
   }
 
-  return { baseSwarmUrl, decryptedSwarmApiKey };
+  return { baseSwarmUrl, decryptedSwarmApiKey } as const;
 }

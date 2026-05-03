@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSwarmConfig } from "@/app/api/learnings/utils";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
+import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
-
     const { id } = await params;
     const body = await request.json();
     const { documentation, workspace } = body;
@@ -23,8 +18,11 @@ export async function PUT(
       );
     }
 
-    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
-    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    const access = await resolveWorkspaceAccess(request, { slug: workspace });
+    const ok = requireMemberAccess(access);
+    if (ok instanceof NextResponse) return ok;
+
+    const swarmConfig = await getSwarmConfig(ok.workspaceId);
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { validateWorkspaceAccess } from "@/services/workspace";
+import {
+  resolveWorkspaceAccess,
+  requireReadAccess,
+  requireMemberAccess,
+} from "@/lib/auth/workspace-access";
+import { WORKSPACE_PERMISSION_LEVELS } from "@/lib/constants";
+import { WorkspaceRole } from "@/lib/auth/roles";
 
 const updateLearnConfigSchema = z.object({
   autoLearnEnabled: z.boolean(),
@@ -11,22 +15,14 @@ const updateLearnConfigSchema = z.object({
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    const userId = (session?.user as { id?: string })?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { slug } = await params;
 
-    const workspaceAccess = await validateWorkspaceAccess(slug, userId, true);
-    if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
-      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
-    }
+    const access = await resolveWorkspaceAccess(request, { slug });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
 
     const swarm = await db.swarm.findUnique({
-      where: { workspaceId: workspaceAccess.workspace.id },
+      where: { workspaceId: ok.workspaceId },
       select: { autoLearnEnabled: true },
     });
 
@@ -43,29 +39,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    const userId = (session?.user as { id?: string })?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { slug } = await params;
     const body = await request.json();
     const validatedData = updateLearnConfigSchema.parse(body);
 
-    const workspaceAccess = await validateWorkspaceAccess(slug, userId, true);
-    if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
-      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
-    }
+    const access = await resolveWorkspaceAccess(request, { slug });
+    const ok = requireMemberAccess(access);
+    if (ok instanceof NextResponse) return ok;
 
-    // Check if user has sufficient permissions (canWrite = at least DEVELOPER role)
-    if (!workspaceAccess.canWrite) {
+    // Require DEVELOPER+ to toggle auto-learn (matches the previous canWrite gate).
+    const roleLevel = WORKSPACE_PERMISSION_LEVELS[ok.role];
+    if (roleLevel < WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER]) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     const swarm = await db.swarm.findUnique({
-      where: { workspaceId: workspaceAccess.workspace.id },
+      where: { workspaceId: ok.workspaceId },
     });
 
     if (!swarm) {

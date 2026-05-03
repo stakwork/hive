@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { LearnSidebar } from "./LearnSidebar";
 import { LearnDocViewer } from "./LearnDocViewer";
 import { DiagramViewer } from "./DiagramViewer";
@@ -44,6 +45,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { isPublicViewer } = useWorkspace();
 
   const [docs, setDocs] = useState<Doc[]>([]);
   const [concepts, setConcepts] = useState<Concept[]>([]);
@@ -332,6 +334,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
             activeItem={activeItem as Parameters<typeof LearnDocViewer>[0]["activeItem"]}
             onSave={handleSave}
             isSaving={isSaving}
+            readOnly={isPublicViewer}
           />
         )}
       </div>
