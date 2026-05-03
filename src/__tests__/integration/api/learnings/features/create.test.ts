@@ -208,10 +208,12 @@ describe('POST /api/learnings/features/create - Authorization', () => {
 
     expect(response.status).toBe(403);
     const data = await response.json();
-    expect(data.error).toBe('Workspace not found or access denied');
+    // resolveWorkspaceAccess distinguishes `forbidden` (workspace exists, user
+    // is not a member) from `not-found`. Forbidden returns "Access denied".
+    expect(data.error).toBe('Access denied');
   });
 
-  it('should return 403 for deleted workspace access', async () => {
+  it('should return 404 for deleted workspace access', async () => {
     await db.workspace.update({
       where: { id: workspace.id },
       data: { deleted: true, deletedAt: new Date() },
@@ -228,7 +230,9 @@ describe('POST /api/learnings/features/create - Authorization', () => {
     );
     const response = await POST(request);
 
-    expect(response.status).toBe(403);
+    // resolveWorkspaceAccess filters `deleted: false`, so a deleted workspace
+    // is treated as not-existing → 404.
+    expect(response.status).toBe(404);
     const data = await response.json();
     expect(data.error).toBe('Workspace not found or access denied');
   });

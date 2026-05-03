@@ -101,6 +101,15 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
 
   { path: "/api/swarm/jarvis/schema", strategy: "exact", access: "public", methods: ["GET"] },
   { path: "/api/swarm/jarvis/nodes", strategy: "exact", access: "public", methods: ["GET"] },
+
+  // /learn page: docs, concepts, diagrams, and config. Each handler resolves
+  // workspace access via `resolveWorkspaceAccess` + `requireReadAccess`.
+  // POST/PUT siblings on the same paths fall through to `protected`.
+  { path: "/api/learnings/diagrams", strategy: "exact", access: "public", methods: ["GET"] },
+  { path: "/api/learnings/docs", strategy: "exact", access: "public", methods: ["GET"] },
+  { path: "/api/learnings/features", strategy: "exact", access: "public", methods: ["GET"] },
+  { path: "/api/learnings/features/*", strategy: "pattern", access: "public", methods: ["GET"] },
+  { path: "/api/workspaces/*/learn/config", strategy: "pattern", access: "public", methods: ["GET"] },
   // ------------------------------------------------------------------------
   { path: "/api/mock-agent-log", strategy: "prefix", access: "public" },
   { path: "/api/screenshots", strategy: "prefix", access: "public" },

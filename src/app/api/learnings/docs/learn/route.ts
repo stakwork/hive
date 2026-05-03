@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSwarmConfig } from "../../utils";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 
 export async function POST(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const body = await request.json();
     const { workspace, repo_url } = body;
 
@@ -18,7 +14,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id);
+    const access = await resolveWorkspaceAccess(request, { slug: workspace });
+    const ok = requireMemberAccess(access);
+    if (ok instanceof NextResponse) return ok;
+
+    const swarmConfig = await getSwarmConfig(ok.workspaceId);
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }
