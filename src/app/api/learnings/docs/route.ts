@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSwarmConfig } from "../utils";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
+import {
+  resolveWorkspaceAccess,
+  requireReadAccess,
+  requireMemberAccess,
+} from "@/lib/auth/workspace-access";
 
 export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
-
     const { searchParams } = new URL(request.url);
     const workspace = searchParams.get("workspace");
 
@@ -16,8 +15,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing workspace parameter" }, { status: 400 });
     }
 
-    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
-    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    const access = await resolveWorkspaceAccess(request, { slug: workspace });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
+
+    const swarmConfig = await getSwarmConfig(ok.workspaceId);
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }
@@ -47,11 +49,6 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
-
     const body = await request.json();
     const { repo, documentation, workspace } = body;
 
@@ -59,8 +56,11 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Missing required parameters: workspace, repo, documentation" }, { status: 400 });
     }
 
-    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
-    const swarmConfig = await getSwarmConfig(workspace, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    const access = await resolveWorkspaceAccess(request, { slug: workspace });
+    const ok = requireMemberAccess(access);
+    if (ok instanceof NextResponse) return ok;
+
+    const swarmConfig = await getSwarmConfig(ok.workspaceId);
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }

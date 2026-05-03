@@ -2,17 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSwarmConfig } from "./utils";
 import { getPrimaryRepository, getRepositoryById } from "@/lib/helpers/repository";
 import { parseOwnerRepo } from "@/lib/ai/utils";
-import { validateWorkspaceAccess } from "@/services/workspace";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
+import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 
 export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-    
-
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspace");
     const question = searchParams.get("question");
@@ -21,8 +15,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing required parameter: workspace" }, { status: 400 });
     }
 
-    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
-    const swarmConfig = await getSwarmConfig(workspaceSlug, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    // The free-text RAG endpoint stays member-only — public viewers should not
+    // be able to issue arbitrary questions against the swarm.
+    const access = await resolveWorkspaceAccess(request, { slug: workspaceSlug });
+    const ok = requireMemberAccess(access);
+    if (ok instanceof NextResponse) return ok;
+
+    const swarmConfig = await getSwarmConfig(ok.workspaceId);
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }
@@ -56,11 +55,6 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-    
-
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspace");
 
@@ -68,25 +62,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required parameter: workspace" }, { status: 400 });
     }
 
-    const userIsSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
-    const swarmConfig = await getSwarmConfig(workspaceSlug, userOrResponse.id, { isSuperAdmin: userIsSuperAdmin });
+    const access = await resolveWorkspaceAccess(request, { slug: workspaceSlug });
+    const ok = requireMemberAccess(access);
+    if (ok instanceof NextResponse) return ok;
+
+    const swarmConfig = await getSwarmConfig(ok.workspaceId);
     if ("error" in swarmConfig) {
       return NextResponse.json({ error: swarmConfig.error }, { status: swarmConfig.status });
     }
 
     const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
 
-    // Get workspace access to retrieve workspace ID
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id, true);
-    if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
-      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
-    }
-
     // Get repository - use specific repositoryId if provided, otherwise fall back to primary
     const repositoryId = searchParams.get("repositoryId");
     const primaryRepo = repositoryId
-      ? await getRepositoryById(repositoryId, workspaceAccess.workspace.id)
-      : await getPrimaryRepository(workspaceAccess.workspace.id);
+      ? await getRepositoryById(repositoryId, ok.workspaceId)
+      : await getPrimaryRepository(ok.workspaceId);
     if (!primaryRepo) {
       return NextResponse.json({ error: "No repository configured for this workspace" }, { status: 404 });
     }
@@ -103,7 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get GitHub PAT for the user
-    const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspaceSlug);
+    const githubProfile = await getGithubUsernameAndPAT(ok.userId, workspaceSlug);
     const token = githubProfile?.token;
 
     if (!token) {

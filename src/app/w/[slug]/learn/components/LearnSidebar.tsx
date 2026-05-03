@@ -299,7 +299,7 @@ export function LearnSidebar({
               <Badge variant="secondary" className="ml-1">
                 {docs.length}
               </Badge>
-              {!isDocsLoading && unlearnedRepos.length > 0 && (
+              {!isPublicViewer && !isDocsLoading && unlearnedRepos.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -398,18 +398,20 @@ export function LearnSidebar({
               <Badge variant="secondary" className="ml-1">
                 {diagrams.length}
               </Badge>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCreateDiagram();
-                }}
-                className="ml-1 h-5 w-5 flex items-center justify-center rounded hover:bg-muted transition-colors"
-                title="New diagram"
-                data-testid="create-diagram-button"
-              >
-                <Plus className="h-3 w-3" />
-              </button>
+              {!isPublicViewer && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCreateDiagram();
+                  }}
+                  className="ml-1 h-5 w-5 flex items-center justify-center rounded hover:bg-muted transition-colors"
+                  title="New diagram"
+                  data-testid="create-diagram-button"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              )}
             </div>
             <ChevronDown
               className={cn(
@@ -459,17 +461,19 @@ export function LearnSidebar({
                           >
                             {diagram.name}
                           </button>
-                          <button
-                            data-testid="edit-diagram-button"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEditDiagram(diagram);
-                            }}
-                            title="Edit diagram"
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
+                          {!isPublicViewer && (
+                            <button
+                              data-testid="edit-diagram-button"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditDiagram(diagram);
+                              }}
+                              title="Edit diagram"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                       );
                     })

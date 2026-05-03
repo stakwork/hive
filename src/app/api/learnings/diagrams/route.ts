@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { validateWorkspaceAccess } from "@/services/workspace";
-import { getMiddlewareContext, requireAuth, checkIsSuperAdmin } from "@/lib/middleware/utils";
+import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
 import { Prisma } from "@prisma/client";
 
 type DiagramRow = {
@@ -15,10 +14,6 @@ type DiagramRow = {
 
 export async function GET(request: NextRequest) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspace");
 
@@ -26,14 +21,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing required parameter: workspace" }, { status: 400 });
     }
 
-    const isSuperAdmin = await checkIsSuperAdmin(userOrResponse.id);
-    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id, true, {
-      isSuperAdmin,
-    });
-
-    if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
-      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
-    }
+    const access = await resolveWorkspaceAccess(request, { slug: workspaceSlug });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
 
     // Return only the most recently created version per groupId using DISTINCT ON
     const diagrams = await db.$queryRaw<DiagramRow[]>(Prisma.sql`
@@ -41,8 +31,7 @@ export async function GET(request: NextRequest) {
         d.id, d.name, d.body, d.description, d.created_at, d.group_id
       FROM diagrams d
       JOIN diagram_workspaces dw ON dw.diagram_id = d.id
-      JOIN workspaces w ON w.id = dw.workspace_id
-      WHERE w.slug = ${workspaceSlug}
+      WHERE dw.workspace_id = ${ok.workspaceId}
       ORDER BY d.group_id, d.created_at DESC
     `);
 

@@ -19,12 +19,15 @@ interface LearnDocViewerProps {
   activeItem: ActiveItem | null;
   onSave: (content: string) => Promise<void>;
   isSaving: boolean;
+  /** When true, hide edit/save controls (public viewers). */
+  readOnly?: boolean;
 }
 
 export function LearnDocViewer({
   activeItem,
   onSave,
   isSaving,
+  readOnly = false,
 }: LearnDocViewerProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedContent, setEditedContent] = useState("");
@@ -84,7 +87,7 @@ export function LearnDocViewer({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {isEditMode ? (
+          {readOnly ? null : isEditMode ? (
             <>
               <Button
                 variant="ghost"
@@ -124,7 +127,7 @@ export function LearnDocViewer({
 
       {/* Content area */}
       <div className="flex-1 overflow-y-auto p-6" data-testid="learn-content-area">
-        {isEditMode ? (
+        {isEditMode && !readOnly ? (
           <Textarea
             value={editedContent}
             onChange={(e) => setEditedContent(e.target.value)}
