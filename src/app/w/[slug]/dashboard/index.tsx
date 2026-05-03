@@ -33,7 +33,7 @@ export function Dashboard() {
 }
 
 function DashboardInner() {
-  const { slug, workspace } = useWorkspace();
+  const { slug, workspace, isPublicViewer } = useWorkspace();
   const dataInitial = useDataStore((s) => s.dataInitial);
   const repositoryNodes = useDataStore((s) => s.repositoryNodes);
   const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
@@ -80,7 +80,7 @@ function DashboardInner() {
           <TestFilterDropdown />
           <NeedsInputDropdownWidget />
           <PRMetricsWidget />
-          <GitHubStatusWidget />
+          {!isPublicViewer && <GitHubStatusWidget />}
           <PoolStatusWidget />
         </div>
         <TestCoverageStats />

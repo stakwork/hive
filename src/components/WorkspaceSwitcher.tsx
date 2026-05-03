@@ -27,10 +27,17 @@ interface WorkspaceSwitcherProps {
   activeWorkspace?: never; // Mark as deprecated
   onWorkspaceChange?: (workspace: WorkspaceWithRole) => void; // Optional callback
   refreshTrigger?: number; // Still useful for external refresh triggers
+  /**
+   * Render a non-interactive label (avatar + workspace name) instead of the
+   * dropdown trigger. Used for public viewers, who can see which workspace
+   * they're on but have no other workspaces to switch to.
+   */
+  readOnly?: boolean;
 }
 
 export function WorkspaceSwitcher({
   onWorkspaceChange,
+  readOnly = false,
 }: WorkspaceSwitcherProps) {
   const {
     workspace: activeWorkspace,
@@ -106,6 +113,36 @@ export function WorkspaceSwitcher({
   // No active workspace (shouldn't happen with context)
   if (!activeWorkspace) {
     return null;
+  }
+
+  // Read-only variant: avatar + name, no dropdown.
+  if (readOnly) {
+    return (
+      <div className="p-4 border-b">
+        <div className="flex items-center gap-3 p-3 border rounded-lg">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground overflow-hidden shrink-0">
+            {canAccessWorkspaceLogo && logoUrls[activeWorkspace.id] ? (
+              <PresignedImage
+                src={logoUrls[activeWorkspace.id]}
+                alt={activeWorkspace.name}
+                className="w-full h-full object-cover"
+                onRefetchUrl={() => refetchLogo(activeWorkspace.id)}
+                fallback={<Skeleton className="w-full h-full rounded-none" />}
+              />
+            ) : canAccessWorkspaceLogo && activeWorkspace.logoKey ? (
+              <Skeleton className="w-full h-full rounded-none" />
+            ) : (
+              <Building2 className="w-4 h-4" />
+            )}
+          </div>
+          <div className="text-left flex-1 min-w-0">
+            <div className="font-medium text-sm truncate">
+              {activeWorkspace.name}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

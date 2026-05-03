@@ -203,9 +203,9 @@ function SidebarContent({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Workspace Switcher — authenticated users only.
-          Public viewers don't have a workspaces list. */}
-      {!isPublicViewer && <WorkspaceSwitcher onWorkspaceChange={() => null} />}
+      {/* Workspace Switcher — public viewers see a non-interactive
+          label (no workspaces list to switch between). */}
+      <WorkspaceSwitcher onWorkspaceChange={() => null} readOnly={isPublicViewer} />
       {/* Navigation */}
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
