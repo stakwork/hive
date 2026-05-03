@@ -63,7 +63,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (taskId) {
         try {
           await db.task.update({
-            where: { id: taskId },
+            where: { id: taskId, workspaceId },
             data: {
               podId: mockPodId,
               agentUrl: process.env.CUSTOM_GOOSE_URL,
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Guard: reject if the task already has a pod assigned
     if (taskId) {
       const existingTask = await db.task.findUnique({
-        where: { id: taskId },
+        where: { id: taskId, workspaceId },
         select: { podId: true },
       });
 
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
 
         await db.task.update({
-          where: { id: taskId },
+          where: { id: taskId, workspaceId },
           data: {
             podId: podWorkspace.id,
             agentUrl: control,
