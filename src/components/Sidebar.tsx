@@ -485,11 +485,13 @@ export function Sidebar({ user }: SidebarProps) {
           children: item.children.filter((child) => child.label !== "Graph"),
         };
       }
-      // Public viewers can't see Agent Logs (raw agent output with PII/secrets).
+      // Public viewers can't see Agent Logs (raw agent output with PII/secrets)
+      // or Calls (voice recordings — entirely auth-gated).
       if (item.label === "Context" && item.children && isPublicViewer) {
+        const hidden = new Set(["Agent Logs", "Calls"]);
         return {
           ...item,
-          children: item.children.filter((child) => child.label !== "Agent Logs"),
+          children: item.children.filter((child) => !hidden.has(child.label)),
         };
       }
       return item;

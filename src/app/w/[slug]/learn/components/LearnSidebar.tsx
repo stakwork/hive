@@ -97,7 +97,7 @@ export function LearnSidebar({
   isConceptsLoading,
   isDiagramsLoading,
 }: LearnSidebarProps) {
-  const { workspace } = useWorkspace();
+  const { workspace, isPublicViewer } = useWorkspace();
   const repositories = workspace?.repositories ?? [];
 
   const [isDocsExpanded, setIsDocsExpanded] = useState(true);
@@ -591,7 +591,8 @@ export function LearnSidebar({
         </div>
       </div>
 
-      {/* Process Repository Section - pinned to bottom */}
+      {/* Process Repository Section - pinned to bottom (hidden for public viewers; the underlying actions require write access) */}
+      {!isPublicViewer && (
       <div className="border-t border-border bg-background" data-testid="process-repo-section">
         <Button
           variant="ghost"
@@ -687,6 +688,7 @@ export function LearnSidebar({
           )}
         </AnimatePresence>
       </div>
+      )}
 
       <CreateFeatureModal
         isOpen={isCreateModalOpen}
