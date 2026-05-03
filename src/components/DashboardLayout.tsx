@@ -21,6 +21,7 @@ import { useEffect, useState } from "react";
  */
 const PUBLIC_VIEWER_BLOCKED_SEGMENTS = [
   "agent-logs",       // raw agent conversations; likely leaks PII / secrets
+  "calls",            // voice / call recordings — entirely auth-gated
   "capacity",         // pool / pod infra
   "janitors",         // janitor config
   "recommendations",  // security findings (incl. GitLeaks)
