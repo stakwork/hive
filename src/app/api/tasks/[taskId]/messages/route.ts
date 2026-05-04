@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
 import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
-import { toPublicUser } from "@/lib/auth/public-redact";
+import { toPublicUser, redactArtifactContentForPublic } from "@/lib/auth/public-redact";
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
@@ -107,9 +107,14 @@ export async function GET(
         ...msg,
         createdBy: redactedCreatedBy,
         contextTags,
+        // For public viewers, scrub credential-bearing fields out of
+        // artifact content (pod URL + agentPassword on IDE/BROWSER, etc).
+        // Members keep the full payload so the IDE/Browser artifact UI works.
         artifacts: msg.artifacts.map((artifact) => ({
           ...artifact,
-          content: artifact.content as unknown,
+          content: redactForPublic
+            ? redactArtifactContentForPublic(artifact.type, artifact.content)
+            : (artifact.content as unknown),
         })) as Artifact[],
         attachments: msg.attachments || [],
       } as ChatMessage;

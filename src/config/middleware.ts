@@ -110,6 +110,32 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/learnings/features", strategy: "exact", access: "public", methods: ["GET"] },
   { path: "/api/learnings/features/*", strategy: "pattern", access: "public", methods: ["GET"] },
   { path: "/api/workspaces/*/learn/config", strategy: "pattern", access: "public", methods: ["GET"] },
+
+  // Public dashboard chat. The single POST endpoint that drives
+  // `<DashboardChat />`. Anonymous traffic is admitted only when the
+  // request shape is safe for public viewers (single workspace slug,
+  // no orgId, no approval/rejection intent) AND the workspace itself
+  // is flagged `isPublicViewable` — both checks happen inside the
+  // handler. A token-budget rate limit (see
+  // `src/lib/ai/publicChatBudget.ts`) caps Anthropic spend per
+  // anonymous visitor and per workspace.
+  { path: "/api/ask/quick", strategy: "exact", access: "public", methods: ["POST"] },
+
+  // Public dashboard-chat autosave. Anonymous public viewers create
+  // a `SharedConversation` row on first send (POST) and append on
+  // subsequent turns (PUT). Both handlers check public-viewability
+  // via `resolveWorkspaceAccess` and own anonymous rows by
+  // `anonymousId` (SHA-256 of IP + UA). Member-authored rows are
+  // unaffected by the public branch — they continue to authenticate
+  // via the session check.
+  //
+  // GET on the conversation detail (read-back of a saved chat) is
+  // intentionally NOT in the allowlist: it would let an anonymous
+  // visitor enumerate other visitors' chats by id-guessing. The
+  // dashboard chat doesn't need read-back for the public path —
+  // the in-memory state is enough until page reload.
+  { path: "/api/workspaces/*/chat/conversations", strategy: "pattern", access: "public", methods: ["POST"] },
+  { path: "/api/workspaces/*/chat/conversations/*", strategy: "pattern", access: "public", methods: ["PUT"] },
   // ------------------------------------------------------------------------
   { path: "/api/mock-agent-log", strategy: "prefix", access: "public" },
   { path: "/api/screenshots", strategy: "prefix", access: "public" },
