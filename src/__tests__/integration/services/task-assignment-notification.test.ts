@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { updateTicket } from "@/services/roadmap/tickets";
 import { resetDatabase } from "@/__tests__/support/utilities/database";
-import { NotificationTriggerType, NotificationTriggerStatus } from "@prisma/client";
+import { NotificationTriggerType, NotificationTriggerStatus, type Prisma } from "@prisma/client";
 
 vi.mock("@/lib/sphinx/direct-message", () => ({
   sendDirectMessage: vi.fn().mockResolvedValue({ success: true }),
@@ -25,7 +25,7 @@ vi.mock("@/lib/sphinx/direct-message", () => ({
  * happy path: as soon as the row exists we return it.
  */
 async function waitForNotificationTrigger(
-  where: Parameters<typeof db.notificationTrigger.findFirst>[0]["where"],
+  where: Prisma.NotificationTriggerWhereInput,
   timeoutMs = 2_000,
 ) {
   return await vi.waitFor(
