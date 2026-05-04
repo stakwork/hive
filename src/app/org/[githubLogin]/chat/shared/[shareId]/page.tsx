@@ -106,11 +106,16 @@ async function getOrgSharedConversation(
       source: sharedConversation.source,
       createdAt: sharedConversation.createdAt.toISOString(),
       updatedAt: sharedConversation.updatedAt.toISOString(),
-      createdBy: {
-        id: sharedConversation.user.id,
-        name: sharedConversation.user.name,
-        email: sharedConversation.user.email,
-      },
+      // `user` is null for anonymous public-viewer rows. Org-canvas
+      // chat is auth-only today, so this branch is mostly defensive,
+      // but TS requires the null-safe access since the schema allows it.
+      createdBy: sharedConversation.user
+        ? {
+            id: sharedConversation.user.id,
+            name: sharedConversation.user.name,
+            email: sharedConversation.user.email,
+          }
+        : null,
     };
 
     return { data, status: 200 };

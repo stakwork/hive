@@ -75,12 +75,17 @@ export async function GET(
       },
     });
 
+    // `user` is null for anonymous public-viewer rows on
+    // `Workspace.isPublicViewable` workspaces. Surface them as
+    // "Anonymous" with a stable sentinel id so the popup can group
+    // and filter consistently — workspace members reviewing this
+    // list will see what public visitors have been asking.
     const items: RecentChatItem[] = conversations.map((conv) => ({
       id: conv.id,
       title: conv.title,
       lastMessageAt: conv.lastMessageAt?.toISOString() || null,
-      creatorName: conv.user.name,
-      creatorId: conv.user.id,
+      creatorName: conv.user?.name ?? "Anonymous",
+      creatorId: conv.user?.id ?? "anonymous",
       source: conv.source,
     }));
 
