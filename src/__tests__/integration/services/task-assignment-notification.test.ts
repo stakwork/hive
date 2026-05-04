@@ -15,6 +15,29 @@ vi.mock("@/lib/sphinx/direct-message", () => ({
   isDirectMessageConfigured: vi.fn().mockReturnValue(true),
 }));
 
+/**
+ * Poll the DB until a notification_trigger row matching `where` appears.
+ *
+ * `updateTicket` kicks off the notification side-effect asynchronously, so a
+ * fixed `setTimeout` (we used to sleep for 100 ms) becomes flaky under load
+ * — when the integration suite is hot enough, the row hasn't committed yet
+ * by the time the assertion runs. Polling fixes this without slowing the
+ * happy path: as soon as the row exists we return it.
+ */
+async function waitForNotificationTrigger(
+  where: Parameters<typeof db.notificationTrigger.findFirst>[0]["where"],
+  timeoutMs = 2_000,
+) {
+  return await vi.waitFor(
+    async () => {
+      const row = await db.notificationTrigger.findFirst({ where });
+      if (!row) throw new Error("notification trigger not yet created");
+      return row;
+    },
+    { timeout: timeoutMs, interval: 25 },
+  );
+}
+
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn().mockResolvedValue(undefined) },
   getFeatureChannelName: (id: string) => `feature-${id}`,
@@ -83,22 +106,17 @@ describe("TASK_ASSIGNED notification", () => {
 
     await updateTicket(task.id, owner.id, { assigneeId: assignee.id });
 
-    await new Promise((r) => setTimeout(r, 100));
-
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        targetUserId: assignee.id,
-        notificationType: NotificationTriggerType.TASK_ASSIGNED,
-        taskId: task.id,
-      },
+    const record = await waitForNotificationTrigger({
+      targetUserId: assignee.id,
+      notificationType: NotificationTriggerType.TASK_ASSIGNED,
+      taskId: task.id,
     });
 
-    expect(record).not.toBeNull();
-    expect(record!.targetUserId).toBe(assignee.id);
-    expect(record!.status).toBe(NotificationTriggerStatus.PENDING);
-    expect(record!.sendAfter).not.toBeNull();
-    expect(record!.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
-    expect(record!.message).toBeTruthy();
+    expect(record.targetUserId).toBe(assignee.id);
+    expect(record.status).toBe(NotificationTriggerStatus.PENDING);
+    expect(record.sendAfter).not.toBeNull();
+    expect(record.sendAfter!.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    expect(record.message).toBeTruthy();
     expect(sendDirectMessage).not.toHaveBeenCalled();
   });
 
@@ -145,25 +163,22 @@ describe("TASK_ASSIGNED notification", () => {
 
     await updateTicket(plainTask.id, plainOwner.id, { assigneeId: plainAssignee.id });
 
-    await new Promise((r) => setTimeout(r, 100));
-
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        targetUserId: plainAssignee.id,
-        notificationType: NotificationTriggerType.TASK_ASSIGNED,
-        taskId: plainTask.id,
-      },
+    const record = await waitForNotificationTrigger({
+      targetUserId: plainAssignee.id,
+      notificationType: NotificationTriggerType.TASK_ASSIGNED,
+      taskId: plainTask.id,
     });
 
-    expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.SKIPPED);
+    expect(record.status).toBe(NotificationTriggerStatus.SKIPPED);
   });
 
   it("does NOT create a notification when self-assigning", async () => {
     await updateTicket(task.id, owner.id, { assigneeId: owner.id });
 
-    await new Promise((r) => setTimeout(r, 100));
-
+    // The self-assign and system-assignee branches in `updateTicket` are
+    // guarded by synchronous `if` checks BEFORE the fire-and-forget IIFE is
+    // scheduled, so by the time `updateTicket` resolves we know no
+    // notification work was kicked off. No need to sleep.
     const records = await db.notificationTrigger.findMany({
       where: { notificationType: NotificationTriggerType.TASK_ASSIGNED },
     });
@@ -173,8 +188,6 @@ describe("TASK_ASSIGNED notification", () => {
 
   it("does NOT create a notification for system assignees", async () => {
     await updateTicket(task.id, owner.id, { assigneeId: "system:task-coordinator" });
-
-    await new Promise((r) => setTimeout(r, 100));
 
     const records = await db.notificationTrigger.findMany({
       where: { notificationType: NotificationTriggerType.TASK_ASSIGNED },
@@ -239,18 +252,13 @@ describe("TASK_ASSIGNED notification — DM not configured (no lightningPubkey)"
   it("creates a SKIPPED notification_trigger row when user has no lightningPubkey", async () => {
     await updateTicket(task.id, owner.id, { assigneeId: assignee.id });
 
-    await new Promise((r) => setTimeout(r, 100));
-
-    const record = await db.notificationTrigger.findFirst({
-      where: {
-        targetUserId: assignee.id,
-        notificationType: NotificationTriggerType.TASK_ASSIGNED,
-        taskId: task.id,
-      },
+    const record = await waitForNotificationTrigger({
+      targetUserId: assignee.id,
+      notificationType: NotificationTriggerType.TASK_ASSIGNED,
+      taskId: task.id,
     });
 
-    expect(record).not.toBeNull();
-    expect(record!.status).toBe(NotificationTriggerStatus.SKIPPED);
-    expect(record!.sendAfter).toBeNull();
+    expect(record.status).toBe(NotificationTriggerStatus.SKIPPED);
+    expect(record.sendAfter).toBeNull();
   });
 });
