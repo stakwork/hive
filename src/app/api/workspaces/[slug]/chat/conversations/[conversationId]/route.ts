@@ -3,7 +3,10 @@ import { db } from "@/lib/db";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { ConversationDetail, UpdateConversationRequest } from "@/types/shared-conversation";
 import { getServerSession } from "next-auth/next";
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
+import { deriveAnonymousId } from "@/lib/ai/publicChatBudget";
 
 // GET /api/workspaces/[slug]/chat/conversations/[conversationId]
 // Retrieve specific conversation by ID
@@ -65,6 +68,7 @@ export async function GET(
         source: true,
         createdAt: true,
         updatedAt: true,
+        userId: true,
         user: {
           select: {
             id: true,
@@ -85,7 +89,7 @@ export async function GET(
     const response: ConversationDetail = {
       id: conversation.id,
       workspaceId: workspace.id,
-      userId: conversation.user.id,
+      userId: conversation.userId,
       title: conversation.title,
       messages: conversation.messages,
       provenanceData: conversation.provenanceData,
@@ -96,11 +100,13 @@ export async function GET(
       source: conversation.source,
       createdAt: conversation.createdAt.toISOString(),
       updatedAt: conversation.updatedAt.toISOString(),
-      createdBy: {
-        id: conversation.user.id,
-        name: conversation.user.name,
-        email: conversation.user.email,
-      },
+      createdBy: conversation.user
+        ? {
+            id: conversation.user.id,
+            name: conversation.user.name,
+            email: conversation.user.email,
+          }
+        : null,
     };
 
     return NextResponse.json(response);
@@ -114,45 +120,48 @@ export async function GET(
 }
 
 // PUT /api/workspaces/[slug]/chat/conversations/[conversationId]
-// Append new messages to existing conversation
+// Append new messages to an existing conversation. Member-owned rows
+// match by userId; anonymous rows on `isPublicViewable` workspaces
+// match by anonymousId (so the same browser session can keep appending
+// across turns).
 export async function PUT(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string; conversationId: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const userId = (session.user as { id: string }).id;
+  const userId = (session?.user as { id?: string } | undefined)?.id ?? null;
   const { slug, conversationId } = await params;
 
   try {
-    // Validate workspace access
-    const access = await validateWorkspaceAccess(slug, userId, true);
-    if (!access.hasAccess) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 403 }
-      );
-    }
-
-    // Get workspace ID
-    const workspace = await db.workspace.findFirst({
-      where: {
-        slug,
-        deleted: false,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 }
-      );
+    // Resolve access (member vs public viewer) and the workspace id.
+    let workspaceId: string | null = null;
+    let isPublicViewer = false;
+    if (userId) {
+      const access = await validateWorkspaceAccess(slug, userId, true);
+      if (!access.hasAccess) {
+        return NextResponse.json(
+          { error: "Workspace not found or access denied" },
+          { status: 403 }
+        );
+      }
+      const workspace = await db.workspace.findFirst({
+        where: { slug, deleted: false },
+        select: { id: true },
+      });
+      if (!workspace) {
+        return NextResponse.json(
+          { error: "Workspace not found" },
+          { status: 404 }
+        );
+      }
+      workspaceId = workspace.id;
+    } else {
+      const access = await resolveWorkspaceAccess(request, { slug });
+      if (access.kind !== "public-viewer") {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      workspaceId = access.workspaceId;
+      isPublicViewer = true;
     }
 
     // Parse request body
@@ -165,12 +174,20 @@ export async function PUT(
       );
     }
 
-    // Get existing conversation - user must own it
+    // Ownership check. Members own by userId. Public viewers own by
+    // anonymousId — anyone with the same IP+UA hash can continue
+    // appending. Acceptable for v1: a determined attacker on the
+    // same network as a recent visitor could continue their chat
+    // (low value), but cannot reach a member's chat (different
+    // ownership column).
+    const ownership = isPublicViewer
+      ? { anonymousId: deriveAnonymousId(request), userId: null as string | null }
+      : { userId };
     const existing = await db.sharedConversation.findFirst({
       where: {
         id: conversationId,
-        workspaceId: workspace.id,
-        userId,
+        workspaceId,
+        ...ownership,
       },
     });
 
@@ -217,6 +234,7 @@ export async function PUT(
         source: true,
         createdAt: true,
         updatedAt: true,
+        userId: true,
         user: {
           select: {
             id: true,
@@ -229,8 +247,8 @@ export async function PUT(
 
     const response: ConversationDetail = {
       id: updated.id,
-      workspaceId: workspace.id,
-      userId: updated.user.id,
+      workspaceId: workspaceId!,
+      userId: updated.userId,
       title: updated.title,
       messages: updated.messages,
       provenanceData: updated.provenanceData,
@@ -241,11 +259,13 @@ export async function PUT(
       source: updated.source,
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
-      createdBy: {
-        id: updated.user.id,
-        name: updated.user.name,
-        email: updated.user.email,
-      },
+      createdBy: updated.user
+        ? {
+            id: updated.user.id,
+            name: updated.user.name,
+            email: updated.user.email,
+          }
+        : null,
     };
 
     return NextResponse.json(response);

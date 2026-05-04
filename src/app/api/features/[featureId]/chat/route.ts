@@ -9,7 +9,7 @@ import {
   requireMemberAccess,
   isPublicViewer,
 } from "@/lib/auth/workspace-access";
-import { toPublicUser } from "@/lib/auth/public-redact";
+import { toPublicUser, redactArtifactContentForPublic } from "@/lib/auth/public-redact";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -86,9 +86,13 @@ export async function GET(
         ? (toPublicUser(msg.createdBy) || undefined)
         : (msg.createdBy || undefined),
       contextTags: JSON.parse(msg.contextTags as string) as ContextTag[],
+      // For public viewers, scrub credential-bearing artifact content
+      // (pod URL + agentPassword on IDE/BROWSER, stream tokens, etc).
       artifacts: msg.artifacts.map((artifact) => ({
         ...artifact,
-        content: artifact.content as unknown,
+        content: redactForPublic
+          ? redactArtifactContentForPublic(artifact.type, artifact.content)
+          : (artifact.content as unknown),
       })) as Artifact[],
     }));
 

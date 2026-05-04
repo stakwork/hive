@@ -493,18 +493,33 @@ model SharedConversation {
   id                 String            @id @default(cuid())
   workspaceId        String?           @map("workspace_id")
   sourceControlOrgId String?           @map("source_control_org_id")
-  userId             String            @map("user_id")
+  // Nullable: anonymous public viewers (on `Workspace.isPublicViewable`
+  // workspaces) create rows with `userId = null` and `anonymousId` set.
+  // Member-authored rows always have `userId` populated.
+  userId             String?           @map("user_id")
+  // Stable per-visitor identifier for anonymous public-viewer chats —
+  // SHA-256(ip + userAgent) truncated. Used by the public token-budget
+  // rate limiter to sum recent token spend per visitor. Always null
+  // for member-authored rows.
+  anonymousId        String?           @map("anonymous_id")
   title              String?
   messages           Json
   provenanceData     Json?             @map("provenance_data")
   followUpQuestions  Json              @map("follow_up_questions")
+  // Running token totals for the whole conversation. Incremented in
+  // `/api/ask/quick`'s `onFinish` callback after each LLM turn (see
+  // `src/app/api/ask/quick/route.ts`). Output is the dominant cost
+  // (~5x input on Anthropic Sonnet); the public rate-limit gate
+  // weights it accordingly when summing recent spend.
+  inputTokens        Int               @default(0) @map("input_tokens")
+  outputTokens       Int               @default(0) @map("output_tokens")
   createdAt          DateTime          @default(now()) @map("created_at")
   updatedAt          DateTime          @updatedAt @map("updated_at")
   isShared           Boolean           @default(false) @map("is_shared")
   lastMessageAt      DateTime?         @map("last_message_at")
   source             String?
   settings           Json?             @default("{}")
-  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
 
@@ -512,6 +527,12 @@ model SharedConversation {
   @@index([sourceControlOrgId])
   @@index([userId])
   @@index([userId, workspaceId, lastMessageAt])
+  // Public-viewer rate-limit lookup: sum input/output tokens for an
+  // anonymous visitor in the last 24h. Created_at is the pivot.
+  @@index([anonymousId, createdAt])
+  // Per-workspace public-traffic cap: sum tokens for all anonymous
+  // chats on a workspace in the last 24h.
+  @@index([workspaceId, anonymousId, createdAt])
   @@map("shared_conversations")
 }
 

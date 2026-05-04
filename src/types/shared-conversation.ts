@@ -7,7 +7,9 @@ export interface ConversationSettings {
 export interface SharedConversationData {
   id: string;
   workspaceId: string;
-  userId: string;
+  // Null for anonymous public-viewer chats (workspace must be flagged
+  // `isPublicViewable`). Always populated for member-authored rows.
+  userId: string | null;
   title?: string | null;
   messages: unknown; // AI SDK UIMessage[] format stored as JSON
   provenanceData?: unknown | null; // ProvenanceData format stored as JSON
@@ -18,11 +20,12 @@ export interface SharedConversationData {
   source?: string | null;
   createdAt: string;
   updatedAt: string;
+  // Null for anonymous public-viewer chats.
   createdBy?: {
     id: string;
     name: string | null;
     email: string | null;
-  };
+  } | null;
 }
 
 export interface CreateSharedConversationRequest {
