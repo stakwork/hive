@@ -73,7 +73,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
   });
 
   describe('Authentication & Authorization', () => {
-    it('should return 401 for unauthenticated requests', async () => {
+    it('should return 401 for unauthenticated requests on private workspaces', async () => {
       const owner = await createTestUser({
         email: generateUniqueId('owner') + '@example.com',
       });
@@ -93,6 +93,85 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       expect(response.status).toBe(401);
       const data = await response.json();
       expect(data.error).toBeDefined();
+    });
+
+    it('should reject unauthenticated multi-workspace requests on public workspaces', async () => {
+      // Public-viewer admission requires `slugs.length === 1` — a
+      // multi-slug request is suspicious and falls through to 401
+      // even when the primary slug is public.
+      const owner = await createTestUser({
+        email: generateUniqueId('owner') + '@example.com',
+        withGitHubAuth: true,
+      });
+
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: owner.id,
+      });
+
+      await db.workspace.update({
+        where: { id: workspace.id },
+        data: { isPublicViewable: true },
+      });
+
+      const request = createPostRequest('/api/ask/quick', {
+        messages: [{ role: 'user', content: 'hi' }],
+        workspaceSlugs: [workspace.slug, 'another-workspace'],
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should reject unauthenticated requests carrying orgId', async () => {
+      // orgId is for the org-canvas chat which is auth-only. An anon
+      // request that supplies one is rejected outright.
+      const owner = await createTestUser({
+        email: generateUniqueId('owner') + '@example.com',
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: owner.id,
+      });
+      await db.workspace.update({
+        where: { id: workspace.id },
+        data: { isPublicViewable: true },
+      });
+
+      const request = createPostRequest('/api/ask/quick', {
+        messages: [{ role: 'user', content: 'hi' }],
+        workspaceSlug: workspace.slug,
+        orgId: 'some-org-id',
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should reject unauthenticated approval/rejection intents', async () => {
+      const owner = await createTestUser({
+        email: generateUniqueId('owner') + '@example.com',
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: owner.id,
+      });
+      await db.workspace.update({
+        where: { id: workspace.id },
+        data: { isPublicViewable: true },
+      });
+
+      const request = createPostRequest('/api/ask/quick', {
+        messages: [{ role: 'user', content: 'hi' }],
+        workspaceSlug: workspace.slug,
+        approvalIntent: { kind: 'feature', toolCallId: 'tc_1' },
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
     });
 
     it('should return 403 for users not in workspace', async () => {
@@ -718,6 +797,157 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
           ]),
         })
       );
+    });
+  });
+
+  describe('Public Viewer (isPublicViewable workspaces)', () => {
+    // Public dashboard chat — anonymous visitors can hit /api/ask/quick
+    // when:
+    //   - the workspace is flagged isPublicViewable
+    //   - request shape is single-slug, no orgId, no approval intent
+    //   - daily token budget hasn't been exhausted
+    // PAT comes from the workspace owner (who must have GitHub auth).
+
+    it('should allow unauthenticated POST on a public-viewable workspace', async () => {
+      const owner = await createTestUser({
+        email: generateUniqueId('owner') + '@example.com',
+        withGitHubAuth: true,
+      });
+
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('public-ws'),
+        ownerId: owner.id,
+      });
+      await db.workspace.update({
+        where: { id: workspace.id },
+        data: { isPublicViewable: true },
+      });
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmUrl: 'https://test-swarm.sphinx.chat',
+        swarmApiKey: 'test-key',
+      });
+      await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: 'https://github.com/test-org/test-repo',
+      });
+
+      const mockStream = {
+        toUIMessageStreamResponse: vi.fn(
+          () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
+        ),
+      };
+      vi.mocked(streamText).mockReturnValue(mockStream as any);
+
+      const request = createPostRequest('/api/ask/quick', {
+        messages: [{ role: 'user', content: 'What does this repo do?' }],
+        workspaceSlug: workspace.slug,
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(streamText).toHaveBeenCalled();
+    });
+
+    it('should still reject unauthenticated POST on a private workspace', async () => {
+      const owner = await createTestUser({
+        email: generateUniqueId('owner') + '@example.com',
+        withGitHubAuth: true,
+      });
+
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('private-ws'),
+        ownerId: owner.id,
+      });
+      // isPublicViewable defaults to false
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmUrl: 'https://test-swarm.sphinx.chat',
+        swarmApiKey: 'test-key',
+      });
+      await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: 'https://github.com/test-org/test-repo',
+      });
+
+      const request = createPostRequest('/api/ask/quick', {
+        messages: [{ role: 'user', content: 'hi' }],
+        workspaceSlug: workspace.slug,
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(401);
+    });
+
+    it('should return 429 once the per-anon daily token cap is reached', async () => {
+      const { ANON_DAILY_TOKEN_CAP, OUTPUT_TOKEN_WEIGHT, deriveAnonymousId } =
+        await import('@/lib/ai/publicChatBudget');
+
+      const owner = await createTestUser({
+        email: generateUniqueId('owner') + '@example.com',
+        withGitHubAuth: true,
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('public-ws'),
+        ownerId: owner.id,
+      });
+      await db.workspace.update({
+        where: { id: workspace.id },
+        data: { isPublicViewable: true },
+      });
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmUrl: 'https://test-swarm.sphinx.chat',
+        swarmApiKey: 'test-key',
+      });
+      await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: 'https://github.com/test-org/test-repo',
+      });
+
+      // Build a request first so we can recover its anonymousId. We
+      // then seed a SharedConversation for that visitor whose token
+      // total puts them over the daily cap, and re-issue the same
+      // (logically) request.
+      const probe = createPostRequest('/api/ask/quick', {
+        messages: [{ role: 'user', content: 'over the limit' }],
+        workspaceSlug: workspace.slug,
+      });
+      const anonymousId = deriveAnonymousId(probe);
+
+      // Saturate the visitor's bucket via output tokens (weighted 5x).
+      const outputTokensToExhaust =
+        Math.ceil(ANON_DAILY_TOKEN_CAP / OUTPUT_TOKEN_WEIGHT) + 1;
+      await db.sharedConversation.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: null,
+          anonymousId,
+          messages: [],
+          followUpQuestions: [],
+          inputTokens: 0,
+          outputTokens: outputTokensToExhaust,
+          source: 'dashboard',
+        },
+      });
+
+      const mockStream = {
+        toUIMessageStreamResponse: vi.fn(
+          () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
+        ),
+      };
+      vi.mocked(streamText).mockReturnValue(mockStream as any);
+
+      const response = await POST(probe);
+
+      expect(response.status).toBe(429);
+      const data = await response.json();
+      expect(data.kind).toBe('rate_limit_exceeded');
+      expect(data.reason).toBe('anon');
+      // Importantly: the LLM was never invoked.
+      expect(streamText).not.toHaveBeenCalled();
     });
   });
 

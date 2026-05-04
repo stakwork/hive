@@ -106,10 +106,13 @@ async function getSharedConversation(
       return { error: "Shared conversation not found", status: 404 };
     }
 
-    // Return the conversation data
+    // Return the conversation data. `user` is null for anonymous
+    // public-viewer rows (Share button is hidden for them, so this
+    // path normally renders only member-authored shares — but stay
+    // null-safe in case a member explicitly shares an anon row).
     const data: SharedConversationData = {
       id: sharedConversation.id,
-      workspaceId: sharedConversation.workspaceId,
+      workspaceId: sharedConversation.workspaceId ?? workspace.id,
       userId: sharedConversation.userId,
       title: sharedConversation.title,
       messages: sharedConversation.messages,
@@ -120,11 +123,13 @@ async function getSharedConversation(
       source: sharedConversation.source,
       createdAt: sharedConversation.createdAt.toISOString(),
       updatedAt: sharedConversation.updatedAt.toISOString(),
-      createdBy: {
-        id: sharedConversation.user.id,
-        name: sharedConversation.user.name,
-        email: sharedConversation.user.email,
-      },
+      createdBy: sharedConversation.user
+        ? {
+            id: sharedConversation.user.id,
+            name: sharedConversation.user.name,
+            email: sharedConversation.user.email,
+          }
+        : null,
     };
 
     return { data, status: 200 };

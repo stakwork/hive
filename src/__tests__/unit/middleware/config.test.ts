@@ -357,4 +357,58 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/features")).toBe("protected");
     });
   });
+
+  describe("Public dashboard chat allowlist", () => {
+    // The public dashboard chat opens up POST on /api/ask/quick and the
+    // autosave POST/PUT on /api/workspaces/*/chat/conversations. Each
+    // handler still validates `Workspace.isPublicViewable` and (for
+    // /api/ask/quick) checks the per-anon and per-workspace token
+    // budget before streaming. The middleware policy here just makes
+    // sure unauthenticated callers can reach the handlers in the first
+    // place.
+
+    it("allows POST /api/ask/quick without a session", () => {
+      expect(resolveRouteAccess("/api/ask/quick", "POST")).toBe("public");
+    });
+
+    it("does NOT expose other ask endpoints to public callers", () => {
+      // Only the `quick` variant is wired for public viewers. The
+      // catch-all /api/ask is still protected.
+      expect(resolveRouteAccess("/api/ask", "POST")).toBe("protected");
+      expect(resolveRouteAccess("/api/ask/quick", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/ask/quick", "PUT")).toBe("protected");
+    });
+
+    it("allows POST/PUT on conversations for public viewers (autosave)", () => {
+      expect(
+        resolveRouteAccess("/api/workspaces/my-ws/chat/conversations", "POST"),
+      ).toBe("public");
+      expect(
+        resolveRouteAccess(
+          "/api/workspaces/my-ws/chat/conversations/conv_123",
+          "PUT",
+        ),
+      ).toBe("public");
+    });
+
+    it("keeps GET / DELETE on conversations protected", () => {
+      // Listing and deletion are member-only — exposing them would let
+      // anonymous visitors enumerate or destroy other visitors' chats.
+      expect(
+        resolveRouteAccess("/api/workspaces/my-ws/chat/conversations", "GET"),
+      ).toBe("protected");
+      expect(
+        resolveRouteAccess(
+          "/api/workspaces/my-ws/chat/conversations/conv_123",
+          "GET",
+        ),
+      ).toBe("protected");
+      expect(
+        resolveRouteAccess(
+          "/api/workspaces/my-ws/chat/conversations/conv_123",
+          "DELETE",
+        ),
+      ).toBe("protected");
+    });
+  });
 });

@@ -97,10 +97,15 @@ export async function GET(
       );
     }
 
-    // Return the conversation data
+    // Return the conversation data. `user` is null for anonymous
+    // public-viewer rows; the share button is hidden in
+    // <DashboardChat /> for public viewers, so in practice this
+    // path is reached only for member-authored shares — but we
+    // still handle null defensively in case an admin / member
+    // shares an anonymous transcript later.
     const response: SharedConversationData = {
       id: sharedConversation.id,
-      workspaceId: sharedConversation.workspaceId,
+      workspaceId: sharedConversation.workspaceId ?? workspace.id,
       userId: sharedConversation.userId,
       title: sharedConversation.title,
       messages: sharedConversation.messages,
@@ -111,11 +116,13 @@ export async function GET(
       source: sharedConversation.source,
       createdAt: sharedConversation.createdAt.toISOString(),
       updatedAt: sharedConversation.updatedAt.toISOString(),
-      createdBy: {
-        id: sharedConversation.user.id,
-        name: sharedConversation.user.name,
-        email: sharedConversation.user.email,
-      },
+      createdBy: sharedConversation.user
+        ? {
+            id: sharedConversation.user.id,
+            name: sharedConversation.user.name,
+            email: sharedConversation.user.email,
+          }
+        : null,
     };
 
     return NextResponse.json(response, { status: 200 });
