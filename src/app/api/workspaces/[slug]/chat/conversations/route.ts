@@ -3,7 +3,10 @@ import { db } from "@/lib/db";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { ConversationListItem } from "@/types/shared-conversation";
 import { getServerSession } from "next-auth/next";
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
+import { deriveAnonymousId } from "@/lib/ai/publicChatBudget";
 
 // Helper to generate title from first user message
 function generateTitle(messages: any[]): string {
@@ -187,45 +190,52 @@ export async function GET(
 }
 
 // POST /api/workspaces/[slug]/chat/conversations
-// Create a new conversation
+// Create a new conversation. Members create rows owned by their user
+// id; anonymous public viewers (on `Workspace.isPublicViewable`) create
+// rows owned by `anonymousId` (userId is null) — these rows back the
+// public dashboard chat's autosave + token-budget rate-limit gate.
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const userId = (session.user as { id: string }).id;
+  const userId = (session?.user as { id?: string } | undefined)?.id ?? null;
   const { slug } = await params;
 
   try {
-    // Validate workspace access
-    const access = await validateWorkspaceAccess(slug, userId, true);
-    if (!access.hasAccess) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 403 }
-      );
-    }
-
-    // Get workspace ID
-    const workspace = await db.workspace.findFirst({
-      where: {
-        slug,
-        deleted: false,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 }
-      );
+    // Resolve access. For members we use the existing
+    // validateWorkspaceAccess (which honors workspace membership and
+    // super-admin); for unauthenticated callers we go through
+    // resolveWorkspaceAccess which returns "public-viewer" only when
+    // the workspace is flagged isPublicViewable.
+    let workspaceId: string | null = null;
+    let isPublicViewer = false;
+    if (userId) {
+      const access = await validateWorkspaceAccess(slug, userId, true);
+      if (!access.hasAccess) {
+        return NextResponse.json(
+          { error: "Workspace not found or access denied" },
+          { status: 403 }
+        );
+      }
+      const workspace = await db.workspace.findFirst({
+        where: { slug, deleted: false },
+        select: { id: true },
+      });
+      if (!workspace) {
+        return NextResponse.json(
+          { error: "Workspace not found" },
+          { status: 404 }
+        );
+      }
+      workspaceId = workspace.id;
+    } else {
+      const access = await resolveWorkspaceAccess(request, { slug });
+      if (access.kind !== "public-viewer") {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      workspaceId = access.workspaceId;
+      isPublicViewer = true;
     }
 
     // Parse request body
@@ -241,12 +251,14 @@ export async function POST(
     // Auto-generate title if not provided
     const title = body.title || generateTitle(body.messages);
     const lastMessageAt = getLastMessageTimestamp(body.messages);
+    const anonymousId = isPublicViewer ? deriveAnonymousId(request) : null;
 
     // Create conversation
     const conversation = await db.sharedConversation.create({
       data: {
-        workspaceId: workspace.id,
+        workspaceId,
         userId,
+        anonymousId,
         title,
         messages: body.messages as any,
         provenanceData: body.provenanceData as any || null,
@@ -268,6 +280,7 @@ export async function POST(
         isShared: true,
         createdAt: true,
         updatedAt: true,
+        userId: true,
         user: {
           select: {
             id: true,
@@ -280,8 +293,8 @@ export async function POST(
 
     return NextResponse.json({
       id: conversation.id,
-      workspaceId: workspace.id,
-      userId: conversation.user.id,
+      workspaceId,
+      userId: conversation.userId,
       title: conversation.title,
       messages: conversation.messages,
       provenanceData: conversation.provenanceData,
@@ -292,11 +305,13 @@ export async function POST(
       source: conversation.source,
       createdAt: conversation.createdAt.toISOString(),
       updatedAt: conversation.updatedAt.toISOString(),
-      createdBy: {
-        id: conversation.user.id,
-        name: conversation.user.name,
-        email: conversation.user.email,
-      },
+      createdBy: conversation.user
+        ? {
+            id: conversation.user.id,
+            name: conversation.user.name,
+            email: conversation.user.email,
+          }
+        : null,
     }, { status: 201 });
   } catch (error) {
     console.error("Failed to create conversation:", error);

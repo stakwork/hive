@@ -72,7 +72,7 @@ export function DashboardChat({
   currentCanvasBreadcrumb,
   selectedNodeId,
 }: DashboardChatProps = {}) {
-  const { slug, workspace } = useWorkspace();
+  const { slug, workspace, isPublicViewer } = useWorkspace();
   const { data: session } = useSession();
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -134,23 +134,36 @@ export function DashboardChat({
       .reverse()
       .find((m) => m.imageData)?.imageData || null;
 
-  // Fire-and-forget auto-save helpers
-  const autoSaveCreate = (msgs: Message[], workspaceSlugs: string[]) => {
-    if (!slug) return;
-    fetch(`/api/workspaces/${slug}/chat/conversations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: msgs,
-        settings: { extraWorkspaceSlugs: workspaceSlugs },
-        source: "dashboard",
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.id) conversationIdRef.current = data.id;
-      })
-      .catch(() => {});
+  // Auto-save helpers. `autoSaveCreate` returns a Promise resolving to
+  // the new conversation id so callers can await it when they need the
+  // id immediately (e.g. to attribute the next ask/quick turn's tokens
+  // back to the row). `autoSaveAppend` stays fire-and-forget since the
+  // server doesn't echo any state we need.
+  const autoSaveCreate = async (
+    msgs: Message[],
+    workspaceSlugs: string[],
+  ): Promise<string | null> => {
+    if (!slug) return null;
+    try {
+      const res = await fetch(`/api/workspaces/${slug}/chat/conversations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: msgs,
+          settings: { extraWorkspaceSlugs: workspaceSlugs },
+          source: "dashboard",
+        }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data?.id) {
+        conversationIdRef.current = data.id;
+        return data.id as string;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   };
 
   const autoSaveAppend = (msgs: Message[], workspaceSlugs: string[]) => {
@@ -208,9 +221,14 @@ export function DashboardChat({
     setIsLoading(true);
     hasReceivedContentRef.current = false;
 
-    // Auto-save: create on first message, append on subsequent
+    // Auto-save: create on first message, append on subsequent. We
+    // await the create so we have the conversation id to send to
+    // /api/ask/quick — the route uses it to attribute Anthropic
+    // token usage back to this row in `onFinish` (see
+    // `recordTurnTokens`). For subsequent turns the id is already
+    // sticky on `conversationIdRef.current` and we can fire-and-forget.
     if (conversationIdRef.current === null) {
-      autoSaveCreate(updatedMessages, extraWorkspaceSlugs);
+      await autoSaveCreate(updatedMessages, extraWorkspaceSlugs);
     } else {
       const lastUserMsg = updatedMessages[updatedMessages.length - 1];
       autoSaveAppend([lastUserMsg], extraWorkspaceSlugs);
@@ -223,6 +241,9 @@ export function DashboardChat({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          ...(conversationIdRef.current
+            ? { conversationId: conversationIdRef.current }
+            : {}),
           messages: updatedMessages
             .filter((m) => m.content.trim() || m.toolCalls) // Keep messages with content or tool calls
             .flatMap((m): ModelMessage[] => {
@@ -318,6 +339,17 @@ export function DashboardChat({
       });
 
       if (!response.ok) {
+        // Rate-limit hit on the public dashboard chat — surface the
+        // server's human-readable reason rather than a generic error
+        // so anonymous visitors understand why and what to do next.
+        if (response.status === 429) {
+          const data = await response.json().catch(() => ({}));
+          const message =
+            (data?.error as string | undefined) ??
+            "Daily chat usage limit reached. Sign in to continue.";
+          toast.error("Chat limit reached", { description: message });
+          throw new Error(message);
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -821,18 +853,24 @@ export function DashboardChat({
         </div>
       )}
 
-      {/* Action pill row — only when messages exist */}
+      {/* Action pill row — only when messages exist. Several actions
+          (Generate Plan, Share, RecentChats) require a session and
+          either write to the workspace or expose private data; they
+          are hidden for public viewers. The Sources pill and Clear
+          remain available — both are local to the in-progress chat. */}
       {hasMessages && (
         <div className="pointer-events-auto flex items-center gap-2 justify-center pb-1 flex-wrap">
-          <button
-            type="button"
-            onClick={handleOpenFeatureModal}
-            disabled={isExtracting || isLaunching || isLoading || isReadOnly}
-            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Sparkles className="w-4 h-4" />
-            Generate Plan
-          </button>
+          {!isPublicViewer && (
+            <button
+              type="button"
+              onClick={handleOpenFeatureModal}
+              disabled={isExtracting || isLaunching || isLoading || isReadOnly}
+              className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Sparkles className="w-4 h-4" />
+              Generate Plan
+            </button>
+          )}
           {hasProvenanceFiles && (
             <button
               type="button"
@@ -847,16 +885,18 @@ export function DashboardChat({
               Sources
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleShare}
-            disabled={isLoading}
-            className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Share2 className="w-4 h-4" />
-            Share
-          </button>
-          {slug && session?.user && (session.user as { id?: string }).id && (
+          {!isPublicViewer && (
+            <button
+              type="button"
+              onClick={handleShare}
+              disabled={isLoading}
+              className="pointer-events-auto rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Share2 className="w-4 h-4" />
+              Share
+            </button>
+          )}
+          {!isPublicViewer && slug && session?.user && (session.user as { id?: string }).id && (
             <RecentChatsPopup
               slug={slug}
               currentUserId={(session.user as { id: string }).id}
