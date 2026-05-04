@@ -19,17 +19,20 @@ import {
 } from "@/__tests__/support/helpers";
 import type { User, Workspace, Swarm } from "@prisma/client";
 import type { PoolStatusResponse } from "@/types";
-import { NextResponse } from "next/server";
 
-// Mock middleware utilities
-vi.mock("@/lib/middleware/utils", () => ({
-  getMiddlewareContext: vi.fn(),
-  requireAuth: vi.fn(),
-  checkIsSuperAdmin: vi.fn().mockResolvedValue(false),
-}));
-
-import { requireAuth } from "@/lib/middleware/utils";
-const getMockedRequireAuth = vi.mocked(requireAuth);
+// Mock super-admin check only. The route uses `resolveWorkspaceAccess`,
+// which calls the real `getMiddlewareContext` to read auth headers off
+// the request — those headers are stamped by `createAuthenticatedGetRequest`.
+// Mocking `getMiddlewareContext` would short-circuit that flow.
+vi.mock("@/lib/middleware/utils", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/middleware/utils")>(
+    "@/lib/middleware/utils"
+  );
+  return {
+    ...actual,
+    checkIsSuperAdmin: vi.fn().mockResolvedValue(false),
+  };
+});
 
 describe("GET /api/w/[slug]/pool/status - Authentication", () => {
   let owner: User;
@@ -58,14 +61,9 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
     vi.restoreAllMocks();
   });
 
-  it("should return 401 for unauthenticated requests", async () => {
-    getMockedRequireAuth.mockReturnValue(
-      NextResponse.json(
-        { error: "Unauthorized", kind: "unauthorized" },
-        { status: 401 }
-      )
-    );
-
+  it("should return 401 for unauthenticated requests on a private workspace", async () => {
+    // No auth headers stamped — `resolveWorkspaceAccess` returns `unauthenticated`
+    // because the workspace is not flagged `isPublicViewable`.
     const request = createGetRequest(`/api/w/${workspace.slug}/pool/status`);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
@@ -74,14 +72,27 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
     await expectUnauthorized(response);
   });
 
-  it("should return 400 when workspace slug is missing", async () => {
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
+  it("should allow unauthenticated access on a public-viewable workspace", async () => {
+    await db.workspace.update({
+      where: { id: workspace.id },
+      data: { isPublicViewable: true },
     });
 
-    const request = createGetRequest("/api/w//pool/status");
+    const request = createGetRequest(`/api/w/${workspace.slug}/pool/status`);
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: workspace.slug }),
+    });
+
+    const data = await expectSuccess(response);
+    expect(data.success).toBe(true);
+    expect(data.data.status).toBeDefined();
+    // Aggregate-only response — should never leak pod-level identifiers.
+    expect(data.data.status).not.toHaveProperty("podIds");
+    expect(data.data.status).not.toHaveProperty("hostnames");
+  });
+
+  it("should return 400 when workspace slug is missing", async () => {
+    const request = createAuthenticatedGetRequest("/api/w//pool/status", owner);
     const response = await GET(request, {
       params: Promise.resolve({ slug: "" }),
     });
@@ -91,15 +102,24 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
     expect(data.error).toBe("Workspace slug is required");
   });
 
-  it("should return 404 for non-existent workspace", async () => {
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
-    });
-
+  it("should return 401 for non-existent workspace when unauthenticated", async () => {
+    // resolveWorkspaceAccess returns `unauthenticated` (not `not-found`) when
+    // the caller has no session AND the workspace doesn't exist — we don't
+    // want to leak workspace existence to anonymous callers.
     const request = createGetRequest(
       "/api/w/nonexistent-workspace/pool/status"
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: "nonexistent-workspace" }),
+    });
+
+    await expectUnauthorized(response);
+  });
+
+  it("should return 404 for non-existent workspace when authenticated", async () => {
+    const request = createAuthenticatedGetRequest(
+      "/api/w/nonexistent-workspace/pool/status",
+      owner
     );
     const response = await GET(request, {
       params: Promise.resolve({ slug: "nonexistent-workspace" }),
@@ -114,14 +134,9 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
       owner: { name: "No Swarm Owner" },
     });
 
-    getMockedRequireAuth.mockReturnValue({
-      id: newScenario.owner.id,
-      email: newScenario.owner.email!,
-      name: newScenario.owner.name!,
-    });
-
-    const request = createGetRequest(
-      `/api/w/${newScenario.workspace.slug}/pool/status`
+    const request = createAuthenticatedGetRequest(
+      `/api/w/${newScenario.workspace.slug}/pool/status`,
+      newScenario.owner
     );
     const response = await GET(request, {
       params: Promise.resolve({ slug: newScenario.workspace.slug }),
@@ -189,22 +204,21 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
     vi.restoreAllMocks();
   });
 
-  it("should return 403 for non-member access", async () => {
+  it("should return 403 for non-member access on a private workspace", async () => {
+    // resolveWorkspaceAccess returns `forbidden` when the caller is
+    // authenticated, the workspace exists, and they have no membership row
+    // and the workspace isn't public-viewable. requireReadAccess maps
+    // `forbidden` to a 403 response.
     const request = createAuthenticatedGetRequest(
       `/api/w/${workspace.slug}/pool/status`,
       nonMember
     );
-    getMockedRequireAuth.mockReturnValue({
-      id: nonMember.id,
-      email: nonMember.email!,
-      name: nonMember.name!,
-    });
 
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });
 
-    await expectNotFound(response, "Workspace not found or access denied");
+    expect(response.status).toBe(403);
   });
 
   it("should allow VIEWER role to access pool status", async () => {
@@ -212,11 +226,6 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
       `/api/w/${workspace.slug}/pool/status`,
       memberViewer
     );
-    getMockedRequireAuth.mockReturnValue({
-      id: memberViewer.id,
-      email: memberViewer.email!,
-      name: memberViewer.name!,
-    });
 
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
@@ -233,11 +242,6 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
       `/api/w/${workspace.slug}/pool/status`,
       memberDeveloper
     );
-    getMockedRequireAuth.mockReturnValue({
-      id: memberDeveloper.id,
-      email: memberDeveloper.email!,
-      name: memberDeveloper.name!,
-    });
 
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
@@ -253,11 +257,6 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
       `/api/w/${workspace.slug}/pool/status`,
       memberAdmin
     );
-    getMockedRequireAuth.mockReturnValue({
-      id: memberAdmin.id,
-      email: memberAdmin.email!,
-      name: memberAdmin.name!,
-    });
 
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
@@ -273,11 +272,6 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
       `/api/w/${workspace.slug}/pool/status`,
       owner
     );
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
-    });
 
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
@@ -308,12 +302,6 @@ describe("GET /api/w/[slug]/pool/status - Pool Status Data", () => {
         name: `service-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
-    });
-
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
     });
   });
 
@@ -517,12 +505,6 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
         usageStatus: PodUsageStatus.UNUSED,
       });
     });
-
-    getMockedRequireAuth.mockReturnValue({
-      id: owner.id,
-      email: owner.email!,
-      name: owner.name!,
-    });
   });
 
   afterEach(() => {
@@ -573,12 +555,6 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
       workspaceId: newScenario.workspace.id,
       name: `empty-swarm-${generateUniqueId("swarm")}`,
       status: "ACTIVE",
-    });
-
-    getMockedRequireAuth.mockReturnValue({
-      id: newScenario.owner.id,
-      email: newScenario.owner.email!,
-      name: newScenario.owner.name!,
     });
 
     const request = createAuthenticatedGetRequest(
@@ -643,12 +619,6 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
       ],
     });
 
-    getMockedRequireAuth.mockReturnValue({
-      id: newScenario.owner.id,
-      email: newScenario.owner.email!,
-      name: newScenario.owner.name!,
-    });
-
     const request = createAuthenticatedGetRequest(
       `/api/w/${newScenario.workspace.slug}/pool/status`,
       newScenario.owner
@@ -682,12 +652,6 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
         status: "TODO",
         deleted: false,
       },
-    });
-
-    getMockedRequireAuth.mockReturnValue({
-      id: newScenario.owner.id,
-      email: newScenario.owner.email!,
-      name: newScenario.owner.name!,
     });
 
     const request = createAuthenticatedGetRequest(
