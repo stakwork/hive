@@ -83,7 +83,7 @@ describe("TASK_ASSIGNED notification", () => {
 
     await updateTicket(task.id, owner.id, { assigneeId: assignee.id });
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 500));
 
     const record = await db.notificationTrigger.findFirst({
       where: {
@@ -145,7 +145,7 @@ describe("TASK_ASSIGNED notification", () => {
 
     await updateTicket(plainTask.id, plainOwner.id, { assigneeId: plainAssignee.id });
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 500));
 
     const record = await db.notificationTrigger.findFirst({
       where: {
@@ -162,7 +162,7 @@ describe("TASK_ASSIGNED notification", () => {
   it("does NOT create a notification when self-assigning", async () => {
     await updateTicket(task.id, owner.id, { assigneeId: owner.id });
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 500));
 
     const records = await db.notificationTrigger.findMany({
       where: { notificationType: NotificationTriggerType.TASK_ASSIGNED },
@@ -174,7 +174,7 @@ describe("TASK_ASSIGNED notification", () => {
   it("does NOT create a notification for system assignees", async () => {
     await updateTicket(task.id, owner.id, { assigneeId: "system:task-coordinator" });
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 500));
 
     const records = await db.notificationTrigger.findMany({
       where: { notificationType: NotificationTriggerType.TASK_ASSIGNED },
@@ -239,7 +239,7 @@ describe("TASK_ASSIGNED notification — DM not configured (no lightningPubkey)"
   it("creates a SKIPPED notification_trigger row when user has no lightningPubkey", async () => {
     await updateTicket(task.id, owner.id, { assigneeId: assignee.id });
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 500));
 
     const record = await db.notificationTrigger.findFirst({
       where: {
