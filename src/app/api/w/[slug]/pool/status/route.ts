@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { getWorkspaceBySlug } from "@/services/workspace";
+import {
+  resolveWorkspaceAccess,
+  requireReadAccess,
+} from "@/lib/auth/workspace-access";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
 
 export async function GET(
@@ -8,10 +10,6 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { slug } = await params;
 
     if (!slug) {
@@ -21,21 +19,18 @@ export async function GET(
       );
     }
 
-
-
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 404 }
-      );
-    }
+    // Public-viewable workspaces expose pool status (aggregate counters
+    // only — no pod URLs, credentials, or IDs are returned). Anonymous
+    // visitors are admitted by `resolveWorkspaceAccess` only when the
+    // workspace is flagged `isPublicViewable`; everyone else gets 401/403.
+    const access = await resolveWorkspaceAccess(request, { slug });
+    const ok = requireReadAccess(access);
+    if (ok instanceof NextResponse) return ok;
 
     const { db } = await import("@/lib/db");
     const swarm = await db.swarm.findFirst({
       where: {
-        workspaceId: workspace.id,
+        workspaceId: ok.workspaceId,
       },
       select: {
         id: true,
@@ -50,7 +45,7 @@ export async function GET(
     }
 
     try {
-      const poolStatus = await getPoolStatusFromPods(swarm.id, workspace.id);
+      const poolStatus = await getPoolStatusFromPods(swarm.id, ok.workspaceId);
 
       return NextResponse.json({
         success: true,
