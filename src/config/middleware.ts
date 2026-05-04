@@ -102,6 +102,13 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/swarm/jarvis/schema", strategy: "exact", access: "public", methods: ["GET"] },
   { path: "/api/swarm/jarvis/nodes", strategy: "exact", access: "public", methods: ["GET"] },
 
+  // Pool status. Returns aggregate pod counters (running/pending/failed/used,
+  // queuedCount, lastCheck) only — no pod URLs, credentials, IDs, or env
+  // config. Drives the dashboard's `<PoolStatusWidget />` for both members
+  // and public viewers. Handler enforces public-viewability via
+  // `resolveWorkspaceAccess` + `requireReadAccess`.
+  { path: "/api/w/*/pool/status", strategy: "pattern", access: "public", methods: ["GET"] },
+
   // /learn page: docs, concepts, diagrams, and config. Each handler resolves
   // workspace access via `resolveWorkspaceAccess` + `requireReadAccess`.
   // POST/PUT siblings on the same paths fall through to `protected`.
