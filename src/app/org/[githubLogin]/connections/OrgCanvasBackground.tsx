@@ -1947,6 +1947,7 @@ export function OrgCanvasBackground({
           canvases={subCanvases}
           theme={connectionsTheme}
           editable
+          zoomNavigation
           onResolveCanvas={onResolveCanvas}
           onNavigate={handleSystemCanvasNavigate}
           onBreadcrumbClick={handleBreadcrumbClick}
