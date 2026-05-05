@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { isValidModel, getApiKeyForModel, VALID_MODELS, PROVIDER_API_KEY_ENV_VARS } from "@/lib/ai/models";
+import { isValidModel, getApiKeyForModel, VALID_MODELS, PROVIDER_API_KEY_ENV_VARS, getStoredPlanModelPreference, setStoredPlanModelPreference, PLAN_MODEL_PREFERENCE_KEY } from "@/lib/ai/models";
 
 describe("models", () => {
   describe("isValidModel", () => {
@@ -86,6 +87,52 @@ describe("models", () => {
     test("alias format still works for gemini", () => {
       process.env.GOOGLE_API_KEY = "test-google-key";
       expect(getApiKeyForModel("gemini")).toBe("test-google-key");
+    });
+  });
+
+  describe("getStoredPlanModelPreference", () => {
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    test("returns null when key is absent", () => {
+      expect(getStoredPlanModelPreference()).toBeNull();
+    });
+
+    test("returns stored value when key exists", () => {
+      localStorage.setItem(PLAN_MODEL_PREFERENCE_KEY, "anthropic/claude-sonnet-4");
+      expect(getStoredPlanModelPreference()).toBe("anthropic/claude-sonnet-4");
+    });
+
+    test("returns null when localStorage.getItem throws", () => {
+      vi.spyOn(window.localStorage, "getItem").mockImplementationOnce(() => {
+        throw new Error("storage error");
+      });
+      expect(getStoredPlanModelPreference()).toBeNull();
+    });
+  });
+
+  describe("setStoredPlanModelPreference", () => {
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    test("writes the correct key/value pair to localStorage", () => {
+      setStoredPlanModelPreference("openai/gpt-4o");
+      expect(localStorage.getItem(PLAN_MODEL_PREFERENCE_KEY)).toBe("openai/gpt-4o");
+    });
+
+    test("overwrites a previously stored value", () => {
+      localStorage.setItem(PLAN_MODEL_PREFERENCE_KEY, "old-model");
+      setStoredPlanModelPreference("google/gemini-pro");
+      expect(localStorage.getItem(PLAN_MODEL_PREFERENCE_KEY)).toBe("google/gemini-pro");
+    });
+
+    test("does not throw when localStorage.setItem throws", () => {
+      vi.spyOn(window.localStorage, "setItem").mockImplementationOnce(() => {
+        throw new Error("storage full");
+      });
+      expect(() => setStoredPlanModelPreference("anthropic/claude-sonnet-4")).not.toThrow();
     });
   });
 
