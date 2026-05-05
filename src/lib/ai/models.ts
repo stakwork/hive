@@ -76,6 +76,26 @@ export async function getDefaultModel(type: "plan" | "task"): Promise<string | n
   }
 }
 
+export const PLAN_MODEL_PREFERENCE_KEY = "plan_model_preference";
+
+export function getStoredPlanModelPreference(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(PLAN_MODEL_PREFERENCE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredPlanModelPreference(value: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(PLAN_MODEL_PREFERENCE_KEY, value);
+  } catch {
+    /* noop */
+  }
+}
+
 export function getApiKeyForModel(model: ModelName | string): string | undefined {
   if (model.includes("/")) {
     const provider = model.split("/")[0].toUpperCase();

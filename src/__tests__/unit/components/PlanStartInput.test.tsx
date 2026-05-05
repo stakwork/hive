@@ -97,6 +97,7 @@ if (typeof window !== "undefined") {
 }
 
 import { PlanStartInput } from "@/app/w/[slug]/plan/new/components/PlanStartInput";
+import { PLAN_MODEL_PREFERENCE_KEY } from "@/lib/ai/models";
 
 const mentionWorkspaces = [
   { slug: "test-ws", name: "Test WS" },
@@ -108,6 +109,7 @@ describe("PlanStartInput", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     global.fetch = mockFetch as unknown as typeof fetch;
     mockSpeechRecognitionState.isListening = false;
     mockSpeechRecognitionState.transcript = "";
@@ -332,6 +334,92 @@ describe("PlanStartInput", () => {
       // onSubmit is called on the first Enter; second Enter also calls it
       // (no isExiting guard), so both fire — but the key point is it's not zero.
       expect(onSubmit).toHaveBeenCalled();
+    });
+  });
+
+  describe("localStorage model preference", () => {
+    test("defaults to stored preference when present and valid", async () => {
+      const { waitFor } = await import("@testing-library/react");
+      localStorage.setItem(PLAN_MODEL_PREFERENCE_KEY, "openai/gpt-4o");
+
+      render(<PlanStartInput onSubmit={onSubmit} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("model-selector")).toBeInTheDocument();
+        expect(screen.getByTestId("model-selector").textContent).toContain("gpt-4o");
+      });
+    });
+
+    test("falls back to isPlanDefault when stored key is absent", async () => {
+      const { waitFor } = await import("@testing-library/react");
+      const fetchWithDefault = vi.fn((url: string) => {
+        if (url === "/api/llm-models") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              models: [
+                { id: "1", name: "claude-sonnet-4", provider: "ANTHROPIC", providerLabel: "Claude Sonnet 4", isPlanDefault: false, isTaskDefault: false },
+                { id: "2", name: "gpt-4o", provider: "OPENAI", providerLabel: "GPT-4o", isPlanDefault: true, isTaskDefault: false },
+              ],
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+      global.fetch = fetchWithDefault as unknown as typeof fetch;
+
+      render(<PlanStartInput onSubmit={onSubmit} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("model-selector")).toBeInTheDocument();
+        expect(screen.getByTestId("model-selector").textContent).toContain("gpt-4o");
+      });
+    });
+
+    test("falls back to isPlanDefault when stored value is not in the fetched models list", async () => {
+      const { waitFor } = await import("@testing-library/react");
+      localStorage.setItem(PLAN_MODEL_PREFERENCE_KEY, "other/removed-model");
+
+      const fetchWithDefault = vi.fn((url: string) => {
+        if (url === "/api/llm-models") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              models: [
+                { id: "1", name: "claude-sonnet-4", provider: "ANTHROPIC", providerLabel: "Claude Sonnet 4", isPlanDefault: false, isTaskDefault: false },
+                { id: "2", name: "gpt-4o", provider: "OPENAI", providerLabel: "GPT-4o", isPlanDefault: true, isTaskDefault: false },
+              ],
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+      global.fetch = fetchWithDefault as unknown as typeof fetch;
+
+      render(<PlanStartInput onSubmit={onSubmit} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("model-selector")).toBeInTheDocument();
+        expect(screen.getByTestId("model-selector").textContent).toContain("gpt-4o");
+      });
+    });
+
+    test("persists model to localStorage on form submit", async () => {
+      const { waitFor } = await import("@testing-library/react");
+
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+
+      // Wait for models to fully load (state updated, selector visible)
+      await waitFor(() => {
+        expect(screen.getByTestId("model-selector")).toBeInTheDocument();
+      });
+
+      await userEvent.type(textarea, "My feature idea");
+      fireEvent.click(screen.getByTestId("plan-start-submit"));
+
+      expect(localStorage.getItem(PLAN_MODEL_PREFERENCE_KEY)).not.toBeNull();
+      expect(localStorage.getItem(PLAN_MODEL_PREFERENCE_KEY)).toBe("anthropic/claude-sonnet-4");
     });
   });
 });
