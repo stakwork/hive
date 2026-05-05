@@ -15,7 +15,7 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
-import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
+import { getModelValue, getStoredPlanModelPreference, setStoredPlanModelPreference, type LlmModelOption } from "@/lib/ai/models";
 
 interface PlanStartInputProps {
   onSubmit: (message: string, options?: { isPrototype: boolean; selectedRepoId: string | null; model: string }) => void;
@@ -71,8 +71,12 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
           const models: LlmModelOption[] = data.models ?? [];
           setLlmModels(models);
           if (models.length > 0) {
-            const defaultModel = models.find((m: { isPlanDefault: boolean }) => m.isPlanDefault);
-            setSelectedModel(getModelValue(defaultModel ?? models[0]));
+            const storedPreference = getStoredPlanModelPreference();
+            const storedModel = storedPreference
+              ? models.find((m: LlmModelOption) => getModelValue(m) === storedPreference)
+              : null;
+            const defaultModel = models.find((m: LlmModelOption) => m.isPlanDefault);
+            setSelectedModel(getModelValue(storedModel ?? defaultModel ?? models[0]));
           }
         }
       } catch (error) {
@@ -140,6 +144,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
         stopListening();
       }
       resetTranscript();
+      setStoredPlanModelPreference(selectedModel);
       onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId, model: selectedModel });
     }
   };
@@ -287,7 +292,7 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
             )}
 
             {llmModels.length > 0 && (
-              <Select value={selectedModel} onValueChange={(v) => setSelectedModel(v)}>
+              <Select value={selectedModel} onValueChange={(v) => { setSelectedModel(v); setStoredPlanModelPreference(v); }}>
                 <SelectTrigger className="w-auto h-8 text-xs rounded-lg shadow-sm whitespace-nowrap" data-testid="model-selector">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 shrink-0" />
