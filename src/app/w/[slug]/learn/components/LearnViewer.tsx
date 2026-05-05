@@ -25,6 +25,7 @@ interface Diagram {
   name: string;
   body: string;
   description?: string | null;
+  groupId?: string;
 }
 
 interface ActiveItem {
@@ -170,9 +171,37 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
       if (match) handleConceptClick(match.id, match.name, match.content || "");
     } else if (diagramParam) {
       const id = decodeURIComponent(diagramParam);
-      const match = diagrams.find((d) => d.id === id);
-      if (match) {
-        setActiveItem({ type: "diagram", id: match.id, name: match.name, content: "", body: match.body, description: match.description });
+
+      // Fast path: ID is already the latest version in the list
+      const exactMatch = diagrams.find((d) => d.id === id);
+      if (exactMatch) {
+        setActiveItem({ type: "diagram", id: exactMatch.id, name: exactMatch.name, content: "", body: exactMatch.body, description: exactMatch.description });
+      } else {
+        // Slow path: ID may refer to an older version — resolve its groupId server-side
+        (async () => {
+          try {
+            const res = await fetch(`/api/learnings/diagrams/${encodeURIComponent(id)}?workspace=${workspaceSlug}`);
+            if (res.ok) {
+              const { groupId } = await res.json();
+              const latestInGroup = diagrams.find((d) => d.groupId === groupId);
+              if (latestInGroup) {
+                setActiveItem({ type: "diagram", id: latestInGroup.id, name: latestInGroup.name, content: "", body: latestInGroup.body, description: latestInGroup.description });
+                // Silently rewrite the URL to the latest version
+                if (latestInGroup.id !== id) {
+                  setUrlParam("diagram", latestInGroup.id);
+                }
+                return;
+              }
+            }
+          } catch {
+            // fall through to fallback
+          }
+          // Fallback: unknown/deleted diagram — select first doc
+          if (docs.length > 0) {
+            const firstDoc = docs[0];
+            setActiveItem({ type: "doc", repoName: firstDoc.repoName, name: firstDoc.repoName, content: firstDoc.content });
+          }
+        })();
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

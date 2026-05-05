@@ -71,15 +71,35 @@ vi.mock("@/app/w/[slug]/learn/components/CreateDiagramModal", () => ({
 // ---------------------------------------------------------------------------
 const DOCS_RESPONSE = [{ "org/repo": { documentation: "doc content here" } }];
 const CONCEPTS_RESPONSE = { features: [{ id: "concept-abc", name: "Auth Concept", content: "concept content" }] };
-const DIAGRAMS_RESPONSE = [{ id: "diag-123", name: "System Diagram", body: "graph TD; A-->B", description: "desc" }];
+const DIAGRAMS_RESPONSE = [{ id: "diag-123", name: "System Diagram", body: "graph TD; A-->B", description: "desc", groupId: "group-abc" }];
 
-function makeFetchMock(overrides?: { docs?: unknown; concepts?: unknown; diagrams?: unknown }) {
+function makeFetchMock(overrides?: {
+  docs?: unknown;
+  concepts?: unknown;
+  diagrams?: unknown;
+  /** Handler for GET /api/learnings/diagrams/<id> requests */
+  diagramById?: (id: string) => { ok: boolean; status?: number; body?: unknown };
+}) {
   return vi.fn().mockImplementation((url: string) => {
     if (url.includes("/api/learnings/docs")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides?.docs ?? DOCS_RESPONSE) });
     }
     if (url.includes("/api/learnings/features") && !url.includes("/documentation")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides?.concepts ?? CONCEPTS_RESPONSE) });
+    }
+    // Match /api/learnings/diagrams/<id> before the list endpoint
+    const byIdMatch = url.match(/\/api\/learnings\/diagrams\/([^?]+)/);
+    if (byIdMatch) {
+      const id = byIdMatch[1];
+      if (overrides?.diagramById) {
+        const result = overrides.diagramById(id);
+        return Promise.resolve({
+          ok: result.ok,
+          status: result.status ?? (result.ok ? 200 : 404),
+          json: () => Promise.resolve(result.body ?? {}),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
     }
     if (url.includes("/api/learnings/diagrams")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides?.diagrams ?? DIAGRAMS_RESPONSE) });
@@ -186,5 +206,108 @@ describe("LearnViewer — URL param sync", () => {
     screen.getByTestId("doc-org/repo").click();
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockReplace).toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // URL-restore: diagram slow path (older-version ID not in list)
+  // ---------------------------------------------------------------------------
+  it("opens latest diagram version when URL param is an older-version ID not in the list", async () => {
+    // The list only has the latest version (diag-123 / group-abc)
+    // The URL has an older ID "diag-old-version" which resolves to the same group
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "diagram" ? "diag-old-version" : null
+    );
+
+    global.fetch = makeFetchMock({
+      diagramById: (id) => {
+        if (id === "diag-old-version") {
+          return { ok: true, body: { id: "diag-old-version", groupId: "group-abc" } };
+        }
+        return { ok: false };
+      },
+    });
+
+    render(<LearnViewer workspaceSlug="test-workspace" />);
+
+    // Should open the latest diagram (diag-123) whose groupId matches "group-abc"
+    await waitFor(() => expect(screen.getByTestId("diagram-viewer")).toHaveTextContent("System Diagram"));
+  });
+
+  it("rewrites the URL to the latest ID when resolving an older-version diagram param", async () => {
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "diagram" ? "diag-old-version" : null
+    );
+
+    global.fetch = makeFetchMock({
+      diagramById: (id) => {
+        if (id === "diag-old-version") {
+          return { ok: true, body: { id: "diag-old-version", groupId: "group-abc" } };
+        }
+        return { ok: false };
+      },
+    });
+
+    render(<LearnViewer workspaceSlug="test-workspace" />);
+
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith(
+        expect.stringContaining("diagram=diag-123"),
+        expect.objectContaining({ scroll: false })
+      )
+    );
+  });
+
+  it("falls back to first doc when diagram ID resolves but groupId has no match in list", async () => {
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "diagram" ? "diag-orphan" : null
+    );
+
+    global.fetch = makeFetchMock({
+      diagramById: (id) => {
+        if (id === "diag-orphan") {
+          // Returns a groupId that isn't in the diagrams list
+          return { ok: true, body: { id: "diag-orphan", groupId: "group-nonexistent" } };
+        }
+        return { ok: false };
+      },
+    });
+
+    render(<LearnViewer workspaceSlug="test-workspace" />);
+
+    await waitFor(() => expect(screen.getByTestId("doc-viewer")).toHaveTextContent("org/repo"));
+  });
+
+  it("falls back to first doc when the diagram ID lookup returns 404", async () => {
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "diagram" ? "diag-deleted" : null
+    );
+
+    global.fetch = makeFetchMock({
+      diagramById: () => ({ ok: false, status: 404, body: { error: "Not found" } }),
+    });
+
+    render(<LearnViewer workspaceSlug="test-workspace" />);
+
+    await waitFor(() => expect(screen.getByTestId("doc-viewer")).toHaveTextContent("org/repo"));
+  });
+
+  it("opens diagram immediately (no extra fetch) when URL param matches latest version in list", async () => {
+    // diag-123 is already in DIAGRAMS_RESPONSE (the latest)
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "diagram" ? "diag-123" : null
+    );
+
+    const fetchSpy = makeFetchMock();
+    global.fetch = fetchSpy;
+
+    render(<LearnViewer workspaceSlug="test-workspace" />);
+
+    await waitFor(() => expect(screen.getByTestId("diagram-viewer")).toHaveTextContent("System Diagram"));
+
+    // Confirm no call was made to the /diagrams/<id> endpoint
+    const byIdCalls = (fetchSpy as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([url]: [string]) => /\/api\/learnings\/diagrams\/[^?]+/.test(url)
+    );
+    expect(byIdCalls).toHaveLength(0);
   });
 });
