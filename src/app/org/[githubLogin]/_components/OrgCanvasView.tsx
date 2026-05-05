@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { CanvasNode } from "system-canvas";
+import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { ConnectionViewer } from "../connections/ConnectionViewer";
 import { OrgCanvasBackground } from "../connections/OrgCanvasBackground";
 import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
 import type { ConnectionData } from "../connections/types";
@@ -20,6 +20,21 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+
+/**
+ * Sidebar layout sizes (percent of container width).
+ *
+ * Connection viewing happens *inside* the sidebar — when the user
+ * opens a connection we imperatively grow the panel to
+ * `EXPANDED_SIZE` so the viewer has room (diagram + scalar iframe
+ * each want a few hundred pixels of breathing room), then restore to
+ * the prior width when the user goes back. The user's own resize is
+ * preserved through `autoSaveId` so manual sizing wins on next mount.
+ */
+const SIDEBAR_DEFAULT_SIZE = 24;
+const SIDEBAR_MIN_SIZE = 16;
+const SIDEBAR_MAX_SIZE = 80;
+const SIDEBAR_EXPANDED_SIZE = 60;
 
 /** Strip the `ws:` prefix from a live workspace id. */
 function stripWsPrefix(liveId: string): string {
@@ -56,6 +71,14 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const { slug: workspaceSlug } = useWorkspace();
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
+  /**
+   * Width the sidebar had before we auto-expanded for a connection
+   * viewer. Restored on `handleBack`. `null` when not in an
+   * auto-expanded state. Stored as a percent of container width
+   * (matches the `react-resizable-panels` API surface).
+   */
+  const preExpandSizeRef = useRef<number | null>(null);
   const [panelWidth, setPanelWidth] = useState(384);
 
   const [workspaces, setWorkspaces] = useState<{ id: string; slug: string }[]>([]);
@@ -245,23 +268,70 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     return [];
   }, [githubLogin]);
 
+  /**
+   * Open a connection inside the sidebar viewer. Both the user-click
+   * path and the `?c=<slug>` deep-link path funnel through here so
+   * the sidebar auto-grows consistently.
+   *
+   * The panel ref may be null on first paint when the deep-link
+   * fetch resolves before React commits the panel — that's fine;
+   * `setActiveConnection` will trigger the tab-flip effect and the
+   * user can manually drag if needed. We retry once on the next
+   * frame to catch the common case where the ref lands a tick later.
+   */
+  const openConnection = useCallback((connection: ConnectionData) => {
+    const expand = () => {
+      const panel = sidebarPanelRef.current;
+      if (!panel) return false;
+      const current = panel.getSize();
+      if (preExpandSizeRef.current === null) {
+        preExpandSizeRef.current = current;
+      }
+      if (current < SIDEBAR_EXPANDED_SIZE) {
+        panel.resize(SIDEBAR_EXPANDED_SIZE);
+      }
+      return true;
+    };
+    if (!expand()) {
+      // Panel not yet mounted (deep-link path) — try again next frame.
+      requestAnimationFrame(() => {
+        expand();
+      });
+    }
+    setActiveConnection(connection);
+    setUrlSlug(connection.slug);
+  }, [setUrlSlug]);
+
   useEffect(() => {
     fetchConnections().then((list) => {
       const slug = searchParams.get("c");
       if (slug && list.length > 0) {
         const match = list.find((c) => c.slug === slug);
-        if (match) setActiveConnection(match);
+        if (match) openConnection(match);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [githubLogin]);
 
   const handleConnectionClick = (connection: ConnectionData) => {
-    setActiveConnection(connection);
-    setUrlSlug(connection.slug);
+    openConnection(connection);
   };
 
   const handleBack = () => {
+    // Restore the sidebar to whatever width it had before we
+    // auto-grew. If the user manually resized while viewing a
+    // connection, respect that — only auto-restore if we're still
+    // sitting at the expanded size we wrote.
+    const panel = sidebarPanelRef.current;
+    const prior = preExpandSizeRef.current;
+    if (panel && prior !== null) {
+      const current = panel.getSize();
+      // Tolerate sub-pixel rounding from `onResize` round-trips.
+      if (Math.abs(current - SIDEBAR_EXPANDED_SIZE) < 0.5) {
+        panel.resize(prior);
+      }
+    }
+    preExpandSizeRef.current = null;
     setActiveConnection(null);
     setUrlSlug(null);
   };
@@ -451,21 +521,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         onCanvasBreadcrumbChange={handleCanvasBreadcrumbChange}
       />
 
-      {/* Hide the canvas behind a connection viewer while one is open. */}
-      {activeConnection && (
-        <div className="absolute inset-0 bg-background z-10" aria-hidden />
-      )}
-
-      {/* Connection viewer — tracks dynamic panel width via style. */}
-      {activeConnection && (
-        <div
-          className="relative z-20 flex flex-1 flex-col h-full"
-          style={{ marginRight: panelWidth }}
-        >
-          <ConnectionViewer connection={activeConnection} onBack={handleBack} />
-        </div>
-      )}
-
       {/* Resizable sidebar overlay — sits at z-20, absolutely
           positioned to cover the right portion of the canvas.
           The left filler panel is transparent; only the right
@@ -489,7 +544,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
           <ResizablePanel
             id="org-right-panel-filler"
             order={1}
-            defaultSize={76}
+            defaultSize={100 - SIDEBAR_DEFAULT_SIZE}
             className="pointer-events-none"
           />
 
@@ -500,11 +555,12 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
 
           {/* Right panel — the visible sidebar */}
           <ResizablePanel
+            ref={sidebarPanelRef}
             id="org-right-panel-sidebar"
             order={2}
-            defaultSize={24}
-            minSize={16}
-            maxSize={37}
+            defaultSize={SIDEBAR_DEFAULT_SIZE}
+            minSize={SIDEBAR_MIN_SIZE}
+            maxSize={SIDEBAR_MAX_SIZE}
             className="pointer-events-auto"
             onResize={(percent) => {
               const containerWidth = containerRef.current?.offsetWidth ?? 1600;
@@ -516,8 +572,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               selectedNode={selectedNode}
               chatReady={chatReady && conversationStarted}
               connections={connections}
-              activeConnectionId={activeConnection?.id ?? null}
+              activeConnection={activeConnection}
               onConnectionClick={handleConnectionClick}
+              onConnectionClose={handleBack}
               onConnectionCreated={handleConnectionCreated}
               onConnectionDeleted={handleConnectionDeleted}
               isLoading={loadingConnections}

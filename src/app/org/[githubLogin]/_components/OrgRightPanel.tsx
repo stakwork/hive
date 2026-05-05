@@ -8,6 +8,7 @@ import { MousePointerClick } from "lucide-react";
 import { NodeDetail } from "./NodeDetail";
 import { ConnectionsListBody } from "./ConnectionsListBody";
 import { SidebarChat } from "./SidebarChat";
+import { ConnectionViewer } from "../connections/ConnectionViewer";
 import type { ConnectionData } from "../connections/types";
 
 type Tab = "chat" | "details" | "connections";
@@ -24,8 +25,17 @@ interface OrgRightPanelProps {
    */
   chatReady: boolean;
   connections: ConnectionData[];
-  activeConnectionId: string | null;
+  /**
+   * The currently-open connection, or null when no connection is
+   * being viewed. When non-null, the Connections tab body switches
+   * from the list view to the inline `<ConnectionViewer />`. The
+   * sidebar has been auto-grown by `OrgCanvasView` so the viewer has
+   * room.
+   */
+  activeConnection: ConnectionData | null;
   onConnectionClick: (connection: ConnectionData) => void;
+  /** Called when the user hits Back inside the inline viewer. */
+  onConnectionClose: () => void;
   onConnectionCreated: () => void;
   onConnectionDeleted: (connectionId: string) => void;
   isLoading: boolean;
@@ -53,22 +63,29 @@ export function OrgRightPanel({
   selectedNode,
   chatReady,
   connections,
-  activeConnectionId,
+  activeConnection,
   onConnectionClick,
+  onConnectionClose,
   onConnectionCreated,
   onConnectionDeleted,
   isLoading,
 }: OrgRightPanelProps) {
   // Default to Chat — the canvas's primary agent surface. Auto-flip
-  // to Details when the user clicks a node. Manual tab clicks
-  // override this until the next selection change. Keying on
-  // `selectedNode?.id` (not the object identity) so the canvas
-  // re-emitting the same node object on reselect still re-fires.
+  // to Details when the user clicks a node, or to Connections when a
+  // connection is opened (e.g. from a deep-link `?c=<slug>`). Manual
+  // tab clicks override this until the next trigger. Keying on
+  // `selectedNode?.id` / `activeConnection?.id` (not the object
+  // identity) so the canvas re-emitting the same object on reselect
+  // still re-fires.
   const [tab, setTab] = useState<Tab>("chat");
   useEffect(() => {
     if (selectedNode) setTab("details");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id]);
+  useEffect(() => {
+    if (activeConnection) setTab("connections");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConnection?.id]);
 
   return (
     <div className="h-full w-full flex flex-col border-l bg-background">
@@ -118,17 +135,32 @@ export function OrgRightPanel({
 
         {/* Connections tab — kept mounted to preserve its Pusher
             subscription and avoid re-fetching the connection list on
-            every tab flip. */}
+            every tab flip. When a connection is open, swap the list
+            for the inline viewer. The list itself stays mounted
+            behind the viewer (also via `hidden`) so flipping back is
+            instant. */}
         <TabBody hidden={tab !== "connections"}>
-          <ConnectionsListBody
-            githubLogin={githubLogin}
-            connections={connections}
-            activeConnectionId={activeConnectionId}
-            onConnectionClick={onConnectionClick}
-            onConnectionCreated={onConnectionCreated}
-            onConnectionDeleted={onConnectionDeleted}
-            isLoading={isLoading}
-          />
+          <div className="absolute inset-0">
+            <div hidden={!!activeConnection} className={activeConnection ? "" : "absolute inset-0"}>
+              <ConnectionsListBody
+                githubLogin={githubLogin}
+                connections={connections}
+                activeConnectionId={activeConnection?.id ?? null}
+                onConnectionClick={onConnectionClick}
+                onConnectionCreated={onConnectionCreated}
+                onConnectionDeleted={onConnectionDeleted}
+                isLoading={isLoading}
+              />
+            </div>
+            {activeConnection && (
+              <div className="absolute inset-0">
+                <ConnectionViewer
+                  connection={activeConnection}
+                  onBack={onConnectionClose}
+                />
+              </div>
+            )}
+          </div>
         </TabBody>
       </div>
     </div>
