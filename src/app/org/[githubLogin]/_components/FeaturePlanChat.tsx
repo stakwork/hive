@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { ArrowUpRight, Loader2, Send } from "lucide-react";
 import {
@@ -295,13 +294,25 @@ export function FeaturePlanChat({
 
       <div className="text-[10px] text-muted-foreground italic flex items-center gap-1">
         Full plan view (PLAN/TASKS/VERIFY){" "}
-        <Link
+        {/*
+         * Plain `<a target="_blank">` rather than `next/link` — matches
+         * the AttentionList convention (see CANVAS.md gotcha): cross-
+         * context navigation from the org canvas opens externally so
+         * the canvas state (active chat, in-flight proposals, current
+         * scope) survives. The same-tab `<Link>` was also being
+         * silently swallowed inside the canvas DOM (Cmd+click worked
+         * but plain click didn't); opening externally avoids the
+         * interception entirely.
+         */}
+        <a
           href={`/w/${workspaceSlug}/plan/${featureId}`}
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-flex items-center gap-0.5 underline hover:text-foreground"
         >
           Open feature
           <ArrowUpRight className="h-3 w-3" />
-        </Link>
+        </a>
       </div>
     </div>
   );
@@ -380,7 +391,7 @@ function FeaturePlanChatInput({
           type="submit"
           size="icon"
           disabled={!input.trim() || disabled}
-          className="absolute right-1 bottom-1 h-7 w-7 rounded-full"
+          className="absolute right-1.5 top-1/2 -translate-y-[60%] h-7 w-7 rounded-full"
         >
           <Send className="w-3.5 h-3.5" />
         </Button>

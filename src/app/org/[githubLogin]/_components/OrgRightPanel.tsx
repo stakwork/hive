@@ -69,6 +69,14 @@ interface OrgRightPanelProps {
    * state — no args needed.
    */
   onCreateConnectionForEdge: () => void;
+  /**
+   * Connection ids referenced by at least one edge on the canvas
+   * (across every canvas scope loaded this session). Used by the
+   * Connections list to render a small dot next to rows whose
+   * connection is wired up — the sidebar-side mirror of the canvas's
+   * linked-edge color highlight.
+   */
+  linkedConnectionIds: Set<string>;
 }
 
 /**
@@ -103,6 +111,7 @@ export function OrgRightPanel({
   onLinkConnectionToEdge,
   onUnlinkConnectionFromEdge,
   onCreateConnectionForEdge,
+  linkedConnectionIds,
 }: OrgRightPanelProps) {
   // Default to Chat — the canvas's primary agent surface. Auto-flip
   // to Details when the user clicks a node, to Connections when a
@@ -209,6 +218,7 @@ export function OrgRightPanel({
                 selectedEdge={selectedEdge}
                 onLinkConnectionToEdge={onLinkConnectionToEdge}
                 onCreateConnectionForEdge={handleCreateConnectionForEdge}
+                linkedConnectionIds={linkedConnectionIds}
               />
             </div>
             {activeConnection && (

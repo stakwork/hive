@@ -252,19 +252,29 @@ export function DiagramViewer({ name, body, description, hideHeader = false }: D
   useEffect(() => {
     if (!svgHtml) return;
     let cancelled = false;
+    // Tracks the SVG element we last sized. When it's replaced
+    // (e.g. a parent re-render reapplies `dangerouslySetInnerHTML`,
+    // which can happen on Fast Refresh, prop-identity changes, or
+    // React reconciliation quirks), the fresh node is unstyled
+    // and renders at the SVG default 300×150. We detect the swap
+    // via a MutationObserver and re-run measureAndFit so the new
+    // node gets the same width/height our model expects.
+    let lastSvg: SVGSVGElement | null = null;
 
     function measureAndFit() {
       if (cancelled) return;
 
       const canvas = canvasRef.current;
       const ct = containerRef.current;
-      const svg = canvas?.querySelector("svg");
+      const svg = canvas?.querySelector("svg") as SVGSVGElement | null;
       if (!svg || !ct) return;
 
       if (ct.clientWidth === 0 || ct.clientHeight === 0) {
         requestAnimationFrame(measureAndFit);
         return;
       }
+
+      lastSvg = svg;
 
       const size = readSvgNaturalSize(svg);
       svgW.current = size.w;
@@ -281,8 +291,26 @@ export function DiagramViewer({ name, body, description, hideHeader = false }: D
     }
 
     requestAnimationFrame(measureAndFit);
+
+    // Watch for the SVG element being replaced. Without this,
+    // a swap leaves the new SVG with mermaid's default attrs
+    // (`width="100%"`, no inline size), which inside our auto-
+    // sized canvas div collapses to the SVG default 300×150 — the
+    // "diagram pops out tiny" symptom.
+    const canvas = canvasRef.current;
+    let mo: MutationObserver | null = null;
+    if (canvas) {
+      mo = new MutationObserver(() => {
+        if (cancelled) return;
+        const current = canvas.querySelector("svg") as SVGSVGElement | null;
+        if (current && current !== lastSvg) measureAndFit();
+      });
+      mo.observe(canvas, { childList: true });
+    }
+
     return () => {
       cancelled = true;
+      mo?.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [svgHtml]);
