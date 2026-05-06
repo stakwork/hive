@@ -175,7 +175,6 @@ export async function executeWorkflowEditorRetry(
       data: {
         workflowStatus: WorkflowStatus.IN_PROGRESS,
         workflowStartedAt: new Date(),
-        haltRetryAttempted: false,
         ...(result.data?.project_id && { stakworkProjectId: result.data.project_id }),
       },
     });
