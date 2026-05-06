@@ -95,6 +95,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [activeConnection, setActiveConnection] = useState<ConnectionData | null>(null);
   const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(null);
   /**
+   * Set of connection ids referenced by at least one edge across the
+   * canvases the user has visited this session. Surfaced from
+   * `OrgCanvasBackground` (which owns the canvas blobs) so the
+   * sidebar can render a small "linked" dot on those rows.
+   */
+  const [linkedConnectionIds, setLinkedConnectionIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  /**
    * The edge the user has currently selected on the canvas, paired
    * with the canvas ref it lives on AND the resolved human labels
    * for its endpoints. Mutually exclusive with `selectedNode` from
@@ -361,11 +370,19 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     openConnection(connection);
   };
 
-  const handleBack = () => {
-    // Restore the sidebar to whatever width it had before we
-    // auto-grew. If the user manually resized while viewing a
-    // connection, respect that — only auto-restore if we're still
-    // sitting at the expanded size we wrote.
+  /**
+   * Close the connection viewer without touching `selectedEdge`.
+   * Restores the sidebar's pre-expand width (unless the user has
+   * manually resized in the meantime), clears `activeConnection`,
+   * and drops the `?c=` URL slug.
+   *
+   * Used by both the explicit Back button (`handleBack`, which
+   * additionally clears the edge) and by `handleSelectionChange`
+   * when the user switches from a linked edge to an unlinked edge —
+   * we want the viewer gone but the new edge to stay selected so
+   * link-mode chrome appears for it.
+   */
+  const closeViewerKeepingEdge = useCallback(() => {
     const panel = sidebarPanelRef.current;
     const prior = preExpandSizeRef.current;
     if (panel && prior !== null) {
@@ -378,13 +395,18 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     preExpandSizeRef.current = null;
     setActiveConnection(null);
     setUrlSlug(null);
-    // If an edge was driving the open viewer, closing the viewer
-    // ends the edge interaction too. Without this clear, the user
-    // would be left in a state with `selectedEdge` set but no
-    // visible link-mode chrome (because the linked-edge link rule
-    // hides `+`/link icons), which reads as "selected but invisibly
-    // so." The list-driven open path leaves `selectedEdge` null
-    // already, so this branch is safely a no-op there.
+  }, [setUrlSlug]);
+
+  const handleBack = () => {
+    closeViewerKeepingEdge();
+    // The explicit Back button (and selection-cleared / node-selected
+    // paths in `handleSelectionChange`) ends the edge interaction
+    // too. Without this clear, the user would be left in a state
+    // with `selectedEdge` set but no visible link-mode chrome
+    // (because the linked-edge link rule hides `+`/link icons),
+    // which reads as "selected but invisibly so." The list-driven
+    // open path leaves `selectedEdge` null already, so this is
+    // safely a no-op there.
     setSelectedEdge(null);
   };
 
@@ -474,8 +496,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         // Orphan id (connection deleted). Fall through to link-mode.
       }
       // Edge has no link (or orphaned link) — land in link-mode list.
-      // Close any prior open viewer so it's not still showing.
-      if (activeConnection) handleBack();
+      // Close any prior open viewer so it's not still showing, BUT
+      // keep the edge we just selected (we set it on line above).
+      // Calling `handleBack()` here would clobber `selectedEdge` and
+      // the link-mode chrome wouldn't render for the new edge.
+      if (activeConnection) closeViewerKeepingEdge();
     },
     // `handleBack` and `openConnection` are stable; pulling them in
     // as deps keeps the lint rule happy without re-creating every
@@ -736,6 +761,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         onSelectionChange={handleSelectionChange}
         edgePatchHandleRef={edgePatchHandleRef}
         onCanvasBreadcrumbChange={handleCanvasBreadcrumbChange}
+        onLinkedConnectionIdsChange={setLinkedConnectionIds}
       />
 
       {/* Resizable sidebar overlay — sits at z-20, absolutely
@@ -799,6 +825,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               onLinkConnectionToEdge={handleLinkConnectionToEdge}
               onUnlinkConnectionFromEdge={handleUnlinkConnectionFromEdge}
               onCreateConnectionForEdge={handleCreateConnectionForEdge}
+              linkedConnectionIds={linkedConnectionIds}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
