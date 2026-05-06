@@ -111,6 +111,15 @@ const LIVE_CONTAINER_CATEGORIES = ["workspace", "initiative", "milestone"];
 const ROOT_KEY = "__root__";
 const AUTOSAVE_MS = 600;
 
+/**
+ * Color applied to edges that have a linked Connection doc, so they
+ * stand out from un-linked edges at a glance. Theme default is slate-500
+ * (`#64748b`); slate-400 (`#94a3b8`) is the "noticeable but quiet"
+ * step. Applied as `edge.color` in a render-only decoration pass (see
+ * `decorateEdgesWithLinkVisual`); never persisted.
+ */
+const LINKED_EDGE_COLOR = "#94a3cc";
+
 type DirtyMap = Map<string, CanvasData>;
 
 type LastAction =
@@ -1889,10 +1898,59 @@ export function OrgCanvasBackground({
     [reassignFeatureToMilestone, moveAuthoredNodeToCanvas],
   );
 
-  const canvasForRender = useMemo<CanvasData>(
-    () => root ?? { nodes: [], edges: [] },
-    [root],
+  /**
+   * Visually highlight edges that have a linked Connection doc. The
+   * lib renders edges using `theme.edge.stroke` by default; setting
+   * `edge.color` overrides that with a per-edge value. We map linked
+   * edges to a brighter slate so they stand out at a glance — small
+   * affordance, big discoverability win (the user can see at a
+   * glance which edges have docs behind them).
+   *
+   * Decoration is render-only: it lands on the data passed to
+   * `<SystemCanvas>` but NOT on the persisted blob. `applyMutation`
+   * reads from `rootRef.current` / `subCanvasesRef.current` (the
+   * undecorated state mirrors), so writes never leak the visual
+   * `color` back into the canvas. Memoized on the source canvas so
+   * the lib's edge-render pass stays pure.
+   */
+  const decorateEdgesWithLinkVisual = useCallback(
+    (data: CanvasData): CanvasData => {
+      const edges = data.edges ?? [];
+      let changed = false;
+      const next = edges.map((e) => {
+        const cd = (e as { customData?: { connectionId?: unknown } })
+          .customData;
+        const linked =
+          typeof cd?.connectionId === "string" && cd.connectionId.length > 0;
+        // Don't override an explicit user-set color — if the edge
+        // already has one, the user (or agent) made a deliberate
+        // visual choice we shouldn't clobber.
+        if (linked && !e.color) {
+          changed = true;
+          return { ...e, color: LINKED_EDGE_COLOR };
+        }
+        return e;
+      });
+      return changed ? { ...data, edges: next } : data;
+    },
+    [],
   );
+
+  const canvasForRender = useMemo<CanvasData>(
+    () => decorateEdgesWithLinkVisual(root ?? { nodes: [], edges: [] }),
+    [root, decorateEdgesWithLinkVisual],
+  );
+
+  // Sub-canvases also need decoration so links are highlighted on
+  // every scope (root, workspace sub-canvas, initiative sub-canvas).
+  // Memoized as a fresh object only when an underlying ref changes.
+  const subCanvasesForRender = useMemo<Record<string, CanvasData>>(() => {
+    const out: Record<string, CanvasData> = {};
+    for (const [ref, data] of Object.entries(subCanvases)) {
+      out[ref] = decorateEdgesWithLinkVisual(data);
+    }
+    return out;
+  }, [subCanvases, decorateEdgesWithLinkVisual]);
 
   // Anchor the canvas container to the viewport but leave `rightInset`
   // pixels of empty space on the right so the library-owned FAB + future
@@ -2026,7 +2084,7 @@ export function OrgCanvasBackground({
         <SystemCanvas
           ref={canvasHandleRef}
           canvas={canvasForRender}
-          canvases={subCanvases}
+          canvases={subCanvasesForRender}
           theme={connectionsTheme}
           editable
           zoomNavigation
