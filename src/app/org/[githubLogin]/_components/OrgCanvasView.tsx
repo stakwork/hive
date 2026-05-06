@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { CanvasNode } from "system-canvas";
+import type { CanvasEdge, CanvasNode, EdgeUpdate } from "system-canvas";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { OrgCanvasBackground } from "../connections/OrgCanvasBackground";
+import {
+  OrgCanvasBackground,
+  type SelectionWithLabels,
+} from "../connections/OrgCanvasBackground";
 import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
 import type { ConnectionData } from "../connections/types";
 import { OrgRightPanel } from "./OrgRightPanel";
@@ -91,6 +94,47 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [loadingConnections, setLoadingConnections] = useState(true);
   const [activeConnection, setActiveConnection] = useState<ConnectionData | null>(null);
   const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(null);
+  /**
+   * The edge the user has currently selected on the canvas, paired
+   * with the canvas ref it lives on AND the resolved human labels
+   * for its endpoints. Mutually exclusive with `selectedNode` from
+   * the user's POV — clicking a node clears the edge, clicking an
+   * edge clears the node. The two pieces of state are tracked
+   * independently so the right-panel can render either detail body
+   * without coupling.
+   *
+   * `canvasRef` is `undefined` for root, matching `applyMutation`'s
+   * convention. We capture it at click-time so the link/unlink write
+   * lands on the correct canvas blob even if the user navigates.
+   *
+   * `fromLabel` / `toLabel` are resolved by `OrgCanvasBackground`
+   * from the canvas's own node list (where the live-node `text` is
+   * the entity's real name — e.g. workspace.name). Captured here
+   * rather than re-resolved on the consumer side because the canvas
+   * data lives in `OrgCanvasBackground`; surfacing them on the
+   * selection payload avoids prop-drilling the node map.
+   */
+  const [selectedEdge, setSelectedEdge] = useState<{
+    edge: CanvasEdge;
+    canvasRef: string | undefined;
+    fromLabel: string;
+    toLabel: string;
+  } | null>(null);
+  /**
+   * Imperative handle exposed by `OrgCanvasBackground` for patching
+   * an edge's data. Used by the link / unlink flows to write
+   * `customData.connectionId` without prop-drilling a callback
+   * through every list row. Set inside `OrgCanvasBackground` via
+   * an effect; null when the canvas is unmounted.
+   */
+  const edgePatchHandleRef = useRef<
+    | ((
+        edgeId: string,
+        patch: EdgeUpdate,
+        canvasRef: string | undefined,
+      ) => void)
+    | null
+  >(null);
   /**
    * Human-readable breadcrumb for the canvas the user is currently
    * looking at. Threaded into the chat so the agent can refer to the
@@ -334,6 +378,14 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     preExpandSizeRef.current = null;
     setActiveConnection(null);
     setUrlSlug(null);
+    // If an edge was driving the open viewer, closing the viewer
+    // ends the edge interaction too. Without this clear, the user
+    // would be left in a state with `selectedEdge` set but no
+    // visible link-mode chrome (because the linked-edge link rule
+    // hides `+`/link icons), which reads as "selected but invisibly
+    // so." The list-driven open path leaves `selectedEdge` null
+    // already, so this branch is safely a no-op there.
+    setSelectedEdge(null);
   };
 
   const handleConnectionCreated = useCallback(() => {
@@ -351,9 +403,173 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     [activeConnection?.id, setUrlSlug],
   );
 
-  const handleNodeSelect = useCallback((node: CanvasNode | null) => {
-    setSelectedNode(node);
-  }, []);
+  /**
+   * Read the connectionId off an edge's customData. The library type
+   * doesn't include `customData` on edges, but JS round-trips extra
+   * fields verbatim through the splitter (`io.ts`); the agent-side
+   * tool path strips unknown fields from `add_edge`/`update_edge`
+   * patches, but user-driven canvas writes flow through the lib's
+   * `updateEdge` which spreads `{...edge, ...patch}` and preserves
+   * `customData`. So the field exists on user-authored edges.
+   */
+  const readEdgeConnectionId = useCallback(
+    (edge: CanvasEdge): string | null => {
+      const cd = (edge as { customData?: { connectionId?: unknown } })
+        .customData;
+      const id = cd?.connectionId;
+      return typeof id === "string" && id.length > 0 ? id : null;
+    },
+    [],
+  );
+
+  /**
+   * Single selection-change handler. The lib's `onSelectionChange`
+   * fires atomically on every state transition: node click, edge
+   * click, canvas-background click (deselect), Escape, Delete,
+   * navigation, stale-selection collapse. We translate the unified
+   * payload into our two pieces of state (`selectedNode`,
+   * `selectedEdge`) and run the edge-specific connection-open logic
+   * inline.
+   *
+   * Edge cases:
+   *
+   *   - Edge with a linked connection → open the linked connection
+   *     viewer (sidebar auto-grows). The edge owns the viewer for
+   *     back / unlink semantics.
+   *   - Edge with no connection → set edge only; the Connections
+   *     tab renders link-mode chrome.
+   *   - Selection cleared (`null`) → if an edge was driving an open
+   *     viewer, close it. List-driven opens (no `selectedEdge`)
+   *     are left alone.
+   */
+  const handleSelectionChange = useCallback(
+    (selection: SelectionWithLabels) => {
+      // Selection cleared — every path that calls this with `null`
+      // (canvas-bg click, Escape, navigation, etc.) ends both kinds
+      // of selection. Close an edge-owned viewer along the way.
+      if (!selection) {
+        if (selectedEdge && activeConnection) handleBack();
+        setSelectedEdge(null);
+        setSelectedNode(null);
+        return;
+      }
+      if (selection.kind === "node") {
+        setSelectedNode(selection.node);
+        // Node selection clears any edge selection — and any
+        // edge-owned open viewer.
+        if (selectedEdge && activeConnection) handleBack();
+        setSelectedEdge(null);
+        return;
+      }
+      // Edge selection.
+      setSelectedNode(null);
+      setSelectedEdge(selection);
+      const linkedId = readEdgeConnectionId(selection.edge);
+      if (linkedId) {
+        const match = connections.find((c) => c.id === linkedId);
+        if (match) {
+          openConnection(match);
+          return;
+        }
+        // Orphan id (connection deleted). Fall through to link-mode.
+      }
+      // Edge has no link (or orphaned link) — land in link-mode list.
+      // Close any prior open viewer so it's not still showing.
+      if (activeConnection) handleBack();
+    },
+    // `handleBack` and `openConnection` are stable; pulling them in
+    // as deps keeps the lint rule happy without re-creating every
+    // render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedEdge, activeConnection, connections, readEdgeConnectionId],
+  );
+
+  /**
+   * Link the currently-selected edge to a connection (called from
+   * the link-mode list row). Writes `customData.connectionId` to the
+   * edge via the imperative ref exposed by `OrgCanvasBackground`,
+   * then opens the connection in the viewer so the user immediately
+   * sees the result of the link. We do NOT clear `selectedEdge` —
+   * the user can hit Back to return to the list with the edge still
+   * in link mode (e.g. to swap the link to a different connection).
+   */
+  const handleLinkConnectionToEdge = useCallback(
+    (connection: ConnectionData) => {
+      if (!selectedEdge) return;
+      const patch: EdgeUpdate = {
+        ...({ customData: { connectionId: connection.id } } as EdgeUpdate),
+      };
+      edgePatchHandleRef.current?.(
+        selectedEdge.edge.id,
+        patch,
+        selectedEdge.canvasRef,
+      );
+      // Update our local copy of the edge so future reads off
+      // `selectedEdge` see the link too — without this, an unlink
+      // immediately after a link would target the stale customData.
+      setSelectedEdge({
+        ...selectedEdge,
+        edge: {
+          ...selectedEdge.edge,
+          ...({ customData: { connectionId: connection.id } } as Partial<CanvasEdge>),
+        },
+      });
+      openConnection(connection);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedEdge],
+  );
+
+  /**
+   * Unlink the connection from the currently-selected edge. Strips
+   * `customData.connectionId` (sets `customData` to an empty object
+   * so the splitter doesn't leave stale fields). Closes the viewer
+   * because what's currently shown is the connection that was just
+   * unlinked — the user should land back in link-mode list.
+   * `selectedEdge` stays set so they can pick a different connection.
+   */
+  const handleUnlinkConnectionFromEdge = useCallback(() => {
+    if (!selectedEdge) return;
+    const patch: EdgeUpdate = {
+      ...({ customData: {} } as EdgeUpdate),
+    };
+    edgePatchHandleRef.current?.(
+      selectedEdge.edge.id,
+      patch,
+      selectedEdge.canvasRef,
+    );
+    setSelectedEdge({
+      ...selectedEdge,
+      edge: {
+        ...selectedEdge.edge,
+        ...({ customData: {} } as Partial<CanvasEdge>),
+      },
+    });
+    handleBack();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEdge]);
+
+  /**
+   * `+ Create connection` from the link-mode header. Switches the
+   * panel to the Chat tab (handled by `OrgRightPanel`) and writes a
+   * prefilled draft to the chat input via the store. The user can
+   * edit before sending.
+   *
+   * Reads labels off `selectedEdge` directly — they were resolved
+   * from the canvas's node text by `OrgCanvasBackground` at click
+   * time, so they're the human-readable names of whatever the
+   * endpoints are (workspace name for `ws:` nodes, the user's text
+   * for authored notes, etc.).
+   */
+  const handleCreateConnectionForEdge = useCallback(() => {
+    if (!selectedEdge) return;
+    const { edge, fromLabel, toLabel } = selectedEdge;
+    const edgeLabel = edge.label;
+    const draft = edgeLabel
+      ? `Make a connection document for "${edgeLabel}" between ${fromLabel} and ${toLabel}`
+      : `Make a connection document between ${fromLabel} and ${toLabel}`;
+    useCanvasChatStore.getState().setPendingInputDraft(draft);
+  }, [selectedEdge]);
 
   const handleCanvasBreadcrumbChange = useCallback((breadcrumb: string) => {
     setCurrentCanvasBreadcrumb(breadcrumb);
@@ -517,7 +733,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         rightInset={panelWidth}
         orgName={orgName}
         onHiddenChange={handleHiddenChange}
-        onNodeSelect={handleNodeSelect}
+        onSelectionChange={handleSelectionChange}
+        edgePatchHandleRef={edgePatchHandleRef}
         onCanvasBreadcrumbChange={handleCanvasBreadcrumbChange}
       />
 
@@ -578,6 +795,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               onConnectionCreated={handleConnectionCreated}
               onConnectionDeleted={handleConnectionDeleted}
               isLoading={loadingConnections}
+              selectedEdge={selectedEdge}
+              onLinkConnectionToEdge={handleLinkConnectionToEdge}
+              onUnlinkConnectionFromEdge={handleUnlinkConnectionFromEdge}
+              onCreateConnectionForEdge={handleCreateConnectionForEdge}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

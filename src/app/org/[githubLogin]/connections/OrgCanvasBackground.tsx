@@ -16,11 +16,16 @@ import {
   type CanvasData,
   type CanvasEdge,
   type CanvasNode,
+  type CanvasSelection,
   type EdgeUpdate,
   type NodeContextMenuConfig,
   type NodeUpdate,
   type SystemCanvasHandle,
 } from "system-canvas-react";
+// `getNodeLabel` isn't re-exported from `system-canvas-react`; pull
+// it from the core package directly. Used to resolve human-readable
+// labels for edge endpoints at click-time.
+import { getNodeLabel } from "system-canvas";
 import { connectionsTheme } from "./canvas-theme";
 import { HiddenLivePill, type HiddenLiveEntry } from "./HiddenLivePill";
 import { getOrgChannelName, PUSHER_EVENTS } from "@/lib/pusher";
@@ -200,6 +205,31 @@ async function fetchHiddenLive(
   return (body.entries ?? []) as HiddenLiveEntry[];
 }
 
+/**
+ * `CanvasSelection` enriched with the resolved human-readable labels
+ * for an edge's endpoints. The lib emits raw `node`/`edge` payloads;
+ * we widen the edge case here so consumers (the right panel) don't
+ * each have to look up the node map themselves.
+ *
+ * Node selections pass through unchanged — node entities already
+ * carry `text` directly, so consumers that need a label just call
+ * `getNodeLabel(selection.node)` themselves.
+ */
+export type SelectionWithLabels =
+  | {
+      kind: "node";
+      node: CanvasNode;
+      canvasRef: string | undefined;
+    }
+  | {
+      kind: "edge";
+      edge: CanvasEdge;
+      canvasRef: string | undefined;
+      fromLabel: string;
+      toLabel: string;
+    }
+  | null;
+
 interface OrgCanvasBackgroundProps {
   githubLogin: string;
   /**
@@ -224,15 +254,40 @@ interface OrgCanvasBackgroundProps {
    */
   onHiddenChange?: (entries: HiddenLiveEntry[]) => void;
   /**
-   * Fires when the user clicks a node (selection) or navigates to a
-   * different canvas (clears selection). Lets the parent render a
-   * details panel for the currently-selected node.
+   * Fires whenever the canvas's selection state changes. Single
+   * callback covering all paths: node-click, edge-click,
+   * canvas-background-click (deselect), Escape, Delete, navigation,
+   * and stale-selection collapse. Mutually exclusive: at most one
+   * node or one edge is selected at a time. `null` means nothing.
    *
-   * `null` means "no node selected" (clicked an edge, navigated, etc.).
-   * Receives the full `CanvasNode` so consumers can read `id`,
-   * `category`, `text`, and `customData` without a follow-up lookup.
+   * The payload extends the lib's `CanvasSelection` with
+   * `fromLabel` / `toLabel` resolved from the canvas data at the
+   * moment of selection. Resolving labels here (where the canvas
+   * lives) keeps consumers from having to mirror the node map.
+   * `getNodeLabel` falls back to the node id when no `text` is set;
+   * for live nodes the projector populates `text` with the entity's
+   * human name (workspace.name, initiative.name, etc.).
    */
-  onNodeSelect?: (node: CanvasNode | null) => void;
+  onSelectionChange?: (selection: SelectionWithLabels) => void;
+  /**
+   * Imperatively patch an edge's data (today: `customData.connectionId`
+   * for the edge\u2194connection link feature). Returns void; the parent
+   * doesn't need a result because the canvas state is the source of
+   * truth and the next render reflects the change.
+   *
+   * Wired via a ref so the parent can call it from connection-list
+   * affordances (link / unlink) without re-plumbing prop callbacks
+   * down to every list row. Set the ref's `.current` to a stable
+   * function from this component.
+   */
+  edgePatchHandleRef?: React.MutableRefObject<
+    | ((
+        edgeId: string,
+        patch: EdgeUpdate,
+        canvasRef: string | undefined,
+      ) => void)
+    | null
+  >;
   /**
    * Fires when the user navigates between canvases. Receives a human
    * readable breadcrumb trail joined with ` › ` — e.g. `"Acme"` on
@@ -252,7 +307,8 @@ export function OrgCanvasBackground({
   rightInset = 0,
   orgName,
   onHiddenChange,
-  onNodeSelect,
+  onSelectionChange,
+  edgePatchHandleRef,
   onCanvasBreadcrumbChange,
 }: OrgCanvasBackgroundProps) {
   const [root, setRoot] = useState<CanvasData | null>(null);
@@ -363,49 +419,57 @@ export function OrgCanvasBackground({
    * exist on the new scope; the parent right-panel reverts to its
    * default body.
    */
-  const handleSystemCanvasNavigate = useCallback(
-    (_ref: string) => {
-      onNodeSelect?.(null);
-    },
-    [onNodeSelect],
-  );
-
   /**
-   * User clicked a node. Forward it to the parent so a side-panel can
-   * render details for it. The library does NOT call `onNodeClick`
-   * for clicks on empty canvas — that means there's no built-in way
-   * to clear selection by clicking the background. We accept that:
-   * navigating away (drill-in, breadcrumb) clears selection, and
-   * clicking another node replaces it.
-   */
-  const handleNodeClick = useCallback(
-    (node: CanvasNode) => {
-      onNodeSelect?.(node);
-    },
-    [onNodeSelect],
-  );
-
-  /**
-   * Library callback: user clicked a breadcrumb. The library does NOT
-   * fire `onNavigate` for back-navigation (only for drill-in), so we
-   * have to track scope changes here too. The lib has already
-   * truncated its internal stack by the time it calls us; we mirror
-   * that into our own state via `onBreadcrumbsChange` (see
-   * `handleBreadcrumbsChange` below) — that path is the single source
-   * of truth for `currentRef` and the URL across both drill-in and
-   * back-out.
+   * Single source of truth for selection. The lib's
+   * `onSelectionChange` covers every path that mutates selection —
+   * node-click, edge-click, canvas-background-click (the new
+   * deselect signal), Escape, Delete, navigation, and stale-
+   * selection collapse — and emits an atomic update with the final
+   * resolved state. We just enrich the edge payload with
+   * human-readable endpoint labels (resolved from the canvas's own
+   * node list via `getNodeLabel`) and forward to the parent.
    *
-   * What this handler still owns: dropping the selected node when
-   * scope changes. The previously-selected node may not exist on the
-   * new scope (selection survives `setCurrentRef`, but the parent
-   * right-panel should reset to its default body when the user
-   * navigates away).
+   * Replaces the previous patchwork of `onNodeSelect(null)` /
+   * `onEdgeSelect(null)` calls scattered across `onNodeClick`,
+   * `onEdgeClick`, `onNavigate`, and `onBreadcrumbClick`.
    */
-  const handleBreadcrumbClick = useCallback(
-    (_index: number) => {
-      onNodeSelect?.(null);
+  const handleSelectionChange = useCallback(
+    (selection: CanvasSelection) => {
+      if (!selection) {
+        onSelectionChange?.(null);
+        return;
+      }
+      if (selection.kind === "node") {
+        onSelectionChange?.({
+          kind: "node",
+          node: selection.node,
+          canvasRef: selection.canvasRef,
+        });
+        return;
+      }
+      // Edge — resolve human labels off the canvas the edge lives on.
+      // The refs lag state by one commit, but the edge's endpoints
+      // are already in the rendered canvas (it wouldn't have been
+      // clickable otherwise) so the lag is harmless here.
+      const { edge, canvasRef } = selection;
+      const sourceCanvas =
+        canvasRef === undefined
+          ? rootRef.current
+          : subCanvasesRef.current[canvasRef];
+      const nodes = sourceCanvas?.nodes ?? [];
+      const fromNode = nodes.find((n) => n.id === edge.fromNode);
+      const toNode = nodes.find((n) => n.id === edge.toNode);
+      const fromLabel = fromNode ? getNodeLabel(fromNode) : edge.fromNode;
+      const toLabel = toNode ? getNodeLabel(toNode) : edge.toNode;
+      onSelectionChange?.({
+        kind: "edge",
+        edge,
+        canvasRef,
+        fromLabel,
+        toLabel,
+      });
     },
-    [onNodeSelect],
+    [onSelectionChange],
   );
 
   /**
@@ -1570,6 +1634,24 @@ export function OrgCanvasBackground({
     [applyMutation],
   );
 
+  // Expose the edge-patch path through the parent-supplied ref so
+  // sibling surfaces (the Connections-tab link mode) can write
+  // `customData.connectionId` without prop-drilling a callback
+  // through every list row. Re-wire on every render so the latest
+  // closure is always exposed (the ref's identity is stable, the
+  // function it points at is not — that's the desired semantics).
+  useEffect(() => {
+    if (!edgePatchHandleRef) return;
+    edgePatchHandleRef.current = handleEdgeUpdate;
+    return () => {
+      // Null out on unmount so a stale handler can't fire after the
+      // canvas tears down.
+      if (edgePatchHandleRef.current === handleEdgeUpdate) {
+        edgePatchHandleRef.current = null;
+      }
+    };
+  }, [edgePatchHandleRef, handleEdgeUpdate]);
+
   // -------------------------------------------------------------------
   // Drop-on-node — two pairings today:
   //
@@ -1949,10 +2031,8 @@ export function OrgCanvasBackground({
           editable
           zoomNavigation
           onResolveCanvas={onResolveCanvas}
-          onNavigate={handleSystemCanvasNavigate}
-          onBreadcrumbClick={handleBreadcrumbClick}
           onBreadcrumbsChange={handleBreadcrumbsChange}
-          onNodeClick={handleNodeClick}
+          onSelectionChange={handleSelectionChange}
           onNodeAdd={handleNodeAdd}
           onNodeUpdate={handleNodeUpdate}
           onNodesUpdate={handleNodesUpdate}
