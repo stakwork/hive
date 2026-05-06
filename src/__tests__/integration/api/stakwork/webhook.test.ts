@@ -749,10 +749,10 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(response.status).toBe(200);
       expect(body.action).toBe("retried");
 
-      // Task should be back to IN_PROGRESS, haltRetryAttempted reset to false
+      // Task should be back to IN_PROGRESS, haltRetryAttempted stays true (auto-retry guard)
       const updatedTask = await db.task.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
-      expect(updatedTask?.haltRetryAttempted).toBe(false);
+      expect(updatedTask?.haltRetryAttempted).toBe(true);
 
       // WORKFLOW_STATUS_UPDATE Pusher event should NOT have been broadcast for terminal state
       const pusherCalls = mockedPusherServer.trigger.mock.calls;
@@ -868,7 +868,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       const updatedTask = await db.task.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
-      expect(updatedTask?.haltRetryAttempted).toBe(false);
+      expect(updatedTask?.haltRetryAttempted).toBe(true);
     });
   });
 });
