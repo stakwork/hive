@@ -55,9 +55,11 @@ describe("resolveAffectedCanvasRefs", () => {
     const out = await resolveAffectedCanvasRefs("f-1");
     expect(out).not.toBeNull();
     expect(out?.githubLogin).toBe("acme");
-    // Order matters here: root first (initiative rollup), then the
-    // initiative timeline, then the milestone sub-canvas.
-    expect(out?.refs).toEqual(["", "initiative:i-1", "milestone:m-1"]);
+    // Order: root first (initiative rollup), then the initiative
+    // canvas (where the milestone card AND its linked feature cards
+    // live). There is no separate milestone ref — milestones aren't
+    // drillable scopes.
+    expect(out?.refs).toEqual(["", "initiative:i-1"]);
   });
 
   it("returns null when the feature isn't linked to a milestone", async () => {
@@ -90,7 +92,7 @@ describe("resolveAffectedCanvasRefs", () => {
 });
 
 describe("notifyFeatureCanvasRefresh", () => {
-  it("fires CANVAS_UPDATED on root + initiative + milestone refs when linked", async () => {
+  it("fires CANVAS_UPDATED on root + initiative refs when linked", async () => {
     dbFeature.findUnique.mockResolvedValue({
       milestoneId: "m-1",
       milestone: {
@@ -105,7 +107,7 @@ describe("notifyFeatureCanvasRefresh", () => {
     expect(notifyMock).toHaveBeenCalledTimes(1);
     const [login, refs, action, detail] = notifyMock.mock.calls[0];
     expect(login).toBe("acme");
-    expect(refs).toEqual(["", "initiative:i-1", "milestone:m-1"]);
+    expect(refs).toEqual(["", "initiative:i-1"]);
     expect(action).toBe("task-updated");
     // Caller-supplied detail is merged onto the standard `featureId` field.
     expect(detail).toEqual({ featureId: "f-1", taskId: "t-1" });

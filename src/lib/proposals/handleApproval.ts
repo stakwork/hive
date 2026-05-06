@@ -138,15 +138,18 @@ function findPriorRejection(
 
 /**
  * Resolve the human-readable name of the entity a new proposal "landed
- * on" — i.e. the workspace / initiative / milestone whose canvas the
- * new row will project on. Returns `undefined` for the root canvas (no
- * single entity owns it) and on lookup failure (caller falls back to a
+ * on" — i.e. the workspace / initiative whose canvas the new row will
+ * project on. Returns `undefined` for the root canvas (no single
+ * entity owns it) and on lookup failure (caller falls back to a
  * kind-based label).
  *
  * Single round-trip per approval, keyed on the id-prefix convention
- * the projector uses (`ws:` / `initiative:` / `milestone:` / `feature:`).
- * The lookup is deliberately scoped by `orgId` so a forged ref from a
- * different org can't leak a name.
+ * the projector uses (`ws:` / `initiative:` / `feature:`). Milestone-
+ * bound features land on `initiative:<id>` (milestones aren't
+ * drillable scopes); the legacy `milestone:` branch is kept as a
+ * defensive fallback in case any pre-cutover proposal trail still
+ * carries that ref. The lookup is deliberately scoped by `orgId` so
+ * a forged ref from a different org can't leak a name.
  */
 async function resolveLandedOnName(
   orgId: string,

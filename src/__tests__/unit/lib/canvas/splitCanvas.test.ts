@@ -135,4 +135,31 @@ describe("splitCanvas", () => {
       "milestone:xyz": { x: 300, y: 400 },
     });
   });
+
+  it("filters out projector-emitted synthetic edges (`synthetic:` prefix) on save", () => {
+    // Synthetic edges represent DB-derived membership (e.g.
+    // `feature:<X> → milestone:<Y>` from `Feature.milestoneId`) and
+    // re-derive on every read. Letting them round-trip into the
+    // authored blob would create a parallel representation of the
+    // same relationship that could disagree with the DB after a
+    // membership change.
+    const incoming: CanvasData = {
+      nodes: [node("auth-1")],
+      edges: [
+        {
+          id: "synthetic:feature-milestone:f1",
+          fromNode: "feature:f1",
+          toNode: "milestone:m1",
+        },
+        {
+          id: "user-drawn-edge",
+          fromNode: "auth-1",
+          toNode: "ws:abc",
+        },
+      ],
+    };
+    const blob = splitCanvas(incoming, emptyPrev);
+    // Authored edges survive verbatim; synthetic ones are dropped.
+    expect(blob.edges.map((e) => e.id)).toEqual(["user-drawn-edge"]);
+  });
 });

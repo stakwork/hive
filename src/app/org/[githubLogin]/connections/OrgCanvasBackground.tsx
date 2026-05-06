@@ -91,12 +91,14 @@ const AUTHORED_DROPPABLE_CATEGORIES = ["note", "decision", "text"];
 /**
  * Live container categories that own a sub-canvas an authored node
  * can be moved into. Mirrors the `ref: liveId` projections in
- * `src/lib/canvas/projectors.ts` — workspaces, initiatives, and
- * milestones each drill. Features intentionally don't (no `ref` in
- * v1 per the projector); attempting to move an authored node onto a
- * feature would have nowhere to land.
+ * `src/lib/canvas/projectors.ts` — workspaces and initiatives each
+ * drill. Milestones are intentionally NOT in this list: they render
+ * as cards on the initiative canvas and are not drillable, so there
+ * is no sub-canvas to drop authored notes onto. Features also don't
+ * drill (no `ref` in v1 per the projector); attempting to move an
+ * authored node onto a feature or milestone would have nowhere to land.
  */
-const LIVE_CONTAINER_CATEGORIES = ["workspace", "initiative", "milestone"];
+const LIVE_CONTAINER_CATEGORIES = ["workspace", "initiative"];
 
 /**
  * Full-screen interactive system-canvas background for the Connections page.
@@ -1321,15 +1323,15 @@ export function OrgCanvasBackground({
 
       // Resolve the target canvas ref by the "most specific place
       // wins" rule. This must mirror the projector emission rules:
-      //   - milestoneId set       → milestone:<id>
-      //   - initiativeId only set → initiative:<id>
-      //   - neither set           → ws:<id>
-      // Mismatch here would save the position overlay on the wrong
-      // canvas, the projected node would render at the projector
-      // default, and the user's click position would silently vanish.
-      const targetRef: string = form.milestoneId
-        ? `milestone:${form.milestoneId}`
-        : form.initiativeId
+      //   - initiativeId set (with or without milestoneId) → initiative:<id>
+      //   - neither set                                    → ws:<id>
+      // Milestone-bound features render on their parent initiative's
+      // canvas (with a synthetic edge to the milestone card on the
+      // same canvas) — there is no separate milestone canvas. Mismatch
+      // here would save the position overlay on the wrong canvas, the
+      // projected node would render at the projector default, and the
+      // user's click position would silently vanish.
+      const targetRef: string = form.initiativeId
         ? `initiative:${form.initiativeId}`
         : `ws:${form.workspaceId}`;
 
@@ -1640,23 +1642,126 @@ export function OrgCanvasBackground({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [handleUndo]);
 
+  /**
+   * Detect a user-drawn edge whose endpoints are a feature card and a
+   * milestone card on the initiative canvas. Either direction is
+   * accepted (feature → milestone or milestone → feature). Returns
+   * `{ featureId, milestoneId }` for the membership PATCH or `null`
+   * when the edge is something else (feature-to-feature dependency,
+   * authored note → live container, etc. — those flow through the
+   * default blob path).
+   */
+  const detectFeatureMilestoneEdge = useCallback(
+    (
+      edge: CanvasEdge,
+    ): { featureId: string; milestoneId: string } | null => {
+      const a = edge.fromNode;
+      const b = edge.toNode;
+      if (a.startsWith("feature:") && b.startsWith("milestone:")) {
+        return {
+          featureId: a.slice("feature:".length),
+          milestoneId: b.slice("milestone:".length),
+        };
+      }
+      if (a.startsWith("milestone:") && b.startsWith("feature:")) {
+        return {
+          featureId: b.slice("feature:".length),
+          milestoneId: a.slice("milestone:".length),
+        };
+      }
+      return null;
+    },
+    [],
+  );
+
+  /**
+   * Fire-and-forget PATCH that attaches a feature to a milestone via
+   * `Feature.milestoneId`. Same shape as the drag-drop reassignment
+   * path (`reassignFeatureToMilestone`), used here so user-drawn
+   * edges express DB membership instead of authored-blob edges.
+   * Pass `null` to detach. The Pusher fan-out from the API route
+   * handles the canvas refresh; the synthetic edge appears (or
+   * disappears) on the next read.
+   */
+  const patchFeatureMilestone = useCallback(
+    async (featureId: string, milestoneId: string | null) => {
+      try {
+        const res = await fetch(`/api/features/${featureId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ milestoneId }),
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          console.error(
+            "[OrgCanvasBackground] patchFeatureMilestone failed",
+            res.status,
+            detail,
+          );
+        }
+      } catch (err) {
+        console.error("[OrgCanvasBackground] patchFeatureMilestone threw", err);
+      }
+    },
+    [],
+  );
+
   const handleEdgeAdd = useCallback(
     (edge: CanvasEdge, canvasRef: string | undefined) => {
+      // Intercept feature↔milestone edges as DB membership writes
+      // rather than authored-blob edges. The relationship is owned by
+      // `Feature.milestoneId`; the projector emits a synthetic edge
+      // on the next read to visually represent it. Letting the
+      // user-drawn edge sit in the blob alongside the synthetic one
+      // would create two parallel representations that can disagree
+      // when the DB is mutated through other paths.
+      //
+      // The optimistic write to the blob is suppressed by returning
+      // before `applyMutation`; the user briefly sees their drawn
+      // edge appear (the library writes optimistically before this
+      // callback fires), but the next read replaces it with the
+      // synthetic edge — visually identical from the user's POV.
+      const link = detectFeatureMilestoneEdge(edge);
+      if (link) {
+        // Optimistically remove the user-drawn edge from local state
+        // so it doesn't briefly persist with the wrong id while the
+        // PATCH + Pusher round-trip lands. The synthetic edge will
+        // appear via the projector refresh.
+        applyMutation(canvasRef, (c) => removeEdge(c, edge.id));
+        void patchFeatureMilestone(link.featureId, link.milestoneId);
+        return;
+      }
       applyMutation(canvasRef, (c) => addEdge(c, edge));
     },
-    [applyMutation],
+    [applyMutation, detectFeatureMilestoneEdge, patchFeatureMilestone],
   );
   const handleEdgeUpdate = useCallback(
     (id: string, patch: EdgeUpdate, canvasRef: string | undefined) => {
+      // Synthetic edges (DB-projected feature→milestone membership) are
+      // not in the blob, so library `updateEdge` calls against them
+      // would no-op silently. The most common "update" on a synthetic
+      // edge would be repointing one endpoint — that's a membership
+      // change, which belongs as a PATCH. Defensive guard: ignore
+      // patches addressed at synthetic ids.
+      if (id.startsWith("synthetic:")) return;
       applyMutation(canvasRef, (c) => updateEdge(c, id, patch));
     },
     [applyMutation],
   );
   const handleEdgeDelete = useCallback(
     (id: string, canvasRef: string | undefined) => {
+      // Deleting a synthetic feature→milestone membership edge means
+      // "this feature is no longer in this milestone" — a DB write,
+      // not a blob delete. PATCH `milestoneId: null`; the projector
+      // re-runs and the synthetic edge disappears.
+      if (id.startsWith("synthetic:feature-milestone:")) {
+        const featureId = id.slice("synthetic:feature-milestone:".length);
+        void patchFeatureMilestone(featureId, null);
+        return;
+      }
       applyMutation(canvasRef, (c) => removeEdge(c, id));
     },
-    [applyMutation],
+    [applyMutation, patchFeatureMilestone],
   );
 
   // Expose the edge-patch path through the parent-supplied ref so

@@ -9,24 +9,24 @@
  *   2. The right-click "Promote to Feature" menu item on `note` nodes
  *      (the note's text pre-fills title + description).
  *
- * The dialog resolves a coherent `(workspaceId, initiativeId,
- * milestoneId)` triple per scope, following the "most specific place
- * wins" rule:
+ * The dialog resolves a coherent `(workspaceId, initiativeId)` pair
+ * per scope, following the "most specific place wins" rule. New
+ * features are never created with a `milestoneId` from this dialog —
+ * milestones are not drillable scopes, and milestone membership is
+ * established afterward by drawing an edge from the feature card to a
+ * milestone card on the initiative canvas (intercepted as a DB write
+ * in `OrgCanvasBackground`).
  *
  *   - Root (`""`)              → user picks workspace + initiative.
  *   - Workspace (`ws:<id>`)    → workspace locked; no initiative.
  *   - Initiative (`init:<id>`) → initiative locked; user picks workspace.
- *   - Milestone (`ms:<id>`)    → milestone + initiative locked
- *                                (initiative is derived from the
- *                                milestone server-side); user picks
- *                                workspace.
  *
  * The "edge-aware" workspace picker: when the dialog runs on an
- * initiative or milestone scope, we read the root canvas's edges and
- * surface workspaces the user has visually linked to the parent
- * initiative (via a root-level `ws:<x> ↔ initiative:<y>` edge). Linked
- * workspaces float to the top of the dropdown with the first one
- * preselected. No edges → flat alphabetical list, no preselection.
+ * initiative scope, we read the root canvas's edges and surface
+ * workspaces the user has visually linked to the parent initiative
+ * (via a root-level `ws:<x> ↔ initiative:<y>` edge). Linked workspaces
+ * float to the top of the dropdown with the first one preselected.
+ * No edges → flat alphabetical list, no preselection.
  *
  * The dialog only owns the form. Saving (the actual POST + canvas
  * refetch) is the caller's job — same pattern as InitiativeDialog /
@@ -62,7 +62,13 @@ export interface FeatureCreateForm {
   workspaceId: string;
   /** Null when the dialog is on workspace scope (loose feature). */
   initiativeId: string | null;
-  /** Null on every scope except milestone. */
+  /**
+   * Always null today — the dialog never sets a milestone at create
+   * time. Kept on the form shape so the consumer's submit body still
+   * compiles; downstream code conditionally adds `milestoneId` to the
+   * POST body only when truthy. Milestone membership is established
+   * post-creation by drawing an edge on the initiative canvas.
+   */
   milestoneId: string | null;
 }
 
@@ -84,8 +90,9 @@ export interface CreateFeatureCanvasDialogProps {
   /**
    * Canvas ref the user is currently on. The dialog inspects the
    * prefix to decide which fields are locked. `""` = root, `ws:<id>` =
-   * workspace, `initiative:<id>` = initiative timeline, `milestone:<id>`
-   * = milestone sub-canvas.
+   * workspace, `initiative:<id>` = initiative timeline. There is no
+   * milestone scope — milestones live on the initiative canvas as
+   * non-drillable cards.
    */
   scope: string;
   /**
@@ -207,36 +214,6 @@ async function fetchSourceNodeLinks(
   return { initiativeIds, workspaceIds };
 }
 
-/**
- * Resolve the parent initiativeId for a milestone scope. The milestone
- * route's GET returns the parent initiativeId via the milestone payload.
- */
-async function fetchMilestoneParent(
-  githubLogin: string,
-  milestoneId: string,
-): Promise<{ initiativeId: string; name: string } | null> {
-  // We don't have a single-milestone GET endpoint, but the initiatives
-  // list includes nested milestones. One round-trip is fine for an
-  // already-rare path (creating a feature directly from a milestone
-  // sub-canvas, with no chat-extracted prefill).
-  try {
-    const res = await fetch(`/api/orgs/${githubLogin}/initiatives`);
-    if (!res.ok) return null;
-    const body = await res.json();
-    const initiatives: Array<{
-      id: string;
-      milestones?: Array<{ id: string; name: string }>;
-    }> = Array.isArray(body) ? body : [];
-    for (const i of initiatives) {
-      const m = i.milestones?.find((x) => x.id === milestoneId);
-      if (m) return { initiativeId: i.id, name: m.name };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const TITLE_MAX = 80;
@@ -251,12 +228,11 @@ export function CreateFeatureCanvasDialog({
   onSave,
 }: CreateFeatureCanvasDialogProps) {
   const scopeKind = useMemo<
-    "root" | "workspace" | "initiative" | "milestone" | "other"
+    "root" | "workspace" | "initiative" | "other"
   >(() => {
     if (scope === "") return "root";
     if (scope.startsWith("ws:")) return "workspace";
     if (scope.startsWith("initiative:")) return "initiative";
-    if (scope.startsWith("milestone:")) return "milestone";
     return "other";
   }, [scope]);
 
@@ -264,8 +240,6 @@ export function CreateFeatureCanvasDialog({
     scopeKind === "workspace" ? scope.slice("ws:".length) : null;
   const lockedInitiativeIdFromScope =
     scopeKind === "initiative" ? scope.slice("initiative:".length) : null;
-  const lockedMilestoneId =
-    scopeKind === "milestone" ? scope.slice("milestone:".length) : null;
 
   // ─── Form state ─────────────────────────────────────────────────────────────
 
@@ -280,11 +254,6 @@ export function CreateFeatureCanvasDialog({
   const [workspaces, setWorkspaces] = useState<WorkspaceOption[]>([]);
   const [initiatives, setInitiatives] = useState<InitiativeOption[]>([]);
   const [linkedWorkspaceIds, setLinkedWorkspaceIds] = useState<string[]>([]);
-  /** Resolved milestone-side state when `scopeKind === "milestone"`. */
-  const [milestoneParent, setMilestoneParent] = useState<{
-    initiativeId: string;
-    name: string;
-  } | null>(null);
   const [loading, setLoading] = useState(false);
 
   // ─── Reset on open / scope change ───────────────────────────────────────────
@@ -296,7 +265,6 @@ export function CreateFeatureCanvasDialog({
     setInitiativeId("");
     setWorkspaceId(lockedWorkspaceId ?? "");
     setLinkedWorkspaceIds([]);
-    setMilestoneParent(null);
   }, [open, prefill?.title, prefill?.brief, lockedWorkspaceId]);
 
   // ─── Load workspaces + initiatives + edges ─────────────────────────────────
@@ -312,11 +280,10 @@ export function CreateFeatureCanvasDialog({
         .then((r) => (r.ok ? r.json() : []))
         .catch(() => []);
 
-      // Initiatives are needed on root (picker) and milestone scope
-      // (to resolve the milestone's parent name for display). Skip on
-      // workspace scope to save a round-trip.
-      const wantInitiatives =
-        scopeKind === "root" || scopeKind === "milestone";
+      // Initiatives are needed on root (picker) and on initiative
+      // scope (so the locked context line can show the initiative's
+      // name, not just the prefixed ref). Skip on workspace scope.
+      const wantInitiatives = scopeKind === "root" || scopeKind === "initiative";
       const initPromise = wantInitiatives
         ? fetch(`/api/orgs/${githubLogin}/initiatives`)
             .then((r) => (r.ok ? r.json() : []))
@@ -342,22 +309,11 @@ export function CreateFeatureCanvasDialog({
         : [];
       setInitiatives(normalizedInits);
 
-      // Resolve milestone parent (initiativeId + display name) so we
-      // can lock the initiative server-side and load edge hints.
-      let effectiveInitiativeId: string | null = null;
-      if (scopeKind === "milestone" && lockedMilestoneId) {
-        const parent = await fetchMilestoneParent(
-          githubLogin,
-          lockedMilestoneId,
-        );
-        if (cancelled) return;
-        if (parent) {
-          setMilestoneParent(parent);
-          effectiveInitiativeId = parent.initiativeId;
-        }
-      } else if (scopeKind === "initiative") {
-        effectiveInitiativeId = lockedInitiativeIdFromScope;
-      }
+      // Effective initiative id used for edge-hint lookups below.
+      // Locked by scope on initiative canvases; user-picked on root
+      // (and re-evaluated below when source-incident edges hint at one).
+      let effectiveInitiativeId: string | null =
+        scopeKind === "initiative" ? lockedInitiativeIdFromScope : null;
 
       // Source-incident edges (Promote-to-Feature path). The source
       // node — typically a `note` — may already be edged to live
@@ -442,7 +398,6 @@ export function CreateFeatureCanvasDialog({
     githubLogin,
     scope,
     scopeKind,
-    lockedMilestoneId,
     lockedInitiativeIdFromScope,
     lockedWorkspaceId,
     sourceNodeId,
@@ -474,22 +429,15 @@ export function CreateFeatureCanvasDialog({
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
-    // Resolve the (workspaceId, initiativeId, milestoneId) triple from
-    // the locked-vs-picked sources. The service-side validator
-    // (`createFeature` in services/roadmap) re-derives initiativeId
-    // from milestoneId when both are set, so the milestone-scope path
-    // can omit initiativeId — but we send what we have for clarity.
+    // Resolve the (workspaceId, initiativeId) pair from the
+    // locked-vs-picked sources. Milestone is always null at create
+    // time (see comment on `FeatureCreateForm.milestoneId`).
     const resolvedInitiativeId: string | null =
       scopeKind === "root"
         ? initiativeId || null
         : scopeKind === "initiative"
         ? lockedInitiativeIdFromScope
-        : scopeKind === "milestone"
-        ? milestoneParent?.initiativeId ?? null
         : null;
-
-    const resolvedMilestoneId: string | null =
-      scopeKind === "milestone" ? lockedMilestoneId : null;
 
     setSaving(true);
     try {
@@ -498,7 +446,7 @@ export function CreateFeatureCanvasDialog({
         brief: brief.trim(),
         workspaceId,
         initiativeId: resolvedInitiativeId,
-        milestoneId: resolvedMilestoneId,
+        milestoneId: null,
       });
       onClose();
     } finally {
@@ -520,9 +468,6 @@ export function CreateFeatureCanvasDialog({
         (i) => i.id === lockedInitiativeIdFromScope,
       );
       return init ? `Initiative: ${init.name}` : null;
-    }
-    if (scopeKind === "milestone" && milestoneParent) {
-      return `Milestone: ${milestoneParent.name}`;
     }
     return null;
   })();

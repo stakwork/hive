@@ -281,7 +281,10 @@ function shortId(id: string): string {
 function labelForRef(ref: string): string {
   if (ref.startsWith("ws:")) return "the workspace canvas";
   if (ref.startsWith("initiative:")) return "the initiative canvas";
-  if (ref.startsWith("milestone:")) return "the milestone canvas";
+  // Defensive: pre-cutover proposal trails may still carry
+  // `milestone:<id>` refs even though milestones aren't drillable
+  // scopes today (their cards live on the parent initiative canvas).
+  if (ref.startsWith("milestone:")) return "the initiative canvas";
   return "another canvas";
 }
 

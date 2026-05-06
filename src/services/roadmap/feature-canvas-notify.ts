@@ -6,8 +6,10 @@
  * affected canvases are:
  *
  *   - root (`""`)                            — initiative card progress rollup
- *   - `initiative:<initiativeId>`            — milestone timeline card
- *   - `milestone:<milestoneId>`              — feature/task sub-canvas
+ *   - `initiative:<initiativeId>`            — milestone card + feature
+ *                                              card on the initiative
+ *                                              canvas (no milestone
+ *                                              sub-canvas exists)
  *
  * Why every caller, every time:
  *   - The milestone card's `customData.progress` fraction changes
@@ -16,9 +18,9 @@
  *     IN_PROGRESS task count) changes whenever a task enters or
  *     leaves either of those workflow states — possibly without the
  *     feature's own status flipping.
- *   - The milestone sub-canvas projects task cards directly, so any
- *     task mutation (status, workflowStatus, title, assignee) is a
- *     visible state change there.
+ *   - The feature card on the initiative canvas surfaces its own
+ *     task progress in `customData.secondary`, so task mutations
+ *     also change what that card displays.
  *
  * This helper is the single place that fans out for these cases.
  * Callers invoke it alongside (typically immediately after) their
@@ -69,8 +71,7 @@ export async function resolveAffectedCanvasRefs(
     githubLogin: feature.milestone.initiative.org.githubLogin,
     refs: [
       "", // root: initiative card rollup
-      `initiative:${feature.milestone.initiativeId}`, // milestone timeline
-      `milestone:${feature.milestone.id}`, // feature/task sub-canvas
+      `initiative:${feature.milestone.initiativeId}`, // milestone + feature cards live here
     ],
   };
 }
@@ -114,13 +115,14 @@ export async function notifyFeatureCanvasRefresh(
  *   2. It always touches root (initiative-card progress rollups shift
  *      whenever a feature changes milestone-membership).
  *
- * Every milestone/initiative the feature was attached to before AND
- * after the change is included; root is always added; duplicates are
- * de-duped by `notifyCanvasesUpdatedByLogin`. Initiative-only and
- * loose-feature canvases are covered too: when a feature lives on
- * `milestoneTimelineProjector` (initiative set, milestone null) or
- * `workspaceProjector` (both null), reassigning it on/off a milestone
- * changes which projector emits it — we refresh those scopes too.
+ * Every initiative the feature was attached to before AND after the
+ * change is included; root is always added; the workspace canvas is
+ * touched in case the feature went loose. Milestone-bound features
+ * render on their parent initiative's canvas (with a synthetic edge
+ * to the milestone card on the same canvas), so a milestone change
+ * alone refreshes via the parent initiative's ref — there is no
+ * separate `milestone:<id>` ref to fan out to. Duplicates are
+ * de-duped by `notifyCanvasesUpdatedByLogin`.
  *
  * Errors are swallowed for the same resilience reason as
  * `notifyFeatureCanvasRefresh`.
@@ -175,23 +177,27 @@ export async function notifyFeatureReassignmentRefresh(
       refs.add(`ws:${feature.workspaceId}`);
     }
 
-    // Both anchored initiatives (before + after) project initiative-loose
-    // and host milestone timelines. Either could change.
+    // Both anchored initiatives (before + after) host their milestones
+    // AND every initiative-anchored feature (with or without a
+    // milestone), plus the synthetic edges that express milestone
+    // membership. A milestone-only change still refreshes via the
+    // parent initiative — that's where the membership edge lives.
+    // Milestone reassignments derive the parent initiative through the
+    // `milestone.initiativeId` chain, which the helper resolves
+    // implicitly via `feature.initiativeId` post-update; the "before"
+    // initiative covers the leaving side.
     if (before.initiativeId) {
       refs.add(`initiative:${before.initiativeId}`);
     }
     if (feature.initiativeId) {
       refs.add(`initiative:${feature.initiativeId}`);
     }
-
-    // Both milestones (before + after) need their feature column lists
-    // re-projected. Either may be null when the feature is being
-    // attached to / detached from a milestone.
-    if (before.milestoneId) {
-      refs.add(`milestone:${before.milestoneId}`);
-    }
-    if (feature.milestoneId) {
-      refs.add(`milestone:${feature.milestoneId}`);
+    // Cover the unusual case where a feature's milestone changed but
+    // its initiativeId snapshot was null on the before side (e.g.
+    // direct DB write that bypassed the coherence rule). The
+    // milestone's parent initiative is the canvas to refresh.
+    if (feature.milestone?.initiativeId) {
+      refs.add(`initiative:${feature.milestone.initiativeId}`);
     }
 
     await notifyCanvasesUpdatedByLogin(

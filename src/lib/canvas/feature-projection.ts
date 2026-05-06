@@ -11,13 +11,13 @@
  * overlay would just be dead weight.
  *
  * Mirrors the projector logic in `projectors.ts`:
- *   - milestone-bound features (`milestoneId` set) → milestone sub-canvas
- *     (`milestoneProjector`).
- *   - initiative-loose features (`initiativeId` set, `milestoneId` null)
- *     → initiative sub-canvas (`milestoneTimelineProjector` loose-features
- *     row).
- *   - loose features (no initiative, no milestone) → workspace sub-canvas
- *     (`workspaceProjector` loose-features row).
+ *   - features anchored to an initiative (`initiativeId` set, with or
+ *     without `milestoneId`) → initiative sub-canvas. The
+ *     `milestoneTimelineProjector` emits the feature card alongside
+ *     the milestone cards, plus a synthetic edge to the milestone
+ *     when one is set.
+ *   - loose features (no initiative, no milestone) → workspace
+ *     sub-canvas (`workspaceProjector` loose-features row).
  *   - root canvas never shows features.
  *
  * Both functions are pure; tests live next to the helper.
@@ -47,26 +47,20 @@ export function featureProjectsOn(
 ): boolean {
   if (ref === ROOT_REF) return false;
 
-  if (ref.startsWith("milestone:")) {
-    const milestoneId = ref.slice("milestone:".length);
-    return Boolean(payload.milestoneId) && payload.milestoneId === milestoneId;
-  }
-
   if (ref.startsWith("initiative:")) {
     const initiativeId = ref.slice("initiative:".length);
-    // Initiative-loose features only — a feature with a milestone
-    // attached projects on the milestone, not the initiative timeline.
-    return (
-      Boolean(payload.initiativeId) &&
-      payload.initiativeId === initiativeId &&
-      !payload.milestoneId
-    );
+    // Every feature anchored to this initiative projects here —
+    // milestone-bound and initiative-loose alike. Milestone membership
+    // is expressed via a projector-emitted synthetic edge to the
+    // milestone card on the same canvas, NOT by relocating the
+    // feature to a separate sub-canvas.
+    return Boolean(payload.initiativeId) && payload.initiativeId === initiativeId;
   }
 
   if (ref.startsWith("ws:")) {
     const workspaceId = ref.slice("ws:".length);
     // Loose features only — anchored features render on their
-    // initiative or milestone canvas, never on the workspace.
+    // initiative canvas, never on the workspace.
     return (
       payload.workspaceId === workspaceId &&
       !payload.initiativeId &&
@@ -74,9 +68,9 @@ export function featureProjectsOn(
     );
   }
 
-  // milestone:/initiative:/ws: are the three feature-bearing scopes.
-  // Anything else (feature:<id>, node:<id>, opaque refs) never shows
-  // features.
+  // initiative:/ws: are the two feature-bearing scopes. Anything else
+  // (feature:<id>, node:<id>, opaque refs, leftover milestone:<id> from
+  // pre-cutover deep links) never shows features.
   return false;
 }
 
@@ -88,9 +82,15 @@ export function featureProjectsOn(
  * the one the user was looking at).
  *
  * Never returns `ROOT_REF` — features don't project on the root.
+ *
+ * `milestoneId` does NOT push the ref to a `milestone:` scope (no such
+ * scope exists). A milestone-bound feature renders on its parent
+ * initiative's canvas; the caller is expected to pass `initiativeId`
+ * alongside `milestoneId` (the service-side coherence rule in
+ * `services/roadmap/features.ts` derives one from the other so this
+ * holds in practice).
  */
 export function mostSpecificRef(payload: FeaturePlacementPayload): string {
-  if (payload.milestoneId) return `milestone:${payload.milestoneId}`;
   if (payload.initiativeId) return `initiative:${payload.initiativeId}`;
   return `ws:${payload.workspaceId}`;
 }

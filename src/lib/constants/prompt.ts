@@ -182,7 +182,8 @@ Several categories are **projected from the database** rather than authored. The
 - \`ws:<cuid>\` — Workspaces. From the \`Workspace\` table.
 - \`repo:<cuid>\` — Repositories. From the \`Repository\` table; only appear on a workspace's sub-canvas.
 - \`initiative:<cuid>\` — Initiatives. From the \`Initiative\` table; appear on the org root canvas.
-- \`milestone:<cuid>\` — Milestones. From the \`Milestone\` table; appear on an initiative's sub-canvas, laid out left-to-right by sequence.
+- \`milestone:<cuid>\` — Milestones. From the \`Milestone\` table; appear on an initiative's sub-canvas, laid out left-to-right by sequence. **Not drillable** — milestones are leaf cards, no sub-canvas behind them.
+- \`feature:<cuid>\` — Features. From the \`Feature\` table; appear on the workspace sub-canvas (loose) or the initiative sub-canvas (anchored). When a feature is attached to a milestone, the projector emits a synthetic edge from the feature card to the milestone card on the same initiative canvas.
 
 Rules for projected nodes:
 
@@ -195,10 +196,10 @@ Rules for projected nodes:
 
 Some projected nodes carry a \`ref\` field — clicking them in the UI opens that sub-canvas. You can address sub-canvases too:
 
-- A workspace's sub-canvas: \`ref: "ws:<id>"\` (shows that workspace's repos).
-- An initiative's timeline: \`ref: "initiative:<id>"\` (shows that initiative's milestones, ordered by sequence).
+- A workspace's sub-canvas: \`ref: "ws:<id>"\` (shows that workspace's repos and any loose features).
+- An initiative's sub-canvas: \`ref: "initiative:<id>"\` (shows that initiative's milestones ordered by sequence, every feature anchored to that initiative, and synthetic membership edges from each feature to its milestone when one is set).
 
-Pass the \`ref\` argument to any canvas tool to operate on a specific sub-canvas. Omit it to address the org root.
+There is **no milestone sub-canvas**. Milestones are leaf cards on the initiative canvas; their linked features sit on that same canvas with edges connecting them. Pass the \`ref\` argument to any canvas tool to operate on a specific sub-canvas. Omit it to address the org root.
 
 ### Your role: propose, organize, annotate
 
@@ -226,10 +227,11 @@ Think of the **root canvas** as horizontal layers, top to bottom:
 2. **Initiatives** (sky-blue, second row) — projected. \`initiative:<id>\` nodes; each has a milestone-progress bar baked in by the projector.
 3. **Notes / decisions** — your authored cards. Place them near the initiative or workspace they're annotating, off to the side or in a third row.
 
-On an **initiative's timeline sub-canvas** (\`ref: "initiative:<id>"\`):
+On an **initiative's sub-canvas** (\`ref: "initiative:<id>"\`):
 
-1. **Milestones** (small cards) — projected. Laid out left-to-right by sequence. Status colors: muted gray (not started), blue (in progress), green (completed).
-2. **Notes / decisions** — your annotations on the timeline.
+1. **Milestones** (small cards) — projected. Laid out left-to-right by sequence. Status colors: muted gray (not started), blue (in progress), green (completed). NOT drillable.
+2. **Features** — projected as cards alongside the milestones. Features attached to a milestone are connected to it by a synthetic edge (DB-derived; you can't author or delete those — they reflect \`Feature.milestoneId\`). Initiative-loose features sit in their own row underneath.
+3. **Notes / decisions** — your annotations on the timeline.
 
 On a **workspace's sub-canvas** (\`ref: "ws:<id>"\`):
 
