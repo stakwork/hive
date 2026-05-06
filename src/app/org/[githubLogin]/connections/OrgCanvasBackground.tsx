@@ -118,7 +118,7 @@ const AUTOSAVE_MS = 600;
  * step. Applied as `edge.color` in a render-only decoration pass (see
  * `decorateEdgesWithLinkVisual`); never persisted.
  */
-const LINKED_EDGE_COLOR = "#94a3cc";
+const LINKED_EDGE_COLOR = "#a4b3cc";
 
 type DirtyMap = Map<string, CanvasData>;
 
