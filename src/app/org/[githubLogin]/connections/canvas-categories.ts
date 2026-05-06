@@ -197,31 +197,34 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
   {
     id: "milestone",
     agentDescription:
-      "a milestone on an initiative's timeline — small card with a status color (gray / blue / green) and a due-date footer",
+      "a milestone on an initiative's sub-canvas — small card with a status color (gray / blue / green) and a due-date footer",
     // Milestones are projected from the DB (id prefix `milestone:`) on
     // the initiative sub-canvas. Same `+ menu opens a dialog` pattern
-    // as initiative.
+    // as initiative. NOT drillable — they're leaf cards; their linked
+    // features render alongside them on the same initiative canvas
+    // with synthetic edges expressing membership.
     agentWritable: false,
     userCreatable: true,
     promptGuidance:
-      "Projected from the `Milestone` Prisma model on an initiative sub-canvas. Laid out left-to-right by `sequence`. Humans create milestones via the canvas `+` menu (which opens a dialog) or the OrgInitiatives table UI; the agent must NEVER create or edit them. Same annotation-only role as initiatives.",
+      "Projected from the `Milestone` Prisma model on an initiative sub-canvas. Laid out left-to-right by `sequence`. NOT drillable — there is no milestone sub-canvas; linked features render on the same initiative canvas with synthetic feature→milestone edges. Humans create milestones via the canvas `+` menu (which opens a dialog) or the OrgInitiatives table UI; the agent must NEVER create or edit them. Same annotation-only role as initiatives.",
     customDataKeys: MILESTONE_CUSTOM_DATA,
   },
   {
     id: "feature",
     agentDescription:
-      "a feature card — milestone column on a milestone sub-canvas, free-floating elsewhere",
+      "a feature card — sits on the workspace sub-canvas (loose) or the initiative sub-canvas (anchored)",
     // Features are projected from the DB (id prefix `feature:`). They
-    // can be created by the user from any canvas via the `+` menu (the
-    // dialog hits POST /api/features); the agent must never author
-    // one. Where the new feature renders is the "most specific place"
-    // by anchor: milestoneId set → milestone sub-canvas; only
-    // initiativeId set → initiative sub-canvas; neither set →
-    // workspace sub-canvas.
+    // can be created by the user from any canvas via the `+` menu
+    // (the dialog hits POST /api/features); the agent must never
+    // author one. Where the new feature renders is the "most specific
+    // place" by anchor: initiativeId set (with or without
+    // milestoneId) → initiative sub-canvas; neither set → workspace
+    // sub-canvas. Milestone membership is shown by a projector-emitted
+    // synthetic edge to the milestone card on the same canvas.
     agentWritable: false,
     userCreatable: true,
     promptGuidance:
-      "Projected from the `Feature` Prisma model. On a milestone sub-canvas it appears as a column header with tasks stacked beneath it; on workspace and initiative sub-canvases it appears as a free-floating card. Humans create features via the canvas `+` menu (which opens a dialog) or the workspace plan page; the agent must NEVER create or edit them. Annotation-only.",
+      "Projected from the `Feature` Prisma model. Renders on the workspace sub-canvas (loose) or the initiative sub-canvas (anchored). When the feature has a `milestoneId`, the projector emits a synthetic edge from the feature card to the milestone card on the same initiative canvas — that edge is DB-derived (cannot be authored or deleted by you). Humans create features via the canvas `+` menu (which opens a dialog) or the workspace plan page; the agent must NEVER create or edit them. Annotation-only.",
     customDataKeys: [
       {
         key: "status",
@@ -250,15 +253,18 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
   {
     id: "task",
     agentDescription:
-      "a task under a feature on a milestone sub-canvas — compact card colored by workflow status",
-    // Tasks are projected from the DB (id prefix `task:`) on the
-    // milestone sub-canvas. Tasks are leaves (no drill); creation
-    // happens from a feature's chat. Neither the agent nor a `+`
-    // menu pick creates them.
+      "a task — compact card colored by workflow status; not currently projected on the org canvas",
+    // Tasks are NOT projected on the org canvas today (they were
+    // emitted by the now-removed milestone sub-canvas projector). The
+    // category and `task:` id prefix are kept registered so the
+    // splitter strips authored fields off any task nodes that might
+    // arrive from a stale chat artifact, and so future surfaces can
+    // reuse the visual treatment. Creation happens from a feature's
+    // chat; neither the agent nor a `+` menu pick creates them.
     agentWritable: false,
     userCreatable: false,
     promptGuidance:
-      "Projected from the `Task` Prisma model on a milestone sub-canvas. Stacked underneath their parent feature. The agent must NEVER create or edit tasks. Annotation-only.",
+      "Projected from the `Task` Prisma model. Not currently emitted on any org canvas — task progress is rolled into the parent feature's footer (`X/Y tasks`). The agent must NEVER create or edit tasks. Annotation-only.",
     customDataKeys: [
       {
         key: "status",

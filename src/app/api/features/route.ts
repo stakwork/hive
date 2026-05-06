@@ -178,21 +178,20 @@ export async function POST(request: NextRequest) {
 
     // Canvas-side: fire `CANVAS_UPDATED` on the most-specific scope the
     // new feature lives on so any open org canvases refetch and pick up
-    // the projection. We never need to fire on multiple scopes — by the
-    // "most specific place wins" rule, a feature renders on exactly one
-    // canvas (the workspace canvas if both anchors are null, the
-    // initiative canvas if only initiativeId is set, the milestone
-    // canvas if milestoneId is set). The workspace's `sourceControlOrgId`
-    // is what wires the pusher message to the right org channel.
-    if (feature.milestoneId || feature.initiativeId || feature.workspaceId) {
+    // the projection. By the "most specific place wins" rule, a feature
+    // renders on exactly one canvas: the initiative canvas when
+    // `initiativeId` is set (with or without a milestone — milestone
+    // membership is shown by a synthetic edge on the same canvas), or
+    // the workspace canvas when both anchors are null. The workspace's
+    // `sourceControlOrgId` is what wires the pusher message to the
+    // right org channel.
+    if (feature.initiativeId || feature.workspaceId) {
       const ws = await db.workspace.findUnique({
         where: { id: feature.workspaceId },
         select: { sourceControlOrgId: true },
       });
       if (ws?.sourceControlOrgId) {
-        const ref = feature.milestoneId
-          ? `milestone:${feature.milestoneId}`
-          : feature.initiativeId
+        const ref = feature.initiativeId
           ? `initiative:${feature.initiativeId}`
           : `ws:${feature.workspaceId}`;
         void notifyCanvasUpdated(ws.sourceControlOrgId, ref, "feature-created", {

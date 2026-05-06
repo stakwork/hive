@@ -92,60 +92,45 @@ export const TIMELINE_COL_X0 = 0;
 export const TIMELINE_HEADER_Y = 0;
 
 // ---------------------------------------------------------------------------
-// Milestone sub-canvas geometry — Feature columns with stacked Tasks.
+// Feature card sizing — used by the renderer (`canvas-theme.ts`) for
+// default width/height regardless of which canvas the feature sits on.
 //
-// Each linked Feature owns a vertical column on the canvas. The
-// feature card sits at the top; that feature's tasks stack underneath.
-// Columns are spaced so a feature with ~10 tasks reads cleanly
-// without bleeding into its neighbor.
+// Features render as cards on the workspace sub-canvas (loose) and on
+// the initiative sub-canvas (initiative-anchored, with or without a
+// milestone). There is no separate milestone sub-canvas — milestone
+// membership is shown via projector-emitted synthetic edges.
 // ---------------------------------------------------------------------------
 
-/** Feature card on the milestone sub-canvas. Wider than the small/repo
- *  card so the title has room to breathe alongside its task counter. */
+/** Feature card width — wider than the small/repo card so the title
+ *  has room to breathe alongside its task counter. */
 export const FEATURE_W = 260;
 export const FEATURE_H = 100;
 
-/** Top-of-column placement for the feature card. */
-export const FEATURE_ROW_Y = 60;
-export const FEATURE_ROW_X0 = 40;
-/** Horizontal step between feature columns. The gap matches `ROW_GAP`
- *  applied elsewhere so the visual rhythm reads as one family. */
-export const FEATURE_ROW_STEP = FEATURE_W + ROW_GAP;
-
-/** Task card. Compact — under-feature stacks routinely have 5-15 tasks,
- *  so a small footprint keeps the column from running off the canvas. */
+/** Task card sizing — kept as defaults in case a future surface
+ *  surfaces tasks visually, even though tasks no longer project on the
+ *  org canvas. The renderer's category registry references these
+ *  constants directly. */
 export const TASK_W = 180;
 export const TASK_H = 64;
 
-/** Centering offset so each task sits horizontally centered under its
- *  parent feature, regardless of the feature card's width. */
-export const TASK_STACK_X_OFFSET = (FEATURE_W - TASK_W) / 2;
-
-/** First task sits a comfortable gap below the feature card. */
-export const TASK_STACK_Y0 = FEATURE_ROW_Y + FEATURE_H + 24;
-
-/** Vertical step between adjacent tasks in the same column. */
-export const TASK_STACK_STEP_Y = TASK_H + 12;
-
 // ---------------------------------------------------------------------------
-// Loose-feature placement — features created on workspace or initiative
-// canvases (no milestone). On those scopes a feature isn't part of a
-// task-stack column, just a card in a row. Sits well below the
-// scope's primary band (repos on workspace, milestones on initiative)
-// so the default first-render lands in empty space rather than colliding
-// with the projected primaries.
+// Feature placement — features render on workspace or initiative
+// canvases. On workspace they sit in a row under the repo row; on
+// initiative they sit in a row under the milestone timeline. Sits
+// well below the scope's primary band so the default first-render
+// lands in empty space rather than colliding with the primaries.
 //
 // The user can drag freely after creation (position overlay survives);
 // these defaults only matter for the very first render before the user
 // has interacted with the card.
 // ---------------------------------------------------------------------------
 
-/** Loose-feature row on a workspace's sub-canvas — under the repo row. */
+/** Feature row on a workspace's sub-canvas — under the repo row. */
 export const LOOSE_FEATURE_WS_ROW_Y = REPO_ROW_Y + CARD_H + 80;
 export const LOOSE_FEATURE_WS_ROW_X0 = 40;
 export const LOOSE_FEATURE_WS_ROW_STEP = FEATURE_W + ROW_GAP;
 
-/** Loose-feature row on an initiative's sub-canvas — under the milestone timeline. */
+/** Feature row on an initiative's sub-canvas — under the milestone timeline. */
 export const LOOSE_FEATURE_INIT_ROW_Y = MILESTONE_ROW_Y + MILESTONE_H + 80;
 export const LOOSE_FEATURE_INIT_ROW_X0 = 40;
 export const LOOSE_FEATURE_INIT_ROW_STEP = FEATURE_W + ROW_GAP;

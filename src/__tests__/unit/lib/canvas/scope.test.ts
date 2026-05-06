@@ -35,12 +35,15 @@ describe("parseScope", () => {
     });
   });
 
-  it("parses a milestone: prefix into a milestone scope", () => {
-    // No projector under this scope yet (v2), but the parser accepts
-    // it so we don't have to change refs when the projector lands.
+  it("treats milestone: prefixed refs as opaque (no milestone scope)", () => {
+    // Milestones live as cards on their parent initiative's canvas
+    // and are NOT drillable. Pre-cutover deep links may still carry
+    // `milestone:<id>` refs; the parser accepts them as opaque so any
+    // orphaned `Canvas` rows round-trip through reads without
+    // crashing — projectors no-op on opaque scopes.
     expect(parseScope("milestone:muid_1")).toEqual({
-      kind: "milestone",
-      milestoneId: "muid_1",
+      kind: "opaque",
+      ref: "milestone:muid_1",
     });
   });
 

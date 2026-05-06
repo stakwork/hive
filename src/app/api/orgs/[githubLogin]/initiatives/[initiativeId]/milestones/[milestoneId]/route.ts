@@ -201,14 +201,15 @@ export async function PATCH(
     });
 
     // Status / sequence / due-date / feature-link can all change what
-    // the projection emits. Status especially affects the root-level
-    // initiative progress rollup (root) and the milestone card itself
-    // on the timeline (`initiative:<id>`); a feature-link change in
-    // particular flips what the milestone sub-canvas (`milestone:<id>`)
-    // projects, so include that ref too.
+    // the projection emits. Status affects the root-level initiative
+    // progress rollup (root) and the milestone card itself on the
+    // initiative canvas (`initiative:<id>`). Feature-link changes
+    // shift the synthetic membership edges on that same canvas — no
+    // separate `milestone:<id>` ref to fan out to (milestones aren't
+    // drillable; their linked features render alongside them).
     void notifyCanvasesUpdatedByLogin(
       githubLogin,
-      ["", `initiative:${initiativeId}`, `milestone:${milestoneId}`],
+      ["", `initiative:${initiativeId}`],
       "milestone-updated",
       { initiativeId, milestoneId },
     );

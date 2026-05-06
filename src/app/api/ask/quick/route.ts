@@ -649,9 +649,12 @@ async function runProposalIntent(args: {
       approvalResultHeader = JSON.stringify(r);
       // Prefer the resolved entity name ("Auth Refactor") over the
       // generic kind label ("an initiative canvas") so the user knows
-      // exactly which workspace / initiative / milestone the new row
-      // landed under. Falls back to the kind label when the lookup
-      // didn't resolve (root canvas, deleted entity, older transcript).
+      // exactly which workspace / initiative the new row landed
+      // under. Falls back to the kind label when the lookup didn't
+      // resolve (root canvas, deleted entity, older transcript). The
+      // `milestone:` branch is a defensive fallback for pre-cutover
+      // proposal trails — milestones aren't drillable scopes today,
+      // so new approvals never produce that ref.
       const kindLabel =
         r.landedOn === ""
           ? "the org root canvas"
@@ -660,7 +663,7 @@ async function runProposalIntent(args: {
             : r.landedOn.startsWith("initiative:")
               ? "an initiative canvas"
               : r.landedOn.startsWith("milestone:")
-                ? "a milestone canvas"
+                ? "an initiative canvas"
                 : "the canvas";
       const where = r.landedOnName
         ? `**${r.landedOnName}**`
