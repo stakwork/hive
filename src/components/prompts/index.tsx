@@ -679,28 +679,28 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
               />
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={handleBackToList} disabled={isSaving}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreatePrompt}
-                disabled={isSaving || !formName.trim() || !formValue.trim()}
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Prompt
-                  </>
-                )}
-              </Button>
-            </div>
           </div>
+        </div>
+        <div className="flex justify-end gap-2 p-3 border-t flex-shrink-0">
+          <Button variant="outline" onClick={handleBackToList} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreatePrompt}
+            disabled={isSaving || !formName.trim() || !formValue.trim()}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Prompt
+              </>
+            )}
+          </Button>
         </div>
       </div>
     );
@@ -839,30 +839,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 )}
               </div>
 
-              {isEditing && (
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>
-                    <X className="h-4 w-4 mr-1" />
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleUpdatePrompt}
-                    disabled={isSaving || !formValue.trim()}
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        Save Changes
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
+
 
               {!isEditing && selectedUsages.length > 0 && (
                 <div>
@@ -916,6 +893,30 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 </div>
               )}
             </div>
+          </div>
+        )}
+        {isEditing && (
+          <div className="flex justify-end gap-2 p-3 border-t flex-shrink-0">
+            <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>
+              <X className="h-4 w-4 mr-1" />
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdatePrompt}
+              disabled={isSaving || !formValue.trim()}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
           </div>
         )}
       </div>
