@@ -27,7 +27,6 @@ interface SchemaResponse {
 interface GraphComponentProps {
   endpoint?: string;
   title?: string;
-
   enableRotation?: boolean;
   className?: string;
   height?: string;
