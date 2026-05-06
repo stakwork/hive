@@ -101,6 +101,13 @@ export async function PATCH(
       if (task.mode === "workflow_editor") {
         const success = await executeWorkflowEditorRetry(taskId, userOrResponse.id);
 
+        if (success) {
+          await db.task.update({
+            where: { id: taskId },
+            data: { haltRetryAttempted: false },
+          });
+        }
+
         const updatedTask = await db.task.findUnique({
           where: { id: taskId },
           select: {

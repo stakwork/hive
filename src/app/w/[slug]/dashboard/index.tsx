@@ -11,7 +11,6 @@ import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
 import { TestFilterDropdown } from "@/components/graph/TestFilterDropdown";
 import { GraphComponent } from "@/components/knowledge-graph";
 import { WorkspaceMembersPreview } from "@/components/workspace/WorkspaceMembersPreview";
-import { useGraphPolling } from "@/hooks/useGraphPolling";
 import { useTasksHighlight } from "@/hooks/useTasksHighlight";
 import { useWebhookHighlights } from "@/hooks/useWebhookHighlights";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -39,11 +38,6 @@ function DashboardInner() {
   const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
   const isOnboarding = useDataStore((s) => s.isOnboarding);
-
-  useGraphPolling({
-    enabled: !isOnboarding && activeFilterTab === 'all',
-    interval: 5000
-  });
 
   useWebhookHighlights()
   useTasksHighlight({
@@ -95,7 +89,6 @@ function DashboardInner() {
         <GraphComponent
           endpoint={`graph/search/latest?limit=5000&top_node_count=5000`}
           enableRotation={true}
-          enablePolling={true}
           height="h-full"
           width="w-full"
         />
