@@ -127,7 +127,12 @@ export function ProposalCard({
     });
   };
 
-  // Subtext for approved state.
+  // Subtext for approved state. Prefer the resolved entity name
+  // ("Created on Auth Refactor") over the kind-only fallback ("Created
+  // on the initiative canvas") when the approval handler was able to
+  // look it up. Older approval results (from before `landedOnName` was
+  // added) and the root canvas both legitimately omit the name and
+  // fall through to `labelForRef`.
   const approvedSubtext = useMemo(() => {
     if (status.status !== "approved") return null;
     const r = status.result;
@@ -135,7 +140,9 @@ export function ProposalCard({
     if (onCurrent) {
       return { text: "Created on this canvas", deepLink: null as string | null };
     }
-    const label = r.landedOn === "" ? "the org canvas" : labelForRef(r.landedOn);
+    const label =
+      r.landedOnName ??
+      (r.landedOn === "" ? "the org canvas" : labelForRef(r.landedOn));
     const href =
       r.landedOn === ""
         ? `/org/${githubLogin}`

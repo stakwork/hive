@@ -249,17 +249,17 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
     // by scanning the conversation for the matching `approvalResult`.
     [PROPOSE_FEATURE_TOOL]: tool({
       description:
-        "Propose a new Feature in a specific workspace, optionally " +
-        "under an existing or proposed initiative/milestone. USE THIS " +
-        "whenever the user asks you to add, create, draft, sketch, " +
-        "suggest, brainstorm, spin up, kick off, set up, plan, build, " +
-        "ship, or start a new feature — e.g. 'add a tiered-pricing " +
-        "feature', 'create me a setup wizard', 'propose 3 features " +
-        "for billing v2.' This tool does NOT write to the DB; it " +
-        "emits a proposal card in chat that the user explicitly " +
-        "approves with a click — approval is what creates the row. " +
-        "Do NOT decline feature-creation requests by telling the user " +
-        "to use the '+' button. " +
+        "Propose a new Feature in a specific workspace, normally under " +
+        "an existing or proposed initiative. USE THIS whenever the " +
+        "user asks you to add, create, draft, sketch, suggest, " +
+        "brainstorm, spin up, kick off, set up, plan, build, ship, or " +
+        "start a new feature — e.g. 'add a tiered-pricing feature', " +
+        "'create me a setup wizard', 'propose 3 features for billing " +
+        "v2.' This tool does NOT write to the DB; it emits a " +
+        "proposal card in chat that the user explicitly approves " +
+        "with a click — approval is what creates the row. Do NOT " +
+        "decline feature-creation requests by telling the user to " +
+        "use the '+' button. " +
         "**BEFORE calling this tool without an `initiativeId`**, you " +
         "MUST call `read_canvas` (no `ref`, the org root) to see the " +
         "existing initiatives. If any initiative is a reasonable " +
@@ -269,12 +269,17 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
         "are organized by initiative on the canvas; a fitting " +
         "initiative is almost always preferable to filing the feature " +
         "loose under a workspace. " +
+        "**Do NOT set `milestoneId` for new features unless the user " +
+        "explicitly asks** — milestones are primarily for grouping " +
+        "already-completed work, not for filing new features. Even on " +
+        "a milestone canvas, prefer the parent initiative's id as " +
+        "`initiativeId` (omit `milestoneId`) unless the user has " +
+        "specifically said 'file this under this milestone.' " +
         "To group multiple features under a " +
         "not-yet-approved initiative from this same conversation, set " +
         "`parentProposalId` to that initiative proposal's id; the " +
         "approval handler wires them up automatically. To file a " +
-        "feature under an EXISTING initiative or milestone, use " +
-        "`initiativeId` / `milestoneId` instead. " +
+        "feature under an EXISTING initiative, use `initiativeId`. " +
         "**Always provide BOTH `description` and `initialMessage`.** " +
         "`description` is the durable brief (a short paragraph of " +
         "context shown on the feature page). `initialMessage` is a " +
@@ -327,7 +332,11 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           .optional()
           .describe(
             "Existing milestone to attach to. Implies the milestone's " +
-              "initiative — you don't need to set both.",
+              "initiative — you don't need to set both. **Rare for " +
+              "new features.** Milestones primarily group completed " +
+              "work; only set this when the user has explicitly asked " +
+              "to file the new feature under a specific milestone. " +
+              "Default: omit and use `initiativeId` instead.",
           ),
         parentProposalId: z
           .string()
