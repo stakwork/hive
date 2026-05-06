@@ -309,6 +309,21 @@ interface OrgCanvasBackgroundProps {
    * track the parent stack here — see the TODO in `handleBreadcrumbClick`.
    */
   onCanvasBreadcrumbChange?: (breadcrumb: string) => void;
+  /**
+   * Fires whenever the set of connection ids referenced by at least
+   * one edge (across root + every loaded sub-canvas) changes. The
+   * sidebar's connection list uses this to render a small dot on
+   * rows whose connection is wired up to the canvas — same idea as
+   * the linked-edge color highlight, surfaced from the other side.
+   *
+   * Emitted as a fresh `Set` each time; consumers can store it
+   * directly. Sub-canvases that haven't been loaded yet don't
+   * contribute (we only know about edges we've actually fetched),
+   * but every sub-canvas the user has visited stays in
+   * `subCanvases` for the session, so the set converges as the
+   * user explores.
+   */
+  onLinkedConnectionIdsChange?: (ids: Set<string>) => void;
 }
 
 export function OrgCanvasBackground({
@@ -319,6 +334,7 @@ export function OrgCanvasBackground({
   onSelectionChange,
   edgePatchHandleRef,
   onCanvasBreadcrumbChange,
+  onLinkedConnectionIdsChange,
 }: OrgCanvasBackgroundProps) {
   const [root, setRoot] = useState<CanvasData | null>(null);
   const [subCanvases, setSubCanvases] = useState<Record<string, CanvasData>>({});
@@ -1951,6 +1967,31 @@ export function OrgCanvasBackground({
     }
     return out;
   }, [subCanvases, decorateEdgesWithLinkVisual]);
+
+  // Set of connection ids referenced by at least one edge across all
+  // canvases we've loaded this session. Walked off the same `root` +
+  // `subCanvases` state the renderer already uses, so it stays in
+  // sync automatically (link/unlink → state update → fresh set).
+  // The sidebar uses this to mark connections that are wired up.
+  const linkedConnectionIds = useMemo<Set<string>>(() => {
+    const ids = new Set<string>();
+    const collect = (data: CanvasData | null | undefined) => {
+      for (const e of data?.edges ?? []) {
+        const cd = (e as { customData?: { connectionId?: unknown } })
+          .customData;
+        if (typeof cd?.connectionId === "string" && cd.connectionId.length > 0) {
+          ids.add(cd.connectionId);
+        }
+      }
+    };
+    collect(root);
+    for (const data of Object.values(subCanvases)) collect(data);
+    return ids;
+  }, [root, subCanvases]);
+
+  useEffect(() => {
+    onLinkedConnectionIdsChange?.(linkedConnectionIds);
+  }, [linkedConnectionIds, onLinkedConnectionIdsChange]);
 
   // Anchor the canvas container to the viewport but leave `rightInset`
   // pixels of empty space on the right so the library-owned FAB + future
