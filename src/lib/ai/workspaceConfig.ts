@@ -77,6 +77,7 @@ export async function buildWorkspaceConfigs(
 
     configs.push({
       slug,
+      name: access.workspace.name,
       description: access.workspace.description ?? undefined,
       swarmUrl: baseSwarmUrl,
       swarmApiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || ""),
@@ -116,6 +117,7 @@ export async function buildPublicWorkspaceConfig(
     where: { slug, deleted: false, isPublicViewable: true },
     select: {
       id: true,
+      name: true,
       slug: true,
       ownerId: true,
       description: true,
@@ -176,6 +178,7 @@ export async function buildPublicWorkspaceConfig(
 
   return {
     slug,
+    name: workspace.name,
     description: workspace.description ?? undefined,
     swarmUrl: baseSwarmUrl,
     swarmApiKey: encryptionService.decryptField(
