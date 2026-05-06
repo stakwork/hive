@@ -274,11 +274,39 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
         "`parentProposalId` to that initiative proposal's id; the " +
         "approval handler wires them up automatically. To file a " +
         "feature under an EXISTING initiative or milestone, use " +
-        "`initiativeId` / `milestoneId` instead.",
+        "`initiativeId` / `milestoneId` instead. " +
+        "**Always provide BOTH `description` and `initialMessage`.** " +
+        "`description` is the durable brief (a short paragraph of " +
+        "context shown on the feature page). `initialMessage` is a " +
+        "one-sentence directive that seeds the feature's planning " +
+        "agent — it should read like an instruction to a developer, " +
+        "e.g. 'Build a tiered pricing page with three plans and a " +
+        "comparison table' — that's what kicks off research and the " +
+        "feature's eventual auto-naming.",
       inputSchema: z.object({
         proposalId: z.string().min(1),
         title: z.string().min(1),
-        description: z.string().optional(),
+        description: z
+          .string()
+          .optional()
+          .describe(
+            "The durable brief for this feature — a short paragraph " +
+              "of context shown on the feature page. Distinct from " +
+              "`initialMessage`, which seeds the planning agent.",
+          ),
+        initialMessage: z
+          .string()
+          .min(1)
+          .describe(
+            "One-sentence directive (what should be created) that " +
+              "becomes the FIRST chat message on the new feature's " +
+              "plan chat after approval. This is what kicks off the " +
+              "planning workflow's research pass — research is what " +
+              "ultimately produces the feature's proper auto-generated " +
+              "title. Phrase it as an instruction to a developer, e.g. " +
+              "'Build a tiered pricing page with three plans and a " +
+              "comparison table.' Required.",
+          ),
         workspaceId: z
           .string()
           .min(1)
@@ -385,6 +413,7 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
             payload: {
               title: input.title,
               ...(input.description && { description: input.description }),
+              initialMessage: input.initialMessage,
               workspaceId: input.workspaceId,
               ...(input.initiativeId && {
                 initiativeId: input.initiativeId,
