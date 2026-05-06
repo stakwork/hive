@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo } from "react";
-import { ArrowLeft, FileText, GitBranch, BookOpen, Code2, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  FileText,
+  GitBranch,
+  BookOpen,
+  Code2,
+  Loader2,
+  Link2Off,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DiagramViewer } from "@/app/w/[slug]/learn/components/DiagramViewer";
 import ReactMarkdown from "react-markdown";
@@ -10,6 +18,14 @@ import type { ConnectionData } from "./types";
 interface ConnectionViewerProps {
   connection: ConnectionData;
   onBack: () => void;
+  /**
+   * Optional unlink action. When provided, an Unlink button renders
+   * in the header next to Back. The parent decides when to pass this
+   * \u2014 today, only when the open connection is open *because* of an
+   * edge selection (the edge\u2194connection link feature). List-driven
+   * opens render Back-only.
+   */
+  onUnlink?: () => void;
 }
 
 function buildScalarSrcdoc(spec: string): string {
@@ -35,7 +51,11 @@ function buildScalarSrcdoc(spec: string): string {
 </html>`;
 }
 
-export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) {
+export function ConnectionViewer({
+  connection,
+  onBack,
+  onUnlink,
+}: ConnectionViewerProps) {
   const scalarSrcdoc = useMemo(
     () => (connection.openApiSpec ? buildScalarSrcdoc(connection.openApiSpec) : null),
     [connection.openApiSpec]
@@ -49,7 +69,21 @@ export function ConnectionViewer({ connection, onBack }: ConnectionViewerProps) 
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back
         </Button>
-        <h1 className="text-lg font-semibold truncate">{connection.name}</h1>
+        <h1 className="text-lg font-semibold truncate flex-1 min-w-0">
+          {connection.name}
+        </h1>
+        {onUnlink && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onUnlink}
+            title="Unlink this connection from the selected edge"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Link2Off className="h-4 w-4 mr-1" />
+            Unlink
+          </Button>
+        )}
       </div>
 
       {/* Stacked sections */}

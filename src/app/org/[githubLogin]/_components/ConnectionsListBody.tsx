@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { Trash2, RefreshCw } from "lucide-react";
+import { Trash2, RefreshCw, Link2, Plus } from "lucide-react";
+import type { CanvasEdge } from "system-canvas";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getOrgChannelName, PUSHER_EVENTS } from "@/lib/pusher";
@@ -16,6 +17,28 @@ interface ConnectionsListBodyProps {
   onConnectionCreated: () => void;
   onConnectionDeleted: (connectionId: string) => void;
   isLoading: boolean;
+
+  /**
+   * The edge the user has selected on the canvas, paired with the
+   * canvas ref it lives on AND resolved human labels for its
+   * endpoints (set upstream by `OrgCanvasBackground` from the
+   * canvas's node text). When non-null AND the edge has no linked
+   * connection, the list renders in **link mode**: a small
+   * `+ New connection` button sits above the rows, and every row
+   * gets a link icon for picking it as the link target. When the
+   * edge already has a link the user is normally in the viewer
+   * (clicking a linked edge opens it directly); the list-mode
+   * branch never sees a linked edge unless the user navigates back
+   * \u2014 and per UX design that path also clears edge selection.
+   */
+  selectedEdge: {
+    edge: CanvasEdge;
+    canvasRef: string | undefined;
+    fromLabel: string;
+    toLabel: string;
+  } | null;
+  onLinkConnectionToEdge: (connection: ConnectionData) => void;
+  onCreateConnectionForEdge: () => void;
 }
 
 /**
@@ -31,6 +54,9 @@ export function ConnectionsListBody({
   onConnectionCreated,
   onConnectionDeleted,
   isLoading,
+  selectedEdge,
+  onLinkConnectionToEdge,
+  onCreateConnectionForEdge,
 }: ConnectionsListBodyProps) {
   // Refcounted shared subscription — see `usePusherChannel` docs for
   // why we don't call `pusher.unsubscribe` directly from this effect.
@@ -75,9 +101,39 @@ export function ConnectionsListBody({
     );
   };
 
+  // ─── Link mode ─────────────────────────────────────────────────────
+  // The list switches into link-mode chrome only when an edge is
+  // selected AND that edge has no connection linked yet. Linked
+  // edges open the viewer directly (handled in the parent); the
+  // list-mode branch stays clean. Endpoint labels come pre-resolved
+  // on `selectedEdge` — see `OrgCanvasBackground.handleEdgeClick`.
+  const linkedConnectionId = selectedEdge
+    ? readEdgeConnectionId(selectedEdge.edge)
+    : null;
+  const linkMode = selectedEdge !== null && linkedConnectionId === null;
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto p-4 space-y-1">
+        {linkMode && (
+          // Subtle right-aligned `+ New` affordance. Only visible
+          // when the user has selected an edge that doesn't already
+          // have a connection. Clicking switches the panel to Chat
+          // with a prefilled message. The edge endpoints are
+          // visible on the canvas (the edge is highlighted) — no
+          // need to repeat them in the button.
+          <div className="flex justify-end mb-1">
+            <button
+              type="button"
+              onClick={onCreateConnectionForEdge}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              title="Create a new connection for the selected edge"
+            >
+              <Plus className="h-3 w-3" />
+              <span>New</span>
+            </button>
+          </div>
+        )}
         {isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
@@ -113,6 +169,19 @@ export function ConnectionsListBody({
                   </div>
                   <div className="truncate mt-0.5">{conn.name}</div>
                 </button>
+                {linkMode && (
+                  <button
+                    type="button"
+                    className="p-1 rounded hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onLinkConnectionToEdge(conn);
+                    }}
+                    title="Link this connection to the selected edge"
+                  >
+                    <Link2 className="h-3 w-3" />
+                  </button>
+                )}
                 <button
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 hover:text-destructive"
                   onClick={(e) => handleDelete(e, conn.id)}
@@ -134,4 +203,18 @@ export function ConnectionsListBody({
       </div>
     </div>
   );
+}
+
+/**
+ * Read the connectionId off an edge's customData. The library type
+ * doesn't include `customData` on edges, but JS round-trips extra
+ * fields through the splitter (`src/lib/canvas/io.ts`). Mirrored in
+ * `OrgRightPanel` and `OrgCanvasView`; centralizing here would mean
+ * a new shared module just for one accessor — kept inline pending
+ * a second use site beyond the canvas surface.
+ */
+function readEdgeConnectionId(edge: CanvasEdge): string | null {
+  const cd = (edge as { customData?: { connectionId?: unknown } }).customData;
+  const id = cd?.connectionId;
+  return typeof id === "string" && id.length > 0 ? id : null;
 }

@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CanvasNode } from "system-canvas";
+import type { CanvasEdge, CanvasNode } from "system-canvas";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { MousePointerClick } from "lucide-react";
 import { NodeDetail } from "./NodeDetail";
 import { ConnectionsListBody } from "./ConnectionsListBody";
 import { SidebarChat } from "./SidebarChat";
+import { ConnectionViewer } from "../connections/ConnectionViewer";
 import type { ConnectionData } from "../connections/types";
 
 type Tab = "chat" | "details" | "connections";
@@ -24,11 +25,50 @@ interface OrgRightPanelProps {
    */
   chatReady: boolean;
   connections: ConnectionData[];
-  activeConnectionId: string | null;
+  /**
+   * The currently-open connection, or null when no connection is
+   * being viewed. When non-null, the Connections tab body switches
+   * from the list view to the inline `<ConnectionViewer />`. The
+   * sidebar has been auto-grown by `OrgCanvasView` so the viewer has
+   * room.
+   */
+  activeConnection: ConnectionData | null;
   onConnectionClick: (connection: ConnectionData) => void;
+  /** Called when the user hits Back inside the inline viewer. */
+  onConnectionClose: () => void;
   onConnectionCreated: () => void;
   onConnectionDeleted: (connectionId: string) => void;
   isLoading: boolean;
+
+  /**
+   * The edge the user has selected on the canvas, paired with the
+   * canvas ref it lives on AND the resolved human labels for its
+   * endpoints. When non-null, the Connections tab body renders
+   * link-mode chrome — a sticky header strip showing the selected
+   * edge's endpoint labels + link icons on every list row + a
+   * `+ Create` button — and the viewer renders an Unlink affordance
+   * next to Back when an edge-linked connection is open.
+   *
+   * Mutually exclusive with `selectedNode` from the user's POV; the
+   * Details tab continues to be node-only.
+   */
+  selectedEdge: {
+    edge: CanvasEdge;
+    canvasRef: string | undefined;
+    fromLabel: string;
+    toLabel: string;
+  } | null;
+  /** Link the currently-selected edge to a connection (list-row click). */
+  onLinkConnectionToEdge: (connection: ConnectionData) => void;
+  /** Strip the link from the currently-selected edge (viewer button). */
+  onUnlinkConnectionFromEdge: () => void;
+  /**
+   * Switch to the Chat tab and prefill the input with a message
+   * proposing a new connection between the edge's endpoints. The
+   * parent reads the from/to labels off its own `selectedEdge`
+   * state — no args needed.
+   */
+  onCreateConnectionForEdge: () => void;
 }
 
 /**
@@ -53,22 +93,49 @@ export function OrgRightPanel({
   selectedNode,
   chatReady,
   connections,
-  activeConnectionId,
+  activeConnection,
   onConnectionClick,
+  onConnectionClose,
   onConnectionCreated,
   onConnectionDeleted,
   isLoading,
+  selectedEdge,
+  onLinkConnectionToEdge,
+  onUnlinkConnectionFromEdge,
+  onCreateConnectionForEdge,
 }: OrgRightPanelProps) {
   // Default to Chat — the canvas's primary agent surface. Auto-flip
-  // to Details when the user clicks a node. Manual tab clicks
-  // override this until the next selection change. Keying on
-  // `selectedNode?.id` (not the object identity) so the canvas
-  // re-emitting the same node object on reselect still re-fires.
+  // to Details when the user clicks a node, to Connections when a
+  // connection is opened or an edge is selected. Manual tab clicks
+  // override this until the next trigger. Keying on
+  // `selectedNode?.id` / `activeConnection?.id` / `selectedEdge.edge.id`
+  // (not the object identity) so the canvas re-emitting the same
+  // object on reselect still re-fires.
   const [tab, setTab] = useState<Tab>("chat");
   useEffect(() => {
     if (selectedNode) setTab("details");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id]);
+  useEffect(() => {
+    if (activeConnection) setTab("connections");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConnection?.id]);
+  useEffect(() => {
+    if (selectedEdge) setTab("connections");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEdge?.edge.id]);
+
+  /**
+   * Local wrapper around `onCreateConnectionForEdge`: switch to the
+   * Chat tab in the same call so the user immediately sees the
+   * prefilled draft. Centralizing the tab switch here keeps the
+   * parent's handler free of UI concerns (it only writes the draft
+   * to the store).
+   */
+  const handleCreateConnectionForEdge = () => {
+    onCreateConnectionForEdge();
+    setTab("chat");
+  };
 
   return (
     <div className="h-full w-full flex flex-col border-l bg-background">
@@ -118,21 +185,62 @@ export function OrgRightPanel({
 
         {/* Connections tab — kept mounted to preserve its Pusher
             subscription and avoid re-fetching the connection list on
-            every tab flip. */}
+            every tab flip. When a connection is open, swap the list
+            for the inline viewer. The list itself stays mounted
+            behind the viewer (also via `hidden`) so flipping back is
+            instant.
+
+            The viewer's Unlink affordance is only meaningful when
+            the open connection was opened *because of* an edge
+            click. We pass `onUnlink` only in that case (active
+            connection id matches the edge's customData.connectionId)
+            so list-driven opens render Back-only. */}
         <TabBody hidden={tab !== "connections"}>
-          <ConnectionsListBody
-            githubLogin={githubLogin}
-            connections={connections}
-            activeConnectionId={activeConnectionId}
-            onConnectionClick={onConnectionClick}
-            onConnectionCreated={onConnectionCreated}
-            onConnectionDeleted={onConnectionDeleted}
-            isLoading={isLoading}
-          />
+          <div className="absolute inset-0">
+            <div hidden={!!activeConnection} className={activeConnection ? "" : "absolute inset-0"}>
+              <ConnectionsListBody
+                githubLogin={githubLogin}
+                connections={connections}
+                activeConnectionId={activeConnection?.id ?? null}
+                onConnectionClick={onConnectionClick}
+                onConnectionCreated={onConnectionCreated}
+                onConnectionDeleted={onConnectionDeleted}
+                isLoading={isLoading}
+                selectedEdge={selectedEdge}
+                onLinkConnectionToEdge={onLinkConnectionToEdge}
+                onCreateConnectionForEdge={handleCreateConnectionForEdge}
+              />
+            </div>
+            {activeConnection && (
+              <div className="absolute inset-0">
+                <ConnectionViewer
+                  connection={activeConnection}
+                  onBack={onConnectionClose}
+                  onUnlink={
+                    selectedEdge &&
+                    edgeLinksToConnection(selectedEdge.edge, activeConnection.id)
+                      ? onUnlinkConnectionFromEdge
+                      : undefined
+                  }
+                />
+              </div>
+            )}
+          </div>
         </TabBody>
       </div>
     </div>
   );
+}
+
+/**
+ * Read the connectionId off an edge's customData. The library type
+ * doesn't include `customData` on edges, but JS preserves extra
+ * fields verbatim through the splitter. Centralized here (and
+ * mirrored in `OrgCanvasView`) so the access pattern is consistent.
+ */
+function edgeLinksToConnection(edge: CanvasEdge, connectionId: string): boolean {
+  const cd = (edge as { customData?: { connectionId?: unknown } }).customData;
+  return cd?.connectionId === connectionId;
 }
 
 /**
