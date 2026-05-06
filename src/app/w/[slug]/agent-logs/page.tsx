@@ -5,41 +5,28 @@ import { useParams, useRouter, useSearchParams, usePathname } from "next/navigat
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-} from "@/components/ui/pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/ui/page-header";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentLogsTable } from "@/components/agent-logs";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { AgentLogRecord, AgentLogsResponse } from "@/types/agent-logs";
 import type { ConversationListItem } from "@/types/shared-conversation";
-import { FileText, Search, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
+import { ExternalLink, FileText, Search, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import Link from "next/link";
 
 const LOGS_PER_PAGE = 20;
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
+type AgentLogsTab = "agents" | "chats" | "sessions";
+
+function parseAgentLogsTab(value: string | null): AgentLogsTab {
+  return value === "chats" || value === "sessions" ? value : "agents";
+}
 
 function calculateDateRange(range: TimeRange): { start?: string; end?: string } {
   const now = new Date();
@@ -73,11 +60,9 @@ export default function AgentLogsPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const slug = params.slug as string;
-  const { workspace, id: workspaceId } = useWorkspace();
+  const { id: workspaceId } = useWorkspace();
 
-  const [activeTab, setActiveTab] = useState<"agents" | "chats">(
-    (searchParams?.get("tab") as "agents" | "chats") ?? "agents"
-  );
+  const [activeTab, setActiveTab] = useState<AgentLogsTab>(() => parseAgentLogsTab(searchParams?.get("tab") ?? null));
 
   const [logs, setLogs] = useState<AgentLogRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,6 +79,9 @@ export default function AgentLogsPage() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [chatPage, setChatPage] = useState(1);
   const [chatHasMore, setChatHasMore] = useState(false);
+  const [sessionsUrl, setSessionsUrl] = useState<string | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
 
   // Mirror searchParams into a ref so goToPage can read the latest value
   // without listing searchParams as a reactive dep (which would cause a loop)
@@ -106,17 +94,20 @@ export default function AgentLogsPage() {
   // NOTE: searchParams intentionally removed from deps — read via ref to avoid
   // a goToPage recreation loop (router.replace → new searchParams → goToPage
   // recreated → debounce effect fires → goToPage(1) → snaps back to page 1)
-  const goToPage = useCallback((n: number) => {
-    setPage(n);
-    const params = new URLSearchParams(searchParamsRef.current?.toString() || "");
-    if (n <= 1) {
-      params.delete("page");
-    } else {
-      params.set("page", n.toString());
-    }
-    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
-    router.replace(newUrl, { scroll: false });
-  }, [pathname, router]); // searchParams intentionally omitted — use ref above
+  const goToPage = useCallback(
+    (n: number) => {
+      setPage(n);
+      const params = new URLSearchParams(searchParamsRef.current?.toString() || "");
+      if (n <= 1) {
+        params.delete("page");
+      } else {
+        params.set("page", n.toString());
+      }
+      const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+      router.replace(newUrl, { scroll: false });
+    },
+    [pathname, router],
+  ); // searchParams intentionally omitted — use ref above
 
   // Keep a ref to the latest goToPage to avoid it being a dep in the debounce effect
   const goToPageRef = useRef(goToPage);
@@ -173,9 +164,7 @@ export default function AgentLogsPage() {
         setHasMore(data.hasMore);
       } catch (err) {
         console.error("Error fetching agent logs:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to fetch agent logs"
-        );
+        setError(err instanceof Error ? err.message : "Failed to fetch agent logs");
       } finally {
         setLoading(false);
       }
@@ -194,15 +183,16 @@ export default function AgentLogsPage() {
       setChatError(null);
 
       try {
-        const response = await fetch(
-          `/api/workspaces/${slug}/chat/conversations?page=${chatPage}&limit=20`
-        );
+        const response = await fetch(`/api/workspaces/${slug}/chat/conversations?page=${chatPage}&limit=20`);
 
         if (!response.ok) {
           throw new Error("Failed to fetch chats");
         }
 
-        const data: { items: ConversationListItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } } = await response.json();
+        const data: {
+          items: ConversationListItem[];
+          pagination: { page: number; limit: number; total: number; totalPages: number };
+        } = await response.json();
 
         const mapped: AgentLogRecord[] = data.items.map((conv) => ({
           id: conv.id,
@@ -227,8 +217,50 @@ export default function AgentLogsPage() {
     fetchChats();
   }, [activeTab, slug, chatPage]);
 
+  // Mint a short-lived stakgraph sessions URL when the Sessions tab is opened.
+  useEffect(() => {
+    if (activeTab !== "sessions") return;
+    if (!slug) return;
+
+    const controller = new AbortController();
+
+    const fetchSessionsUrl = async () => {
+      setSessionsLoading(true);
+      setSessionsError(null);
+
+      try {
+        const response = await fetch(`/api/workspaces/${encodeURIComponent(slug)}/stakgraph-sessions/embed-url`, {
+          signal: controller.signal,
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.error || "Failed to load stakgraph sessions");
+        }
+
+        if (!data?.url || typeof data.url !== "string") {
+          throw new Error("Stakgraph sessions URL was not returned");
+        }
+
+        setSessionsUrl(data.url);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setSessionsUrl(null);
+        setSessionsError(err instanceof Error ? err.message : "Failed to load stakgraph sessions");
+      } finally {
+        if (!controller.signal.aborted) {
+          setSessionsLoading(false);
+        }
+      }
+    };
+
+    fetchSessionsUrl();
+
+    return () => controller.abort();
+  }, [activeTab, slug]);
+
   const handleTabChange = (value: string) => {
-    const next = value === "chats" ? "chats" : "agents";
+    const next = parseAgentLogsTab(value);
     setActiveTab(next);
     const params = new URLSearchParams(searchParamsRef.current?.toString() || "");
     params.set("tab", next);
@@ -237,9 +269,7 @@ export default function AgentLogsPage() {
 
   const handleChatDownload = async (log: AgentLogRecord) => {
     try {
-      const res = await fetch(
-        `/api/workspaces/${slug}/chat/conversations/${log.id}`
-      );
+      const res = await fetch(`/api/workspaces/${slug}/chat/conversations/${log.id}`);
       if (!res.ok) throw new Error("Failed to fetch conversation");
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -271,26 +301,47 @@ export default function AgentLogsPage() {
       <div className="flex items-center justify-between">
         <PageHeader icon={FileText} title="Agent Logs" />
         {/* {(slug === "hive" || slug === "stakwork") && ( */}
-          <Button asChild>
-            <Link href={`/w/${slug}/agent-logs/chat`}>
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Logs Chat
-            </Link>
-          </Button>
+        <Button asChild>
+          <Link href={`/w/${slug}/agent-logs/chat`}>
+            <MessageSquare className="w-4 h-4 mr-2" />
+            Logs Chat
+          </Link>
+        </Button>
         {/* )} */}
       </div>
 
-      <Card>
-        <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <CardHeader>
+      <Card
+        className={activeTab === "sessions" ? "h-[calc(100vh-8rem)] min-h-180 gap-0 overflow-hidden py-0" : undefined}
+      >
+        <Tabs
+          value={activeTab}
+          onValueChange={handleTabChange}
+          className={activeTab === "sessions" ? "min-h-0 flex-1 gap-0" : undefined}
+        >
+          <CardHeader className={activeTab === "sessions" ? "border-b py-4" : undefined}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <CardTitle>Execution Logs</CardTitle>
                 <TabsList>
                   <TabsTrigger value="agents">Agents</TabsTrigger>
                   <TabsTrigger value="chats">Chats</TabsTrigger>
+                  <TabsTrigger value="sessions">Sessions</TabsTrigger>
                 </TabsList>
               </div>
+              {activeTab === "sessions" &&
+                (sessionsUrl ? (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={sessionsUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Open in New Tab
+                    </a>
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" disabled>
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open in New Tab
+                  </Button>
+                ))}
               {activeTab === "agents" && (
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <div className="relative w-full sm:w-64">
@@ -309,7 +360,7 @@ export default function AgentLogsPage() {
                       goToPage(1);
                     }}
                   >
-                    <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectTrigger className="w-full sm:w-45">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -324,219 +375,240 @@ export default function AgentLogsPage() {
             </div>
           </CardHeader>
 
-        <CardContent>
-          {activeTab === "agents" && loading && (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                     <TableHead>Timestamp</TableHead>
-                     <TableHead>Agent Name</TableHead>
-                     <TableHead>Feature</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <TableRow key={i}>
-                      <TableCell>
-                        <Skeleton className="h-5 w-48" />
-                      </TableCell>
-                       <TableCell>
-                         <Skeleton className="h-5 w-32" />
-                       </TableCell>
-                       <TableCell>
-                         <Skeleton className="h-5 w-28" />
-                       </TableCell>
+          <CardContent className={activeTab === "sessions" ? "min-h-0 flex-1 px-0" : undefined}>
+            {activeTab === "agents" && loading && (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Timestamp</TableHead>
+                      <TableHead>Agent Name</TableHead>
+                      <TableHead>Feature</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                  </TableHeader>
+                  <TableBody>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <Skeleton className="h-5 w-48" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-5 w-32" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-5 w-28" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
 
-          {activeTab === "agents" && error && !loading && (
-            <div className="text-center py-12">
-              <p className="text-destructive mb-2">Error loading agent logs</p>
-              <p className="text-sm text-muted-foreground">{error}</p>
-            </div>
-          )}
+            {activeTab === "agents" && error && !loading && (
+              <div className="text-center py-12">
+                <p className="text-destructive mb-2">Error loading agent logs</p>
+                <p className="text-sm text-muted-foreground">{error}</p>
+              </div>
+            )}
 
-          {activeTab === "agents" && !loading && !error && (
-            <AgentLogsTable logs={logs} onRowClick={handleRowClick} />
-          )}
+            {activeTab === "agents" && !loading && !error && <AgentLogsTable logs={logs} onRowClick={handleRowClick} />}
 
-          {activeTab === "agents" && !loading && !error && logs.length > 0 && (
-            <div className="mt-6">
-              <Pagination>
-                <PaginationContent>
-                  <PaginationItem>
-                    <Button
-                      variant="ghost"
-                      size="default"
-                      onClick={() => goToPage(Math.max(1, page - 1))}
-                      disabled={page === 1}
-                      className="gap-1 pl-2.5"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      <span>Previous</span>
-                    </Button>
-                  </PaginationItem>
-
-                  {page > 1 && (
+            {activeTab === "agents" && !loading && !error && logs.length > 0 && (
+              <div className="mt-6">
+                <Pagination>
+                  <PaginationContent>
                     <PaginationItem>
                       <Button
                         variant="ghost"
-                        size="icon"
-                        onClick={() => goToPage(1)}
-                        className={buttonVariants({
-                          variant: "ghost",
-                          size: "icon",
-                        })}
+                        size="default"
+                        onClick={() => goToPage(Math.max(1, page - 1))}
+                        disabled={page === 1}
+                        className="gap-1 pl-2.5"
                       >
-                        1
+                        <ChevronLeft className="h-4 w-4" />
+                        <span>Previous</span>
                       </Button>
                     </PaginationItem>
-                  )}
 
-                  {page > 2 && (
-                    <PaginationItem>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  )}
+                    {page > 1 && (
+                      <PaginationItem>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => goToPage(1)}
+                          className={buttonVariants({
+                            variant: "ghost",
+                            size: "icon",
+                          })}
+                        >
+                          1
+                        </Button>
+                      </PaginationItem>
+                    )}
 
-                  <PaginationItem>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className={buttonVariants({
-                        variant: "outline",
-                        size: "icon",
-                      })}
-                      disabled
-                    >
-                      {page}
-                    </Button>
-                  </PaginationItem>
-
-                  {hasMore && (
-                    <>
+                    {page > 2 && (
                       <PaginationItem>
                         <PaginationEllipsis />
                       </PaginationItem>
+                    )}
+
+                    <PaginationItem>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className={buttonVariants({
+                          variant: "outline",
+                          size: "icon",
+                        })}
+                        disabled
+                      >
+                        {page}
+                      </Button>
+                    </PaginationItem>
+
+                    {hasMore && (
+                      <>
+                        <PaginationItem>
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                        <PaginationItem>
+                          <Button
+                            variant="ghost"
+                            size="default"
+                            onClick={() => goToPage(page + 1)}
+                            className="gap-1 pr-2.5"
+                          >
+                            <span>Next</span>
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </PaginationItem>
+                      </>
+                    )}
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            )}
+
+            {activeTab === "chats" && chatLoading && (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Timestamp</TableHead>
+                      <TableHead>Agent Name</TableHead>
+                      <TableHead>Feature</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <Skeleton className="h-5 w-48" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-5 w-32" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-5 w-28" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {activeTab === "chats" && chatError && !chatLoading && (
+              <div className="text-center py-12">
+                <p className="text-destructive mb-2">Error loading chats</p>
+                <p className="text-sm text-muted-foreground">{chatError}</p>
+              </div>
+            )}
+
+            {activeTab === "chats" && !chatLoading && !chatError && (
+              <AgentLogsTable logs={chatLogs} onRowClick={handleChatRowClick} onDownload={handleChatDownload} />
+            )}
+
+            {activeTab === "chats" && !chatLoading && !chatError && chatLogs.length > 0 && (
+              <div className="mt-6">
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <Button
+                        variant="ghost"
+                        size="default"
+                        onClick={() => setChatPage(Math.max(1, chatPage - 1))}
+                        disabled={chatPage === 1}
+                        className="gap-1 pl-2.5"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span>Previous</span>
+                      </Button>
+                    </PaginationItem>
+
+                    <PaginationItem>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className={buttonVariants({
+                          variant: "outline",
+                          size: "icon",
+                        })}
+                        disabled
+                      >
+                        {chatPage}
+                      </Button>
+                    </PaginationItem>
+
+                    {chatHasMore && (
                       <PaginationItem>
                         <Button
                           variant="ghost"
                           size="default"
-                          onClick={() => goToPage(page + 1)}
+                          onClick={() => setChatPage(chatPage + 1)}
                           className="gap-1 pr-2.5"
                         >
                           <span>Next</span>
                           <ChevronRight className="h-4 w-4" />
                         </Button>
                       </PaginationItem>
-                    </>
-                  )}
-                </PaginationContent>
-              </Pagination>
-            </div>
-          )}
+                    )}
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            )}
 
-          {activeTab === "chats" && chatLoading && (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Timestamp</TableHead>
-                    <TableHead>Agent Name</TableHead>
-                    <TableHead>Feature</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <TableRow key={i}>
-                      <TableCell>
-                        <Skeleton className="h-5 w-48" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-5 w-32" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-5 w-28" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+            {activeTab === "sessions" && (
+              <div className="h-full overflow-hidden bg-background">
+                {sessionsLoading && (
+                  <div className="h-full p-6">
+                    <Skeleton className="h-full w-full" />
+                  </div>
+                )}
 
-          {activeTab === "chats" && chatError && !chatLoading && (
-            <div className="text-center py-12">
-              <p className="text-destructive mb-2">Error loading chats</p>
-              <p className="text-sm text-muted-foreground">{chatError}</p>
-            </div>
-          )}
+                {sessionsError && !sessionsLoading && (
+                  <div className="flex h-full items-center justify-center p-6 text-center">
+                    <div>
+                      <p className="text-destructive mb-2">Error loading stakgraph sessions</p>
+                      <p className="text-sm text-muted-foreground">{sessionsError}</p>
+                    </div>
+                  </div>
+                )}
 
-          {activeTab === "chats" && !chatLoading && !chatError && (
-            <AgentLogsTable
-              logs={chatLogs}
-              onRowClick={handleChatRowClick}
-              onDownload={handleChatDownload}
-            />
-          )}
-
-          {activeTab === "chats" && !chatLoading && !chatError && chatLogs.length > 0 && (
-            <div className="mt-6">
-              <Pagination>
-                <PaginationContent>
-                  <PaginationItem>
-                    <Button
-                      variant="ghost"
-                      size="default"
-                      onClick={() => setChatPage(Math.max(1, chatPage - 1))}
-                      disabled={chatPage === 1}
-                      className="gap-1 pl-2.5"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      <span>Previous</span>
-                    </Button>
-                  </PaginationItem>
-
-                  <PaginationItem>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className={buttonVariants({
-                        variant: "outline",
-                        size: "icon",
-                      })}
-                      disabled
-                    >
-                      {chatPage}
-                    </Button>
-                  </PaginationItem>
-
-                  {chatHasMore && (
-                    <PaginationItem>
-                      <Button
-                        variant="ghost"
-                        size="default"
-                        onClick={() => setChatPage(chatPage + 1)}
-                        className="gap-1 pr-2.5"
-                      >
-                        <span>Next</span>
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </PaginationItem>
-                  )}
-                </PaginationContent>
-              </Pagination>
-            </div>
-          )}
-        </CardContent>
+                {sessionsUrl && !sessionsLoading && !sessionsError && (
+                  <iframe
+                    src={sessionsUrl}
+                    title="Stakgraph Sessions"
+                    className="h-full w-full border-0"
+                    allowFullScreen
+                  />
+                )}
+              </div>
+            )}
+          </CardContent>
         </Tabs>
       </Card>
-
     </div>
   );
 }
