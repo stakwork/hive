@@ -39,6 +39,14 @@ interface ConnectionsListBodyProps {
   } | null;
   onLinkConnectionToEdge: (connection: ConnectionData) => void;
   onCreateConnectionForEdge: () => void;
+  /**
+   * Connection ids referenced by at least one edge across the canvas
+   * scopes loaded this session. Rows whose connection is in this set
+   * render a small dot — the sidebar-side counterpart to the canvas
+   * edge color highlight, so the user can see at a glance which
+   * connections are actually wired up to the diagram.
+   */
+  linkedConnectionIds: Set<string>;
 }
 
 /**
@@ -57,6 +65,7 @@ export function ConnectionsListBody({
   selectedEdge,
   onLinkConnectionToEdge,
   onCreateConnectionForEdge,
+  linkedConnectionIds,
 }: ConnectionsListBodyProps) {
   // Refcounted shared subscription — see `usePusherChannel` docs for
   // why we don't call `pusher.unsubscribe` directly from this effect.
@@ -165,6 +174,21 @@ export function ConnectionsListBody({
                     <code className="text-xs text-muted-foreground font-mono">
                       {conn.slug}
                     </code>
+                    {linkedConnectionIds.has(conn.id) && (
+                      // Small dot indicating this connection is
+                      // referenced by at least one edge on the
+                      // canvas. Color matches `LINKED_EDGE_COLOR`
+                      // in `OrgCanvasBackground` so the dot and
+                      // the highlighted edge read as the same
+                      // signal. Tooltip rather than a label keeps
+                      // the row dense.
+                      <span
+                        className="h-1.5 w-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: "#94a3cc" }}
+                        title="Linked to an edge on the canvas"
+                        aria-label="Linked to an edge on the canvas"
+                      />
+                    )}
                     {completionBadge(conn)}
                   </div>
                   <div className="truncate mt-0.5">{conn.name}</div>
