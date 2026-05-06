@@ -1711,23 +1711,54 @@ export function OrgCanvasBackground({
       // Intercept feature↔milestone edges as DB membership writes
       // rather than authored-blob edges. The relationship is owned by
       // `Feature.milestoneId`; the projector emits a synthetic edge
-      // on the next read to visually represent it. Letting the
+      // on every read to visually represent it. Letting the
       // user-drawn edge sit in the blob alongside the synthetic one
       // would create two parallel representations that can disagree
       // when the DB is mutated through other paths.
       //
-      // The optimistic write to the blob is suppressed by returning
-      // before `applyMutation`; the user briefly sees their drawn
-      // edge appear (the library writes optimistically before this
-      // callback fires), but the next read replaces it with the
-      // synthetic edge — visually identical from the user's POV.
+      // To avoid the user seeing their edge "disappear and reappear"
+      // across the PATCH + Pusher round-trip, we **rename** the
+      // edge's id in place to the predicted synthetic id rather than
+      // removing it. Two consequences fall out for free:
+      //   1. The autosave splitter (`splitCanvas`) filters out
+      //      `synthetic:` ids, so this optimistic edge is never
+      //      persisted into the blob — DB membership stays the only
+      //      source of truth.
+      //   2. When the Pusher-driven refetch lands ~hundreds of ms
+      //      later carrying the real projector-emitted synthetic
+      //      edge, it has the *same* id and endpoints, so React's
+      //      diff is a no-op — the user sees a continuous edge
+      //      throughout.
+      // The id format must match what `milestoneTimelineProjector`
+      // emits: `synthetic:feature-milestone:<featureId>`. Drift here
+      // would silently double-render edges across the round-trip.
       const link = detectFeatureMilestoneEdge(edge);
       if (link) {
-        // Optimistically remove the user-drawn edge from local state
-        // so it doesn't briefly persist with the wrong id while the
-        // PATCH + Pusher round-trip lands. The synthetic edge will
-        // appear via the projector refresh.
-        applyMutation(canvasRef, (c) => removeEdge(c, edge.id));
+        const syntheticId = `synthetic:feature-milestone:${link.featureId}`;
+        // Canonicalize the optimistic edge to match exactly what
+        // `milestoneTimelineProjector` will emit on the next refetch
+        // — same id, same endpoint order (feature→milestone), and
+        // crucially **no `fromSide`/`toSide`** so the library's
+        // auto-router routes both versions identically. With matching
+        // shape, the Pusher-driven swap is a React diff no-op and
+        // the user sees a continuous edge throughout the round-trip.
+        // Synthetic edges are DB-derived layout, not user-authored;
+        // we intentionally don't preserve which handle the user
+        // happened to click — trust the auto-router.
+        applyMutation(canvasRef, (c) => {
+          const withoutTemp = removeEdge(c, edge.id);
+          // Skip if the projector-emitted edge is already in the
+          // canvas (e.g. user re-drew an edge that already exists).
+          // Adding a duplicate id would crash the library.
+          if (withoutTemp.edges?.some((e) => e.id === syntheticId)) {
+            return withoutTemp;
+          }
+          return addEdge(withoutTemp, {
+            id: syntheticId,
+            fromNode: `feature:${link.featureId}`,
+            toNode: `milestone:${link.milestoneId}`,
+          } as CanvasEdge);
+        });
         void patchFeatureMilestone(link.featureId, link.milestoneId);
         return;
       }
@@ -1754,8 +1785,15 @@ export function OrgCanvasBackground({
       // "this feature is no longer in this milestone" — a DB write,
       // not a blob delete. PATCH `milestoneId: null`; the projector
       // re-runs and the synthetic edge disappears.
+      //
+      // We ALSO optimistically remove it from local state so the
+      // user sees the edge disappear immediately rather than
+      // lingering until the Pusher refetch lands. `splitCanvas`
+      // filters `synthetic:` ids so this removal doesn't produce an
+      // extraneous authored-edge delete in the persisted blob.
       if (id.startsWith("synthetic:feature-milestone:")) {
         const featureId = id.slice("synthetic:feature-milestone:".length);
+        applyMutation(canvasRef, (c) => removeEdge(c, id));
         void patchFeatureMilestone(featureId, null);
         return;
       }
