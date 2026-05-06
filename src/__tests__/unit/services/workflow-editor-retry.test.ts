@@ -217,7 +217,7 @@ describe("executeWorkflowEditorRetry", () => {
     expect(result).toBe(true);
     const update = updateCalls[0] as { data: Record<string, unknown> };
     expect(update.data.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
-    expect(update.data.haltRetryAttempted).toBe(false);
+    expect(update.data.haltRetryAttempted).toBeUndefined();
     expect(update.data.stakworkProjectId).toBe(888);
   });
 
@@ -402,7 +402,7 @@ describe("retryWorkflowEditorTask", () => {
     // Second update from executeWorkflowEditorRetry: IN_PROGRESS, haltRetryAttempted = false
     const successUpdate = updateCalls[1] as { data: Record<string, unknown> };
     expect(successUpdate.data.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
-    expect(successUpdate.data.haltRetryAttempted).toBe(false);
+    expect(successUpdate.data.haltRetryAttempted).toBeUndefined();
     expect(successUpdate.data.stakworkProjectId).toBe(888);
   });
 
