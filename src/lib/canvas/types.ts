@@ -84,8 +84,6 @@ export type Scope =
   | { kind: "authored"; nodeId: string }
   | { kind: "workspace"; workspaceId: string }
   | { kind: "initiative"; initiativeId: string }
-  /** Reserved — milestone-level features/tasks projection is v2. */
-  | { kind: "milestone"; milestoneId: string }
   /** Reserved — feature deep-dive projection is unshipped. */
   | { kind: "feature"; featureId: string }
   /**
@@ -101,6 +99,15 @@ export type Scope =
  * What a projector emits.
  *
  * - `nodes` — the live nodes produced for this scope.
+ * - `edges` — optional synthetic edges projected from DB membership
+ *   (e.g. `feature:<id> → milestone:<id>` to express "this feature
+ *   belongs to this milestone"). Their ids must be prefixed with
+ *   `synthetic:` so `splitCanvas` can filter them on save — they
+ *   never round-trip into the authored blob, since the relationship
+ *   they encode lives in the DB. User-drawn edges between the same
+ *   endpoints are intercepted client-side and turned into DB
+ *   mutations rather than authored edges, so the two never coexist
+ *   for the same relationship.
  * - `rollups` — keyed by live id and merged into the live node's
  *   `customData`; existing authored keys win (see the "manual
  *   customData wins; rollup fills the gaps" rule in the plan).
@@ -116,6 +123,7 @@ export type Scope =
  */
 export interface ProjectionResult {
   nodes: CanvasNode[];
+  edges?: CanvasEdge[];
   rollups?: Record<string, Record<string, unknown>>;
   columns?: CanvasLane[];
   rows?: CanvasLane[];

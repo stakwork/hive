@@ -63,10 +63,11 @@ export interface AttentionItem {
   // ── Canvas-projection fields ──────────────────────────────────────
   // Together with `entityKind` + `entityId`, these let the client
   // compute the canvas ref the entity projects on — see
-  // `mostSpecificRef` in `src/lib/canvas/feature-projection.ts` for
-  // features and `milestone:<parentMilestoneId>` for tasks. None of
-  // these have to round-trip through a JSON blob: the ref is purely
-  // a function of these relational FKs.
+  // `mostSpecificRef` in `src/lib/canvas/feature-projection.ts`.
+  // Features anchored to an initiative (with or without a milestone)
+  // land on `initiative:<id>`; loose features land on `ws:<id>`.
+  // None of these have to round-trip through a JSON blob: the ref is
+  // purely a function of these relational FKs.
   /** Workspace the entity belongs to. Always present. */
   workspaceId: string;
   /** Feature: own initiativeId. Task: parent feature's initiativeId. */

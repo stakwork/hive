@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { CanvasEdge, CanvasNode, EdgeUpdate } from "system-canvas";
 import type { ImperativePanelHandle } from "react-resizable-panels";
@@ -82,7 +89,56 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    * (matches the `react-resizable-panels` API surface).
    */
   const preExpandSizeRef = useRef<number | null>(null);
+  /**
+   * Sidebar width in pixels. Drives the canvas's `rightInset` so the
+   * canvas + library FAB sit to the LEFT of the sidebar instead of
+   * being clipped by it.
+   *
+   * Initialized to a placeholder (384px ≈ 24% of a typical viewport)
+   * because we can't measure the panel before it mounts. The
+   * `useLayoutEffect` below replaces this with the panel's *actual*
+   * pixel width before the first paint — without it, the user sees
+   * a 1-frame gap on initial render whenever the saved panel size
+   * (via `autoSaveId`) doesn't match the placeholder, because
+   * `react-resizable-panels`' `onResize` only fires when the size
+   * changes from `defaultSize`. Equal-to-default means no callback,
+   * which means the placeholder sticks until the user manually drags.
+   */
   const [panelWidth, setPanelWidth] = useState(384);
+
+  // Sync `panelWidth` to the panel's actual rendered width on mount,
+  // before the browser paints. Two paths land it at the right value:
+  //
+  //   1. Read the panel's percent via the imperative handle and the
+  //      container's measured pixel width — covers the case where
+  //      `autoSaveId` restored a size equal to `defaultSize` (no
+  //      `onResize` callback fires there, so this is the only signal
+  //      we get on first mount).
+  //   2. A `ResizeObserver` on the container catches subsequent
+  //      viewport resizes (window resize, devtools open, etc.) so
+  //      `rightInset` stays correct without depending on the panel
+  //      itself changing size.
+  //
+  // `useLayoutEffect` (vs `useEffect`) so the canvas's `rightInset`
+  // is correct on the very first commit, eliminating the visible
+  // gap-then-snap on initial render.
+  useLayoutEffect(() => {
+    const syncFromPanel = () => {
+      const panel = sidebarPanelRef.current;
+      const container = containerRef.current;
+      if (!panel || !container) return;
+      const percent = panel.getSize();
+      const containerWidth = container.offsetWidth;
+      if (containerWidth === 0) return;
+      setPanelWidth(Math.round((percent / 100) * containerWidth));
+    };
+    syncFromPanel();
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(syncFromPanel);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, []);
 
   const [workspaces, setWorkspaces] = useState<{ id: string; slug: string }[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);

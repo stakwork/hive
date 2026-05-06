@@ -18,10 +18,11 @@ export const ROOT_REF = "";
  * new entity kind is a single edit here plus a new projector. Anything
  * not in this set is treated as an authored id.
  *
- * `task:` is registered as live but has no `parseScope` branch — tasks
- * are leaves on the milestone sub-canvas and don't get drilled into.
- * Listing the prefix here is what makes the splitter strip authored
- * fields off task nodes on save (DB rows are never authored).
+ * `milestone:` and `task:` are registered as live but have no
+ * `parseScope` branch — milestones live on the initiative canvas and
+ * are not drillable; tasks don't project on the org canvas at all.
+ * Listing the prefixes here is what makes the splitter strip authored
+ * fields off these nodes on save (DB rows are never authored).
  */
 const LIVE_ID_PREFIXES = [
   "ws:",
@@ -54,9 +55,14 @@ export function isLiveId(id: string): boolean {
  *                          without crashing — projection no-ops on
  *                          this scope kind.
  *   "feature:<cuid>"     → feature deep-dive (reserved; no projector)
- *   "milestone:<cuid>"   → milestone deep-dive (reserved; no projector
- *                          in v1 — features/tasks projection is v2)
  *   anything else        → opaque (stored verbatim, no projection)
+ *
+ * Note: `milestone:<cuid>` is intentionally NOT a scope. Milestones
+ * render as cards on their parent initiative's canvas alongside the
+ * features that link to them (via projector-emitted synthetic edges);
+ * there is no milestone sub-canvas to drill into. Any pre-existing
+ * `Canvas` rows with `ref` starting `milestone:` fall through as
+ * `opaque` and round-trip without crashing.
  *
  * Opaque scopes exist because sub-canvases predate the projection
  * work: before this pipeline, the library stored whatever string the
@@ -74,9 +80,6 @@ export function parseScope(ref: string): Scope {
   } else if (ref.startsWith("initiative:")) {
     const initiativeId = ref.slice("initiative:".length);
     if (initiativeId) return { kind: "initiative", initiativeId };
-  } else if (ref.startsWith("milestone:")) {
-    const milestoneId = ref.slice("milestone:".length);
-    if (milestoneId) return { kind: "milestone", milestoneId };
   } else if (ref.startsWith("feature:")) {
     const featureId = ref.slice("feature:".length);
     if (featureId) return { kind: "feature", featureId };

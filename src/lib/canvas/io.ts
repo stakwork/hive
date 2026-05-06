@@ -120,6 +120,7 @@ async function projectAll(
   orgId: string,
 ): Promise<{
   liveNodes: CanvasNode[];
+  liveEdges: CanvasEdge[];
   rollups: Record<string, Record<string, unknown>>;
   columns: CanvasLane[] | undefined;
   rows: CanvasLane[] | undefined;
@@ -129,6 +130,7 @@ async function projectAll(
     PROJECTORS.map((p) => p.project(scope, orgId)),
   );
   const liveNodes: CanvasNode[] = [];
+  const liveEdges: CanvasEdge[] = [];
   const rollups: Record<string, Record<string, unknown>> = {};
   // Lanes are decorative chrome attached to a scope, not a per-node
   // concept. We expect at most one projector per scope to emit lanes;
@@ -139,6 +141,9 @@ async function projectAll(
   let rows: CanvasLane[] | undefined;
   for (const r of results) {
     for (const n of r.nodes) liveNodes.push(n);
+    if (r.edges) {
+      for (const e of r.edges) liveEdges.push(e);
+    }
     if (r.rollups) {
       for (const [id, data] of Object.entries(r.rollups)) {
         rollups[id] = { ...(rollups[id] ?? {}), ...data };
@@ -147,7 +152,7 @@ async function projectAll(
     if (!columns && r.columns && r.columns.length > 0) columns = r.columns;
     if (!rows && r.rows && r.rows.length > 0) rows = r.rows;
   }
-  return { liveNodes, rollups, columns, rows };
+  return { liveNodes, liveEdges, rollups, columns, rows };
 }
 
 /**
@@ -176,7 +181,10 @@ export async function readCanvas(
   ref: string,
 ): Promise<CanvasData> {
   const blob = await loadBlob(orgId, ref);
-  const { liveNodes, rollups, columns, rows } = await projectAll(ref, orgId);
+  const { liveNodes, liveEdges, rollups, columns, rows } = await projectAll(
+    ref,
+    orgId,
+  );
 
   const hidden = new Set(blob.hidden ?? []);
   const visibleLive = liveNodes
@@ -186,7 +194,12 @@ export async function readCanvas(
 
   const nodes: CanvasNode[] = [...visibleLive, ...blob.nodes];
   const presentIds = new Set(nodes.map((n) => n.id));
-  const edges = blob.edges.filter(
+  // Authored edges live in the blob; synthetic edges (e.g.
+  // `feature:<id> → milestone:<id>` for DB membership) come from
+  // projectors and are never persisted. Concat both and drop any
+  // dangling endpoints — synthetic edges to a hidden milestone, for
+  // instance, get pruned automatically.
+  const edges = [...liveEdges, ...blob.edges].filter(
     (e) => presentIds.has(e.fromNode) && presentIds.has(e.toNode),
   );
 
@@ -263,7 +276,17 @@ export function splitCanvas(
     nodes.push(n);
   }
 
-  const edges: CanvasEdge[] = incoming.edges ?? [];
+  // Drop synthetic projector-emitted edges before persisting. They
+  // represent DB membership (e.g. `feature:<X> → milestone:<Y>` from
+  // `Feature.milestoneId`) and re-derive on every read. Letting them
+  // round-trip into the authored blob would create a parallel
+  // representation of the same relationship that could disagree with
+  // the DB after a `Feature.milestoneId` change. The `synthetic:`
+  // prefix is the discriminator — see `ProjectionResult.edges` in
+  // `./types.ts`.
+  const edges: CanvasEdge[] = (incoming.edges ?? []).filter(
+    (e) => !e.id.startsWith("synthetic:"),
+  );
 
   const blob: CanvasBlob = { nodes, edges };
   if (Object.keys(positions).length > 0) blob.positions = positions;

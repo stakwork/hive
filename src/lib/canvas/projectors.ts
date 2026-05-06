@@ -9,12 +9,9 @@
  * the cost of a few extra no-op calls — a cost we're happy to pay.
  */
 import { db } from "@/lib/db";
-import type { CanvasLane, CanvasNode } from "system-canvas";
+import type { CanvasEdge, CanvasLane, CanvasNode } from "system-canvas";
 import type { Projector, ProjectionResult, Scope } from "./types";
 import {
-  FEATURE_ROW_STEP,
-  FEATURE_ROW_X0,
-  FEATURE_ROW_Y,
   INITIATIVE_ROW_STEP,
   INITIATIVE_ROW_X0,
   INITIATIVE_ROW_Y,
@@ -30,9 +27,6 @@ import {
   REPO_ROW_STEP,
   REPO_ROW_X0,
   REPO_ROW_Y,
-  TASK_STACK_STEP_Y,
-  TASK_STACK_X_OFFSET,
-  TASK_STACK_Y0,
   TIMELINE_COL_W,
   TIMELINE_COL_X0,
   WORKSPACE_ROW_STEP,
@@ -74,29 +68,6 @@ function defaultMilestonePosition(index: number): { x: number; y: number } {
   };
 }
 
-/** Default placement for a Feature card on the milestone sub-canvas.
- *  Features lay out in a horizontal row; columnIndex is their order
- *  within the milestone (createdAt asc). */
-function defaultFeaturePosition(columnIndex: number): { x: number; y: number } {
-  return {
-    x: FEATURE_ROW_X0 + columnIndex * FEATURE_ROW_STEP,
-    y: FEATURE_ROW_Y,
-  };
-}
-
-/** Default placement for a Task card on the milestone sub-canvas.
- *  Tasks stack vertically beneath their parent feature, centered on
- *  the feature column's x. */
-function defaultTaskPosition(
-  columnIndex: number,
-  rowIndex: number,
-): { x: number; y: number } {
-  return {
-    x: FEATURE_ROW_X0 + columnIndex * FEATURE_ROW_STEP + TASK_STACK_X_OFFSET,
-    y: TASK_STACK_Y0 + rowIndex * TASK_STACK_STEP_Y,
-  };
-}
-
 /**
  * Cap on loose-feature projection per canvas. Workspaces / initiatives
  * with deep backlogs (hundreds or thousands of features) would otherwise
@@ -135,11 +106,11 @@ function defaultLooseFeatureInitiativePosition(index: number): { x: number; y: n
 
 /**
  * Build a `feature` canvas node from a Feature row. Shared between
- * `milestoneProjector` (column features), `workspaceProjector` (loose
- * workspace features), and `milestoneTimelineProjector` (initiative-
- * anchored, milestone-less features). Centralizing the shape ensures
- * card slots (`status`, `secondary`, etc.) read identically regardless
- * of which canvas the feature renders on.
+ * `workspaceProjector` (loose workspace features) and
+ * `milestoneTimelineProjector` (every initiative-anchored feature,
+ * with or without a milestone). Centralizing the shape ensures card
+ * slots (`status`, `secondary`, etc.) read identically regardless of
+ * which canvas the feature renders on.
  *
  * `pos` is the projector's default placement; the io layer overlays any
  * user-saved `Canvas.data.positions[feature:<id>]` on top of it.
@@ -599,10 +570,11 @@ export const milestoneTimelineProjector: Projector = {
         id: liveId,
         type: "text",
         category: "milestone",
-        // Drill into the milestone sub-canvas (Features + Tasks). The
-        // scope parser already recognizes `milestone:<id>`; the projector
-        // for that scope ships with Slice 5.
-        ref: liveId,
+        // No `ref` — milestones are NOT drillable. Their linked
+        // features render as sibling cards on this same initiative
+        // canvas (see the feature-projection block below); milestone
+        // membership is expressed via a synthetic edge from each
+        // feature to its milestone, not via drill-in.
         text: m.name,
         x: pos.x,
         y: pos.y,
@@ -636,19 +608,22 @@ export const milestoneTimelineProjector: Projector = {
       };
     });
 
-    // Loose features on this initiative — `initiativeId` set but
-    // `milestoneId` null. By the "most specific place wins" rule, these
-    // render on the initiative timeline and nowhere else; features
-    // attached to a milestone render on that milestone's sub-canvas
-    // (via `milestoneProjector`) instead.
+    // Every feature anchored to this initiative — milestone-bound and
+    // initiative-loose alike. Both render on the initiative canvas
+    // alongside the milestone cards; milestone membership is shown by
+    // the synthetic edges emitted below, NOT by relocating the feature
+    // to a separate sub-canvas (there isn't one; milestones aren't
+    // drillable).
     //
-    // Capped at LOOSE_FEATURE_LIMIT and ordered by `updatedAt desc` for
-    // the same reason as the workspace projector: deep backlogs would
-    // otherwise auto-fit-zoom the canvas out until cards are unreadable.
-    const looseFeatures = await db.feature.findMany({
+    // Capped at LOOSE_FEATURE_LIMIT and ordered by `updatedAt desc`
+    // for the same reason as the workspace projector: deep backlogs
+    // would otherwise auto-fit-zoom the canvas out until cards are
+    // unreadable. The cap covers both buckets together — if you have
+    // 50 features, you see the most-recently-updated 25 regardless of
+    // which milestone (if any) they're attached to.
+    const features = await db.feature.findMany({
       where: {
         initiativeId: initiative.id,
-        milestoneId: null,
         deleted: false,
       },
       orderBy: { updatedAt: "desc" },
@@ -658,143 +633,48 @@ export const milestoneTimelineProjector: Projector = {
         title: true,
         status: true,
         workflowStatus: true,
+        milestoneId: true,
         tasks: {
           where: { deleted: false, archived: false },
           select: { status: true },
         },
       },
     });
-    looseFeatures.forEach((f, index) => {
+    const edges: CanvasEdge[] = [];
+    features.forEach((f, index) => {
       nodes.push(
         buildFeatureNode(f, defaultLooseFeatureInitiativePosition(index)),
       );
+      // Synthetic membership edge: feature → milestone. The id is
+      // prefixed `synthetic:` so `splitCanvas` filters it on save —
+      // these never round-trip into the authored blob (DB membership
+      // is the source of truth). Stable per (feature, milestone) pair
+      // so React/library reconciliation doesn't churn across reads.
+      // Endpoints are filtered for referential integrity in
+      // `readCanvas` — a synthetic edge to a hidden milestone gets
+      // pruned automatically.
+      if (f.milestoneId) {
+        edges.push({
+          id: `synthetic:feature-milestone:${f.id}`,
+          fromNode: `feature:${f.id}`,
+          toNode: `milestone:${f.milestoneId}`,
+        } as CanvasEdge);
+      }
     });
 
-    return { nodes, columns: buildTimelineColumns(new Date()) };
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Milestone sub-canvas projector — Features + Tasks at one drill.
-//
-// Reached by clicking a `milestone:<cuid>` node on an initiative
-// timeline. Per the milestone-progress plan (Q6), the v2 design is a
-// SINGLE flat layout: each linked Feature owns a column, with its
-// Tasks stacked underneath. No second drill click required to see
-// task progress.
-//
-// Org-ownership guard travels through the milestone → initiative
-// chain: a guessed milestoneId can't read another org's content.
-//
-// Tasks are leaves — `task:` is registered as a live id prefix (so
-// authored fields are stripped on save) but `parseScope` never
-// resolves to a task scope. Drilling into a task happens through the
-// existing task pages (`/w/<slug>/task/<id>`), not on the canvas.
-// ---------------------------------------------------------------------------
-
-export const milestoneProjector: Projector = {
-  async project(scope: Scope, orgId: string): Promise<ProjectionResult> {
-    if (scope.kind !== "milestone") return { nodes: [] };
-
-    // Org-ownership guard: the milestone must belong to an initiative
-    // that belongs to this org. Without this check, any cuid in the
-    // URL would surface that milestone's features regardless of org
-    // membership.
-    const milestone = await db.milestone.findFirst({
-      where: { id: scope.milestoneId, initiative: { orgId } },
-      select: { id: true },
-    });
-    if (!milestone) return { nodes: [] };
-
-    // Pull each linked Feature with its non-deleted, non-archived
-    // Tasks. We carry both `status` (FeatureStatus / TaskStatus) and
-    // `workflowStatus` (the WorkflowStatus enum) so the theme can
-    // render either signal — different visual treatments may want
-    // either one (e.g. the kanban groups by workflowStatus, while the
-    // feature roll-up uses status).
-    const features = await db.feature.findMany({
-      where: { milestoneId: milestone.id, deleted: false },
-      orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        workflowStatus: true,
-        tasks: {
-          where: { deleted: false, archived: false },
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            workflowStatus: true,
-            assigneeId: true,
-          },
-        },
-      },
-    });
-
-    const nodes: CanvasNode[] = [];
-    features.forEach((f, columnIndex) => {
-      const fpos = defaultFeaturePosition(columnIndex);
-      const taskCount = f.tasks.length;
-      const taskDone = f.tasks.filter((t) => t.status === "DONE").length;
-
-      nodes.push({
-        id: `feature:${f.id}`,
-        type: "text",
-        category: "feature",
-        text: f.title,
-        // No `ref` in v1 — drilling into a feature from the canvas
-        // doesn't have a destination yet. The library renders the card
-        // as non-navigable; the existing `/w/<slug>/plan/<id>` page
-        // remains the way to jump into a feature's full view.
-        x: fpos.x,
-        y: fpos.y,
-        customData: {
-          status: f.status,
-          workflowStatus: f.workflowStatus,
-          taskCount,
-          taskDone,
-          // Same shape as the milestone's footer — "X/Y tasks" reads
-          // as a sibling of "X/Y features" on the parent milestone
-          // card. Skip when the feature has no tasks (a 0/0 line on a
-          // freshly-created feature reads as misleading "behind").
-          ...(taskCount > 0 && {
-            secondary: `${taskDone}/${taskCount} task${taskCount === 1 ? "" : "s"}`,
-          }),
-        },
-      });
-
-      f.tasks.forEach((t, rowIndex) => {
-        const tpos = defaultTaskPosition(columnIndex, rowIndex);
-        nodes.push({
-          id: `task:${t.id}`,
-          type: "text",
-          category: "task",
-          text: t.title,
-          x: tpos.x,
-          y: tpos.y,
-          customData: {
-            // Both status enums travel; the theme picks which one
-            // drives the color band. Default expectation: workflow
-            // status (PENDING/IN_PROGRESS/COMPLETED/ERROR/HALTED)
-            // since that's the kanban-board signal.
-            status: t.status,
-            workflowStatus: t.workflowStatus,
-            ...(t.assigneeId && { assigneeId: t.assigneeId }),
-          },
-        });
-      });
-    });
-
-    return { nodes };
+    return { nodes, edges, columns: buildTimelineColumns(new Date()) };
   },
 };
 
 // ---------------------------------------------------------------------------
 // Registry. Order is irrelevant — each projector gates on `scope.kind`.
 // Add new projectors (authoredProjector, ...) here.
+//
+// Note: there is intentionally no `milestoneProjector`. Milestones
+// render as cards on their parent initiative's canvas (emitted by
+// `milestoneTimelineProjector`) alongside the features that link to
+// them; clicking a milestone is a no-op — there is no sub-canvas to
+// drill into. Tasks no longer project on the org canvas at all.
 // ---------------------------------------------------------------------------
 
 export const PROJECTORS: Projector[] = [
@@ -802,5 +682,4 @@ export const PROJECTORS: Projector[] = [
   workspaceProjector,
   initiativeProjector,
   milestoneTimelineProjector,
-  milestoneProjector,
 ];
