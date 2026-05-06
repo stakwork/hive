@@ -380,7 +380,7 @@ function FeaturePlanChatInput({
           type="submit"
           size="icon"
           disabled={!input.trim() || disabled}
-          className="absolute right-1 bottom-1 h-7 w-7 rounded-full"
+          className="absolute right-1.5 top-1/2 -translate-y-[60%] h-7 w-7 rounded-full"
         >
           <Send className="w-3.5 h-3.5" />
         </Button>

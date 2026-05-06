@@ -259,7 +259,17 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
         "emits a proposal card in chat that the user explicitly " +
         "approves with a click — approval is what creates the row. " +
         "Do NOT decline feature-creation requests by telling the user " +
-        "to use the '+' button. To group multiple features under a " +
+        "to use the '+' button. " +
+        "**BEFORE calling this tool without an `initiativeId`**, you " +
+        "MUST call `read_canvas` (no `ref`, the org root) to see the " +
+        "existing initiatives. If any initiative is a reasonable " +
+        "semantic fit for the feature, set `initiativeId` to it. " +
+        "Loose features (no initiative) should be a last resort when " +
+        "no existing initiative matches, NOT the default. Features " +
+        "are organized by initiative on the canvas; a fitting " +
+        "initiative is almost always preferable to filing the feature " +
+        "loose under a workspace. " +
+        "To group multiple features under a " +
         "not-yet-approved initiative from this same conversation, set " +
         "`parentProposalId` to that initiative proposal's id; the " +
         "approval handler wires them up automatically. To file a " +
