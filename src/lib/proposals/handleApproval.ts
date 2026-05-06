@@ -35,6 +35,7 @@ import {
 } from "@/lib/canvas";
 import { createFeature } from "@/services/roadmap";
 import { notifyFeatureReassignmentRefresh } from "@/services/roadmap/feature-canvas-notify";
+import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
@@ -418,6 +419,40 @@ async function approveFeature(args: {
       initiativeId: null,
       workspaceId: merged.workspaceId,
     });
+
+    // Seed the new feature's plan chat with the agent's one-sentence
+    // directive. This persists a USER `ChatMessage` and triggers the
+    // Stakwork plan_mode workflow with `isFirstMessage: true`, which:
+    //   1. Performs research on the brief.
+    //   2. Calls `PUT /api/features/[id]/title` to auto-rename the
+    //      feature to a semantic name derived from the research.
+    //   3. Posts back PLAN artifacts that fill in `requirements /
+    //      architecture / userStories`.
+    //
+    // Without this seed, the feature row exists but its chat is
+    // empty — the planning workflow never starts, and whatever the
+    // user *eventually* types in the feature chat ends up being the
+    // research seed (which produced the wrong title in production:
+    // "begin the research" → "Research Initiation Tool").
+    //
+    // Non-fatal: if seeding fails we still report success for the
+    // proposal. The feature row exists; the user can manually send
+    // a first message from the feature page.
+    const seed = merged.initialMessage?.trim() || merged.title.trim();
+    if (seed) {
+      try {
+        await sendFeatureChatMessage({
+          featureId: feature.id,
+          userId,
+          message: seed,
+        });
+      } catch (e) {
+        console.error(
+          "[handleApproval] failed to seed feature chat (feature row still created):",
+          e,
+        );
+      }
+    }
 
     return {
       ok: true,

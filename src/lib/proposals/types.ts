@@ -62,6 +62,16 @@ export interface FeatureProposalPayload {
   initiativeId?: string;
   milestoneId?: string;
   parentProposalId?: string;
+  /**
+   * One-sentence directive ("what should be created") that becomes the
+   * first USER `ChatMessage` on the new feature's plan chat after
+   * approval. This is what kicks off the Stakwork plan_mode workflow,
+   * which performs research and then auto-renames the feature via
+   * `PUT /api/features/[id]/title`. Distinct from `description`
+   * (the brief): the brief is durable context shown on the feature
+   * page; `initialMessage` is the seed prompt for the planning agent.
+   */
+  initialMessage?: string;
 }
 
 /** What the propose tools return from `execute(...)` on success. */
