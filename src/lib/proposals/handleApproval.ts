@@ -35,6 +35,7 @@ import {
 } from "@/lib/canvas";
 import { createFeature } from "@/services/roadmap";
 import { notifyFeatureReassignmentRefresh } from "@/services/roadmap/feature-canvas-notify";
+import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
@@ -133,6 +134,64 @@ function findPriorRejection(
     if (msg.rejection?.proposalId === proposalId) return true;
   }
   return false;
+}
+
+/**
+ * Resolve the human-readable name of the entity a new proposal "landed
+ * on" — i.e. the workspace / initiative / milestone whose canvas the
+ * new row will project on. Returns `undefined` for the root canvas (no
+ * single entity owns it) and on lookup failure (caller falls back to a
+ * kind-based label).
+ *
+ * Single round-trip per approval, keyed on the id-prefix convention
+ * the projector uses (`ws:` / `initiative:` / `milestone:` / `feature:`).
+ * The lookup is deliberately scoped by `orgId` so a forged ref from a
+ * different org can't leak a name.
+ */
+async function resolveLandedOnName(
+  orgId: string,
+  landedOn: string,
+): Promise<string | undefined> {
+  if (!landedOn) return undefined;
+  try {
+    if (landedOn.startsWith("ws:")) {
+      const id = landedOn.slice(3);
+      const ws = await db.workspace.findFirst({
+        where: { id, sourceControlOrgId: orgId, deleted: false },
+        select: { name: true },
+      });
+      return ws?.name ?? undefined;
+    }
+    if (landedOn.startsWith("initiative:")) {
+      const id = landedOn.slice("initiative:".length);
+      const init = await db.initiative.findFirst({
+        where: { id, orgId },
+        select: { name: true },
+      });
+      return init?.name ?? undefined;
+    }
+    if (landedOn.startsWith("milestone:")) {
+      const id = landedOn.slice("milestone:".length);
+      const m = await db.milestone.findFirst({
+        where: { id, initiative: { orgId } },
+        select: { name: true },
+      });
+      return m?.name ?? undefined;
+    }
+    if (landedOn.startsWith("feature:")) {
+      const id = landedOn.slice("feature:".length);
+      const f = await db.feature.findFirst({
+        where: { id, workspace: { sourceControlOrgId: orgId } },
+        select: { title: true },
+      });
+      return f?.title ?? undefined;
+    }
+  } catch (e) {
+    // Non-fatal: a missing name just degrades the assistant text to
+    // the kind-based fallback. Don't fail the whole approval over it.
+    console.error("[handleApproval.resolveLandedOnName] lookup failed:", e);
+  }
+  return undefined;
 }
 
 // ─── Approve ──────────────────────────────────────────────────────────
@@ -407,6 +466,13 @@ async function approveFeature(args: {
       landedOn = mostSpecificRef(featurePlacementPayload);
     }
 
+    // Look up the human-readable name of the canvas the feature
+    // landed on, so the assistant text can say "Created **Tiered
+    // Pricing** under **Billing v2**" instead of "Created on an
+    // initiative canvas." Skipped when `landedOn` is root (no entity
+    // name to resolve).
+    const landedOnName = await resolveLandedOnName(orgId, landedOn);
+
     // Fan out on every canvas the feature might affect. The
     // reassignment helper covers root, both initiatives, both
     // milestones, and the workspace — it's the most thorough fan-out
@@ -419,6 +485,40 @@ async function approveFeature(args: {
       workspaceId: merged.workspaceId,
     });
 
+    // Seed the new feature's plan chat with the agent's one-sentence
+    // directive. This persists a USER `ChatMessage` and triggers the
+    // Stakwork plan_mode workflow with `isFirstMessage: true`, which:
+    //   1. Performs research on the brief.
+    //   2. Calls `PUT /api/features/[id]/title` to auto-rename the
+    //      feature to a semantic name derived from the research.
+    //   3. Posts back PLAN artifacts that fill in `requirements /
+    //      architecture / userStories`.
+    //
+    // Without this seed, the feature row exists but its chat is
+    // empty — the planning workflow never starts, and whatever the
+    // user *eventually* types in the feature chat ends up being the
+    // research seed (which produced the wrong title in production:
+    // "begin the research" → "Research Initiation Tool").
+    //
+    // Non-fatal: if seeding fails we still report success for the
+    // proposal. The feature row exists; the user can manually send
+    // a first message from the feature page.
+    const seed = merged.initialMessage?.trim() || merged.title.trim();
+    if (seed) {
+      try {
+        await sendFeatureChatMessage({
+          featureId: feature.id,
+          userId,
+          message: seed,
+        });
+      } catch (e) {
+        console.error(
+          "[handleApproval] failed to seed feature chat (feature row still created):",
+          e,
+        );
+      }
+    }
+
     return {
       ok: true,
       alreadyApproved: false,
@@ -427,6 +527,7 @@ async function approveFeature(args: {
         kind: "feature",
         createdEntityId: feature.id,
         landedOn,
+        ...(landedOnName && { landedOnName }),
       },
     };
   } catch (e) {

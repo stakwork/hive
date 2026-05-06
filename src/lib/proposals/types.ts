@@ -62,6 +62,16 @@ export interface FeatureProposalPayload {
   initiativeId?: string;
   milestoneId?: string;
   parentProposalId?: string;
+  /**
+   * One-sentence directive ("what should be created") that becomes the
+   * first USER `ChatMessage` on the new feature's plan chat after
+   * approval. This is what kicks off the Stakwork plan_mode workflow,
+   * which performs research and then auto-renames the feature via
+   * `PUT /api/features/[id]/title`. Distinct from `description`
+   * (the brief): the brief is durable context shown on the feature
+   * page; `initialMessage` is the seed prompt for the planning agent.
+   */
+  initialMessage?: string;
 }
 
 /** What the propose tools return from `execute(...)` on success. */
@@ -131,6 +141,13 @@ export interface RejectionIntent {
  * up and flips to "approved." `landedOn` drives the subtext: "Created
  * on this canvas ✓" if it matches the user's `currentRef`, otherwise
  * "Created on <name> ↗" with a deep-link to that canvas.
+ *
+ * `landedOnName` is the human-readable name of the entity the new row
+ * landed *under* (the workspace / initiative / milestone whose ref is
+ * `landedOn`). Resolved by `handleApproval` at create time so the
+ * synthesized assistant text and the card subtext can say "Created on
+ * **Auth Refactor**" instead of "Created on an initiative canvas." Not
+ * set when `landedOn === ""` (root) — the root has no entity name.
  */
 export interface ApprovalResult {
   proposalId: string;
@@ -138,6 +155,13 @@ export interface ApprovalResult {
   createdEntityId: string;
   /** Canvas ref the new node landed on. Empty string = root. */
   landedOn: string;
+  /**
+   * Display name of the entity at `landedOn` (workspace / initiative /
+   * milestone name). Optional: omitted for the root canvas, and may be
+   * absent on older approval results that pre-date this field — code
+   * consuming it must fall back to a kind-based label.
+   */
+  landedOnName?: string;
 }
 
 // ─── Status derivation (pure helper) ───────────────────────────────────
