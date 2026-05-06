@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import type { CanvasNode } from "system-canvas";
 import { Badge } from "@/components/ui/badge";
@@ -415,36 +414,44 @@ function StatusPill({
   );
 }
 
+/**
+ * Footer link inside the right-panel detail body.
+ *
+ * Always renders a plain `<a target="_blank">` for two reasons:
+ *
+ *   1. **State preservation** — same-tab navigation away from the org
+ *      canvas would blow away active chat, in-flight proposals, and
+ *      the user's current canvas scope. Opening in a new tab lets the
+ *      user act on the workspace-side page (or external URL) without
+ *      losing canvas context. Mirrors the AttentionList convention
+ *      (see CANVAS.md gotcha "AttentionList opens external").
+ *
+ *   2. **Click reliability** — `next/link` clicks were being
+ *      intercepted somewhere in the canvas DOM (Cmd+click navigated
+ *      fine, plain click did nothing). Plain `<a target="_blank">`
+ *      sidesteps the interception entirely.
+ *
+ * The `external` prop is preserved as a no-op for API compatibility
+ * with existing call sites that pass it explicitly for GitHub URLs.
+ */
 function FooterLink({
   href,
   label,
-  external,
 }: {
   href: string;
   label: string;
   external?: boolean;
 }) {
-  if (external) {
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-      >
-        {label}
-        <ArrowUpRight className="h-3 w-3" />
-      </a>
-    );
-  }
   return (
-    <Link
+    <a
       href={href}
+      target="_blank"
+      rel="noopener noreferrer"
       className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
     >
       {label}
       <ArrowUpRight className="h-3 w-3" />
-    </Link>
+    </a>
   );
 }
 
