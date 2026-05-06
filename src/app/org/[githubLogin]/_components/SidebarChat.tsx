@@ -306,6 +306,34 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
   const [height, setHeight] = useState<string>("auto");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // ─── Pending-draft consumption ─────────────────────────────────────
+  // Canvas affordances (e.g. the "+ Create connection" button on a
+  // selected edge) compose a message FOR the user by writing to
+  // `pendingInputDraft` in the store. We adopt the value once and
+  // immediately clear it so a tab-switch back to chat doesn't
+  // re-apply a stale draft. The textarea height is recomputed from
+  // the new content so multi-line drafts don't render as a single
+  // truncated row.
+  const pendingDraft = useCanvasChatStore((s) => s.pendingInputDraft);
+  useEffect(() => {
+    if (pendingDraft === null) return;
+    setInput(pendingDraft);
+    // Defer the focus + height-fit to the next frame so the textarea
+    // has the new value committed before we measure scrollHeight.
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        // Move the caret to the end so the user can append context.
+        el.selectionStart = el.selectionEnd = el.value.length;
+        el.style.height = "auto";
+        const newHeight = Math.min(el.scrollHeight, MAX_HEIGHT_PX);
+        setHeight(`${newHeight}px`);
+      }
+    });
+    useCanvasChatStore.getState().setPendingInputDraft(null);
+  }, [pendingDraft]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || disabled) return;

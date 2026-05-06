@@ -189,6 +189,24 @@ interface CanvasChatState {
    */
   ephemeralSeedCounts: Record<string, number>;
 
+  /**
+   * One-shot text the chat input should adopt the next time it
+   * renders. `null` means "no draft pending"; non-null means "set
+   * the textarea to this string, focus it, then clear this slot."
+   *
+   * This is the channel used by canvas affordances that want to
+   * compose a message *for* the user — e.g. clicking the `+` button
+   * in the Connections-tab edge-link mode prefills the input with
+   * `Make a connection document between A and B` and switches to
+   * the Chat tab. The user can edit before sending.
+   *
+   * Lives at the store level (not local input state) so any caller
+   * can write to it without imperative refs into `<SidebarChat />`.
+   * The input owns the consumption — `<SidebarChatInput />` watches
+   * for non-null values and applies + clears them in an effect.
+   */
+  pendingInputDraft: string | null;
+
   // ─── Reserved slots (empty in PR 1; canvas may already select these) ─
   proposals: Record<string, CanvasProposal>;
   subAgentRuns: Record<string, SubAgentRun>;
@@ -252,6 +270,13 @@ interface CanvasChatState {
     content: string,
   ) => void;
 
+  /**
+   * Queue text for the chat input to adopt on its next render. Pass
+   * `null` to clear without applying (the input clears its own draft
+   * after consumption — callers usually shouldn't need to clear).
+   */
+  setPendingInputDraft: (draft: string | null) => void;
+
   // ─── Artifact actions ────────────────────────────────────────────────
   /**
    * Register a `CanvasArtifact` so that `MessageArtifacts` (and any
@@ -279,6 +304,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       conversations: {},
       activeConversationId: null,
       ephemeralSeedCounts: {},
+      pendingInputDraft: null,
       proposals: {},
       subAgentRuns: {},
       artifacts: {},
@@ -518,6 +544,9 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           false,
           "dismissArtifact",
         ),
+
+      setPendingInputDraft: (draft) =>
+        set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
     }),
     { name: "canvas-chat-store" },
   ),
