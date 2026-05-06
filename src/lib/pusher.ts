@@ -68,6 +68,11 @@ export const PUSHER_EVENTS = {
   PLAN_TYPING_STOP: "plan-typing-stop",
   // Connection events
   CONNECTION_UPDATED: "connection-updated",
+  // Research events (agent-authored research docs attached to the org).
+  // Fires on `save_research` (create) and `update_research` (content fill).
+  // The right-panel viewer subscribes to stream content in without a
+  // full canvas refetch.
+  RESEARCH_UPDATED: "research-updated",
   // Canvas events (system-canvas document on the org)
   CANVAS_UPDATED: "canvas-updated",
 } as const;

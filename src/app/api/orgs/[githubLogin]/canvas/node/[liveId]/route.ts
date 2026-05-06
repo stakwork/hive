@@ -238,6 +238,56 @@ async function loadDetail(
         },
       };
     }
+    case "research": {
+      // Research rows belong to the org directly (no workspace
+      // intermediary), and an optional `initiativeId` scopes them to
+      // a sub-canvas. The on-canvas card label (`topic`) and the
+      // viewer-header `title` are intentionally separate \u2014 see
+      // `Research` in schema.prisma for the rationale. We surface
+      // both plus `summary` and the markdown `content` so the right
+      // panel can render the full doc without a second fetch.
+      const research = await db.research.findFirst({
+        where: { id, orgId },
+        select: {
+          id: true,
+          slug: true,
+          topic: true,
+          title: true,
+          summary: true,
+          content: true,
+          initiativeId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      if (!research) return null;
+      return {
+        kind: "research",
+        id: research.id,
+        // The viewer header reads `title` (polished); fall back to
+        // `topic` if for some reason title is empty.
+        name: research.title || research.topic,
+        // We reuse the standard `description` field for the markdown
+        // body so the viewer can use the same ReactMarkdown render
+        // pipeline as note/decision authored bodies. `content` is
+        // null while the agent is still researching \u2014 the viewer
+        // shows a pending spinner in that case.
+        description: research.content,
+        extras: {
+          slug: research.slug,
+          topic: research.topic,
+          summary: research.summary,
+          // Status mirrors what the projector stamps on the canvas
+          // node: ready when content has landed, researching while
+          // it's still null. The viewer reads this to switch between
+          // markdown render and pending spinner.
+          status: research.content !== null ? "ready" : "researching",
+          initiativeId: research.initiativeId,
+          createdAt: research.createdAt,
+          updatedAt: research.updatedAt,
+        },
+      };
+    }
     case "task": {
       const task = await db.task.findFirst({
         where: {

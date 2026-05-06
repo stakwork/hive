@@ -27,6 +27,12 @@ import {
   REPO_ROW_STEP,
   REPO_ROW_X0,
   REPO_ROW_Y,
+  RESEARCH_INIT_ROW_STEP,
+  RESEARCH_INIT_ROW_X0,
+  RESEARCH_INIT_ROW_Y,
+  RESEARCH_ROOT_ROW_STEP,
+  RESEARCH_ROOT_ROW_X0,
+  RESEARCH_ROOT_ROW_Y,
   TIMELINE_COL_W,
   TIMELINE_COL_X0,
   WORKSPACE_ROW_STEP,
@@ -677,9 +683,149 @@ export const milestoneTimelineProjector: Projector = {
 // drill into. Tasks no longer project on the org canvas at all.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Research projector — emits `research:<id>` cards for `Research` rows.
+//
+// Two scopes:
+//   - `root` (`scope.kind === "root"`): rows where `initiativeId IS NULL`.
+//     These are org-wide research \u2014 the user kicked them off from the
+//     org root canvas, or the agent decided to research something
+//     while the user was looking at root.
+//   - `initiative`: rows where `initiativeId === scope.initiativeId`.
+//     These are research scoped to that initiative.
+//
+// Workspaces and other sub-canvases don't render research cards \u2014
+// the category isn't allowed on those scopes per
+// `categoryAllowedOnScope`, so the agent never sets `initiativeId` to
+// a workspace, and there's no projector branch for those scopes
+// either. Keeping the surface small until there's a demand.
+//
+// Capped at RESEARCH_LIMIT and ordered by `updatedAt desc`. The cap is
+// generous \u2014 most orgs will have far fewer than 25 research docs per
+// scope, but it keeps a runaway agent (or a noisy import) from
+// projecting hundreds of cards and crushing the canvas auto-fit.
+// ---------------------------------------------------------------------------
+
+const RESEARCH_LIMIT = 25;
+
+function defaultResearchRootPosition(index: number): { x: number; y: number } {
+  return {
+    x: RESEARCH_ROOT_ROW_X0 + index * RESEARCH_ROOT_ROW_STEP,
+    y: RESEARCH_ROOT_ROW_Y,
+  };
+}
+
+function defaultResearchInitiativePosition(index: number): { x: number; y: number } {
+  return {
+    x: RESEARCH_INIT_ROW_X0 + index * RESEARCH_INIT_ROW_STEP,
+    y: RESEARCH_INIT_ROW_Y,
+  };
+}
+
+/**
+ * Build a `research` canvas node from a Research row. The on-card
+ * label is `topic` (verbatim user wording) NOT `title` \u2014 see
+ * `canvas-theme.ts` for the rationale (zero text flicker on the
+ * authored\u2192live swap when the user creates a research node from the
+ * `+` menu).
+ *
+ * `customData.status` is derived from `content`: a row with `content`
+ * still null is "researching" (the agent is searching the web /
+ * writing); once `update_research` lands non-null content, the row
+ * flips to "ready" and the renderer drops the in-flight chrome.
+ *
+ * `summary` and `title` ride through `customData` so the right-panel
+ * viewer can hydrate without a second fetch on click.
+ */
+function buildResearchNode(
+  research: {
+    id: string;
+    topic: string;
+    title: string;
+    summary: string;
+    content: string | null;
+  },
+  pos: { x: number; y: number },
+): CanvasNode {
+  const status = research.content !== null ? "ready" : "researching";
+  return {
+    id: `research:${research.id}`,
+    type: "text",
+    category: "research",
+    text: research.topic,
+    x: pos.x,
+    y: pos.y,
+    customData: {
+      status,
+      title: research.title,
+      summary: research.summary,
+      // Intentionally omit `content` from the projection \u2014 markdown
+      // can be many KB and would bloat every canvas read for a value
+      // the right panel re-fetches on click anyway. The viewer hits
+      // `/api/orgs/[githubLogin]/canvas/node/research:<id>` for the
+      // full row.
+    },
+  };
+}
+
+export const researchProjector: Projector = {
+  async project(scope: Scope, orgId: string): Promise<ProjectionResult> {
+    if (scope.kind === "root") {
+      const rows = await db.research.findMany({
+        where: { orgId, initiativeId: null },
+        orderBy: { updatedAt: "desc" },
+        take: RESEARCH_LIMIT,
+        select: {
+          id: true,
+          topic: true,
+          title: true,
+          summary: true,
+          content: true,
+        },
+      });
+      const nodes = rows.map((r, index) =>
+        buildResearchNode(r, defaultResearchRootPosition(index)),
+      );
+      return { nodes };
+    }
+
+    if (scope.kind === "initiative") {
+      // Same org-membership guard as `milestoneTimelineProjector`:
+      // the initiative ref travels through URLs and isn't validated
+      // against `orgId` otherwise. Without this, a guessed cuid could
+      // surface another org's research.
+      const initiative = await db.initiative.findFirst({
+        where: { id: scope.initiativeId, orgId },
+        select: { id: true },
+      });
+      if (!initiative) return { nodes: [] };
+
+      const rows = await db.research.findMany({
+        where: { orgId, initiativeId: initiative.id },
+        orderBy: { updatedAt: "desc" },
+        take: RESEARCH_LIMIT,
+        select: {
+          id: true,
+          topic: true,
+          title: true,
+          summary: true,
+          content: true,
+        },
+      });
+      const nodes = rows.map((r, index) =>
+        buildResearchNode(r, defaultResearchInitiativePosition(index)),
+      );
+      return { nodes };
+    }
+
+    return { nodes: [] };
+  },
+};
+
 export const PROJECTORS: Projector[] = [
   rootProjector,
   workspaceProjector,
   initiativeProjector,
   milestoneTimelineProjector,
+  researchProjector,
 ];
