@@ -647,7 +647,12 @@ async function runProposalIntent(args: {
       const r = outcome.result;
       alreadyApproved = outcome.alreadyApproved;
       approvalResultHeader = JSON.stringify(r);
-      const where =
+      // Prefer the resolved entity name ("Auth Refactor") over the
+      // generic kind label ("an initiative canvas") so the user knows
+      // exactly which workspace / initiative / milestone the new row
+      // landed under. Falls back to the kind label when the lookup
+      // didn't resolve (root canvas, deleted entity, older transcript).
+      const kindLabel =
         r.landedOn === ""
           ? "the org root canvas"
           : r.landedOn.startsWith("ws:")
@@ -657,6 +662,9 @@ async function runProposalIntent(args: {
               : r.landedOn.startsWith("milestone:")
                 ? "a milestone canvas"
                 : "the canvas";
+      const where = r.landedOnName
+        ? `**${r.landedOnName}**`
+        : kindLabel;
       summaryText = alreadyApproved
         ? `Already created — opening the existing ${r.kind} on ${where}.`
         : r.kind === "initiative"
