@@ -255,7 +255,7 @@ describe("buildInitiativeTools.propose_milestone — validation", () => {
 
   it("rejects when a featureId belongs to a different initiative", async () => {
     (db.initiative.findFirst as unknown as { mockResolvedValue: (v: unknown) => void })
-      .mockResolvedValue({ id: "init_a" });
+      .mockResolvedValue({ id: "init_a", name: "Initiative A" });
     (db.feature.findMany as unknown as { mockResolvedValue: (v: unknown) => void })
       .mockResolvedValue([
         {
@@ -287,7 +287,7 @@ describe("buildInitiativeTools.propose_milestone — validation", () => {
 
   it("rejects when a featureId belongs to a different org's workspace", async () => {
     (db.initiative.findFirst as unknown as { mockResolvedValue: (v: unknown) => void })
-      .mockResolvedValue({ id: "init_a" });
+      .mockResolvedValue({ id: "init_a", name: "Initiative A" });
     (db.feature.findMany as unknown as { mockResolvedValue: (v: unknown) => void })
       .mockResolvedValue([
         {
@@ -311,7 +311,7 @@ describe("buildInitiativeTools.propose_milestone — validation", () => {
 
   it("succeeds with empty featureIds and no DB feature lookup", async () => {
     (db.initiative.findFirst as unknown as { mockResolvedValue: (v: unknown) => void })
-      .mockResolvedValue({ id: "init_a" });
+      .mockResolvedValue({ id: "init_a", name: "Initiative A" });
     const out = (await getTool().execute({
       proposalId: "p_m1",
       initiativeId: "init_a",
@@ -326,12 +326,16 @@ describe("buildInitiativeTools.propose_milestone — validation", () => {
     if (out.kind === "milestone") {
       expect(out.featureMeta).toEqual([]);
       expect(out.payload.featureIds).toEqual([]);
+      // Render-only meta carries the resolved parent-initiative name
+      // so the proposal card subtext can render "under initiative
+      // Initiative A" instead of a cuid suffix.
+      expect(out.meta).toEqual({ initiativeName: "Initiative A" });
     }
   });
 
   it("populates featureMeta with current-milestone names from the validation query", async () => {
     (db.initiative.findFirst as unknown as { mockResolvedValue: (v: unknown) => void })
-      .mockResolvedValue({ id: "init_a" });
+      .mockResolvedValue({ id: "init_a", name: "Initiative A" });
     (db.feature.findMany as unknown as { mockResolvedValue: (v: unknown) => void })
       .mockResolvedValue([
         {
@@ -378,7 +382,7 @@ describe("buildInitiativeTools.propose_milestone — validation", () => {
 
   it("de-duplicates repeated featureIds in the input", async () => {
     (db.initiative.findFirst as unknown as { mockResolvedValue: (v: unknown) => void })
-      .mockResolvedValue({ id: "init_a" });
+      .mockResolvedValue({ id: "init_a", name: "Initiative A" });
     const findMany = db.feature.findMany as unknown as {
       mockResolvedValue: (v: unknown) => void;
       mock: { calls: unknown[][] };
