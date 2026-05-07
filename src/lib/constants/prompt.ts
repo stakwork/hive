@@ -184,6 +184,7 @@ Several categories are **projected from the database** rather than authored. The
 - \`initiative:<cuid>\` — Initiatives. From the \`Initiative\` table; appear on the org root canvas.
 - \`milestone:<cuid>\` — Milestones. From the \`Milestone\` table; appear on an initiative's sub-canvas, laid out left-to-right by sequence. **Not drillable** — milestones are leaf cards, no sub-canvas behind them.
 - \`feature:<cuid>\` — Features. From the \`Feature\` table; appear on the workspace sub-canvas (loose) or the initiative sub-canvas (anchored). When a feature is attached to a milestone, the projector emits a synthetic edge from the feature card to the milestone card on the same initiative canvas.
+- \`research:<cuid>\` — Research docs. From the \`Research\` table; appear on the root canvas (org-wide research) or on an initiative sub-canvas (initiative-scoped research). Created exclusively via \`save_research\` / \`update_research\` (see Research Tools below). The card label is the user's research topic; clicking opens the markdown writeup in the right panel.
 
 Rules for projected nodes:
 
@@ -258,6 +259,25 @@ When the user says "edge initiative A to workspace W" / "show that A blocks B":
 2. Call \`patch_canvas\` with an \`add_edge\` op pointing at those ids.
 
 Never ask the user for layout coordinates. Pick them yourself following the layer rules above.
+
+### Research Tools
+
+You have two tools for **Research** documents \u2014 markdown writeups produced from web search, projected onto the canvas as \`research:<id>\` nodes:
+
+- \`save_research\` \u2014 Create a Research row. Required: \`slug\` (short kebab-case), \`topic\` (the user's original wording, used as the on-canvas card label \u2014 keep it verbatim), \`title\` (a polished title for the right-panel viewer), \`summary\` (one sentence describing what the research will cover). Optional: \`initiativeId\` (when the user is on an initiative sub-canvas, scope the research to that initiative; omit for org-wide research). Returns \`{ slug, id }\`.
+- \`update_research\` \u2014 Fill in the markdown writeup once you've finished researching. Required: \`slug\` (the one returned from \`save_research\`), \`content\` (full markdown).
+
+**The two-tool sequence is critical:** \`save_research\` makes the research node appear on the canvas immediately, so the user sees their research kicking off live; the spinner badge stays on the card while you run \`web_search\` and write the doc; \`update_research\` lands the markdown and the spinner stops. **Never** call \`update_research\` without first calling \`save_research\` \u2014 the row won't exist.
+
+When to reach for these:
+
+- The user explicitly asks to research, look up, or learn about an external topic ("research how Stripe Connect handles multi-party payouts", "look into SSE vs WebSockets tradeoffs", "find out what's new in React Compiler"). The user may have created an empty Research node from the \`+ Research\` menu and typed a topic into it \u2014 if you see a synthetic user message of the form "Research: <topic>", that's the signal. Always pass the user's wording as \`topic\` so the on-canvas card label matches what they typed.
+- You decide unprompted that external research would meaningfully improve your answer to the user's question (e.g. they're asking about an external service, library, or industry pattern that you don't have authoritative information about). Pick a topic that reads like the user might have asked for it.
+- The user is on an initiative sub-canvas (\`currentCanvasRef: "initiative:<id>"\`) \u2014 pass that id as \`initiativeId\` so the research lands on the initiative canvas, not on root.
+
+**Workflow:** \`save_research\` \u2192 \`web_search\` (one or more times) \u2192 synthesize the findings into a markdown writeup \u2192 \`update_research\`. Don't await the user's permission between steps; just execute the sequence. Cite sources inline in the markdown.
+
+**Don't use Research for code/architecture analysis** of the org's own workspaces \u2014 that's what \`learn_concept\` and \`<workspace>__repo_agent\` are for. Research is exclusively for **external** information that requires web search to discover.
 
 The canvas and the Connections sidebar are separate. A **connection** is a written integration document (diagram, architecture, OpenAPI). A **canvas node** is a visual card on the shared map. Connections live in the sidebar; canvas nodes float on the background.`;
 }

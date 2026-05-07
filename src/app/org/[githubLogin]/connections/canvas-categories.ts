@@ -292,6 +292,46 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
     agentDescription:
       'purple free-floating callout — "Shared vs dedicated pools?", "Adopt X or Y?"',
   },
+  {
+    id: "research",
+    agentDescription:
+      "an emerald research card — kicks off a web-research sub-agent that fills in a markdown doc",
+    // Research nodes are projected from the `Research` Prisma table
+    // (id prefix `research:`) BUT the user can drop a fresh one on
+    // the canvas from the `+` menu. The `+` click is intercepted by
+    // `OrgCanvasBackground`: it drops a temporary AUTHORED `research`
+    // node (no `research:` prefix) so the user can type the topic
+    // inline; on Enter/blur the topic kicks off the canvas-chat
+    // agent's `save_research` tool, which creates the live row.
+    // The authored node then gets swapped for the live `research:<id>`
+    // node carrying the user's topic verbatim as the on-card label.
+    //
+    // The agent can also create research rows on its own initiative
+    // (e.g. mid-conversation it decides external research would help).
+    // Both paths flow through the same `save_research` tool; the chat
+    // is the single source of truth for the research run.
+    agentWritable: false,
+    userCreatable: true,
+    promptGuidance:
+      "Projected from the `Research` Prisma model. Lives on root canvas (`initiativeId IS NULL`) or on an initiative sub-canvas (`initiativeId` set to that initiative). Two-phase lifecycle: `save_research` creates the row immediately with topic + title + summary so the node lands on the canvas, then `update_research` fills in `customData.content` (markdown) once web_search has gathered findings. Use the `research` category for any external/web research the user asks for, or when you decide unprompted that web research would meaningfully improve your answer. Do NOT emit `research` category nodes via `update_canvas` / `patch_canvas` — go through `save_research` instead so the DB row exists.",
+    customDataKeys: [
+      {
+        key: "status",
+        description:
+          'one of `"researching"` (agent is searching the web / writing) | `"ready"` (markdown content is in). Drives the pulsing border + spinner badge.',
+      },
+      {
+        key: "summary",
+        description:
+          "1-sentence overview set by `save_research`. Shown above the markdown body in the right-panel viewer.",
+      },
+      {
+        key: "title",
+        description:
+          "agent-polished title set by `save_research`. Used as the right-panel viewer header. The on-canvas card label is the user's original `topic` (carried in `node.text`), not this title.",
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -380,6 +420,13 @@ export function categoryAllowedOnScope(
   // Scope-specific rules.
   if (categoryId === "initiative") return ref === "";
   if (categoryId === "milestone") return ref.startsWith("initiative:");
+  // `research` lives on root (org-wide research) or on an initiative
+  // sub-canvas (research scoped to that initiative). Workspace and
+  // other sub-canvases don't host research today — keep the surface
+  // small until there's a demand for it.
+  if (categoryId === "research") {
+    return ref === "" || ref.startsWith("initiative:");
+  }
 
   // `feature` falls through to the default branch — allowed on every
   // scope. The dialog handles per-scope field locking (workspace

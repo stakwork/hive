@@ -160,6 +160,7 @@ model SourceControlOrg {
   connections          Connection[]
   canvases             Canvas[]
   initiatives          Initiative[]
+  researches           Research[]
 
   @@index([githubLogin])
   @@index([githubInstallationId])
@@ -1561,9 +1562,59 @@ model Initiative {
   assignee    User?            @relation("InitiativeAssignee", fields: [assigneeId], references: [id])
   milestones  Milestone[]
   features    Feature[]
+  researches  Research[]
 
   @@index([orgId])
   @@map("initiatives")
+}
+
+/// Agent-authored research document attached to a SourceControlOrg.
+///
+/// Created by the canvas-chat agent via the `save_research` tool when
+/// a user adds a Research node to the canvas (via the `+` menu) or asks
+/// the agent to research something. Two-phase lifecycle:
+///
+///   1. `save_research` is called immediately with the user's `topic`,
+///      an agent-picked `title`, and a one-sentence `summary`. The row
+///      lands in the DB with `content` null. The projector emits a
+///      `research:<id>` node onto the canvas right away so the user
+///      sees the research kick off.
+///   2. After running web_search and synthesizing findings, the agent
+///      calls `update_research` once with the full markdown writeup,
+///      which fills `content`. The right-panel viewer streams it in
+///      via Pusher (`RESEARCH_UPDATED`).
+///
+/// `topic` is the on-canvas card label (carries the user's exact
+/// wording so the authored\u2192live swap has zero text flicker). `title`
+/// is the polished header used in the right-panel viewer. `summary` is
+/// the 1-sentence overview shown above the markdown.
+///
+/// `initiativeId` controls scope:
+///   - null \u2192 root canvas (org-wide research)
+///   - set  \u2192 that initiative's sub-canvas
+///
+/// Mirrors the `Connection` model's posture: org-scoped, agent-tool-only
+/// creation (no POST endpoint), fan-out via Pusher on save / update,
+/// `(orgId, slug)` unique to keep agent slugs stable across reads.
+model Research {
+  id           String           @id @default(cuid())
+  slug         String
+  topic        String           @db.Text
+  title        String
+  summary      String           @db.Text
+  content      String?          @db.Text
+  orgId        String           @map("org_id")
+  initiativeId String?          @map("initiative_id")
+  createdBy    String           @map("created_by")
+  org          SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  initiative   Initiative?      @relation(fields: [initiativeId], references: [id], onDelete: SetNull)
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  @@unique([orgId, slug])
+  @@index([orgId])
+  @@index([initiativeId])
+  @@map("researches")
 }
 
 model Milestone {

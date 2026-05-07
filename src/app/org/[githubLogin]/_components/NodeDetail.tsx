@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import type { WorkflowStatus } from "@/lib/chat";
 import { FeaturePlanChat } from "./FeaturePlanChat";
 import { TaskChat } from "./TaskChat";
+import { ResearchViewer } from "./ResearchViewer";
 
 /**
  * Right-panel detail card for the currently-selected canvas node.
@@ -141,6 +142,25 @@ function LiveNodeBody({
     return <p className="text-sm text-muted-foreground">{error}</p>;
   }
   if (!detail) return null;
+
+  // Research nodes own their entire body \u2014 the kicker / summary /
+  // markdown layout is bespoke (and the markdown lives in
+  // `detail.description`, which would otherwise render twice if we
+  // kept the default block below). Short-circuit to ResearchViewer.
+  if (detail.kind === "research") {
+    const extras = (detail.extras ?? {}) as Record<string, unknown>;
+    return (
+      <ResearchViewer
+        id={detail.id}
+        slug={String(extras.slug ?? "")}
+        title={detail.name}
+        topic={String(extras.topic ?? detail.name)}
+        summary={String(extras.summary ?? "")}
+        content={detail.description}
+        githubLogin={githubLogin}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
