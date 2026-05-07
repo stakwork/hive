@@ -375,6 +375,34 @@ export interface CanvasScopeHint {
    * agent resolve "this" / "here" references in chat without guessing.
    */
   selectedNodeId?: string;
+  /**
+   * Workspaces the user has visually linked to the current scope on
+   * the **root canvas** via a `ws:<x> ↔ initiative:<y>` (or, in the
+   * future, `ws:<x> ↔ <other>`) edge. Resolved server-side at request
+   * time so the agent doesn't need to call `read_canvas` on root just
+   * to discover which workspace a sub-canvas "belongs to."
+   *
+   * Currently populated only when `currentCanvasRef` is an
+   * `initiative:<id>` ref. Empty/undefined means either the scope has
+   * no edge to a workspace (loose initiative) or we don't compute it
+   * for this scope yet. The prompt branches on the count:
+   *   - exactly one ⇒ a strong "use this `workspaceId`" directive,
+   *   - more than one ⇒ a list with a "ask the user" nudge,
+   *   - zero/undefined ⇒ no addition (existing behaviour).
+   *
+   * **Why this exists.** `Initiative` has no `workspaceId` FK; the
+   * association is purely an edge on the root canvas blob (see
+   * `CreateFeatureCanvasDialog.fetchLinkedWorkspaceIds` for the human
+   * dialog's version of this same lookup). Without surfacing the
+   * mapping in the prompt, an agent on an initiative sub-canvas has
+   * no canonical signal for which workspace a new feature should
+   * belong to and will guess — sometimes wrong.
+   */
+  linkedWorkspaces?: Array<{
+    id: string;
+    slug: string;
+    name: string;
+  }>;
 }
 
 export function getMultiWorkspacePrefixMessages(
@@ -487,6 +515,32 @@ function getCanvasScopeHint(scope?: CanvasScopeHint): string {
       "",
       `They have selected node \`${selected}\` on the canvas. Treat "this node", "this initiative/workspace/milestone", or "it" as referring to that node when context is otherwise ambiguous.`,
     );
+  }
+
+  // Linked-workspace mapping for `initiative:<id>` scopes. Initiatives
+  // have no DB-level `workspaceId`; the link is a `ws ↔ initiative`
+  // edge on the root canvas. Surfacing it here saves the agent a
+  // `read_canvas` round-trip and — more importantly — keeps it from
+  // guessing the wrong workspace when proposing features under this
+  // initiative. Mirrors the human `CreateFeatureCanvasDialog`'s
+  // `fetchLinkedWorkspaceIds` heuristic.
+  const linked = scope.linkedWorkspaces ?? [];
+  if (ref.startsWith("initiative:") && linked.length > 0) {
+    if (linked.length === 1) {
+      const w = linked[0];
+      lines.push(
+        "",
+        `This initiative is linked on the org root canvas to workspace **${w.name}** (slug \`${w.slug}\`, id \`${w.id}\`). When proposing features under this initiative (\`propose_feature\` with this \`initiativeId\`), use \`workspaceId: "${w.id}"\` — do NOT pick a different workspace just because it appears in the workspace list. The user expects features they ask for "on this canvas" to be filed under the workspace they've drawn an edge to.`,
+      );
+    } else {
+      const list = linked
+        .map((w) => `**${w.name}** (slug \`${w.slug}\`, id \`${w.id}\`)`)
+        .join(", ");
+      lines.push(
+        "",
+        `This initiative is linked on the org root canvas to multiple workspaces: ${list}. When proposing features under this initiative, pick \`workspaceId\` from this set. If it isn't obvious which one the user intends, ask them before calling \`propose_feature\` — do NOT silently pick an unlinked workspace.`,
+      );
+    }
   }
 
   return lines.join("\n");

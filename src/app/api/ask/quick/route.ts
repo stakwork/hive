@@ -11,6 +11,7 @@ import {
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
+import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import {
   buildResearchTools,
   type CapturedSearchResult,
@@ -407,6 +408,31 @@ export async function POST(request: NextRequest) {
         features.push(...(conceptsByWorkspace[ws.slug] || []));
       }
 
+      // When the user is on an initiative sub-canvas, resolve which
+      // workspaces are visually linked to that initiative on root
+      // (`ws:<id> ↔ initiative:<id>` edges). The prompt uses this to
+      // tell the agent which `workspaceId` to pass to
+      // `propose_feature` — without it, the agent has no DB-level
+      // signal (initiatives have no `workspaceId` FK) and guesses
+      // from the workspace list, sometimes wrong. Cheap: one
+      // indexed canvas read + one workspace `findMany`, and we only
+      // do it when scope is `initiative:*`.
+      let linkedWorkspaces: Array<{ id: string; slug: string; name: string }> =
+        [];
+      if (
+        orgId &&
+        typeof currentCanvasRef === "string" &&
+        currentCanvasRef.startsWith("initiative:")
+      ) {
+        const initiativeId = currentCanvasRef.slice("initiative:".length);
+        if (initiativeId) {
+          linkedWorkspaces = await getLinkedWorkspacesForInitiative(
+            orgId,
+            initiativeId,
+          );
+        }
+      }
+
       prefixMessages = getMultiWorkspacePrefixMessages(
         workspaceConfigs,
         conceptsByWorkspace,
@@ -421,6 +447,8 @@ export async function POST(request: NextRequest) {
               : undefined,
           selectedNodeId:
             typeof selectedNodeId === "string" ? selectedNodeId : undefined,
+          linkedWorkspaces:
+            linkedWorkspaces.length > 0 ? linkedWorkspaces : undefined,
         },
       );
       primarySwarmUrl = workspaceConfigs[0].swarmUrl;

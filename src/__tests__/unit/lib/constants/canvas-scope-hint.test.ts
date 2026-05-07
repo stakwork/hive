@@ -157,4 +157,84 @@ describe("canvas scope hint in system prompt", () => {
     // No name-based instruction when there's no name.
     expect(sys).not.toContain('use the name "');
   });
+
+  // ─── Linked-workspace hint (initiative-scoped) ─────────────────────────────
+  // The agent picks `workspaceId` for `propose_feature` itself; without
+  // a DB-level Initiative→Workspace FK, only the root canvas's
+  // `ws ↔ initiative` edge tells us which workspace a feature should
+  // belong to. These tests lock the prompt-side surfacing of that hint.
+
+  it("surfaces a single linked workspace as a strong directive", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      {
+        currentCanvasRef: "initiative:abc",
+        linkedWorkspaces: [
+          { id: "ws-hive", slug: "hive", name: "Hive" },
+        ],
+      },
+    );
+    const sys = systemContent(messages);
+    expect(sys).toContain("**Hive**");
+    expect(sys).toContain("slug `hive`");
+    expect(sys).toContain("id `ws-hive`");
+    expect(sys).toContain('workspaceId: "ws-hive"');
+    expect(sys).toContain("propose_feature");
+  });
+
+  it("surfaces multiple linked workspaces as a list with an ask-the-user nudge", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      {
+        currentCanvasRef: "initiative:abc",
+        linkedWorkspaces: [
+          { id: "ws-hive", slug: "hive", name: "Hive" },
+          { id: "ws-sg", slug: "stakgraph", name: "Stakgraph" },
+        ],
+      },
+    );
+    const sys = systemContent(messages);
+    expect(sys).toContain("**Hive**");
+    expect(sys).toContain("**Stakgraph**");
+    expect(sys).toContain("ask them before calling `propose_feature`");
+  });
+
+  it("does NOT surface the linked-workspace hint outside initiative scopes", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      {
+        currentCanvasRef: "ws:zzz",
+        // Non-initiative scope — even if linkedWorkspaces is set
+        // somehow, the prompt branch should not fire.
+        linkedWorkspaces: [
+          { id: "ws-hive", slug: "hive", name: "Hive" },
+        ],
+      },
+    );
+    const sys = systemContent(messages);
+    expect(sys).not.toContain("linked on the org root canvas");
+    expect(sys).not.toContain('workspaceId: "ws-hive"');
+  });
+
+  it("omits the hint when linkedWorkspaces is empty/undefined on an initiative scope", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      { currentCanvasRef: "initiative:abc" },
+    );
+    const sys = systemContent(messages);
+    // Existing behaviour preserved — no linked-workspace section.
+    expect(sys).not.toContain("linked on the org root canvas");
+  });
 });
