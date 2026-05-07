@@ -777,6 +777,20 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         ) : (
           <div className="flex-1 overflow-auto min-h-0 p-4">
             <div className={cn("space-y-4", isFullpage && "max-w-3xl mx-auto")}>
+              {!isEditing && selectedPrompt.version_count > 1 && (
+                <div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleHistoryClick}
+                    className="w-full"
+                  >
+                    <History className="h-4 w-4 mr-2" />
+                    View History ({selectedPrompt.version_count} versions)
+                  </Button>
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Usage Notation
@@ -879,19 +893,6 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 </div>
               )}
 
-              {!isEditing && selectedPrompt.version_count > 1 && (
-                <div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleHistoryClick}
-                    className="w-full"
-                  >
-                    <History className="h-4 w-4 mr-2" />
-                    View History ({selectedPrompt.version_count} versions)
-                  </Button>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -1036,10 +1037,11 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                           </div>
                         </button>
 
-                        {!isLive && (
-                          publishingVersionId === version.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
-                          ) : (
+                        {isLive ? (
+                          <div className="flex-shrink-0 h-7 w-7" />
+                        ) : publishingVersionId === version.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
+                        ) : (
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button
@@ -1067,7 +1069,6 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
-                          )
                         )}
                       </div>
                     );
