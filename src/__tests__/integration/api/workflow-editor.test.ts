@@ -536,7 +536,7 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const call = mockFetch.mock.calls[0];
       const body = JSON.parse(call[1]!.body as string);
 
-      expect(body.name).toBe("workflow_editor");
+      expect(body.name).toBe(`workflow_editor - ${task.id}`);
       expect(body.workflow_id).toBe(123);
       expect(body.webhook_url).toContain("/api/stakwork/webhook");
       expect(body.workflow_params.set_var.attributes.vars).toMatchObject({
