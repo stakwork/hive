@@ -21,8 +21,10 @@ export const ROOT_REF = "";
  * `milestone:` and `task:` are registered as live but have no
  * `parseScope` branch — milestones live on the initiative canvas and
  * are not drillable; tasks don't project on the org canvas at all.
- * Listing the prefixes here is what makes the splitter strip authored
- * fields off these nodes on save (DB rows are never authored).
+ * `research:` is the same kind of leaf — the doc opens in the right
+ * panel, not on a sub-canvas. Listing the prefixes here is what makes
+ * the splitter strip authored fields off these nodes on save (DB rows
+ * are never authored).
  */
 const LIVE_ID_PREFIXES = [
   "ws:",
@@ -31,6 +33,7 @@ const LIVE_ID_PREFIXES = [
   "initiative:",
   "milestone:",
   "task:",
+  "research:",
 ] as const;
 
 /** True iff `id` is prefixed with a known live-id kind. */

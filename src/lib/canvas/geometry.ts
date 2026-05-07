@@ -134,3 +134,32 @@ export const LOOSE_FEATURE_WS_ROW_STEP = FEATURE_W + ROW_GAP;
 export const LOOSE_FEATURE_INIT_ROW_Y = MILESTONE_ROW_Y + MILESTONE_H + 80;
 export const LOOSE_FEATURE_INIT_ROW_X0 = 40;
 export const LOOSE_FEATURE_INIT_ROW_STEP = FEATURE_W + ROW_GAP;
+
+// ---------------------------------------------------------------------------
+// Research card sizing + default placement.
+//
+// Research cards sit on the root canvas (org-wide research) or on an
+// initiative's sub-canvas (initiative-scoped research). The card size
+// matches the loose-feature card (260\u00d7100) so a research node and a
+// loose feature read as visually equivalent floating cards \u2014 same
+// spatial weight, distinguished only by the emerald accent + book icon
+// kicker.
+//
+// Default-render rows: research nodes that don't have a saved position
+// land in their own row underneath whatever else is on the canvas. On
+// root that's underneath the initiative row; on an initiative canvas
+// that's underneath the loose-feature row.
+// ---------------------------------------------------------------------------
+
+export const RESEARCH_W = FEATURE_W;
+export const RESEARCH_H = FEATURE_H;
+
+/** Research row on the root canvas \u2014 under the initiative row. */
+export const RESEARCH_ROOT_ROW_Y = INITIATIVE_ROW_Y + INITIATIVE_H + 80;
+export const RESEARCH_ROOT_ROW_X0 = 40;
+export const RESEARCH_ROOT_ROW_STEP = RESEARCH_W + ROW_GAP;
+
+/** Research row on an initiative's sub-canvas \u2014 under the loose-feature row. */
+export const RESEARCH_INIT_ROW_Y = LOOSE_FEATURE_INIT_ROW_Y + FEATURE_H + 60;
+export const RESEARCH_INIT_ROW_X0 = 40;
+export const RESEARCH_INIT_ROW_STEP = RESEARCH_W + ROW_GAP;

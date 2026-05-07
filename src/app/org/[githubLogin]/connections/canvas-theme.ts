@@ -17,6 +17,8 @@ import {
   INITIATIVE_W,
   MILESTONE_H,
   MILESTONE_W,
+  RESEARCH_H,
+  RESEARCH_W,
   SMALL_W,
   TASK_H,
   TASK_W,
@@ -78,6 +80,13 @@ const ACCENT = {
   // unambiguously as "attention-worthy now," matching the kanban's
   // `Loader2` spinner amber.
   agent: "#fbbf24",
+  // Emerald — chosen for `research` cards. Distinct from the cool
+  // milestone-IN_PROGRESS blue and from the violet initiative; reads
+  // as "discovery / external knowledge" alongside the warmer note +
+  // decision callouts. Matches the kanban's COMPLETED green only by
+  // hue family, which is fine: research cards aren't projected onto
+  // milestone canvases so the two never sit side-by-side.
+  research: "#34d399",
 } as const;
 
 /**
@@ -860,6 +869,146 @@ const repositoryCategory: CategoryDefinition = {
 } as CategoryDefinition;
 
 // ---------------------------------------------------------------------------
+// Research card — DB-projected on root or initiative canvases.
+// ---------------------------------------------------------------------------
+//
+// Two visual states keyed off `customData.status`:
+//   - `"researching"` (default while `Research.content` is null) — the
+//     border + kicker + spinner badge all paint in emerald-with-pulse,
+//     so the card unambiguously reads as "in flight" even with no
+//     body text yet.
+//   - `"ready"` (set by the projector once `content` is non-null) — the
+//     pulse stops, the spinner badge goes away, the border settles to
+//     the muted emerald accent, and the card reads as a finished
+//     research doc the user can click into.
+//
+// On-card label is the user's original `topic` (carried verbatim in
+// `node.text`), NOT the agent-polished `title`. This is deliberate:
+// the user types a topic into an authored phase-1 node, then the
+// projector takes over and emits the live phase-2 node \u2014 keeping the
+// label identical means the swap has zero text flicker. The polished
+// `title` lives in `customData.title` and is used as the right-panel
+// viewer header; same for `customData.summary` (rendered above the
+// markdown body in the viewer).
+//
+// We deliberately don't render the markdown body inline on the canvas:
+// even truncated, a research summary sprawls and crowds the canvas.
+// Click the card \u2192 the right-panel viewer renders the full doc.
+
+function isResearchInFlight(node: CanvasNode): boolean {
+  // Default-on: a brand-new research row may not have `status` yet
+  // (the projector sets it from `content !== null`), so absent =
+  // researching. The `update_research` tool call flips this to "ready"
+  // once content lands.
+  const raw = node.customData?.status;
+  if (raw === "ready") return false;
+  return true;
+}
+
+/**
+ * Inline SVG spinner painted into the topRightOuter slot when a
+ * research card is in flight. We can't import `Loader2` here \u2014 the
+ * theme runs inside the SVG canvas and lucide-react ships HTML
+ * components. The shape is a 270\u00b0 arc with a CSS rotation animation
+ * applied via a `<style>` tag local to the spinner group; SVG\u2019s
+ * `transform-origin` quirk is sidestepped by translating to the
+ * center, rotating, then translating back.
+ */
+function renderResearchingBadge(ctx: SlotContext): React.ReactNode {
+  const { region, node } = ctx;
+  if (!isResearchInFlight(node)) return null;
+  const cx = region.x + region.width / 2;
+  const cy = region.y + region.height / 2;
+  const r = Math.min(region.width, region.height) / 2 - 2;
+  if (r <= 0) return null;
+  // Animate via a unique keyframes name per node so multiple research
+  // cards don't share state. Rotation is applied to a `<g>` whose
+  // transform-origin we set explicitly to the spinner's own center
+  // \u2014 SVG defaults to (0,0) which would orbit the spinner instead.
+  const animName = `researchSpin-${node.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  const arcD = `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - r} ${cy}`;
+  return createElement(
+    "g",
+    { pointerEvents: "none" },
+    createElement(
+      "style",
+      null,
+      `@keyframes ${animName} { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .${animName} { transform-origin: ${cx}px ${cy}px; transform-box: fill-box; animation: ${animName} 1.1s linear infinite; }`,
+    ),
+    createElement("circle", {
+      cx,
+      cy,
+      r,
+      fill: hexAlpha(ACCENT.research, 0.12),
+      stroke: hexAlpha(ACCENT.research, 0.35),
+      strokeWidth: 1,
+    }),
+    createElement(
+      "g",
+      { className: animName },
+      createElement("path", {
+        d: arcD,
+        fill: "none",
+        stroke: ACCENT.research,
+        strokeWidth: 1.5,
+        strokeLinecap: "round",
+      }),
+    ),
+  );
+}
+
+const researchCategory: CategoryDefinition = {
+  ...baseCard,
+  defaultWidth: RESEARCH_W,
+  defaultHeight: RESEARCH_H,
+  type: "text",
+  // Research cards are DB rows once they exist (live ids are
+  // `research:<cuid>`). We hide the canvas trash button so the user
+  // doesn't expect "delete from canvas" to mean "delete from DB" \u2014
+  // hidden lives are managed via the per-canvas hidden list, real
+  // deletion goes through the REST endpoint.
+  hideToolbarDelete: true,
+  // Static stroke / fill in the muted emerald family. The "in flight"
+  // signal rides on the topEdge color band + the spinner badge below
+  // (both keyed off `customData.status`), keeping the silhouette of a
+  // finished card clean and unambiguous.
+  stroke: hexAlpha(ACCENT.research, 0.35),
+  fill: hexAlpha(ACCENT.research, 0.05),
+  slots: {
+    // Top-edge band saturates to the full emerald accent while
+    // researching, then drops to the muted accent once ready. This
+    // is the silhouette-level "in flight" signal that reads from
+    // across the canvas without needing to see the spinner badge.
+    topEdge: {
+      kind: "color",
+      extent: "full",
+      color: (ctx: SlotContext) =>
+        isResearchInFlight(ctx.node)
+          ? ACCENT.research
+          : hexAlpha(ACCENT.research, 0.4),
+    },
+    header: { kind: "text", value: "RESEARCH", color: ACCENT.research },
+    body: {
+      kind: "text",
+      value: (ctx: SlotContext) => ctx.node.text ?? "",
+      // Slightly heavier weight so the user's topic (the on-card
+      // label) reads as the headline of the card rather than as
+      // body text.
+      fontWeight: 600,
+      fontSize: (ctx: SlotContext) => Math.round(ctx.theme.node.fontSize * 1.1),
+    },
+    // Spinner badge in the topRightOuter slot \u2014 same slot pattern
+    // milestones use for the agent-active badge. Renders nothing when
+    // status === "ready", so a finished research card has clean
+    // chrome with just the kicker + label + muted top edge.
+    topRightOuter: {
+      kind: "custom",
+      render: renderResearchingBadge,
+    },
+  },
+} as CategoryDefinition;
+
+// ---------------------------------------------------------------------------
 // Definition lookup
 // ---------------------------------------------------------------------------
 
@@ -877,6 +1026,7 @@ const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
   task:       taskCategory,
   note:       accentNote(ACCENT.note, "NOTE"),
   decision:   accentNote(ACCENT.decision, "DECISION"),
+  research:   researchCategory,
 };
 
 // ---------------------------------------------------------------------------
