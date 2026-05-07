@@ -396,7 +396,7 @@ function TaskChatInput({ onSend, disabled = false }: TaskChatInputProps) {
           disabled={disabled}
           rows={1}
           style={{ height, overflowY }}
-          className={`w-full px-3 py-2 pr-10 rounded-xl bg-background border border-border/50 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${
+          className={`w-full px-3 py-2 pr-10 rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${
             disabled ? "opacity-50 cursor-not-allowed" : ""
           }`}
         />
