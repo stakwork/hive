@@ -82,12 +82,41 @@ async function notifyResearchEvent(
 }
 
 /**
+ * One web_search result captured from Anthropic's `webSearch` provider
+ * tool. We only care about `url` for citation linkification; `title`
+ * is kept around in case we ever want to render link previews.
+ */
+export interface CapturedSearchResult {
+  url: string;
+  title?: string;
+}
+
+/**
  * Build research tools for the canvas-chat agent. Always merged when
  * `orgId` is supplied to `/api/ask/quick`; the prompt suffix teaches
  * the agent when to reach for them (external/web research, vs
  * connection docs which are integration-focused).
+ *
+ * `webSearchResults` is a closure-shared array that the route
+ * populates inside `streamText`'s `onStepFinish` callback as
+ * `web_search` calls return. By the time the agent reaches
+ * `update_research`, every search result it can cite is in this
+ * array \u2014 in the SAME ORDER Anthropic emitted them, which is
+ * exactly the order the `<cite index="N-M">` indices reference.
+ *
+ * Why a closure-shared array instead of plumbing through tool input:
+ * Anthropic's `<cite>` indices reference a flat list of ALL search
+ * results from ALL `web_search` calls in the turn, in stream order.
+ * The agent doesn't reliably know how to align its `sources` array
+ * with those indices (we tried; it sent only the URLs it cited from,
+ * which broke the index alignment). Capturing on the server side is
+ * deterministic.
  */
-export function buildResearchTools(orgId: string, userId: string): ToolSet {
+export function buildResearchTools(
+  orgId: string,
+  userId: string,
+  webSearchResults: CapturedSearchResult[],
+): ToolSet {
   return {
     save_research: tool({
       description:
@@ -204,14 +233,15 @@ export function buildResearchTools(orgId: string, userId: string): ToolSet {
 
     update_research: tool({
       description:
-        "Update an existing Research document with the markdown writeup. Call this ONCE after web_search has gathered enough information to write the doc. The `content` field replaces the previous content (no streaming/append semantics today \u2014 write the full markdown in one call).",
+        "Update an existing Research document with the markdown writeup. Call this ONCE after web_search has gathered enough information to write the doc. The `content` field replaces the previous content (no streaming/append semantics today \u2014 write the full markdown in one call).\n\n" +
+        "Cite sources inline as you naturally would (e.g. `<cite index=\"N-M\">...</cite>` for Anthropic web_search citations); the tool will convert them into clickable markdown links automatically using the search results from the current conversation turn. You don't need to pass URLs separately.",
       inputSchema: z.object({
         slug: z.string().describe("The slug returned from save_research."),
         content: z
           .string()
           .min(1)
           .describe(
-            "Full markdown writeup. Cite sources inline as the model normally would; the viewer renders standard GitHub-flavored markdown.",
+            "Full markdown writeup. Cite sources inline however you normally would; the tool linkifies them server-side using the captured web_search results.",
           ),
       }),
       execute: async ({
@@ -236,9 +266,62 @@ export function buildResearchTools(orgId: string, userId: string): ToolSet {
             };
           }
 
+          // Citation linkification. Anthropic's web_search emits
+          // `<cite index="N-M">anchor</cite>` where `N` is 1-indexed
+          // into the flat list of ALL search results from EVERY
+          // web_search call in this turn (in stream order). The
+          // route's `onStepFinish` populates `webSearchResults` as
+          // those calls return, so by the time we run here the array
+          // is the exact reference list those indices point into.
+          //
+          // Out-of-range indices (or empty results) collapse to the
+          // anchor text. The doc stays readable; that span just isn't
+          // a link. Same fallback for any future tag shape we don't
+          // recognize \u2014 we never want to leave raw `<cite>` markup
+          // in the persisted markdown, since the viewer renders
+          // standard GFM and would show it as literal text.
+          const citationMatches = content.match(/<cite index="\d+/g) ?? [];
+          let convertedCount = 0;
+          let skippedCount = 0;
+          const linkifiedContent = content.replace(
+            /<cite index="(\d+)(?:-\d+(?:,\d+-\d+)*)?">(.*?)<\/cite>/g,
+            (_match, indexStr: string, anchor: string) => {
+              if (webSearchResults.length === 0) {
+                skippedCount++;
+                return anchor;
+              }
+              const idx = parseInt(indexStr, 10) - 1;
+              const r = webSearchResults[idx];
+              if (!r || typeof r.url !== "string") {
+                skippedCount++;
+                return anchor;
+              }
+              convertedCount++;
+              // Anchor text is model-generated and could contain `]`
+              // characters that would break markdown link parsing.
+              // Cheap escape: replace any `]` in the anchor with `\]`.
+              const safeAnchor = anchor.replace(/\]/g, "\\]");
+              return `[${safeAnchor}](${r.url})`;
+            },
+          );
+
+          console.log(
+            `[researchTools] update_research citation conversion: slug=${slug} citations=${citationMatches.length} converted=${convertedCount} skipped=${skippedCount} availableSources=${webSearchResults.length}`,
+          );
+          if (skippedCount > 0 && webSearchResults.length > 0) {
+            // Log the first few out-of-range indices to help debug.
+            const indices = (content.match(/<cite index="(\d+)/g) ?? [])
+              .slice(0, 10)
+              .map((s) => s.match(/\d+/)?.[0])
+              .filter(Boolean);
+            console.log(
+              `[researchTools] sample citation indices encountered: [${indices.join(", ")}], available range: 1..${webSearchResults.length}`,
+            );
+          }
+
           await db.research.update({
             where: { orgId_slug: { orgId, slug } },
-            data: { content },
+            data: { content: linkifiedContent },
           });
 
           const ref = row.initiativeId ? `initiative:${row.initiativeId}` : "";
