@@ -140,7 +140,7 @@ export async function executeWorkflowEditorRetry(
     };
 
     const stakworkPayload = {
-      name: "workflow_editor_retry",
+      name: `workflow_editor_retry - ${taskId}`,
       workflow_id: parseInt(config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID!),
       webhook_url: workflowWebhookUrl,
       workflow_params: {

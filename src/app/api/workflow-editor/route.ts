@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
 
     // Build Stakwork payload
     const stakworkPayload = {
-      name: "workflow_editor",
+      name: `workflow_editor - ${taskId}`,
       workflow_id: parseInt(config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID),
       webhook_url: workflowWebhookUrl,
       workflow_params: {
