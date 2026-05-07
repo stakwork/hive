@@ -90,14 +90,7 @@ const DB_CREATING_CATEGORIES = new Set(["initiative", "milestone", "feature"]);
  */
 const AUTHORED_DROPPABLE_CATEGORIES = ["note", "decision", "text"];
 
-/**
- * Stable empty-array sentinel for the research-swap subscription's
- * fallback case (no active conversation). Returning a fresh `[]` from
- * the Zustand selector would defeat the default `Object.is` bail-out
- * and re-fire the swap effect on every store mutation. Module-level
- * keeps the identity stable across renders.
- */
-const EMPTY_MESSAGES_FOR_RESEARCH_SWAP: never[] = [];
+
 
 /**
  * Live container categories that own a sub-canvas an authored node
@@ -1056,55 +1049,52 @@ export function OrgCanvasBackground({
   );
 
   // ===================================================================
-  // Research kickoff + authored\u2192live swap
+  // Research kickoff
   // ===================================================================
   //
   // The Research feature is the first canvas node type with an
   // **authored\u2192live** lifecycle. The user picks `+ Research` from the
   // menu, types a topic into the dropped node, and on text commit the
-  // node morphs into a live `research:<cuid>` node carrying the same
-  // text at the same position \u2014 the visual "swap" is invisible if
-  // we get the position right.
+  // node fires a synthetic chat message that drives the agent's
+  // `save_research` tool (see `src/lib/ai/researchTools.ts`).
   //
-  // The agent does the actual create via the `save_research` tool
-  // (see `src/lib/ai/researchTools.ts`). We don't write to the DB
-  // ourselves; we just (a) fire the kickoff message, (b) watch for
-  // the tool result to land, (c) carry the user's click position over
-  // to the new live id.
+  // **The authored\u2192live swap is NOT a client-side concern.** Earlier
+  // versions of this feature tried to swap in the client (FIFO
+  // queue + processed-id set + `applyMutation(removeNode)` + various
+  // race-y refetch sequences). It never converged \u2014 autosave, pusher
+  // refetch, and the position-overlay write all fought each other,
+  // and any failure left a phantom authored node in the canvas blob.
   //
-  // Matching pending kickoffs to incoming `save_research` results is
-  // FIFO with no string-matching. The dominant case is one research
-  // in flight at a time; if a user kicks off two back-to-back, FIFO
-  // pairing might land them at the "wrong" coordinates relative to
-  // each other (~one card-width off) \u2014 harmless and the user can
-  // drag. The agent can also decide unprompted to research something
-  // mid-conversation, in which case the queue is empty when
-  // `save_research` lands; the new live node falls back to the
-  // projector's default placement, which is also fine.
+  // The swap now happens **at the IO boundary** in
+  // `src/lib/canvas/io.ts` (`dedupeAuthoredResearch`): on every read
+  // and every write, an authored `research` node whose text matches
+  // a live `research:<id>` node's text is dropped, with its position
+  // carried into the live node's overlay if no overlay exists. That
+  // gives us the visible swap on the user's next canvas refresh
+  // (which Pusher triggers within ~300ms of `save_research`
+  // returning) and self-heals the persisted blob on the next
+  // autosave. No client-side queue, no race conditions, no phantom
+  // nodes.
   //
-  // Ref-based state (not React state) for two reasons:
-  //   1. Reads happen inside a synchronous `useEffect` over message
-  //      changes; React state would lag by one render.
-  //   2. The queue + processed-id set are bookkeeping, not UI \u2014 they
-  //      should never trigger renders.
+  // The only client-side work is firing the kickoff. Tracking which
+  // authored node ids we've already kicked off prevents a double-fire
+  // if the user hits Enter twice on the same node before the swap
+  // happens.
 
-  const pendingResearchSwapsRef = useRef<
-    {
-      authoredId: string;
-      canvasRef: string | undefined;
-      x: number;
-      y: number;
-    }[]
-  >([]);
-  const processedSaveResearchIdsRef = useRef<Set<string>>(new Set());
+  /**
+   * Authored research node ids whose kickoff we've already fired.
+   * The library prefills new nodes with placeholder text ("New
+   * node") rather than an empty string, so we can't use
+   * "empty\u2192non-empty" as the trigger. Instead: fire the kickoff the
+   * first time the user-typed text differs from whatever was there
+   * before AND we haven't already fired for this id.
+   */
+  const firedResearchKickoffsRef = useRef<Set<string>>(new Set());
 
   const sendCanvasChatMessage = useSendCanvasChatMessage();
 
   /**
-   * Queue a research kickoff for the eventual `save_research` swap and
-   * fire the synthetic user message that drives the agent. Called from
-   * `handleNodeUpdate` when an authored research node's text
-   * transitions empty\u2192non-empty.
+   * Fire the synthetic user message that drives the agent.
    *
    * The store's `activeConversationId` may legitimately be null for a
    * brief window during initial mount (before `OrgCanvasView` calls
@@ -1114,13 +1104,7 @@ export function OrgCanvasBackground({
    * kickoff because that'd race with the user editing the node.
    */
   const fireResearchKickoff = useCallback(
-    (
-      authoredId: string,
-      canvasRef: string | undefined,
-      x: number,
-      y: number,
-      topic: string,
-    ) => {
+    (topic: string) => {
       const trimmedTopic = topic.trim();
       if (!trimmedTopic) return;
       const conversationId =
@@ -1131,16 +1115,11 @@ export function OrgCanvasBackground({
         );
         return;
       }
-      pendingResearchSwapsRef.current.push({
-        authoredId,
-        canvasRef,
-        x,
-        y,
-      });
       // Format that the prompt suffix instructs the agent to recognize
       // ("if you see a synthetic user message of the form 'Research:
       // <topic>', that's the signal"). The agent extracts the topic
-      // and is told to pass it as `topic` verbatim into save_research.
+      // and is told to pass it as `topic` verbatim into save_research,
+      // which is what makes the IO-layer text-equality dedupe work.
       void sendCanvasChatMessage({
         conversationId,
         content: `Research: ${trimmedTopic}`,
@@ -1148,91 +1127,6 @@ export function OrgCanvasBackground({
     },
     [sendCanvasChatMessage],
   );
-
-  /**
-   * Subscribe to the active conversation's messages and react to
-   * fresh `save_research` tool-call outputs by performing the
-   * authored\u2192live swap.
-   *
-   * The selector returns the messages array of the active conversation
-   * via a shallow-stable read; `useShallow` isn't strictly required
-   * here because Zustand's default `Object.is` comparison sees the
-   * same array reference until the store mutates it (which is exactly
-   * when we want to re-run). The fallback to a module-level empty
-   * array sentinel keeps that identity stable when there's no active
-   * conversation (no spurious effect runs).
-   */
-  const activeMessages = useCanvasChatStore((s) => {
-    const id = s.activeConversationId;
-    if (!id) return EMPTY_MESSAGES_FOR_RESEARCH_SWAP;
-    return s.conversations[id]?.messages ?? EMPTY_MESSAGES_FOR_RESEARCH_SWAP;
-  });
-
-  useEffect(() => {
-    if (pendingResearchSwapsRef.current.length === 0) return;
-    if (activeMessages.length === 0) return;
-
-    // Walk every message looking for `save_research` tool calls whose
-    // result we haven't processed yet. Outputs land asynchronously
-    // (the streaming reducer fills `tc.output` once the tool returns)
-    // so we look across the whole transcript, not just the last
-    // message. The processed-id set is the dedupe key.
-    for (const msg of activeMessages) {
-      if (!msg.toolCalls?.length) continue;
-      for (const tc of msg.toolCalls) {
-        if (tc.toolName !== "save_research") continue;
-        if (tc.output === undefined || tc.output === null) continue;
-        const out = tc.output as
-          | { id?: string; slug?: string; status?: string; error?: string }
-          | undefined;
-        if (!out || typeof out.id !== "string") continue;
-        if (processedSaveResearchIdsRef.current.has(out.id)) continue;
-
-        // Mark as processed BEFORE doing async work so a re-render
-        // mid-flight doesn't double-fire the swap.
-        processedSaveResearchIdsRef.current.add(out.id);
-
-        const pending = pendingResearchSwapsRef.current.shift();
-        if (!pending) {
-          // The agent created this research without a user-driven
-          // kickoff (no pending swap to consume). Nothing to do \u2014
-          // the projector will place the new live node at default
-          // coordinates on the next canvas refresh.
-          continue;
-        }
-
-        const liveId = `research:${out.id}`;
-        const { authoredId, canvasRef, x, y } = pending;
-
-        // Three things to do, in order:
-        //   1. Save the position overlay so the live node lands where
-        //      the authored one was. Fire-and-forget so we can move
-        //      on to the local mutation without awaiting.
-        //   2. Optimistically remove the authored node so the user
-        //      sees the swap immediately, before the canvas refetch.
-        //   3. Refetch the affected canvas so the projector's new
-        //      live node appears with the saved position applied.
-        void savePositionForLiveId(canvasRef, liveId, x, y);
-        applyMutation(canvasRef, (c) => removeNode(c, authoredId));
-        void (async () => {
-          try {
-            if (canvasRef) {
-              const data = await fetchSub(githubLogin, canvasRef);
-              setSubCanvases((prev) => ({ ...prev, [canvasRef]: data }));
-            } else {
-              const data = await fetchRoot(githubLogin);
-              setRoot(data);
-            }
-          } catch (err) {
-            console.error(
-              "[OrgCanvasBackground] research swap refetch failed",
-              err,
-            );
-          }
-        })();
-      }
-    }
-  }, [activeMessages, applyMutation, githubLogin, savePositionForLiveId]);
 
   /**
    * Open the InitiativeDialog with the click position cached. Caller
@@ -1652,36 +1546,31 @@ export function OrgCanvasBackground({
       }
 
       // Research kickoff trigger. When an authored research node's
-      // text transitions from empty (or unset) to non-empty, fire the
-      // chat-side kickoff that drives `save_research`. Authored = no
+      // text gets edited for the first time, fire the chat-side
+      // kickoff that drives `save_research`. Authored = no
       // `research:` id prefix; that prefix only appears once the
-      // projector emits the live node post-save. The new live node
-      // will swap in via the message-subscription effect above
-      // (`pendingResearchSwapsRef` queue + `save_research` output
-      // matching).
+      // projector emits the live node post-save. The authored
+      // placeholder gets dropped automatically once the live node
+      // arrives \u2014 the dedupe runs in `dedupeAuthoredResearch`
+      // (`src/lib/canvas/io.ts`) on every read AND every write.
       //
-      // Edge: a user editing the topic text after kickoff (e.g. fixing
-      // a typo before the agent has responded) shouldn't fire a
-      // second kickoff. We only fire on the empty\u2192non-empty
-      // transition, so subsequent text edits are no-ops. Once the
-      // swap completes the authored node is gone entirely, so a
-      // re-edit isn't possible anyway.
+      // The trigger isn't "empty\u2192non-empty" because the library
+      // prefills new nodes with placeholder text like "New node"
+      // instead of "". Instead, we fire on the FIRST text edit per
+      // authored node id (tracked in `firedResearchKickoffsRef`),
+      // skipping spurious updates where text didn't actually change.
       if (
         prevNode &&
         prevNode.category === "research" &&
         !id.startsWith("research:") &&
-        patch.text !== undefined
+        patch.text !== undefined &&
+        !firedResearchKickoffsRef.current.has(id)
       ) {
         const prevText = (prevNode.text ?? "").trim();
         const nextText = patch.text.trim();
-        if (prevText.length === 0 && nextText.length > 0) {
-          fireResearchKickoff(
-            id,
-            canvasRef,
-            prevNode.x,
-            prevNode.y,
-            nextText,
-          );
+        if (nextText.length > 0 && nextText !== prevText) {
+          firedResearchKickoffsRef.current.add(id);
+          fireResearchKickoff(nextText);
         }
       }
     },
