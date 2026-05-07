@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthOrApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 import { updateFeature, deleteFeature } from "@/services/roadmap";
-import { notifyFeatureReassignmentRefresh } from "@/services/roadmap/feature-canvas-notify";
+import {
+  notifyFeatureReassignmentRefresh,
+  notifyFeatureContentRefresh,
+} from "@/services/roadmap/feature-canvas-notify";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { TaskStatus } from "@prisma/client";
@@ -308,6 +311,15 @@ export async function PATCH(
         );
       } catch (pusherError) {
         console.error("Failed to broadcast feature title update:", pusherError);
+      }
+
+      // The org canvas projects feature cards with `text = Feature.title`,
+      // so a rename needs a CANVAS_UPDATED fan-out on every canvas the
+      // feature renders on (workspace for loose, initiative for anchored,
+      // root for the rollup). Skip when anchors also changed — the
+      // reassignment fan-out below is a strict superset.
+      if (body.milestoneId === undefined && body.initiativeId === undefined) {
+        void notifyFeatureContentRefresh(featureId, "feature-title-renamed");
       }
     }
 

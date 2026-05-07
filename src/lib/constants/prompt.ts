@@ -115,27 +115,42 @@ function buildMemberRoster(workspaces: WorkspaceConfig[]): string {
 
 // Multi-workspace system prompt
 export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[]): string {
-  // Each workspace surfaces three identifiers the agent might need:
+  // Surface only the identifiers the agent needs to *speak* about and
+  // *call tools* with:
   //   - `name`: how the user refers to it in chat ("Graph & Swarm")
-  //   - `slug`: URL + tool-prefix identifier ("graph-swarm")
-  //   - `id`:   cuid required by org-scoped tools that take a
-  //             `workspaceId` argument (e.g. propose_feature)
-  // Listing all three up front prevents the agent from going on
-  // discovery round-trips when the user names a workspace casually.
+  //   - `slug`: tool-prefix and the only identifier any tool input
+  //             takes (e.g. `propose_feature` requires `workspaceSlug`,
+  //             not a cuid).
+  // We deliberately do NOT list workspace cuids here. They're an
+  // implementation detail; surfacing them encourages the agent to
+  // echo opaque ids back to the user ("the workspace id is
+  // cmh4vrcj7..."). Tools resolve slug → id internally.
   const workspaceList = workspaces
     .map((ws) => {
       const repos = ws.repoUrls.join(", ");
       const desc = ws.description ? ` — ${ws.description}` : "";
-      return `- **${ws.name}** (slug: \`${ws.slug}\`, id: \`${ws.workspaceId}\`)${desc}: ${repos}`;
+      return `- **${ws.name}** (slug: \`${ws.slug}\`)${desc}: ${repos}`;
     })
     .join("\n");
 
   const memberRoster = buildMemberRoster(workspaces);
 
   return `
-You are a source code learning assistant with access to multiple codebases. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand — a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
+You are a source code learning assistant with access to multiple codebases. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone.
 
-Try to match the tone of the user. If the question is highly technical (mentioning specific things in the code), then you can answer with more technical language and examples (or function names, endpoints names, etc). But if the user prompt is not technical, then you should answer in clear, plain language.
+## Reply style — read this first
+
+**Be brief.** One short paragraph or a tight bullet list. Don't explain what you're about to do; just do it and report the result.
+
+**Don't narrate tool calls.** Skip phrases like "Let me check…", "Let me first look at…", "Now I'll…", "Let me gather information about…". The user doesn't see your tool calls and doesn't need a play-by-play. Just call the tools silently and answer.
+
+**No filler openers.** Don't start replies with "Perfect!", "Great question!", "Sure!", "Of course!", or similar. Get straight to the answer.
+
+**Never echo internal ids to the user.** Cuids (e.g. \`cmh4vrcj70001id04idolu9br\`) are an implementation detail. Refer to workspaces, initiatives, features, and milestones by their **name** in your replies — never their id, slug, or ref. The user sees names, not ids; ids in your reply look like noise.
+
+**Match the user's tone.** Highly technical question → technical answer (with function/endpoint names where useful). Casual question → plain language. Don't over-explain.
+
+**No deep dives unless asked.** Lengthy explanations are a failure mode, not a feature.
 
 ## Available Workspaces & Repositories
 ${workspaceList}
@@ -523,22 +538,25 @@ function getCanvasScopeHint(scope?: CanvasScopeHint): string {
   // `read_canvas` round-trip and — more importantly — keeps it from
   // guessing the wrong workspace when proposing features under this
   // initiative. Mirrors the human `CreateFeatureCanvasDialog`'s
-  // `fetchLinkedWorkspaceIds` heuristic.
+  // `fetchLinkedWorkspaceIds` heuristic. We surface slug (for tool
+  // calls) + name (for replies) and deliberately NOT the cuid — the
+  // tool takes `workspaceSlug`, and exposing the id encourages the
+  // agent to echo it.
   const linked = scope.linkedWorkspaces ?? [];
   if (ref.startsWith("initiative:") && linked.length > 0) {
     if (linked.length === 1) {
       const w = linked[0];
       lines.push(
         "",
-        `This initiative is linked on the org root canvas to workspace **${w.name}** (slug \`${w.slug}\`, id \`${w.id}\`). When proposing features under this initiative (\`propose_feature\` with this \`initiativeId\`), use \`workspaceId: "${w.id}"\` — do NOT pick a different workspace just because it appears in the workspace list. The user expects features they ask for "on this canvas" to be filed under the workspace they've drawn an edge to.`,
+        `This initiative is linked on the org root canvas to workspace **${w.name}** (slug \`${w.slug}\`). When proposing features under this initiative (\`propose_feature\`), use \`workspaceSlug: "${w.slug}"\`. Do NOT pick a different workspace; the user expects features they ask for "on this canvas" to be filed under the workspace they've drawn an edge to.`,
       );
     } else {
       const list = linked
-        .map((w) => `**${w.name}** (slug \`${w.slug}\`, id \`${w.id}\`)`)
+        .map((w) => `**${w.name}** (slug \`${w.slug}\`)`)
         .join(", ");
       lines.push(
         "",
-        `This initiative is linked on the org root canvas to multiple workspaces: ${list}. When proposing features under this initiative, pick \`workspaceId\` from this set. If it isn't obvious which one the user intends, ask them before calling \`propose_feature\` — do NOT silently pick an unlinked workspace.`,
+        `This initiative is linked on the org root canvas to multiple workspaces: ${list}. When proposing features under this initiative, pick \`workspaceSlug\` from this set. If it isn't obvious which one the user intends, ask them before calling \`propose_feature\` — do NOT silently pick an unlinked workspace.`,
       );
     }
   }
