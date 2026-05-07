@@ -25,6 +25,7 @@
  * assistant message's `approvalResult` field) or an error string the
  * route renders as the assistant text.
  */
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
   notifyCanvasUpdated,
@@ -39,10 +40,12 @@ import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
+  PROPOSE_MILESTONE_TOOL,
   type ApprovalIntent,
   type ApprovalResult,
   type FeatureProposalPayload,
   type InitiativeProposalPayload,
+  type MilestoneProposalPayload,
   type ProposalOutput,
   type RejectionIntent,
 } from "./types";
@@ -91,7 +94,8 @@ function findProposal(
     for (const tc of msg.toolCalls) {
       if (
         tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
-        tc.toolName !== PROPOSE_FEATURE_TOOL
+        tc.toolName !== PROPOSE_FEATURE_TOOL &&
+        tc.toolName !== PROPOSE_MILESTONE_TOOL
       )
         continue;
       const out = tc.output;
@@ -231,6 +235,13 @@ export async function handleApproval(
 
   if (proposal.kind === "initiative") {
     return approveInitiative({
+      orgId,
+      proposal,
+      intent,
+    });
+  }
+  if (proposal.kind === "milestone") {
+    return approveMilestone({
       orgId,
       proposal,
       intent,
@@ -541,6 +552,258 @@ async function approveFeature(args: {
       status: 500,
     };
   }
+}
+
+// ── Approve: milestone ──────────────────────────────────────────────
+//
+// Creates the Milestone row + PATCHes feature.milestoneId for each
+// `featureIds[i]` in the same transaction. `sequence` is computed as
+// `MAX(sequence) + 1` for the initiative; we retry on `P2002` (unique
+// `(initiativeId, sequence)` index) up to a few times in case a human
+// `+ Milestone` click landed concurrently.
+//
+// Position-overlay write only when the user is currently looking at
+// the parent initiative canvas (the only canvas a milestone projects
+// on). Pusher fan-out: the parent initiative ref + root + per-feature
+// reassignment refresh (covers both old and new milestone refs, the
+// initiative, and the workspace).
+
+const MAX_SEQUENCE_RETRIES = 3;
+
+async function approveMilestone(args: {
+  orgId: string;
+  proposal: Extract<ProposalOutput, { kind: "milestone" }>;
+  intent: ApprovalIntent;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, proposal, intent } = args;
+
+  // Inline-edit overrides. `featureIds` is a full replacement (the
+  // user toggled checkboxes; their post-toggle list is authoritative),
+  // matching how `name` replaces (not merges) in the other arms.
+  const merged: MilestoneProposalPayload = {
+    ...proposal.payload,
+    ...(intent.payload as Partial<MilestoneProposalPayload>),
+  };
+
+  if (!merged.name || !merged.name.trim()) {
+    return { ok: false, error: "Milestone name is required.", status: 400 };
+  }
+  if (!merged.initiativeId) {
+    return {
+      ok: false,
+      error: "Milestone initiativeId is required.",
+      status: 400,
+    };
+  }
+
+  // Re-validate initiative ownership.
+  const initiative = await db.initiative.findFirst({
+    where: { id: merged.initiativeId, orgId },
+    select: { id: true },
+  });
+  if (!initiative) {
+    return {
+      ok: false,
+      error: "Initiative not found in this organization.",
+      status: 404,
+    };
+  }
+
+  // Re-validate every feature in `featureIds`. The user may have
+  // toggled new ids in via inline edit that the propose tool never
+  // saw, OR a feature may have been reassigned/deleted between
+  // propose and approve. Bail if any id fails — partial attach is
+  // worse than no attach.
+  const featureIds = Array.from(new Set(merged.featureIds ?? []));
+  let priorMilestonesByFeatureId = new Map<string, string | null>();
+  let workspaceIdByFeatureId = new Map<string, string>();
+  let initiativeIdByFeatureId = new Map<string, string>();
+  if (featureIds.length > 0) {
+    const features = await db.feature.findMany({
+      where: { id: { in: featureIds }, deleted: false },
+      select: {
+        id: true,
+        initiativeId: true,
+        milestoneId: true,
+        workspaceId: true,
+        workspace: { select: { sourceControlOrgId: true } },
+      },
+    });
+    if (features.length !== featureIds.length) {
+      const found = new Set(features.map((f) => f.id));
+      const missing = featureIds.filter((id) => !found.has(id));
+      return {
+        ok: false,
+        error:
+          "Feature(s) not found or deleted: " + missing.join(", "),
+        status: 404,
+      };
+    }
+    const wrongOrg = features.filter(
+      (f) => f.workspace.sourceControlOrgId !== orgId,
+    );
+    if (wrongOrg.length > 0) {
+      return {
+        ok: false,
+        error:
+          "Feature(s) do not belong to this organization: " +
+          wrongOrg.map((f) => f.id).join(", "),
+        status: 403,
+      };
+    }
+    const wrongInitiative = features.filter(
+      (f) => f.initiativeId !== merged.initiativeId,
+    );
+    if (wrongInitiative.length > 0) {
+      return {
+        ok: false,
+        error:
+          "Feature(s) do not belong to the supplied initiative " +
+          "(a milestone can only own features of its parent " +
+          "initiative): " +
+          wrongInitiative.map((f) => f.id).join(", "),
+        status: 400,
+      };
+    }
+    priorMilestonesByFeatureId = new Map(
+      features.map((f) => [f.id, f.milestoneId]),
+    );
+    workspaceIdByFeatureId = new Map(features.map((f) => [f.id, f.workspaceId]));
+    initiativeIdByFeatureId = new Map(
+      features.map((f) => [f.id, f.initiativeId ?? merged.initiativeId]),
+    );
+  }
+
+  // Transactional create + reassign with sequence retry.
+  let createdMilestoneId: string | null = null;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < MAX_SEQUENCE_RETRIES; attempt++) {
+    try {
+      const { id } = await db.$transaction(async (tx) => {
+        const last = await tx.milestone.findFirst({
+          where: { initiativeId: merged.initiativeId },
+          orderBy: { sequence: "desc" },
+          select: { sequence: true },
+        });
+        const sequence = (last?.sequence ?? -1) + 1;
+
+        const milestone = await tx.milestone.create({
+          data: {
+            initiativeId: merged.initiativeId,
+            name: merged.name.trim(),
+            sequence,
+            ...(merged.description !== undefined && {
+              description: merged.description,
+            }),
+            ...(merged.status !== undefined && { status: merged.status }),
+            ...(merged.dueDate !== undefined && {
+              dueDate: merged.dueDate ? new Date(merged.dueDate) : null,
+            }),
+            ...(merged.assigneeId !== undefined && {
+              assigneeId: merged.assigneeId,
+            }),
+          },
+          select: { id: true },
+        });
+
+        if (featureIds.length > 0) {
+          // Re-assert the initiativeId invariant inside the tx as a
+          // belt-and-suspenders against TOCTOU between the validation
+          // findMany above and this update.
+          await tx.feature.updateMany({
+            where: {
+              id: { in: featureIds },
+              initiativeId: merged.initiativeId,
+              deleted: false,
+            },
+            data: { milestoneId: milestone.id },
+          });
+        }
+
+        return { id: milestone.id };
+      });
+      createdMilestoneId = id;
+      break;
+    } catch (e) {
+      lastError = e;
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2002"
+      ) {
+        // Someone created a milestone in this initiative between our
+        // findFirst and create. Retry — the next iteration will read
+        // a higher MAX(sequence).
+        continue;
+      }
+      // Non-sequence error — bail.
+      break;
+    }
+  }
+
+  if (!createdMilestoneId) {
+    console.error("[handleApproval] milestone create failed:", lastError);
+    return {
+      ok: false,
+      error:
+        lastError instanceof Error
+          ? lastError.message
+          : "Failed to create milestone.",
+      status: 500,
+    };
+  }
+
+  // Place on the user's current canvas only if it matches the
+  // milestone's parent-initiative canvas (the sole canvas a milestone
+  // projects on — milestones aren't drillable, see CANVAS.md).
+  const landedOn = `initiative:${merged.initiativeId}`;
+  const liveId = `milestone:${createdMilestoneId}`;
+  if (
+    intent.currentRef !== undefined &&
+    intent.currentRef === landedOn &&
+    intent.viewport
+  ) {
+    try {
+      await setLivePosition(orgId, landedOn, liveId, intent.viewport);
+    } catch (e) {
+      console.error("[handleApproval] setLivePosition (milestone) failed:", e);
+    }
+  }
+
+  const landedOnName = await resolveLandedOnName(orgId, landedOn);
+
+  // Fan out CANVAS_UPDATED. Two emits for the milestone itself
+  // (initiative canvas + root rollup), plus one feature-reassign
+  // refresh per attached feature. The reassign helper unions
+  // before+after refs so it covers the prior milestone (if any) too.
+  void notifyCanvasUpdated(orgId, landedOn, "milestone-created", {
+    initiativeId: merged.initiativeId,
+    milestoneId: createdMilestoneId,
+    proposalId: proposal.proposalId,
+  });
+  void notifyCanvasUpdated(orgId, ROOT_REF, "milestone-created", {
+    initiativeId: merged.initiativeId,
+    milestoneId: createdMilestoneId,
+    proposalId: proposal.proposalId,
+  });
+  for (const featureId of featureIds) {
+    void notifyFeatureReassignmentRefresh(featureId, {
+      milestoneId: priorMilestonesByFeatureId.get(featureId) ?? null,
+      initiativeId: initiativeIdByFeatureId.get(featureId) ?? null,
+      workspaceId: workspaceIdByFeatureId.get(featureId) ?? "",
+    });
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "milestone",
+      createdEntityId: createdMilestoneId,
+      landedOn,
+      ...(landedOnName && { landedOnName }),
+    },
+  };
 }
 
 // ─── Reject ───────────────────────────────────────────────────────────

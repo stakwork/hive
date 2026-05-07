@@ -5,11 +5,13 @@ import { Check, X, ExternalLink, Loader2, Lightbulb } from "lucide-react";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
+  PROPOSE_MILESTONE_TOOL,
   getProposalStatus,
   type ApprovalIntent,
   type ProposalOutput,
   type FeatureProposalPayload,
   type InitiativeProposalPayload,
+  type MilestoneProposalPayload,
 } from "@/lib/proposals/types";
 import {
   useCanvasChatStore,
@@ -79,12 +81,31 @@ export function ProposalCard({
   // name. Anything more invasive lives behind the future "edit" UI
   // — the v1 contract is "the agent should propose well; the user's
   // job is to accept / decline / lightly tweak."
+  // Milestone proposals additionally expose a feature checklist (see
+  // below); checked ids ride along on the approval intent's
+  // `featureIds` override.
   const initialTitle =
     proposal.kind === "initiative"
       ? proposal.payload.name
-      : proposal.payload.title;
+      : proposal.kind === "milestone"
+        ? proposal.payload.name
+        : proposal.payload.title;
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Milestone-only: which features are currently checked for attach.
+  // Initialized from `proposal.payload.featureIds` (the agent's
+  // suggestion). The user can uncheck/re-check before approving;
+  // the post-toggle list goes into `intent.payload.featureIds` as a
+  // full replacement (matching how `name` replaces, not merges).
+  const initialFeatureIds = useMemo(
+    () =>
+      proposal.kind === "milestone" ? proposal.payload.featureIds : [],
+    [proposal],
+  );
+  const [checkedFeatureIds, setCheckedFeatureIds] = useState<string[]>(
+    initialFeatureIds,
+  );
 
   const isPending = status.status === "pending";
   const isInFlight = status.status === "pending-in-flight";
@@ -93,12 +114,36 @@ export function ProposalCard({
 
   const handleApprove = async () => {
     if (!activeId || !isPending) return;
-    const payload =
-      editedTitle !== initialTitle
-        ? proposal.kind === "initiative"
-          ? ({ name: editedTitle } as Partial<InitiativeProposalPayload>)
-          : ({ title: editedTitle } as Partial<FeatureProposalPayload>)
-        : undefined;
+
+    // Build the payload override. We only forward fields the user
+    // actually changed; an unchanged title or unchanged feature list
+    // is dropped so the original proposal payload is used verbatim.
+    let payload:
+      | Partial<InitiativeProposalPayload>
+      | Partial<FeatureProposalPayload>
+      | Partial<MilestoneProposalPayload>
+      | undefined;
+
+    if (proposal.kind === "initiative") {
+      if (editedTitle !== initialTitle) {
+        payload = { name: editedTitle } as Partial<InitiativeProposalPayload>;
+      }
+    } else if (proposal.kind === "feature") {
+      if (editedTitle !== initialTitle) {
+        payload = { title: editedTitle } as Partial<FeatureProposalPayload>;
+      }
+    } else {
+      const titleChanged = editedTitle !== initialTitle;
+      const featuresChanged =
+        checkedFeatureIds.length !== initialFeatureIds.length ||
+        checkedFeatureIds.some((id, i) => id !== initialFeatureIds[i]);
+      if (titleChanged || featuresChanged) {
+        payload = {
+          ...(titleChanged && { name: editedTitle }),
+          ...(featuresChanged && { featureIds: checkedFeatureIds }),
+        } as Partial<MilestoneProposalPayload>;
+      }
+    }
 
     const intent: ApprovalIntent = {
       proposalId: proposal.proposalId,
@@ -197,6 +242,20 @@ export function ProposalCard({
           {proposal.kind === "feature" && (
             <FeatureMeta payload={proposal.payload} />
           )}
+          {proposal.kind === "milestone" && (
+            <MilestoneMeta
+              proposal={proposal}
+              checkedIds={checkedFeatureIds}
+              onToggle={(id) =>
+                setCheckedFeatureIds((prev) =>
+                  prev.includes(id)
+                    ? prev.filter((x) => x !== id)
+                    : [...prev, id],
+                )
+              }
+              isPending={isPending}
+            />
+          )}
           {proposal.rationale && (
             <div className="mt-1 text-xs text-muted-foreground italic">
               {proposal.rationale}
@@ -256,6 +315,101 @@ export function ProposalCard({
   );
 }
 
+/**
+ * Milestone proposal body: small subtext (initiative parent + due
+ * date) and the feature checklist. Each row shows a feature title
+ * plus a tag — `(unlinked)` for currently-loose features (the
+ * default-checked, recommended bucket) and `(in <other> ↗)` for
+ * features currently attached to a different milestone of the same
+ * initiative (default-unchecked; checking moves them).
+ *
+ * Reads `featureMeta` directly off the proposal — server-resolved at
+ * proposal time, so no fetch on render and the chat transcript
+ * stays self-describing across reloads.
+ */
+function MilestoneMeta({
+  proposal,
+  checkedIds,
+  onToggle,
+  isPending,
+}: {
+  proposal: Extract<ProposalOutput, { kind: "milestone" }>;
+  checkedIds: string[];
+  onToggle: (featureId: string) => void;
+  isPending: boolean;
+}) {
+  const { payload, featureMeta } = proposal;
+  const subtextParts: string[] = [];
+  subtextParts.push(`under initiative ${shortId(payload.initiativeId)}`);
+  if (payload.dueDate) {
+    const d = new Date(payload.dueDate);
+    if (!Number.isNaN(d.getTime())) {
+      subtextParts.push(
+        `due ${d.toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        })}`,
+      );
+    }
+  }
+
+  // Flag the "moves a feature out of another milestone" case so the
+  // user knows what they're approving. Counted off the post-toggle
+  // checked list so the warning updates as the user toggles rows.
+  const reassignCount = checkedIds.filter((id) => {
+    const meta = featureMeta.find((m) => m.id === id);
+    return meta?.currentMilestoneId != null;
+  }).length;
+
+  return (
+    <div className="mt-0.5">
+      <div className="text-[11px] text-muted-foreground">
+        {subtextParts.join(" · ")}
+      </div>
+      {featureMeta.length > 0 && (
+        <div className="mt-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Features to attach ({checkedIds.length}/{featureMeta.length})
+          </div>
+          <ul className="mt-1 space-y-0.5">
+            {featureMeta.map((m) => {
+              const checked = checkedIds.includes(m.id);
+              const isMove = m.currentMilestoneId != null;
+              return (
+                <li
+                  key={m.id}
+                  className="flex items-baseline gap-1.5 text-xs"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={!isPending}
+                    onChange={() => onToggle(m.id)}
+                    className="mt-0.5 h-3 w-3 flex-shrink-0 cursor-pointer disabled:cursor-default"
+                    aria-label={`Attach feature ${m.title}`}
+                  />
+                  <span className="truncate">{m.title}</span>
+                  <span className="ml-auto flex-shrink-0 text-[10px] text-muted-foreground">
+                    {isMove
+                      ? `in ${m.currentMilestoneName ?? "another milestone"}`
+                      : "unlinked"}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {reassignCount > 0 && (
+            <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+              Will reassign {reassignCount} feature
+              {reassignCount === 1 ? "" : "s"} from another milestone.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FeatureMeta({ payload }: { payload: FeatureProposalPayload }) {
   // Compact secondary line. Keeps card height predictable; full
   // workspace name resolution would require another store lookup,
@@ -303,7 +457,8 @@ export function getProposalsFromMessage(
   for (const tc of message.toolCalls) {
     if (
       tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
-      tc.toolName !== PROPOSE_FEATURE_TOOL
+      tc.toolName !== PROPOSE_FEATURE_TOOL &&
+      tc.toolName !== PROPOSE_MILESTONE_TOOL
     )
       continue;
     const o = tc.output;
