@@ -323,13 +323,17 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               "'Build a tiered pricing page with three plans and a " +
               "comparison table.' Required.",
           ),
-        workspaceId: z
+        workspaceSlug: z
           .string()
           .min(1)
           .describe(
-            "The workspace this feature lives in. Required. Use " +
-              "the per-workspace `<slug>__list_features` tools or the " +
-              "`read_canvas` tool to discover workspace ids.",
+            "The slug of the workspace this feature lives in (e.g. " +
+              "`hive`, `stakgraph`). Required. Use the slug shown in " +
+              "the **Available Workspaces** list at the top of the " +
+              "system prompt — never an opaque id. When the user is " +
+              "on an initiative sub-canvas, the system prompt's " +
+              "`Current canvas scope` section names the slug to use; " +
+              "follow it.",
           ),
         initiativeId: z
           .string()
@@ -361,11 +365,14 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
       }),
       execute: async (input): Promise<ProposalOutput | { error: string }> => {
         try {
-          // Validate workspace ↔ org ownership. Same pattern as
-          // assign_feature_to_initiative above.
+          // Resolve slug → cuid + validate workspace ↔ org ownership.
+          // The agent works in slugs (human-readable, surfaced in the
+          // prompt and in tool prefixes); the DB and stored proposal
+          // payload work in cuids. Resolution lives here so the agent
+          // never needs to see or echo a cuid for a workspace.
           const workspace = await db.workspace.findFirst({
             where: {
-              id: input.workspaceId,
+              slug: input.workspaceSlug,
               sourceControlOrgId: orgId,
               deleted: false,
             },
@@ -374,9 +381,10 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           if (!workspace) {
             return {
               error:
-                "Workspace not found in this organization. Pick a workspace from this org.",
+                "Workspace slug not found in this organization. Pick a slug from the **Available Workspaces** list at the top of your system prompt.",
             };
           }
+          const resolvedWorkspaceId = workspace.id;
 
           // If initiativeId is supplied, confirm it lives under this
           // org. Milestones get validated transitively (via the
@@ -434,7 +442,10 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               title: input.title,
               ...(input.description && { description: input.description }),
               initialMessage: input.initialMessage,
-              workspaceId: input.workspaceId,
+              // Stored payload uses the cuid (downstream
+              // `createFeature` and the approval handler expect an
+              // id). The agent only sees / sends slugs.
+              workspaceId: resolvedWorkspaceId,
               ...(input.initiativeId && {
                 initiativeId: input.initiativeId,
               }),

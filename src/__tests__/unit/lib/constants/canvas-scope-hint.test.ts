@@ -157,4 +157,137 @@ describe("canvas scope hint in system prompt", () => {
     // No name-based instruction when there's no name.
     expect(sys).not.toContain('use the name "');
   });
+
+  // ─── Linked-workspace hint (initiative-scoped) ─────────────────────────────
+  // The agent picks `workspaceId` for `propose_feature` itself; without
+  // a DB-level Initiative→Workspace FK, only the root canvas's
+  // `ws ↔ initiative` edge tells us which workspace a feature should
+  // belong to. These tests lock the prompt-side surfacing of that hint.
+
+  it("surfaces a single linked workspace as a strong slug directive (no cuid)", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      {
+        currentCanvasRef: "initiative:abc",
+        linkedWorkspaces: [
+          { id: "ws-hive", slug: "hive", name: "Hive" },
+        ],
+      },
+    );
+    const sys = systemContent(messages);
+    expect(sys).toContain("**Hive**");
+    expect(sys).toContain("slug `hive`");
+    expect(sys).toContain('workspaceSlug: "hive"');
+    expect(sys).toContain("propose_feature");
+    // The id must not leak into the prompt — that's the failure mode
+    // we're protecting against. Tools resolve slug → id internally.
+    expect(sys).not.toContain("ws-hive");
+    expect(sys).not.toContain("workspaceId:");
+  });
+
+  it("surfaces multiple linked workspaces as a list with an ask-the-user nudge", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      {
+        currentCanvasRef: "initiative:abc",
+        linkedWorkspaces: [
+          { id: "ws-hive", slug: "hive", name: "Hive" },
+          { id: "ws-sg", slug: "stakgraph", name: "Stakgraph" },
+        ],
+      },
+    );
+    const sys = systemContent(messages);
+    expect(sys).toContain("**Hive**");
+    expect(sys).toContain("**Stakgraph**");
+    expect(sys).toContain("ask them before calling `propose_feature`");
+    // No cuids in the multi-linked branch either.
+    expect(sys).not.toContain("ws-hive");
+    expect(sys).not.toContain("ws-sg");
+  });
+
+  it("does NOT surface the linked-workspace hint outside initiative scopes", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      {
+        currentCanvasRef: "ws:zzz",
+        // Non-initiative scope — even if linkedWorkspaces is set
+        // somehow, the prompt branch should not fire.
+        linkedWorkspaces: [
+          { id: "ws-hive", slug: "hive", name: "Hive" },
+        ],
+      },
+    );
+    const sys = systemContent(messages);
+    expect(sys).not.toContain("linked on the org root canvas");
+    expect(sys).not.toContain('workspaceSlug: "hive"');
+  });
+
+  it("omits the hint when linkedWorkspaces is empty/undefined on an initiative scope", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      { currentCanvasRef: "initiative:abc" },
+    );
+    const sys = systemContent(messages);
+    // Existing behaviour preserved — no linked-workspace section.
+    expect(sys).not.toContain("linked on the org root canvas");
+  });
+});
+
+// ─── Brevity / no-id-leak rules in the system prompt ─────────────────────────
+// These rules govern *how* the agent talks to the user. They sit at the
+// top of the prompt so they don't get buried under the tool docs.
+
+describe("reply style + no-id-leak rules", () => {
+  it("includes explicit no-narration / no-filler / no-id-leak rules near the top", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      { currentCanvasRef: "" },
+    );
+    const sys = systemContent(messages);
+    // Section header.
+    expect(sys).toContain("Reply style");
+    // No tool-call play-by-play.
+    expect(sys.toLowerCase()).toContain("don't narrate tool calls");
+    // No filler openers like "Perfect!" or "Let me check".
+    expect(sys).toMatch(/Perfect!/);
+    expect(sys).toMatch(/Let me check/);
+    // No echoing internal ids.
+    expect(sys).toMatch(/never echo internal ids/i);
+  });
+
+  it("does NOT list the cuid `id` for any workspace in the upfront list", () => {
+    const messages = getMultiWorkspacePrefixMessages(
+      [makeWs("alpha"), makeWs("beta")],
+      { alpha: [], beta: [] },
+      [],
+      "org-1",
+      { currentCanvasRef: "" },
+    );
+    const sys = systemContent(messages);
+    // The mock workspaces have id `ws-alpha` / `ws-beta`. Those must
+    // not appear anywhere in the prompt — the agent only ever needs
+    // the slug (tools resolve slug → id internally).
+    expect(sys).not.toContain("ws-alpha");
+    expect(sys).not.toContain("ws-beta");
+    // Slug should still be there.
+    expect(sys).toContain("slug: `alpha`");
+    expect(sys).toContain("slug: `beta`");
+    // No "id: `…`" annotation in the workspace list line.
+    expect(sys).not.toMatch(/slug: `\w+`, id: `/);
+  });
 });
