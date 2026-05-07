@@ -11,7 +11,10 @@ import {
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
-import { buildResearchTools } from "@/lib/ai/researchTools";
+import {
+  buildResearchTools,
+  type CapturedSearchResult,
+} from "@/lib/ai/researchTools";
 import { validateUserBelongsToOrg } from "@/services/workspace";
 import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
@@ -80,6 +83,58 @@ function extractConceptIdsFromStep(contents: unknown): string[] {
     }
   }
   return conceptIds;
+}
+
+/**
+ * Walk step content for `web_search` tool-result parts and append
+ * each result `{ url, title }` into `target` IN ORDER. Anthropic's
+ * `<cite index="N-M">` tags reference this flat list 1-indexed, so
+ * preserving the order across all `web_search` calls in a turn is
+ * load-bearing.
+ *
+ * The shape of `webSearch` results varies slightly across AI SDK
+ * versions; we accept both `result: SearchResult[]` (some adapters)
+ * and `output: SearchResult[]` (others), and we tolerate any
+ * non-array output silently.
+ */
+function captureWebSearchResultsFromStep(
+  contents: unknown,
+  target: CapturedSearchResult[],
+): void {
+  if (!Array.isArray(contents)) return;
+  for (const content of contents) {
+    if (content?.type !== "tool-result") continue;
+    const toolName: string = content.toolName || "";
+    if (toolName !== "web_search") continue;
+    // The result body lands on different fields depending on the
+    // AI SDK adapter. Try both.
+    const body = content.output ?? content.result ?? null;
+    const results = Array.isArray(body) ? body : null;
+    if (!results) {
+      console.log(
+        `[ask/quick] web_search tool-result had non-array body; skipping`,
+        { keys: body && typeof body === "object" ? Object.keys(body) : typeof body },
+      );
+      continue;
+    }
+    let added = 0;
+    for (const r of results) {
+      if (
+        r &&
+        typeof r === "object" &&
+        typeof (r as { url?: unknown }).url === "string"
+      ) {
+        target.push({
+          url: (r as CapturedSearchResult).url,
+          title: (r as CapturedSearchResult).title,
+        });
+        added++;
+      }
+    }
+    console.log(
+      `[ask/quick] captured ${added} web_search results from this step (total now ${target.length})`,
+    );
+  }
 }
 
 /**
@@ -298,6 +353,13 @@ export async function POST(request: NextRequest) {
     let features: Record<string, unknown>[];
     let primarySwarmUrl: string;
     let primarySwarmApiKey: string;
+    // Per-request Anthropic `web_search` capture, populated by
+    // `streamText`'s `onStepFinish` callback as search calls return.
+    // The `update_research` tool closes over this array (when
+    // `buildResearchTools` is built below) so it can linkify
+    // `<cite index="N-M">` tags using the captured URLs in stream
+    // order. Empty when the org-scoped tool branch isn't built.
+    let capturedWebSearchResults: CapturedSearchResult[] = [];
 
     if (isMultiWorkspace) {
       // Multi-workspace mode is auth-only (rejected for public viewers above).
@@ -319,13 +381,23 @@ export async function POST(request: NextRequest) {
         if (!orgBelongsToCaller) {
           throw forbiddenError("Access denied for the specified organization");
         }
+        // Per-request capture of Anthropic web_search results, in
+        // stream order. Populated by `onStepFinish` below; consumed
+        // by `update_research`'s execute closure to linkify
+        // `<cite index="N-M">` tags. Lives in this scope so each
+        // request gets its own array \u2014 no cross-request bleed.
+        const requestWebSearchResults: CapturedSearchResult[] = [];
         tools = {
           ...tools,
           ...buildConnectionTools(orgId, userId!),
           ...buildCanvasTools(orgId),
           ...buildInitiativeTools(orgId, userId!),
-          ...buildResearchTools(orgId, userId!),
+          ...buildResearchTools(orgId, userId!, requestWebSearchResults),
         };
+        // Stash on a route-local var so `onStepFinish` can append to
+        // it without re-introducing the `tools` closure complexity.
+        // The `streamText` block below is in the same lexical scope.
+        capturedWebSearchResults = requestWebSearchResults;
       }
 
       const conceptsByWorkspace = await fetchConceptsForWorkspaces(workspaceConfigs);
@@ -418,6 +490,11 @@ export async function POST(request: NextRequest) {
           const conceptIds = extractConceptIdsFromStep(sf.content);
           conceptIds.forEach((id) => learnedConceptIds.add(id));
           processStep(sf.content, primarySlug, features);
+          // Stash any web_search tool results captured this step so
+          // `update_research`'s closure can linkify `<cite>` tags.
+          // No-op when the org-tool branch wasn't built (the array
+          // is empty + nothing references it from a tool execute).
+          captureWebSearchResultsFromStep(sf.content, capturedWebSearchResults);
         },
         onFinish: async ({ usage }) => {
           // Persist the turn's token usage to the conversation row so
