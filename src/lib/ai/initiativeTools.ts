@@ -3,16 +3,20 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { updateFeature } from "@/services/roadmap";
 import { notifyFeatureReassignmentRefresh } from "@/services/roadmap/feature-canvas-notify";
-import type { ProposalOutput } from "@/lib/proposals/types";
+import type {
+  MilestoneFeatureMeta,
+  ProposalOutput,
+} from "@/lib/proposals/types";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
+  PROPOSE_MILESTONE_TOOL,
 } from "@/lib/proposals/types";
 
 /**
  * Tools for the org canvas chat agent's roadmap surface.
  *
- * Three tools:
+ * Four tools:
  *   - `assign_feature_to_initiative` — *organize* existing features
  *     under an existing initiative/milestone. Mutates the DB
  *     immediately. Validates org ownership.
@@ -23,6 +27,13 @@ import {
  *   - `propose_feature` — same shape, for features. Validates
  *     workspace/initiative/milestone ownership at proposal time so
  *     the agent doesn't need a re-validation round-trip on approval.
+ *   - `propose_milestone` — same shape, for milestones, with one
+ *     extra trick: a milestone proposal can carry a list of
+ *     `featureIds` to attach on approval. Every featureId must
+ *     already belong to the proposed `initiativeId`; the propose
+ *     tool also resolves `featureMeta` (titles + current-milestone
+ *     names) so the card's checklist renders without a fetch. See
+ *     `docs/plans/propose-milestone.md`.
  *
  * The propose tools are deliberately non-creating: the human-only
  * invariant (CANVAS.md "agent does NOT create initiatives or
@@ -438,6 +449,200 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           console.error("[initiativeTools.propose_feature] error:", e);
           const message =
             e instanceof Error ? e.message : "Failed to propose feature";
+          return { error: message };
+        }
+      },
+    }),
+
+    // ─── propose_milestone ───────────────────────────────────────────
+    // Emit a structured Milestone proposal that can additionally carry
+    // a list of features to attach on approval. No DB write here —
+    // approval-time creates the row + PATCHes feature.milestoneId in
+    // a transaction. See `docs/plans/propose-milestone.md`.
+    //
+    // Validation re-uses the same org-ownership pattern as the other
+    // tools, plus a per-feature invariant: every featureId in the
+    // payload MUST already belong to `initiativeId` (a milestone can
+    // only own features of its parent initiative). We also resolve
+    // `featureMeta` from the same query so the card's checklist
+    // renders without a fetch.
+    [PROPOSE_MILESTONE_TOOL]: tool({
+      description:
+        "Propose a new Milestone under an existing Initiative for " +
+        "this org, optionally attaching a list of existing features " +
+        "on approval. USE THIS whenever the user asks you to add, " +
+        "create, draft, sketch, suggest, brainstorm, spin up, kick " +
+        "off, set up, plan, propose, or start a new milestone — " +
+        "e.g. 'propose a Q3 dashboard milestone', 'draft a launch " +
+        "milestone for billing v2', 'suggest two milestones for the " +
+        "rest of this initiative.' This tool does NOT write to the " +
+        "DB; it emits a proposal card in chat that the user " +
+        "explicitly approves with a click — approval is what creates " +
+        "the milestone (and attaches the listed features). Do NOT " +
+        "decline milestone-creation requests by telling the user to " +
+        "use the '+' button. " +
+        "**BEFORE calling this tool**, you MUST call `read_canvas` " +
+        "with `ref: \"initiative:<id>\"` for the parent initiative, " +
+        "so you can see (a) the existing milestones (don't duplicate) " +
+        "and (b) the features anchored to this initiative — " +
+        "including which already have a milestone (rendered with a " +
+        "synthetic edge to a milestone card) and which are unlinked. " +
+        "**`featureIds` should be biased toward currently-unlinked " +
+        "features** (no synthetic edge to any milestone card). " +
+        "Attaching an already-linked feature is legal but moves it " +
+        "from its current milestone to the new one — only do that " +
+        "if the user has explicitly asked. Empty `featureIds` is " +
+        "fine — the user can attach features later. " +
+        "**Do NOT pick a `sequence`** — the system computes it " +
+        "(`MAX(sequence) + 1` for the initiative).",
+      inputSchema: z.object({
+        proposalId: z
+          .string()
+          .min(1)
+          .describe(
+            "Stable id for this proposal. Generate a fresh short " +
+              "alphanumeric per call.",
+          ),
+        initiativeId: z
+          .string()
+          .min(1)
+          .describe(
+            "Parent initiative id. Required. The milestone will be " +
+              "created under this initiative.",
+          ),
+        name: z.string().min(1).describe("Milestone title."),
+        description: z.string().optional(),
+        status: z
+          .enum(["NOT_STARTED", "IN_PROGRESS", "COMPLETED"])
+          .optional()
+          .describe(
+            "Default NOT_STARTED. Use IN_PROGRESS only if the user " +
+              "has stated work has already begun.",
+          ),
+        dueDate: z.string().optional().describe("ISO date string."),
+        assigneeId: z
+          .string()
+          .optional()
+          .describe(
+            "Optional user id to assign. If unsure, omit — the user " +
+              "can assign at approval time.",
+          ),
+        featureIds: z
+          .array(z.string().min(1))
+          .default([])
+          .describe(
+            "Feature ids to attach to the new milestone on approval. " +
+              "EVERY id MUST already belong to `initiativeId` — a " +
+              "milestone can only own features of its parent " +
+              "initiative. Bias toward currently-unlinked features " +
+              "(no synthetic edge to any milestone card). Empty list " +
+              "is fine. Use `read_canvas(ref: \"initiative:<id>\")` " +
+              "to discover candidates.",
+          ),
+        rationale: z
+          .string()
+          .optional()
+          .describe(
+            "One short sentence of justification rendered on the " +
+              "card. Optional but useful when proposing several at once.",
+          ),
+      }),
+      execute: async (input): Promise<ProposalOutput | { error: string }> => {
+        try {
+          // 1. Validate initiative belongs to this org.
+          const initiative = await db.initiative.findFirst({
+            where: { id: input.initiativeId, orgId },
+            select: { id: true },
+          });
+          if (!initiative) {
+            return {
+              error:
+                "Initiative not found in this organization. Pick an " +
+                "initiative from this org's root canvas.",
+            };
+          }
+
+          // 2. Per-feature validation + featureMeta resolution in
+          //    one round trip. We need title, current milestoneId,
+          //    initiativeId (for the invariant check), and the
+          //    workspace's sourceControlOrgId (for org ownership).
+          //    Skip when featureIds is empty.
+          let featureMeta: MilestoneFeatureMeta[] = [];
+          if (input.featureIds.length > 0) {
+            // De-dupe to be defensive — agent could repeat ids.
+            const uniqueIds = Array.from(new Set(input.featureIds));
+            const features = await db.feature.findMany({
+              where: { id: { in: uniqueIds }, deleted: false },
+              select: {
+                id: true,
+                title: true,
+                initiativeId: true,
+                milestoneId: true,
+                workspace: { select: { sourceControlOrgId: true } },
+                milestone: { select: { name: true } },
+              },
+            });
+            if (features.length !== uniqueIds.length) {
+              const found = new Set(features.map((f) => f.id));
+              const missing = uniqueIds.filter((id) => !found.has(id));
+              return {
+                error:
+                  "Feature(s) not found or deleted: " + missing.join(", "),
+              };
+            }
+            const wrongOrg = features.filter(
+              (f) => f.workspace.sourceControlOrgId !== orgId,
+            );
+            if (wrongOrg.length > 0) {
+              return {
+                error:
+                  "Feature(s) do not belong to this organization: " +
+                  wrongOrg.map((f) => f.id).join(", "),
+              };
+            }
+            const wrongInitiative = features.filter(
+              (f) => f.initiativeId !== input.initiativeId,
+            );
+            if (wrongInitiative.length > 0) {
+              return {
+                error:
+                  "Feature(s) do not belong to the supplied initiative " +
+                  "(a milestone can only own features of its parent " +
+                  "initiative): " +
+                  wrongInitiative.map((f) => f.id).join(", "),
+              };
+            }
+            featureMeta = features.map((f) => ({
+              id: f.id,
+              title: f.title,
+              currentMilestoneId: f.milestoneId,
+              currentMilestoneName: f.milestone?.name ?? null,
+            }));
+          }
+
+          return {
+            kind: "milestone",
+            proposalId: input.proposalId,
+            payload: {
+              initiativeId: input.initiativeId,
+              name: input.name,
+              ...(input.description !== undefined && {
+                description: input.description,
+              }),
+              ...(input.status !== undefined && { status: input.status }),
+              ...(input.dueDate !== undefined && { dueDate: input.dueDate }),
+              ...(input.assigneeId !== undefined && {
+                assigneeId: input.assigneeId,
+              }),
+              featureIds: input.featureIds,
+            },
+            featureMeta,
+            ...(input.rationale && { rationale: input.rationale }),
+          };
+        } catch (e) {
+          console.error("[initiativeTools.propose_milestone] error:", e);
+          const message =
+            e instanceof Error ? e.message : "Failed to propose milestone";
           return { error: message };
         }
       },

@@ -674,7 +674,9 @@ async function runProposalIntent(args: {
         ? `Already created — opening the existing ${r.kind} on ${where}.`
         : r.kind === "initiative"
           ? `Created the initiative on ${where}.`
-          : `Created the feature on ${where}.`;
+          : r.kind === "milestone"
+            ? `Created the milestone on ${where}.`
+            : `Created the feature on ${where}.`;
     }
   } else if (rejectionIntent) {
     const outcome = handleRejection({

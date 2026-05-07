@@ -29,7 +29,7 @@
  * and short-circuits, returning the same `createdEntityId` again.
  */
 
-import type { InitiativeStatus } from "@prisma/client";
+import type { InitiativeStatus, MilestoneStatus } from "@prisma/client";
 
 // ─── Tool input/output shapes ──────────────────────────────────────────
 
@@ -74,6 +74,54 @@ export interface FeatureProposalPayload {
   initialMessage?: string;
 }
 
+/**
+ * Payload the agent fills in for a `Milestone` proposal.
+ *
+ * Milestones belong to a single initiative — `initiativeId` is required.
+ * `sequence` is intentionally absent: the approval handler computes
+ * `MAX(sequence) + 1` for the initiative inside the create transaction
+ * (with a small retry on `P2002` for the `(initiativeId, sequence)`
+ * unique index), so the agent doesn't race with concurrent human
+ * `+ Milestone` clicks.
+ *
+ * `featureIds` is the load-bearing extra: a milestone proposal can
+ * carry a list of features to attach on approval. Every id MUST
+ * already belong to `initiativeId` — the propose tool re-validates
+ * this, the approval handler re-validates again. Empty array is legal
+ * (a milestone with no features yet; the user can attach later via
+ * the canvas drag/edge gestures). The agent should bias the list
+ * toward features whose `milestoneId IS NULL` ("unlinked" features
+ * on the initiative canvas — those without a synthetic edge to any
+ * milestone card). Re-attaching an already-linked feature works but
+ * moves it from its current milestone; the card surfaces this as a
+ * warning so the user approves knowingly.
+ */
+export interface MilestoneProposalPayload {
+  initiativeId: string;
+  name: string;
+  description?: string;
+  status?: MilestoneStatus; // NOT_STARTED | IN_PROGRESS | COMPLETED
+  dueDate?: string; // ISO; the route parses to Date
+  assigneeId?: string;
+  featureIds: string[];
+}
+
+/**
+ * Render-only metadata for the milestone proposal's feature checklist.
+ * Resolved server-side by the propose tool from the same query that
+ * validates `featureIds`, so the card doesn't need a fetch on render
+ * and the chat transcript stays self-describing across reloads.
+ *
+ * The approval handler does NOT trust this — it always re-fetches
+ * before writing.
+ */
+export interface MilestoneFeatureMeta {
+  id: string;
+  title: string;
+  currentMilestoneId: string | null;
+  currentMilestoneName: string | null;
+}
+
 /** What the propose tools return from `execute(...)` on success. */
 export type ProposalOutput =
   | {
@@ -87,6 +135,15 @@ export type ProposalOutput =
       proposalId: string;
       payload: FeatureProposalPayload;
       rationale?: string;
+    }
+  | {
+      kind: "milestone";
+      proposalId: string;
+      payload: MilestoneProposalPayload;
+      rationale?: string;
+      /** Resolved feature titles + current-milestone names for the
+       *  card's checklist. Render-only; the handler re-fetches. */
+      featureMeta: MilestoneFeatureMeta[];
     };
 
 /**
@@ -96,10 +153,12 @@ export type ProposalOutput =
  */
 export const PROPOSE_INITIATIVE_TOOL = "propose_initiative" as const;
 export const PROPOSE_FEATURE_TOOL = "propose_feature" as const;
+export const PROPOSE_MILESTONE_TOOL = "propose_milestone" as const;
 
 export type ProposeToolName =
   | typeof PROPOSE_INITIATIVE_TOOL
-  | typeof PROPOSE_FEATURE_TOOL;
+  | typeof PROPOSE_FEATURE_TOOL
+  | typeof PROPOSE_MILESTONE_TOOL;
 
 // ─── Approval / rejection intent (rides on user messages) ──────────────
 
@@ -123,7 +182,8 @@ export interface ApprovalIntent {
   proposalId: string;
   payload?:
     | Partial<InitiativeProposalPayload>
-    | Partial<FeatureProposalPayload>;
+    | Partial<FeatureProposalPayload>
+    | Partial<MilestoneProposalPayload>;
   currentRef?: string;
   viewport?: { x: number; y: number };
 }
@@ -151,7 +211,7 @@ export interface RejectionIntent {
  */
 export interface ApprovalResult {
   proposalId: string;
-  kind: "initiative" | "feature";
+  kind: "initiative" | "feature" | "milestone";
   createdEntityId: string;
   /** Canvas ref the new node landed on. Empty string = root. */
   landedOn: string;
