@@ -896,23 +896,37 @@ const repositoryCategory: CategoryDefinition = {
 // Click the card \u2192 the right-panel viewer renders the full doc.
 
 function isResearchInFlight(node: CanvasNode): boolean {
-  // Default-on: a brand-new research row may not have `status` yet
-  // (the projector sets it from `content !== null`), so absent =
-  // researching. The `update_research` tool call flips this to "ready"
-  // once content lands.
-  const raw = node.customData?.status;
-  if (raw === "ready") return false;
-  return true;
+  // Authored placeholders (the node the user is currently typing
+  // into, before `save_research` has run) are NEVER in-flight. The
+  // spinner is for live `research:<id>` rows where the agent is
+  // actively researching; an authored node is just a text input.
+  // The id-prefix check is the discriminator: live ids carry
+  // `research:` (set by the projector); authored ids don't.
+  if (!node.id.startsWith("research:")) return false;
+  // For live rows: in-flight until `update_research` lands content.
+  // The projector derives `customData.status` from `content !== null`
+  // (`"researching"` vs `"ready"`); a brand-new row with no status
+  // yet defaults to in-flight so the spinner is on by the time the
+  // node first appears, no flash of empty chrome.
+  return node.customData?.status !== "ready";
 }
 
 /**
  * Inline SVG spinner painted into the topRightOuter slot when a
  * research card is in flight. We can't import `Loader2` here \u2014 the
  * theme runs inside the SVG canvas and lucide-react ships HTML
- * components. The shape is a 270\u00b0 arc with a CSS rotation animation
- * applied via a `<style>` tag local to the spinner group; SVG\u2019s
- * `transform-origin` quirk is sidestepped by translating to the
- * center, rotating, then translating back.
+ * components.
+ *
+ * Implementation: a 270\u00b0 arc rotated via SVG's native
+ * `<animateTransform>`. CSS-based rotation (transform + transform-origin)
+ * does NOT work reliably here \u2014 SVG `<g>`'s transform-origin is
+ * computed in user-space pixels with `transform-box: fill-box` only
+ * in some browsers, and the canvas's own viewport zoom/pan transforms
+ * stack on top, so the spinner ends up orbiting some offscreen point.
+ * `<animateTransform type="rotate">` takes the rotation center
+ * directly in SVG coordinates as `from="0 cx cy" to="360 cx cy"`,
+ * which is the only thing that survives an arbitrarily-transformed
+ * parent.
  */
 function renderResearchingBadge(ctx: SlotContext): React.ReactNode {
   const { region, node } = ctx;
@@ -921,20 +935,10 @@ function renderResearchingBadge(ctx: SlotContext): React.ReactNode {
   const cy = region.y + region.height / 2;
   const r = Math.min(region.width, region.height) / 2 - 2;
   if (r <= 0) return null;
-  // Animate via a unique keyframes name per node so multiple research
-  // cards don't share state. Rotation is applied to a `<g>` whose
-  // transform-origin we set explicitly to the spinner's own center
-  // \u2014 SVG defaults to (0,0) which would orbit the spinner instead.
-  const animName = `researchSpin-${node.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   const arcD = `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - r} ${cy}`;
   return createElement(
     "g",
     { pointerEvents: "none" },
-    createElement(
-      "style",
-      null,
-      `@keyframes ${animName} { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .${animName} { transform-origin: ${cx}px ${cy}px; transform-box: fill-box; animation: ${animName} 1.1s linear infinite; }`,
-    ),
     createElement("circle", {
       cx,
       cy,
@@ -945,13 +949,25 @@ function renderResearchingBadge(ctx: SlotContext): React.ReactNode {
     }),
     createElement(
       "g",
-      { className: animName },
+      null,
       createElement("path", {
         d: arcD,
         fill: "none",
         stroke: ACCENT.research,
         strokeWidth: 1.5,
         strokeLinecap: "round",
+      }),
+      // SVG-native rotation animation. `from`/`to` carry the
+      // rotation angle PLUS the rotation center in SVG coordinates
+      // \u2014 immune to the canvas's outer transforms.
+      createElement("animateTransform", {
+        attributeName: "transform",
+        attributeType: "XML",
+        type: "rotate",
+        from: `0 ${cx} ${cy}`,
+        to: `360 ${cx} ${cy}`,
+        dur: "1.1s",
+        repeatCount: "indefinite",
       }),
     ),
   );
