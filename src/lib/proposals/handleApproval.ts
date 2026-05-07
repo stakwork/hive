@@ -32,6 +32,7 @@ import {
   setLivePosition,
   featureProjectsOn,
   mostSpecificRef,
+  resolvePlacement,
   ROOT_REF,
 } from "@/lib/canvas";
 import { createFeature } from "@/services/roadmap";
@@ -295,8 +296,29 @@ async function approveInitiative(args: {
       select: { id: true },
     });
 
-    // Initiatives only project on root, where the projector
-    // auto-lays them out — no `currentRef` overlay write here.
+    // Initiatives project only on root. If the agent supplied a
+    // resolvable placement hint, land the new card there; otherwise
+    // the projector's auto-layout (initiative row on root) decides.
+    // No fallback to `intent.viewport` here — the human `+` flow
+    // for initiatives goes through the dialog, not through this
+    // approval path.
+    const liveId = `initiative:${created.id}`;
+    const coords = await resolvePlacement(merged.placement, {
+      orgId,
+      targetRef: ROOT_REF,
+      newCategory: "initiative",
+    });
+    if (coords) {
+      try {
+        await setLivePosition(orgId, ROOT_REF, liveId, coords);
+      } catch (e) {
+        console.error(
+          "[handleApproval] setLivePosition (initiative) failed:",
+          e,
+        );
+      }
+    }
+
     void notifyCanvasUpdated(orgId, ROOT_REF, "initiative-created", {
       initiativeId: created.id,
       proposalId: proposal.proposalId,
@@ -454,11 +476,16 @@ async function approveFeature(args: {
       milestoneId: merged.milestoneId ?? null,
     };
 
-    // Decide where the new node lands. If the user is currently
-    // looking at a canvas where the feature legally projects, land
-    // it there at the requested viewport coords. Otherwise fall
-    // back to the most-specific projection canvas; the projector's
-    // auto-layout handles placement.
+    // Decide where the new node lands. Two questions:
+    //   1. Which canvas? If the user is looking at a canvas where the
+    //      feature legally projects, prefer that — they'll see it
+    //      appear without navigating. Otherwise fall back to the
+    //      most-specific projection canvas.
+    //   2. Where on that canvas? Three-way priority:
+    //        a. Agent's `placement` hint resolves cleanly → use it.
+    //        b. Else, user's click hint (`intent.viewport`) on the
+    //           current canvas → use it (mirrors the human `+` flow).
+    //        c. Else, no overlay → projector auto-layout decides.
     const liveId = `feature:${feature.id}`;
     let landedOn: string;
     if (
@@ -466,18 +493,34 @@ async function approveFeature(args: {
       featureProjectsOn(intent.currentRef, featurePlacementPayload)
     ) {
       landedOn = intent.currentRef;
-      if (intent.viewport) {
-        try {
-          await setLivePosition(orgId, landedOn, liveId, intent.viewport);
-        } catch (e) {
-          // Position-overlay write failures are non-fatal — the
-          // feature still exists, it just lands at the projector's
-          // default. Log and move on.
-          console.error("[handleApproval] setLivePosition failed:", e);
-        }
-      }
     } else {
       landedOn = mostSpecificRef(featurePlacementPayload);
+    }
+
+    // (a) Agent placement first — wins over `intent.viewport` because
+    // the agent has typically read the canvas and picked a deliberate
+    // anchor; the viewport hint is a hardcoded `{40,40}` placeholder
+    // until drag-from-chat lands.
+    let coords = await resolvePlacement(merged.placement, {
+      orgId,
+      targetRef: landedOn,
+      newCategory: "feature",
+    });
+    // (b) Fallback to user's viewport hint, but only when the user is
+    // looking at the canvas the feature actually lands on (matches
+    // the previous behavior for non-placement proposals).
+    if (!coords && intent.currentRef === landedOn && intent.viewport) {
+      coords = intent.viewport;
+    }
+    if (coords) {
+      try {
+        await setLivePosition(orgId, landedOn, liveId, coords);
+      } catch (e) {
+        // Position-overlay write failures are non-fatal — the
+        // feature still exists, it just lands at the projector's
+        // default. Log and move on.
+        console.error("[handleApproval] setLivePosition failed:", e);
+      }
     }
 
     // Look up the human-readable name of the canvas the feature
@@ -752,18 +795,32 @@ async function approveMilestone(args: {
     };
   }
 
-  // Place on the user's current canvas only if it matches the
-  // milestone's parent-initiative canvas (the sole canvas a milestone
-  // projects on — milestones aren't drillable, see CANVAS.md).
+  // Place on the milestone's parent-initiative canvas (the sole
+  // canvas a milestone projects on — milestones aren't drillable,
+  // see CANVAS.md). Three-way priority:
+  //   (a) Agent's `placement` hint resolves cleanly → use it.
+  //   (b) Else, user's click hint (`intent.viewport`) on the parent
+  //       initiative canvas → use it (mirrors the human `+` flow).
+  //   (c) Else, no overlay → projector auto-layout decides (timeline
+  //       row left-to-right by sequence).
   const landedOn = `initiative:${merged.initiativeId}`;
   const liveId = `milestone:${createdMilestoneId}`;
+  let coords = await resolvePlacement(merged.placement, {
+    orgId,
+    targetRef: landedOn,
+    newCategory: "milestone",
+  });
   if (
+    !coords &&
     intent.currentRef !== undefined &&
     intent.currentRef === landedOn &&
     intent.viewport
   ) {
+    coords = intent.viewport;
+  }
+  if (coords) {
     try {
-      await setLivePosition(orgId, landedOn, liveId, intent.viewport);
+      await setLivePosition(orgId, landedOn, liveId, coords);
     } catch (e) {
       console.error("[handleApproval] setLivePosition (milestone) failed:", e);
     }

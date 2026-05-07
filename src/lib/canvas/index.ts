@@ -18,6 +18,8 @@ export type { HiddenLiveEntry } from "./io";
 export { parseScope, isLiveId, ROOT_REF } from "./scope";
 export { featureProjectsOn, mostSpecificRef } from "./feature-projection";
 export type { FeaturePlacementPayload } from "./feature-projection";
+export { resolvePlacement } from "./placement";
+export type { PlacementContext } from "./placement";
 export {
   notifyCanvasUpdated,
   notifyCanvasUpdatedByLogin,

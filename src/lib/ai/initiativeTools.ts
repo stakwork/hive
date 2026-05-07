@@ -7,6 +7,7 @@ import { loadNodeDetail } from "@/services/orgs/nodeDetail";
 import type {
   FeatureProposalMeta,
   MilestoneFeatureMeta,
+  Placement,
   ProposalOutput,
 } from "@/lib/proposals/types";
 import {
@@ -14,6 +15,56 @@ import {
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
 } from "@/lib/proposals/types";
+
+/**
+ * Shared zod schema for the `placement` field on every propose tool.
+ *
+ * The agent never emits raw pixels — it picks a verb plus a live
+ * anchor id it saw in `read_canvas` output. The approval handler
+ * resolves it via `resolvePlacement` in `@/lib/canvas/placement`.
+ *
+ * Validation here is lenient on the anchor id: we accept any
+ * non-empty string after the verb. Stricter validation (anchor
+ * exists on the target canvas) lives in the resolver, where it
+ * naturally falls back to auto-layout instead of failing the
+ * proposal — LLMs hallucinate ids, and a forgiving placement
+ * pipeline beats a brittle one.
+ */
+const placementSchema = z
+  .union([
+    z.literal("auto"),
+    z
+      .string()
+      .regex(/^(near|above|below|left-of|right-of):.+$/, {
+        message:
+          "Placement must be `auto` or `<verb>:<liveId>` where verb is " +
+          "one of near|above|below|left-of|right-of.",
+      }),
+  ])
+  .optional();
+
+/**
+ * Description string reused on every propose tool's `placement` field.
+ * Centralized so the wording stays in lock-step across all three tools
+ * and matches the prompt suffix in `src/lib/constants/prompt.ts`.
+ */
+const PLACEMENT_DESCRIPTION =
+  "Where to place the new card on the canvas. **Required:** pick " +
+  "deliberately based on `read_canvas` output for the canvas this " +
+  "card will land on. " +
+  "Vocabulary: `auto` (let auto-layout pick), " +
+  "`near:<liveId>` / `right-of:<liveId>` (same row, to the right of " +
+  "anchor), `left-of:<liveId>` (same row, to the left), " +
+  "`below:<liveId>` (start a new row beneath anchor), " +
+  "`above:<liveId>` (start a new row above anchor). " +
+  "`<liveId>` is the full prefixed id from `read_canvas` (e.g. " +
+  "`feature:cmoti7…`, `initiative:cmnxk2…`, `ws:cmoz9c…`). " +
+  "Anchor MUST live on the canvas the new card lands on " +
+  "(initiative → root canvas; milestone → its parent initiative " +
+  "canvas; feature → its initiative canvas if anchored, else its " +
+  "workspace canvas). Unresolvable placements (anchor missing, " +
+  "wrong canvas, slot collides) silently fall back to `auto` — so " +
+  "if you're unsure, use `auto` explicitly.";
 
 /**
  * Tools for the org canvas chat agent's roadmap surface.
@@ -311,10 +362,15 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
             "One short sentence of justification rendered on the " +
               "card. Optional but useful when proposing several at once.",
           ),
+        placement: placementSchema.describe(PLACEMENT_DESCRIPTION),
       }),
       execute: async (input): Promise<ProposalOutput | { error: string }> => {
         // No DB writes — propose tools just structure the suggestion.
         // The handler at approval time re-validates and creates the row.
+        // `placement` is passed through verbatim; resolution to (x, y)
+        // happens in `handleApproval` via `resolvePlacement` so the
+        // anchor's live position is read once at the actual create
+        // time, not at propose time (the canvas may have moved).
         return {
           kind: "initiative",
           proposalId: input.proposalId,
@@ -325,6 +381,9 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
             ...(input.assigneeId && { assigneeId: input.assigneeId }),
             ...(input.startDate && { startDate: input.startDate }),
             ...(input.targetDate && { targetDate: input.targetDate }),
+            ...(input.placement && {
+              placement: input.placement as Placement,
+            }),
           },
           ...(input.rationale && { rationale: input.rationale }),
         };
@@ -442,6 +501,7 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               "initiative's id once the parent has been approved.",
           ),
         rationale: z.string().optional(),
+        placement: placementSchema.describe(PLACEMENT_DESCRIPTION),
       }),
       execute: async (input): Promise<ProposalOutput | { error: string }> => {
         try {
@@ -562,6 +622,9 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               ...(input.parentProposalId && {
                 parentProposalId: input.parentProposalId,
               }),
+              ...(input.placement && {
+                placement: input.placement as Placement,
+              }),
             },
             meta,
             ...(input.rationale && { rationale: input.rationale }),
@@ -667,6 +730,7 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
             "One short sentence of justification rendered on the " +
               "card. Optional but useful when proposing several at once.",
           ),
+        placement: placementSchema.describe(PLACEMENT_DESCRIPTION),
       }),
       execute: async (input): Promise<ProposalOutput | { error: string }> => {
         try {
@@ -759,6 +823,9 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
                 assigneeId: input.assigneeId,
               }),
               featureIds: input.featureIds,
+              ...(input.placement && {
+                placement: input.placement as Placement,
+              }),
             },
             featureMeta,
             meta: { initiativeName: initiative.name },
