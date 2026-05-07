@@ -1504,6 +1504,42 @@ export function OrgCanvasBackground({
     [githubLogin],
   );
 
+  /**
+   * Persist a feature title rename to the DB. Same fire-and-forget
+   * shape as `persistMilestoneStatus`: optimistic local update lands
+   * via `applyMutation`, then the PATCH round-trips through the API
+   * route → projector → Pusher CANVAS_UPDATED, which reconciles to
+   * the canonical `Feature.title`. On failure, log and let the next
+   * read snap the card back to the prior title.
+   *
+   * Trim happens server-side too (`updateFeature`), but we trim here
+   * to skip the network call when the user typed only whitespace.
+   */
+  const persistFeatureTitle = useCallback(
+    async (featureId: string, title: string) => {
+      const trimmed = title.trim();
+      if (trimmed.length === 0) return;
+      try {
+        const res = await fetch(`/api/features/${featureId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: trimmed }),
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          console.error(
+            "[OrgCanvasBackground] PATCH feature title failed",
+            res.status,
+            detail,
+          );
+        }
+      } catch (err) {
+        console.error("[OrgCanvasBackground] PATCH feature title threw", err);
+      }
+    },
+    [],
+  );
+
   const handleNodeUpdate = useCallback(
     (id: string, patch: NodeUpdate, canvasRef: string | undefined) => {
       // Snapshot the pre-update node BEFORE we apply the mutation. The
@@ -1545,6 +1581,21 @@ export function OrgCanvasBackground({
         }
       }
 
+      // For feature live nodes: a text edit is a DB title rename, not
+      // a canvas blob change. The splitter drops `text` on live ids
+      // (see `src/lib/canvas/io.ts`), so without this intercept the
+      // user's edit reverts on the next read. Skip when the text
+      // didn't actually change to avoid spurious PATCHes from
+      // re-renders.
+      if (id.startsWith("feature:") && patch.text !== undefined) {
+        const prevText = (prevNode?.text ?? "").trim();
+        const nextText = patch.text.trim();
+        if (nextText.length > 0 && nextText !== prevText) {
+          const featureId = id.slice("feature:".length);
+          void persistFeatureTitle(featureId, nextText);
+        }
+      }
+
       // Research kickoff trigger. When an authored research node's
       // text gets edited for the first time, fire the chat-side
       // kickoff that drives `save_research`. Authored = no
@@ -1574,7 +1625,12 @@ export function OrgCanvasBackground({
         }
       }
     },
-    [applyMutation, fireResearchKickoff, persistMilestoneStatus],
+    [
+      applyMutation,
+      fireResearchKickoff,
+      persistMilestoneStatus,
+      persistFeatureTitle,
+    ],
   );
 
   /**

@@ -105,6 +105,73 @@ export async function notifyFeatureCanvasRefresh(
 }
 
 /**
+ * Fan-out helper for **feature content changes that don't move the
+ * feature between canvases** (e.g. title rename via the canvas card,
+ * board, or REST API). Refreshes every canvas the feature actually
+ * projects on — the workspace canvas (where loose features render)
+ * and the parent initiative canvas (where anchored features render).
+ * Root is included because the initiative-card progress rollups
+ * embed the feature's title-derived label on hover/inspection paths
+ * (cheap to refresh; safer than reasoning about which derived fields
+ * a future projector might surface).
+ *
+ * Differs from `notifyFeatureCanvasRefresh` (which only knows about
+ * the milestone/initiative chain) by also covering the workspace
+ * placement, and from `notifyFeatureReassignmentRefresh` by not
+ * needing a `before` snapshot (no anchor changed).
+ *
+ * Fire-and-forget; errors swallowed.
+ */
+export async function notifyFeatureContentRefresh(
+  featureId: string,
+  action = "feature-content",
+  detail?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const feature = await db.feature.findUnique({
+      where: { id: featureId },
+      select: {
+        initiativeId: true,
+        workspaceId: true,
+        workspace: {
+          select: {
+            sourceControlOrg: { select: { githubLogin: true } },
+          },
+        },
+        milestone: { select: { initiativeId: true } },
+      },
+    });
+    const githubLogin = feature?.workspace?.sourceControlOrg?.githubLogin;
+    if (!githubLogin) return;
+
+    const refs = new Set<string>();
+    refs.add(""); // root
+    refs.add(`ws:${feature.workspaceId}`); // loose features render here
+    if (feature.initiativeId) {
+      refs.add(`initiative:${feature.initiativeId}`);
+    }
+    // Cover the unusual case where initiativeId is null but the
+    // milestone chain points at one (defensive against direct DB
+    // writes that bypass the coherence rule).
+    if (feature.milestone?.initiativeId) {
+      refs.add(`initiative:${feature.milestone.initiativeId}`);
+    }
+
+    await notifyCanvasesUpdatedByLogin(
+      githubLogin,
+      Array.from(refs),
+      action,
+      { featureId, ...(detail ?? {}) },
+    );
+  } catch (e) {
+    console.error(
+      "[feature-canvas-notify] notifyFeatureContentRefresh failed:",
+      e,
+    );
+  }
+}
+
+/**
  * Fan-out helper for **feature reassignment** (canvas drag-and-drop or
  * any other path that changes `milestoneId` / `initiativeId`). Differs
  * from `notifyFeatureCanvasRefresh` in two ways:
