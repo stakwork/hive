@@ -231,6 +231,114 @@ export function buildResearchTools(
       },
     }),
 
+    list_research: tool({
+      description:
+        "List all Research documents in this org, most recently updated " +
+        "first. Returns a compact array of `{ slug, topic, title, " +
+        "summary, status, initiativeId, updatedAt }` — `status` is " +
+        "`\"ready\"` when the markdown writeup has landed, " +
+        "`\"researching\"` while it's still null. Use this when the user " +
+        "asks what research already exists, or when you want to check " +
+        "for a prior writeup before kicking off a new one. Pair with " +
+        "`read_research` to pull the full markdown body for a specific " +
+        "slug.",
+      inputSchema: z.object({
+        initiativeId: z
+          .string()
+          .optional()
+          .describe(
+            "Optional cuid filter. When set, returns only research " +
+              "scoped to that initiative's sub-canvas. Omit for all " +
+              "research in the org (root + every initiative).",
+          ),
+      }),
+      execute: async ({ initiativeId }: { initiativeId?: string }) => {
+        try {
+          const rows = await db.research.findMany({
+            where: { orgId, ...(initiativeId && { initiativeId }) },
+            orderBy: { updatedAt: "desc" },
+            select: {
+              slug: true,
+              topic: true,
+              title: true,
+              summary: true,
+              content: true,
+              initiativeId: true,
+              updatedAt: true,
+            },
+          });
+          return rows.map((r) => ({
+            slug: r.slug,
+            topic: r.topic,
+            title: r.title,
+            summary: r.summary,
+            // Same status derivation as the projector + node-detail
+            // route — keep these in sync if the rule changes.
+            status: r.content !== null ? "ready" : "researching",
+            initiativeId: r.initiativeId,
+            updatedAt: r.updatedAt,
+          }));
+        } catch (e) {
+          console.error("[researchTools] list_research failed:", e);
+          return { error: "Failed to list research." };
+        }
+      },
+    }),
+
+    read_research: tool({
+      description:
+        "Read a Research document's full markdown body by slug. Returns " +
+        "`{ slug, topic, title, summary, content, status, initiativeId, " +
+        "updatedAt }`. Use this when the user asks about a specific " +
+        "existing research doc, when you need to extend or reference " +
+        "prior research in a Connection writeup, or when deciding " +
+        "whether a follow-up `update_research` should rewrite vs. " +
+        "augment. Note: `update_research` is full-replace today — if " +
+        "you want to extend, read first, then send the combined " +
+        "markdown back. Returns `{ error }` if no research exists at " +
+        "this slug; status is `\"researching\"` while content is still " +
+        "null (the agent hasn't finished writing yet).",
+      inputSchema: z.object({
+        slug: z.string().min(1).describe("The slug of the research to read."),
+      }),
+      execute: async ({ slug }: { slug: string }) => {
+        try {
+          const row = await db.research.findUnique({
+            where: { orgId_slug: { orgId, slug } },
+            select: {
+              slug: true,
+              topic: true,
+              title: true,
+              summary: true,
+              content: true,
+              initiativeId: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          });
+          if (!row) {
+            return {
+              error: `No research found with slug "${slug}". Use list_research to see available slugs.`,
+            };
+          }
+          return {
+            slug: row.slug,
+            topic: row.topic,
+            title: row.title,
+            summary: row.summary,
+            content: row.content,
+            status: row.content !== null ? "ready" : "researching",
+            initiativeId: row.initiativeId,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+          };
+        } catch (e) {
+          console.error("[researchTools] read_research failed:", e);
+          return { error: "Failed to read research." };
+        }
+      },
+    }),
+
     update_research: tool({
       description:
         "Update an existing Research document with the markdown writeup. Call this ONCE after web_search has gathered enough information to write the doc. The `content` field replaces the previous content (no streaming/append semantics today \u2014 write the full markdown in one call).\n\n" +
