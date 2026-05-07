@@ -31,6 +31,39 @@
 
 import type { InitiativeStatus, MilestoneStatus } from "@prisma/client";
 
+// ─── Placement vocabulary ─────────────────────────────────────────────
+
+/**
+ * Where the agent wants the new card to land on the canvas.
+ *
+ * The agent never emits pixel coordinates — it picks a verb plus an
+ * anchor (a live id it saw in `read_canvas` output). The approval
+ * handler resolves the verb + anchor into `{ x, y }` via
+ * `resolvePlacement` in `@/lib/canvas/placement` and writes the result
+ * to `Canvas.data.positions[liveId]`.
+ *
+ * Verbs:
+ *   - `auto`        — let the projector's auto-layout pick the slot.
+ *   - `near:<id>`   — same row as anchor, adjacent (alias of `right-of`).
+ *   - `right-of:<id>` — same row, to the right of anchor.
+ *   - `left-of:<id>`  — same row, to the left of anchor.
+ *   - `below:<id>`  — start a new row beneath anchor (anchor's `x`).
+ *   - `above:<id>`  — start a new row above anchor (anchor's `x`).
+ *
+ * Forgiving by design: any unresolvable placement (anchor missing on
+ * the target canvas, slot collides with an existing card, malformed
+ * verb) silently falls back to `auto` and is logged. We do this
+ * because LLMs hallucinate ids and we don't want a layout hint to
+ * fail the whole approval. See `src/lib/canvas/placement.ts`.
+ */
+export type Placement =
+  | "auto"
+  | `near:${string}`
+  | `above:${string}`
+  | `below:${string}`
+  | `left-of:${string}`
+  | `right-of:${string}`;
+
 // ─── Tool input/output shapes ──────────────────────────────────────────
 
 /**
@@ -45,6 +78,8 @@ export interface InitiativeProposalPayload {
   assigneeId?: string;
   startDate?: string; // ISO; the route parses to Date
   targetDate?: string; // ISO
+  /** Layout hint resolved at approval time. See `Placement`. */
+  placement?: Placement;
 }
 
 /**
@@ -72,6 +107,8 @@ export interface FeatureProposalPayload {
    * page; `initialMessage` is the seed prompt for the planning agent.
    */
   initialMessage?: string;
+  /** Layout hint resolved at approval time. See `Placement`. */
+  placement?: Placement;
 }
 
 /**
@@ -104,6 +141,8 @@ export interface MilestoneProposalPayload {
   dueDate?: string; // ISO; the route parses to Date
   assigneeId?: string;
   featureIds: string[];
+  /** Layout hint resolved at approval time. See `Placement`. */
+  placement?: Placement;
 }
 
 /**
