@@ -122,6 +122,45 @@ export interface MilestoneFeatureMeta {
   currentMilestoneName: string | null;
 }
 
+/**
+ * Render-only metadata for a feature proposal. Resolved server-side
+ * by `propose_feature` from the same queries that validate
+ * `workspaceSlug` / `initiativeId` / `milestoneId`, so the proposal
+ * card can render human-readable names ("Hive · Auth Refactor")
+ * instead of opaque cuid suffixes ("ws s9vogz · init ebbk65"). The
+ * chat transcript stays self-describing across reloads — no fetch
+ * on render.
+ *
+ * Names beat ids for any user-facing UI (CANVAS.md gotchas).
+ *
+ * Optional fields: `initiativeName` / `milestoneName` are absent
+ * when the corresponding id was not supplied. Older proposals
+ * (pre-meta) won't carry this object at all; the card falls back
+ * to a cuid-suffix hint in that case.
+ *
+ * The approval handler does NOT trust this — names are resolved
+ * again at create time for `landedOnName`.
+ */
+export interface FeatureProposalMeta {
+  workspaceName: string;
+  workspaceSlug: string;
+  initiativeName?: string;
+  milestoneName?: string;
+}
+
+/**
+ * Render-only metadata for a milestone proposal. Resolved server-side
+ * by `propose_milestone` from the parent-initiative validation query.
+ * Same rationale as `FeatureProposalMeta` — names beat cuid suffixes
+ * for the under-initiative subtext on the card.
+ *
+ * Older proposals won't carry this object; the card falls back to a
+ * cuid-suffix hint.
+ */
+export interface MilestoneProposalMeta {
+  initiativeName: string;
+}
+
 /** What the propose tools return from `execute(...)` on success. */
 export type ProposalOutput =
   | {
@@ -135,6 +174,10 @@ export type ProposalOutput =
       proposalId: string;
       payload: FeatureProposalPayload;
       rationale?: string;
+      /** Resolved workspace / initiative / milestone names for the
+       *  card subtext. Render-only; the handler re-fetches.
+       *  Optional for backward compat with pre-meta proposals. */
+      meta?: FeatureProposalMeta;
     }
   | {
       kind: "milestone";
@@ -144,6 +187,10 @@ export type ProposalOutput =
       /** Resolved feature titles + current-milestone names for the
        *  card's checklist. Render-only; the handler re-fetches. */
       featureMeta: MilestoneFeatureMeta[];
+      /** Resolved parent-initiative name for the card subtext.
+       *  Render-only; optional for backward compat with pre-meta
+       *  proposals. */
+      meta?: MilestoneProposalMeta;
     };
 
 /**

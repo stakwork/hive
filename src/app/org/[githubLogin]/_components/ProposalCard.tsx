@@ -9,6 +9,7 @@ import {
   getProposalStatus,
   type ApprovalIntent,
   type ProposalOutput,
+  type FeatureProposalMeta,
   type FeatureProposalPayload,
   type InitiativeProposalPayload,
   type MilestoneProposalPayload,
@@ -240,7 +241,7 @@ export function ProposalCard({
             </div>
           )}
           {proposal.kind === "feature" && (
-            <FeatureMeta payload={proposal.payload} />
+            <FeatureMeta payload={proposal.payload} meta={proposal.meta} />
           )}
           {proposal.kind === "milestone" && (
             <MilestoneMeta
@@ -338,9 +339,14 @@ function MilestoneMeta({
   onToggle: (featureId: string) => void;
   isPending: boolean;
 }) {
-  const { payload, featureMeta } = proposal;
+  const { payload, featureMeta, meta } = proposal;
   const subtextParts: string[] = [];
-  subtextParts.push(`under initiative ${shortId(payload.initiativeId)}`);
+  // Prefer the server-resolved initiative name; fall back to a cuid
+  // suffix for older proposals that pre-date the `meta` field. Names
+  // beat ids for any user-facing UI (CANVAS.md gotcha).
+  subtextParts.push(
+    `under initiative ${meta?.initiativeName ?? shortId(payload.initiativeId)}`,
+  );
   if (payload.dueDate) {
     const d = new Date(payload.dueDate);
     if (!Number.isNaN(d.getTime())) {
@@ -410,16 +416,36 @@ function MilestoneMeta({
   );
 }
 
-function FeatureMeta({ payload }: { payload: FeatureProposalPayload }) {
-  // Compact secondary line. Keeps card height predictable; full
-  // workspace name resolution would require another store lookup,
-  // so we surface the raw cuid suffix as a stable hint instead.
+function FeatureMeta({
+  payload,
+  meta,
+}: {
+  payload: FeatureProposalPayload;
+  meta?: FeatureProposalMeta;
+}) {
+  // Compact secondary line. Names beat ids for any user-facing UI —
+  // `propose_feature` resolves the workspace / initiative / milestone
+  // names server-side and stores them on `proposal.meta` so this card
+  // renders "Hive · Auth Refactor" instead of "ws s9vogz · init
+  // ebbk65". For older proposals (pre-meta) we fall back to the
+  // raw cuid suffix as a stable hint — those should age out as old
+  // chats roll over.
   const parts: string[] = [];
-  if (payload.workspaceId) parts.push(`ws ${shortId(payload.workspaceId)}`);
-  if (payload.initiativeId)
-    parts.push(`init ${shortId(payload.initiativeId)}`);
-  else if (payload.parentProposalId) parts.push("under proposed initiative");
-  if (payload.milestoneId) parts.push(`milestone ${shortId(payload.milestoneId)}`);
+  if (payload.workspaceId) {
+    parts.push(meta?.workspaceName ?? `ws ${shortId(payload.workspaceId)}`);
+  }
+  if (payload.initiativeId) {
+    parts.push(meta?.initiativeName ?? `init ${shortId(payload.initiativeId)}`);
+  } else if (payload.parentProposalId) {
+    parts.push("under proposed initiative");
+  }
+  if (payload.milestoneId) {
+    parts.push(
+      meta?.milestoneName
+        ? `milestone ${meta.milestoneName}`
+        : `milestone ${shortId(payload.milestoneId)}`,
+    );
+  }
   if (parts.length === 0) return null;
   return (
     <div className="mt-0.5 text-[11px] text-muted-foreground">
