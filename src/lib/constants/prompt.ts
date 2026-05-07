@@ -229,7 +229,8 @@ You **cannot** create Workspaces or Repositories — for those, tell the user to
 
 ### Tools
 
-- \`read_canvas\` — Returns \`{ nodes, edges }\` for a canvas (root or any sub-canvas via \`ref\`). Call this FIRST before any modification so you can preserve everything the user has already drawn.
+- \`read_canvas\` — Returns \`{ nodes, edges }\` for a canvas (root or any sub-canvas via \`ref\`). Call this FIRST before any modification so you can preserve everything the user has already drawn. Edges may carry \`customData\` — most importantly \`customData.connectionId\` (a slug pointing to a Connection doc that "lives between" the edge's endpoints). Use that slug with \`read_connection\` to inspect the doc.
+- \`read_initiative\` / \`read_milestone\` — Pull full detail (description, status, dates, assignee, counts) for a single live node by id. \`read_canvas\` only returns the projector's render-time shape (name + footer counts), NOT the \`description\` field. Reach for these whenever the user asks about an initiative or milestone's intent/scope, or when you need to extend an existing description.
 - \`update_canvas\` — Replace the entire canvas. Use for "lay out this problem" / "redraw this". Echo every existing node that should survive (including projected ones — pass them through with their original id, x, y).
 - \`patch_canvas\` — Apply small ops: \`add_node\`, \`update_node\`, \`remove_node\`, \`add_edge\`, \`update_edge\`, \`remove_edge\`. Use for targeted changes: "edge initiative A to workspace W", "add a note explaining why milestone M is parked", "remove the obsolete dependency between X and Y". \`update_node\` does a shallow merge on \`customData\`, so you only need to pass the keys you're changing.
 - \`assign_feature_to_initiative\` — Attach an existing feature to (or detach it from) an initiative and/or milestone. The one DB-write tool you have for projected nodes — use it when the user creates a new initiative and asks to organize existing features under it ("add these features to my new initiative", "move the auth-related features into the Q2 milestone"). Pass \`null\` to detach. If you only set \`milestoneId\`, the service derives \`initiativeId\` from the milestone — you don't need to send both. To discover candidate features, call the per-workspace \`<slug>__list_features\` tools first; their results give you the \`featureId\`s and current initiative/milestone anchors. You still cannot *create* initiatives, milestones, or features — only link existing ones.
@@ -278,10 +279,12 @@ Never ask the user for layout coordinates. Pick them yourself following the laye
 
 ### Research Tools
 
-You have two tools for **Research** documents \u2014 markdown writeups produced from web search, projected onto the canvas as \`research:<id>\` nodes:
+You have four tools for **Research** documents \u2014 markdown writeups produced from web search, projected onto the canvas as \`research:<id>\` nodes:
 
 - \`save_research\` \u2014 Create a Research row. Required: \`slug\` (short kebab-case), \`topic\` (the user's original wording, used as the on-canvas card label \u2014 keep it verbatim), \`title\` (a polished title for the right-panel viewer), \`summary\` (one sentence describing what the research will cover). Optional: \`initiativeId\` (when the user is on an initiative sub-canvas, scope the research to that initiative; omit for org-wide research). Returns \`{ slug, id }\`.
-- \`update_research\` \u2014 Fill in the markdown writeup once you've finished researching. Required: \`slug\` (the one returned from \`save_research\`), \`content\` (full markdown).
+- \`update_research\` \u2014 Fill in the markdown writeup once you've finished researching. Required: \`slug\` (the one returned from \`save_research\`), \`content\` (full markdown). **Note:** this is full-replace, not append. To extend an existing doc, call \`read_research\` first and send back the combined markdown.
+- \`list_research\` \u2014 Enumerate research docs in this org (optionally filtered by \`initiativeId\`). Use to check what's already been researched before kicking off something new.
+- \`read_research\` \u2014 Pull a research doc's full markdown body by slug. Reach for this when the user asks about prior research, when you want to cite/extend an existing doc, or before \`update_research\` so you can preserve what's there.
 
 **The two-tool sequence is critical:** \`save_research\` makes the research node appear on the canvas immediately, so the user sees their research kicking off live; the spinner badge stays on the card while you run \`web_search\` and write the doc; \`update_research\` lands the markdown and the spinner stops. **Never** call \`update_research\` without first calling \`save_research\` \u2014 the row won't exist.
 
@@ -304,7 +307,9 @@ export function getConnectionPromptSuffix(): string {
 ## Connection Tools
 You also have access to tools for creating **Connections** — documents that describe how two or more systems/workspaces work together:
 - \`save_connection\` — Create a new Connection with a slug, name, and short overview. Returns the slug you must use for subsequent updates.
-- \`update_connection\` — Update an existing Connection (by slug) with a diagram, architecture write-up, and/or OpenAPI spec. Call once per field.
+- \`update_connection\` — Update an existing Connection (by slug) with a diagram, architecture write-up, and/or OpenAPI spec. Call once per field. Each field is independently overwritten on update — to extend an existing diagram/architecture/spec rather than replace it, call \`read_connection\` first.
+- \`list_connections\` — Enumerate Connection docs in this org with presence flags for each body field. Use to check what already exists before creating a new one.
+- \`read_connection\` — Pull a Connection's full body (diagram + architecture + openApiSpec) by slug. Reach for this when the user asks to extend, cite, or reference an existing integration doc. Edges on the canvas carry the linked slug in \`edge.customData.connectionId\` — use \`read_canvas\` to discover the linkage and \`read_connection\` to fetch the doc.
 
 The slug should be a short kebab-case identifier describing the systems involved, e.g. \`sphinx-hive\`, \`frontend-backend-api\`, \`payments-checkout\`.
 
