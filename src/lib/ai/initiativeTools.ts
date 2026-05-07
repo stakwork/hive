@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { updateFeature } from "@/services/roadmap";
 import { notifyFeatureReassignmentRefresh } from "@/services/roadmap/feature-canvas-notify";
+import { loadNodeDetail } from "@/services/orgs/nodeDetail";
 import type {
   MilestoneFeatureMeta,
   ProposalOutput,
@@ -50,6 +51,84 @@ import {
  */
 export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
   return {
+    read_initiative: tool({
+      description:
+        "Read an Initiative's full detail by id (the cuid that follows " +
+        "the `initiative:` prefix on canvas node ids). Returns " +
+        "`{ kind, id, name, description, extras }` where `extras` " +
+        "includes `status`, `startDate`, `targetDate`, `completedAt`, " +
+        "`assignee`, and `milestoneCount`. **Use this whenever the user " +
+        "asks about an initiative's intent or scope** — `read_canvas` " +
+        "only returns the projector's render-time shape (name + footer " +
+        "counts), NOT the `description` field. So 'what does the Q3 " +
+        "Growth initiative cover?' or 'extend that initiative's brief' " +
+        "needs `read_initiative` to see the full description. Returns " +
+        "`{ error }` if the id doesn't exist or doesn't belong to this " +
+        "org (the org guard is identical to the right-panel REST route).",
+      inputSchema: z.object({
+        initiativeId: z
+          .string()
+          .min(1)
+          .describe(
+            "The initiative's cuid. From a canvas node id of the form " +
+              "`initiative:<cuid>`, pass just the `<cuid>` part.",
+          ),
+      }),
+      execute: async ({ initiativeId }: { initiativeId: string }) => {
+        try {
+          const detail = await loadNodeDetail("initiative", initiativeId, orgId);
+          if (!detail) {
+            return {
+              error:
+                "Initiative not found in this organization. Confirm the id exists on the org canvas.",
+            };
+          }
+          return detail;
+        } catch (e) {
+          console.error("[initiativeTools.read_initiative] error:", e);
+          return { error: "Failed to read initiative" };
+        }
+      },
+    }),
+
+    read_milestone: tool({
+      description:
+        "Read a Milestone's full detail by id (the cuid that follows the " +
+        "`milestone:` prefix on canvas node ids). Returns " +
+        "`{ kind, id, name, description, extras }` where `extras` " +
+        "includes `status`, `dueDate`, `completedAt`, `sequence`, " +
+        "`assignee`, the parent `initiative` (id + name), and " +
+        "`featureCount`. Use this when the user asks about a specific " +
+        "milestone's scope/timeline — `read_canvas` of the parent " +
+        "initiative shows the milestone card but not its `description` " +
+        "or `assignee`. Returns `{ error }` if the id doesn't exist or " +
+        "doesn't belong to this org.",
+      inputSchema: z.object({
+        milestoneId: z
+          .string()
+          .min(1)
+          .describe(
+            "The milestone's cuid. From a canvas node id of the form " +
+              "`milestone:<cuid>`, pass just the `<cuid>` part.",
+          ),
+      }),
+      execute: async ({ milestoneId }: { milestoneId: string }) => {
+        try {
+          const detail = await loadNodeDetail("milestone", milestoneId, orgId);
+          if (!detail) {
+            return {
+              error:
+                "Milestone not found in this organization. Confirm the id exists on the parent initiative's canvas.",
+            };
+          }
+          return detail;
+        } catch (e) {
+          console.error("[initiativeTools.read_milestone] error:", e);
+          return { error: "Failed to read milestone" };
+        }
+      },
+    }),
+
     assign_feature_to_initiative: tool({
       description:
         "Attach an existing feature to (or detach it from) an initiative " +

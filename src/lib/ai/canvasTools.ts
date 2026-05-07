@@ -128,6 +128,17 @@ const edgeInputSchema = z.object({
   fromNode: z.string().describe("Source node id"),
   toNode: z.string().describe("Target node id"),
   label: z.string().optional(),
+  /**
+   * Free-form `customData` bag on edges. The system-canvas `CanvasEdge`
+   * type doesn't formally include this, but the splitter (`io.ts`)
+   * passes edges through untouched, so any keys the agent sets here
+   * round-trip into the persisted blob. The most important consumer
+   * today is `customData.connectionId: string` — that's how an edge
+   * is linked to a Connection doc (see CANVAS.md "Edges link to
+   * Connection docs via edge.customData.connectionId"). Future edge
+   * metadata uses the same bag.
+   */
+  customData: z.object({}).passthrough().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -168,6 +179,19 @@ function compactEdge(e: CanvasEdge) {
     toNode: e.toNode,
   };
   if (e.label) out.label = e.label;
+  // CanvasEdge's TS type doesn't formally include `customData`, but
+  // the canvas splitter passes edges through untouched (see
+  // `splitCanvas` in `lib/canvas/io.ts`) so the field round-trips
+  // verbatim. The most important consumer is
+  // `customData.connectionId` — without surfacing it here the agent
+  // can't discover the Connection slug attached to an edge from
+  // `read_canvas` output, which makes `read_connection` unreachable
+  // through normal canvas inspection. Mirrors `compactNode`'s
+  // customData handling.
+  const customData = (e as { customData?: Record<string, unknown> }).customData;
+  if (customData && Object.keys(customData).length > 0) {
+    out.customData = customData;
+  }
   return out;
 }
 
@@ -245,6 +269,13 @@ function toCanvasEdge(input: z.infer<typeof edgeInputSchema>): CanvasEdge {
     toNode: input.toNode,
   };
   if (input.label) edge.label = input.label;
+  if (input.customData) {
+    // Cast through `as` because CanvasEdge's TS type doesn't include
+    // customData; the splitter passes the field through untouched
+    // regardless. See `compactEdge` for the symmetric read-side note.
+    (edge as { customData?: Record<string, unknown> }).customData =
+      input.customData as Record<string, unknown>;
+  }
   return edge;
 }
 
@@ -274,7 +305,23 @@ function applyPatchOp(canvas: CanvasData, op: PatchOp): CanvasData {
       return addEdge(canvas, toCanvasEdge(op.edge));
     case "update_edge": {
       const { id: _ignored, ...rest } = op.patch;
-      return updateEdge(canvas, op.id, rest as EdgeUpdate);
+      const patch = rest as EdgeUpdate & {
+        customData?: Record<string, unknown>;
+      };
+      // Shallow-merge edge customData for the same reason node patches
+      // do — the agent should be able to set `connectionId` without
+      // wiping any other key future code might attach. EdgeUpdate
+      // doesn't formally include customData, but the splitter and
+      // updateEdge both pass it through.
+      if (patch.customData) {
+        const existing = canvas.edges?.find((e) => e.id === op.id) as
+          | (CanvasEdge & { customData?: Record<string, unknown> })
+          | undefined;
+        if (existing?.customData) {
+          patch.customData = { ...existing.customData, ...patch.customData };
+        }
+      }
+      return updateEdge(canvas, op.id, patch);
     }
     case "remove_edge":
       return removeEdge(canvas, op.id);
