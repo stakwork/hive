@@ -5,6 +5,7 @@ import { updateFeature } from "@/services/roadmap";
 import { notifyFeatureReassignmentRefresh } from "@/services/roadmap/feature-canvas-notify";
 import { loadNodeDetail } from "@/services/orgs/nodeDetail";
 import type {
+  FeatureProposalMeta,
   MilestoneFeatureMeta,
   ProposalOutput,
 } from "@/lib/proposals/types";
@@ -449,13 +450,16 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           // prompt and in tool prefixes); the DB and stored proposal
           // payload work in cuids. Resolution lives here so the agent
           // never needs to see or echo a cuid for a workspace.
+          // We also fetch `name` so the proposal card can render the
+          // human-readable workspace name in its subtext (see
+          // `FeatureProposalMeta` — names beat cuid suffixes).
           const workspace = await db.workspace.findFirst({
             where: {
               slug: input.workspaceSlug,
               sourceControlOrgId: orgId,
               deleted: false,
             },
-            select: { id: true },
+            select: { id: true, name: true, slug: true },
           });
           if (!workspace) {
             return {
@@ -467,25 +471,37 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
 
           // If initiativeId is supplied, confirm it lives under this
           // org. Milestones get validated transitively (via the
-          // milestone → initiative → org chain).
+          // milestone → initiative → org chain). Both selects also
+          // pull `name` for the card's render-only `meta` block.
+          let initiativeName: string | undefined;
           if (input.initiativeId) {
             const initiative = await db.initiative.findFirst({
               where: { id: input.initiativeId, orgId },
-              select: { id: true },
+              select: { id: true, name: true },
             });
             if (!initiative) {
               return {
                 error: "Initiative not found in this organization.",
               };
             }
+            initiativeName = initiative.name;
           }
+          let milestoneName: string | undefined;
           if (input.milestoneId) {
             const milestone = await db.milestone.findFirst({
               where: {
                 id: input.milestoneId,
                 initiative: { orgId },
               },
-              select: { id: true, initiativeId: true },
+              select: {
+                id: true,
+                name: true,
+                initiativeId: true,
+                // Pull the parent initiative's name too so we can fill
+                // in `meta.initiativeName` even when the agent only
+                // supplied `milestoneId` (initiative is derived).
+                initiative: { select: { name: true } },
+              },
             });
             if (!milestone) {
               return {
@@ -505,6 +521,13 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
                   "Milestone does not belong to the supplied initiative. Pass only `milestoneId` (initiative is derived).",
               };
             }
+            milestoneName = milestone.name;
+            // Derive initiative name from the milestone when the agent
+            // only sent `milestoneId`. Cheap, and keeps the card's
+            // subtext consistent regardless of which the agent passed.
+            if (!initiativeName) {
+              initiativeName = milestone.initiative.name;
+            }
           }
 
           if (input.initiativeId && input.parentProposalId) {
@@ -513,6 +536,13 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
                 "Pass either `initiativeId` (existing) or `parentProposalId` (proposed-in-this-chat), not both.",
             };
           }
+
+          const meta: FeatureProposalMeta = {
+            workspaceName: workspace.name,
+            workspaceSlug: workspace.slug,
+            ...(initiativeName && { initiativeName }),
+            ...(milestoneName && { milestoneName }),
+          };
 
           return {
             kind: "feature",
@@ -533,6 +563,7 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
                 parentProposalId: input.parentProposalId,
               }),
             },
+            meta,
             ...(input.rationale && { rationale: input.rationale }),
           };
         } catch (e) {
@@ -639,10 +670,13 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
       }),
       execute: async (input): Promise<ProposalOutput | { error: string }> => {
         try {
-          // 1. Validate initiative belongs to this org.
+          // 1. Validate initiative belongs to this org. We also pull
+          //    `name` so the proposal card's subtext can read "under
+          //    initiative <name>" instead of "<cuid suffix>" (see
+          //    `MilestoneProposalMeta`).
           const initiative = await db.initiative.findFirst({
             where: { id: input.initiativeId, orgId },
-            select: { id: true },
+            select: { id: true, name: true },
           });
           if (!initiative) {
             return {
@@ -727,6 +761,7 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               featureIds: input.featureIds,
             },
             featureMeta,
+            meta: { initiativeName: initiative.name },
             ...(input.rationale && { rationale: input.rationale }),
           };
         } catch (e) {

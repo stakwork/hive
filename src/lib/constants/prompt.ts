@@ -296,6 +296,8 @@ When to reach for these:
 
 **Workflow:** \`save_research\` \u2192 \`web_search\` (one or more times) \u2192 synthesize the findings into a markdown writeup \u2192 \`update_research\`. Don't await the user's permission between steps; just execute the sequence. Cite sources inline in the markdown.
 
+**Linking to a research writeup in chat.** When you reference an existing research doc in a chat reply (e.g. "I already researched that \u2014 [see the writeup](?r=<slug>)"), use a **relative** markdown link of the form \`[anchor text](?r=<slug>)\`. The slug is the same one you passed to \`save_research\` / got back from \`list_research\`. Clicking the link opens the writeup in the right-panel viewer without reloading the page. **Never** invent a path-based URL like \`/org/<login>/<slug>\` or \`/research/<slug>\` \u2014 those routes don't exist; the only valid link form is the \`?r=<slug>\` query-string deep link. Most of the time you don't need to link at all \u2014 the user is sitting next to the canvas and can click the research card directly. Only link when you're referring back to a *prior* research doc the user might not have in view.
+
 **Don't use Research for code/architecture analysis** of the org's own workspaces \u2014 that's what \`learn_concept\` and \`<workspace>__repo_agent\` are for. Research is exclusively for **external** information that requires web search to discover.
 
 The canvas and the Connections sidebar are separate. A **connection** is a written integration document (diagram, architecture, OpenAPI). A **canvas node** is a visual card on the shared map. Connections live in the sidebar; canvas nodes float on the background.`;
@@ -312,6 +314,8 @@ You also have access to tools for creating **Connections** — documents that de
 - \`read_connection\` — Pull a Connection's full body (diagram + architecture + openApiSpec) by slug. Reach for this when the user asks to extend, cite, or reference an existing integration doc. Edges on the canvas carry the linked slug in \`edge.customData.connectionId\` — use \`read_canvas\` to discover the linkage and \`read_connection\` to fetch the doc.
 
 The slug should be a short kebab-case identifier describing the systems involved, e.g. \`sphinx-hive\`, \`frontend-backend-api\`, \`payments-checkout\`.
+
+**Linking to a connection doc in chat.** Same rule as research links: when you reference an existing connection in a reply, use a **relative** markdown link of the form \`[anchor text](?c=<slug>)\`. Clicking opens the connection viewer in the right panel without reloading. Don't invent path-based URLs (\`/org/...\`, \`/connections/...\`) \u2014 \`?c=<slug>\` is the only valid link form. Skip the link entirely if the user is already viewing the connection or it's clearly visible on the current canvas.
 
 When a user asks you to create a connection between systems:
 1. **Research first** — immediately use list_concepts, learn_concept, and repo_agent across the involved workspaces to understand how they integrate. Do NOT ask broad clarifying questions before researching. Only ask targeted questions after you've done initial research and found genuine ambiguity.

@@ -239,6 +239,30 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     [router, pathname, searchParams],
   );
 
+  /**
+   * `?r=<research-slug>` writer — symmetric to `?c=` but for the
+   * Research viewer. Setting the slug opens the research doc in the
+   * Details tab (via a synthesized `selectedNode`); clearing it drops
+   * the deep link without touching the rest of the URL.
+   *
+   * Why a separate param from `?c=`: connections and research are
+   * different surfaces (right-panel Connections tab vs Details tab,
+   * different DB tables, different agent tool families), and having
+   * two distinct params lets a single URL deep-link into both
+   * simultaneously if we ever want to. Same shape as the canvas-doc
+   * deep links agreed on in CANVAS.md.
+   */
+  const setUrlResearchSlug = useCallback(
+    (slug: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (slug) params.set("r", slug);
+      else params.delete("r");
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
+
   useEffect(() => {
     fetch(`/api/orgs/${githubLogin}/workspaces`)
       .then((res) => res.json())
@@ -422,6 +446,84 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [githubLogin]);
 
+  /**
+   * `?r=<slug>` deep-link resolver. Reactive (not mount-only) so a
+   * relative `?r=foo` link rendered in chat markdown — intercepted in
+   * `SidebarChatMessage` and pushed via `router.replace` — opens the
+   * matching research doc immediately, without a navigation.
+   *
+   * Resolution path: fetch the org's research list (cheap; capped by
+   * project size), find the row with the matching slug, synthesize a
+   * `CanvasNode` with id `research:<id>` and let `NodeDetail` →
+   * `ResearchViewer` do the rendering. The Details tab auto-flips on
+   * `selectedNode?.id` change (`OrgRightPanel`), so the user lands
+   * directly in the viewer.
+   *
+   * We don't visually highlight the node on the canvas — the canvas
+   * lib owns selection state via its own click events, and we don't
+   * have an imperative "select this node" handle today. The UX
+   * priority is "show the writeup," not "draw a halo on the card."
+   *
+   * Stale slug (deleted research, typo from the agent): we silently
+   * drop the param — better than leaving a broken `?r=` in the URL
+   * that the next refresh would also fail on.
+   */
+  useEffect(() => {
+    const slug = searchParams.get("r");
+    if (!slug) return;
+    // Skip if we're already showing this research — avoids re-fetch
+    // loops when the URL writer below settles after user interaction.
+    if (
+      selectedNode &&
+      selectedNode.id.startsWith("research:") &&
+      (selectedNode as { customData?: { slug?: string } }).customData?.slug ===
+        slug
+    ) {
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/orgs/${githubLogin}/research`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((rows: Array<{ id: string; slug: string; topic: string }> | null) => {
+        if (cancelled || !rows) return;
+        const match = rows.find((row) => row.slug === slug);
+        if (!match) {
+          // Stale link — strip the param so refresh doesn't loop.
+          setUrlResearchSlug(null);
+          return;
+        }
+        // Synthesize a CanvasNode just rich enough for `NodeDetail`'s
+        // header (text + category) and its live-id branch (the
+        // `research:<id>` prefix triggers the API fetch in
+        // `LiveNodeBody`, which loads the full row + extras). The
+        // library's `CanvasNode` requires several layout fields we
+        // don't actually use here — cast through unknown to bypass
+        // the structural check rather than fabricate fake geometry.
+        const synthetic: CanvasNode = {
+          id: `research:${match.id}`,
+          text: match.topic,
+          category: "research",
+          // Carry the slug through `customData` so the dedupe check
+          // at the top of this effect can short-circuit re-fetches
+          // when the URL settles back to the same slug (e.g.
+          // `router.replace` round-trips).
+          customData: { slug: match.slug },
+        } as unknown as CanvasNode;
+        setSelectedNode(synthetic);
+      })
+      .catch(() => {
+        // Network blip — leave the URL alone; user can refresh.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `searchParams` identity changes on every URL update; we only
+    // care about the `r` param value. Reading via `.get()` keeps the
+    // dep stable across unrelated URL changes (`?canvas=`, `?c=`,
+    // `?chat=`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [githubLogin, searchParams.get("r")]);
+
   const handleConnectionClick = (connection: ConnectionData) => {
     openConnection(connection);
   };
@@ -524,11 +626,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     (selection: SelectionWithLabels) => {
       // Selection cleared — every path that calls this with `null`
       // (canvas-bg click, Escape, navigation, etc.) ends both kinds
-      // of selection. Close an edge-owned viewer along the way.
+      // of selection. Close an edge-owned viewer along the way, and
+      // drop the `?r=` deep link if one was driving a synthesized
+      // research selection (so refresh doesn't snap the user back
+      // into the viewer they just navigated away from).
       if (!selection) {
         if (selectedEdge && activeConnection) handleBack();
         setSelectedEdge(null);
         setSelectedNode(null);
+        if (searchParams.get("r")) setUrlResearchSlug(null);
         return;
       }
       if (selection.kind === "node") {
@@ -537,6 +643,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         // edge-owned open viewer.
         if (selectedEdge && activeConnection) handleBack();
         setSelectedEdge(null);
+        // Real canvas-driven node click overrides any active
+        // research deep-link unless the user clicked the same
+        // research card the link pointed at.
+        if (
+          searchParams.get("r") &&
+          !selection.node.id.startsWith("research:")
+        ) {
+          setUrlResearchSlug(null);
+        }
         return;
       }
       // Edge selection.
