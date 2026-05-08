@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
-import { notifyCanvasUpdated } from "@/lib/canvas";
-import { getOrgChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
+import {
+  notifyCanvasUpdated,
+  notifyResearchEventByLogin,
+} from "@/lib/canvas";
 
 /**
  * REST surface for Research documents.
@@ -130,25 +132,7 @@ export async function DELETE(
       slug: research.slug,
       researchId: research.id,
     });
-    try {
-      await pusherServer.trigger(
-        getOrgChannelName(githubLogin),
-        PUSHER_EVENTS.RESEARCH_UPDATED,
-        {
-          slug: research.slug,
-          action: "deleted",
-          timestamp: Date.now(),
-        },
-      );
-    } catch (e) {
-      // Non-fatal: the canvas refetch above is the load-bearing
-      // signal. Open viewers without it will keep showing stale
-      // content until the user navigates away.
-      console.error(
-        "[DELETE /api/orgs/[githubLogin]/research] pusher fan-out failed:",
-        e,
-      );
-    }
+    await notifyResearchEventByLogin(githubLogin, research.slug, "deleted");
 
     return NextResponse.json({ status: "deleted" });
   } catch (error) {
