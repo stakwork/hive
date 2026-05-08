@@ -283,6 +283,36 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
     ],
   },
   {
+    id: "service",
+    agentDescription:
+      "a sky-cyan container card for a piece of running infrastructure or a third-party platform tied to a workspace — e.g. an EC2 host, a Vercel project, a GitHub App installation, a Kubernetes sandbox manager",
+    // `service` is a free-form authored node — no DB row, no
+    // projection. Lives only on the workspace sub-canvas (see
+    // `categoryAllowedOnScope`) so it composes with the projected
+    // workspace + repo cards as "the actual ops surface running
+    // beneath this workspace." Forward-compat: a future v2 will let
+    // a click on a service card pull logs from the underlying
+    // platform via `customData.kind` + `customData.endpoint`. Those
+    // fields are reserved here so authored data persisted today
+    // round-trips intact when the log viewer ships.
+    agentWritable: false,
+    userCreatable: true,
+    promptGuidance:
+      "Authored container card for ops infrastructure (an EC2 box, a Vercel project, a GitHub App, a Kubernetes manager, etc.). Lives only on a workspace sub-canvas. Free-form: the user creates, names, resizes, and edges these cards themselves; the agent must NEVER author one. Annotation-only — draw edges from a `repository` or `service` to another `service` to show 'this code deploys here' / 'this service calls that one,' or attach a `note` to flag operational context.",
+    customDataKeys: [
+      {
+        key: "kind",
+        description:
+          'optional discriminator for the underlying platform — e.g. `"vercel"` | `"ec2"` | `"gh-app"` | `"k8s"` | `"cloudflare"` | `"other"`. Reserved for v2 log-fetching: a future click handler will read this to route to the right log source. Today purely informational.',
+      },
+      {
+        key: "endpoint",
+        description:
+          "optional identifier the future log fetcher will use — typically a URL, an account/project slug, or an ARN. Reserved for v2; not consumed today.",
+      },
+    ],
+  },
+  {
     id: "note",
     agentDescription:
       'amber free-floating callout — "Remember to...", "Heads up...", "Open question..."',
@@ -427,6 +457,14 @@ export function categoryAllowedOnScope(
   if (categoryId === "research") {
     return ref === "" || ref.startsWith("initiative:");
   }
+  // `service` is the workspace's ops surface — only meaningful as a
+  // child of a workspace. The DB-projected workspace card lives on
+  // root and drills into a `ws:<id>` sub-canvas; that's where repos,
+  // loose features, and now services co-locate. Hosting services on
+  // root would conflate org-level strategy with per-workspace ops;
+  // hosting them on initiative timelines would conflate strategy
+  // with delivery infra. Keep the scope tight.
+  if (categoryId === "service") return ref.startsWith("ws:");
 
   // `feature` falls through to the default branch — allowed on every
   // scope. The dialog handles per-scope field locking (workspace
