@@ -7,7 +7,7 @@ import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
 import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
-import { notifyFeatureCanvasRefresh } from "@/services/roadmap/feature-canvas-notify";
+import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
 
 export async function PATCH(
   request: NextRequest,

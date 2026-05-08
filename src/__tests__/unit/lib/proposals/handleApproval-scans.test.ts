@@ -32,14 +32,11 @@ vi.mock("@/lib/canvas", () => ({
   featureProjectsOn: vi.fn(),
   mostSpecificRef: vi.fn(),
   ROOT_REF: "",
+  notifyFeatureReassignmentRefresh: vi.fn(),
 }));
 
 vi.mock("@/services/roadmap", () => ({
   createFeature: vi.fn(),
-}));
-
-vi.mock("@/services/roadmap/feature-canvas-notify", () => ({
-  notifyFeatureReassignmentRefresh: vi.fn(),
 }));
 
 import { handleApproval, handleRejection } from "@/lib/proposals/handleApproval";

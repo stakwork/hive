@@ -26,6 +26,12 @@ export {
   notifyCanvasesUpdatedByLogin,
 } from "./pusher";
 export {
+  resolveAffectedCanvasRefs,
+  notifyFeatureCanvasRefresh,
+  notifyFeatureContentRefresh,
+  notifyFeatureReassignmentRefresh,
+} from "./feature-pusher";
+export {
   notifyResearchEvent,
   notifyResearchEventByLogin,
   notifyResearchReassignmentRefresh,

@@ -36,7 +36,7 @@ import {
   ROOT_REF,
 } from "@/lib/canvas";
 import { createFeature } from "@/services/roadmap";
-import { notifyFeatureReassignmentRefresh } from "@/services/roadmap/feature-canvas-notify";
+import { notifyFeatureReassignmentRefresh } from "@/lib/canvas";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import {
   PROPOSE_FEATURE_TOOL,

@@ -5,7 +5,7 @@ import { updateFeature, deleteFeature } from "@/services/roadmap";
 import {
   notifyFeatureReassignmentRefresh,
   notifyFeatureContentRefresh,
-} from "@/services/roadmap/feature-canvas-notify";
+} from "@/lib/canvas";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { TaskStatus } from "@prisma/client";
