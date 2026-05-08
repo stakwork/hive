@@ -449,6 +449,40 @@ export default function WhiteboardDetailPage() {
     };
   }, [handlePointerUp]);
 
+  // Check for server-side changes when the tab becomes visible again
+  const checkForServerUpdates = useCallback(async () => {
+    if (!excalidrawAPI || savePausedRef.current || saveInFlightRef.current) return;
+
+    const res = await fetch(`/api/whiteboards/${whiteboardId}`);
+    if (!res.ok) return;
+    const body = await res.json();
+    const remote = body?.data;
+    if (!remote || remote.version <= versionRef.current) return;
+
+    const currentElements = excalidrawAPI.getSceneElementsIncludingDeleted();
+    const merged = mergeElementsByVersion(
+      currentElements,
+      remote.elements as ExcalidrawElement[]
+    );
+
+    programmaticUpdateCountRef.current++;
+    excalidrawAPI.updateScene({ elements: merged });
+    versionRef.current = remote.version;
+    lastSavedSnapshotRef.current = computeSnapshot(merged, remote.files ?? {});
+
+    toast.info("Whiteboard updated with new changes", { duration: 2500 });
+  }, [excalidrawAPI, whiteboardId]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        checkForServerUpdates();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [checkForServerUpdates]);
+
   // Auto-snapshot: every 20s check if ≥3 elements have changed since last snapshot
   useEffect(() => {
     const intervalId = setInterval(async () => {
