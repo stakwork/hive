@@ -2001,7 +2001,7 @@ export function OrgCanvasBackground({
   }, [edgePatchHandleRef, handleEdgeUpdate]);
 
   // -------------------------------------------------------------------
-  // Drop-on-node — two pairings today:
+  // Drop-on-node — three pairings today:
   //
   //   1. **Feature → Milestone (DB reassign).** Drag a `feature:` card
   //      onto a `milestone:` card to PATCH `Feature.milestoneId`. The
@@ -2018,6 +2018,19 @@ export function OrgCanvasBackground({
   //      milestone they belong to without retyping. The note's text +
   //      category + customData survive the move (it's a blob-to-blob
   //      hop, not a DB write).
+  //
+  //   3. **Research → Initiative (DB reassign).** Drag a `research:`
+  //      card onto an `initiative:` card to PATCH
+  //      `Research.initiativeId`. The row jumps from the root canvas
+  //      to the initiative sub-canvas (or between two initiative
+  //      sub-canvases) on the next projector run. Drop coords are
+  //      intentionally NOT preserved — the source and target live on
+  //      different canvases, so the source's `(x, y)` has no meaning
+  //      on the destination; the projector's default initiative-canvas
+  //      slot is the right landing spot. Symmetric "unscope to root"
+  //      isn't supported via drop today (root has no container card
+  //      to drop onto); a future right-click menu or "drop on empty
+  //      canvas" gesture can cover it.
   //
   // Library-side hooks: `canDropNodeOn` is the per-frame predicate
   // during drag (must be cheap — id-prefix sniff + category check, no
@@ -2055,6 +2068,19 @@ export function OrgCanvasBackground({
         !isLiveId(source.id) &&
         LIVE_CONTAINER_CATEGORIES.includes(target.category ?? "") &&
         isLiveId(target.id)
+      ) {
+        return true;
+      }
+
+      // Pairing 3: research → initiative (DB reassign). Mirrors
+      // pairing 1 structurally — the gesture targets a DB column,
+      // not the canvas blob, so the synthetic split-bewteen-canvases
+      // happens via the projector after the fan-out.
+      if (
+        source.category === "research" &&
+        target.category === "initiative" &&
+        source.id.startsWith("research:") &&
+        target.id.startsWith("initiative:")
       ) {
         return true;
       }
@@ -2103,6 +2129,47 @@ export function OrgCanvasBackground({
       }
     },
     [],
+  );
+
+  /**
+   * Fire-and-forget PATCH that reassigns a research row to a different
+   * initiative (or to root, with `initiativeId: null`). Same posture
+   * as `reassignFeatureToMilestone`: no local refetch — the server
+   * fans out `CANVAS_UPDATED` on both source and target refs via
+   * `notifyResearchReassignmentRefresh`, and this component's Pusher
+   * handler picks up the relevant canvas.
+   *
+   * On error we surface to the console; the library snapped the drop
+   * back, so there's no stuck "ghost card" to clean up. A toast
+   * belongs here when the global toast system lands.
+   */
+  const reassignResearchToInitiative = useCallback(
+    async (researchId: string, initiativeId: string | null) => {
+      try {
+        const res = await fetch(
+          `/api/orgs/${githubLogin}/research/${researchId}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initiativeId }),
+          },
+        );
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          console.error(
+            "[OrgCanvasBackground] reassign research failed",
+            res.status,
+            detail,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] reassign research threw",
+          err,
+        );
+      }
+    },
+    [githubLogin],
   );
 
   /**
@@ -2233,8 +2300,27 @@ export function OrgCanvasBackground({
         void moveAuthoredNodeToCanvas(ctx.canvasRef, source, target.ref);
         return;
       }
+
+      // Pairing 3: research → initiative (DB reassign). Defensive
+      // re-check of the predicate since a mid-drag agent edit could
+      // have flipped categories between drag-start and release.
+      if (
+        source.category === "research" &&
+        target.category === "initiative" &&
+        source.id.startsWith("research:") &&
+        target.id.startsWith("initiative:")
+      ) {
+        const researchId = source.id.slice("research:".length);
+        const initiativeId = target.id.slice("initiative:".length);
+        void reassignResearchToInitiative(researchId, initiativeId);
+        return;
+      }
     },
-    [reassignFeatureToMilestone, moveAuthoredNodeToCanvas],
+    [
+      reassignFeatureToMilestone,
+      moveAuthoredNodeToCanvas,
+      reassignResearchToInitiative,
+    ],
   );
 
   /**

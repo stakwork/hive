@@ -1,6 +1,15 @@
 /**
  * Canvas-refresh fan-out for feature/task mutations.
  *
+ * Lives next to `./pusher.ts` (the generic CANVAS_UPDATED emitter) and
+ * `./research-pusher.ts` (the research equivalent) because feature is
+ * one of the live-node categories the canvas projects: every helper in
+ * this file is a thin wrapper around `notifyCanvasesUpdatedByLogin`
+ * that resolves the right set of canvas refs for a given Feature row.
+ * Outside callers reach for these via the canvas barrel
+ * (`@/lib/canvas`); we keep the relative import inside the module so
+ * the dependency direction is explicit (canvas-internal → canvas-internal).
+ *
  * When a Feature's `status` or any of its child Tasks' `workflowStatus`
  * change, the org canvas's milestone card needs to re-project. The
  * affected canvases are:
@@ -34,7 +43,7 @@
  * logged.
  */
 import { db } from "@/lib/db";
-import { notifyCanvasesUpdatedByLogin } from "@/lib/canvas";
+import { notifyCanvasesUpdatedByLogin } from "./pusher";
 
 /**
  * Resolve the affected canvas refs (and the org's githubLogin) for a
@@ -100,7 +109,7 @@ export async function notifyFeatureCanvasRefresh(
       { featureId, ...(detail ?? {}) },
     );
   } catch (e) {
-    console.error("[feature-canvas-notify] failed to notify:", e);
+    console.error("[canvas/feature-pusher] failed to notify:", e);
   }
 }
 
@@ -165,7 +174,7 @@ export async function notifyFeatureContentRefresh(
     );
   } catch (e) {
     console.error(
-      "[feature-canvas-notify] notifyFeatureContentRefresh failed:",
+      "[canvas/feature-pusher] notifyFeatureContentRefresh failed:",
       e,
     );
   }
@@ -275,7 +284,7 @@ export async function notifyFeatureReassignmentRefresh(
     );
   } catch (e) {
     console.error(
-      "[feature-canvas-notify] notifyFeatureReassignmentRefresh failed:",
+      "[canvas/feature-pusher] notifyFeatureReassignmentRefresh failed:",
       e,
     );
   }

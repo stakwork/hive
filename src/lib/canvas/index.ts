@@ -25,6 +25,18 @@ export {
   notifyCanvasUpdatedByLogin,
   notifyCanvasesUpdatedByLogin,
 } from "./pusher";
+export {
+  resolveAffectedCanvasRefs,
+  notifyFeatureCanvasRefresh,
+  notifyFeatureContentRefresh,
+  notifyFeatureReassignmentRefresh,
+} from "./feature-pusher";
+export {
+  notifyResearchEvent,
+  notifyResearchEventByLogin,
+  notifyResearchReassignmentRefresh,
+} from "./research-pusher";
+export type { ResearchEventAction } from "./research-pusher";
 export type {
   CanvasBlob,
   Scope,
