@@ -87,15 +87,16 @@ const ACCENT = {
   // hue family, which is fine: research cards aren't projected onto
   // milestone canvases so the two never sit side-by-side.
   research: "#34d399",
-  // Orange — chosen for `service` ops cards on the workspace sub-
-  // canvas. Sits beside teal workspace and indigo repo without
-  // clashing; warmer hue reads as "running thing / ops surface"
-  // (the same family as a status light or a runtime indicator),
-  // distinct from the cool blues/greens used for project state. We
-  // deliberately don't reuse the agent amber (`fbbf24`) because the
-  // service card and the agent badge can co-occur on the same canvas
-  // and need to be visually separable.
-  service: "#fb923c",
+  // Lighter sky-cyan for `service` ops cards. Same family as the
+  // workspace teal (`#22d3ee`) — services are the runtime surface
+  // beneath a workspace, so the two reading as kin is a feature, not
+  // a bug. The brighter shade keeps services distinct from workspace
+  // for the (rare) future case where they appear on the same canvas
+  // (e.g. an org-wide infra view), without breaking the family.
+  // Cool/cyan reads as "infrastructure / running thing" — exactly
+  // what a service card represents — better than the warmer orange
+  // we tried first, which competed with note amber.
+  service: "#67e8f9",
 } as const;
 
 /**

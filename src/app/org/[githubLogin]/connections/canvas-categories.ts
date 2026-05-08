@@ -285,7 +285,7 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
   {
     id: "service",
     agentDescription:
-      "an orange container card for a piece of running infrastructure or a third-party platform tied to a workspace — e.g. an EC2 host, a Vercel project, a GitHub App installation, a Kubernetes sandbox manager",
+      "a sky-cyan container card for a piece of running infrastructure or a third-party platform tied to a workspace — e.g. an EC2 host, a Vercel project, a GitHub App installation, a Kubernetes sandbox manager",
     // `service` is a free-form authored node — no DB row, no
     // projection. Lives only on the workspace sub-canvas (see
     // `categoryAllowedOnScope`) so it composes with the projected
