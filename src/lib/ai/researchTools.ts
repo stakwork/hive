@@ -45,41 +45,7 @@
 import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getOrgChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
-import { notifyCanvasUpdated } from "@/lib/canvas";
-
-/**
- * Fire the right-panel viewer event so an open viewer can hydrate
- * (`save_research`) or stream content in (`update_research`). Separate
- * from the canvas refetch event because the viewer doesn't need to
- * re-project the whole canvas to render a markdown change.
- */
-async function notifyResearchEvent(
-  orgId: string,
-  slug: string,
-  action: "created" | "updated",
-  fields?: string[],
-): Promise<void> {
-  try {
-    const org = await db.sourceControlOrg.findUnique({
-      where: { id: orgId },
-      select: { githubLogin: true },
-    });
-    if (!org) return;
-    await pusherServer.trigger(
-      getOrgChannelName(org.githubLogin),
-      PUSHER_EVENTS.RESEARCH_UPDATED,
-      {
-        slug,
-        action,
-        ...(fields ? { fields } : {}),
-        timestamp: Date.now(),
-      },
-    );
-  } catch (e) {
-    console.error("[researchTools] failed to send research update:", e);
-  }
-}
+import { notifyCanvasUpdated, notifyResearchEvent } from "@/lib/canvas";
 
 /**
  * One web_search result captured from Anthropic's `webSearch` provider

@@ -2,7 +2,7 @@ import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { updateFeature } from "@/services/roadmap";
-import { notifyFeatureReassignmentRefresh } from "@/services/roadmap/feature-canvas-notify";
+import { notifyFeatureReassignmentRefresh } from "@/lib/canvas";
 import { loadNodeDetail } from "@/services/orgs/nodeDetail";
 import type {
   FeatureProposalMeta,

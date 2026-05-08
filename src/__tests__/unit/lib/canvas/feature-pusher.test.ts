@@ -16,16 +16,19 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/lib/canvas", () => ({
+// Mock the relative-import target that `feature-pusher.ts` actually
+// resolves at module-load time. Mocking `@/lib/canvas` (the barrel)
+// would not intercept the helper's `import ... from "./pusher"`.
+vi.mock("@/lib/canvas/pusher", () => ({
   notifyCanvasesUpdatedByLogin: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { db } from "@/lib/db";
-import { notifyCanvasesUpdatedByLogin } from "@/lib/canvas";
+import { notifyCanvasesUpdatedByLogin } from "@/lib/canvas/pusher";
 import {
   notifyFeatureCanvasRefresh,
   resolveAffectedCanvasRefs,
-} from "@/services/roadmap/feature-canvas-notify";
+} from "@/lib/canvas/feature-pusher";
 
 const dbFeature = db.feature as unknown as {
   findUnique: ReturnType<typeof vi.fn>;

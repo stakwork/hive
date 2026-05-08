@@ -28,7 +28,7 @@ vi.mock("@/services/roadmap", () => ({
   updateFeature: vi.fn(),
 }));
 
-vi.mock("@/services/roadmap/feature-canvas-notify", () => ({
+vi.mock("@/lib/canvas", () => ({
   notifyFeatureReassignmentRefresh: vi.fn(),
 }));
 

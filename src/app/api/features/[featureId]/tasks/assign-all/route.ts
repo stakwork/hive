@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateFeatureAccess } from "@/services/roadmap/utils";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
-import { notifyFeatureCanvasRefresh } from "@/services/roadmap/feature-canvas-notify";
+import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
 import { db } from "@/lib/db";
 import { SystemAssigneeType } from "@prisma/client";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";

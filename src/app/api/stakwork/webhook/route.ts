@@ -5,7 +5,7 @@ import { pusherServer, getTaskChannelName, getFeatureChannelName, getWorkspaceCh
 import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
-import { notifyFeatureCanvasRefresh } from "@/services/roadmap/feature-canvas-notify";
+import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
 import { createAndSendNotification } from "@/services/notifications";
 import { retryWorkflowEditorTask } from "@/services/workflow-editor-retry";
 

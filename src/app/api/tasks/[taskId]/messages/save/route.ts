@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
-import { notifyFeatureCanvasRefresh } from "@/services/roadmap/feature-canvas-notify";
+import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {

@@ -36,15 +36,12 @@ vi.mock("@/lib/canvas", () => ({
   featureProjectsOn: vi.fn(),
   mostSpecificRef: vi.fn(),
   ROOT_REF: "",
+  notifyFeatureReassignmentRefresh: vi.fn(),
 }));
 
 vi.mock("@/services/roadmap", () => ({
   createFeature: vi.fn(),
   updateFeature: vi.fn(),
-}));
-
-vi.mock("@/services/roadmap/feature-canvas-notify", () => ({
-  notifyFeatureReassignmentRefresh: vi.fn(),
 }));
 
 vi.mock("@/services/roadmap/feature-chat", () => ({
