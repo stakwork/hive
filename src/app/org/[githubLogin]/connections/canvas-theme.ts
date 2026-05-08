@@ -87,6 +87,16 @@ const ACCENT = {
   // hue family, which is fine: research cards aren't projected onto
   // milestone canvases so the two never sit side-by-side.
   research: "#34d399",
+  // Lighter sky-cyan for `service` ops cards. Same family as the
+  // workspace teal (`#22d3ee`) — services are the runtime surface
+  // beneath a workspace, so the two reading as kin is a feature, not
+  // a bug. The brighter shade keeps services distinct from workspace
+  // for the (rare) future case where they appear on the same canvas
+  // (e.g. an org-wide infra view), without breaking the family.
+  // Cool/cyan reads as "infrastructure / running thing" — exactly
+  // what a service card represents — better than the warmer orange
+  // we tried first, which competed with note amber.
+  service: "#67e8f9",
 } as const;
 
 /**
@@ -869,6 +879,59 @@ const repositoryCategory: CategoryDefinition = {
 } as CategoryDefinition;
 
 // ---------------------------------------------------------------------------
+// Service card — authored on a workspace sub-canvas. Free-form ops
+// surface: an EC2 host, a Vercel project, a GitHub App, a Kubernetes
+// sandbox manager, etc. No DB projection (id stays a normal authored
+// id, not `service:<x>`); the user creates, names, sizes, and edges
+// these cards themselves.
+//
+// Visual treatment mirrors the workspace card (a faint-tinted container
+// with an accent border) so the two read as one family — "things that
+// run alongside this workspace." Repo cards are smaller and sit
+// inside this family at the leaf level. The kicker reflects the
+// underlying platform via `customData.kind` when set (`VERCEL`,
+// `EC2`, `GH-APP`, etc.) so the user can scan a workspace canvas and
+// identify its infra at a glance; falls back to a plain "SERVICE"
+// label when no kind is set.
+//
+// Forward-compat: `customData.kind` and `customData.endpoint` are
+// reserved for the v2 "click → pull logs from this service" flow. No
+// runtime code reads them today; the registry documents the contract
+// so authored data persists intact when v2 ships.
+// ---------------------------------------------------------------------------
+
+function serviceKicker(node: CanvasNode): string {
+  const raw = node.customData?.kind;
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    // Up-case the kind for visual parity with the other kickers
+    // (`WORKSPACE`, `REPO`, `INITIATIVE`). Replace underscores with
+    // spaces so internal slugs like `gh_app` render as `GH APP`.
+    return raw.trim().toUpperCase().replace(/_/g, " ");
+  }
+  return "SERVICE";
+}
+
+const serviceCategory: CategoryDefinition = {
+  ...baseCard,
+  defaultWidth: CARD_W,
+  defaultHeight: CARD_H,
+  type: "text",
+  stroke: hexAlpha(ACCENT.service, 0.45),
+  fill: hexAlpha(ACCENT.service, 0.05),
+  slots: {
+    header: {
+      kind: "text",
+      value: (ctx: SlotContext) => serviceKicker(ctx.node),
+      color: ACCENT.service,
+    },
+    body: {
+      kind: "text",
+      value: (ctx: SlotContext) => ctx.node.text ?? "",
+    },
+  },
+} as CategoryDefinition;
+
+// ---------------------------------------------------------------------------
 // Research card — DB-projected on root or initiative canvases.
 // ---------------------------------------------------------------------------
 //
@@ -1036,6 +1099,7 @@ const researchCategory: CategoryDefinition = {
 const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
   workspace:  workspaceCategory,
   repository: repositoryCategory,
+  service:    serviceCategory,
   initiative: initiativeCategory,
   milestone:  milestoneCategory,
   feature:    featureCategory,
