@@ -115,7 +115,13 @@ export function WhiteboardChatPanel({
   const [input, setInput] = useState("");
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(`whiteboard-chat-collapsed-${whiteboardId}`);
+      if (saved !== null) return saved === "true";
+    }
+    return true;
+  });
   const [layout, setLayout] = useState<LayoutAlgorithm>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(`whiteboard-layout-${whiteboardId}`);
@@ -414,7 +420,10 @@ export function WhiteboardChatPanel({
         <Button
           variant="outline"
           size="icon"
-          onClick={() => setIsCollapsed(false)}
+          onClick={() => {
+            setIsCollapsed(false);
+            localStorage.setItem(`whiteboard-chat-collapsed-${whiteboardId}`, "false");
+          }}
           title="Expand chat"
           className="h-8 w-8"
         >
@@ -445,7 +454,10 @@ export function WhiteboardChatPanel({
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setIsCollapsed(true)}
+            onClick={() => {
+              setIsCollapsed(true);
+              localStorage.setItem(`whiteboard-chat-collapsed-${whiteboardId}`, "true");
+            }}
             title="Collapse chat"
             className="h-6 w-6"
           >
