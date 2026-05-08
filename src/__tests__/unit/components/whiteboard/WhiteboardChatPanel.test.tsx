@@ -1292,6 +1292,102 @@ describe("WhiteboardChatPanel", () => {
     });
   });
 
+  describe("Chat panel collapsed state — localStorage persistence", () => {
+    let localStorageMock: { [key: string]: string };
+
+    beforeEach(() => {
+      localStorageMock = {};
+      global.localStorage = {
+        getItem: vi.fn((key: string) => localStorageMock[key] ?? null),
+        setItem: vi.fn((key: string, value: string) => {
+          localStorageMock[key] = value;
+        }),
+        removeItem: vi.fn((key: string) => {
+          delete localStorageMock[key];
+        }),
+        clear: vi.fn(() => {
+          localStorageMock = {};
+        }),
+        length: 0,
+        key: vi.fn(),
+      } as Storage;
+    });
+
+    it("starts collapsed by default when no localStorage value exists", () => {
+      render(<WhiteboardChatPanel {...defaultProps} />);
+      expect(screen.getByTitle("Expand chat")).toBeInTheDocument();
+      expect(screen.queryByTitle("Collapse chat")).not.toBeInTheDocument();
+    });
+
+    it("starts expanded when localStorage value is 'false'", () => {
+      localStorageMock["whiteboard-chat-collapsed-wb-123"] = "false";
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: [] }),
+      } as Response);
+
+      render(<WhiteboardChatPanel {...defaultProps} />);
+      expect(screen.queryByTitle("Expand chat")).not.toBeInTheDocument();
+      expect(screen.getByTitle("Collapse chat")).toBeInTheDocument();
+    });
+
+    it("starts collapsed when localStorage value is 'true'", () => {
+      localStorageMock["whiteboard-chat-collapsed-wb-123"] = "true";
+
+      render(<WhiteboardChatPanel {...defaultProps} />);
+      expect(screen.getByTitle("Expand chat")).toBeInTheDocument();
+      expect(screen.queryByTitle("Collapse chat")).not.toBeInTheDocument();
+    });
+
+    it("persists 'false' to localStorage when chat is expanded", async () => {
+      const user = userEvent.setup();
+      render(<WhiteboardChatPanel {...defaultProps} />);
+
+      await user.click(screen.getByTitle("Expand chat"));
+
+      expect(localStorage.setItem).toHaveBeenCalledWith(
+        "whiteboard-chat-collapsed-wb-123",
+        "false"
+      );
+    });
+
+    it("persists 'true' to localStorage when chat is collapsed", async () => {
+      localStorageMock["whiteboard-chat-collapsed-wb-123"] = "false";
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: [] }),
+      } as Response);
+
+      const user = userEvent.setup();
+      render(<WhiteboardChatPanel {...defaultProps} />);
+
+      await user.click(screen.getByTitle("Collapse chat"));
+
+      expect(localStorage.setItem).toHaveBeenCalledWith(
+        "whiteboard-chat-collapsed-wb-123",
+        "true"
+      );
+    });
+
+    it("uses independent keys for different whiteboardId values", () => {
+      localStorageMock["whiteboard-chat-collapsed-wb-aaa"] = "false";
+      localStorageMock["whiteboard-chat-collapsed-wb-bbb"] = "true";
+
+      // wb-aaa should start expanded
+      const { unmount } = render(
+        <WhiteboardChatPanel {...defaultProps} whiteboardId="wb-aaa" />
+      );
+      expect(screen.queryByTitle("Expand chat")).not.toBeInTheDocument();
+      expect(screen.getByTitle("Collapse chat")).toBeInTheDocument();
+      unmount();
+
+      // wb-bbb should start collapsed
+      render(<WhiteboardChatPanel {...defaultProps} whiteboardId="wb-bbb" />);
+      expect(screen.getByTitle("Expand chat")).toBeInTheDocument();
+      expect(screen.queryByTitle("Collapse chat")).not.toBeInTheDocument();
+    });
+  });
+
   describe("Pusher error handling", () => {
     it("should handle getPusherClient throwing error gracefully", async () => {
       const pusherLib = await import("@/lib/pusher");

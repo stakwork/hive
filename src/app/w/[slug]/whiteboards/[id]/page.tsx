@@ -61,7 +61,12 @@ export default function WhiteboardDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(`whiteboard-fullscreen-${params.id}`) === "true";
+    }
+    return false;
+  });
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -449,6 +454,40 @@ export default function WhiteboardDetailPage() {
     };
   }, [handlePointerUp]);
 
+  // Check for server-side changes when the tab becomes visible again
+  const checkForServerUpdates = useCallback(async () => {
+    if (!excalidrawAPI || savePausedRef.current || saveInFlightRef.current) return;
+
+    const res = await fetch(`/api/whiteboards/${whiteboardId}`);
+    if (!res.ok) return;
+    const body = await res.json();
+    const remote = body?.data;
+    if (!remote || remote.version <= versionRef.current) return;
+
+    const currentElements = excalidrawAPI.getSceneElementsIncludingDeleted();
+    const merged = mergeElementsByVersion(
+      currentElements,
+      remote.elements as ExcalidrawElement[]
+    );
+
+    programmaticUpdateCountRef.current++;
+    excalidrawAPI.updateScene({ elements: merged });
+    versionRef.current = remote.version;
+    lastSavedSnapshotRef.current = computeSnapshot(merged, remote.files ?? {});
+
+    toast.info("Whiteboard updated with new changes", { duration: 2500 });
+  }, [excalidrawAPI, whiteboardId]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        checkForServerUpdates();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [checkForServerUpdates]);
+
   // Auto-snapshot: every 20s check if ≥3 elements have changed since last snapshot
   useEffect(() => {
     const intervalId = setInterval(async () => {
@@ -628,14 +667,19 @@ export default function WhiteboardDetailPage() {
   };
 
   const toggleFullscreen = useCallback(() => {
-    setIsFullscreen((prev) => !prev);
-  }, []);
+    setIsFullscreen((prev) => {
+      const next = !prev;
+      localStorage.setItem(`whiteboard-fullscreen-${whiteboardId}`, String(next));
+      return next;
+    });
+  }, [whiteboardId]);
 
   // Handle Escape key to exit fullscreen
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isFullscreen) {
         setIsFullscreen(false);
+        localStorage.setItem(`whiteboard-fullscreen-${whiteboardId}`, "false");
       }
     };
 
