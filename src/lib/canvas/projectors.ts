@@ -18,9 +18,6 @@ import {
   LOOSE_FEATURE_INIT_ROW_STEP,
   LOOSE_FEATURE_INIT_ROW_X0,
   LOOSE_FEATURE_INIT_ROW_Y,
-  LOOSE_FEATURE_WS_ROW_STEP,
-  LOOSE_FEATURE_WS_ROW_X0,
-  LOOSE_FEATURE_WS_ROW_Y,
   MILESTONE_ROW_STEP,
   MILESTONE_ROW_X0,
   MILESTONE_ROW_Y,
@@ -75,28 +72,21 @@ function defaultMilestonePosition(index: number): { x: number; y: number } {
 }
 
 /**
- * Cap on loose-feature projection per canvas. Workspaces / initiatives
- * with deep backlogs (hundreds or thousands of features) would otherwise
- * project a giant horizontal row — the canvas auto-fits and zooms out
- * until cards are unreadable. We surface the most recently active slice
- * (`updatedAt desc`) and trust users to drill into the workspace's full
- * feature list for the long tail. User-positioned overrides still
- * survive via `Canvas.data.positions[feature:<id>]` — the cap only
- * affects which features get an *initial* slot.
+ * Cap on loose-feature projection on an initiative sub-canvas.
+ * Initiatives with deep backlogs (hundreds or thousands of features
+ * with no milestone anchor) would otherwise project a giant horizontal
+ * row — the canvas auto-fits and zooms out until cards are unreadable.
+ * We surface the most recently active slice (`updatedAt desc`) and
+ * trust users to drill into the workspace's full feature list for the
+ * long tail. User-positioned overrides still survive via
+ * `Canvas.data.positions[feature:<id>]` — the cap only affects which
+ * features get an *initial* slot.
+ *
+ * Loose features on the workspace sub-canvas no longer project at all
+ * (the workspace canvas is the org's ops surface, not a backlog view).
+ * See `workspaceProjector` for the rationale.
  */
 const LOOSE_FEATURE_LIMIT = 25;
-
-/**
- * Default placement for a loose feature card on a workspace sub-canvas.
- * "Loose" = the feature has `workspaceId` but no `initiativeId` /
- * `milestoneId`. Lays out in a horizontal row below the repo row.
- */
-function defaultLooseFeatureWorkspacePosition(index: number): { x: number; y: number } {
-  return {
-    x: LOOSE_FEATURE_WS_ROW_X0 + index * LOOSE_FEATURE_WS_ROW_STEP,
-    y: LOOSE_FEATURE_WS_ROW_Y,
-  };
-}
 
 /**
  * Default placement for a loose feature card on an initiative sub-canvas.
@@ -261,40 +251,21 @@ export const workspaceProjector: Projector = {
       };
     });
 
-    // Loose features — workspaceId is set but the feature has no
-    // initiative or milestone anchor. By the "most specific place
-    // wins" rule, these render on the workspace sub-canvas and
-    // nowhere else. Features with an initiativeId are emitted by
-    // the milestone-timeline (initiative scope) or milestone
-    // projector instead — never here, otherwise we'd double-render.
-    //
-    // Capped at LOOSE_FEATURE_LIMIT and ordered by `updatedAt desc` so
-    // workspaces with thousands of features don't blow the canvas's
-    // auto-fit out into the unreadable distance. The long tail lives in
-    // the workspace's feature list view.
-    const looseFeatures = await db.feature.findMany({
-      where: {
-        workspaceId: workspace.id,
-        initiativeId: null,
-        milestoneId: null,
-        deleted: false,
-      },
-      orderBy: { updatedAt: "desc" },
-      take: LOOSE_FEATURE_LIMIT,
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        workflowStatus: true,
-        tasks: {
-          where: { deleted: false, archived: false },
-          select: { status: true },
-        },
-      },
-    });
-    looseFeatures.forEach((f, index) => {
-      nodes.push(buildFeatureNode(f, defaultLooseFeatureWorkspacePosition(index)));
-    });
+    // Loose features deliberately do NOT project on the workspace
+    // sub-canvas. The workspace canvas is the org's "ops surface" —
+    // repositories (projected) plus user-authored `service` cards
+    // (EC2 / Vercel / GitHub App / K8s manager / etc.). Mixing
+    // backlog work items into that surface conflates "what's running"
+    // with "what we're building," and the auto-fit was getting
+    // dominated by feature rows on backlog-heavy workspaces. Loose
+    // features still live in the DB and the workspace's feature list
+    // view; features anchored to an initiative still project on the
+    // initiative sub-canvas via `initiativeProjector`. If we want
+    // features back on the workspace canvas later, the prior block is
+    // in git history (and `LOOSE_FEATURE_LIMIT` plus
+    // `LOOSE_FEATURE_WS_ROW_*` constants in `geometry.ts` were kept
+    // around for the initiative-loose-feature row, which still uses
+    // the same pattern).
 
     return { nodes };
   },

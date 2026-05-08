@@ -125,9 +125,10 @@ export async function notifyFeatureCanvasRefresh(
  * a future projector might surface).
  *
  * Differs from `notifyFeatureCanvasRefresh` (which only knows about
- * the milestone/initiative chain) by also covering the workspace
- * placement, and from `notifyFeatureReassignmentRefresh` by not
- * needing a `before` snapshot (no anchor changed).
+ * the milestone/initiative chain) by also touching root (so initiative
+ * footers reflect rename-style content changes), and from
+ * `notifyFeatureReassignmentRefresh` by not needing a `before`
+ * snapshot (no anchor changed).
  *
  * Fire-and-forget; errors swallowed.
  */
@@ -141,7 +142,6 @@ export async function notifyFeatureContentRefresh(
       where: { id: featureId },
       select: {
         initiativeId: true,
-        workspaceId: true,
         workspace: {
           select: {
             sourceControlOrg: { select: { githubLogin: true } },
@@ -155,7 +155,8 @@ export async function notifyFeatureContentRefresh(
 
     const refs = new Set<string>();
     refs.add(""); // root
-    refs.add(`ws:${feature.workspaceId}`); // loose features render here
+    // Workspace sub-canvas no longer renders features (it's the org's
+    // ops surface — repos + authored services). Skip the `ws:<id>` ref.
     if (feature.initiativeId) {
       refs.add(`initiative:${feature.initiativeId}`);
     }
@@ -192,8 +193,10 @@ export async function notifyFeatureContentRefresh(
  *      whenever a feature changes milestone-membership).
  *
  * Every initiative the feature was attached to before AND after the
- * change is included; root is always added; the workspace canvas is
- * touched in case the feature went loose. Milestone-bound features
+ * change is included; root is always added. The workspace sub-canvas
+ * is NOT in the fan-out — it doesn't project features (it's the org's
+ * ops surface: repos + authored services), so a feature reassignment
+ * doesn't change anything visible there. Milestone-bound features
  * render on their parent initiative's canvas (with a synthetic edge
  * to the milestone card on the same canvas), so a milestone change
  * alone refreshes via the parent initiative's ref — there is no
@@ -241,17 +244,10 @@ export async function notifyFeatureReassignmentRefresh(
     // Root: initiative-card progress rollups always shift.
     refs.add("");
 
-    // Workspace canvas projects loose features (no initiative/milestone).
-    // Add it whenever the feature was, or now is, loose so the
-    // workspaceProjector pulls a fresh list. Cheaper to always add than
-    // to reason about every case — the projector will simply not find
-    // it on the workspace canvas if neither side was loose.
-    refs.add(`ws:${before.workspaceId}`);
-    if (feature.workspaceId !== before.workspaceId) {
-      // Defensive: workspace reassignment isn't supported by the canvas
-      // UI today, but the helper is general — cover it for free.
-      refs.add(`ws:${feature.workspaceId}`);
-    }
+    // The workspace sub-canvas no longer projects features (it's the
+    // ops surface — repos + authored services only). So we don't fan
+    // out to `ws:<id>` on feature mutations anymore. Initiative-anchored
+    // features still refresh via the `initiative:<id>` refs below.
 
     // Both anchored initiatives (before + after) host their milestones
     // AND every initiative-anchored feature (with or without a
