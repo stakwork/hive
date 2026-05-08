@@ -61,7 +61,12 @@ export default function WhiteboardDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(`whiteboard-fullscreen-${params.id}`) === "true";
+    }
+    return false;
+  });
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -628,14 +633,19 @@ export default function WhiteboardDetailPage() {
   };
 
   const toggleFullscreen = useCallback(() => {
-    setIsFullscreen((prev) => !prev);
-  }, []);
+    setIsFullscreen((prev) => {
+      const next = !prev;
+      localStorage.setItem(`whiteboard-fullscreen-${whiteboardId}`, String(next));
+      return next;
+    });
+  }, [whiteboardId]);
 
   // Handle Escape key to exit fullscreen
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isFullscreen) {
         setIsFullscreen(false);
+        localStorage.setItem(`whiteboard-fullscreen-${whiteboardId}`, "false");
       }
     };
 
