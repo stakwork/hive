@@ -1302,7 +1302,14 @@ export default function TaskChatPage() {
             throw new Error(errorData.error || `Failed to create session: ${sessionResponse.statusText}`);
           }
 
-          const { streamToken, streamUrl, resume, historyContext, podUrls } = await sessionResponse.json();
+          const {
+            backgroundStream,
+            streamToken,
+            streamUrl,
+            resume,
+            historyContext,
+            podUrls,
+          } = await sessionResponse.json();
 
           // If backend claimed a pod (new task or re-claim), update state and add artifacts
           if (podUrls) {
@@ -1335,6 +1342,11 @@ export default function TaskChatPage() {
 
           // Signal that pod is ready (for handleStart to switch views)
           options?.onPodReady?.();
+
+          if (backgroundStream) {
+            setIsLoading(false);
+            return;
+          }
 
           // 2. Connect directly to remote server for streaming
           // If historyContext is provided, the session was not found on the pod
