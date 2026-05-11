@@ -19,6 +19,16 @@
  *
  *   - Root (`""`)              → user picks workspace + initiative.
  *   - Workspace (`ws:<id>`)    → workspace locked; no initiative.
+ *                                Two tabs: **Create new** + **Assign
+ *                                existing** (the workspace canvas
+ *                                doesn't auto-project features, so
+ *                                "+ Feature" can mean either "make a
+ *                                new feature here" or "pin one of my
+ *                                workspace's existing features onto
+ *                                this canvas"). The assign-existing
+ *                                tab POSTs to the assigned-features
+ *                                overlay endpoint instead of creating
+ *                                a row.
  *   - Initiative (`init:<id>`) → initiative locked; user picks workspace.
  *
  * The "edge-aware" workspace picker: when the dialog runs on an
@@ -33,7 +43,16 @@
  * MilestoneDialog.
  */
 import React, { useEffect, useMemo, useState } from "react";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -45,6 +64,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -52,7 +76,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,6 +97,36 @@ export interface FeatureCreateForm {
    */
   milestoneId: string | null;
 }
+
+/**
+ * Payload for the "Assign existing" tab. Two flavors depending on which
+ * canvas the dialog was opened from — the caller's `onAssign` handler
+ * branches on `kind` to decide which DB mutation runs.
+ *
+ *   - `kind: "workspace-pin"` — canvas was a `ws:<id>` scope. The
+ *     caller pins the feature onto that workspace canvas's
+ *     `CanvasBlob.assignedFeatures` overlay; the Feature row itself
+ *     is unchanged.
+ *   - `kind: "initiative-attach"` — canvas was an `initiative:<id>`
+ *     scope. The caller PATCHes `Feature.initiativeId` to attach the
+ *     loose feature to this initiative; the canvas overlay isn't
+ *     touched (the projector will emit the card on the next refresh).
+ *
+ * Both carry the picked `featureId`; the kind tag drives the mutation
+ * shape and the fan-out helper. Keeping them in one type lets the
+ * dialog be agnostic about which world it's in.
+ */
+export type FeatureAssignForm =
+  | {
+      kind: "workspace-pin";
+      featureId: string;
+      workspaceId: string;
+    }
+  | {
+      kind: "initiative-attach";
+      featureId: string;
+      initiativeId: string;
+    };
 
 interface WorkspaceOption {
   id: string;
@@ -114,8 +170,18 @@ export interface CreateFeatureCanvasDialogProps {
    * link as an explicit "this belongs to that thing" hint.
    */
   sourceNodeId?: string;
-  /** Caller-controlled save. Resolve to close the dialog. */
+  /** Caller-controlled save for the Create-new path. Resolve to close the dialog. */
   onSave: (form: FeatureCreateForm) => Promise<void>;
+  /**
+   * Caller-controlled save for the Assign-existing path on a workspace
+   * canvas. Only invoked when the user picks from the Assign-existing
+   * tab; not used on root or initiative scopes (assign-existing isn't
+   * meaningful there — features anchored to an initiative auto-render
+   * on its sub-canvas via the projector). Optional so consumers that
+   * never open the dialog on a workspace canvas don't have to wire
+   * the second callback.
+   */
+  onAssign?: (form: FeatureAssignForm) => Promise<void>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -226,6 +292,7 @@ export function CreateFeatureCanvasDialog({
   prefill,
   sourceNodeId,
   onSave,
+  onAssign,
 }: CreateFeatureCanvasDialogProps) {
   const scopeKind = useMemo<
     "root" | "workspace" | "initiative" | "other"
@@ -248,6 +315,71 @@ export function CreateFeatureCanvasDialog({
   const [workspaceId, setWorkspaceId] = useState<string>("");
   const [initiativeId, setInitiativeId] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
+  // ─── Tabs (workspace + initiative canvases) ─────────────────────────────────
+  // The Assign-existing tab is meaningful on:
+  //   - workspace canvas (pin onto `CanvasBlob.assignedFeatures`); OR
+  //   - initiative canvas (attach via `Feature.initiativeId`).
+  // Both paths require the caller to wire `onAssign`. On every other
+  // scope (root, opaque) the tabs are hidden and the dialog renders
+  // the original Create-new body verbatim.
+  const showTabs =
+    (scopeKind === "workspace" || scopeKind === "initiative") &&
+    Boolean(onAssign);
+  const [activeTab, setActiveTab] = useState<"create" | "assign">("create");
+  /**
+   * Default tab is always **Create new**, even when the Assign tab is
+   * available. Reason: "+ Feature" reads naturally as "make me a new
+   * one"; Assign-existing is the secondary path that surfaces when
+   * the user already has the right feature elsewhere. Reset every
+   * time the dialog re-opens so the second-time-around UX always
+   * starts from Create.
+   */
+  useEffect(() => {
+    if (!open) return;
+    setActiveTab("create");
+    // Clear any state the assign tab left behind from the previous
+    // open so the second-time-around UX starts clean — particularly
+    // the cached search query and selection.
+    setAssignSelectedId("");
+    setAssignSelectedTitle("");
+    setAssignSearch("");
+    setAssignWorkspaceFilter("");
+    setAssignableFeatures([]);
+    setAssignComboboxOpen(false);
+  }, [open]);
+
+  // Assign-tab state. Search-aware:
+  //   - `assignSelectedId` / `assignSelectedTitle` — the currently
+  //     picked feature (title cached so the combobox trigger shows
+  //     the human label even after the candidate list is filtered
+  //     down to a different slice).
+  //   - `assignSearch` — what the user has typed in the combobox
+  //     input. Server-side search kicks in at ≥3 chars; below that
+  //     the empty-query list is what's shown (top N by `updatedAt`).
+  //   - `assignWorkspaceFilter` — initiative-scope-only optional
+  //     narrowing to a single workspace.
+  //   - `assignableFeatures` — the latest fetched candidate list.
+  //   - `assignLoading` — true while a fetch is in flight; flips to
+  //     false on success/error/cancel.
+  //   - `assignComboboxOpen` — local popover open state for the
+  //     combobox trigger.
+  const [assignSelectedId, setAssignSelectedId] = useState<string>("");
+  const [assignSelectedTitle, setAssignSelectedTitle] = useState<string>("");
+  const [assignSearch, setAssignSearch] = useState<string>("");
+  /** "" = all workspaces in the org (initiative-scope filter only). */
+  const [assignWorkspaceFilter, setAssignWorkspaceFilter] = useState<string>("");
+  interface AssignableFeature {
+    id: string;
+    title: string;
+    /** Workspace label, surfaced only on initiative scope where the list spans workspaces. */
+    workspaceName?: string;
+  }
+  const [assignableFeatures, setAssignableFeatures] = useState<
+    AssignableFeature[]
+  >([]);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignComboboxOpen, setAssignComboboxOpen] = useState(false);
 
   // ─── Loaded options ─────────────────────────────────────────────────────────
 
@@ -403,6 +535,157 @@ export function CreateFeatureCanvasDialog({
     sourceNodeId,
   ]);
 
+  // ─── Load assignable features for the Assign tab ───────────────────────────
+  //
+  // Server-side search with a 3-char gate, debounced 250ms. Two
+  // flavors based on scope:
+  //
+  //   - **Workspace canvas**: list this workspace's features minus
+  //     the ones already pinned in `Canvas.data.assignedFeatures`.
+  //     `GET /api/features?workspaceId=...&search=...` + `GET
+  //     ...canvas/assigned-features` in parallel; difference them
+  //     client-side. The features route's `search` param does the
+  //     server-side filtering.
+  //
+  //   - **Initiative canvas**: list loose features (no initiative,
+  //     no milestone) across the org, optionally narrowed by a
+  //     picked workspace filter and/or a typed query.
+  //     `GET /api/orgs/[githubLogin]/initiatives/[initiativeId]/features?workspaceId=...&query=...`
+  //     — the route handles the loose-feature filter + workspace IDOR
+  //     check + the same 3-char query gate.
+  //
+  // **3-char gate.** When the typed query is between 1 and 2 chars,
+  // we return early with an empty list — searching on 1 char is
+  // noise (every feature title matches a vowel). The empty-query
+  // path (query.length === 0) shows the top N by `updatedAt desc`,
+  // which is the most useful default for "I'm looking for something
+  // recent."
+  //
+  // **Debounce.** Each keystroke schedules a fetch 250ms in the
+  // future; intermediate keystrokes cancel the prior schedule. The
+  // `cancelled` ref pattern handles in-flight fetches whose response
+  // arrives AFTER the next keystroke or after the dialog closes —
+  // they self-discard.
+  useEffect(() => {
+    if (!open) return;
+    if (!showTabs) return;
+    const trimmedSearch = assignSearch.trim();
+    // Bail on the 1-2 char in-between band — too noisy to be useful,
+    // and lets the user see an explicit "keep typing" empty state.
+    if (trimmedSearch.length > 0 && trimmedSearch.length < 3) {
+      setAssignableFeatures([]);
+      setAssignLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAssignLoading(true);
+
+    const loadWorkspaceScope = async () => {
+      if (!lockedWorkspaceId) return;
+      const qs = new URLSearchParams({
+        workspaceId: lockedWorkspaceId,
+        limit: "100",
+        sortBy: "updatedAt",
+        sortOrder: "desc",
+      });
+      if (trimmedSearch.length >= 3) {
+        qs.set("search", trimmedSearch);
+      }
+      const [featuresRes, assignedRes] = await Promise.all([
+        fetch(`/api/features?${qs.toString()}`),
+        fetch(
+          `/api/orgs/${githubLogin}/canvas/assigned-features?ref=${encodeURIComponent(scope)}`,
+        ),
+      ]);
+      if (cancelled) return;
+      const featuresBody = featuresRes.ok ? await featuresRes.json() : null;
+      const assignedBody = assignedRes.ok ? await assignedRes.json() : null;
+      const rawFeatures: Array<{ id: string; title: string }> = Array.isArray(
+        featuresBody?.data,
+      )
+        ? featuresBody.data
+        : [];
+      const pinned: string[] = Array.isArray(assignedBody?.featureIds)
+        ? assignedBody.featureIds
+        : [];
+      const pinnedSet = new Set(pinned);
+      const list: AssignableFeature[] = rawFeatures
+        .filter((f) => !pinnedSet.has(f.id))
+        .map((f) => ({ id: f.id, title: f.title }));
+      setAssignableFeatures(list);
+    };
+
+    const loadInitiativeScope = async () => {
+      if (!lockedInitiativeIdFromScope) return;
+      const qs = new URLSearchParams();
+      if (assignWorkspaceFilter) {
+        qs.set("workspaceId", assignWorkspaceFilter);
+      }
+      if (trimmedSearch.length >= 3) {
+        qs.set("query", trimmedSearch);
+      }
+      const url = `/api/orgs/${githubLogin}/initiatives/${lockedInitiativeIdFromScope}/features${qs.toString() ? `?${qs.toString()}` : ""}`;
+      const res = await fetch(url);
+      if (cancelled) return;
+      const body = res.ok ? await res.json() : null;
+      const raw: Array<{
+        id: string;
+        title: string;
+        workspace?: { id: string; name: string } | null;
+      }> = Array.isArray(body) ? body : [];
+      const list: AssignableFeature[] = raw.map((f) => ({
+        id: f.id,
+        title: f.title,
+        workspaceName: f.workspace?.name,
+      }));
+      setAssignableFeatures(list);
+    };
+
+    // Debounce the fetch by 250ms when the user is actively typing
+    // (trimmedSearch >= 3). The empty-query path is fetched
+    // immediately so the combobox opens with content already loaded
+    // — there's no perceived typing latency on first open.
+    const delay = trimmedSearch.length >= 3 ? 250 : 0;
+    const timer = setTimeout(() => {
+      const run = async () => {
+        try {
+          if (scopeKind === "workspace") {
+            await loadWorkspaceScope();
+          } else if (scopeKind === "initiative") {
+            await loadInitiativeScope();
+          }
+        } catch (err) {
+          // Non-fatal — empty list, no error chrome. Same end state
+          // as "no candidates exist."
+          console.error(
+            "[CreateFeatureCanvasDialog] failed to load assignable features",
+            err,
+          );
+          if (!cancelled) setAssignableFeatures([]);
+        } finally {
+          if (!cancelled) setAssignLoading(false);
+        }
+      };
+      void run();
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    open,
+    showTabs,
+    scopeKind,
+    githubLogin,
+    lockedWorkspaceId,
+    lockedInitiativeIdFromScope,
+    scope,
+    assignWorkspaceFilter,
+    assignSearch,
+  ]);
+
   // ─── Derived ────────────────────────────────────────────────────────────────
 
   /** Workspaces sorted: linked first (in edge order), then the rest alphabetically. */
@@ -417,18 +700,79 @@ export function CreateFeatureCanvasDialog({
     return [...linked, ...rest];
   }, [workspaces, linkedWorkspaceIds]);
 
-  /** Whether the current form is valid enough to submit. */
-  const canSubmit = useMemo(() => {
+  /** Whether the current Create-tab form is valid enough to submit. */
+  const canSubmitCreate = useMemo(() => {
     if (!title.trim()) return false;
     if (!workspaceId) return false;
     if (scopeKind === "root" && !initiativeId) return false;
     return !saving;
   }, [title, workspaceId, initiativeId, scopeKind, saving]);
 
+  /** Whether the Assign-tab form is valid enough to submit. */
+  const canSubmitAssign = useMemo(() => {
+    if (!showTabs) return false;
+    if (!assignSelectedId) return false;
+    // Each scope flavor needs its own anchor present: workspace needs
+    // the locked workspace id (the pin's target canvas); initiative
+    // needs the locked initiative id (the new value for
+    // `Feature.initiativeId`). Reject early if the scope didn't lock
+    // its required anchor — shouldn't happen given how `showTabs` is
+    // gated, but defensive.
+    if (scopeKind === "workspace" && !lockedWorkspaceId) return false;
+    if (scopeKind === "initiative" && !lockedInitiativeIdFromScope) return false;
+    return !saving;
+  }, [
+    showTabs,
+    assignSelectedId,
+    scopeKind,
+    lockedWorkspaceId,
+    lockedInitiativeIdFromScope,
+    saving,
+  ]);
+
+  /** Active-tab-aware overall submit gate, driven by the dialog's footer. */
+  const canSubmit =
+    showTabs && activeTab === "assign" ? canSubmitAssign : canSubmitCreate;
+
   // ─── Submit ─────────────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+
+    // Assign-existing branch. Two flavors:
+    //   - workspace canvas → pin onto `Canvas.data.assignedFeatures`.
+    //   - initiative canvas → PATCH `Feature.initiativeId`.
+    // The dialog only emits the discriminated payload; the caller's
+    // `onAssign` does the actual mutation (this keeps the dialog
+    // unaware of REST routes — same pattern as `onSave`).
+    if (showTabs && activeTab === "assign") {
+      if (!onAssign) return;
+      let payload: FeatureAssignForm | null = null;
+      if (scopeKind === "workspace" && lockedWorkspaceId) {
+        payload = {
+          kind: "workspace-pin",
+          featureId: assignSelectedId,
+          workspaceId: lockedWorkspaceId,
+        };
+      } else if (scopeKind === "initiative" && lockedInitiativeIdFromScope) {
+        payload = {
+          kind: "initiative-attach",
+          featureId: assignSelectedId,
+          initiativeId: lockedInitiativeIdFromScope,
+        };
+      }
+      if (!payload) return;
+      setSaving(true);
+      try {
+        await onAssign(payload);
+        onClose();
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // Create-new branch (every scope, including workspace's Create tab).
     // Resolve the (workspaceId, initiativeId) pair from the
     // locked-vs-picked sources. Milestone is always null at create
     // time (see comment on `FeatureCreateForm.milestoneId`).
@@ -472,139 +816,346 @@ export function CreateFeatureCanvasDialog({
     return null;
   })();
 
+  /** Create-new tab body. Extracted so the tabbed and non-tabbed
+   *  renders share the exact same form. */
+  const createBody = (
+    <div className="grid gap-4 py-2">
+      <div className="grid gap-1.5">
+        <Label htmlFor="feat-title">Title *</Label>
+        <Input
+          id="feat-title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value.slice(0, TITLE_MAX))}
+          placeholder="Feature title"
+          autoFocus
+        />
+      </div>
+
+      <div className="grid gap-1.5">
+        <Label htmlFor="feat-brief">Description</Label>
+        <Textarea
+          id="feat-brief"
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          placeholder="Optional description"
+          rows={3}
+        />
+      </div>
+
+      {/* Initiative picker — root scope only. On initiative/milestone
+          scopes the initiative is locked and shown in the context
+          line above; on workspace scope it's not applicable. */}
+      {scopeKind === "root" && (
+        <div className="grid gap-1.5">
+          <Label>Initiative *</Label>
+          <Select
+            value={initiativeId}
+            onValueChange={setInitiativeId}
+            disabled={loading || initiatives.length === 0}
+          >
+            <SelectTrigger>
+              <SelectValue
+                placeholder={
+                  loading
+                    ? "Loading…"
+                    : initiatives.length === 0
+                    ? "No initiatives — create one first"
+                    : "Select an initiative"
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {initiatives.map((i) => (
+                <SelectItem key={i.id} value={i.id}>
+                  {i.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Workspace picker — locked on workspace scope, picker
+          everywhere else. The picker surfaces edge-linked
+          workspaces (`ws ↔ initiative:<X>` on root) at the top
+          when the dialog has an initiative anchor. */}
+      {scopeKind !== "workspace" && (
+        <div className="grid gap-1.5">
+          <Label>Workspace *</Label>
+          <Select
+            value={workspaceId}
+            onValueChange={setWorkspaceId}
+            disabled={loading || workspaces.length === 0}
+          >
+            <SelectTrigger>
+              <SelectValue
+                placeholder={
+                  loading
+                    ? "Loading…"
+                    : workspaces.length === 0
+                    ? "No workspaces"
+                    : "Select a workspace"
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {sortedWorkspaces.map((w, i) => {
+                // Visual divider between linked (top) and other
+                // workspaces. Only when both groups exist.
+                const isLastLinked =
+                  linkedWorkspaceIds.length > 0 &&
+                  i === linkedWorkspaceIds.length - 1 &&
+                  sortedWorkspaces.length > linkedWorkspaceIds.length;
+                return (
+                  <React.Fragment key={w.id}>
+                    <SelectItem value={w.id}>
+                      {linkedWorkspaceIds.includes(w.id) ? (
+                        <span>
+                          <span aria-hidden className="mr-2">
+                            ★
+                          </span>
+                          {w.name}
+                        </span>
+                      ) : (
+                        w.name
+                      )}
+                    </SelectItem>
+                    {isLastLinked && <SelectSeparator />}
+                  </React.Fragment>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          {linkedWorkspaceIds.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Starred workspaces are linked to this initiative on the
+              canvas.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  /**
+   * Assign-existing tab body. Two flavors:
+   *
+   *   - **Workspace scope**: pin one of this workspace's existing
+   *     features onto the canvas. Single dropdown; no extra filters.
+   *   - **Initiative scope**: attach a loose feature (any workspace
+   *     in the org, no current initiative, no current milestone) to
+   *     this initiative. Two dropdowns: an optional workspace filter
+   *     on top, the candidate feature dropdown underneath.
+   *
+   * Selecting saves through `onAssign` with the matching
+   * `kind: "workspace-pin" | "initiative-attach"` payload — the
+   * dialog stays unaware of the DB shape.
+   */
+  const assignBody = (
+    <div className="grid gap-3 py-2">
+      <div className="text-sm text-muted-foreground">
+        {scopeKind === "workspace"
+          ? "Pin one of this workspace's existing features onto the canvas. The feature's data is unchanged — only its visibility here."
+          : "Attach a loose feature (one that isn't already under an initiative or milestone) to this initiative."}
+      </div>
+
+      {/* Initiative scope only: optional workspace filter. Empty value
+          ("") means "show features from every workspace in the org",
+          which is the most permissive default and matches what the
+          user typed in the question they answered. */}
+      {scopeKind === "initiative" && (
+        <div className="grid gap-1.5">
+          <Label>Workspace</Label>
+          <Select
+            value={assignWorkspaceFilter || "__all__"}
+            onValueChange={(v) =>
+              setAssignWorkspaceFilter(v === "__all__" ? "" : v)
+            }
+            disabled={workspaces.length === 0}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="All workspaces" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All workspaces</SelectItem>
+              {linkedWorkspaceIds.length > 0 && <SelectSeparator />}
+              {sortedWorkspaces.map((w, i) => {
+                const isLastLinked =
+                  linkedWorkspaceIds.length > 0 &&
+                  i === linkedWorkspaceIds.length - 1 &&
+                  sortedWorkspaces.length > linkedWorkspaceIds.length;
+                return (
+                  <React.Fragment key={w.id}>
+                    <SelectItem value={w.id}>
+                      {linkedWorkspaceIds.includes(w.id) ? (
+                        <span>
+                          <span aria-hidden className="mr-2">
+                            ★
+                          </span>
+                          {w.name}
+                        </span>
+                      ) : (
+                        w.name
+                      )}
+                    </SelectItem>
+                    {isLastLinked && <SelectSeparator />}
+                  </React.Fragment>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Optional — narrow the candidates to a single workspace, or
+            leave as &quot;All workspaces&quot; to see every loose feature in
+            the org.
+          </p>
+        </div>
+      )}
+
+      <div className="grid gap-1.5">
+        <Label>Feature *</Label>
+        {/*
+         * Combobox (Popover + cmdk Command) instead of a plain Select.
+         * Server-side search is wired through the load effect above —
+         * typing into `<CommandInput>` updates `assignSearch` which
+         * debounces a fetch with `?search=` (workspace) or `?query=`
+         * (initiative). cmdk's built-in client-side filter is turned
+         * OFF (`shouldFilter={false}`) so the server result is the
+         * authoritative list; otherwise the client would also filter
+         * the already-filtered server response and the user would see
+         * a confusing "is this still loading?" empty state.
+         */}
+        <Popover
+          open={assignComboboxOpen}
+          onOpenChange={setAssignComboboxOpen}
+        >
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={assignComboboxOpen}
+              className={cn(
+                "w-full justify-between font-normal",
+                !assignSelectedId && "text-muted-foreground",
+              )}
+            >
+              <span className="truncate">
+                {assignSelectedTitle || "Select a feature…"}
+              </span>
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-[--radix-popover-trigger-width] p-0"
+            align="start"
+          >
+            <Command shouldFilter={false}>
+              <CommandInput
+                placeholder="Search features…"
+                value={assignSearch}
+                onValueChange={setAssignSearch}
+              />
+              <CommandList>
+                {/* Empty-state messaging branches on what the user
+                    is currently doing: loading, typing-too-few-chars,
+                    or no-results. Each is a distinct cue. */}
+                <CommandEmpty>
+                  {assignLoading
+                    ? "Loading…"
+                    : assignSearch.trim().length > 0 &&
+                        assignSearch.trim().length < 3
+                      ? "Type 3+ characters to search…"
+                      : scopeKind === "workspace"
+                        ? "No matching features in this workspace."
+                        : "No matching loose features."}
+                </CommandEmpty>
+                <CommandGroup>
+                  {assignableFeatures.map((f) => (
+                    <CommandItem
+                      key={f.id}
+                      value={f.id}
+                      onSelect={() => {
+                        setAssignSelectedId(f.id);
+                        setAssignSelectedTitle(f.title);
+                        setAssignComboboxOpen(false);
+                      }}
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          assignSelectedId === f.id
+                            ? "opacity-100"
+                            : "opacity-0",
+                        )}
+                      />
+                      <span className="flex flex-1 items-center gap-2 truncate">
+                        <span className="truncate">{f.title}</span>
+                        {f.workspaceName && (
+                          <span className="text-xs text-muted-foreground">
+                            · {f.workspaceName}
+                          </span>
+                        )}
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+      </div>
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Create Feature</DialogTitle>
+          <DialogTitle>
+            {showTabs && activeTab === "assign"
+              ? scopeKind === "initiative"
+                ? "Attach Feature"
+                : "Add Feature"
+              : "Create Feature"}
+          </DialogTitle>
           {contextLine && (
             <DialogDescription>{contextLine}</DialogDescription>
           )}
         </DialogHeader>
 
-        <div className="grid gap-4 py-2">
-          <div className="grid gap-1.5">
-            <Label htmlFor="feat-title">Title *</Label>
-            <Input
-              id="feat-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value.slice(0, TITLE_MAX))}
-              placeholder="Feature title"
-              autoFocus
-            />
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="feat-brief">Description</Label>
-            <Textarea
-              id="feat-brief"
-              value={brief}
-              onChange={(e) => setBrief(e.target.value)}
-              placeholder="Optional description"
-              rows={3}
-            />
-          </div>
-
-          {/* Initiative picker — root scope only. On initiative/milestone
-              scopes the initiative is locked and shown in the context
-              line above; on workspace scope it's not applicable. */}
-          {scopeKind === "root" && (
-            <div className="grid gap-1.5">
-              <Label>Initiative *</Label>
-              <Select
-                value={initiativeId}
-                onValueChange={setInitiativeId}
-                disabled={loading || initiatives.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      loading
-                        ? "Loading…"
-                        : initiatives.length === 0
-                        ? "No initiatives — create one first"
-                        : "Select an initiative"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {initiatives.map((i) => (
-                    <SelectItem key={i.id} value={i.id}>
-                      {i.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Workspace picker — locked on workspace scope, picker
-              everywhere else. The picker surfaces edge-linked
-              workspaces (`ws ↔ initiative:<X>` on root) at the top
-              when the dialog has an initiative anchor. */}
-          {scopeKind !== "workspace" && (
-            <div className="grid gap-1.5">
-              <Label>Workspace *</Label>
-              <Select
-                value={workspaceId}
-                onValueChange={setWorkspaceId}
-                disabled={loading || workspaces.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      loading
-                        ? "Loading…"
-                        : workspaces.length === 0
-                        ? "No workspaces"
-                        : "Select a workspace"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {sortedWorkspaces.map((w, i) => {
-                    // Visual divider between linked (top) and other
-                    // workspaces. Only when both groups exist.
-                    const isLastLinked =
-                      linkedWorkspaceIds.length > 0 &&
-                      i === linkedWorkspaceIds.length - 1 &&
-                      sortedWorkspaces.length > linkedWorkspaceIds.length;
-                    return (
-                      <React.Fragment key={w.id}>
-                        <SelectItem value={w.id}>
-                          {linkedWorkspaceIds.includes(w.id) ? (
-                            <span>
-                              <span aria-hidden className="mr-2">
-                                ★
-                              </span>
-                              {w.name}
-                            </span>
-                          ) : (
-                            w.name
-                          )}
-                        </SelectItem>
-                        {isLastLinked && <SelectSeparator />}
-                      </React.Fragment>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-              {linkedWorkspaceIds.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Starred workspaces are linked to this initiative on the
-                  canvas.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+        {showTabs ? (
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as "create" | "assign")}
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="create">Create new</TabsTrigger>
+              <TabsTrigger value="assign">Assign existing</TabsTrigger>
+            </TabsList>
+            <TabsContent value="create">{createBody}</TabsContent>
+            <TabsContent value="assign">{assignBody}</TabsContent>
+          </Tabs>
+        ) : (
+          createBody
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
-            {saving ? "Creating…" : "Create Feature"}
+            {(() => {
+              const isAssign = showTabs && activeTab === "assign";
+              if (!isAssign) {
+                return saving ? "Creating…" : "Create Feature";
+              }
+              // Distinct verbs for the two assign flavors so the
+              // button reads correctly with the corresponding tab title.
+              if (scopeKind === "initiative") {
+                return saving ? "Attaching…" : "Attach Feature";
+              }
+              return saving ? "Adding…" : "Add Feature";
+            })()}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -125,7 +125,17 @@ export const TASK_H = 64;
 // has interacted with the card.
 // ---------------------------------------------------------------------------
 
-/** Feature row on a workspace's sub-canvas — under the repo row. */
+/**
+ * Feature row on a workspace's sub-canvas — under the repo row.
+ *
+ * Name kept as `LOOSE_FEATURE_*` for back-compat with prior callers,
+ * but the semantic shifted: the workspace projector no longer
+ * auto-projects loose features. It now emits one feature card per id
+ * in `CanvasBlob.assignedFeatures` (the user/agent explicitly pins
+ * features onto the workspace canvas). The row layout below is the
+ * default first-render slot for those pinned cards; per-card
+ * positions still overlay via `Canvas.data.positions[feature:<id>]`.
+ */
 export const LOOSE_FEATURE_WS_ROW_Y = REPO_ROW_Y + CARD_H + 80;
 export const LOOSE_FEATURE_WS_ROW_X0 = 40;
 export const LOOSE_FEATURE_WS_ROW_STEP = FEATURE_W + ROW_GAP;

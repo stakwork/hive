@@ -13,6 +13,9 @@ export {
   showLiveNode,
   readHiddenLive,
   setLivePosition,
+  assignFeatureOnCanvas,
+  unassignFeatureOnCanvas,
+  readAssignedFeatures,
 } from "./io";
 export type { HiddenLiveEntry } from "./io";
 export { parseScope, isLiveId, ROOT_REF } from "./scope";
@@ -30,6 +33,8 @@ export {
   notifyFeatureCanvasRefresh,
   notifyFeatureContentRefresh,
   notifyFeatureReassignmentRefresh,
+  notifyFeatureAssignmentRefresh,
+  notifyFeatureAssignmentRefreshByOrg,
 } from "./feature-pusher";
 export {
   notifyResearchEvent,
@@ -41,6 +46,7 @@ export type {
   CanvasBlob,
   Scope,
   Projector,
+  ProjectorContext,
   ProjectionResult,
   CanvasData,
   CanvasNode,

@@ -16,7 +16,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/db", () => ({
   db: {
-    canvas: { findUnique: vi.fn(), findMany: vi.fn() },
+    // `update` is used by the workspaceProjector's lazy stale-pin
+    // cleanup (fire-and-forget). The mock returns a resolved promise
+    // so the awaited path inside the cleanup doesn't reject; tests
+    // don't assert on the call, but the projector must not crash
+    // when invoked.
+    canvas: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
     workspace: { findMany: vi.fn(), findFirst: vi.fn() },
     repository: { findMany: vi.fn() },
     initiative: { findMany: vi.fn(), findFirst: vi.fn() },
@@ -25,7 +30,8 @@ vi.mock("@/lib/db", () => ({
     // org-ownership guard).
     milestone: { findMany: vi.fn(), findFirst: vi.fn() },
     // The milestone sub-canvas projector pulls features (with their
-    // tasks) for the milestone-scope read path.
+    // tasks) for the milestone-scope read path. The workspaceProjector
+    // ALSO pulls features for the assigned-features (pin) path.
     feature: { findMany: vi.fn() },
     // The research projector pulls rows on root and initiative scopes.
     research: { findMany: vi.fn() },
@@ -40,6 +46,7 @@ const dbMock = db as unknown as {
   canvas: {
     findUnique: ReturnType<typeof vi.fn>;
     findMany: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
   };
   workspace: {
     findMany: ReturnType<typeof vi.fn>;
@@ -761,6 +768,102 @@ describe("readCanvas (workspace scope)", () => {
     expect(nodes.map((n) => n.id)).toEqual(["repo:r1"]);
     expect(dbMock.initiative.findMany).not.toHaveBeenCalled();
     expect(dbMock.milestone.findMany).not.toHaveBeenCalled();
+  });
+
+  // ─── Assigned-features overlay (workspace canvas feature pins) ──────────
+  //
+  // The workspace projector emits one `feature:<id>` card per id in
+  // `CanvasBlob.assignedFeatures`, validated to belong to this
+  // workspace + non-deleted. Cross-workspace ids and soft-deleted
+  // features are silently filtered out (and lazy-cleaned from the
+  // persisted list — but the cleanup itself is fire-and-forget and
+  // not asserted here).
+
+  /** Mock the `db.feature.findMany` the assigned-features path calls. */
+  function mockAssignedFeatures(
+    features: Array<{
+      id: string;
+      title: string;
+      status?: string;
+      workflowStatus?: string | null;
+    }>,
+  ) {
+    dbMock.feature.findMany.mockResolvedValue(
+      features.map((f) => ({
+        id: f.id,
+        title: f.title,
+        status: f.status ?? "BACKLOG",
+        workflowStatus: f.workflowStatus ?? null,
+        tasks: [],
+      })),
+    );
+  }
+
+  it("emits feature cards for pinned ids in user-pinned order", async () => {
+    mockBlob({
+      nodes: [],
+      edges: [],
+      assignedFeatures: ["feat_b", "feat_a"], // intentional reverse order
+    });
+    mockOwnedWorkspace("w1");
+    mockRepositories([]);
+    mockAssignedFeatures([
+      { id: "feat_a", title: "Auth" },
+      { id: "feat_b", title: "Billing" },
+    ]);
+
+    const { nodes } = await read("org-1", "ws:w1");
+    // Pinned order wins, not DB order.
+    expect(nodes.map((n) => n.id)).toEqual(["feature:feat_b", "feature:feat_a"]);
+    expect(nodes[0].category).toBe("feature");
+    expect(nodes[0].text).toBe("Billing");
+  });
+
+  it("silently drops orphan pin ids that don't resolve (deleted/moved features)", async () => {
+    mockBlob({
+      nodes: [],
+      edges: [],
+      assignedFeatures: ["feat_alive", "feat_deleted", "feat_moved_away"],
+    });
+    mockOwnedWorkspace("w1");
+    mockRepositories([]);
+    // Only `feat_alive` comes back from the DB — the projector
+    // queries with `workspaceId: w1, deleted: false`, so soft-
+    // deleted and cross-workspace features are absent from the
+    // result set.
+    mockAssignedFeatures([{ id: "feat_alive", title: "Live" }]);
+
+    const { nodes } = await read("org-1", "ws:w1");
+    // Only the surviving feature renders. No phantom card for the
+    // orphan ids.
+    expect(nodes.map((n) => n.id)).toEqual(["feature:feat_alive"]);
+  });
+
+  it("does not call db.feature.findMany when the pin list is empty", async () => {
+    mockBlob({ nodes: [], edges: [] });
+    mockOwnedWorkspace("w1");
+    mockRepositories([{ id: "r1", name: "hive" }]);
+
+    const { nodes } = await read("org-1", "ws:w1");
+    expect(nodes.map((n) => n.id)).toEqual(["repo:r1"]);
+    expect(dbMock.feature.findMany).not.toHaveBeenCalled();
+  });
+
+  it("applies stored positions to pinned feature cards", async () => {
+    mockBlob({
+      nodes: [],
+      edges: [],
+      assignedFeatures: ["feat_a"],
+      positions: { "feature:feat_a": { x: 700, y: 400 } },
+    });
+    mockOwnedWorkspace("w1");
+    mockRepositories([]);
+    mockAssignedFeatures([{ id: "feat_a", title: "Auth" }]);
+
+    const { nodes } = await read("org-1", "ws:w1");
+    const fa = nodes.find((n) => n.id === "feature:feat_a");
+    expect(fa?.x).toBe(700);
+    expect(fa?.y).toBe(400);
   });
 });
 
