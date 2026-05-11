@@ -330,6 +330,99 @@ export const workspaceProjector: Projector = {
         );
         slot += 1;
       }
+
+      // Lazy stale-pin cleanup. When the pin list contains ids that
+      // didn't survive the existence/scope filter — a soft-deleted
+      // feature, a feature moved to another workspace, an id that
+      // never resolved — drop them from the persisted list so it
+      // doesn't grow monotonically. We do this on read because:
+      //   (a) the diff is already computed (the `byId` lookup just
+      //       failed for those ids);
+      //   (b) the deletion paths don't fan out to "every workspace
+      //       canvas that might pin me," which would require a JSON
+      //       array_contains scan;
+      //   (c) the cleanup is fire-and-forget — a failure leaves the
+      //       stale id in place (renders correctly anyway) and the
+      //       next read tries again.
+      // Read-path mutation is unusual; this is the same pattern
+      // `dedupeAuthoredResearch` uses in `io.ts` (write-side self-
+      // heal), and the cleanup is idempotent + monotonic (a stale
+      // id only gets dropped, never added) so concurrent reads
+      // converge to the same clean state. We pull the ref off
+      // `scope` (which we already type-narrowed) and route through
+      // a direct `db.canvas.update` rather than the io.ts mutation
+      // primitive to avoid a re-read of the row.
+      const stalePinIds = assignedIds.filter((id) => !byId.has(id));
+      if (stalePinIds.length > 0) {
+        const survivingIds = assignedIds.filter((id) => byId.has(id));
+        const workspaceRef = `ws:${workspace.id}`;
+        // Fire-and-forget. Awaiting would make every read on a
+        // canvas with stale pins slower for no user-visible benefit.
+        void (async () => {
+          try {
+            // Read-modify-write: pull the row's data blob, mutate
+            // ONLY the `assignedFeatures` field, write it back. We
+            // can't use `assignFeatureOnCanvas` / `unassignFeatureOnCanvas`
+            // here — those operate on a single id, and we'd need
+            // O(stale) of them; one round-trip is enough.
+            const row = await db.canvas.findUnique({
+              where: { orgId_ref: { orgId, ref: workspaceRef } },
+              select: { data: true },
+            });
+            if (!row || !row.data || typeof row.data !== "object") return;
+            // TOCTOU note: between the read at the top of this
+            // projector and this update, another caller could have
+            // re-added one of the stale ids (e.g. the user just
+            // un-soft-deleted a feature, or pinned a different
+            // feature that happens to share an id — which can't
+            // happen, ids are cuids). The worst case: we drop a
+            // freshly-re-added id that would have rendered. Cost:
+            // user has to re-pin once. Acceptable.
+            const data = row.data as Record<string, unknown>;
+            const currentList = Array.isArray(data.assignedFeatures)
+              ? (data.assignedFeatures as unknown[]).filter(
+                  (v): v is string => typeof v === "string",
+                )
+              : [];
+            // Re-compute the survivors from the CURRENT persisted
+            // list (not from our snapshot's `assignedIds`), so
+            // concurrent writes between our read and this update
+            // don't get clobbered. The only ids we drop are the
+            // ones still present in the current list AND in our
+            // stale set.
+            const staleSet = new Set(stalePinIds);
+            const cleaned = currentList.filter((id) => !staleSet.has(id));
+            if (cleaned.length === currentList.length) return; // nothing to do
+            const nextData = {
+              ...data,
+              assignedFeatures: cleaned.length > 0 ? cleaned : undefined,
+            };
+            await db.canvas.update({
+              where: { orgId_ref: { orgId, ref: workspaceRef } },
+              data: { data: nextData as never },
+            });
+            console.log(
+              "[canvas/workspaceProjector] cleaned up",
+              stalePinIds.length,
+              "stale pin(s) on",
+              workspaceRef,
+            );
+            // Avoid the variable being marked unused when no stale
+            // ids carry through — `survivingIds` is informational
+            // only; the actual cleaned list is recomputed above
+            // from the fresh row to dodge TOCTOU.
+            void survivingIds;
+          } catch (e) {
+            // Non-fatal — the stale id stays in the list, the
+            // projector still doesn't render a card for it, and
+            // the next read tries again.
+            console.error(
+              "[canvas/workspaceProjector] stale-pin cleanup failed:",
+              e,
+            );
+          }
+        })();
+      }
     }
 
     return { nodes };

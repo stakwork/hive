@@ -44,6 +44,20 @@ export async function GET(
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
   }
 
+  // Symmetric with POST: the `assignedFeatures` overlay is only
+  // honored on workspace canvases. Reject other refs explicitly so
+  // the route can't be used as a ref-existence probe and stays
+  // shape-consistent with POST.
+  if (!ref.startsWith("ws:")) {
+    return NextResponse.json(
+      {
+        error:
+          "Assigned-features overlay is only honored on workspace canvases (ref starting with `ws:`).",
+      },
+      { status: 400 },
+    );
+  }
+
   try {
     const org = await db.sourceControlOrg.findUnique({
       where: { githubLogin },

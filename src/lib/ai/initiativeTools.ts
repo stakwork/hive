@@ -315,6 +315,12 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
     // hive workspace." Idempotent: re-pinning an already-pinned
     // feature is a no-op.
     //
+    // **`workspaceSlug` not `workspaceId`** — matches `propose_feature`'s
+    // pattern. The agent has the slug list in the system prompt
+    // (**Available Workspaces**); echoing a cuid would force the
+    // agent to first call `read_canvas` to discover it. The tool
+    // resolves slug → cuid internally.
+    //
     // **Validation pattern** mirrors `assign_feature_to_initiative`:
     // the feature must exist, belong to this org, AND belong to the
     // target workspace. A feature from workspace A can't be pinned
@@ -342,22 +348,42 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           .string()
           .min(1)
           .describe("The id of the feature to pin."),
-        workspaceId: z
+        workspaceSlug: z
           .string()
           .min(1)
           .describe(
-            "The id of the workspace whose canvas to pin onto. The " +
-              "feature must already live in this workspace.",
+            "The slug of the workspace whose canvas to pin onto " +
+              "(e.g. `hive`, `stakgraph`). Use the slug shown in the " +
+              "**Available Workspaces** list at the top of the " +
+              "system prompt — never an opaque id. The feature must " +
+              "already live in this workspace.",
           ),
       }),
       execute: async ({
         featureId,
-        workspaceId,
+        workspaceSlug,
       }: {
         featureId: string;
-        workspaceId: string;
+        workspaceSlug: string;
       }) => {
         try {
+          // Resolve slug → cuid + validate org ownership in one
+          // query. Mirror of the `propose_feature` resolution pattern.
+          const workspace = await db.workspace.findFirst({
+            where: {
+              slug: workspaceSlug,
+              sourceControlOrgId: orgId,
+              deleted: false,
+            },
+            select: { id: true, name: true, slug: true },
+          });
+          if (!workspace) {
+            return {
+              error:
+                "Workspace slug not found in this organization. Pick a slug from the **Available Workspaces** list at the top of your system prompt.",
+            };
+          }
+
           const feature = await db.feature.findUnique({
             where: { id: featureId },
             select: {
@@ -373,13 +399,13 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           if (feature.workspace.sourceControlOrgId !== orgId) {
             return { error: "Feature does not belong to this organization" };
           }
-          if (feature.workspaceId !== workspaceId) {
+          if (feature.workspaceId !== workspace.id) {
             return {
               error:
                 "Feature does not belong to the target workspace. Move the feature with `assign_feature_to_initiative`'s workspace-change pattern (not yet supported) or pick the feature's actual workspace.",
             };
           }
-          const ref = `ws:${workspaceId}`;
+          const ref = `ws:${workspace.id}`;
           await assignFeatureOnCanvas(orgId, ref, featureId);
           void notifyFeatureAssignmentRefreshByOrg(
             orgId,
@@ -390,7 +416,8 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           return {
             status: "pinned",
             featureId,
-            workspaceId,
+            workspaceSlug: workspace.slug,
+            workspaceName: workspace.name,
             ref,
           };
         } catch (e) {
@@ -421,22 +448,39 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           .string()
           .min(1)
           .describe("The id of the feature to unpin."),
-        workspaceId: z
+        workspaceSlug: z
           .string()
           .min(1)
           .describe(
-            "The id of the workspace whose canvas to unpin from. The " +
-              "feature must already live in this workspace.",
+            "The slug of the workspace whose canvas to unpin from " +
+              "(e.g. `hive`, `stakgraph`). Use the slug shown in the " +
+              "**Available Workspaces** list at the top of the " +
+              "system prompt — never an opaque id.",
           ),
       }),
       execute: async ({
         featureId,
-        workspaceId,
+        workspaceSlug,
       }: {
         featureId: string;
-        workspaceId: string;
+        workspaceSlug: string;
       }) => {
         try {
+          const workspace = await db.workspace.findFirst({
+            where: {
+              slug: workspaceSlug,
+              sourceControlOrgId: orgId,
+              deleted: false,
+            },
+            select: { id: true, name: true, slug: true },
+          });
+          if (!workspace) {
+            return {
+              error:
+                "Workspace slug not found in this organization. Pick a slug from the **Available Workspaces** list at the top of your system prompt.",
+            };
+          }
+
           const feature = await db.feature.findUnique({
             where: { id: featureId },
             select: {
@@ -452,13 +496,13 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           if (feature.workspace.sourceControlOrgId !== orgId) {
             return { error: "Feature does not belong to this organization" };
           }
-          if (feature.workspaceId !== workspaceId) {
+          if (feature.workspaceId !== workspace.id) {
             return {
               error:
                 "Feature does not belong to the target workspace.",
             };
           }
-          const ref = `ws:${workspaceId}`;
+          const ref = `ws:${workspace.id}`;
           await unassignFeatureOnCanvas(orgId, ref, featureId);
           void notifyFeatureAssignmentRefreshByOrg(
             orgId,
@@ -469,7 +513,8 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           return {
             status: "unpinned",
             featureId,
-            workspaceId,
+            workspaceSlug: workspace.slug,
+            workspaceName: workspace.name,
             ref,
           };
         } catch (e) {

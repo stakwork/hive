@@ -2581,6 +2581,13 @@ export function OrgCanvasBackground({
 
   const nodeContextMenu = useMemo<NodeContextMenuConfig>(
     () => ({
+      // Item set is composed conditionally per scope. The library
+      // does NOT support `match.scope` today, so we filter the items
+      // array up-front based on `currentRef` and let `match.categories`
+      // do the rest. Memo dep includes `currentRef` so the menu
+      // rebuilds on navigation. Showing a labelled menu item that
+      // does nothing on click is a discoverability bug — filter it
+      // out instead of relying on an onSelect guard.
       items: [
         {
           id: "promote-to-feature",
@@ -2591,18 +2598,20 @@ export function OrgCanvasBackground({
           // open", so right-clicking them is a silent no-op.
           match: { categories: ["note"] },
         },
-        {
-          id: "unpin-feature-from-workspace",
-          label: "Remove from canvas",
-          // Only feature cards. Scope filtering (only on `ws:` canvas)
-          // can't be expressed via `match` today, so we gate inside
-          // `onSelect` — the menu item shows up briefly on feature
-          // cards on every canvas, but selecting it is a no-op
-          // outside `ws:<id>`. The cleaner UX (hide on non-ws scopes)
-          // would need a `match.scope` field in the library; not
-          // adding one for a single use case.
-          match: { categories: ["feature"] },
-        },
+        // "Remove from canvas" only makes sense on a `ws:<id>` scope
+        // (where pinning is honored). Drop the item entirely on root /
+        // initiative / opaque scopes so right-clicking a feature card
+        // on those canvases shows no menu (which the library handles
+        // by not opening it, same as a non-matching category).
+        ...(currentRef.startsWith("ws:")
+          ? ([
+              {
+                id: "unpin-feature-from-workspace" as const,
+                label: "Remove from canvas",
+                match: { categories: ["feature"] as const },
+              },
+            ] as NodeContextMenuConfig["items"])
+          : []),
       ],
       onSelect: (itemId, node, ctx) => {
         if (itemId === "promote-to-feature") {
@@ -2627,16 +2636,18 @@ export function OrgCanvasBackground({
         }
         if (itemId === "unpin-feature-from-workspace") {
           const canvasRef = ctx.canvasRef ?? "";
-          // Workspace scope only — the assigned-features overlay is
-          // a no-op on other canvases. Silent no-op outside ws: so a
-          // stray menu pick doesn't surface an error.
+          // Defensive — the menu items array drops this entry on
+          // non-`ws:` scopes, so the only way we'd get here on a
+          // non-ws ref is a stale library callback firing during
+          // navigation. Bail silently rather than write to the
+          // wrong canvas.
           if (!canvasRef.startsWith("ws:")) return;
           void handleUnpinFeatureFromWorkspace(node.id, canvasRef);
           return;
         }
       },
     }),
-    [startFeatureCreate, handleUnpinFeatureFromWorkspace],
+    [currentRef, startFeatureCreate, handleUnpinFeatureFromWorkspace],
   );
 
   /**

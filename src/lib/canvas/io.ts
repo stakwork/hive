@@ -629,6 +629,19 @@ export async function setLivePosition(
 // points so a routine autosave PUT can't accidentally reset the list.
 // Idempotent: pinning an already-pinned feature is a no-op; unpinning
 // an absent feature is a no-op.
+//
+// **TOCTOU**: both `assignFeatureOnCanvas` and
+// `unassignFeatureOnCanvas` do a read-modify-write without a
+// transaction or optimistic-lock. Two concurrent writers can lose an
+// update (T1 reads, T2 reads, T1 writes [+B], T2 writes [+C] → B is
+// lost). In practice:
+//   - Pin-vs-pin from two users at the same moment: rare, and both
+//     writers usually want the same outcome (idempotent).
+//   - Agent pin + human pin: more plausible since the prompt
+//     encourages the agent to call these tools. Worst case: one of
+//     the two pins is lost; recoverable by re-pinning. Acceptable
+//     for now; revisit with a `jsonb_set` or `SELECT … FOR UPDATE`
+//     if the failure mode bites users.
 // ---------------------------------------------------------------------------
 
 /**
