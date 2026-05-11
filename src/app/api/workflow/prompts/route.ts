@@ -163,6 +163,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Name and value are required" }, { status: 400 });
     }
 
+    const PROMPT_NAME_REGEX = /^[A-Z_]+$/;
+    if (!PROMPT_NAME_REGEX.test(body.name)) {
+      return NextResponse.json(
+        { error: "Prompt name must contain only uppercase letters and underscores" },
+        { status: 400 }
+      );
+    }
+
     // Create prompt via Stakwork API (or mock in dev mode)
     const promptsUrl = devMode
       ? `${request.nextUrl.origin}/api/mock/stakwork/prompts`
