@@ -182,6 +182,93 @@ export async function notifyFeatureContentRefresh(
 }
 
 /**
+ * Fan-out helper for **assign/unassign a feature on a workspace
+ * canvas**. The workspace projector reads
+ * `CanvasBlob.assignedFeatures` to decide which feature cards to
+ * emit; toggling the list changes what renders on exactly one canvas
+ * (the `ws:<workspaceId>` the toggle was applied to).
+ *
+ * Why a separate helper instead of `notifyFeatureContentRefresh` /
+ * `notifyFeatureReassignmentRefresh`: those two **explicitly skip**
+ * `ws:<id>` refs — they were written for the old world where the
+ * workspace canvas didn't project features. Modifying them to
+ * conditionally fan out to a workspace would require discovering
+ * which workspace canvases pin a given feature, which is a
+ * `Canvas.findMany({ where: assignedFeatures contains featureId })`
+ * scan. Pin/unpin already knows the exact `ws:<id>` ref the toggle
+ * was made on — passing it in is simpler.
+ *
+ * Fans out to root + the single affected workspace ref. Root is
+ * included because the workspace card on root surfaces a repo-count
+ * footer today but may grow a feature-count badge later; cheap to
+ * refresh, safer than reasoning about future projectors.
+ *
+ * Fire-and-forget; errors swallowed.
+ */
+export async function notifyFeatureAssignmentRefresh(
+  githubLogin: string,
+  workspaceRef: string,
+  featureId: string,
+  action: "feature-pinned" | "feature-unpinned",
+): Promise<void> {
+  try {
+    if (!workspaceRef.startsWith("ws:")) {
+      // Defensive: today only ws: refs honor `assignedFeatures`. If a
+      // future caller pins on a different scope, the helper should be
+      // expanded; until then the misuse is a no-op rather than a
+      // silent spammy fan-out.
+      console.warn(
+        "[canvas/feature-pusher] notifyFeatureAssignmentRefresh ignoring non-workspace ref:",
+        workspaceRef,
+      );
+      return;
+    }
+    await notifyCanvasesUpdatedByLogin(
+      githubLogin,
+      ["", workspaceRef],
+      action,
+      { featureId, workspaceRef },
+    );
+  } catch (e) {
+    console.error(
+      "[canvas/feature-pusher] notifyFeatureAssignmentRefresh failed:",
+      e,
+    );
+  }
+}
+
+/**
+ * Convenience: resolve `orgId` → `githubLogin` and call the
+ * by-login helper. Mirrors the `notifyCanvasUpdated` /
+ * `notifyCanvasUpdatedByLogin` split.
+ */
+export async function notifyFeatureAssignmentRefreshByOrg(
+  orgId: string,
+  workspaceRef: string,
+  featureId: string,
+  action: "feature-pinned" | "feature-unpinned",
+): Promise<void> {
+  try {
+    const org = await db.sourceControlOrg.findUnique({
+      where: { id: orgId },
+      select: { githubLogin: true },
+    });
+    if (!org) return;
+    await notifyFeatureAssignmentRefresh(
+      org.githubLogin,
+      workspaceRef,
+      featureId,
+      action,
+    );
+  } catch (e) {
+    console.error(
+      "[canvas/feature-pusher] notifyFeatureAssignmentRefreshByOrg failed:",
+      e,
+    );
+  }
+}
+
+/**
  * Fan-out helper for **feature reassignment** (canvas drag-and-drop or
  * any other path that changes `milestoneId` / `initiativeId`). Differs
  * from `notifyFeatureCanvasRefresh` in two ways:
