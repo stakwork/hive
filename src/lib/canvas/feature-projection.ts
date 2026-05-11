@@ -16,8 +16,9 @@
  *     `milestoneTimelineProjector` emits the feature card alongside
  *     the milestone cards, plus a synthetic edge to the milestone
  *     when one is set.
- *   - loose features (no initiative, no milestone) → workspace
- *     sub-canvas (`workspaceProjector` loose-features row).
+ *   - features pinned via `CanvasBlob.assignedFeatures` on a workspace
+ *     canvas → that workspace's sub-canvas. The workspace canvas no
+ *     longer auto-projects loose features; pinning is explicit.
  *   - root canvas never shows features.
  *
  * Both functions are pure; tests live next to the helper.
@@ -28,6 +29,17 @@ export interface FeaturePlacementPayload {
   workspaceId: string;
   initiativeId?: string | null;
   milestoneId?: string | null;
+  /**
+   * Feature id. Required when asking about a `ws:` ref — the workspace
+   * canvas projects features by explicit pin (`CanvasBlob.assignedFeatures`),
+   * so the check needs the id to compare against the pinned list.
+   * Omitting it on a workspace check yields `false` ("not pinned").
+   *
+   * Optional because the approval-flow code path that built this
+   * payload pre-creation doesn't always have the id at hand; callers
+   * that DO have an id pass it through verbatim.
+   */
+  featureId?: string;
 }
 
 /**
@@ -40,10 +52,19 @@ export interface FeaturePlacementPayload {
  * The `ref === ROOT_REF` early-return is load-bearing — without it,
  * `ref.startsWith(...)` would never match and the function would fall
  * through to `false`, which is correct but obscures intent.
+ *
+ * `assignedFeatures` is the pinned-feature list for the canvas the
+ * caller is checking. Only consulted on `ws:` refs — that's the one
+ * scope whose feature membership is overlay-driven rather than
+ * column-derived. Callers MUST pass it (read via `readAssignedFeatures`
+ * in `./io`) when asking about a `ws:` ref; omitting it makes the
+ * check return `false` for workspace scopes, which is the safe
+ * default.
  */
 export function featureProjectsOn(
   ref: string,
   payload: FeaturePlacementPayload,
+  assignedFeatures?: string[],
 ): boolean {
   if (ref === ROOT_REF) return false;
 
@@ -59,13 +80,18 @@ export function featureProjectsOn(
 
   if (ref.startsWith("ws:")) {
     const workspaceId = ref.slice("ws:".length);
-    // Loose features only — anchored features render on their
-    // initiative canvas, never on the workspace.
-    return (
-      payload.workspaceId === workspaceId &&
-      !payload.initiativeId &&
-      !payload.milestoneId
-    );
+    // The workspace canvas projects a feature ONLY when:
+    //   (a) the feature lives in that workspace, AND
+    //   (b) the feature is in the canvas's `assignedFeatures` overlay.
+    // Auto-projection of loose features was removed (it crushed the
+    // auto-fit on backlog-heavy workspaces); pinning is now explicit.
+    // Without the id or without the overlay we can't make the
+    // membership call — fall back to `false`, which mirrors the
+    // "not pinned" state.
+    if (payload.workspaceId !== workspaceId) return false;
+    if (!payload.featureId) return false;
+    if (!assignedFeatures || assignedFeatures.length === 0) return false;
+    return assignedFeatures.includes(payload.featureId);
   }
 
   // initiative:/ws: are the two feature-bearing scopes. Anything else

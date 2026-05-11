@@ -32,6 +32,7 @@ import {
   setLivePosition,
   featureProjectsOn,
   mostSpecificRef,
+  readAssignedFeatures,
   resolvePlacement,
   ROOT_REF,
 } from "@/lib/canvas";
@@ -474,6 +475,7 @@ async function approveFeature(args: {
       workspaceId: merged.workspaceId,
       initiativeId: resolvedInitiativeId,
       milestoneId: merged.milestoneId ?? null,
+      featureId: feature.id,
     };
 
     // Decide where the new node lands. Two questions:
@@ -486,11 +488,66 @@ async function approveFeature(args: {
     //        b. Else, user's click hint (`intent.viewport`) on the
     //           current canvas → use it (mirrors the human `+` flow).
     //        c. Else, no overlay → projector auto-layout decides.
+    //
+    // Workspace-canvas special case: the workspace canvas only
+    // projects features that are explicitly pinned via
+    // `CanvasBlob.assignedFeatures`. When the user approves a loose-
+    // feature proposal while looking at a workspace canvas, we
+    // auto-pin the new feature to that canvas so it lands where
+    // they're looking. This mirrors the human "+ Feature → Assign
+    // existing" flow's pin step, and is what makes
+    // `featureProjectsOn(currentRef, ...)` return true below.
+    //
+    // **Track success in `autoPinned`.** If the pin write fails (DB
+    // hiccup, etc.), we MUST NOT promise the user the feature
+    // landed on the workspace canvas — `featureProjectsOn` would
+    // return false for the unpinned feature, we'd fall back to
+    // `mostSpecificRef` which also returns the workspace ref (loose
+    // feature → workspace canvas per the rule), and then write a
+    // dead-weight position overlay onto a canvas that doesn't
+    // project the card. The boolean drives both the `featureProjectsOn`
+    // check below AND lets us skip the `mostSpecificRef` fallback for
+    // the workspace case (since no pin = no projection).
     const liveId = `feature:${feature.id}`;
+    const wantsAutoPin =
+      intent.currentRef !== undefined &&
+      intent.currentRef.startsWith("ws:") &&
+      intent.currentRef === `ws:${merged.workspaceId}` &&
+      !resolvedInitiativeId &&
+      !merged.milestoneId;
+    let autoPinned = false;
+    if (wantsAutoPin) {
+      try {
+        const { assignFeatureOnCanvas } = await import("@/lib/canvas");
+        await assignFeatureOnCanvas(orgId, intent.currentRef!, feature.id);
+        autoPinned = true;
+      } catch (e) {
+        console.error("[handleApproval] auto-pin to workspace canvas failed:", e);
+      }
+    }
+    // `featureProjectsOn` on a `ws:` ref needs the assigned-features
+    // list (the pin overlay). On the happy path we just wrote the
+    // pin, so we can synthesize the post-write list locally instead
+    // of re-reading. On the failure path (`wantsAutoPin && !autoPinned`),
+    // we leave the list as the pre-write state; `featureProjectsOn`
+    // will correctly return false for the new feature since it isn't
+    // pinned.
     let landedOn: string;
+    let assignedFeatures: string[] | undefined;
     if (
       intent.currentRef !== undefined &&
-      featureProjectsOn(intent.currentRef, featurePlacementPayload)
+      intent.currentRef.startsWith("ws:")
+    ) {
+      const existing = await readAssignedFeatures(orgId, intent.currentRef);
+      assignedFeatures = autoPinned ? [...existing, feature.id] : existing;
+    }
+    if (
+      intent.currentRef !== undefined &&
+      featureProjectsOn(
+        intent.currentRef,
+        featurePlacementPayload,
+        assignedFeatures,
+      )
     ) {
       landedOn = intent.currentRef;
     } else {
@@ -512,7 +569,33 @@ async function approveFeature(args: {
     if (!coords && intent.currentRef === landedOn && intent.viewport) {
       coords = intent.viewport;
     }
-    if (coords) {
+    // **Skip the position write when the feature won't actually
+    // render on `landedOn`.** Loose features land on `ws:<workspaceId>`
+    // per `mostSpecificRef`, but the workspace projector only emits
+    // them when pinned (`assignedFeatures`). If the auto-pin failed
+    // above (or we never attempted one — e.g. the user was on a
+    // different canvas), writing the position overlay would create
+    // dead weight: a `positions[feature:<id>]` entry on a canvas the
+    // feature doesn't project on. Re-check projection with the
+    // post-auto-pin `assignedFeatures` we computed above. Initiative-
+    // anchored features always project on their initiative canvas
+    // regardless of pin state, so this skip only bites loose
+    // features that failed to pin onto a workspace canvas.
+    //
+    // We can't reuse the `landedOn === intent.currentRef` shortcut
+    // here: in the failure case `currentRef === ws:X` AND
+    // `mostSpecificRef` also returns `ws:X`, so `landedOn ===
+    // currentRef` is true even though the feature isn't pinned.
+    // Always go through `featureProjectsOn` with the correct
+    // overlay for the target ref.
+    const overlayForLanded =
+      landedOn === intent.currentRef ? assignedFeatures : undefined;
+    const featureWillRenderOnLanded = featureProjectsOn(
+      landedOn,
+      featurePlacementPayload,
+      overlayForLanded,
+    );
+    if (coords && featureWillRenderOnLanded) {
       try {
         await setLivePosition(orgId, landedOn, liveId, coords);
       } catch (e) {
@@ -521,6 +604,27 @@ async function approveFeature(args: {
         // default. Log and move on.
         console.error("[handleApproval] setLivePosition failed:", e);
       }
+    } else if (coords && !featureWillRenderOnLanded) {
+      // The most common reason we get here: the user approved a
+      // loose-feature proposal on a workspace canvas and the
+      // auto-pin write failed. We keep `landedOn` pointing at the
+      // workspace canvas (the most useful navigation target — the
+      // user can manually pin from there) but skip the position
+      // overlay write so the blob stays clean. A future re-pin of
+      // the same feature will land at the projector's default slot,
+      // no phantom overlay to worry about.
+      //
+      // Known minor inconsistency: the assistant message will say
+      // "Created **X** on **Workspace Y**" and link to that canvas,
+      // but the user won't see the card until they pin it manually.
+      // Acceptable for a rare transient failure; flagging here in
+      // case a future user-experience pass wants to surface the
+      // pin-failure state explicitly (e.g. an "Unable to add to
+      // canvas — pin manually" sub-line on the ProposalCard).
+      console.warn(
+        "[handleApproval] skipping setLivePosition — feature will not project on landedOn",
+        { landedOn, featureId: feature.id },
+      );
     }
 
     // Look up the human-readable name of the canvas the feature

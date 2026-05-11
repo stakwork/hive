@@ -73,6 +73,26 @@ describe("splitCanvas", () => {
     expect(blob.hidden).toEqual(["ws:hidden-1"]);
   });
 
+  it("preserves the assignedFeatures list from the previous blob (autosave can't reset pins)", () => {
+    // Same contract as `hidden`: an autosave PUT MUST NOT clobber the
+    // user's pinned-feature list. Toggling goes through dedicated
+    // `assignFeatureOnCanvas` / `unassignFeatureOnCanvas` mutations.
+    const prev: CanvasBlob = {
+      nodes: [],
+      edges: [],
+      assignedFeatures: ["feat_1", "feat_2"],
+    };
+    const incoming: CanvasData = { nodes: [], edges: [] };
+    const blob = splitCanvas(incoming, prev);
+    expect(blob.assignedFeatures).toEqual(["feat_1", "feat_2"]);
+  });
+
+  it("omits assignedFeatures when previous list is empty", () => {
+    const incoming: CanvasData = { nodes: [], edges: [] };
+    const blob = splitCanvas(incoming, emptyPrev);
+    expect(blob.assignedFeatures).toBeUndefined();
+  });
+
   it("omits `positions` when empty to keep the blob minimal", () => {
     const incoming: CanvasData = { nodes: [node("auth-1")], edges: [] };
     const blob = splitCanvas(incoming, emptyPrev);

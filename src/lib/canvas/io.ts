@@ -48,6 +48,15 @@ function asBlob(value: unknown): CanvasBlob {
         ? (v.positions as CanvasBlob["positions"])
         : undefined,
     hidden: Array.isArray(v.hidden) ? (v.hidden as string[]) : undefined,
+    // Defensive: only accept an array of strings. Rows written before
+    // `assignedFeatures` existed produce `undefined`, which the
+    // workspace projector treats as "no features pinned" — same effect
+    // as an empty list.
+    assignedFeatures: Array.isArray(v.assignedFeatures)
+      ? (v.assignedFeatures as unknown[]).filter(
+          (id): id is string => typeof id === "string",
+        )
+      : undefined,
   };
 }
 
@@ -224,6 +233,7 @@ function applyPosition(
 async function projectAll(
   ref: string,
   orgId: string,
+  blob: CanvasBlob,
 ): Promise<{
   liveNodes: CanvasNode[];
   liveEdges: CanvasEdge[];
@@ -232,8 +242,15 @@ async function projectAll(
   rows: CanvasLane[] | undefined;
 }> {
   const scope = parseScope(ref);
+  // Single read-only context shared by every projector — keeps the
+  // blob-derived inputs (`assignedFeatures` today) out of every
+  // projector's individual `findUnique`. Projectors that don't need
+  // any of these fields simply ignore the second arg.
+  const context = {
+    assignedFeatures: blob.assignedFeatures,
+  };
   const results = await Promise.all(
-    PROJECTORS.map((p) => p.project(scope, orgId)),
+    PROJECTORS.map((p) => p.project(scope, orgId, context)),
   );
   const liveNodes: CanvasNode[] = [];
   const liveEdges: CanvasEdge[] = [];
@@ -290,6 +307,7 @@ export async function readCanvas(
   const { liveNodes, liveEdges, rollups, columns, rows } = await projectAll(
     ref,
     orgId,
+    blob,
   );
 
   const hidden = new Set(blob.hidden ?? []);
@@ -442,6 +460,14 @@ export function splitCanvas(
   const blob: CanvasBlob = { nodes, edges };
   if (Object.keys(positions).length > 0) blob.positions = positions;
   if (previous.hidden && previous.hidden.length > 0) blob.hidden = previous.hidden;
+  // `assignedFeatures` is preserved untouched on the autosave path for
+  // the same reason `hidden` is: a routine canvas edit (drag, resize,
+  // add an authored note) MUST NOT clobber the user's pinned-feature
+  // list on a workspace sub-canvas. Toggling goes through dedicated
+  // `assignFeatureOnCanvas` / `unassignFeatureOnCanvas` mutations.
+  if (previous.assignedFeatures && previous.assignedFeatures.length > 0) {
+    blob.assignedFeatures = previous.assignedFeatures;
+  }
   return blob;
 }
 
@@ -497,7 +523,7 @@ export async function readHiddenLive(
   const hiddenIds = blob.hidden;
   if (!hiddenIds || hiddenIds.length === 0) return [];
 
-  const { liveNodes } = await projectAll(ref, orgId);
+  const { liveNodes } = await projectAll(ref, orgId, blob);
   const byId = new Map(liveNodes.map((n) => [n.id, n]));
 
   const out: HiddenLiveEntry[] = [];
@@ -587,4 +613,92 @@ export async function setLivePosition(
         : {}),
   };
   await storeBlob(orgId, ref, { ...blob, positions });
+}
+
+// ---------------------------------------------------------------------------
+// Assigned-features overlay — pin/unpin feature cards onto a canvas.
+//
+// Today the only canvas that honors `assignedFeatures` is the workspace
+// sub-canvas (`ref` starts with `ws:`) — the workspace projector emits
+// one `feature:<id>` node per id in the list. Other refs accept writes
+// (a future canvas type might consume the list too) but no projector
+// reads them, so pinning a feature on, e.g., an initiative canvas is a
+// silent no-op at render time.
+//
+// Symmetric with `hideLiveNode` / `showLiveNode`: dedicated entry
+// points so a routine autosave PUT can't accidentally reset the list.
+// Idempotent: pinning an already-pinned feature is a no-op; unpinning
+// an absent feature is a no-op.
+//
+// **TOCTOU**: both `assignFeatureOnCanvas` and
+// `unassignFeatureOnCanvas` do a read-modify-write without a
+// transaction or optimistic-lock. Two concurrent writers can lose an
+// update (T1 reads, T2 reads, T1 writes [+B], T2 writes [+C] → B is
+// lost). In practice:
+//   - Pin-vs-pin from two users at the same moment: rare, and both
+//     writers usually want the same outcome (idempotent).
+//   - Agent pin + human pin: more plausible since the prompt
+//     encourages the agent to call these tools. Worst case: one of
+//     the two pins is lost; recoverable by re-pinning. Acceptable
+//     for now; revisit with a `jsonb_set` or `SELECT … FOR UPDATE`
+//     if the failure mode bites users.
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip the `feature:` prefix from a live id so callers can pass either
+ * a bare feature id or the canvas-form live id.
+ */
+function bareFeatureId(featureIdOrLiveId: string): string {
+  return featureIdOrLiveId.startsWith("feature:")
+    ? featureIdOrLiveId.slice("feature:".length)
+    : featureIdOrLiveId;
+}
+
+export async function assignFeatureOnCanvas(
+  orgId: string,
+  ref: string,
+  featureId: string,
+): Promise<void> {
+  const id = bareFeatureId(featureId);
+  if (!id) throw new Error("assignFeatureOnCanvas: featureId is empty");
+  const blob = await loadBlob(orgId, ref);
+  const current = blob.assignedFeatures ?? [];
+  if (current.includes(id)) return;
+  await storeBlob(orgId, ref, {
+    ...blob,
+    assignedFeatures: [...current, id],
+  });
+}
+
+export async function unassignFeatureOnCanvas(
+  orgId: string,
+  ref: string,
+  featureId: string,
+): Promise<void> {
+  const id = bareFeatureId(featureId);
+  if (!id) return;
+  const blob = await loadBlob(orgId, ref);
+  const current = blob.assignedFeatures ?? [];
+  if (current.length === 0) return;
+  const next = current.filter((existing) => existing !== id);
+  if (next.length === current.length) return;
+  await storeBlob(orgId, ref, {
+    ...blob,
+    // Drop the field entirely when empty so the DB row stays compact —
+    // mirrors the `hidden` cleanup in `showLiveNode`.
+    assignedFeatures: next.length > 0 ? next : undefined,
+  });
+}
+
+/**
+ * Read the assigned-feature ids for a single canvas. Returns `[]` when
+ * the row doesn't exist or the field is absent. Used by the assign-
+ * existing UI to mark already-pinned features as unselectable.
+ */
+export async function readAssignedFeatures(
+  orgId: string,
+  ref: string,
+): Promise<string[]> {
+  const blob = await loadBlob(orgId, ref);
+  return blob.assignedFeatures ?? [];
 }

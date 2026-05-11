@@ -93,38 +93,106 @@ describe("featureProjectsOn", () => {
   });
 
   describe("workspace canvas", () => {
-    it("projects loose features (no initiative, no milestone)", () => {
+    // The workspace canvas now projects features by EXPLICIT PIN only
+    // (`CanvasBlob.assignedFeatures`). `featureProjectsOn` takes an
+    // optional `assignedFeatures` third arg; on `ws:` refs the
+    // function returns `true` iff the feature's id is in that list.
+    // Callers that don't pass the list (or don't pass `featureId` on
+    // the payload) fall through to `false` for workspace scopes,
+    // which is the safe default — same effect as "not pinned."
+    it("projects a pinned feature when its id is in assignedFeatures", () => {
       expect(
-        featureProjectsOn("ws:ws_a", {
-          workspaceId: "ws_a",
-        }),
+        featureProjectsOn(
+          "ws:ws_a",
+          {
+            workspaceId: "ws_a",
+            featureId: "feat_1",
+          },
+          ["feat_1", "feat_2"],
+        ),
       ).toBe(true);
     });
 
-    it("rejects features with an initiative (those project on the initiative)", () => {
+    it("rejects an unpinned feature even when workspaceId matches", () => {
+      expect(
+        featureProjectsOn(
+          "ws:ws_a",
+          {
+            workspaceId: "ws_a",
+            featureId: "feat_99",
+          },
+          ["feat_1", "feat_2"],
+        ),
+      ).toBe(false);
+    });
+
+    it("rejects when assignedFeatures is undefined (no pin list passed)", () => {
       expect(
         featureProjectsOn("ws:ws_a", {
           workspaceId: "ws_a",
-          initiativeId: "init_a",
+          featureId: "feat_1",
         }),
       ).toBe(false);
     });
 
-    it("rejects features with a milestone", () => {
+    it("rejects when featureId is missing (can't check membership)", () => {
       expect(
-        featureProjectsOn("ws:ws_a", {
-          workspaceId: "ws_a",
-          milestoneId: "ms_a",
-        }),
+        featureProjectsOn(
+          "ws:ws_a",
+          {
+            workspaceId: "ws_a",
+          },
+          ["feat_1"],
+        ),
       ).toBe(false);
     });
 
-    it("rejects when workspaceId differs", () => {
+    it("rejects when workspaceId differs even if id is in the list", () => {
       expect(
-        featureProjectsOn("ws:ws_a", {
-          workspaceId: "ws_b",
-        }),
+        featureProjectsOn(
+          "ws:ws_a",
+          {
+            workspaceId: "ws_b",
+            featureId: "feat_1",
+          },
+          ["feat_1"],
+        ),
       ).toBe(false);
+    });
+
+    it("a feature with an initiative does NOT auto-project on its workspace canvas (must be pinned)", () => {
+      // Initiative-anchored features render on the initiative
+      // sub-canvas via `milestoneTimelineProjector`, not on the
+      // workspace canvas. Pinning one onto a workspace canvas IS
+      // legal (and `featureProjectsOn` honors it) — what matters here
+      // is that the initiative anchor doesn't change the workspace
+      // canvas rule.
+      expect(
+        featureProjectsOn(
+          "ws:ws_a",
+          {
+            workspaceId: "ws_a",
+            initiativeId: "init_a",
+            featureId: "feat_1",
+          },
+          // not in list:
+          ["feat_2"],
+        ),
+      ).toBe(false);
+    });
+
+    it("a feature with an initiative DOES project when pinned (initiative anchor doesn't block pinning)", () => {
+      expect(
+        featureProjectsOn(
+          "ws:ws_a",
+          {
+            workspaceId: "ws_a",
+            initiativeId: "init_a",
+            featureId: "feat_1",
+          },
+          ["feat_1"],
+        ),
+      ).toBe(true);
     });
   });
 
@@ -155,13 +223,21 @@ describe("featureProjectsOn", () => {
   });
 
   describe("null vs undefined milestoneId/initiativeId", () => {
-    it("treats null milestoneId as 'no milestone'", () => {
+    it("treats null milestoneId as 'no milestone' on a workspace canvas (still requires pin)", () => {
+      // Under the new pin-based workspace projection, `null`
+      // anchors alone aren't enough — the feature must also be in
+      // the canvas's `assignedFeatures` list. This test pins it.
       expect(
-        featureProjectsOn("ws:ws_a", {
-          workspaceId: "ws_a",
-          initiativeId: null,
-          milestoneId: null,
-        }),
+        featureProjectsOn(
+          "ws:ws_a",
+          {
+            workspaceId: "ws_a",
+            initiativeId: null,
+            milestoneId: null,
+            featureId: "feat_1",
+          },
+          ["feat_1"],
+        ),
       ).toBe(true);
     });
 

@@ -10,7 +10,12 @@
  */
 import { db } from "@/lib/db";
 import type { CanvasEdge, CanvasLane, CanvasNode } from "system-canvas";
-import type { Projector, ProjectionResult, Scope } from "./types";
+import type {
+  Projector,
+  ProjectionResult,
+  ProjectorContext,
+  Scope,
+} from "./types";
 import {
   INITIATIVE_ROW_STEP,
   INITIATIVE_ROW_X0,
@@ -18,6 +23,9 @@ import {
   LOOSE_FEATURE_INIT_ROW_STEP,
   LOOSE_FEATURE_INIT_ROW_X0,
   LOOSE_FEATURE_INIT_ROW_Y,
+  LOOSE_FEATURE_WS_ROW_STEP,
+  LOOSE_FEATURE_WS_ROW_X0,
+  LOOSE_FEATURE_WS_ROW_Y,
   MILESTONE_ROW_STEP,
   MILESTONE_ROW_X0,
   MILESTONE_ROW_Y,
@@ -97,6 +105,23 @@ function defaultLooseFeatureInitiativePosition(index: number): { x: number; y: n
   return {
     x: LOOSE_FEATURE_INIT_ROW_X0 + index * LOOSE_FEATURE_INIT_ROW_STEP,
     y: LOOSE_FEATURE_INIT_ROW_Y,
+  };
+}
+
+/**
+ * Default placement for an assigned feature card on a workspace
+ * sub-canvas. Lays out in a horizontal row below the repo row.
+ *
+ * Used only for the very first render of a freshly-assigned card —
+ * once the user drags it, the position rides through
+ * `Canvas.data.positions[feature:<id>]` and this default is ignored.
+ */
+function defaultAssignedFeatureWorkspacePosition(
+  index: number,
+): { x: number; y: number } {
+  return {
+    x: LOOSE_FEATURE_WS_ROW_X0 + index * LOOSE_FEATURE_WS_ROW_STEP,
+    y: LOOSE_FEATURE_WS_ROW_Y,
   };
 }
 
@@ -212,7 +237,11 @@ export const rootProjector: Projector = {
 // ---------------------------------------------------------------------------
 
 export const workspaceProjector: Projector = {
-  async project(scope: Scope, orgId: string): Promise<ProjectionResult> {
+  async project(
+    scope: Scope,
+    orgId: string,
+    context?: ProjectorContext,
+  ): Promise<ProjectionResult> {
     if (scope.kind !== "workspace") return { nodes: [] };
 
     // Guard: the workspace must belong to the org we were asked about.
@@ -251,21 +280,150 @@ export const workspaceProjector: Projector = {
       };
     });
 
-    // Loose features deliberately do NOT project on the workspace
-    // sub-canvas. The workspace canvas is the org's "ops surface" —
-    // repositories (projected) plus user-authored `service` cards
-    // (EC2 / Vercel / GitHub App / K8s manager / etc.). Mixing
-    // backlog work items into that surface conflates "what's running"
-    // with "what we're building," and the auto-fit was getting
-    // dominated by feature rows on backlog-heavy workspaces. Loose
-    // features still live in the DB and the workspace's feature list
-    // view; features anchored to an initiative still project on the
-    // initiative sub-canvas via `initiativeProjector`. If we want
-    // features back on the workspace canvas later, the prior block is
-    // in git history (and `LOOSE_FEATURE_LIMIT` plus
-    // `LOOSE_FEATURE_WS_ROW_*` constants in `geometry.ts` were kept
-    // around for the initiative-loose-feature row, which still uses
-    // the same pattern).
+    // Assigned features — explicit per-canvas pins from
+    // `CanvasBlob.assignedFeatures`. The workspace canvas used to
+    // auto-project loose features (cap 25), which conflated "what's
+    // running" with "what we're building" and crushed the auto-fit on
+    // backlog-heavy workspaces. The user (or agent) now chooses which
+    // features show up here, keeping the ops surface focused while
+    // still letting people pin in-flight features when that adds
+    // value.
+    //
+    // We still validate that every pinned id (a) actually exists,
+    // (b) isn't soft-deleted, and (c) lives in THIS workspace. Cross-
+    // workspace pins are silently dropped — the only places that can
+    // write the list are `assignFeatureOnCanvas` (validates in the
+    // REST/agent layer) and `splitCanvas` (preserves the list
+    // verbatim from `previous`); both are trustworthy, but a stale
+    // pin from a since-moved or since-deleted feature shouldn't
+    // emit a phantom card.
+    const assignedIds = context?.assignedFeatures ?? [];
+    if (assignedIds.length > 0) {
+      const features = await db.feature.findMany({
+        where: {
+          id: { in: assignedIds },
+          workspaceId: workspace.id,
+          deleted: false,
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          workflowStatus: true,
+          tasks: {
+            where: { deleted: false, archived: false },
+            select: { status: true },
+          },
+        },
+      });
+      // Render in the user-pinned order (not DB order) so reordering
+      // the list via the agent or future drag-to-reorder UI is
+      // honored at render time. Drop ids that didn't survive the
+      // existence/scope filter above.
+      const byId = new Map(features.map((f) => [f.id, f]));
+      let slot = 0;
+      for (const id of assignedIds) {
+        const f = byId.get(id);
+        if (!f) continue;
+        nodes.push(
+          buildFeatureNode(f, defaultAssignedFeatureWorkspacePosition(slot)),
+        );
+        slot += 1;
+      }
+
+      // Lazy stale-pin cleanup. When the pin list contains ids that
+      // didn't survive the existence/scope filter — a soft-deleted
+      // feature, a feature moved to another workspace, an id that
+      // never resolved — drop them from the persisted list so it
+      // doesn't grow monotonically. We do this on read because:
+      //   (a) the diff is already computed (the `byId` lookup just
+      //       failed for those ids);
+      //   (b) the deletion paths don't fan out to "every workspace
+      //       canvas that might pin me," which would require a JSON
+      //       array_contains scan;
+      //   (c) the cleanup is fire-and-forget — a failure leaves the
+      //       stale id in place (renders correctly anyway) and the
+      //       next read tries again.
+      // Read-path mutation is unusual; this is the same pattern
+      // `dedupeAuthoredResearch` uses in `io.ts` (write-side self-
+      // heal), and the cleanup is idempotent + monotonic (a stale
+      // id only gets dropped, never added) so concurrent reads
+      // converge to the same clean state. We pull the ref off
+      // `scope` (which we already type-narrowed) and route through
+      // a direct `db.canvas.update` rather than the io.ts mutation
+      // primitive to avoid a re-read of the row.
+      const stalePinIds = assignedIds.filter((id) => !byId.has(id));
+      if (stalePinIds.length > 0) {
+        const survivingIds = assignedIds.filter((id) => byId.has(id));
+        const workspaceRef = `ws:${workspace.id}`;
+        // Fire-and-forget. Awaiting would make every read on a
+        // canvas with stale pins slower for no user-visible benefit.
+        void (async () => {
+          try {
+            // Read-modify-write: pull the row's data blob, mutate
+            // ONLY the `assignedFeatures` field, write it back. We
+            // can't use `assignFeatureOnCanvas` / `unassignFeatureOnCanvas`
+            // here — those operate on a single id, and we'd need
+            // O(stale) of them; one round-trip is enough.
+            const row = await db.canvas.findUnique({
+              where: { orgId_ref: { orgId, ref: workspaceRef } },
+              select: { data: true },
+            });
+            if (!row || !row.data || typeof row.data !== "object") return;
+            // TOCTOU note: between the read at the top of this
+            // projector and this update, another caller could have
+            // re-added one of the stale ids (e.g. the user just
+            // un-soft-deleted a feature, or pinned a different
+            // feature that happens to share an id — which can't
+            // happen, ids are cuids). The worst case: we drop a
+            // freshly-re-added id that would have rendered. Cost:
+            // user has to re-pin once. Acceptable.
+            const data = row.data as Record<string, unknown>;
+            const currentList = Array.isArray(data.assignedFeatures)
+              ? (data.assignedFeatures as unknown[]).filter(
+                  (v): v is string => typeof v === "string",
+                )
+              : [];
+            // Re-compute the survivors from the CURRENT persisted
+            // list (not from our snapshot's `assignedIds`), so
+            // concurrent writes between our read and this update
+            // don't get clobbered. The only ids we drop are the
+            // ones still present in the current list AND in our
+            // stale set.
+            const staleSet = new Set(stalePinIds);
+            const cleaned = currentList.filter((id) => !staleSet.has(id));
+            if (cleaned.length === currentList.length) return; // nothing to do
+            const nextData = {
+              ...data,
+              assignedFeatures: cleaned.length > 0 ? cleaned : undefined,
+            };
+            await db.canvas.update({
+              where: { orgId_ref: { orgId, ref: workspaceRef } },
+              data: { data: nextData as never },
+            });
+            console.log(
+              "[canvas/workspaceProjector] cleaned up",
+              stalePinIds.length,
+              "stale pin(s) on",
+              workspaceRef,
+            );
+            // Avoid the variable being marked unused when no stale
+            // ids carry through — `survivingIds` is informational
+            // only; the actual cleaned list is recomputed above
+            // from the fresh row to dodge TOCTOU.
+            void survivingIds;
+          } catch (e) {
+            // Non-fatal — the stale id stays in the list, the
+            // projector still doesn't render a card for it, and
+            // the next read tries again.
+            console.error(
+              "[canvas/workspaceProjector] stale-pin cleanup failed:",
+              e,
+            );
+          }
+        })();
+      }
+    }
 
     return { nodes };
   },
