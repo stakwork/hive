@@ -648,9 +648,12 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 className="mt-1"
                 placeholder="PROMPT_NAME"
                 value={formName}
-                onChange={(e) => setFormName(e.target.value)}
+                onChange={(e) => setFormName(e.target.value.toUpperCase().replace(/[^A-Z_]/g, ""))}
                 disabled={isSaving}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Only uppercase letters (A–Z) and underscores (_) are allowed.
+              </p>
             </div>
 
             <div>

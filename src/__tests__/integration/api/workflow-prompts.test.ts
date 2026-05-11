@@ -131,13 +131,13 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
         status: 200,
         json: async () => ({
           success: true,
-          data: { id: "prompt-123", name: "Test Prompt", value: "Test value" },
+          data: { id: "prompt-123", name: "TEST_PROMPT", value: "Test value" },
         }),
       } as Response);
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "Test Prompt", value: "Test value" }),
+        body: JSON.stringify({ name: "TEST_PROMPT", value: "Test value" }),
       });
 
       const response = await POST(request);
@@ -171,13 +171,13 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
         status: 200,
         json: async () => ({
           success: true,
-          data: { id: "prompt-456", name: "Owner Prompt", value: "Owner value" },
+          data: { id: "prompt-456", name: "OWNER_PROMPT", value: "Owner value" },
         }),
       } as Response);
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "Owner Prompt", value: "Owner value" }),
+        body: JSON.stringify({ name: "OWNER_PROMPT", value: "Owner value" }),
       });
 
       const response = await POST(request);
@@ -205,13 +205,13 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
         status: 200,
         json: async () => ({
           success: true,
-          data: { id: "prompt-789", name: "Dev Prompt", value: "Dev value" },
+          data: { id: "prompt-789", name: "DEV_PROMPT", value: "Dev value" },
         }),
       } as Response);
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "Dev Prompt", value: "Dev value" }),
+        body: JSON.stringify({ name: "DEV_PROMPT", value: "Dev value" }),
       });
 
       const response = await POST(request);
@@ -233,13 +233,13 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
         status: 200,
         json: async () => ({
           success: true,
-          data: { id: "prompt-dev", name: "Dev Mode Prompt", value: "Dev value" },
+          data: { id: "prompt-dev", name: "DEV_MODE_PROMPT", value: "Dev value" },
         }),
       } as Response);
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "Dev Mode Prompt", value: "Dev value" }),
+        body: JSON.stringify({ name: "DEV_MODE_PROMPT", value: "Dev value" }),
       });
 
       const response = await POST(request);
@@ -301,19 +301,71 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
         status: 200,
         json: async () => ({
           success: true,
-          data: { id: "prompt-valid", name: "Valid Prompt", value: "Valid value" },
+          data: { id: "prompt-valid", name: "VALID_PROMPT", value: "Valid value" },
         }),
       } as Response);
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "Valid Prompt", value: "Valid value" }),
+        body: JSON.stringify({ name: "VALID_PROMPT", value: "Valid value" }),
       });
 
       const response = await POST(request);
       const data = await expectSuccess(response, 200);
-      expect(data.data.name).toBe("Valid Prompt");
+      expect(data.data.name).toBe("VALID_PROMPT");
       expect(data.data.value).toBe("Valid value");
+    });
+
+    test("returns 400 when name contains lowercase letters", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
+        method: "POST",
+        body: JSON.stringify({ name: "invalid name", value: "Some value" }),
+      });
+
+      const response = await POST(request);
+      await expectError(response, "Prompt name must contain only uppercase letters and underscores", 400);
+    });
+
+    test("returns 400 when name contains numbers or special chars", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
+        method: "POST",
+        body: JSON.stringify({ name: "TEST-123", value: "Some value" }),
+      });
+
+      const response = await POST(request);
+      await expectError(response, "Prompt name must contain only uppercase letters and underscores", 400);
+    });
+
+    test("accepts valid uppercase+underscore prompt name", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { id: "prompt-valid-format", name: "VALID_NAME", value: "Some value" },
+        }),
+      } as Response);
+
+      const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
+        method: "POST",
+        body: JSON.stringify({ name: "VALID_NAME", value: "Some value" }),
+      });
+
+      const response = await POST(request);
+      const data = await expectSuccess(response, 200);
+      expect(data.data.name).toBe("VALID_NAME");
     });
 
     test("accepts optional description field", async () => {
@@ -328,7 +380,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
           success: true,
           data: {
             id: "prompt-desc",
-            name: "Prompt with description",
+            name: "PROMPT_WITH_DESCRIPTION",
             value: "Value",
             description: "Test description",
           },
@@ -338,7 +390,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
         body: JSON.stringify({
-          name: "Prompt with description",
+          name: "PROMPT_WITH_DESCRIPTION",
           value: "Value",
           description: "Test description",
         }),
@@ -361,13 +413,13 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
         status: 200,
         json: async () => ({
           success: true,
-          data: { id: "prompt-123", name: "API Test", value: "API value" },
+          data: { id: "prompt-123", name: "API_TEST", value: "API value" },
         }),
       } as Response);
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "API Test", value: "API value" }),
+        body: JSON.stringify({ name: "API_TEST", value: "API value" }),
       });
 
       await POST(request);
@@ -394,14 +446,14 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
         status: 200,
         json: async () => ({
           success: true,
-          data: { id: "prompt-body", name: "Body Test", value: "Body value" },
+          data: { id: "prompt-body", name: "BODY_TEST", value: "Body value" },
         }),
       } as Response);
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
         body: JSON.stringify({
-          name: "Body Test",
+          name: "BODY_TEST",
           value: "Body value",
           description: "Body description",
         }),
@@ -413,7 +465,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
       const body = JSON.parse(fetchCall[1]!.body as string);
 
       expect(body).toEqual({
-        name: "Body Test",
+        name: "BODY_TEST",
         value: "Body value",
         description: "Body description",
       });
@@ -431,7 +483,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
           success: true,
           data: {
             id: "prompt-success",
-            name: "Success Prompt",
+            name: "SUCCESS_PROMPT",
             value: "Success value",
             created_at: "2024-01-01T00:00:00Z",
           },
@@ -440,7 +492,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "Success Prompt", value: "Success value" }),
+        body: JSON.stringify({ name: "SUCCESS_PROMPT", value: "Success value" }),
       });
 
       const response = await POST(request);
@@ -448,7 +500,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
 
       expect(data.success).toBe(true);
       expect(data.data.id).toBe("prompt-success");
-      expect(data.data.name).toBe("Success Prompt");
+      expect(data.data.name).toBe("SUCCESS_PROMPT");
     });
 
     test("handles Stakwork API error with non-ok status", async () => {
@@ -464,7 +516,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "Error Prompt", value: "Error value" }),
+        body: JSON.stringify({ name: "ERROR_PROMPT", value: "Error value" }),
       });
 
       const response = await POST(request);
@@ -486,7 +538,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "Fail Prompt", value: "Fail value" }),
+        body: JSON.stringify({ name: "FAIL_PROMPT", value: "Fail value" }),
       });
 
       const response = await POST(request);
@@ -502,7 +554,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "Network Prompt", value: "Network value" }),
+        body: JSON.stringify({ name: "NETWORK_PROMPT", value: "Network value" }),
       });
 
       const response = await POST(request);
@@ -551,7 +603,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
           success: true,
           data: {
             id: "prompt-long",
-            name: "Long Prompt",
+            name: "LONG_PROMPT",
             value: "x".repeat(10000),
           },
         }),
@@ -561,7 +613,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
 
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
-        body: JSON.stringify({ name: "Long Prompt", value: longValue }),
+        body: JSON.stringify({ name: "LONG_PROMPT", value: longValue }),
       });
 
       const response = await POST(request);
@@ -581,7 +633,7 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
           success: true,
           data: {
             id: "prompt-special",
-            name: "Special <>&\" Prompt",
+            name: "SPECIAL_PROMPT",
             value: "Special \n\t\r value",
           },
         }),
@@ -590,14 +642,14 @@ describe("POST /api/workflow/prompts Integration Tests", () => {
       const request = new NextRequest("http://localhost:3000/api/workflow/prompts", {
         method: "POST",
         body: JSON.stringify({
-          name: "Special <>&\" Prompt",
+          name: "SPECIAL_PROMPT",
           value: "Special \n\t\r value",
         }),
       });
 
       const response = await POST(request);
       const data = await expectSuccess(response, 200);
-      expect(data.data.name).toBe("Special <>&\" Prompt");
+      expect(data.data.name).toBe("SPECIAL_PROMPT");
     });
   });
 });
