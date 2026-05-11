@@ -2,7 +2,12 @@ import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { updateFeature } from "@/services/roadmap";
-import { notifyFeatureReassignmentRefresh } from "@/lib/canvas";
+import {
+  assignFeatureOnCanvas,
+  notifyFeatureAssignmentRefreshByOrg,
+  notifyFeatureReassignmentRefresh,
+  unassignFeatureOnCanvas,
+} from "@/lib/canvas";
 import { loadNodeDetail } from "@/services/orgs/nodeDetail";
 import type {
   FeatureProposalMeta,
@@ -296,6 +301,184 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           console.error("[initiativeTools.assign_feature_to_initiative] error:", e);
           const message =
             e instanceof Error ? e.message : "Failed to assign feature";
+          return { error: message };
+        }
+      },
+    }),
+
+    // ─── assign_feature_to_workspace ──────────────────────────────────
+    // Pin an existing feature onto a workspace's sub-canvas. The
+    // mutation only touches `CanvasBlob.assignedFeatures` (the per-
+    // canvas overlay) — the Feature row itself is unchanged. Useful
+    // when the user asks the agent to "show this feature on the
+    // [workspace name] canvas" or "pin the auth features onto the
+    // hive workspace." Idempotent: re-pinning an already-pinned
+    // feature is a no-op.
+    //
+    // **Validation pattern** mirrors `assign_feature_to_initiative`:
+    // the feature must exist, belong to this org, AND belong to the
+    // target workspace. A feature from workspace A can't be pinned
+    // onto workspace B — features still belong to exactly one
+    // workspace, and pinning surfaces the feature card with title +
+    // status in the canvas, so cross-workspace pinning would be a
+    // small read-leak surface.
+    assign_feature_to_workspace: tool({
+      description:
+        "Pin an existing feature onto a workspace's sub-canvas so it " +
+        "shows up as a card alongside the workspace's repos and " +
+        "authored services. The workspace canvas no longer auto-" +
+        "projects features — pinning is explicit, and only pinned " +
+        "features render there. Use this when the user asks to " +
+        "'add the auth feature to the hive workspace canvas', " +
+        "'show me feature X on workspace Y', 'pin these features to " +
+        "the dashboard workspace,' etc. The feature is unchanged — " +
+        "only its visibility on this one canvas. The feature MUST " +
+        "already belong to the target workspace (cross-workspace " +
+        "pinning is rejected); call `assign_feature_to_initiative` " +
+        "or move the feature first if needed. Idempotent — re-pinning " +
+        "a pinned feature returns success.",
+      inputSchema: z.object({
+        featureId: z
+          .string()
+          .min(1)
+          .describe("The id of the feature to pin."),
+        workspaceId: z
+          .string()
+          .min(1)
+          .describe(
+            "The id of the workspace whose canvas to pin onto. The " +
+              "feature must already live in this workspace.",
+          ),
+      }),
+      execute: async ({
+        featureId,
+        workspaceId,
+      }: {
+        featureId: string;
+        workspaceId: string;
+      }) => {
+        try {
+          const feature = await db.feature.findUnique({
+            where: { id: featureId },
+            select: {
+              workspaceId: true,
+              workspace: {
+                select: { sourceControlOrgId: true },
+              },
+            },
+          });
+          if (!feature) {
+            return { error: "Feature not found" };
+          }
+          if (feature.workspace.sourceControlOrgId !== orgId) {
+            return { error: "Feature does not belong to this organization" };
+          }
+          if (feature.workspaceId !== workspaceId) {
+            return {
+              error:
+                "Feature does not belong to the target workspace. Move the feature with `assign_feature_to_initiative`'s workspace-change pattern (not yet supported) or pick the feature's actual workspace.",
+            };
+          }
+          const ref = `ws:${workspaceId}`;
+          await assignFeatureOnCanvas(orgId, ref, featureId);
+          void notifyFeatureAssignmentRefreshByOrg(
+            orgId,
+            ref,
+            featureId,
+            "feature-pinned",
+          );
+          return {
+            status: "pinned",
+            featureId,
+            workspaceId,
+            ref,
+          };
+        } catch (e) {
+          console.error(
+            "[initiativeTools.assign_feature_to_workspace] error:",
+            e,
+          );
+          const message =
+            e instanceof Error ? e.message : "Failed to pin feature";
+          return { error: message };
+        }
+      },
+    }),
+
+    // ─── unassign_feature_from_workspace ──────────────────────────────
+    // Mirror of `assign_feature_to_workspace`. Same validation rules
+    // (org ownership + workspace ownership). Idempotent — unpinning a
+    // feature that isn't pinned is a no-op.
+    unassign_feature_from_workspace: tool({
+      description:
+        "Unpin a feature from a workspace's sub-canvas. The feature " +
+        "row is unchanged — only its visibility on this one canvas. " +
+        "Idempotent — unpinning a feature that isn't pinned succeeds " +
+        "silently. Use when the user asks to 'remove feature X from " +
+        "the [workspace] canvas' or 'clean up the workspace canvas.'",
+      inputSchema: z.object({
+        featureId: z
+          .string()
+          .min(1)
+          .describe("The id of the feature to unpin."),
+        workspaceId: z
+          .string()
+          .min(1)
+          .describe(
+            "The id of the workspace whose canvas to unpin from. The " +
+              "feature must already live in this workspace.",
+          ),
+      }),
+      execute: async ({
+        featureId,
+        workspaceId,
+      }: {
+        featureId: string;
+        workspaceId: string;
+      }) => {
+        try {
+          const feature = await db.feature.findUnique({
+            where: { id: featureId },
+            select: {
+              workspaceId: true,
+              workspace: {
+                select: { sourceControlOrgId: true },
+              },
+            },
+          });
+          if (!feature) {
+            return { error: "Feature not found" };
+          }
+          if (feature.workspace.sourceControlOrgId !== orgId) {
+            return { error: "Feature does not belong to this organization" };
+          }
+          if (feature.workspaceId !== workspaceId) {
+            return {
+              error:
+                "Feature does not belong to the target workspace.",
+            };
+          }
+          const ref = `ws:${workspaceId}`;
+          await unassignFeatureOnCanvas(orgId, ref, featureId);
+          void notifyFeatureAssignmentRefreshByOrg(
+            orgId,
+            ref,
+            featureId,
+            "feature-unpinned",
+          );
+          return {
+            status: "unpinned",
+            featureId,
+            workspaceId,
+            ref,
+          };
+        } catch (e) {
+          console.error(
+            "[initiativeTools.unassign_feature_from_workspace] error:",
+            e,
+          );
+          const message =
+            e instanceof Error ? e.message : "Failed to unpin feature";
           return { error: message };
         }
       },

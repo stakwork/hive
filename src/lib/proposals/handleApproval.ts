@@ -32,6 +32,7 @@ import {
   setLivePosition,
   featureProjectsOn,
   mostSpecificRef,
+  readAssignedFeatures,
   resolvePlacement,
   ROOT_REF,
 } from "@/lib/canvas";
@@ -474,6 +475,7 @@ async function approveFeature(args: {
       workspaceId: merged.workspaceId,
       initiativeId: resolvedInitiativeId,
       milestoneId: merged.milestoneId ?? null,
+      featureId: feature.id,
     };
 
     // Decide where the new node lands. Two questions:
@@ -486,11 +488,48 @@ async function approveFeature(args: {
     //        b. Else, user's click hint (`intent.viewport`) on the
     //           current canvas → use it (mirrors the human `+` flow).
     //        c. Else, no overlay → projector auto-layout decides.
+    //
+    // Workspace-canvas special case: the workspace canvas only
+    // projects features that are explicitly pinned via
+    // `CanvasBlob.assignedFeatures`. When the user approves a loose-
+    // feature proposal while looking at a workspace canvas, we
+    // auto-pin the new feature to that canvas so it lands where
+    // they're looking. This mirrors the human "+ Feature → Assign
+    // existing" flow's pin step, and is what makes
+    // `featureProjectsOn(currentRef, ...)` return true below.
     const liveId = `feature:${feature.id}`;
-    let landedOn: string;
     if (
       intent.currentRef !== undefined &&
-      featureProjectsOn(intent.currentRef, featurePlacementPayload)
+      intent.currentRef.startsWith("ws:") &&
+      intent.currentRef === `ws:${merged.workspaceId}` &&
+      !resolvedInitiativeId &&
+      !merged.milestoneId
+    ) {
+      try {
+        const { assignFeatureOnCanvas } = await import("@/lib/canvas");
+        await assignFeatureOnCanvas(orgId, intent.currentRef, feature.id);
+      } catch (e) {
+        console.error("[handleApproval] auto-pin to workspace canvas failed:", e);
+      }
+    }
+    // Read the post-pin assignment list so `featureProjectsOn` sees
+    // the auto-pin we just wrote (when applicable). Cheap one-row
+    // read; skipped when the user isn't on a workspace canvas.
+    let landedOn: string;
+    const refForPinCheck =
+      intent.currentRef !== undefined && intent.currentRef.startsWith("ws:")
+        ? intent.currentRef
+        : null;
+    const assignedFeatures = refForPinCheck
+      ? await readAssignedFeatures(orgId, refForPinCheck)
+      : undefined;
+    if (
+      intent.currentRef !== undefined &&
+      featureProjectsOn(
+        intent.currentRef,
+        featurePlacementPayload,
+        assignedFeatures,
+      )
     ) {
       landedOn = intent.currentRef;
     } else {

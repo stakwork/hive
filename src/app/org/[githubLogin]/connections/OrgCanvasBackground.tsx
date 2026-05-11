@@ -40,6 +40,7 @@ import {
 } from "@/components/initiatives/MilestoneDialog";
 import {
   CreateFeatureCanvasDialog,
+  type FeatureAssignForm,
   type FeatureCreateForm,
 } from "../_components/CreateFeatureCanvasDialog";
 import type {
@@ -1467,6 +1468,108 @@ export function OrgCanvasBackground({
   );
 
   /**
+   * Save handler for the CreateFeatureCanvasDialog's **Assign existing**
+   * tab. Two flavors driven by the discriminated payload:
+   *
+   *   - `kind: "workspace-pin"` (workspace canvas) — POST to
+   *     `/canvas/assigned-features` with `action: "assign"` to add the
+   *     feature id to the canvas's `assignedFeatures` overlay. Feature
+   *     row unchanged. Click position lands the card.
+   *
+   *   - `kind: "initiative-attach"` (initiative canvas) — PATCH
+   *     `/api/features/[id]` with `{ initiativeId }` to set the loose
+   *     feature's anchor. Service-side `notifyFeatureReassignmentRefresh`
+   *     fans out CANVAS_UPDATED to both initiatives (in this case just
+   *     the landing one — `before.initiativeId` is null for loose
+   *     features). The projector emits the card on this initiative's
+   *     canvas alongside its milestones on the next read.
+   *
+   * Both paths converge on the same `savePositionForLiveId + refetch`
+   * tail so the card lands where the user clicked.
+   */
+  const handleAssignFeature = useCallback(
+    async (form: FeatureAssignForm): Promise<void> => {
+      if (pendingAdd?.kind !== "feature") return;
+
+      // Resolve `(targetRef, mutationFetch)` per flavor. `targetRef`
+      // is always the canvas the user is currently on — exactly the
+      // canvas the new card should appear on, since both flavors
+      // re-project onto the source scope after the mutation.
+      let targetRef: string;
+      let mutationFetch: () => Promise<Response>;
+
+      if (form.kind === "workspace-pin") {
+        targetRef = `ws:${form.workspaceId}`;
+        // Defensive: the dialog only surfaces the workspace-pin
+        // payload when the pending scope is the matching workspace
+        // canvas. Bail out instead of silently writing to the wrong
+        // canvas if it doesn't.
+        if (pendingAdd.canvasRef !== targetRef) {
+          console.error(
+            "[OrgCanvasBackground] handleAssignFeature canvasRef mismatch (workspace)",
+            { pendingRef: pendingAdd.canvasRef, targetRef },
+          );
+          return;
+        }
+        mutationFetch = () =>
+          fetch(`/api/orgs/${githubLogin}/canvas/assigned-features`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ref: targetRef,
+              featureId: form.featureId,
+              action: "assign",
+            }),
+          });
+      } else {
+        targetRef = `initiative:${form.initiativeId}`;
+        if (pendingAdd.canvasRef !== targetRef) {
+          console.error(
+            "[OrgCanvasBackground] handleAssignFeature canvasRef mismatch (initiative)",
+            { pendingRef: pendingAdd.canvasRef, targetRef },
+          );
+          return;
+        }
+        mutationFetch = () =>
+          fetch(`/api/features/${form.featureId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initiativeId: form.initiativeId }),
+          });
+      }
+
+      const res = await mutationFetch();
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        console.error(
+          "[OrgCanvasBackground] assign feature failed",
+          form.kind,
+          res.status,
+          detail,
+        );
+        return;
+      }
+
+      await savePositionForLiveId(
+        targetRef,
+        `feature:${form.featureId}`,
+        pendingAdd.x,
+        pendingAdd.y,
+      );
+      try {
+        const data = await fetchSub(githubLogin, targetRef);
+        setSubCanvases((prev) => ({ ...prev, [targetRef]: data }));
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] refetch after assign feature failed",
+          err,
+        );
+      }
+    },
+    [githubLogin, pendingAdd, savePositionForLiveId],
+  );
+
+  /**
    * Persist a milestone status change to the DB. Fire-and-forget; on
    * success the API route emits CANVAS_UPDATED which round-trips through
    * the projector and reconciles the canonical status. On failure, log
@@ -2426,6 +2529,56 @@ export function OrgCanvasBackground({
    * but a fresh config every render would force the library's internal
    * effects to re-bind unnecessarily.
    */
+  /**
+   * Unpin a feature card from a workspace sub-canvas. Right-click
+   * affordance on `feature:` nodes when the user is on a `ws:<id>`
+   * scope. The mutation only touches the canvas overlay
+   * (`Canvas.data.assignedFeatures`) — the Feature row itself is
+   * unchanged. Optimistic local refetch is sufficient; the API
+   * route's Pusher fan-out covers other tabs.
+   *
+   * No confirm dialog by design: pinning is a layout decision
+   * symmetric to dragging a card off-screen, and reversing it via
+   * the Assign-existing tab is one click away. Matches the
+   * "layout-only, not destructive" framing of the feature.
+   */
+  const handleUnpinFeatureFromWorkspace = useCallback(
+    async (featureLiveId: string, workspaceRef: string) => {
+      const featureId = featureLiveId.startsWith("feature:")
+        ? featureLiveId.slice("feature:".length)
+        : featureLiveId;
+      try {
+        const res = await fetch(
+          `/api/orgs/${githubLogin}/canvas/assigned-features`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ref: workspaceRef,
+              featureId,
+              action: "unassign",
+            }),
+          },
+        );
+        if (!res.ok) {
+          console.error(
+            "[OrgCanvasBackground] unassign feature failed",
+            res.status,
+          );
+          return;
+        }
+        const data = await fetchSub(githubLogin, workspaceRef);
+        setSubCanvases((prev) => ({ ...prev, [workspaceRef]: data }));
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] unassign feature error",
+          err,
+        );
+      }
+    },
+    [githubLogin],
+  );
+
   const nodeContextMenu = useMemo<NodeContextMenuConfig>(
     () => ({
       items: [
@@ -2438,29 +2591,52 @@ export function OrgCanvasBackground({
           // open", so right-clicking them is a silent no-op.
           match: { categories: ["note"] },
         },
+        {
+          id: "unpin-feature-from-workspace",
+          label: "Remove from canvas",
+          // Only feature cards. Scope filtering (only on `ws:` canvas)
+          // can't be expressed via `match` today, so we gate inside
+          // `onSelect` — the menu item shows up briefly on feature
+          // cards on every canvas, but selecting it is a no-op
+          // outside `ws:<id>`. The cleaner UX (hide on non-ws scopes)
+          // would need a `match.scope` field in the library; not
+          // adding one for a single use case.
+          match: { categories: ["feature"] },
+        },
       ],
       onSelect: (itemId, node, ctx) => {
-        if (itemId !== "promote-to-feature") return;
-        const text = (node.text ?? "").trim();
-        // Title pre-fill: first non-empty line, capped to fit the
-        // dialog's input. Full text always seeds the description so
-        // the user doesn't lose context when the title gets truncated.
-        const firstLine = text.split(/\r?\n/).find((l) => l.trim()) ?? "";
-        const titleSeed = firstLine.slice(0, 80);
-        const briefSeed = text;
-        // The library types `ctx.canvasRef` as `string | null` (null
-        // for the root canvas); the rest of OrgCanvasBackground uses
-        // `string | undefined`. Coerce so `startFeatureCreate`'s
-        // signature matches the `+` menu path.
-        startFeatureCreate(
-          node,
-          ctx.canvasRef ?? undefined,
-          { title: titleSeed, brief: briefSeed },
-          node.id,
-        );
+        if (itemId === "promote-to-feature") {
+          const text = (node.text ?? "").trim();
+          // Title pre-fill: first non-empty line, capped to fit the
+          // dialog's input. Full text always seeds the description so
+          // the user doesn't lose context when the title gets truncated.
+          const firstLine = text.split(/\r?\n/).find((l) => l.trim()) ?? "";
+          const titleSeed = firstLine.slice(0, 80);
+          const briefSeed = text;
+          // The library types `ctx.canvasRef` as `string | null` (null
+          // for the root canvas); the rest of OrgCanvasBackground uses
+          // `string | undefined`. Coerce so `startFeatureCreate`'s
+          // signature matches the `+` menu path.
+          startFeatureCreate(
+            node,
+            ctx.canvasRef ?? undefined,
+            { title: titleSeed, brief: briefSeed },
+            node.id,
+          );
+          return;
+        }
+        if (itemId === "unpin-feature-from-workspace") {
+          const canvasRef = ctx.canvasRef ?? "";
+          // Workspace scope only — the assigned-features overlay is
+          // a no-op on other canvases. Silent no-op outside ws: so a
+          // stray menu pick doesn't surface an error.
+          if (!canvasRef.startsWith("ws:")) return;
+          void handleUnpinFeatureFromWorkspace(node.id, canvasRef);
+          return;
+        }
       },
     }),
-    [startFeatureCreate],
+    [startFeatureCreate, handleUnpinFeatureFromWorkspace],
   );
 
   /**
@@ -2637,6 +2813,7 @@ export function OrgCanvasBackground({
           pendingAdd?.kind === "feature" ? pendingAdd.sourceNoteId : undefined
         }
         onSave={handleSaveFeature}
+        onAssign={handleAssignFeature}
       />
     </>
   );

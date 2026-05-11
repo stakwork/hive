@@ -62,6 +62,30 @@ export interface CanvasBlob {
    * still exist in the DB and on other canvases.
    */
   hidden?: string[];
+  /**
+   * Per-canvas list of feature ids the user (or agent) has pinned onto
+   * this canvas. Today the only consumer is the workspace sub-canvas
+   * (`ref` starting with `ws:`): the workspace projector emits one
+   * `feature:<id>` card per id in this list, in order. Other canvases
+   * ignore the field — feature projection on an initiative canvas is
+   * driven by `Feature.initiativeId`, not by this overlay, so the user
+   * doesn't need to "add" features there manually.
+   *
+   * **Why an explicit list, not auto-projection.** The workspace
+   * sub-canvas previously auto-projected loose features (cap 25). For
+   * backlog-heavy workspaces that capped slice was both noisy AND
+   * incomplete; the auto-fit then squeezed the ops cards (repos,
+   * services) until they were unreadable. Switching to "user chooses
+   * which features show up here" keeps the workspace canvas useful as
+   * an ops surface while still letting people pin a small focused set
+   * of in-flight features when that adds value.
+   *
+   * Same write-path treatment as `hidden`: `splitCanvas` preserves the
+   * previous value untouched, so autosave never clobbers pins. Toggling
+   * goes through dedicated `assignFeatureOnCanvas` /
+   * `unassignFeatureOnCanvas` helpers.
+   */
+  assignedFeatures?: string[];
 }
 
 /**
@@ -129,9 +153,38 @@ export interface ProjectionResult {
   rows?: CanvasLane[];
 }
 
+/**
+ * Read-only slice of the authored blob handed to projectors that need
+ * to see per-canvas overlays. Today the only consumer is
+ * `workspaceProjector`, which reads `assignedFeatures` to decide which
+ * feature cards to emit. Projectors that don't need the blob accept
+ * an undefined/empty context and behave identically to before.
+ *
+ * Pass-through-only on purpose: projectors must NOT mutate the blob,
+ * and adding a non-blob field here (e.g. "user id of the caller")
+ * would couple projection to request context. If a future need is
+ * neither blob-derived nor `(scope, orgId)`-derived, prefer a new
+ * argument over expanding this type.
+ */
+export interface ProjectorContext {
+  /** Per-canvas pinned feature ids, from `CanvasBlob.assignedFeatures`. */
+  assignedFeatures?: string[];
+}
+
 export interface Projector {
-  /** Returns `{ nodes: [] }` when the scope doesn't apply. */
-  project(scope: Scope, orgId: string): Promise<ProjectionResult>;
+  /**
+   * Returns `{ nodes: [] }` when the scope doesn't apply.
+   *
+   * `context` is optional so existing projectors keep compiling
+   * without edits; it carries blob-derived inputs (`assignedFeatures`
+   * today) that the framework reads once per `readCanvas` and shares
+   * across every projector.
+   */
+  project(
+    scope: Scope,
+    orgId: string,
+    context?: ProjectorContext,
+  ): Promise<ProjectionResult>;
 }
 
 /** Re-export the library's runtime shape so callers don't need two imports. */
