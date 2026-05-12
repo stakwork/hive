@@ -28,6 +28,7 @@ import { buildFeatureContext } from "@/lib/ai/utils";
 import { EncryptionService } from "@/lib/encryption";
 import { createUserStory } from "@/services/roadmap/user-stories";
 import type { ParsedDiagram } from "@/services/excalidraw-layout";
+import { isDevelopmentMode } from "@/lib/runtime";
 import { sanitiseDiagram } from "@/services/excalidraw-layout";
 import { tagElementsAsAi, mergeWhiteboardElements } from "@/services/whiteboard-elements";
 import { logger } from "@/lib/logger";
@@ -96,6 +97,7 @@ export async function createStakworkRun(
     where: { id: input.workspaceId },
     select: {
       id: true,
+      slug: true,
       ownerId: true,
       deleted: true,
       members: {
@@ -328,6 +330,10 @@ export async function createStakworkRun(
       // Token reference for Stakwork
       tokenReference: getStakworkTokenReference(),
     };
+
+    if (workspace.slug === "stakwork" || isDevelopmentMode()) {
+      vars.workflowPlanningEnabled = true;
+    }
 
     const stakworkPayload = {
       name: `ai-gen-${input.type.toLowerCase()}-${Date.now()}`,
