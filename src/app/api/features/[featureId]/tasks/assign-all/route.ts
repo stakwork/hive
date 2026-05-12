@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { SystemAssigneeType } from "@prisma/client";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
 import { processTicketSweep } from "@/services/task-coordinator-cron";
+import { triggerWorkflowEditorRun } from "@/services/workflow-editor";
 
 interface AssignAllResponse {
   success: boolean;
@@ -76,7 +77,7 @@ export async function POST(
       );
     }
 
-    // Step 5: Query all unassigned TODO tasks in first phase
+    // Step 5: Query all unassigned TODO tasks in first phase (include workflowTask relation)
     // Only assign tasks that are in TODO status (not IN_PROGRESS or DONE)
     const unassignedTasks = await db.task.findMany({
       where: {
@@ -88,6 +89,8 @@ export async function POST(
       },
       select: {
         id: true,
+        description: true,
+        workflowTask: true,
       },
     });
 
@@ -102,23 +105,48 @@ export async function POST(
       );
     }
 
-    // Step 7: Bulk update tasks to assign to Task Coordinator
-    const result = await db.task.updateMany({
-      where: {
-        id: {
-          in: unassignedTasks.map((task) => task.id),
-        },
-      },
-      data: {
-        assigneeId: null, // Clear regular assignee
-        systemAssigneeType: SystemAssigneeType.TASK_COORDINATOR,
-      },
-    });
+    // Partition into repo tasks and workflow tasks
+    const repoTasks = unassignedTasks.filter((t) => t.workflowTask === null);
+    const workflowTasks = unassignedTasks.filter((t) => t.workflowTask !== null);
 
-    // Step 8: Eagerly start the highest-priority eligible task if a machine is available
+    // Step 7a: Bulk update repo tasks to assign to Task Coordinator (unchanged behaviour)
+    let assignedCount = 0;
+    if (repoTasks.length > 0) {
+      const result = await db.task.updateMany({
+        where: {
+          id: { in: repoTasks.map((task) => task.id) },
+        },
+        data: {
+          assigneeId: null, // Clear regular assignee
+          systemAssigneeType: SystemAssigneeType.TASK_COORDINATOR,
+        },
+      });
+      assignedCount += result.count;
+    }
+
+    // Step 7b: Immediately trigger workflow-editor runs for workflow tasks (bypass Task Coordinator)
+    for (const task of workflowTasks) {
+      const wt = task.workflowTask!;
+      console.log(
+        `[assign-all] Bypassing Task Coordinator for workflow task ${task.id} targeting workflow ${wt.workflowId}`
+      );
+      try {
+        await triggerWorkflowEditorRun({
+          taskId: task.id,
+          workflowTask: wt,
+          message: task.description || "Start working on this workflow task.",
+          userId: userOrResponse.id,
+        });
+        assignedCount += 1;
+      } catch (err) {
+        console.error(`[assign-all] Failed to trigger workflow-editor run for task ${task.id}:`, err);
+      }
+    }
+
+    // Step 8: Eagerly start the highest-priority eligible repo task if a machine is available
     const ws = feature.workspace;
     const swarm = ws?.swarm;
-    if (ws && swarm?.id) {
+    if (ws && swarm?.id && repoTasks.length > 0) {
       try {
         const poolStatus = await getPoolStatusFromPods(swarm.id, ws.id);
 
@@ -138,11 +166,11 @@ export async function POST(
     // running), which the milestone's agent-count badge surfaces.
     void notifyFeatureCanvasRefresh(featureId, "tasks-assigned");
 
-    // Step 10: Return success response
+    // Step 10: Return success response (count covers both repo + workflow tasks)
     return NextResponse.json<AssignAllResponse>(
       {
         success: true,
-        count: result.count,
+        count: assignedCount,
       },
       { status: 200 }
     );
