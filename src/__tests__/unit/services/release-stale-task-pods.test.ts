@@ -296,8 +296,8 @@ describe("releaseStaleTaskPods", () => {
 
     await releaseStaleTaskPods();
 
-    // calls[0] is orphan sweep; calls[1] is the stale sweep
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[1][0];
+    // calls[0] is orphan sweep; calls[1] is limbo sweep; calls[2] is the stale sweep
+    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[2][0];
     // Should use OR clause to find both:
     // 1. Tasks with pods (any status)
     // 2. Stale IN_PROGRESS tasks without pods
@@ -369,8 +369,8 @@ describe("releaseStaleTaskPods", () => {
 
     await releaseStaleTaskPods();
 
-    // calls[0] is orphan sweep; calls[1] is the stale sweep
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[1][0];
+    // calls[0] is orphan sweep; calls[1] is limbo sweep; calls[2] is the stale sweep
+    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[2][0];
     expect(findManyCall?.where?.deleted).toBe(false);
 
     vi.useRealTimers();
@@ -384,8 +384,8 @@ describe("releaseStaleTaskPods", () => {
 
     await releaseStaleTaskPods();
 
-    // calls[0] is orphan sweep; calls[1] is the stale sweep
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[1][0];
+    // calls[0] is orphan sweep; calls[1] is limbo sweep; calls[2] is the stale sweep
+    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[2][0];
     expect(findManyCall?.where?.updatedAt).toBeDefined();
     expect(findManyCall?.where?.updatedAt?.lt).toBeInstanceOf(Date);
 
@@ -441,8 +441,8 @@ describe("releaseStaleTaskPods", () => {
 
     await releaseStaleTaskPods();
 
-    // calls[0] is orphan sweep; calls[1] is the stale sweep
-    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[1][0];
+    // calls[0] is orphan sweep; calls[1] is limbo sweep; calls[2] is the stale sweep
+    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[2][0];
     const threshold = findManyCall?.where?.updatedAt?.lt as Date;
 
     // Should be 48 hours ago
@@ -688,6 +688,114 @@ describe("releaseStaleTaskPods", () => {
     expect(orphanSweepCall?.where?.podId).toEqual({ not: null });
     expect(orphanSweepCall?.where?.deleted).toBe(false);
     expect(result.orphanedPodsCleared).toBe(1);
+
+    vi.useRealTimers();
+  });
+
+  // ── Limbo sweep tests ───────────────────────────────────────────────────────
+
+  test("should rescue limbo tasks (IN_PROGRESS + no stakworkProjectId) past the threshold", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const twentyFiveHoursAgo = new Date(now);
+    twentyFiveHoursAgo.setHours(twentyFiveHoursAgo.getHours() - 25);
+
+    const limboTask = {
+      id: "limbo-task-1",
+      title: "Stranded Task",
+      updatedAt: twentyFiveHoursAgo,
+    };
+
+    // findMany calls in order:
+    // 1. orphan sweep (tasksWithPods) → []
+    // 2. limbo sweep → [limboTask]
+    // 3. stale sweep → []
+    vi.mocked(mockDb.task.findMany)
+      .mockResolvedValueOnce([]) // orphan sweep
+      .mockResolvedValueOnce([limboTask] as any) // limbo sweep
+      .mockResolvedValueOnce([]); // stale sweep
+
+    vi.mocked(mockDb.task.updateMany).mockResolvedValue({ count: 1 } as any);
+
+    const result = await releaseStaleTaskPods();
+
+    // Verify limbo updateMany was called correctly
+    expect(mockDb.task.updateMany).toHaveBeenCalledWith({
+      where: { id: "limbo-task-1", workflowStatus: "IN_PROGRESS", stakworkProjectId: null },
+      data: { workflowStatus: "PENDING", workflowStartedAt: null },
+    });
+
+    expect(result.limboTasksRescued).toBe(1);
+    expect(result.success).toBe(true);
+
+    vi.useRealTimers();
+  });
+
+  test("should include limboTasksRescued: 0 in return when no limbo tasks exist", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+
+    const result = await releaseStaleTaskPods();
+
+    expect(result).toHaveProperty("limboTasksRescued");
+    expect(result.limboTasksRescued).toBe(0);
+
+    vi.useRealTimers();
+  });
+
+  test("should query limbo tasks with correct filters (IN_PROGRESS, no stakworkProjectId, not deleted, past threshold)", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+
+    await releaseStaleTaskPods();
+
+    // calls[0] = orphan sweep, calls[1] = limbo sweep, calls[2] = stale sweep
+    const limboSweepCall = vi.mocked(mockDb.task.findMany).mock.calls[1][0];
+    expect(limboSweepCall?.where).toMatchObject({
+      workflowStatus: "IN_PROGRESS",
+      stakworkProjectId: null,
+      deleted: false,
+      updatedAt: { lt: expect.any(Date) },
+    });
+    expect(limboSweepCall?.select).toMatchObject({
+      id: true,
+      title: true,
+      updatedAt: true,
+    });
+
+    vi.useRealTimers();
+  });
+
+  test("should rescue multiple limbo tasks and count each one", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const thirtyHoursAgo = new Date(now);
+    thirtyHoursAgo.setHours(thirtyHoursAgo.getHours() - 30);
+
+    const limboTasks = [
+      { id: "limbo-1", title: "Task A", updatedAt: thirtyHoursAgo },
+      { id: "limbo-2", title: "Task B", updatedAt: thirtyHoursAgo },
+      { id: "limbo-3", title: "Task C", updatedAt: thirtyHoursAgo },
+    ];
+
+    vi.mocked(mockDb.task.findMany)
+      .mockResolvedValueOnce([]) // orphan sweep
+      .mockResolvedValueOnce(limboTasks as any) // limbo sweep
+      .mockResolvedValueOnce([]); // stale sweep
+
+    vi.mocked(mockDb.task.updateMany).mockResolvedValue({ count: 1 } as any);
+
+    const result = await releaseStaleTaskPods();
+
+    expect(mockDb.task.updateMany).toHaveBeenCalledTimes(3);
+    expect(result.limboTasksRescued).toBe(3);
+    expect(result.success).toBe(true);
 
     vi.useRealTimers();
   });

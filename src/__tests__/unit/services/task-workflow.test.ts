@@ -5080,4 +5080,69 @@ describe("startTaskWorkflow - atomic claim guard", () => {
       data: { workflowStatus: "PENDING" },
     });
   });
+
+  test("rolls back claim with workflowStartedAt: null when thrown error occurs", async () => {
+    // Claim succeeds
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
+    // findFirst throws to trigger catch block
+    mockDb.task.findFirst.mockRejectedValueOnce(new Error("Network timeout"));
+    // updateMany for rollback
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    await expect(
+      startTaskWorkflow({ taskId: "test-task-id", userId: "test-user-id" })
+    ).rejects.toThrow("Network timeout");
+
+    // Second updateMany call must include workflowStartedAt: null
+    expect(mockDb.task.updateMany).toHaveBeenCalledTimes(2);
+    const rollbackCall = (mockDb.task.updateMany as any).mock.calls[1];
+    expect(rollbackCall[0].data).toMatchObject({
+      workflowStatus: "PENDING",
+      workflowStartedAt: null,
+    });
+  });
+
+  test("rolls back claim to PENDING with workflowStartedAt: null when Stakwork returns no projectId", async () => {
+    // Claim succeeds
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
+    // Setup task fetch and dependencies
+    MockSetup.setupSuccessfulWorkflow();
+    // Override the claim updateMany that MockSetup.setupSuccessfulWorkflow resets
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
+    // Stakwork returns 200 but no project_id (silent failure)
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: {} }),
+    } as Response);
+    // updateMany for rollback (after silent failure detected)
+    mockDb.task.updateMany.mockResolvedValueOnce({ count: 1 } as any);
+
+    const { startTaskWorkflow } = await import("@/services/task-workflow");
+
+    const result = await startTaskWorkflow({
+      taskId: "test-task-id",
+      userId: "test-user-id",
+    });
+
+    // Result is returned (not thrown), but rollback should have occurred
+    expect(result).not.toBeNull();
+
+    // Find the rollback updateMany call (data has workflowStatus: PENDING)
+    const allCalls = (mockDb.task.updateMany as any).mock.calls;
+    const rollbackCall = allCalls.find(
+      (call: any[]) => call[0]?.data?.workflowStatus === "PENDING"
+    );
+    expect(rollbackCall).toBeDefined();
+    expect(rollbackCall[0].data).toMatchObject({
+      workflowStatus: "PENDING",
+      workflowStartedAt: null,
+    });
+    expect(rollbackCall[0].where).toMatchObject({
+      id: "test-task-id",
+      workflowStatus: "IN_PROGRESS",
+      stakworkProjectId: null,
+    });
+  });
 });
