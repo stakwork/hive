@@ -1526,6 +1526,130 @@ async function seedMilestoneLinkFeatureData(
   );
 }
 
+/**
+ * Seed a workflow_editor task with a WorkflowTask row and a WORKFLOW chat artifact
+ * into the stakwork workspace, alongside one normal repo task in the same feature.
+ * Safe to call multiple times (idempotent via upsert).
+ */
+async function seedWorkflowTask(workspaceSlug = "stakwork") {
+  // Find (or create) the workspace
+  let workspace = await prisma.workspace.findUnique({
+    where: { slug: workspaceSlug },
+    select: { id: true, ownerId: true },
+  });
+
+  if (!workspace) {
+    // Create a minimal placeholder workspace for local dev
+    const owner = await prisma.user.findFirst({ select: { id: true } });
+    if (!owner) {
+      console.warn("[seedWorkflowTask] No users found — skipping");
+      return;
+    }
+    workspace = await prisma.workspace.create({
+      data: {
+        name: "Stakwork",
+        slug: workspaceSlug,
+        ownerId: owner.id,
+      },
+      select: { id: true, ownerId: true },
+    });
+  }
+
+  const userId = workspace.ownerId;
+
+  // Create a feature to hold both tasks
+  const feature = await prisma.feature.create({
+    data: {
+      title: "Seed: Workflow Task Demo",
+      workspaceId: workspace.id,
+      createdById: userId,
+      updatedById: userId,
+      status: FeatureStatus.IN_PROGRESS,
+      priority: FeaturePriority.MEDIUM,
+    },
+  });
+
+  // Create a phase inside the feature
+  const phase = await prisma.phase.create({
+    data: {
+      name: "Phase 1",
+      featureId: feature.id,
+      order: 1,
+    },
+  });
+
+  // --- Workflow task ---
+  const wfTask = await prisma.task.create({
+    data: {
+      title: "Seed: Update test-workflow via WFE",
+      description: "Start working on this workflow task.",
+      workspaceId: workspace.id,
+      featureId: feature.id,
+      phaseId: phase.id,
+      status: TaskStatus.TODO,
+      priority: Priority.MEDIUM,
+      mode: "workflow_editor",
+      createdById: userId,
+      updatedById: userId,
+    },
+  });
+
+  // Dual-write WorkflowTask row
+  await prisma.workflowTask.upsert({
+    where: { taskId: wfTask.id },
+    update: {},
+    create: {
+      taskId: wfTask.id,
+      workflowId: 1,
+      workflowName: "test-workflow",
+      workflowRefId: "ref-001",
+    },
+  });
+
+  // Seed WORKFLOW chat artifact (assistant message)
+  await prisma.chatMessage.create({
+    data: {
+      taskId: wfTask.id,
+      message: "",
+      role: "ASSISTANT",
+      status: "SENT",
+      contextTags: JSON.stringify([]),
+      artifacts: {
+        create: [
+          {
+            type: "WORKFLOW",
+            content: {
+              workflowId: 1,
+              workflowName: "test-workflow",
+              workflowRefId: "ref-001",
+              originalWorkflowJson: "",
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  // --- Normal repo task (for contrast) ---
+  await prisma.task.create({
+    data: {
+      title: "Seed: Normal repo task",
+      description: "A regular code task for comparison.",
+      workspaceId: workspace.id,
+      featureId: feature.id,
+      phaseId: phase.id,
+      status: TaskStatus.TODO,
+      priority: Priority.MEDIUM,
+      createdById: userId,
+      updatedById: userId,
+    },
+  });
+
+  console.log(
+    `[seedWorkflowTask] Created workflow task ${wfTask.id} + WorkflowTask row in workspace "${workspaceSlug}"`
+  );
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1540,6 +1664,7 @@ async function main() {
   await seedPlatformConfig();
   await seedInitiativesAndMilestones(users);
   await seedMilestoneLinkFeatureData(users);
+  await seedWorkflowTask();
 
   console.log("Seed completed.");
 }

@@ -24,6 +24,10 @@ export const phasesTasksSchema = z.object({
           priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM").describe("Task priority level"),
           tempId: z.string().describe("Temporary ID for dependency mapping (e.g., 'T1', 'T2')"),
           dependsOn: z.array(z.string()).optional().describe("Array of tempIds this task depends on (e.g., ['T1', 'T2'])"),
+          // Workflow-targeting fields (stakwork workspace only — mutually exclusive with repositoryId)
+          workflowId: z.number().optional().describe("ID of an existing Stakwork workflow this task targets"),
+          workflowName: z.string().optional().describe("Name of the target Stakwork workflow"),
+          workflowRefId: z.string().optional().describe("Ref ID of the target Stakwork workflow"),
         })
       ),
     })

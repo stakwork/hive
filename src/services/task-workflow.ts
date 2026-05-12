@@ -9,6 +9,7 @@ import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getApiKeyForModel, getDefaultModel } from "@/lib/ai/models";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -707,6 +708,19 @@ export async function callStakworkAPI(params: {
   }
   if (mode === "plan_mode" && process.env.PLAN_MODE_MODEL) {
     vars.model = process.env.PLAN_MODE_MODEL;
+  }
+
+  // Signal the Stakwork plan workflow that workflow targeting is enabled
+  // (stakwork workspace only, or development mode)
+  if (mode === "plan_mode") {
+    const workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { slug: true },
+    });
+    if (workspace?.slug === "stakwork" || isDevelopmentMode()) {
+      vars.workflowPlanningEnabled = true;
+      console.log(`[PlanMode] workflowPlanningEnabled injected for workspace ${workspaceId}`);
+    }
   }
   const effectiveModel = taskModel || await getDefaultModel(mode === "plan_mode" ? "plan" : "task");
   if (effectiveModel) {

@@ -14,6 +14,7 @@ import { ensureUniqueBountyCode } from "@/lib/bounty-code";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { updateFeatureStatusFromTasks } from "./feature-status-sync";
 import { createAndSendNotification } from "@/services/notifications";
+import { saveWorkflowArtifact } from "@/services/workflow-editor";
 
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater).
@@ -176,6 +177,11 @@ export async function createTicket(
     }
   }
 
+  // Workflow tasks and repo tasks are mutually exclusive
+  if (data.workflowId && data.repositoryId) {
+    throw new Error("workflowId and repositoryId are mutually exclusive — a task can target a workflow OR a repository, not both");
+  }
+
   // Validate repositoryId if provided
   if (data.repositoryId) {
     const repository = await db.repository.findFirst({
@@ -213,6 +219,9 @@ export async function createTicket(
 
   const bountyCode = await ensureUniqueBountyCode();
 
+  // Workflow tasks get mode: workflow_editor and no repositoryId
+  const isWorkflowTask = !!data.workflowId;
+
   const task = await db.task.create({
     data: {
       title: data.title.trim(),
@@ -226,7 +235,8 @@ export async function createTicket(
       assigneeId: isSystemAssignee ? null : (data.assigneeId || null),
       systemAssigneeType: systemAssigneeType,
       bountyCode: bountyCode,
-      repositoryId: data.repositoryId || null,
+      repositoryId: isWorkflowTask ? null : (data.repositoryId || null),
+      mode: isWorkflowTask ? "workflow_editor" : undefined,
       dependsOnTaskIds: data.dependsOnTaskIds || [],
       runBuild: data.runBuild ?? true,
       runTestSuite: data.runTestSuite ?? true,
@@ -274,6 +284,25 @@ export async function createTicket(
       },
     },
   });
+
+  // Dual-write WorkflowTask row and seed the WORKFLOW chat artifact
+  if (isWorkflowTask && data.workflowId) {
+    await db.workflowTask.create({
+      data: {
+        taskId: task.id,
+        workflowId: data.workflowId,
+        workflowName: data.workflowName ?? null,
+        workflowRefId: data.workflowRefId ?? null,
+      },
+    });
+
+    // Seed the initial WORKFLOW artifact so the task page can restore context
+    await saveWorkflowArtifact(task.id, {
+      workflowId: data.workflowId,
+      workflowName: data.workflowName,
+      workflowRefId: data.workflowRefId,
+    });
+  }
 
   // Broadcast live update to all Plan mode viewers
   try {
