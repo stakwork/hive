@@ -467,6 +467,7 @@ model Task {
   deployments            Deployment[]
   notifications          NotificationTrigger[]
   screenshots            Screenshot[]
+  workflowTask           WorkflowTask?
   assignee               User?                 @relation("TaskAssignee", fields: [assigneeId], references: [id])
   createdBy              User                  @relation("TaskCreator", fields: [createdById], references: [id])
   feature                Feature?              @relation(fields: [featureId], references: [id])
@@ -593,6 +594,20 @@ model Attachment {
 
   @@index([messageId])
   @@map("attachments")
+}
+
+model WorkflowTask {
+  id                String   @id @default(cuid())
+  taskId            String   @unique @map("task_id")
+  workflowId        Int      @map("workflow_id")
+  workflowName      String?  @map("workflow_name")
+  workflowRefId     String?  @map("workflow_ref_id")
+  workflowVersionId String?  @map("workflow_version_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  task              Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_tasks")
 }
 
 model JanitorConfig {
