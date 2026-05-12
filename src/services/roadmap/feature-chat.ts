@@ -184,6 +184,7 @@ export async function sendFeatureChatMessage({
   isPrototype,
   attachments,
   model,
+  skipOrgContextScout = false,
 }: {
   featureId: string;
   userId: string;
@@ -196,6 +197,20 @@ export async function sendFeatureChatMessage({
   isPrototype?: boolean;
   attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>;
   model?: string;
+  /**
+   * When `true`, skip the org-context scout entirely. Set this when
+   * the caller is itself an agent that has already explored the org
+   * canvases — e.g. the canvas-chat `propose_feature` approval flow
+   * in `handleApproval.ts`. In that case the canvas agent composed
+   * the seed message from an org-wide view, so re-scouting from Hive
+   * would be redundant work (5-60s of wasted latency on the proposal
+   * approval flow) and could even re-frame the context in a way the
+   * proposing agent didn't intend.
+   *
+   * Direct user input (the plan-mode UI and MCP equivalents) leaves
+   * this `false` (default) so the scout runs.
+   */
+  skipOrgContextScout?: boolean;
 }) {
   const feature = await db.feature.findUnique({
     where: { id: featureId },
@@ -351,12 +366,18 @@ export async function sendFeatureChatMessage({
     // and we attach orgContext to the Stakwork dispatch only when
     // it produced something. Gated by env PLAN_MODE_ORG_CONTEXT_ENABLED
     // — default off so this is dark-launched.
-    const orgContext = await scoutOrgContext({
-      workspaceId: feature.workspaceId,
-      userId,
-      message,
-      isFirstMessage,
-    });
+    //
+    // Skipped when the caller explicitly opts out (e.g. canvas-chat
+    // `propose_feature` approvals, where the canvas agent already
+    // saw org-wide context when composing the seed).
+    const orgContext = skipOrgContextScout
+      ? null
+      : await scoutOrgContext({
+          workspaceId: feature.workspaceId,
+          userId,
+          message,
+          isFirstMessage,
+        });
 
     stakworkData = await callStakworkAPI({
       taskId: featureId,
