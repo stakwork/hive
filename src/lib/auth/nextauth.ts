@@ -204,11 +204,15 @@ export const authOptions: NextAuthOptions = {
                 email: user.email!, // Email is always generated from username
                 image: user.image,
                 emailVerified: new Date(), // Auto-verify mock users
+                role: "SUPER_ADMIN",
               },
             });
             user.id = newUser.id;
           } else {
             user.id = existingUser.id;
+            if (existingUser.role !== "SUPER_ADMIN") {
+              await db.user.update({ where: { id: existingUser.id }, data: { role: "SUPER_ADMIN" } });
+            }
           }
 
           // Create workspace atomically - this MUST succeed for auth to work
