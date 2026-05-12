@@ -194,6 +194,18 @@ export default function WorkflowsPage() {
         console.error("Failed to save workflow artifact:", await saveResponse.text());
       }
 
+      // Dual-write WorkflowTask row so the task is linked to the workflow in the DB
+      await fetch(`/api/tasks/${newTaskId}/workflow-task`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workflowId,
+          workflowName,
+          workflowRefId,
+          workflowVersionId: selectedVersionId,
+        }),
+      });
+
       // Navigate to task chat view
       window.location.href = `/w/${slug}/task/${newTaskId}`;
     } catch (error) {
@@ -237,6 +249,13 @@ export default function WorkflowsPage() {
           role: 'ASSISTANT',
           artifacts: [{ type: ArtifactType.WORKFLOW, content: { workflowJson, workflowId, workflowName, workflowRefId, workflowVersionId } }],
         }),
+      });
+
+      // 3b. Dual-write WorkflowTask row
+      await fetch(`/api/tasks/${newTaskId}/workflow-task`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflowId, workflowName, workflowRefId, workflowVersionId }),
       });
 
       // 4. Auto-send "Debug this run [runId]" — triggers the AI workflow

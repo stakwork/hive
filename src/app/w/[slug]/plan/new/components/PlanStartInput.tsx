@@ -10,15 +10,24 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
-import { ArrowUp, Mic, MicOff, Loader2, FolderOpen, Sparkles } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Loader2, Sparkles } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
 import { getModelValue, getStoredPlanModelPreference, setStoredPlanModelPreference, type LlmModelOption } from "@/lib/ai/models";
+import { TargetSelector, encodeTargetValue, type TargetSelection } from "@/components/shared/TargetSelector";
 
 interface PlanStartInputProps {
-  onSubmit: (message: string, options?: { isPrototype: boolean; selectedRepoId: string | null; model: string }) => void;
+  onSubmit: (
+    message: string,
+    options?: {
+      isPrototype: boolean;
+      selectedRepoId: string | null;
+      selectedWorkflow: { workflowId: number; workflowName: string; workflowRefId: string } | null;
+      model: string;
+    }
+  ) => void;
   isLoading?: boolean;
 }
 
@@ -46,17 +55,20 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
             ws.slug.toLowerCase().includes(mentionQuery.toLowerCase()),
         )
       : [];
-  const showRepositoryDropdown = repositories.length > 1;
-  const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(
-    repositories[0]?.id ?? null,
+
+  // Unified target selection: either a repo or a workflow
+  const [selectedTarget, setSelectedTarget] = useState<TargetSelection | null>(
+    repositories[0] ? { type: "repo", repositoryId: repositories[0].id } : null
   );
 
-  // Keep selectedRepositoryId in sync when repositories load
+  // Keep target in sync when repositories first load (if no selection yet)
   useEffect(() => {
-    if (repositories.length > 0 && !selectedRepositoryId) {
-      setSelectedRepositoryId(repositories[0].id);
+    if (!selectedTarget && repositories.length > 0) {
+      setSelectedTarget({ type: "repo", repositoryId: repositories[0].id });
     }
-  }, [repositories, selectedRepositoryId]);
+  }, [repositories, selectedTarget]);
+
+  const showTargetSelector = repositories.length > 1 || workspace?.slug === "stakwork";
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -145,7 +157,19 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
       }
       resetTranscript();
       setStoredPlanModelPreference(selectedModel);
-      onSubmit(value.trim(), { isPrototype, selectedRepoId: selectedRepositoryId, model: selectedModel });
+      onSubmit(value.trim(), {
+        isPrototype,
+        selectedRepoId: selectedTarget?.type === "repo" ? selectedTarget.repositoryId : null,
+        selectedWorkflow:
+          selectedTarget?.type === "workflow"
+            ? {
+                workflowId: selectedTarget.workflowId,
+                workflowName: selectedTarget.workflowName,
+                workflowRefId: selectedTarget.workflowRefId,
+              }
+            : null,
+        model: selectedModel,
+      });
     }
   };
 
@@ -264,31 +288,15 @@ export function PlanStartInput({ onSubmit, isLoading = false }: PlanStartInputPr
               </Label>
             </div>
 
-            {isPrototype && showRepositoryDropdown && (
-              <Select
-                value={selectedRepositoryId || undefined}
-                onValueChange={(value) => setSelectedRepositoryId(value)}
-              >
-                <SelectTrigger className="w-[180px] h-8 text-xs rounded-lg shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <FolderOpen className="h-4 w-4" />
-                    <span className="truncate">
-                      {repositories.find((r) => r.id === selectedRepositoryId)?.name ||
-                        "Select repository"}
-                    </span>
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {repositories.map((repo) => (
-                    <SelectItem key={repo.id} value={repo.id}>
-                      <div className="flex items-center gap-2">
-                        <FolderOpen className="h-3.5 w-3.5" />
-                        <span>{repo.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {isPrototype && showTargetSelector && (
+              <TargetSelector
+                value={selectedTarget ? encodeTargetValue(selectedTarget) : undefined}
+                onChange={setSelectedTarget}
+                repositories={repositories.map((r) => ({ id: r.id, name: r.name }))}
+                size="default"
+                className="w-[200px]"
+                placeholder="Select target"
+              />
             )}
 
             {llmModels.length > 0 && (

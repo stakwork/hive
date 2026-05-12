@@ -24,6 +24,7 @@ const TASK_SELECT = {
   featureId: true,
   phaseId: true,
   deleted: true,
+  mode: true,
   createdAt: true,
   updatedAt: true,
   systemAssigneeType: true,
@@ -36,6 +37,15 @@ const TASK_SELECT = {
   deploymentStatus: true,
   deployedToStagingAt: true,
   deployedToProductionAt: true,
+  workflowTask: {
+    select: {
+      id: true,
+      workflowId: true,
+      workflowName: true,
+      workflowRefId: true,
+      workflowVersionId: true,
+    },
+  },
   assignee: {
     select: {
       id: true,
