@@ -248,7 +248,7 @@ export function WorkspaceSwitcher({
                           {workspace.name}
                         </div>
                       </div>
-                      <DropdownMenuShortcut>⌘{index + 2}</DropdownMenuShortcut>
+
                     </DropdownMenuItem>
                   ))}
               </>
