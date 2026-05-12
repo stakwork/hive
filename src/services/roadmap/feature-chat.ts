@@ -18,6 +18,7 @@ import {
 } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { joinRepoUrls } from "@/lib/helpers/repository";
+import { scoutOrgContext } from "@/services/roadmap/orgContextScout";
 
 /**
  * Fetch chat history for a feature, excluding a specific message.
@@ -183,6 +184,7 @@ export async function sendFeatureChatMessage({
   isPrototype,
   attachments,
   model,
+  skipOrgContextScout = false,
 }: {
   featureId: string;
   userId: string;
@@ -195,7 +197,30 @@ export async function sendFeatureChatMessage({
   isPrototype?: boolean;
   attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>;
   model?: string;
+  /**
+   * When `true`, skip the org-context scout entirely. Set this when
+   * the caller is itself an agent that has already explored the org
+   * canvases — e.g. the canvas-chat `propose_feature` approval flow
+   * in `handleApproval.ts`. In that case the canvas agent composed
+   * the seed message from an org-wide view, so re-scouting from Hive
+   * would be redundant work (5-60s of wasted latency on the proposal
+   * approval flow) and could even re-frame the context in a way the
+   * proposing agent didn't intend.
+   *
+   * Direct user input (the plan-mode UI and MCP equivalents) leaves
+   * this `false` (default) so the scout runs.
+   */
+  skipOrgContextScout?: boolean;
 }) {
+  // Unconditional entry breadcrumb so we can confirm the
+  // plan-mode dispatch was reached even when callers (canvas-
+  // proposal approval, MCP tools, direct UI) take different paths
+  // in. `skipOrgContextScout` is surfaced so we can tell at a
+  // glance whether the scout was suppressed by the caller.
+  console.log(
+    `[feature-chat] sendFeatureChatMessage entered: featureId=${featureId} userId=${userId} skipOrgContextScout=${skipOrgContextScout}`,
+  );
+
   const feature = await db.feature.findUnique({
     where: { id: featureId },
     select: {
@@ -344,6 +369,44 @@ export async function sendFeatureChatMessage({
     const attachmentUrls = await Promise.all(
       (attachments ?? []).map((a) => getS3Service().generatePresignedDownloadUrl(a.path)),
     );
+
+    // Org-wide context scout. Best-effort: returns null on any
+    // failure / opt-out / no-org / non-first-message / sentinel.
+    // Gated by env PLAN_MODE_ORG_CONTEXT_ENABLED — default off so
+    // this is dark-launched.
+    //
+    // Skipped when the caller explicitly opts out (e.g. canvas-chat
+    // `propose_feature` approvals, where the canvas agent already
+    // saw org-wide context when composing the seed).
+    //
+    // When the scout returns text, we attach it under
+    // `featureContext.orgContext` rather than as a separate top-level
+    // var. Reasons: (a) `featureContext` is already plumbed end-to-
+    // end to the Stakwork workflow, so this is zero workflow-
+    // definition change; (b) it sits semantically next to the
+    // feature's own brief/requirements/architecture as "more
+    // planning context, just a different slice."
+    const orgContext = skipOrgContextScout
+      ? null
+      : await scoutOrgContext({
+          workspaceId: feature.workspaceId,
+          userId,
+          message,
+          isFirstMessage,
+        });
+    if (orgContext && featureContext) {
+      featureContext = { ...featureContext, orgContext };
+    } else if (orgContext && !featureContext) {
+      // `featureContext` is the carrier for orgContext today. If
+      // building it failed earlier (no Phase 0, DB error, etc.), we
+      // have no place to land the scout output. Logging only — the
+      // scout cost is sunk; dropping the text is the least-bad
+      // option because synthesizing a partial featureContext just
+      // to carry org prose would mislead the plan agent's parsing.
+      console.warn(
+        "[feature-chat] org context scout returned text but featureContext is undefined; dropping orgContext for this dispatch",
+      );
+    }
 
     stakworkData = await callStakworkAPI({
       taskId: featureId,

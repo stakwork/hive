@@ -671,6 +671,12 @@ async function approveFeature(args: {
           featureId: feature.id,
           userId,
           message: seed,
+          // The canvas agent that proposed this feature already
+          // explored the org canvases when composing the seed —
+          // re-running the org-context scout from Hive would be
+          // redundant work (5-60s) and could re-frame context the
+          // proposing agent already curated. Skip it.
+          skipOrgContextScout: true,
         });
       } catch (e) {
         console.error(

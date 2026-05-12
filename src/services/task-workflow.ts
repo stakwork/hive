@@ -688,6 +688,10 @@ export async function callStakworkAPI(params: {
     vars.autoMergePr = autoMergePr;
   }
   if (featureContext !== undefined) {
+    // The plan-mode org-context scout result (when present) is
+    // attached as `featureContext.orgContext` by the caller in
+    // `sendFeatureChatMessage` — we don't need a separate top-level
+    // var because the whole `featureContext` blob is forwarded as-is.
     vars.featureContext = featureContext;
   }
   if (podId) {
