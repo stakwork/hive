@@ -51,6 +51,7 @@ import type {
 import { categoryAllowedOnScope } from "./canvas-categories";
 import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+import useCanvasClipboard from "./useCanvasClipboard";
 
 /**
  * Live-id detection mirrors `src/lib/canvas/scope.ts`'s `isLiveId`.
@@ -475,10 +476,12 @@ export function OrgCanvasBackground({
   const handleSelectionChange = useCallback(
     (selection: CanvasSelection) => {
       if (!selection) {
+        selectedNodeForClipboardRef.current = null;
         onSelectionChange?.(null);
         return;
       }
       if (selection.kind === "node") {
+        selectedNodeForClipboardRef.current = selection.node;
         onSelectionChange?.({
           kind: "node",
           node: selection.node,
@@ -486,6 +489,7 @@ export function OrgCanvasBackground({
         });
         return;
       }
+      selectedNodeForClipboardRef.current = null;
       // Edge — resolve human labels off the canvas the edge lives on.
       // The refs lag state by one commit, but the edge's endpoints
       // are already in the rendered canvas (it wouldn't have been
@@ -554,6 +558,19 @@ export function OrgCanvasBackground({
   useEffect(() => {
     currentRefRef.current = currentRef;
   }, [currentRef]);
+
+  // Viewport tracking for clipboard paste placement (ref, not state — no re-renders).
+  const currentViewportRef = useRef<{ x: number; y: number; zoom: number }>({
+    x: 0,
+    y: 0,
+    zoom: 1,
+  });
+
+  // Container ref for reading dimensions during paste position calculation.
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  // Selected node ref for clipboard — updated inside handleSelectionChange.
+  const selectedNodeForClipboardRef = useRef<CanvasNode | null>(null);
 
   // -------------------------------------------------------------------
   // Single source of truth for canvas scope: the library's breadcrumb
@@ -2017,6 +2034,15 @@ export function OrgCanvasBackground({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [handleUndo]);
 
+  // Copy / Cut / Paste keyboard shortcuts for authored canvas elements.
+  useCanvasClipboard({
+    selectedNode: selectedNodeForClipboardRef.current,
+    currentRefRef,
+    applyMutation,
+    currentViewportRef,
+    canvasContainerRef,
+  });
+
   /**
    * Detect a user-drawn edge whose endpoints are a feature card and a
    * milestone card on the initiative canvas. Either direction is
@@ -2809,8 +2835,7 @@ export function OrgCanvasBackground({
   return (
     <>
       <div className="absolute inset-0 bg-[#15171c]" aria-hidden />
-      <div className="absolute inset-y-0 left-0" style={canvasContainerStyle}>
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <div ref={canvasContainerRef} className="absolute inset-y-0 left-0" style={canvasContainerStyle}>
         <SystemCanvas
           ref={canvasHandleRef}
           canvas={canvasForRender}
@@ -2835,6 +2860,9 @@ export function OrgCanvasBackground({
           nodeContextMenu={nodeContextMenu}
           renderAddNodeButton={renderAddNodeButton}
           rootLabel={orgName || githubLogin}
+          onViewportChange={(vp) => {
+            currentViewportRef.current = vp;
+          }}
         />
         {/*
          * Restore pill — top-right of the canvas area. Shown on any
