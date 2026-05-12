@@ -12,7 +12,7 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
  * Conflict rules:
  *   - Element only in remote → take remote (new from another client)
  *   - Element only in local  → keep local (we created it OR we have it
- *     pending; if we deleted it, the deletion sweep below removes it)
+ *     pending; tombstones are preserved even when absent from the remote)
  *   - Local tombstone vs. remote alive → KEEP THE TOMBSTONE. A local
  *     deletion must not be resurrected by an incoming non-deleted snapshot,
  *     even at a higher Excalidraw version. The other side often bumps
@@ -55,11 +55,10 @@ export function mergeElementsByVersion(
     }
   }
 
-  for (const [id, localEl] of localMap) {
-    if (!remoteMap.has(id) && localEl.isDeleted) {
-      mergedMap.delete(id);
-    }
-  }
+  // Tombstones for elements absent from the remote (delta or full-sync) are
+  // intentionally preserved. In delta sync, absence means "no change", not
+  // "element doesn't exist". Keeping the tombstone also self-heals the DB if
+  // a prior stale save already stripped it.
 
   return Array.from(mergedMap.values());
 }
