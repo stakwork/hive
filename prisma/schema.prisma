@@ -401,6 +401,7 @@ model Repository {
   mocksEnabled          Boolean                 @default(false) @map("mocks_enabled")
   embeddingsEnabled     Boolean                 @default(true) @map("embeddings_enabled")
   triggerPodRepair      Boolean                 @default(false) @map("trigger_pod_repair")
+  allowAutoMerge        Boolean                 @default(false) @map("allow_auto_merge")
   deployments           Deployment[]
   recommendations       JanitorRecommendation[]
   janitorRuns           JanitorRun[]

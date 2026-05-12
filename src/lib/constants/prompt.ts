@@ -1,5 +1,6 @@
 import { ModelMessage } from "ai";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
+import { shouldTrimConceptsToIds } from "@/lib/ai/conceptsTrim";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
 
 /**
@@ -135,6 +136,20 @@ export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[]): st
 
   const memberRoster = buildMemberRoster(workspaces);
 
+  // Mirrors the seeder in `getMultiWorkspacePrefixMessages`. When this is
+  // true the agent will see only repo-prefixed concept IDs in the pre-seeded
+  // `list_concepts` results, and a `{slug}__read_concepts_for_repo` tool is
+  // available to fetch `{id,name,description}` for a chosen repo before
+  // falling through to `learn_concept` for full docs.
+  const trimmed = shouldTrimConceptsToIds(workspaces);
+
+  const conceptToolLines = trimmed
+    ? `- \`{workspace}__list_concepts\` - List features/concepts from that codebase. **With 3+ workspaces you'll see only concept IDs here** (token economy). IDs are repo-prefixed like \`owner/repo/slug\`.
+- \`{workspace}__read_concepts_for_repo\` - Given a repo (\`owner/repo\` — match it from the ID prefixes above), return \`{id, name, description}\` for that repo's concepts. Use this to turn IDs into something human-readable before deciding what to dig into. Optional \`limit\` (default 20, recent-first).
+- \`{workspace}__learn_concept\` - Fetch detailed documentation for a feature by ID. Only call this for IDs that look promising from \`read_concepts_for_repo\` — don't fan out across every ID.`
+    : `- \`{workspace}__list_concepts\` - List features/concepts from that codebase (if you only have concept IDs, re-run this tool to get full descriptions)
+- \`{workspace}__learn_concept\` - Fetch detailed documentation for a feature by ID`;
+
   return `
 You are a source code learning assistant with access to multiple codebases. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone.
 
@@ -158,8 +173,7 @@ ${memberRoster}
 
 ## Tool Naming Convention
 Tools are prefixed with workspace slugs. For each workspace you have:
-- \`{workspace}__list_concepts\` - List features/concepts from that codebase (if you only have concept IDs, re-run this tool to get full descriptions)
-- \`{workspace}__learn_concept\` - Fetch detailed documentation for a feature by ID
+${conceptToolLines}
 - \`{workspace}__recent_commits\` - Query recent commits
 - \`{workspace}__recent_contributions\` - Query PRs by a contributor
 - \`{workspace}__search_logs\` - Search application logs (Lucene query syntax)
@@ -476,7 +490,9 @@ export function getMultiWorkspacePrefixMessages(
   // Build pre-filled tool calls for each workspace's concepts
   const toolCalls: ModelMessage[] = [];
 
-  const trimToIds = workspaces.length > 2;
+  // Shared with `askToolsMulti` so the seeding shape and the
+  // `{slug}__read_concepts_for_repo` tool registration always agree.
+  const trimToIds = shouldTrimConceptsToIds(workspaces);
 
   for (const ws of workspaces) {
     const concepts = conceptsByWorkspace[ws.slug] || [];

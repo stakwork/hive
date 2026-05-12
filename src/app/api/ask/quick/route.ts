@@ -365,7 +365,14 @@ export async function POST(request: NextRequest) {
     if (isMultiWorkspace) {
       // Multi-workspace mode is auth-only (rejected for public viewers above).
       const workspaceConfigs = await buildWorkspaceConfigs(slugs, userId!);
-      tools = askToolsMulti(workspaceConfigs, apiKey);
+
+      // Fetch concepts BEFORE building tools so `askToolsMulti` can expose
+      // `{slug}__read_concepts_for_repo` backed by the same in-memory cache
+      // we'll pre-seed into the prompt below. Single fetch, two consumers.
+      const conceptsByWorkspace =
+        await fetchConceptsForWorkspaces(workspaceConfigs);
+
+      tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace);
 
       // Merge org-scoped tools when orgId is provided. Both connection and
       // canvas tools are exposed simultaneously; the prompt teaches the
@@ -400,8 +407,6 @@ export async function POST(request: NextRequest) {
         // The `streamText` block below is in the same lexical scope.
         capturedWebSearchResults = requestWebSearchResults;
       }
-
-      const conceptsByWorkspace = await fetchConceptsForWorkspaces(workspaceConfigs);
 
       features = [];
       for (const ws of workspaceConfigs) {

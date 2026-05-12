@@ -66,6 +66,7 @@ export interface MockRepository {
   html_url: string;
   description: string | null;
   default_branch: string;
+  allow_auto_merge: boolean;
   permissions: {
     admin: boolean;
     maintain: boolean;
@@ -390,6 +391,7 @@ class MockGitHubStateManager {
       html_url: `https://github.com/${repoKey}`,
       description: `Mock repository for testing`,
       default_branch: defaultBranch,
+      allow_auto_merge: true,
       permissions: {
         admin: true,
         maintain: true,
@@ -563,6 +565,21 @@ class MockGitHubStateManager {
     webhooks.splice(index, 1);
     this.webhooks.set(repoKey, webhooks);
     return true;
+  }
+
+  /**
+   * Set the allow_auto_merge flag on a repository (for integration tests).
+   * Auto-creates the repository if it doesn't exist.
+   */
+  setRepoAllowAutoMerge(owner: string, repo: string, allowed: boolean): void {
+    const repoKey = `${owner}/${repo}`;
+    const existing = this.repositories.get(repoKey);
+    if (existing) {
+      existing.allow_auto_merge = allowed;
+    } else {
+      const created = this.createRepository(owner, repo);
+      created.allow_auto_merge = allowed;
+    }
   }
 
   /**

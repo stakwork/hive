@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { WorkspaceConfig } from "./types";
 import { listConcepts, repoAgent } from "./askTools";
+import { shouldTrimConceptsToIds } from "./conceptsTrim";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import { getProviderTool } from "@/lib/ai/provider";
@@ -26,10 +27,24 @@ function mcpText(result: { content: { type: string; text: string }[] }): string 
 
 export function askToolsMulti(
   workspaces: WorkspaceConfig[],
-  apiKey: string
+  apiKey: string,
+  /**
+   * Pre-fetched concepts per workspace (keyed by slug). When provided AND
+   * we're in the trim-to-IDs regime (3+ workspaces), we expose a
+   * `{slug}__read_concepts_for_repo` tool that serves `{id,name,description}`
+   * directly from this in-memory cache — no extra swarm round-trip. The
+   * route always fetches concepts to pre-seed `list_concepts`, so reusing
+   * that fetch here is free.
+   */
+  conceptsByWorkspace?: Record<string, Record<string, unknown>[]>,
 ): ToolSet {
   // Build all tools and merge at the end
   const allTools: Record<string, AnyTool> = {};
+
+  // Only register the summary tool when the prompt is also trimming concepts
+  // to IDs — otherwise the agent already has the full descriptions seeded
+  // and a "read summaries" tool is just noise.
+  const trimmed = shouldTrimConceptsToIds(workspaces) && !!conceptsByWorkspace;
 
   for (const ws of workspaces) {
     const prefix = ws.slug;
@@ -52,6 +67,68 @@ export function askToolsMulti(
         }
       },
     });
+
+    // read_concepts_for_repo — only when we're in trim-to-IDs mode.
+    // Tier 2 of the 3-tier concept-browsing flow:
+    //   1. {slug}__list_concepts pre-seed → IDs only (repo-prefixed)
+    //   2. {slug}__read_concepts_for_repo → {id,name,description} for one repo
+    //   3. {slug}__learn_concept           → full docs/PRs/commits for one id
+    if (trimmed) {
+      const conceptsForWs = conceptsByWorkspace![ws.slug] || [];
+      allTools[`${prefix}__read_concepts_for_repo`] = tool({
+        description:
+          `[${ws.slug}] Get {id, name, description} for concepts in this workspace ` +
+          `scoped to a single repo. Use this AFTER scanning the ID list from ` +
+          `${prefix}__list_concepts — the IDs are repo-prefixed (e.g. "owner/repo/slug"), ` +
+          `so pick a repo and fetch human-readable summaries before deciding which ` +
+          `concepts to learn in full via ${prefix}__learn_concept.`,
+        inputSchema: z.object({
+          repo: z
+            .string()
+            .describe(
+              "Repository in 'owner/repo' format (e.g. 'stakwork/hive'). Matched " +
+                "against each concept's `repo` field; falls back to the first two " +
+                "segments of the concept `id` for legacy entries.",
+            ),
+          limit: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .default(20)
+            .describe(
+              "Max concepts to return. Concepts come back most-recent-first; " +
+                "default 20.",
+            ),
+        }),
+        execute: async ({
+          repo,
+          limit = 20,
+        }: {
+          repo: string;
+          limit?: number;
+        }) => {
+          const target = repo.toLowerCase().replace(/^\/+|\/+$/g, "");
+          const matches = conceptsForWs.filter((c) => {
+            const r = typeof c.repo === "string" ? c.repo.toLowerCase() : "";
+            if (r === target) return true;
+            // Legacy fallback: id is "owner/repo/slug" for older concepts
+            // that pre-date the explicit `repo` field.
+            const id = typeof c.id === "string" ? c.id.toLowerCase() : "";
+            const parts = id.split("/");
+            return (
+              parts.length >= 3 && `${parts[0]}/${parts[1]}` === target
+            );
+          });
+          // Server returns recent-first; we preserve that order.
+          return matches.slice(0, limit).map((c) => ({
+            id: c.id,
+            name: c.name,
+            description: c.description,
+          }));
+        },
+      });
+    }
 
     // learn_concept
     allTools[`${prefix}__learn_concept`] = tool({
