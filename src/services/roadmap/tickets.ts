@@ -517,6 +517,35 @@ export async function updateTicket(
     updateData.dependsOnTaskIds = data.dependsOnTaskIds;
   }
 
+  // Handle workflow target switch: upsert WorkflowTask or delete it
+  if (data.workflowId !== undefined) {
+    if (data.workflowId && data.repositoryId) {
+      throw new Error("workflowId and repositoryId are mutually exclusive — a task can target a workflow OR a repository, not both");
+    }
+    if (data.workflowId) {
+      // Switch to workflow target
+      updateData.repositoryId = null;
+      updateData.mode = "workflow_editor";
+      await db.workflowTask.upsert({
+        where: { taskId },
+        create: {
+          taskId,
+          workflowId: data.workflowId,
+          workflowName: data.workflowName ?? null,
+          workflowRefId: data.workflowRefId ?? null,
+        },
+        update: {
+          workflowId: data.workflowId,
+          workflowName: data.workflowName ?? null,
+          workflowRefId: data.workflowRefId ?? null,
+        },
+      });
+    }
+  } else if (data.repositoryId !== undefined && data.repositoryId !== null) {
+    // Switching back to a repo — remove WorkflowTask if one exists
+    await db.workflowTask.deleteMany({ where: { taskId } });
+  }
+
   const updatedTask = await db.task.update({
     where: { id: taskId },
     data: updateData,

@@ -94,7 +94,8 @@ export async function PATCH(
                    message.includes("Invalid") ||
                    message.includes("must be") ||
                    message.includes("Circular dependency") ||
-                   message.includes("cannot depend on itself") ? 400 : 500;
+                   message.includes("cannot depend on itself") ||
+                   message.includes("mutually exclusive") ? 400 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

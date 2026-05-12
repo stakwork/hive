@@ -259,6 +259,15 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
                 repositoryUrl: true;
               };
             };
+            workflowTask: {
+              select: {
+                id: true;
+                workflowId: true;
+                workflowName: true;
+                workflowRefId: true;
+                workflowVersionId: true;
+              };
+            };
             phase: {
               select: {
                 id: true;
@@ -699,6 +708,10 @@ export interface UpdateRoadmapTaskRequest {
   runTestSuite?: boolean;
   autoMerge?: boolean;
   model?: string | null;
+  // Workflow-targeting fields (stakwork workspace only — upserts WorkflowTask row)
+  workflowId?: number;
+  workflowName?: string;
+  workflowRefId?: string;
 }
 
 export interface ReorderRoadmapTasksRequest {
