@@ -16,6 +16,7 @@ import { StakworkRunType, StakworkRunDecision, WorkflowStatus } from "@prisma/cl
 import { isClarifyingQuestions } from "@/types/stakwork";
 import { config } from "@/config/env";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { saveWorkflowArtifact } from "@/services/workflow-editor";
 
 vi.mock("@/lib/db");
 vi.mock("@/lib/service-factory");
@@ -82,6 +83,11 @@ vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
 
 vi.mock("@/lib/runtime", () => ({
   isDevelopmentMode: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("@/services/workflow-editor", () => ({
+  saveWorkflowArtifact: vi.fn().mockResolvedValue(undefined),
+  triggerWorkflowEditorRun: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/config/env", () => ({
@@ -2461,6 +2467,130 @@ describe("Stakwork Run Service", () => {
       expect(mockedDb.stakworkRun.update).toHaveBeenCalledWith({
         where: { id: "run-1" },
         data: { decision: StakworkRunDecision.ACCEPTED },
+      });
+    });
+
+    test("should dual-write WorkflowTask and artifact for workflow-targeting tasks", async () => {
+      const mockRun = {
+        id: "run-wf-1",
+        type: StakworkRunType.TASK_GENERATION,
+        featureId: "feature-wf",
+        workspaceId: "ws-1",
+        status: WorkflowStatus.IN_PROGRESS,
+        autoAccept: true,
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "workspace-owner-id",
+        },
+        feature: {
+          createdById: "feature-creator-id",
+        },
+      };
+
+      const mockFeature = {
+        id: "feature-wf",
+        title: "Workflow Feature",
+        phases: [{ id: "phase-wf", name: "Phase 1", order: 0 }],
+        workspace: { id: "ws-1" },
+      };
+
+      const mockWorkflowTaskCreated = { id: "created-wf-task" };
+      const mockPlainTaskCreated = { id: "created-plain-task" };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        status: WorkflowStatus.COMPLETED,
+        decision: StakworkRunDecision.ACCEPTED,
+      });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/org/repo" }]);
+      mockedDb.task.create = vi
+        .fn()
+        .mockResolvedValueOnce(mockWorkflowTaskCreated)
+        .mockResolvedValueOnce(mockPlainTaskCreated);
+      mockedDb.workflowTask = { create: vi.fn().mockResolvedValue({ id: "wt-1" }) } as any;
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockedSaveWorkflowArtifact = vi.mocked(saveWorkflowArtifact);
+      mockedSaveWorkflowArtifact.mockClear();
+
+      const taskGenerationResult = {
+        phases: [
+          {
+            tasks: [
+              {
+                tempId: "t-wf",
+                title: "Workflow Task",
+                description: "A workflow task",
+                priority: "MEDIUM",
+                workflowId: 42,
+                workflowName: "test-workflow",
+                workflowRefId: "ref-001",
+              },
+              {
+                tempId: "t-plain",
+                title: "Plain Task",
+                description: "A plain code task",
+                priority: "HIGH",
+              },
+            ],
+          },
+        ],
+      };
+
+      await processStakworkRunWebhook(
+        {
+          project_status: "completed",
+          result: taskGenerationResult,
+        },
+        {
+          type: "TASK_GENERATION",
+          workspace_id: "ws-1",
+          feature_id: "feature-wf",
+        }
+      );
+
+      // Workflow task created with mode and null repositoryId
+      expect(mockedDb.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: "Workflow Task",
+          mode: "workflow_editor",
+          repositoryId: null,
+          branch: null,
+        }),
+      });
+
+      // Plain task created without mode and with repositoryId
+      expect(mockedDb.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: "Plain Task",
+          repositoryId: "repo-1",
+        }),
+      });
+      const plainTaskCall = (mockedDb.task.create as ReturnType<typeof vi.fn>).mock.calls.find(
+        (c: any[]) => c[0].data.title === "Plain Task"
+      );
+      expect(plainTaskCall?.[0].data.mode).toBeUndefined();
+
+      // WorkflowTask dual-write
+      expect(mockedDb.workflowTask.create).toHaveBeenCalledTimes(1);
+      expect(mockedDb.workflowTask.create).toHaveBeenCalledWith({
+        data: {
+          taskId: "created-wf-task",
+          workflowId: 42,
+          workflowName: "test-workflow",
+          workflowRefId: "ref-001",
+        },
+      });
+
+      // saveWorkflowArtifact called once for the workflow task
+      expect(mockedSaveWorkflowArtifact).toHaveBeenCalledTimes(1);
+      expect(mockedSaveWorkflowArtifact).toHaveBeenCalledWith("created-wf-task", {
+        workflowId: 42,
+        workflowName: "test-workflow",
+        workflowRefId: "ref-001",
       });
     });
 

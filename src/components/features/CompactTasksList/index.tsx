@@ -106,6 +106,15 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       .catch(() => {/* silently ignore */});
   }, []);
 
+  useEffect(() => {
+    fetch(`/api/features/${featureId}/sync-status`, { method: "POST" })
+      .then((res) => {
+        if (res.ok) return refetchFeature();
+      })
+      .catch(() => {/* silently suppress — best-effort background fix */});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const defaultPhase = feature.phases?.[0];
 
   const tasks = useMemo(() => {

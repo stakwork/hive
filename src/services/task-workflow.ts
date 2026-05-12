@@ -367,7 +367,7 @@ export async function startTaskWorkflow(params: {
       }
     }
 
-    return await createChatMessageAndTriggerStakwork({
+    const result = await createChatMessageAndTriggerStakwork({
       taskId,
       message,
       userId,
@@ -382,12 +382,23 @@ export async function startTaskWorkflow(params: {
       featureId: task.featureId,
       taskModel: task.model ?? undefined,
     });
+
+    // If Stakwork returned no project_id (silent failure), roll back the claim immediately
+    if (!result.stakworkData?.projectId) {
+      console.error(`[startTaskWorkflow] No project_id returned for task ${taskId}, rolling back claim`);
+      await db.task.updateMany({
+        where: { id: taskId, workflowStatus: WorkflowStatus.IN_PROGRESS, stakworkProjectId: null },
+        data: { workflowStatus: WorkflowStatus.PENDING, workflowStartedAt: null },
+      });
+    }
+
+    return result;
   } catch (error) {
     // Roll back the claim so the task becomes eligible again on the next sweep
     console.error(`[startTaskWorkflow] Error dispatching task ${taskId}, rolling back claim:`, error);
     await db.task.updateMany({
       where: { id: taskId, workflowStatus: WorkflowStatus.IN_PROGRESS, stakworkProjectId: null },
-      data: { workflowStatus: WorkflowStatus.PENDING },
+      data: { workflowStatus: WorkflowStatus.PENDING, workflowStartedAt: null },
     });
     throw error;
   }

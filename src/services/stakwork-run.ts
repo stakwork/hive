@@ -34,6 +34,7 @@ import { tagElementsAsAi, mergeWhiteboardElements } from "@/services/whiteboard-
 import { logger } from "@/lib/logger";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
+import { saveWorkflowArtifact } from "@/services/workflow-editor";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 
 const encryptionService = EncryptionService.getInstance();
@@ -1394,6 +1395,8 @@ async function applyAcceptResult(
         // Resolve repositoryId from repoUrl if provided by AI, fallback to first repo
         const repositoryId = (task.repoUrl && repoUrlToId.get(task.repoUrl)) || firstRepoId;
 
+        const isWorkflowTask = !!task.workflowId;
+
         const createdTask = await db.task.create({
           data: {
             title: task.title,
@@ -1404,14 +1407,33 @@ async function applyAcceptResult(
             workspaceId: featureWithPhase.workspace.id,
             status: "TODO",
             dependsOnTaskIds,
-            repositoryId,
-            branch: task.branch || null,
+            // Workflow tasks are mutually exclusive with repository tasks
+            repositoryId: isWorkflowTask ? null : repositoryId,
+            mode: isWorkflowTask ? "workflow_editor" : undefined,
+            branch: isWorkflowTask ? null : (task.branch || null),
             createdById: userId,
             updatedById: userId,
             autoMerge: isFastTrack ? true : undefined,
             systemAssigneeType: isFastTrack ? "TASK_COORDINATOR" : undefined,
           },
         });
+
+        // Dual-write WorkflowTask row + seed WORKFLOW artifact (mirrors createTicket)
+        if (isWorkflowTask) {
+          await db.workflowTask.create({
+            data: {
+              taskId: createdTask.id,
+              workflowId: task.workflowId,
+              workflowName: task.workflowName ?? null,
+              workflowRefId: task.workflowRefId ?? null,
+            },
+          });
+          await saveWorkflowArtifact(createdTask.id, {
+            workflowId: task.workflowId,
+            workflowName: task.workflowName,
+            workflowRefId: task.workflowRefId,
+          });
+        }
 
         tempIdToRealId[task.tempId] = createdTask.id;
       }

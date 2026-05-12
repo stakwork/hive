@@ -266,6 +266,7 @@ export async function releaseStaleTaskPods(): Promise<{
   tasksHalted: number;
   podsReleased: number;
   orphanedPodsCleared: number;
+  limboTasksRescued: number;
   errors: Array<{ taskId: string; error: string }>;
   timestamp: string;
 }> {
@@ -273,6 +274,7 @@ export async function releaseStaleTaskPods(): Promise<{
   let tasksHalted = 0;
   let podsReleased = 0;
   let orphanedPodsCleared = 0;
+  let limboTasksRescued = 0;
 
   try {
     // Configurable stale task threshold (default: 24 hours)
@@ -303,6 +305,29 @@ export async function releaseStaleTaskPods(): Promise<{
     // Calculate the threshold timestamp
     const staleThreshold = new Date();
     staleThreshold.setHours(staleThreshold.getHours() - staleHours);
+
+    // Limbo sweep: find tasks with workflowStatus=IN_PROGRESS but no stakworkProjectId
+    // These are tasks where Stakwork returned silently without a project_id, leaving them stranded.
+    const limboTasks = await db.task.findMany({
+      where: {
+        workflowStatus: WorkflowStatus.IN_PROGRESS,
+        stakworkProjectId: null,
+        deleted: false,
+        updatedAt: { lt: staleThreshold },
+      },
+      select: { id: true, title: true, updatedAt: true },
+    });
+
+    for (const task of limboTasks) {
+      await db.task.updateMany({
+        where: { id: task.id, workflowStatus: WorkflowStatus.IN_PROGRESS, stakworkProjectId: null },
+        data: { workflowStatus: WorkflowStatus.PENDING, workflowStartedAt: null },
+      });
+      limboTasksRescued++;
+      console.log(
+        `[ReleaseStaleTaskPods] Rescued limbo task ${task.id} — IN_PROGRESS with no project_id, stuck since ${task.updatedAt.toISOString()}`
+      );
+    }
 
     // Find stale tasks that either:
     // 1. Have a pod (any status) - need to release the pod
@@ -419,7 +444,7 @@ export async function releaseStaleTaskPods(): Promise<{
     }
 
     console.log(
-      `[ReleaseStaleTaskPods] Execution completed. Released ${podsReleased} pods, halted ${tasksHalted} IN_PROGRESS tasks, cleared ${orphanedPodsCleared} orphaned pod refs, ${errors.length} errors`
+      `[ReleaseStaleTaskPods] Execution completed. Released ${podsReleased} pods, halted ${tasksHalted} IN_PROGRESS tasks, cleared ${orphanedPodsCleared} orphaned pod refs, rescued ${limboTasksRescued} limbo tasks, ${errors.length} errors`
     );
 
     return {
@@ -427,6 +452,7 @@ export async function releaseStaleTaskPods(): Promise<{
       tasksHalted,
       podsReleased,
       orphanedPodsCleared,
+      limboTasksRescued,
       errors,
       timestamp: new Date().toISOString(),
     };
@@ -439,6 +465,7 @@ export async function releaseStaleTaskPods(): Promise<{
       tasksHalted,
       podsReleased,
       orphanedPodsCleared,
+      limboTasksRescued,
       errors: [
         ...errors,
         {

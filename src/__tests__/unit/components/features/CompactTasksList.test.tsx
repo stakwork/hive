@@ -190,6 +190,9 @@ describe("CompactTasksList", () => {
       if (typeof url === "string" && url.includes("/api/llm-models")) {
         return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
       }
+      if (typeof url === "string" && url.includes("/sync-status")) {
+        return Promise.resolve(new Response(null, { status: 500 }));
+      }
       return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
     });
   });
@@ -1167,6 +1170,9 @@ describe("CompactTasksList", () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
         if (typeof url === "string" && url.includes("/api/llm-models")) {
           return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (typeof url === "string" && url.includes("/sync-status")) {
+          return Promise.resolve(new Response(null, { status: 500 }));
         }
         return Promise.resolve(new Response(JSON.stringify({ success: true, data: updatedFeature }), { status: 200 }));
       });
