@@ -59,6 +59,31 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => mockUseWorkspace(),
 }));
 
+vi.mock("@/hooks/useRecentWorkflows", () => ({
+  useRecentWorkflows: () => ({ workflows: [], isLoading: false, error: null }),
+}));
+
+vi.mock("@/lib/runtime", () => ({
+  isDevelopmentMode: () => false,
+}));
+
+vi.mock("@/components/ui/select", () => ({
+  Select: ({ children, value, onValueChange }: any) => (
+    <div data-testid="select" data-value={value}>{children}</div>
+  ),
+  SelectTrigger: ({ children, className, ...props }: any) => (
+    <div data-testid={props["data-testid"] ?? "select-trigger"} className={className} {...props}>{children}</div>
+  ),
+  SelectValue: () => <span>Select</span>,
+  SelectContent: ({ children }: any) => <div>{children}</div>,
+  SelectGroup: ({ children }: any) => <div>{children}</div>,
+  SelectLabel: ({ children }: any) => <div>{children}</div>,
+  SelectItem: ({ children, value }: any) => <div data-value={value}>{children}</div>,
+  SelectSeparator: () => <hr />,
+  SelectScrollUpButton: () => null,
+  SelectScrollDownButton: () => null,
+}));
+
 // Mock framer-motion to avoid animation issues in tests
 vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -254,6 +279,7 @@ describe("PlanStartInput", () => {
         isPrototype: false,
         model: "anthropic/claude-sonnet-4",
         selectedRepoId: null,
+        selectedWorkflow: null,
       });
     });
 
@@ -276,6 +302,7 @@ describe("PlanStartInput", () => {
         isPrototype: false,
         model: "anthropic/claude-sonnet-4",
         selectedRepoId: null,
+        selectedWorkflow: null,
       });
     });
 
