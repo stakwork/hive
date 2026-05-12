@@ -11,3 +11,5 @@ export {
   buildFixPrompt,
   type PRCheckResult,
 } from "./pr-monitor";
+export { checkRepoAllowsAutoMerge, type AutoMergeCheckResult } from "./repo-auto-merge";
+export { AutoMergeNotAllowedError, AutoMergeCheckFailedError } from "./errors";

@@ -6,6 +6,7 @@ import type { ApiSuccessResponse } from "@/types/common";
 import { db } from "@/lib/db";
 import { resolveWorkspaceAccess, isPublicViewer } from "@/lib/auth/workspace-access";
 import { toPublicUser } from "@/lib/auth/public-redact";
+import { AutoMergeNotAllowedError, AutoMergeCheckFailedError } from "@/lib/github/errors";
 
 export async function GET(
   request: NextRequest,
@@ -86,6 +87,24 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
+    if (error instanceof AutoMergeNotAllowedError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: "AUTO_MERGE_NOT_ALLOWED",
+          githubSettingsUrl: error.githubSettingsUrl,
+        },
+        { status: 409 }
+      );
+    }
+
+    if (error instanceof AutoMergeCheckFailedError) {
+      return NextResponse.json(
+        { error: error.message, code: "AUTO_MERGE_CHECK_FAILED" },
+        { status: 502 }
+      );
+    }
+
     console.error("Error updating ticket:", error);
     const message = error instanceof Error ? error.message : "Failed to update ticket";
     const status = message.includes("not found") ? 404 :
