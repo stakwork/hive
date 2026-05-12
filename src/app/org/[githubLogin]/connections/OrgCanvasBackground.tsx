@@ -43,6 +43,7 @@ import {
   type FeatureAssignForm,
   type FeatureCreateForm,
 } from "../_components/CreateFeatureCanvasDialog";
+import { CreateServiceCanvasDialog } from "../_components/CreateServiceCanvasDialog";
 import type {
   InitiativeResponse,
   MilestoneResponse,
@@ -984,10 +985,29 @@ export function OrgCanvasBackground({
      */
     sourceNoteId?: string;
   };
+  /**
+   * Pending service-create from the `+ Service` menu pick on a workspace
+   * sub-canvas. Unlike initiative / milestone / feature, services are
+   * NOT DB-projected — the new node lands directly in the canvas blob
+   * via `applyMutation` once the dialog returns. We carry only the click
+   * position and the source canvas ref through; the dialog supplies
+   * the name + platform kind.
+   *
+   * `node` is the freshly-synthesized authored node the library handed
+   * us (carrying the lib-generated id, default size from the category,
+   * and the click x/y). We hold onto it so we can drop the dialog's
+   * name + kind into it on save without re-synthesizing the id.
+   */
+  type PendingServiceAdd = {
+    kind: "service";
+    node: CanvasNode;
+    canvasRef: string | undefined;
+  };
   type PendingAdd =
     | PendingInitiativeAdd
     | PendingMilestoneAdd
-    | PendingFeatureAdd;
+    | PendingFeatureAdd
+    | PendingServiceAdd;
 
   const [pendingAdd, setPendingAdd] = useState<PendingAdd | null>(null);
 
@@ -1216,6 +1236,20 @@ export function OrgCanvasBackground({
     [],
   );
 
+  /**
+   * Open the CreateServiceCanvasDialog. Service is authored-only (no
+   * DB row), so this just stashes the lib-synthesized node and waits
+   * for the dialog to fill in name + platform `kind` — at which point
+   * `handleSaveService` writes the node to the canvas blob via
+   * `applyMutation`. Caller (handleNodeAdd) must have validated scope.
+   */
+  const startServiceCreate = useCallback(
+    (node: CanvasNode, canvasRef: string | undefined) => {
+      setPendingAdd({ kind: "service", node, canvasRef });
+    },
+    [],
+  );
+
   const handleNodeAdd = useCallback(
     (node: CanvasNode, canvasRef: string | undefined) => {
       const category = node.category ?? "";
@@ -1245,9 +1279,28 @@ export function OrgCanvasBackground({
           return;
         }
       }
+
+      // Service is authored-only (no DB row, no projector) but still
+      // routes through a dialog so the user picks a platform icon up
+      // front. We don't add it to DB_CREATING_CATEGORIES — that set's
+      // semantic is "needs a REST POST"; service skips the API entirely
+      // and lands in the canvas blob via `applyMutation` once the dialog
+      // returns. Still scope-guarded against a stale menu pick.
+      if (category === "service") {
+        if (!categoryAllowedOnScope(category, ref)) return;
+        startServiceCreate(node, canvasRef);
+        return;
+      }
+
       applyMutation(canvasRef, (c) => addNode(c, node));
     },
-    [applyMutation, startInitiativeCreate, startMilestoneCreate, startFeatureCreate],
+    [
+      applyMutation,
+      startInitiativeCreate,
+      startMilestoneCreate,
+      startFeatureCreate,
+      startServiceCreate,
+    ],
   );
 
   // -------------------------------------------------------------------
@@ -1465,6 +1518,39 @@ export function OrgCanvasBackground({
       }
     },
     [githubLogin, pendingAdd, savePositionForLiveId, applyMutation],
+  );
+
+  /**
+   * Save handler for `CreateServiceCanvasDialog`. Pure canvas-blob write
+   * — no REST POST, no projector. We take the lib-synthesized node we
+   * stashed in `pendingAdd.node`, merge in the dialog's `name` (as
+   * `text`) and `kind` (as `customData.kind`), and drop the result into
+   * the canvas blob via `applyMutation`. The click position the lib
+   * gave us is already on `node.x` / `node.y` so the card lands where
+   * the user clicked.
+   *
+   * No projector means no Pusher fan-out — the local `applyMutation`
+   * is the only state update needed. Other tabs/users see the new
+   * service on their next canvas read (or via autosave's mirror to
+   * `Canvas.data`).
+   */
+  const handleSaveService = useCallback(
+    async (form: { name: string; kind: string }): Promise<void> => {
+      if (pendingAdd?.kind !== "service") return;
+      const { node, canvasRef } = pendingAdd;
+      const merged: CanvasNode = {
+        ...node,
+        text: form.name,
+        customData: {
+          // Preserve anything the lib synthesized (today there's
+          // nothing, but defensive merge so future lib fields survive).
+          ...(node.customData ?? {}),
+          kind: form.kind,
+        },
+      };
+      applyMutation(canvasRef, (c) => addNode(c, merged));
+    },
+    [pendingAdd, applyMutation],
   );
 
   /**
@@ -2825,6 +2911,11 @@ export function OrgCanvasBackground({
         }
         onSave={handleSaveFeature}
         onAssign={handleAssignFeature}
+      />
+      <CreateServiceCanvasDialog
+        open={pendingAdd?.kind === "service"}
+        onClose={() => setPendingAdd(null)}
+        onSave={handleSaveService}
       />
     </>
   );

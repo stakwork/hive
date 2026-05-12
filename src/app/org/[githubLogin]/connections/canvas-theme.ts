@@ -19,11 +19,14 @@ import {
   MILESTONE_W,
   RESEARCH_H,
   RESEARCH_W,
+  SERVICE_H,
+  SERVICE_W,
   SMALL_W,
   TASK_H,
   TASK_W,
 } from "@/lib/canvas/geometry";
 import { CATEGORY_REGISTRY } from "./canvas-categories";
+import { PLATFORM_BY_ID, PLATFORM_ICONS } from "@/lib/platforms";
 
 /**
  * Theme for the Connections-page background canvas.
@@ -880,53 +883,172 @@ const repositoryCategory: CategoryDefinition = {
 
 // ---------------------------------------------------------------------------
 // Service card — authored on a workspace sub-canvas. Free-form ops
-// surface: an EC2 host, a Vercel project, a GitHub App, a Kubernetes
-// sandbox manager, etc. No DB projection (id stays a normal authored
-// id, not `service:<x>`); the user creates, names, sizes, and edges
-// these cards themselves.
+// surface: an EC2 host, a Vercel project, a GitHub App, a Postgres
+// database, a Stripe account, etc. No DB projection (id stays a normal
+// authored id, not `service:<x>`); the user creates, names, and edges
+// these cards via the `+ Service` dialog (`CreateServiceCanvasDialog`).
 //
-// Visual treatment mirrors the workspace card (a faint-tinted container
-// with an accent border) so the two read as one family — "things that
-// run alongside this workspace." Repo cards are smaller and sit
-// inside this family at the leaf level. The kicker reflects the
-// underlying platform via `customData.kind` when set (`VERCEL`,
-// `EC2`, `GH-APP`, etc.) so the user can scan a workspace canvas and
-// identify its infra at a glance; falls back to a plain "SERVICE"
-// label when no kind is set.
+// Visual treatment: a faint cyan-tinted card (the service-accent family,
+// same hue as the workspace container so the two read as kin), with a
+// 24×24 brand silhouette on the left rendered via the library's
+// `kind: 'icon'` slot, and the user's free-text name (`node.text`) as
+// the inline-row title. No header kicker — the icon IS the visual
+// identity, and the text reads as the service name, not a label of a
+// label.
 //
-// Forward-compat: `customData.kind` and `customData.endpoint` are
-// reserved for the v2 "click → pull logs from this service" flow. No
-// runtime code reads them today; the registry documents the contract
-// so authored data persists intact when v2 ships.
+// Brand identity flows from `customData.kind`: that string is the
+// `Platform.id` in `@/lib/platforms` (`"vercel"` / `"postgres"` /
+// `"aws-ec2"` / etc.), and the slot's `name` accessor resolves it to
+// the right simple-icons paths via `theme.icons`. Unknown / unset kinds
+// render with no icon (the lib's contract) — falling back to a generic
+// stroked cloud glyph is the post-v1 enhancement; today, an unset card
+// shows just text. The `+ Service` dialog defaults kind to `"cloud"` so
+// fresh nodes always have *some* icon.
+//
+// Forward-compat: `customData.kind` is THE integration dispatch key. A
+// future "click a Vercel service → open Vercel deploys" flow reads
+// exactly this field. Stable kebab-case strings, never renamed once
+// shipped (see `@/lib/platforms/types.ts` for the full contract).
 // ---------------------------------------------------------------------------
 
-function serviceKicker(node: CanvasNode): string {
-  const raw = node.customData?.kind;
-  if (typeof raw === "string" && raw.trim().length > 0) {
-    // Up-case the kind for visual parity with the other kickers
-    // (`WORKSPACE`, `REPO`, `INITIATIVE`). Replace underscores with
-    // spaces so internal slugs like `gh_app` render as `GH APP`.
-    return raw.trim().toUpperCase().replace(/_/g, " ");
+/**
+ * Resolve the accent color for a service node — drives both the
+ * left-edge brand stripe AND the icon-glyph tint. Three-tier fallback,
+ * highest priority first:
+ *
+ *   1. **User override** — `node.color`, set by the toolbar color
+ *      swatches. This is the escape hatch for brands whose official
+ *      color sits poorly against our dark canvas (Vercel `#000`,
+ *      PlanetScale `#000`, Railway near-black, ...). The user picks a
+ *      swatch and both the stripe and the glyph repaint in their
+ *      choice.
+ *
+ *   2. **Platform brand color** — `Platform.brandColor` for the
+ *      `customData.kind`, the on-brand default that makes a row of
+ *      services scannable (Postgres-blue, Stripe-purple, ...).
+ *
+ *   3. **Service accent** — the generic cyan, used when the kind isn't
+ *      in the registry or the platform has no brandColor (the generic
+ *      primitives like `server` / `database` deliberately don't have
+ *      one — they're tech categories, not real brands).
+ *
+ * **Preset-key resolution.** The lib's default toolbar color swatches
+ * set `node.color` to a *preset key string* (`"1"` through `"6"`),
+ * NOT a hex/rgb color — the lib then maps that key through
+ * `theme.presetColors` at render time for the body fill/stroke. Slot
+ * accessors that read `node.color` directly get the raw key, which an
+ * SVG `fill` / `stroke` attribute can't parse and silently falls back
+ * to black. The presetColors lookup below maps the key to the actual
+ * stroke color so the override paints in the visible swatch tone
+ * instead of black. Hex/rgb values pass through unchanged.
+ *
+ * Used by both the leftEdge stripe and the topLeft icon slot so the
+ * two stay visually locked together.
+ */
+function resolveServiceAccent(node: CanvasNode): string {
+  const override = node.color;
+  if (override) {
+    // Preset keys are short symbolic identifiers ("1".."6" in our
+    // theme). If `node.color` matches a preset, return the resolved
+    // stroke color; otherwise treat it as a raw CSS color string and
+    // let it through. The `String` check guards against `null` /
+    // undefined slipping past the truthy check above (which is
+    // already strict, but defensive).
+    const preset = connectionsTheme.presetColors?.[override];
+    if (preset?.stroke) return preset.stroke;
+    return override;
   }
-  return "SERVICE";
+  const kind = node.customData?.kind as string | undefined;
+  return PLATFORM_BY_ID[kind ?? ""]?.brandColor ?? ACCENT.service;
 }
 
 const serviceCategory: CategoryDefinition = {
   ...baseCard,
-  defaultWidth: CARD_W,
-  defaultHeight: CARD_H,
+  defaultWidth: SERVICE_W,
+  defaultHeight: SERVICE_H,
   type: "text",
   stroke: hexAlpha(ACCENT.service, 0.45),
   fill: hexAlpha(ACCENT.service, 0.05),
   slots: {
-    header: {
-      kind: "text",
-      value: (ctx: SlotContext) => serviceKicker(ctx.node),
-      color: ACCENT.service,
+    // Brand-color stripe down the left edge — borrowed straight from
+    // the system-canvas showcase's service card. Reads
+    // `Platform.brandColor` from the registry per-node so a row of
+    // services on a workspace sub-canvas reads as a colorful index
+    // rather than a wall of cyan: the Vercel card shows a black
+    // stripe, the Postgres card a deep blue, the Stripe card a
+    // purple, etc. — same trick browser tabs use to make a long
+    // list of similar things distinguishable at a glance.
+    //
+    // Falls back to the generic service-cyan when:
+    //   - `customData.kind` is unset (a service the user hasn't picked
+    //     a platform for yet — shouldn't happen since the dialog
+    //     enforces a kind, but defensive),
+    //   - the kind doesn't resolve in the registry (stale id from a
+    //     removed platform),
+    //   - the platform has no `brandColor` set (the generic primitives
+    //     like `server` / `database` / `cloud` deliberately have none
+    //     — they're "tech category" placeholders, not real brands, so
+    //     painting them in a fake brand color would be misleading).
+    //
+    // The library's `kind: 'color'` slot owns the painted region; we
+    // just supply the fill. The `extent: 'full'` flavor spans the
+    // node's full height (the alternative `'inset'` leaves a gap at
+    // top + bottom, which doesn't suit the brand-tab pattern).
+    leftEdge: {
+      kind: "color",
+      extent: "full",
+      color: (ctx: SlotContext) => resolveServiceAccent(ctx.node),
     },
-    body: {
-      kind: "text",
-      value: (ctx: SlotContext) => ctx.node.text ?? "",
+    // Brand silhouette next to the title. The library treats a
+    // `topLeft` icon as an inline-row marker (vertical-centered, with
+    // the title pinned to its right) when no `header` slot is also
+    // declared — exactly the layout we want.
+    //
+    // `size: 18` overrides the default auto-fit (~14px, which read as
+    // an anemic smudge for brand marks at our 1.25em corner slot).
+    // The library's reflow accounts for explicit-size overrides by
+    // expanding the title's left reservation when the icon overflows
+    // its slot region, so a longer service name still clears the
+    // glyph cleanly — no manual padding needed here.
+    //
+    // `mode`, `viewBox`, and `color` are all read per-platform from
+    // the registry. simple-icons brand glyphs are 24-viewBox filled
+    // silhouettes (vercel / postgres / github / ...); the generic
+    // primitives (server / database / cloud / lock / network / code)
+    // are 16-viewBox line glyphs that ship inside the library. Both
+    // coexist in the picker; both render correctly here by dispatching
+    // off `Platform.renderMode` / `Platform.viewBox` / `Platform.brandColor`.
+    // Unknown kinds (stale id from a deleted platform, arbitrary
+    // string the agent authored) fall through to the simple-icons
+    // defaults — the renderer returns `null` when the name resolves
+    // to no paths, so a misnamed kind paints nothing rather than a
+    // wrong glyph.
+    //
+    // Color: the icon glyph itself is tinted with the platform's
+    // official brand color so each service is instantly recognizable
+    // (Vercel triangle in black, Stripe wordmark in purple, Postgres
+    // elephant in royal blue, ...). Falls back to the generic
+    // service-cyan when no brand color is registered — same posture
+    // as the leftEdge stripe. Some brands ship "color on dark" vs
+    // "color on light" variants; we use the base brand color and
+    // accept that a few darks (Vercel `#000`, PlanetScale `#000`)
+    // disappear against our dark canvas. Brightening those is a
+    // separate per-platform override (`Platform.darkBrandColor`)
+    // that we can add when it matters.
+    topLeft: {
+      kind: "icon",
+      name: (ctx: SlotContext) =>
+        (ctx.node.customData?.kind as string | undefined) ?? "",
+      mode: (ctx: SlotContext) => {
+        const kind = ctx.node.customData?.kind as string | undefined;
+        return PLATFORM_BY_ID[kind ?? ""]?.renderMode ?? "fill";
+      },
+      viewBox: (ctx: SlotContext) => {
+        const kind = ctx.node.customData?.kind as string | undefined;
+        return PLATFORM_BY_ID[kind ?? ""]?.viewBox ?? 24;
+      },
+      color: (ctx: SlotContext) => resolveServiceAccent(ctx.node),
+      size: 18,
     },
   },
 } as CategoryDefinition;
@@ -1181,6 +1303,13 @@ export const connectionsTheme: CanvasTheme = resolveTheme(
       headerFontSize: 11,
       headerSize: 26,
     },
+    // Brand-icon paths merged into the theme's icon set. Looked up by
+    // `customData.kind` via the `serviceCategory.slots.topLeft` accessor
+    // — see `@/lib/platforms` for the registry. Adding a new platform
+    // there propagates here automatically; the lib's built-in stroked
+    // glyphs (database / server / cloud / ...) remain available as
+    // fallbacks for ids not in `PLATFORM_ICONS`.
+    icons: PLATFORM_ICONS,
     // Build the renderer's category map by joining the category
     // registry (id + agent docs) with the local renderer definitions.
     // The registry is the single source of truth for which categories
