@@ -13,6 +13,7 @@ import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 
+
 export const runtime = "nodejs";
 
 export const fetchCache = "force-no-store";
@@ -306,6 +307,7 @@ export async function POST(request: NextRequest) {
           // Don't fail the request if artifact creation fails
         }
       }
+
     } else {
       await db.task.update({
         where: { id: taskId },

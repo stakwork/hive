@@ -49,11 +49,15 @@ Return the FULL final architecture (200-400 words) covering system design, compo
 ${context.architectureText ? 'Incorporate and enhance the existing architecture above.' : ''}`;
 }
 
-export function buildPhasesTasksPrompt(context: FeatureContext): string {
+export function buildPhasesTasksPrompt(context: FeatureContext, options?: { workflowPlanningEnabled?: boolean }): string {
+  const workflowInstruction = options?.workflowPlanningEnabled
+    ? `\n\nWorkflow targeting: This plan is for the Stakwork workspace. Tasks may target either a code repository OR an existing Stakwork workflow. For workflow-targeted tasks, include the fields workflowId (number), workflowName (string), and workflowRefId (string) instead of a repositoryId. workflowId and repositoryId are mutually exclusive per task — never set both. Only reference real workflow IDs that were provided in context.`
+    : "";
+
   return `Generate a complete project breakdown with phases and tasks for this feature (incorporating all context below):
 
 Title: ${context.title}
-${context.brief ? `Brief: ${context.brief}` : ''}${context.workspaceDesc}${context.personasText}${context.userStoriesText}${context.requirementsText ? `\n\nRequirements:\n${context.requirementsText}` : ''}${context.architectureText ? `\n\nArchitecture:\n${context.architectureText}` : ''}
+${context.brief ? `Brief: ${context.brief}` : ''}${context.workspaceDesc}${context.personasText}${context.userStoriesText}${context.requirementsText ? `\n\nRequirements:\n${context.requirementsText}` : ''}${context.architectureText ? `\n\nArchitecture:\n${context.architectureText}` : ''}${workflowInstruction}
 
 Break down the work into 1-5 logical phases (fewer for simpler features), with 2-8 actionable tasks per phase.
 Use tempIds (T1, T2, T3...) for dependency mapping between tasks.

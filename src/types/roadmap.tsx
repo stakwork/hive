@@ -678,6 +678,10 @@ export interface CreateRoadmapTaskRequest {
   runTestSuite?: boolean;
   autoMerge?: boolean;
   dependsOnTaskIds?: string[];
+  // Workflow-targeting fields (stakwork workspace only — mutually exclusive with repositoryId)
+  workflowId?: number;
+  workflowName?: string;
+  workflowRefId?: string;
 }
 
 export interface UpdateRoadmapTaskRequest {
@@ -723,6 +727,10 @@ export interface GeneratedTask {
   priority: Priority;
   tempId: string; // Temporary ID for dependency mapping (e.g., "T1", "T2")
   dependsOn?: string[]; // Array of tempIds this task depends on
+  // Workflow-targeting fields (stakwork workspace only — transient, not persisted on Task directly)
+  workflowId?: number;
+  workflowName?: string;
+  workflowRefId?: string;
 }
 
 export interface GeneratedPhase {
