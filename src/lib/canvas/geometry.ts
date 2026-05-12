@@ -26,6 +26,21 @@ export const CARD_H = 104;
 export const SMALL_W = 220;
 
 /**
+ * Service card. Free-form ops surface authored on a workspace sub-canvas.
+ * Narrower and shorter than every other card on the canvas — the card
+ * carries only a brand icon and a name (no kicker, no progress, no
+ * footer), so the full container footprint read as "lots of empty
+ * chrome." Deliberately the smallest card on the workspace sub-canvas
+ * so a row of services reads as "leaf nodes" under the repos and
+ * features sitting above them.
+ *
+ * Width is one step narrower than `SMALL_W` (the repo / note width);
+ * height matches no other card so the silhouette is unmistakable.
+ */
+export const SERVICE_W = 200;
+export const SERVICE_H = 56;
+
+/**
  * Initiative card. Wider than the container card so the gradient
  * "vision-style" title rendered in the body slot has room to breathe.
  */
