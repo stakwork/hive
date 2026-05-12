@@ -86,9 +86,24 @@ export interface ScoutOrgContextArgs {
 export async function scoutOrgContext(
   args: ScoutOrgContextArgs,
 ): Promise<string | null> {
+  // Unconditional entry breadcrumb. Always emitted so a missing log
+  // line means the function was never called (caller opted out via
+  // `skipOrgContextScout`, or the dispatch path didn't reach this
+  // point at all). The flag + first-message states are surfaced so
+  // we can tell at a glance which skip path is about to fire.
+  console.log(
+    `[orgContextScout] entered: workspaceId=${args.workspaceId} isFirstMessage=${args.isFirstMessage} flag=${process.env.PLAN_MODE_ORG_CONTEXT_ENABLED ?? "<unset>"}`,
+  );
+
   // ── Skip conditions ──────────────────────────────────────────────
-  if (process.env.PLAN_MODE_ORG_CONTEXT_ENABLED !== "true") return null;
-  if (!args.isFirstMessage) return null;
+  if (process.env.PLAN_MODE_ORG_CONTEXT_ENABLED !== "true") {
+    console.log("[orgContextScout] skip: PLAN_MODE_ORG_CONTEXT_ENABLED not 'true'");
+    return null;
+  }
+  if (!args.isFirstMessage) {
+    console.log("[orgContextScout] skip: not first message of plan");
+    return null;
+  }
 
   const startedAt = Date.now();
 

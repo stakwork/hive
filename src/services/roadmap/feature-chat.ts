@@ -212,6 +212,15 @@ export async function sendFeatureChatMessage({
    */
   skipOrgContextScout?: boolean;
 }) {
+  // Unconditional entry breadcrumb so we can confirm the
+  // plan-mode dispatch was reached even when callers (canvas-
+  // proposal approval, MCP tools, direct UI) take different paths
+  // in. `skipOrgContextScout` is surfaced so we can tell at a
+  // glance whether the scout was suppressed by the caller.
+  console.log(
+    `[feature-chat] sendFeatureChatMessage entered: featureId=${featureId} userId=${userId} skipOrgContextScout=${skipOrgContextScout}`,
+  );
+
   const feature = await db.feature.findUnique({
     where: { id: featureId },
     select: {
