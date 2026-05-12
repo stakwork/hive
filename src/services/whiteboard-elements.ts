@@ -4,6 +4,94 @@
  */
 
 /**
+ * Creates a visually distinct link object (rectangle + bound text) at the given
+ * canvas coordinates. The rectangle carries the native Excalidraw `link` property
+ * so the built-in link tooltip and `onLinkOpen` callback work without extra code.
+ */
+export function createLinkElement(
+  url: string,
+  label: string,
+  centerX: number,
+  centerY: number
+): unknown[] {
+  const rectId = Math.random().toString(36).substring(2, 15);
+  const textId = Math.random().toString(36).substring(2, 15);
+  const groupId = Math.random().toString(36).substring(2, 15);
+  const timestamp = Date.now();
+  const width = 240;
+  const height = 64;
+
+  const rect = {
+    id: rectId,
+    type: "rectangle",
+    x: centerX - width / 2,
+    y: centerY - height / 2,
+    width,
+    height,
+    angle: 0,
+    strokeColor: "#3b82f6",
+    backgroundColor: "#eff6ff",
+    fillStyle: "solid",
+    strokeWidth: 2,
+    strokeStyle: "solid",
+    roughness: 0,
+    opacity: 100,
+    groupIds: [groupId],
+    frameId: null,
+    roundness: { type: 3 },
+    seed: Math.floor(Math.random() * 1000000),
+    version: 1,
+    versionNonce: Math.floor(Math.random() * 1000000),
+    isDeleted: false,
+    boundElements: [{ id: textId, type: "text" }],
+    updated: timestamp,
+    link: url,
+    locked: false,
+    customData: { isLinkObject: true },
+  };
+
+  const text = {
+    id: textId,
+    type: "text",
+    x: centerX - width / 2 + 8,
+    y: centerY - 10,
+    width: width - 16,
+    height: 20,
+    angle: 0,
+    strokeColor: "#1e40af",
+    backgroundColor: "transparent",
+    fillStyle: "solid",
+    strokeWidth: 2,
+    strokeStyle: "solid",
+    roughness: 0,
+    opacity: 100,
+    groupIds: [groupId],
+    frameId: null,
+    roundness: null,
+    seed: Math.floor(Math.random() * 1000000),
+    version: 1,
+    versionNonce: Math.floor(Math.random() * 1000000),
+    isDeleted: false,
+    boundElements: null,
+    updated: timestamp,
+    link: null,
+    locked: false,
+    text: label,
+    fontSize: 16,
+    fontFamily: 2,
+    textAlign: "center",
+    verticalAlign: "middle",
+    containerId: rectId,
+    originalText: label,
+    autoResize: true,
+    lineHeight: 1.25,
+    customData: { isLinkObject: true },
+  };
+
+  return [rect, text];
+}
+
+/**
  * Merges user-created and AI-generated elements, removing previously AI-generated elements
  * so the new set replaces them while preserving user content.
  *
