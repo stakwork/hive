@@ -1,27 +1,10 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
-import { getQuickAskPrefixMessages, getMultiWorkspacePrefixMessages } from "@/lib/constants/prompt";
-import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
-import { askToolsMulti } from "@/lib/ai/askToolsMulti";
-import {
-  buildWorkspaceConfigs,
-  buildPublicWorkspaceConfig,
-  fetchConceptsForWorkspaces,
-} from "@/lib/ai/workspaceConfig";
-import { buildConnectionTools } from "@/lib/ai/connectionTools";
-import { buildCanvasTools } from "@/lib/ai/canvasTools";
-import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
-import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
-import {
-  buildResearchTools,
-  type CapturedSearchResult,
-} from "@/lib/ai/researchTools";
 import { validateUserBelongsToOrg } from "@/services/workspace";
-import { streamText, ModelMessage, generateObject, ToolSet } from "ai";
-import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
+import { ModelMessage, generateObject } from "ai";
+import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { z } from "zod";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
-import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 import { getMiddlewareContext } from "@/lib/middleware/utils";
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 import {
@@ -39,6 +22,10 @@ import type {
   ApprovalIntent,
   RejectionIntent,
 } from "@/lib/proposals/types";
+import {
+  runCanvasAgent,
+  extractConceptIdsFromStep,
+} from "@/lib/ai/runCanvasAgent";
 
 /**
  * Provenance data types
@@ -62,80 +49,6 @@ interface ProvenanceData {
       }>;
     }>;
   }>;
-}
-
-/**
- * Extract concept IDs from step content (used during streaming)
- * Handles both plain tool names (learn_concept) and namespaced (workspace__learn_concept)
- */
-function extractConceptIdsFromStep(contents: unknown): string[] {
-  if (!Array.isArray(contents)) return [];
-
-  const conceptIds: string[] = [];
-  for (const content of contents) {
-    if (content.type === "tool-call") {
-      const toolName: string = content.toolName || "";
-      if (toolName === "learn_concept" || toolName.endsWith("__learn_concept")) {
-        const conceptId = content.input?.conceptId;
-        if (conceptId) {
-          conceptIds.push(conceptId);
-        }
-      }
-    }
-  }
-  return conceptIds;
-}
-
-/**
- * Walk step content for `web_search` tool-result parts and append
- * each result `{ url, title }` into `target` IN ORDER. Anthropic's
- * `<cite index="N-M">` tags reference this flat list 1-indexed, so
- * preserving the order across all `web_search` calls in a turn is
- * load-bearing.
- *
- * The shape of `webSearch` results varies slightly across AI SDK
- * versions; we accept both `result: SearchResult[]` (some adapters)
- * and `output: SearchResult[]` (others), and we tolerate any
- * non-array output silently.
- */
-function captureWebSearchResultsFromStep(
-  contents: unknown,
-  target: CapturedSearchResult[],
-): void {
-  if (!Array.isArray(contents)) return;
-  for (const content of contents) {
-    if (content?.type !== "tool-result") continue;
-    const toolName: string = content.toolName || "";
-    if (toolName !== "web_search") continue;
-    // The result body lands on different fields depending on the
-    // AI SDK adapter. Try both.
-    const body = content.output ?? content.result ?? null;
-    const results = Array.isArray(body) ? body : null;
-    if (!results) {
-      console.log(
-        `[ask/quick] web_search tool-result had non-array body; skipping`,
-        { keys: body && typeof body === "object" ? Object.keys(body) : typeof body },
-      );
-      continue;
-    }
-    let added = 0;
-    for (const r of results) {
-      if (
-        r &&
-        typeof r === "object" &&
-        typeof (r as { url?: unknown }).url === "string"
-      ) {
-        target.push({
-          url: (r as CapturedSearchResult).url,
-          title: (r as CapturedSearchResult).title,
-        });
-        added++;
-      }
-    }
-    console.log(
-      `[ask/quick] captured ${added} web_search results from this step (total now ${target.length})`,
-    );
-  }
 }
 
 /**
@@ -325,10 +238,6 @@ export async function POST(request: NextRequest) {
     const primarySlug = slugs[0];
     const isPublicViewerRequest = publicViewerWorkspaceId !== null;
 
-    const provider: Provider = "anthropic";
-    const apiKey = getApiKeyForProvider(provider);
-    const model = getModel(provider, apiKey, primarySlug);
-
     // Normalize incoming messages to ModelMessage[] format
     const convertedMessages: ModelMessage[] = messages
       .map((m: any): ModelMessage | null => {
@@ -345,153 +254,21 @@ export async function POST(request: NextRequest) {
       })
       .filter((m): m is ModelMessage => m !== null);
 
-    // ============================================================
-    // Build the varying pieces: tools, prefixMessages, features,
-    // and swarm credentials (for sanitization + provenance)
-    // ============================================================
-    let tools: ToolSet;
-    let prefixMessages: ModelMessage[];
-    let features: Record<string, unknown>[];
-    let primarySwarmUrl: string;
-    let primarySwarmApiKey: string;
-    // Per-request Anthropic `web_search` capture, populated by
-    // `streamText`'s `onStepFinish` callback as search calls return.
-    // The `update_research` tool closes over this array (when
-    // `buildResearchTools` is built below) so it can linkify
-    // `<cite index="N-M">` tags using the captured URLs in stream
-    // order. Empty when the org-scoped tool branch isn't built.
-    let capturedWebSearchResults: CapturedSearchResult[] = [];
-
-    if (isMultiWorkspace) {
-      // Multi-workspace mode is auth-only (rejected for public viewers above).
-      const workspaceConfigs = await buildWorkspaceConfigs(slugs, userId!);
-
-      // Fetch concepts BEFORE building tools so `askToolsMulti` can expose
-      // `{slug}__read_concepts_for_repo` backed by the same in-memory cache
-      // we'll pre-seed into the prompt below. Single fetch, two consumers.
-      const conceptsByWorkspace =
-        await fetchConceptsForWorkspaces(workspaceConfigs);
-
-      tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace);
-
-      // Merge org-scoped tools when orgId is provided. Both connection and
-      // canvas tools are exposed simultaneously; the prompt teaches the
-      // agent to pick based on intent (document-an-integration vs
-      // draw-a-diagram).
-      if (orgId) {
-        // Verify the authenticated caller actually belongs to the supplied org
-        // before granting canvas/connection write tools for it.
-        const orgBelongsToCaller = await validateUserBelongsToOrg(
-          orgId,
-          userId!,
-          "id",
-        );
-        if (!orgBelongsToCaller) {
-          throw forbiddenError("Access denied for the specified organization");
-        }
-        // Per-request capture of Anthropic web_search results, in
-        // stream order. Populated by `onStepFinish` below; consumed
-        // by `update_research`'s execute closure to linkify
-        // `<cite index="N-M">` tags. Lives in this scope so each
-        // request gets its own array \u2014 no cross-request bleed.
-        const requestWebSearchResults: CapturedSearchResult[] = [];
-        tools = {
-          ...tools,
-          ...buildConnectionTools(orgId, userId!),
-          ...buildCanvasTools(orgId),
-          ...buildInitiativeTools(orgId, userId!),
-          ...buildResearchTools(orgId, userId!, requestWebSearchResults),
-        };
-        // Stash on a route-local var so `onStepFinish` can append to
-        // it without re-introducing the `tools` closure complexity.
-        // The `streamText` block below is in the same lexical scope.
-        capturedWebSearchResults = requestWebSearchResults;
-      }
-
-      features = [];
-      for (const ws of workspaceConfigs) {
-        features.push(...(conceptsByWorkspace[ws.slug] || []));
-      }
-
-      // When the user is on an initiative sub-canvas, resolve which
-      // workspaces are visually linked to that initiative on root
-      // (`ws:<id> ↔ initiative:<id>` edges). The prompt uses this to
-      // tell the agent which `workspaceId` to pass to
-      // `propose_feature` — without it, the agent has no DB-level
-      // signal (initiatives have no `workspaceId` FK) and guesses
-      // from the workspace list, sometimes wrong. Cheap: one
-      // indexed canvas read + one workspace `findMany`, and we only
-      // do it when scope is `initiative:*`.
-      let linkedWorkspaces: Array<{ id: string; slug: string; name: string }> =
-        [];
-      if (
-        orgId &&
-        typeof currentCanvasRef === "string" &&
-        currentCanvasRef.startsWith("initiative:")
-      ) {
-        const initiativeId = currentCanvasRef.slice("initiative:".length);
-        if (initiativeId) {
-          linkedWorkspaces = await getLinkedWorkspacesForInitiative(
-            orgId,
-            initiativeId,
-          );
-        }
-      }
-
-      prefixMessages = getMultiWorkspacePrefixMessages(
-        workspaceConfigs,
-        conceptsByWorkspace,
-        [],
+    // Org-membership gating for the multi-workspace + orgId branch
+    // (canvas chat). Validated here in the route so `runCanvasAgent`
+    // can stay auth-agnostic — it trusts the caller. Matches the
+    // pre-refactor behavior: org tools are only merged in multi-WS
+    // mode, and only after this check.
+    if (orgId && isMultiWorkspace) {
+      const orgBelongsToCaller = await validateUserBelongsToOrg(
         orgId,
-        {
-          currentCanvasRef:
-            typeof currentCanvasRef === "string" ? currentCanvasRef : undefined,
-          currentCanvasBreadcrumb:
-            typeof currentCanvasBreadcrumb === "string"
-              ? currentCanvasBreadcrumb
-              : undefined,
-          selectedNodeId:
-            typeof selectedNodeId === "string" ? selectedNodeId : undefined,
-          linkedWorkspaces:
-            linkedWorkspaces.length > 0 ? linkedWorkspaces : undefined,
-        },
+        userId!,
+        "id",
       );
-      primarySwarmUrl = workspaceConfigs[0].swarmUrl;
-      primarySwarmApiKey = workspaceConfigs[0].swarmApiKey;
-    } else {
-      // Single-workspace mode. Public viewers go through
-      // buildPublicWorkspaceConfig (no per-user PAT, falls back to
-      // the workspace owner's). Members go through the normal path.
-      const ws = isPublicViewerRequest
-        ? await buildPublicWorkspaceConfig(primarySlug)
-        : (await buildWorkspaceConfigs(slugs, userId!))[0];
-
-      tools = askTools(ws.swarmUrl, ws.swarmApiKey, ws.repoUrls, ws.pat, apiKey, {
-        workspaceId: ws.workspaceId,
-        workspaceSlug: ws.slug,
-        userId: ws.userId,
-      });
-
-      const concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
-      features = (concepts.features as Record<string, unknown>[]) || [];
-
-      prefixMessages = getQuickAskPrefixMessages(features, ws.repoUrls, [], ws.description, ws.members);
-      primarySwarmUrl = ws.swarmUrl;
-      primarySwarmApiKey = ws.swarmApiKey;
+      if (!orgBelongsToCaller) {
+        throw forbiddenError("Access denied for the specified organization");
+      }
     }
-
-    // ============================================================
-    // Shared pipeline: build messages, stream, follow-ups, provenance
-    // ============================================================
-    const rawMessages: ModelMessage[] = [...prefixMessages, ...convertedMessages];
-    const modelMessages = await sanitizeAndCompleteToolCalls(rawMessages, primarySwarmUrl, primarySwarmApiKey);
-
-    console.log("🤖 Creating streamText with:", {
-      model: (model as any)?.modelId,
-      toolsCount: Object.keys(tools).length,
-      messagesCount: modelMessages.length,
-      workspaces: slugs,
-    });
 
     // Resolve the SharedConversation row this turn should attribute
     // tokens to. Validation rules:
@@ -511,39 +288,57 @@ export async function POST(request: NextRequest) {
     });
 
     try {
+      // Tracks concept ids learned in this turn so the `after()` block
+      // can fetch their provenance from stakgraph after the stream
+      // finishes. Populated via the onStepFinish hook below.
       const learnedConceptIds = new Set<string>();
 
-      const result = streamText({
-        model,
-        tools,
-        messages: modelMessages,
-        stopWhen: createHasEndMarkerCondition(),
-        stopSequences: ["[END_OF_ANSWER]"],
-        onStepFinish: (sf) => {
-          const conceptIds = extractConceptIdsFromStep(sf.content);
-          conceptIds.forEach((id) => learnedConceptIds.add(id));
-          processStep(sf.content, primarySlug, features);
-          // Stash any web_search tool results captured this step so
-          // `update_research`'s closure can linkify `<cite>` tags.
-          // No-op when the org-tool branch wasn't built (the array
-          // is empty + nothing references it from a tool execute).
-          captureWebSearchResultsFromStep(sf.content, capturedWebSearchResults);
-        },
-        onFinish: async ({ usage }) => {
-          // Persist the turn's token usage to the conversation row so
-          // the public-chat rate-limit gate can sum recent spend on
-          // the next request. Best-effort; failures are logged but
-          // do not surface to the user — the stream already finished.
-          if (!tokenAttributionRowId) return;
-          const inputTokens = Number(usage?.inputTokens ?? 0);
-          const outputTokens = Number(usage?.outputTokens ?? 0);
-          await recordTurnTokens({
-            conversationId: tokenAttributionRowId,
-            inputTokens,
-            outputTokens,
-          });
-        },
-      });
+      const { result, primarySwarmUrl, primarySwarmApiKey } =
+        await runCanvasAgent({
+          userId,
+          orgId: orgId && isMultiWorkspace ? orgId : undefined,
+          workspaceSlugs: slugs,
+          publicViewer: isPublicViewerRequest
+            ? { workspaceId: publicViewerWorkspaceId!, primarySlug }
+            : undefined,
+          scope: {
+            currentCanvasRef:
+              typeof currentCanvasRef === "string" ? currentCanvasRef : undefined,
+            currentCanvasBreadcrumb:
+              typeof currentCanvasBreadcrumb === "string"
+                ? currentCanvasBreadcrumb
+                : undefined,
+            selectedNodeId:
+              typeof selectedNodeId === "string" ? selectedNodeId : undefined,
+          },
+          messages: convertedMessages,
+          // The HTTP chat is a live UI surface; emit HIGHLIGHT_NODES so
+          // open clients animate the researched node.
+          silentPusher: false,
+          hooks: {
+            onStepFinish: (sf) => {
+              const conceptIds = extractConceptIdsFromStep(sf.content);
+              conceptIds.forEach((id) => learnedConceptIds.add(id));
+            },
+            onFinish: async ({ usage }) => {
+              // Persist the turn's token usage to the conversation row so
+              // the public-chat rate-limit gate can sum recent spend on
+              // the next request. Best-effort; failures are logged but
+              // do not surface to the user — the stream already finished.
+              if (!tokenAttributionRowId) return;
+              const u = usage as
+                | { inputTokens?: number; outputTokens?: number }
+                | undefined;
+              const inputTokens = Number(u?.inputTokens ?? 0);
+              const outputTokens = Number(u?.outputTokens ?? 0);
+              await recordTurnTokens({
+                conversationId: tokenAttributionRowId,
+                inputTokens,
+                outputTokens,
+              });
+            },
+          },
+        });
 
       after(async () => {
         // Surfaces that don't render follow-ups or provenance opt out
@@ -576,7 +371,8 @@ export async function POST(request: NextRequest) {
             .filter(Boolean)
             .join("\n\n");
 
-          const followUpModel = getModel("anthropic", apiKey, primarySlug);
+          const followUpApiKey = getApiKeyForProvider("anthropic");
+          const followUpModel = getModel("anthropic", followUpApiKey, primarySlug);
 
           const followUpResult = await generateObject({
             model: followUpModel,
@@ -617,6 +413,16 @@ export async function POST(request: NextRequest) {
 
       return result.toUIMessageStreamResponse();
     } catch (streamError) {
+      // Preserve typed ApiError statuses (forbidden, notFound,
+      // validation, etc.) from the inner pipeline. The original code
+      // had `buildWorkspaceConfigs` and friends outside this inner
+      // try; the extraction moved them inside `runCanvasAgent`, so
+      // we must explicitly re-throw their typed errors here to
+      // preserve the original status-code semantics. Only unknown /
+      // synchronous `streamText` setup failures get wrapped as 500.
+      if (isApiError(streamError)) {
+        throw streamError;
+      }
       console.error("❌ [quick-ask] Stream creation failed:", {
         error: streamError,
         errorMessage: streamError instanceof Error ? streamError.message : String(streamError),
@@ -671,49 +477,6 @@ async function resolveTokenAttributionRowId(args: {
     select: { id: true },
   });
   return row?.id ?? null;
-}
-
-async function processStep(contents: unknown, workspaceSlug: string, features: Record<string, unknown>[]) {
-  logStep(contents);
-  if (!Array.isArray(contents)) return;
-  let conceptRefId: string | undefined;
-  for (const content of contents) {
-    if (content.type === "tool-call") {
-      const toolName: string = content.toolName || "";
-      if (toolName === "learn_concept" || toolName.endsWith("__learn_concept")) {
-        const conceptId = content.input.conceptId;
-        const feature = features.find((f) => f.id === conceptId);
-        if (feature) {
-          conceptRefId = feature.ref_id as string;
-        }
-      }
-    }
-  }
-  if (!conceptRefId) return;
-  console.log("learned conceptRefId:", conceptRefId);
-  const channelName = getWorkspaceChannelName(workspaceSlug);
-  const eventPayload = {
-    nodeIds: [],
-    workspaceId: workspaceSlug,
-    depth: 2,
-    title: "Researching...",
-    timestamp: Date.now(),
-    sourceNodeRefId: conceptRefId,
-  };
-  await pusherServer.trigger(channelName, PUSHER_EVENTS.HIGHLIGHT_NODES, eventPayload);
-  console.log("highlighted node:", conceptRefId);
-}
-
-function logStep(contents: unknown) {
-  if (!Array.isArray(contents)) return;
-  for (const content of contents) {
-    if (content.type === "tool-call") {
-      console.log("TOOL CALL:", content.toolName, ":", content.input);
-    }
-    if (content.type === "tool-result") {
-      console.log("TOOL RESULT:", content.toolName);
-    }
-  }
 }
 
 // ─── Agent-proposal: synthetic SSE stream for Approve / Reject ─────
