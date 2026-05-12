@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   createStakworkRun,
   createDiagramStakworkRun,
@@ -15,6 +15,7 @@ import { FieldEncryptionService } from "@/lib/encryption/field-encryption";
 import { StakworkRunType, StakworkRunDecision, WorkflowStatus } from "@prisma/client";
 import { isClarifyingQuestions } from "@/types/stakwork";
 import { config } from "@/config/env";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 vi.mock("@/lib/db");
 vi.mock("@/lib/service-factory");
@@ -77,6 +78,10 @@ vi.mock("@/lib/encryption", () => ({
 
 vi.mock("@/lib/sphinx/daily-pr-summary", () => ({
   sendToSphinx: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("@/lib/runtime", () => ({
+  isDevelopmentMode: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock("@/config/env", () => ({
@@ -1264,6 +1269,101 @@ describe("Stakwork Run Service", () => {
         return args?.where?.type === StakworkRunType.ARCHITECTURE;
       });
       expect(guardCalls).toHaveLength(0);
+    });
+
+    const makeWorkflowPlanningWorkspace = (slug: string) => ({
+      id: "ws-1",
+      slug,
+      ownerId: "user-1",
+      deleted: false,
+      members: [{ role: "OWNER" }],
+      swarm: null,
+      sourceControlOrg: null,
+      repositories: [],
+    });
+
+    const makeWorkflowPlanningFeature = () => ({
+      id: "feature-1",
+      title: "Test Feature",
+      brief: "Test brief",
+      userStories: [],
+      workspace: { description: "" },
+      phases: [],
+    });
+
+    const setupWorkflowPlanningMocks = (slug: string) => {
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(makeWorkflowPlanningWorkspace(slug));
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1", githubAuth: { githubUsername: "testuser" } });
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(makeWorkflowPlanningFeature());
+      const mockRun = { id: "run-1", type: StakworkRunType.TASK_GENERATION, workspaceId: "ws-1", featureId: "feature-1", status: WorkflowStatus.PENDING, webhookUrl: "" };
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(null);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce({ ...mockRun, projectId: 999, status: WorkflowStatus.IN_PROGRESS });
+      const mockStakworkRequest = vi.fn().mockResolvedValue({ data: { project_id: 999 } });
+      mockedStakworkService.mockReturnValue({ stakworkRequest: mockStakworkRequest } as any);
+      return mockStakworkRequest;
+    };
+
+    test("should inject workflowPlanningEnabled=true when workspace slug is 'stakwork'", async () => {
+      vi.mocked(isDevelopmentMode).mockReturnValue(false);
+      const mockStakworkRequest = setupWorkflowPlanningMocks("stakwork");
+
+      await createStakworkRun(
+        { type: StakworkRunType.TASK_GENERATION, workspaceId: "ws-1", featureId: "feature-1" },
+        "user-1"
+      );
+
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining({ workflowPlanningEnabled: true }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    test("should NOT inject workflowPlanningEnabled for non-stakwork workspace in production mode", async () => {
+      vi.mocked(isDevelopmentMode).mockReturnValue(false);
+      const mockStakworkRequest = setupWorkflowPlanningMocks("other-workspace");
+
+      await createStakworkRun(
+        { type: StakworkRunType.TASK_GENERATION, workspaceId: "ws-1", featureId: "feature-1" },
+        "user-1"
+      );
+
+      const callArgs = mockStakworkRequest.mock.calls[0][1] as any;
+      const vars = callArgs?.workflow_params?.set_var?.attributes?.vars ?? {};
+      expect(vars.workflowPlanningEnabled).toBeUndefined();
+    });
+
+    test("should inject workflowPlanningEnabled=true when isDevelopmentMode() is true regardless of slug", async () => {
+      vi.mocked(isDevelopmentMode).mockReturnValue(true);
+      const mockStakworkRequest = setupWorkflowPlanningMocks("any-workspace");
+
+      await createStakworkRun(
+        { type: StakworkRunType.TASK_GENERATION, workspaceId: "ws-1", featureId: "feature-1" },
+        "user-1"
+      );
+
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining({ workflowPlanningEnabled: true }),
+              }),
+            }),
+          }),
+        })
+      );
     });
   });
 
