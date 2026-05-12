@@ -637,7 +637,12 @@ describe("WorkflowsPage", () => {
         ok: true,
         json: async () => ({ success: true }),
       });
-      // Call 5: workflow-editor (handleDebugRun step 4)
+      // Call 5: dual-write WorkflowTask row (handleDebugRun step 3b)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+      // Call 6: workflow-editor (handleDebugRun step 4)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ success: true }),
@@ -686,9 +691,11 @@ describe("WorkflowsPage", () => {
       const artifactBody = JSON.parse(fetchCalls[3][1].body);
       expect(artifactBody.role).toBe("ASSISTANT");
       expect(artifactBody.artifacts[0].type).toBe("WORKFLOW");
-      // call[4]: workflow-editor
-      expect(fetchCalls[4][0]).toBe("/api/workflow-editor");
-      const editorBody = JSON.parse(fetchCalls[4][1].body);
+      // call[4]: dual-write WorkflowTask row
+      expect(fetchCalls[4][0]).toBe("/api/tasks/debug-task-1/workflow-task");
+      // call[5]: workflow-editor
+      expect(fetchCalls[5][0]).toBe("/api/workflow-editor");
+      const editorBody = JSON.parse(fetchCalls[5][1].body);
       expect(editorBody.message).toBe(`Debug this run ${mockRunData.id}`);
       expect(editorBody.taskId).toBe("debug-task-1");
     }, 15000);
@@ -886,6 +893,11 @@ describe("WorkflowsPage", () => {
         ok: true,
         json: async () => ({ success: true }),
       });
+      // Dual-write WorkflowTask row
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
 
       global.fetch = mockFetch;
 
@@ -945,6 +957,11 @@ describe("WorkflowsPage", () => {
         json: async () => ({ data: { id: "task-123" } }),
       });
       // Save artifact
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+      // Dual-write WorkflowTask row
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ success: true }),
