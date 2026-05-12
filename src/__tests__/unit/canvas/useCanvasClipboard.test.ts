@@ -95,10 +95,14 @@ describe("isCopyableNode", () => {
     expect(isCopyableNode(makeNode({ id: "abc123", type: "group" }))).toBe(true);
   });
 
-  it("returns false for service category node (authored but excluded)", () => {
+  it("returns true for service category node (authored, not live-id)", () => {
     expect(
       isCopyableNode(makeNode({ id: "abc123", type: "text", category: "service" })),
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("returns true for any authored node regardless of type/category", () => {
+    expect(isCopyableNode(makeNode({ id: "abc123", type: "card" as never }))).toBe(true);
   });
 });
 
@@ -214,7 +218,7 @@ describe("useCanvasClipboard (keyboard integration)", () => {
       const nodeRef = useRef<CanvasNode | null>(node);
       nodeRef.current = node;
       useCanvasClipboard({
-        selectedNode: nodeRef.current,
+        selectedNodeRef: nodeRef,
         currentRefRef,
         applyMutation,
         currentViewportRef,

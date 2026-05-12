@@ -2029,8 +2029,11 @@ export function OrgCanvasBackground({
   }, [handleUndo]);
 
   // Copy / Cut / Paste keyboard shortcuts for authored canvas elements.
+  // Pass the ref itself — `selectedNodeForClipboardRef` is updated inside
+  // `handleSelectionChange` without triggering a re-render, so reading
+  // `.current` here would always be `null`.
   useCanvasClipboard({
-    selectedNode: selectedNodeForClipboardRef.current,
+    selectedNodeRef: selectedNodeForClipboardRef,
     currentRefRef,
     applyMutation,
     currentViewportRef,
