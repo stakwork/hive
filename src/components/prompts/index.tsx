@@ -434,6 +434,49 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   };
 
+  const handlePublishFromEdit = async () => {
+    if (!selectedPrompt || !formValue.trim()) return;
+    setIsPublishing(true);
+    setError(null);
+    try {
+      // Step 1: Save changes
+      const saveResponse = await fetch(`/api/workflow/prompts/${selectedPrompt.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: formValue.trim(), description: formDescription.trim() }),
+      });
+      if (!saveResponse.ok) throw new Error('Failed to save prompt');
+      const saveData = await saveResponse.json();
+      if (!saveData.success) throw new Error('Failed to save prompt');
+
+      // Step 2: Fetch updated prompt to get new current_version_id
+      const detailResponse = await fetch(`/api/workflow/prompts/${selectedPrompt.id}`);
+      if (!detailResponse.ok) throw new Error('Failed to fetch updated prompt');
+      const detailData = await detailResponse.json();
+      if (!detailData.success || !detailData.data.current_version_id) throw new Error('Could not determine new version ID');
+
+      const newVersionId = detailData.data.current_version_id;
+
+      // Step 3: Publish the new version
+      const publishResponse = await fetch(
+        `/api/workflow/prompts/${selectedPrompt.id}/versions/${newVersionId}/publish`,
+        { method: 'POST' }
+      );
+      if (!publishResponse.ok) throw new Error('Failed to publish version');
+      const publishData = await publishResponse.json();
+      if (!publishData.success) throw new Error('Failed to publish version');
+
+      // Step 4: Refresh and return to detail view
+      await fetchPromptDetail(selectedPrompt.id);
+      setIsEditing(false);
+      setViewMode('detail');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save and publish');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   const handleDeletePrompt = async () => {
     if (!selectedPrompt) {
       return;
@@ -901,13 +944,13 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         )}
         {isEditing && (
           <div className="flex justify-end gap-2 p-3 border-t flex-shrink-0">
-            <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>
+            <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving || isPublishing}>
               <X className="h-4 w-4 mr-1" />
               Cancel
             </Button>
             <Button
               onClick={handleUpdatePrompt}
-              disabled={isSaving || !formValue.trim()}
+              disabled={isSaving || isPublishing || !formValue.trim()}
             >
               {isSaving ? (
                 <>
@@ -921,6 +964,40 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 </>
               )}
             </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="default"
+                  disabled={isPublishing || isSaving || !formValue.trim()}
+                >
+                  {isPublishing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Publishing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Publish
+                    </>
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Publish Changes?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will save your edits and make them the live version used by all workflows.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handlePublishFromEdit}>
+                    Publish
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         )}
       </div>
@@ -1017,7 +1094,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                     const isLive = version.id === selectedPrompt.current_version_id;
 
                     return (
-                      <div key={version.id} className="relative group flex items-center gap-2">
+                      <div key={version.id} className="relative flex items-center gap-2">
                         <button
                           onClick={() => handleVersionClick(version.id)}
                           className={cn(
@@ -1050,7 +1127,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
+                                  className="flex-shrink-0 h-7 w-7 p-0"
                                   disabled={isPublishing}
                                   title={`Publish v${version.version_number}`}
                                 >
