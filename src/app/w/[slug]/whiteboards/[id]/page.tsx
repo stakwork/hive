@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
+import { InsertLinkDialog } from "@/components/whiteboard/InsertLinkDialog";
 import { WhiteboardChatPanel } from "@/components/whiteboard/WhiteboardChatPanel";
 import { WhiteboardVersionPanel } from "@/components/whiteboard/WhiteboardVersionPanel";
 import { useWhiteboardCollaborationViaRelay } from "@/hooks/useWhiteboardCollaborationViaRelay";
@@ -12,11 +13,12 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { uploadNewFiles, resolveFilesForDisplay, StoredFileEntry } from "@/hooks/useWhiteboardImages";
 import { getInitialAppState, normalizeElementStyles } from "@/lib/excalidraw-config";
 import { mergeElementsByVersion } from "@/lib/whiteboard/merge-elements";
+import { createLinkElement } from "@/services/whiteboard-elements";
 import { computeVersionChanges } from "@/lib/whiteboard/version-utils";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
 import type { AppState, BinaryFileData, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { ArrowLeft, Check, Loader2, Maximize2, Minimize2, Pencil, Scan, X } from "lucide-react";
+import { ArrowLeft, Check, Link2, Loader2, Maximize2, Minimize2, Pencil, Scan, X } from "lucide-react";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
@@ -68,6 +70,7 @@ export default function WhiteboardDetailPage() {
     return false;
   });
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const onChangeSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -666,6 +669,30 @@ export default function WhiteboardDetailPage() {
     }
   };
 
+  const handleInsertLink = useCallback(
+    (url: string, label: string) => {
+      if (!excalidrawAPI || !containerRef.current) return;
+      const { scrollX, scrollY, zoom } = excalidrawAPI.getAppState();
+      const container = containerRef.current;
+      const centerX = -scrollX + (container.clientWidth / 2) / zoom.value;
+      const centerY = -scrollY + (container.clientHeight / 2) / zoom.value;
+      const newElements = createLinkElement(url, label, centerX, centerY);
+      programmaticUpdateCountRef.current++;
+      const existing = excalidrawAPI.getSceneElementsIncludingDeleted();
+      excalidrawAPI.updateScene({
+        elements: [...existing, ...newElements] as readonly ExcalidrawElement[],
+      });
+      const appState = excalidrawAPI.getAppState();
+      const files = excalidrawAPI.getFiles();
+      saveToDatabase(
+        [...existing, ...newElements] as readonly ExcalidrawElement[],
+        appState,
+        files
+      );
+    },
+    [excalidrawAPI, saveToDatabase]
+  );
+
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((prev) => {
       const next = !prev;
@@ -778,6 +805,18 @@ export default function WhiteboardDetailPage() {
                 onReloadWhiteboard={loadWhiteboard}
               />
             )}
+            {!isPublicViewer && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLinkDialogOpen(true)}
+                disabled={!excalidrawAPI}
+                title="Insert link"
+              >
+                <Link2 className="w-4 h-4 mr-1" />
+                Link
+              </Button>
+            )}
             <Button
               variant="outline"
               size="icon"
@@ -850,6 +889,11 @@ export default function WhiteboardDetailPage() {
             // route still rejects their writes server-side, but this
             // prevents them from trying (and seeing confusing errors).
             viewModeEnabled={isPublicViewer}
+            onLinkOpen={(element, event) => {
+              event.preventDefault();
+              const url = (element as { link?: string }).link;
+              if (url) window.open(url, "_blank", "noopener,noreferrer");
+            }}
           />
         </div>
         {!isFullscreen && !isPublicViewer && (
@@ -861,6 +905,11 @@ export default function WhiteboardDetailPage() {
           />
         )}
       </div>
+      <InsertLinkDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        onInsert={handleInsertLink}
+      />
     </div>
   );
 }
