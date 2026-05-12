@@ -15,6 +15,9 @@ import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { updateFeatureStatusFromTasks } from "./feature-status-sync";
 import { createAndSendNotification } from "@/services/notifications";
 import { saveWorkflowArtifact } from "@/services/workflow-editor";
+import { parsePRUrl, getOctokitForWorkspace, checkRepoAllowsAutoMerge } from "@/lib/github";
+import { AutoMergeNotAllowedError, AutoMergeCheckFailedError } from "@/lib/github/errors";
+import { logger } from "@/lib/logger";
 
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater).
@@ -387,6 +390,57 @@ export async function updateTicket(
   }
 
   if (data.autoMerge !== undefined) {
+    // Gate: when turning auto-merge ON, verify the repo allows it (unless already cached)
+    if (data.autoMerge === true) {
+      const currentTask = await db.task.findUnique({
+        where: { id: taskId },
+        include: { repository: true },
+      });
+      const repo = currentTask?.repository;
+
+      if (repo && !repo.allowAutoMerge) {
+        // Parse owner/repo from the repository URL (e.g. https://github.com/owner/repo)
+        const parsed = parsePRUrl(`${repo.repositoryUrl}/pull/1`);
+        if (!parsed) {
+          logger.warn("[updateTicket] Could not parse repositoryUrl for auto-merge check", undefined, {
+            repositoryUrl: repo.repositoryUrl,
+          });
+          throw new AutoMergeCheckFailedError(
+            "Could not determine repository owner from URL — reconnect GitHub and try again."
+          );
+        }
+
+        const { owner, repo: repoName } = parsed;
+        const octokit = await getOctokitForWorkspace(userId, owner);
+
+        if (!octokit) {
+          throw new AutoMergeCheckFailedError(
+            "GitHub authentication unavailable — reconnect GitHub and try again."
+          );
+        }
+
+        const result = await checkRepoAllowsAutoMerge(octokit, owner, repoName);
+
+        if (result.error) {
+          throw new AutoMergeCheckFailedError(
+            "Could not verify auto-merge setting on GitHub — reconnect GitHub and try again."
+          );
+        }
+
+        if (!result.allowed) {
+          throw new AutoMergeNotAllowedError(`https://github.com/${owner}/${repoName}/settings`);
+        }
+
+        // Cache the confirmed-positive result one-way
+        await db.repository.update({
+          where: { id: repo.id },
+          data: { allowAutoMerge: true },
+        });
+      }
+      // If repo.allowAutoMerge === true already → cache hit, skip check
+      // If task has no repositoryId (workflow task) → skip check
+    }
+
     updateData.autoMerge = data.autoMerge;
   }
 
