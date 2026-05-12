@@ -36,18 +36,11 @@ const PASTE_SIDE_GAP = 40;
 
 /**
  * Returns `true` when the node can be copied/cut/pasted.
- * Excludes DB-backed (live-id) nodes and `service` category nodes.
+ * Excludes only DB-backed (live-id) nodes — anything the user authored
+ * locally on the canvas is fair game.
  */
 export function isCopyableNode(node: CanvasNode): boolean {
-  if (isLiveId(node.id)) return false;
-  // service nodes are authored but intentionally excluded
-  if (node.category === "service") return false;
-  return (
-    node.category === "note" ||
-    node.category === "decision" ||
-    node.type === "text" ||
-    node.type === "group"
-  );
+  return !isLiveId(node.id);
 }
 
 type ViewportState = { x: number; y: number; zoom: number };
@@ -91,7 +84,13 @@ export function computePastePosition(
 // ---------------------------------------------------------------------------
 
 interface UseCanvasClipboardParams {
-  selectedNode: CanvasNode | null;
+  /**
+   * Ref to the currently selected node. Passed as a ref (not a value)
+   * because the caller updates selection through a `useRef` and never
+   * re-renders on selection change — reading `.current` at hook-call
+   * time would always see `null`.
+   */
+  selectedNodeRef: React.RefObject<CanvasNode | null>;
   currentRefRef: React.MutableRefObject<string>;
   applyMutation: (ref: string | undefined, mutate: (data: CanvasData) => CanvasData) => void;
   currentViewportRef: React.MutableRefObject<ViewportState>;
@@ -99,7 +98,7 @@ interface UseCanvasClipboardParams {
 }
 
 export default function useCanvasClipboard({
-  selectedNode,
+  selectedNodeRef,
   currentRefRef,
   applyMutation,
   currentViewportRef,
@@ -110,13 +109,6 @@ export default function useCanvasClipboard({
     viewportAtCopy: ViewportState;
     sourceCanvasRef: string | undefined;
   } | null>(null);
-
-  // Keep a stable ref to selectedNode so the keydown handler always reads the
-  // latest value without needing to re-attach on every render.
-  const selectedNodeRef = useRef<CanvasNode | null>(selectedNode);
-  useEffect(() => {
-    selectedNodeRef.current = selectedNode;
-  });
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -182,5 +174,5 @@ export default function useCanvasClipboard({
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [applyMutation, canvasContainerRef, currentRefRef, currentViewportRef]);
+  }, [applyMutation, canvasContainerRef, currentRefRef, currentViewportRef, selectedNodeRef]);
 }
