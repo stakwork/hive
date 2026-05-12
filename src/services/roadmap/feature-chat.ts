@@ -362,14 +362,21 @@ export async function sendFeatureChatMessage({
     );
 
     // Org-wide context scout. Best-effort: returns null on any
-    // failure / opt-out / no-org / non-first-message / sentinel,
-    // and we attach orgContext to the Stakwork dispatch only when
-    // it produced something. Gated by env PLAN_MODE_ORG_CONTEXT_ENABLED
-    // — default off so this is dark-launched.
+    // failure / opt-out / no-org / non-first-message / sentinel.
+    // Gated by env PLAN_MODE_ORG_CONTEXT_ENABLED — default off so
+    // this is dark-launched.
     //
     // Skipped when the caller explicitly opts out (e.g. canvas-chat
     // `propose_feature` approvals, where the canvas agent already
     // saw org-wide context when composing the seed).
+    //
+    // When the scout returns text, we attach it under
+    // `featureContext.orgContext` rather than as a separate top-level
+    // var. Reasons: (a) `featureContext` is already plumbed end-to-
+    // end to the Stakwork workflow, so this is zero workflow-
+    // definition change; (b) it sits semantically next to the
+    // feature's own brief/requirements/architecture as "more
+    // planning context, just a different slice."
     const orgContext = skipOrgContextScout
       ? null
       : await scoutOrgContext({
@@ -378,6 +385,19 @@ export async function sendFeatureChatMessage({
           message,
           isFirstMessage,
         });
+    if (orgContext && featureContext) {
+      featureContext = { ...featureContext, orgContext };
+    } else if (orgContext && !featureContext) {
+      // `featureContext` is the carrier for orgContext today. If
+      // building it failed earlier (no Phase 0, DB error, etc.), we
+      // have no place to land the scout output. Logging only — the
+      // scout cost is sunk; dropping the text is the least-bad
+      // option because synthesizing a partial featureContext just
+      // to carry org prose would mislead the plan agent's parsing.
+      console.warn(
+        "[feature-chat] org context scout returned text but featureContext is undefined; dropping orgContext for this dispatch",
+      );
+    }
 
     stakworkData = await callStakworkAPI({
       taskId: featureId,
@@ -398,7 +418,6 @@ export async function sendFeatureChatMessage({
       webhook,
       featureId,
       featureContext,
-      orgContext: orgContext ?? undefined,
       planEdited,
       isPrototype: isPrototype && isFirstMessage,
       subAgents: extraSwarms,

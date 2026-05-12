@@ -19,6 +19,21 @@ export interface FeatureContext {
       summary: string | null;
     }>;
   };
+  /**
+   * Free-form prose describing high-level organizational context that
+   * may be relevant for planning this feature. Populated by the
+   * plan-mode org-context scout (`scoutOrgContext`) on the first
+   * message of a plan; absent on subsequent turns and on the task-mode
+   * code path (which doesn't scout). When present, the planning agent
+   * is expected to read it as additional grounding alongside the
+   * feature's own fields.
+   *
+   * Not set by `buildFeatureContext` itself — the scout is plan-mode
+   * specific and lives in `sendFeatureChatMessage`. This field is
+   * here so callers can augment the returned object without losing
+   * type safety.
+   */
+  orgContext?: string;
 }
 
 /**
