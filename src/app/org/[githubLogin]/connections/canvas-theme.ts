@@ -24,6 +24,7 @@ import {
   TASK_W,
 } from "@/lib/canvas/geometry";
 import { CATEGORY_REGISTRY } from "./canvas-categories";
+import { PLATFORM_ICONS } from "@/lib/platforms";
 
 /**
  * Theme for the Connections-page background canvas.
@@ -880,36 +881,33 @@ const repositoryCategory: CategoryDefinition = {
 
 // ---------------------------------------------------------------------------
 // Service card — authored on a workspace sub-canvas. Free-form ops
-// surface: an EC2 host, a Vercel project, a GitHub App, a Kubernetes
-// sandbox manager, etc. No DB projection (id stays a normal authored
-// id, not `service:<x>`); the user creates, names, sizes, and edges
-// these cards themselves.
+// surface: an EC2 host, a Vercel project, a GitHub App, a Postgres
+// database, a Stripe account, etc. No DB projection (id stays a normal
+// authored id, not `service:<x>`); the user creates, names, and edges
+// these cards via the `+ Service` dialog (`CreateServiceCanvasDialog`).
 //
-// Visual treatment mirrors the workspace card (a faint-tinted container
-// with an accent border) so the two read as one family — "things that
-// run alongside this workspace." Repo cards are smaller and sit
-// inside this family at the leaf level. The kicker reflects the
-// underlying platform via `customData.kind` when set (`VERCEL`,
-// `EC2`, `GH-APP`, etc.) so the user can scan a workspace canvas and
-// identify its infra at a glance; falls back to a plain "SERVICE"
-// label when no kind is set.
+// Visual treatment: a faint cyan-tinted card (the service-accent family,
+// same hue as the workspace container so the two read as kin), with a
+// 24×24 brand silhouette on the left rendered via the library's
+// `kind: 'icon'` slot, and the user's free-text name (`node.text`) as
+// the inline-row title. No header kicker — the icon IS the visual
+// identity, and the text reads as the service name, not a label of a
+// label.
 //
-// Forward-compat: `customData.kind` and `customData.endpoint` are
-// reserved for the v2 "click → pull logs from this service" flow. No
-// runtime code reads them today; the registry documents the contract
-// so authored data persists intact when v2 ships.
+// Brand identity flows from `customData.kind`: that string is the
+// `Platform.id` in `@/lib/platforms` (`"vercel"` / `"postgres"` /
+// `"aws-ec2"` / etc.), and the slot's `name` accessor resolves it to
+// the right simple-icons paths via `theme.icons`. Unknown / unset kinds
+// render with no icon (the lib's contract) — falling back to a generic
+// stroked cloud glyph is the post-v1 enhancement; today, an unset card
+// shows just text. The `+ Service` dialog defaults kind to `"cloud"` so
+// fresh nodes always have *some* icon.
+//
+// Forward-compat: `customData.kind` is THE integration dispatch key. A
+// future "click a Vercel service → open Vercel deploys" flow reads
+// exactly this field. Stable kebab-case strings, never renamed once
+// shipped (see `@/lib/platforms/types.ts` for the full contract).
 // ---------------------------------------------------------------------------
-
-function serviceKicker(node: CanvasNode): string {
-  const raw = node.customData?.kind;
-  if (typeof raw === "string" && raw.trim().length > 0) {
-    // Up-case the kind for visual parity with the other kickers
-    // (`WORKSPACE`, `REPO`, `INITIATIVE`). Replace underscores with
-    // spaces so internal slugs like `gh_app` render as `GH APP`.
-    return raw.trim().toUpperCase().replace(/_/g, " ");
-  }
-  return "SERVICE";
-}
 
 const serviceCategory: CategoryDefinition = {
   ...baseCard,
@@ -919,14 +917,22 @@ const serviceCategory: CategoryDefinition = {
   stroke: hexAlpha(ACCENT.service, 0.45),
   fill: hexAlpha(ACCENT.service, 0.05),
   slots: {
-    header: {
-      kind: "text",
-      value: (ctx: SlotContext) => serviceKicker(ctx.node),
-      color: ACCENT.service,
-    },
-    body: {
-      kind: "text",
-      value: (ctx: SlotContext) => ctx.node.text ?? "",
+    // Brand silhouette in the top-left. The library's lib-v0.1.15
+    // inline-row layout vertical-centers the icon when no header is
+    // declared, so it lands on the same axis as the title text. Paths
+    // come from `PLATFORM_ICONS` (registered on `theme.icons` below)
+    // in simple-icons' 24×24 filled-silhouette format — `mode: 'fill'`
+    // + `viewBox: 24` are the lib's brand-glyph render contract. Color
+    // is omitted so the icon inherits `node.resolvedStroke`, which is
+    // the cyan service-accent — consistent across all platforms today.
+    // Per-platform brand color tinting is reserved for v2 (see
+    // `Platform.brandColor` in `@/lib/platforms`).
+    topLeft: {
+      kind: "icon",
+      name: (ctx: SlotContext) =>
+        (ctx.node.customData?.kind as string | undefined) ?? "",
+      mode: "fill",
+      viewBox: 24,
     },
   },
 } as CategoryDefinition;
@@ -1181,6 +1187,13 @@ export const connectionsTheme: CanvasTheme = resolveTheme(
       headerFontSize: 11,
       headerSize: 26,
     },
+    // Brand-icon paths merged into the theme's icon set. Looked up by
+    // `customData.kind` via the `serviceCategory.slots.topLeft` accessor
+    // — see `@/lib/platforms` for the registry. Adding a new platform
+    // there propagates here automatically; the lib's built-in stroked
+    // glyphs (database / server / cloud / ...) remain available as
+    // fallbacks for ids not in `PLATFORM_ICONS`.
+    icons: PLATFORM_ICONS,
     // Build the renderer's category map by joining the category
     // registry (id + agent docs) with the local renderer definitions.
     // The registry is the single source of truth for which categories
