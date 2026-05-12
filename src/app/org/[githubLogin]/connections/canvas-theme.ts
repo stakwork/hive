@@ -19,12 +19,14 @@ import {
   MILESTONE_W,
   RESEARCH_H,
   RESEARCH_W,
+  SERVICE_H,
+  SERVICE_W,
   SMALL_W,
   TASK_H,
   TASK_W,
 } from "@/lib/canvas/geometry";
 import { CATEGORY_REGISTRY } from "./canvas-categories";
-import { PLATFORM_ICONS } from "@/lib/platforms";
+import { PLATFORM_BY_ID, PLATFORM_ICONS } from "@/lib/platforms";
 
 /**
  * Theme for the Connections-page background canvas.
@@ -909,30 +911,144 @@ const repositoryCategory: CategoryDefinition = {
 // shipped (see `@/lib/platforms/types.ts` for the full contract).
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve the accent color for a service node — drives both the
+ * left-edge brand stripe AND the icon-glyph tint. Three-tier fallback,
+ * highest priority first:
+ *
+ *   1. **User override** — `node.color`, set by the toolbar color
+ *      swatches. This is the escape hatch for brands whose official
+ *      color sits poorly against our dark canvas (Vercel `#000`,
+ *      PlanetScale `#000`, Railway near-black, ...). The user picks a
+ *      swatch and both the stripe and the glyph repaint in their
+ *      choice.
+ *
+ *   2. **Platform brand color** — `Platform.brandColor` for the
+ *      `customData.kind`, the on-brand default that makes a row of
+ *      services scannable (Postgres-blue, Stripe-purple, ...).
+ *
+ *   3. **Service accent** — the generic cyan, used when the kind isn't
+ *      in the registry or the platform has no brandColor (the generic
+ *      primitives like `server` / `database` deliberately don't have
+ *      one — they're tech categories, not real brands).
+ *
+ * **Preset-key resolution.** The lib's default toolbar color swatches
+ * set `node.color` to a *preset key string* (`"1"` through `"6"`),
+ * NOT a hex/rgb color — the lib then maps that key through
+ * `theme.presetColors` at render time for the body fill/stroke. Slot
+ * accessors that read `node.color` directly get the raw key, which an
+ * SVG `fill` / `stroke` attribute can't parse and silently falls back
+ * to black. The presetColors lookup below maps the key to the actual
+ * stroke color so the override paints in the visible swatch tone
+ * instead of black. Hex/rgb values pass through unchanged.
+ *
+ * Used by both the leftEdge stripe and the topLeft icon slot so the
+ * two stay visually locked together.
+ */
+function resolveServiceAccent(node: CanvasNode): string {
+  const override = node.color;
+  if (override) {
+    // Preset keys are short symbolic identifiers ("1".."6" in our
+    // theme). If `node.color` matches a preset, return the resolved
+    // stroke color; otherwise treat it as a raw CSS color string and
+    // let it through. The `String` check guards against `null` /
+    // undefined slipping past the truthy check above (which is
+    // already strict, but defensive).
+    const preset = connectionsTheme.presetColors?.[override];
+    if (preset?.stroke) return preset.stroke;
+    return override;
+  }
+  const kind = node.customData?.kind as string | undefined;
+  return PLATFORM_BY_ID[kind ?? ""]?.brandColor ?? ACCENT.service;
+}
+
 const serviceCategory: CategoryDefinition = {
   ...baseCard,
-  defaultWidth: CARD_W,
-  defaultHeight: CARD_H,
+  defaultWidth: SERVICE_W,
+  defaultHeight: SERVICE_H,
   type: "text",
   stroke: hexAlpha(ACCENT.service, 0.45),
   fill: hexAlpha(ACCENT.service, 0.05),
   slots: {
-    // Brand silhouette in the top-left. The library's lib-v0.1.15
-    // inline-row layout vertical-centers the icon when no header is
-    // declared, so it lands on the same axis as the title text. Paths
-    // come from `PLATFORM_ICONS` (registered on `theme.icons` below)
-    // in simple-icons' 24×24 filled-silhouette format — `mode: 'fill'`
-    // + `viewBox: 24` are the lib's brand-glyph render contract. Color
-    // is omitted so the icon inherits `node.resolvedStroke`, which is
-    // the cyan service-accent — consistent across all platforms today.
-    // Per-platform brand color tinting is reserved for v2 (see
-    // `Platform.brandColor` in `@/lib/platforms`).
+    // Brand-color stripe down the left edge — borrowed straight from
+    // the system-canvas showcase's service card. Reads
+    // `Platform.brandColor` from the registry per-node so a row of
+    // services on a workspace sub-canvas reads as a colorful index
+    // rather than a wall of cyan: the Vercel card shows a black
+    // stripe, the Postgres card a deep blue, the Stripe card a
+    // purple, etc. — same trick browser tabs use to make a long
+    // list of similar things distinguishable at a glance.
+    //
+    // Falls back to the generic service-cyan when:
+    //   - `customData.kind` is unset (a service the user hasn't picked
+    //     a platform for yet — shouldn't happen since the dialog
+    //     enforces a kind, but defensive),
+    //   - the kind doesn't resolve in the registry (stale id from a
+    //     removed platform),
+    //   - the platform has no `brandColor` set (the generic primitives
+    //     like `server` / `database` / `cloud` deliberately have none
+    //     — they're "tech category" placeholders, not real brands, so
+    //     painting them in a fake brand color would be misleading).
+    //
+    // The library's `kind: 'color'` slot owns the painted region; we
+    // just supply the fill. The `extent: 'full'` flavor spans the
+    // node's full height (the alternative `'inset'` leaves a gap at
+    // top + bottom, which doesn't suit the brand-tab pattern).
+    leftEdge: {
+      kind: "color",
+      extent: "full",
+      color: (ctx: SlotContext) => resolveServiceAccent(ctx.node),
+    },
+    // Brand silhouette next to the title. The library treats a
+    // `topLeft` icon as an inline-row marker (vertical-centered, with
+    // the title pinned to its right) when no `header` slot is also
+    // declared — exactly the layout we want.
+    //
+    // `size: 18` overrides the default auto-fit (~14px, which read as
+    // an anemic smudge for brand marks at our 1.25em corner slot).
+    // The library's reflow accounts for explicit-size overrides by
+    // expanding the title's left reservation when the icon overflows
+    // its slot region, so a longer service name still clears the
+    // glyph cleanly — no manual padding needed here.
+    //
+    // `mode`, `viewBox`, and `color` are all read per-platform from
+    // the registry. simple-icons brand glyphs are 24-viewBox filled
+    // silhouettes (vercel / postgres / github / ...); the generic
+    // primitives (server / database / cloud / lock / network / code)
+    // are 16-viewBox line glyphs that ship inside the library. Both
+    // coexist in the picker; both render correctly here by dispatching
+    // off `Platform.renderMode` / `Platform.viewBox` / `Platform.brandColor`.
+    // Unknown kinds (stale id from a deleted platform, arbitrary
+    // string the agent authored) fall through to the simple-icons
+    // defaults — the renderer returns `null` when the name resolves
+    // to no paths, so a misnamed kind paints nothing rather than a
+    // wrong glyph.
+    //
+    // Color: the icon glyph itself is tinted with the platform's
+    // official brand color so each service is instantly recognizable
+    // (Vercel triangle in black, Stripe wordmark in purple, Postgres
+    // elephant in royal blue, ...). Falls back to the generic
+    // service-cyan when no brand color is registered — same posture
+    // as the leftEdge stripe. Some brands ship "color on dark" vs
+    // "color on light" variants; we use the base brand color and
+    // accept that a few darks (Vercel `#000`, PlanetScale `#000`)
+    // disappear against our dark canvas. Brightening those is a
+    // separate per-platform override (`Platform.darkBrandColor`)
+    // that we can add when it matters.
     topLeft: {
       kind: "icon",
       name: (ctx: SlotContext) =>
         (ctx.node.customData?.kind as string | undefined) ?? "",
-      mode: "fill",
-      viewBox: 24,
+      mode: (ctx: SlotContext) => {
+        const kind = ctx.node.customData?.kind as string | undefined;
+        return PLATFORM_BY_ID[kind ?? ""]?.renderMode ?? "fill";
+      },
+      viewBox: (ctx: SlotContext) => {
+        const kind = ctx.node.customData?.kind as string | undefined;
+        return PLATFORM_BY_ID[kind ?? ""]?.viewBox ?? 24;
+      },
+      color: (ctx: SlotContext) => resolveServiceAccent(ctx.node),
+      size: 18,
     },
   },
 } as CategoryDefinition;

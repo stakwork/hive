@@ -31,6 +31,72 @@ import type { Platform } from "./types";
 
 export const PLATFORMS: Platform[] = [
   // -------------------------------------------------------------------------
+  // Generic primitives
+  //
+  // First row of the picker. No real brand — line glyphs from the lib's
+  // built-in 16-viewBox icon set, registered as platforms so the user
+  // has a sane default when they haven't picked (or don't have) a
+  // specific tech yet. `customData.kind: "server"` means "this card
+  // represents a server, generically" — the future integration
+  // dispatcher reads the kind and finds no adapter, which is correct.
+  //
+  // `paths: []` because the actual path data lives in the lib (lookup
+  // by `name` falls through to `iconPaths` when `theme.icons[name]`
+  // is undefined). We register the id with empty paths just so the
+  // platform shows up in the picker and the dialog can drop the kind
+  // onto the new node. `renderMode: 'stroke'` + `viewBox: 16` are the
+  // contract for the lib's built-in glyphs.
+  // -------------------------------------------------------------------------
+  {
+    id: "server",
+    label: "Server",
+    aliases: ["host", "vm", "instance"],
+    renderMode: "stroke",
+    viewBox: 16,
+    paths: [],
+  },
+  {
+    id: "database",
+    label: "Database",
+    aliases: ["db", "datastore"],
+    renderMode: "stroke",
+    viewBox: 16,
+    paths: [],
+  },
+  {
+    id: "cloud",
+    label: "Cloud",
+    aliases: ["service", "saas"],
+    renderMode: "stroke",
+    viewBox: 16,
+    paths: [],
+  },
+  {
+    id: "network",
+    label: "Network",
+    aliases: ["mesh", "vpc"],
+    renderMode: "stroke",
+    viewBox: 16,
+    paths: [],
+  },
+  {
+    id: "lock",
+    label: "Secrets",
+    aliases: ["vault", "kms", "secret"],
+    renderMode: "stroke",
+    viewBox: 16,
+    paths: [],
+  },
+  {
+    id: "code",
+    label: "Service",
+    aliases: ["api", "endpoint", "function"],
+    renderMode: "stroke",
+    viewBox: 16,
+    paths: [],
+  },
+
+  // -------------------------------------------------------------------------
   // Frontend hosting & edge
   // -------------------------------------------------------------------------
   {
@@ -185,6 +251,15 @@ export const PLATFORMS: Platform[] = [
     ],
   },
   {
+    id: "caddy",
+    label: "Caddy",
+    aliases: ["reverse proxy", "web server", "https"],
+    brandColor: "#1F88C0",
+    paths: [
+      "M11.094.47c-.842 0-1.696.092-2.552.288a11.37 11.37 0 0 0-4.87 2.423 10.632 10.632 0 0 0-2.36 2.826A10.132 10.132 0 0 0 .305 8.582c-.398 1.62-.4 3.336-.043 5.048.085.405.183.809.31 1.212a11.85 11.85 0 0 0 1.662 3.729 3.273 3.273 0 0 0-.086.427 3.323 3.323 0 0 0 2.848 3.71 3.279 3.279 0 0 0 1.947-.346c1.045.51 2.17.864 3.339 1.04a11.66 11.66 0 0 0 4.285-.155 11.566 11.566 0 0 0 4.936-2.485 10.643 10.643 0 0 0 2.352-2.894 11.164 11.164 0 0 0 1.356-4.424 11.214 11.214 0 0 0-.498-4.335c.175-.077.338-.175.486-.293a.444.444 89.992 0 0 .001 0c.402-.322.693-.794.777-1.342a2.146 2.146 0 0 0-1.79-2.434 2.115 2.115 0 0 0-1.205.171c-.038-.043-.078-.086-.113-.13a11.693 11.693 0 0 0-3.476-2.93 13.348 13.348 0 0 0-1.76-.81 13.55 13.55 0 0 0-2.06-.613A12.121 12.121 0 0 0 11.093.47Zm.714.328c.345-.004.688.01 1.028.042a9.892 9.892 0 0 1 2.743.639c.984.39 1.89.958 2.707 1.632.803.662 1.502 1.45 2.091 2.328.026.039.048.08.07.12a2.12 2.12 0 0 0-.435 2.646c-.158.114-.97.692-1.634 1.183-.414.308-.733.557-.733.557l.581.68s.296-.276.665-.638c.572-.562 1.229-1.233 1.395-1.403a2.122 2.122 0 0 0 1.907.677 11.229 11.229 0 0 1-.013 4.046 11.41 11.41 0 0 1-1.475 3.897 12.343 12.343 0 0 1-2.079 2.587c-1.19 1.125-2.633 2.022-4.306 2.531a10.826 10.826 0 0 1-3.973.484 11.04 11.04 0 0 1-3.057-.652 3.304 3.304 0 0 0 1.417-2.294 3.275 3.275 0 0 0-.294-1.842c.18-.162.403-.363.656-.6 1.015-.955 2.353-2.303 2.353-2.303l-.47-.599s-1.63.972-2.801 1.728c-.307.198-.573.378-.777.517a3.273 3.273 0 0 0-1.516-.611c-1.507-.198-2.927.672-3.487 2.017a10.323 10.323 0 0 1-.695-1.078A10.92 10.92 0 0 1 .728 14.8a10.35 10.35 0 0 1-.2-1.212c-.164-1.653.103-3.258.629-4.754a12.95 12.95 0 0 1 1.087-2.288c.57-.968 1.248-1.872 2.069-2.656A11.013 11.013 0 0 1 11.808.797Zm-.147 3.257a3.838 3.838 0 0 0-3.82 3.82v2.36h-.94c-.751 0-1.377.625-1.377 1.377v3.8h1.46v-3.718h9.354v6.264H10.02v1.46h6.4c.751 0 1.377-.625 1.377-1.377v-6.43c0-.751-.626-1.377-1.377-1.377h-.94v-2.36a3.838 3.838 0 0 0-3.82-3.819zm0 1.46a2.371 2.371 0 0 1 2.36 2.36v2.36H9.3v-2.36a2.372 2.372 0 0 1 2.36-2.36zm10.141.392a1.253 1.253 0 0 1 1.296 1.434c-.049.319-.217.59-.453.78-.266.213-.61.318-.968.264a1.253 1.253 0 0 1-1.045-1.42 1.255 1.255 0 0 1 1.17-1.058zM5.384 17.425a2.02 2.02 0 0 1 1.917 1.298c.116.3.159.628.114.967a2.015 2.015 0 0 1-2.249 1.728 2.016 2.016 0 0 1-1.727-2.25 2.017 2.017 0 0 1 1.945-1.743z",
+    ],
+  },
+  {
     id: "terraform",
     label: "Terraform",
     aliases: ["iac"],
@@ -284,6 +359,24 @@ export const PLATFORMS: Platform[] = [
       "M23.035 9.601h-7.677a.956.956 0 01-.962-.962V.962a.956.956 0 00-.962-.956H10.56a.956.956 0 00-.962.956V8.64a.956.956 0 01-.962.962H5.762a.956.956 0 01-.961-.962V.962A.956.956 0 003.839 0H.959a.956.956 0 00-.956.962v22.076A.956.956 0 00.965 24h22.07a.956.956 0 00.962-.962V10.58a.956.956 0 00-.962-.98zm-3.86 8.152a1.437 1.437 0 01-1.437 1.443h-1.924a1.437 1.437 0 01-1.436-1.443v-1.917a1.437 1.437 0 011.436-1.443h1.924a1.437 1.437 0 011.437 1.443z",
     ],
   },
+  {
+    id: "mqtt",
+    label: "MQTT",
+    aliases: ["broker", "pubsub", "iot"],
+    brandColor: "#660066",
+    paths: [
+      "M10.657 23.994h-9.45A1.212 1.212 0 0 1 0 22.788v-9.18h.071c5.784 0 10.504 4.65 10.586 10.386Zm7.606 0h-4.045C14.135 16.246 7.795 9.977 0 9.942V6.038h.071c9.983 0 18.121 8.044 18.192 17.956Zm4.53 0h-.97C21.754 12.071 11.995 2.407 0 2.372v-1.16C0 .55.544.006 1.207.006h7.64C15.733 2.49 21.257 7.789 24 14.508v8.291c0 .663-.544 1.195-1.207 1.195ZM16.713.006h6.092A1.19 1.19 0 0 1 24 1.2v5.914c-.91-1.242-2.046-2.65-3.158-3.762C19.588 2.11 18.122.987 16.714.005Z",
+    ],
+  },
+  {
+    id: "pusher",
+    label: "Pusher",
+    aliases: ["realtime", "websocket", "ws"],
+    brandColor: "#300D4F",
+    paths: [
+      "M12 23.966v-6.0166a.0348.0348 0 01.0182-.031l7.7319-4.4645a.0348.0348 0 00.0181-.031v-1.711a.0356.0356 0 00-.0537-.031l-7.6608 4.423a.0356.0356 0 01-.0537-.031v-1.7117a.0356.0356 0 01.0181-.031l7.732-4.4645a.037.037 0 00.0181-.031v-1.711a.0363.0363 0 00-.0537-.031l-7.6608 4.4229a.0356.0356 0 01-.0537-.031v-1.711a.0348.0348 0 01.0181-.031l7.732-4.4622a.0356.0356 0 00.0181-.031V4.515a.0757.0757 0 00-.0356-.062L12.0356.0096a.0704.0704 0 00-.0712 0L10.5002.855a.0356.0356 0 000 .062L18.161 5.34a.0363.0363 0 010 .062l-1.4642.8452a.0757.0757 0 01-.0719 0L8.9286 1.8038a.0757.0757 0 00-.0757 0l-1.4597.8445a.0356.0356 0 000 .062l7.6593 4.4236a.0356.0356 0 010 .0621l-1.4634.8452a.0757.0757 0 01-.0757 0l-7.6926-4.444a.0757.0757 0 00-.0756 0l-1.5134.8762v15.0492a.0348.0348 0 00.0181.031l1.4816.8558a.0356.0356 0 00.0538-.031V5.433a.0356.0356 0 01.0537-.031l1.4824.8558a.0356.0356 0 01.0174.031v15.028a.0356.0356 0 00.0181.031l1.4816.8559a.0363.0363 0 00.0545-.0318V7.227a.0356.0356 0 01.0537-.031l1.4817.855a.0356.0356 0 01.0181.0311v15.0288a.037.037 0 00.0174.031l1.4862.855A.0356.0356 0 0012 23.966z",
+    ],
+  },
 
   // -------------------------------------------------------------------------
   // SCM & AI APIs
@@ -328,9 +421,25 @@ export const PLATFORMS: Platform[] = [
     id: "anthropic",
     label: "Anthropic",
     aliases: ["claude", "llm"],
-    brandColor: "#191919",
+    // Anthropic's actual brand orange (the Claude terracotta). The
+    // simple-icons registry lists Anthropic's brandColor as near-black
+    // (`#191919`) for the wordmark on light surfaces, but against our
+    // dark canvas the wordmark disappears. The terracotta is the
+    // company's actual marketing accent — used across claude.ai, their
+    // docs, and product UI — and reads cleanly against the dark
+    // background without needing the user to hit the toolbar override.
+    brandColor: "#D97757",
     paths: [
       "M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z",
+    ],
+  },
+  {
+    id: "gemini",
+    label: "Gemini",
+    aliases: ["google", "google-gemini", "bard", "llm"],
+    brandColor: "#8E75B2",
+    paths: [
+      "M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81",
     ],
   },
   {
@@ -340,6 +449,24 @@ export const PLATFORMS: Platform[] = [
     brandColor: "#635BFF",
     paths: [
       "M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.594-7.305h.003z",
+    ],
+  },
+  {
+    id: "bitcoin",
+    label: "Bitcoin",
+    aliases: ["btc", "crypto", "onchain"],
+    brandColor: "#F7931A",
+    paths: [
+      "M23.638 14.904c-1.602 6.43-8.113 10.34-14.542 8.736C2.67 22.05-1.244 15.525.362 9.105 1.962 2.67 8.475-1.243 14.9.358c6.43 1.605 10.342 8.115 8.738 14.548v-.002zm-6.35-4.613c.24-1.59-.974-2.45-2.64-3.03l.54-2.153-1.315-.33-.525 2.107c-.345-.087-.705-.167-1.064-.25l.526-2.127-1.32-.33-.54 2.165c-.285-.067-.565-.132-.84-.2l-1.815-.45-.35 1.407s.975.225.955.236c.535.136.63.486.615.766l-1.477 5.92c-.075.166-.24.406-.614.314.015.02-.96-.24-.96-.24l-.66 1.51 1.71.426.93.242-.54 2.19 1.32.327.54-2.17c.36.1.705.19 1.05.273l-.51 2.154 1.32.33.545-2.19c2.24.427 3.93.257 4.64-1.774.57-1.637-.03-2.58-1.217-3.196.854-.193 1.5-.76 1.68-1.93h.01zm-3.01 4.22c-.404 1.64-3.157.75-4.05.53l.72-2.9c.896.23 3.757.67 3.33 2.37zm.41-4.24c-.37 1.49-2.662.735-3.405.55l.654-2.64c.744.18 3.137.524 2.75 2.084v.006z",
+    ],
+  },
+  {
+    id: "lightning",
+    label: "Lightning",
+    aliases: ["ln", "bolt", "lnd", "lnurl"],
+    brandColor: "#792EE5",
+    paths: [
+      "M12 0L1.75 6v12L12 24l10.25-6V6zm-1.775 18l1.08-4.657-2.428-2.397L13.79 6l-1.082 4.665 2.414 2.384z",
     ],
   },
 
@@ -419,6 +546,28 @@ export const PLATFORMS: Platform[] = [
     ],
   },
   {
+    id: "livekit",
+    label: "LiveKit",
+    aliases: ["webrtc", "voice", "video", "realtime"],
+    // LiveKit's brand cyan — the agent-bars glyph reads as "audio
+    // waveform" and the cyan keeps it on-brand alongside their docs.
+    brandColor: "#1FD5F9",
+    paths: [
+      // Five vertical bars representing an audio waveform — LiveKit's
+      // canonical visual identity for their realtime / agents product.
+      // Pulled from their docs' inline `<svg>` for the Agents section;
+      // not the wordmark (LiveKit has no public icon-mark SVG), but
+      // the bars are the most recognizable mark associated with the
+      // product. Each bar is a tall thin rectangle; together they form
+      // the silhouette of an audio level meter.
+      "M7.99902 3H6.99902V21H7.99902V3Z",
+      "M17 5H16V19H17V5Z",
+      "M12.499 7H11.499V17H12.499V7Z",
+      "M4 9H3V15H4V9Z",
+      "M21 9H20V15H21V9Z",
+    ],
+  },
+  {
     id: "sendgrid",
     label: "SendGrid",
     aliases: ["email"],
@@ -489,11 +638,20 @@ export const PLATFORM_BY_ID: Record<string, Platform> = Object.fromEntries(
  * The library's `kind: 'icon'` slot looks paths up here first, falling
  * back to the built-in line glyphs (database / server / cloud / ...) for
  * unknown ids — so `customData.kind: "vercel"` renders the Vercel triangle
- * and `customData.kind: "cloud"` (or no kind at all) renders the lib's
- * generic stroked cloud as a sensible default.
+ * and a stale kind from a deleted platform renders nothing.
+ *
+ * We deliberately omit platforms whose `paths` is empty. Those are the
+ * generic primitives (server / database / cloud / network / lock /
+ * code) — their path data lives in the lib's built-in `iconPaths`
+ * (16-viewBox stroke glyphs) and the lib's lookup is
+ * `customIcons?.[id] ?? iconPaths[id]`. An empty array would be truthy
+ * (it's still an array), short-circuit the `??`, and paint NOTHING
+ * — the generic platform tiles and on-canvas glyphs would silently
+ * vanish. Skipping the key here lets the lookup fall through to the
+ * built-in glyph map, which is exactly what we want for generics.
  */
 export const PLATFORM_ICONS: Record<string, string[]> = Object.fromEntries(
-  PLATFORMS.map((p) => [p.id, p.paths]),
+  PLATFORMS.filter((p) => p.paths.length > 0).map((p) => [p.id, p.paths]),
 );
 
 

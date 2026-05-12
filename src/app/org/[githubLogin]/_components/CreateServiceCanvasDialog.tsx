@@ -28,6 +28,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
+import { NodeIcon } from "system-canvas-react/primitives";
 import {
   Dialog,
   DialogContent,
@@ -39,19 +40,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PLATFORMS, type Platform } from "@/lib/platforms";
+import { PLATFORM_ICONS, PLATFORMS, type Platform } from "@/lib/platforms";
 
 /**
- * Default platform id when the user opens the dialog. Picked because:
- *   - `"cloud"` is one of the lib's built-in stroked glyphs, so a card
- *     with no platform set still renders SOMETHING recognizable as
- *     "infrastructure" (a stroked cloud silhouette).
- *   - It carries no brand baggage — picking "cloud" doesn't suggest
- *     AWS over GCP, so it's neutral default UX.
- *
- * NOT a member of `PLATFORMS` (which is brand-only) — that's deliberate.
- * It exists as a fallback `customData.kind` value that the canvas
- * renderer recognizes via the lib's built-in icon set.
+ * Default platform id when the user opens the dialog. The `cloud` entry
+ * is one of the registry's generic-primitive platforms (line glyph from
+ * the lib's built-in icon set), chosen because it carries no brand
+ * baggage — picking "cloud" doesn't suggest AWS over GCP, so it's
+ * neutral default UX. Hitting Enter immediately on the default dialog
+ * state produces a card labeled "Cloud" with the cloud silhouette.
  */
 const DEFAULT_KIND = "cloud";
 
@@ -218,7 +215,7 @@ const PLATFORM_LOOKUP: Record<string, Platform> = Object.fromEntries(
 // ---------------------------------------------------------------------------
 // PlatformGrid — searchable, keyboard-friendly icon picker.
 //
-// Renders the filtered platforms as a 5-column scrollable grid of icon
+// Renders the filtered platforms as a 6-column scrollable grid of icon
 // tiles. Each tile shows the platform's simple-icons silhouette painted
 // in foreground color + the platform label below. Selected tile has an
 // accent ring; hovering shows a subtle background. Empty filter results
@@ -249,7 +246,7 @@ function PlatformGrid({
 
   return (
     <div className="max-h-72 overflow-y-auto rounded-md border border-border bg-muted/20 p-2">
-      <div className="grid grid-cols-5 gap-1">
+      <div className="grid grid-cols-6 gap-1">
         {platforms.map((p) => (
           <PlatformTile
             key={p.id}
@@ -260,6 +257,63 @@ function PlatformGrid({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Render the platform's icon inside a fixed 22×22 svg. Two code paths
+ * by `Platform.renderMode`:
+ *
+ *   - `'fill'` (default; simple-icons brand glyphs) — paint each path
+ *     in 24-viewBox space with `fill="currentColor"` and `evenodd`
+ *     winding. This was the only path before generic platforms landed,
+ *     and the inline render is a perfect parity of what the canvas
+ *     surface renders via `kind: 'icon'` + `mode: 'fill'` + `viewBox: 24`.
+ *
+ *   - `'stroke'` (generic primitives — server, database, cloud, ...) —
+ *     defer to the lib's `NodeIcon` primitive. It carries the canonical
+ *     16-viewBox built-in paths (`iconPaths` inside `NodeIcon.js`) and
+ *     handles the scaling + line styling so the picker preview and the
+ *     on-canvas render look identical. Generics have empty `paths` in
+ *     our registry; this branch is the only thing that draws them.
+ *
+ * Both flavors paint with `currentColor` so the tile's selected /
+ * unselected color (driven by the wrapping `<button>` className) flows
+ * through to the glyph.
+ */
+function PlatformGlyph({ platform }: { platform: Platform }) {
+  const size = 22;
+  if (platform.renderMode === "stroke") {
+    return (
+      <svg width={size} height={size} aria-hidden>
+        <NodeIcon
+          icon={platform.id}
+          x={0}
+          y={0}
+          size={size}
+          color="currentColor"
+          opacity={1}
+          mode="stroke"
+          viewBox={platform.viewBox ?? 16}
+          // Pass the consumer-side icon map too so the same lookup
+          // logic the canvas uses applies here — keeps the tile and
+          // the on-canvas render in lockstep.
+          customIcons={PLATFORM_ICONS}
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      viewBox={`0 0 ${platform.viewBox ?? 24} ${platform.viewBox ?? 24}`}
+      width={size}
+      height={size}
+      aria-hidden
+    >
+      {platform.paths.map((d, i) => (
+        <path key={i} d={d} fill="currentColor" fillRule="evenodd" />
+      ))}
+    </svg>
   );
 }
 
@@ -278,28 +332,16 @@ function PlatformTile({
       onClick={() => onSelect(platform.id)}
       className={
         "flex flex-col items-center gap-1.5 rounded-md p-2 text-xs transition-colors " +
+        // Painted with currentColor so the glyph follows the tile's
+        // text color — selected tiles render in full foreground,
+        // unselected ones in muted (matching the label below).
         (selected
           ? "bg-primary/15 text-foreground ring-1 ring-primary"
           : "text-muted-foreground hover:bg-muted/60 hover:text-foreground")
       }
       title={platform.label}
     >
-      <svg
-        viewBox="0 0 24 24"
-        width={28}
-        height={28}
-        aria-hidden
-        className={
-          // Painted with currentColor so it follows the tile's text
-          // color — selected tiles render the glyph in full foreground,
-          // unselected ones in muted (matching the label below).
-          selected ? "text-foreground" : "text-muted-foreground"
-        }
-      >
-        {platform.paths.map((d, i) => (
-          <path key={i} d={d} fill="currentColor" fillRule="evenodd" />
-        ))}
-      </svg>
+      <PlatformGlyph platform={platform} />
       <span className="truncate text-[10px] leading-tight max-w-full">
         {platform.label}
       </span>
