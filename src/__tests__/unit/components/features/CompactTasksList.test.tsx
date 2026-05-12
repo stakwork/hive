@@ -32,6 +32,14 @@ vi.mock("@/hooks/useWorkspace", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useRecentWorkflows", () => ({
+  useRecentWorkflows: () => ({ workflows: [], isLoading: false, error: null }),
+}));
+
+vi.mock("@/lib/runtime", () => ({
+  isDevelopmentMode: () => false,
+}));
+
 vi.mock("@/hooks/useTicketMutations", () => ({
   useTicketMutations: () => ({
     updateTicket: vi.fn().mockResolvedValue({}),
@@ -97,9 +105,14 @@ vi.mock("@/components/ui/select", () => ({
   ),
   SelectValue: () => <span>Select</span>,
   SelectContent: ({ children }: any) => <div>{children}</div>,
+  SelectGroup: ({ children }: any) => <div>{children}</div>,
+  SelectLabel: ({ children }: any) => <div>{children}</div>,
   SelectItem: ({ children, value }: any) => (
     <div data-value={value}>{children}</div>
   ),
+  SelectSeparator: () => <hr />,
+  SelectScrollUpButton: () => null,
+  SelectScrollDownButton: () => null,
 }));
 
 vi.mock("@/components/tasks/DeploymentStatusBadge", () => ({
@@ -932,9 +945,9 @@ describe("CompactTasksList", () => {
         />
       );
 
-      // The SelectTrigger should have max-w-[120px] to constrain width
+      // The SelectTrigger should have max-w-[140px] to constrain width
       const trigger = screen.getByTestId("select-trigger");
-      expect(trigger.className).toMatch(/max-w-\[120px\]/);
+      expect(trigger.className).toMatch(/max-w-\[140px\]/);
 
       // The inner flex container must have overflow-hidden so long names like
       // "sphinx-nav-fiber" don't wrap to a second line

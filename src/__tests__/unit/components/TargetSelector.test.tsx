@@ -36,12 +36,12 @@ vi.mock("@/lib/runtime", () => ({
   isDevelopmentMode: () => false,
 }));
 
-// Minimal Select UI mock
+// Minimal Select UI mock — must include every named export used by TargetSelector
 vi.mock("@/components/ui/select", () => ({
   Select: ({ children, onValueChange, value }: any) => (
     <div data-testid="select" data-value={value}>
       {React.Children.map(children, (child) =>
-        React.cloneElement(child, { onValueChange })
+        child ? React.cloneElement(child, { onValueChange }) : null
       )}
     </div>
   ),
@@ -70,6 +70,9 @@ vi.mock("@/components/ui/select", () => ({
       {children}
     </button>
   ),
+  SelectSeparator: () => <hr />,
+  SelectScrollUpButton: () => null,
+  SelectScrollDownButton: () => null,
 }));
 
 // ---------------------------------------------------------------------------
