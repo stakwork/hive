@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
 import { db } from "@/lib/db";
-import { WorkflowStatus } from "@prisma/client";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
-import { checkDependencies } from "@/services/task-coordinator-cron";
+import {
+  checkDependencies,
+  candidateTasksWhere,
+  pendingRecommendationsWhere,
+  ENABLED_WORKSPACE_WHERE,
+} from "@/services/task-coordinator-cron";
+import { WorkflowStatus } from "@prisma/client";
 
 export type TaskAction = "DISPATCH" | "SKIP_PENDING" | "SKIP_BLOCKED";
 export type DependencyResult = "SATISFIED" | "PENDING" | "PERMANENTLY_BLOCKED";
@@ -65,12 +70,7 @@ export async function GET(request: NextRequest) {
     // Orphaned pod refs require a two-step query (no Prisma relation from Task → Pod)
     const [enabledWorkspaces, staleTasks, softDeletedPods] = await Promise.all([
       db.workspace.findMany({
-        where: {
-          deleted: false,
-          janitorConfig: {
-            OR: [{ recommendationSweepEnabled: true }, { ticketSweepEnabled: true }],
-          },
-        },
+        where: ENABLED_WORKSPACE_WHERE,
         include: {
           janitorConfig: true,
           swarm: true,
@@ -148,10 +148,7 @@ export async function GET(request: NextRequest) {
 
         if (slotsAvailable === 0) {
           const pendingRecommendations = await db.janitorRecommendation.count({
-            where: {
-              status: "PENDING",
-              janitorRun: { janitorConfig: { workspaceId: ws.id } },
-            },
+            where: pendingRecommendationsWhere(ws.id),
           });
 
           return {
@@ -179,27 +176,7 @@ export async function GET(request: NextRequest) {
         const candidateLimit = Math.max(slotsAvailable * 3, 20);
         const [candidateTasks, pendingRecommendations] = await Promise.all([
           db.task.findMany({
-            where: {
-              AND: [
-                { workspaceId: ws.id },
-                { status: "TODO" },
-                { systemAssigneeType: "TASK_COORDINATOR" },
-                { deleted: false },
-                {
-                  OR: [
-                    { workflowStatus: WorkflowStatus.PENDING },
-                    { workflowStatus: null },
-                  ],
-                },
-                { stakworkProjectId: null },
-                {
-                  OR: [
-                    { featureId: null },
-                    { feature: { status: { not: "CANCELLED" } } },
-                  ],
-                },
-              ],
-            },
+            where: candidateTasksWhere(ws.id),
             select: {
               id: true,
               title: true,
@@ -212,10 +189,7 @@ export async function GET(request: NextRequest) {
             take: candidateLimit,
           }),
           db.janitorRecommendation.count({
-            where: {
-              status: "PENDING",
-              janitorRun: { janitorConfig: { workspaceId: ws.id } },
-            },
+            where: pendingRecommendationsWhere(ws.id),
           }),
         ]);
 

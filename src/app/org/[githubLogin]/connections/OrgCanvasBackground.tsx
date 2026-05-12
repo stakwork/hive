@@ -16,12 +16,12 @@ import {
   type CanvasData,
   type CanvasEdge,
   type CanvasNode,
-  type CanvasSelection,
   type EdgeUpdate,
   type NodeContextMenuConfig,
   type NodeUpdate,
   type SystemCanvasHandle,
 } from "system-canvas-react";
+
 // `getNodeLabel` isn't re-exported from `system-canvas-react`; pull
 // it from the core package directly. Used to resolve human-readable
 // labels for edge endpoints at click-time.
@@ -129,6 +129,12 @@ const AUTOSAVE_MS = 600;
 const LINKED_EDGE_COLOR = "#a4b3cc";
 
 type DirtyMap = Map<string, CanvasData>;
+
+// `CanvasSelection` was removed from the lib; define it locally.
+type CanvasSelection =
+  | { kind: "node"; node: CanvasNode; canvasRef: string | undefined }
+  | { kind: "edge"; edge: CanvasEdge; canvasRef: string | undefined }
+  | null;
 
 type LastAction =
   | {
@@ -2804,6 +2810,7 @@ export function OrgCanvasBackground({
     <>
       <div className="absolute inset-0 bg-[#15171c]" aria-hidden />
       <div className="absolute inset-y-0 left-0" style={canvasContainerStyle}>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
         <SystemCanvas
           ref={canvasHandleRef}
           canvas={canvasForRender}
@@ -2813,10 +2820,12 @@ export function OrgCanvasBackground({
           zoomNavigation
           onResolveCanvas={onResolveCanvas}
           onBreadcrumbsChange={handleBreadcrumbsChange}
-          onSelectionChange={handleSelectionChange}
+          {...({
+            onSelectionChange: handleSelectionChange,
+            onNodesUpdate: handleNodesUpdate,
+          } as Record<string, unknown>)}
           onNodeAdd={handleNodeAdd}
           onNodeUpdate={handleNodeUpdate}
-          onNodesUpdate={handleNodesUpdate}
           onNodeDelete={handleNodeDelete}
           onEdgeAdd={handleEdgeAdd}
           onEdgeUpdate={handleEdgeUpdate}

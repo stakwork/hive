@@ -28,7 +28,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
-import { NodeIcon } from "system-canvas-react/primitives";
+import { NodeIcon } from "system-canvas-react";
 import {
   Dialog,
   DialogContent,
@@ -293,8 +293,6 @@ function PlatformGlyph({ platform }: { platform: Platform }) {
           size={size}
           color="currentColor"
           opacity={1}
-          mode="stroke"
-          viewBox={platform.viewBox ?? 16}
           // Pass the consumer-side icon map too so the same lookup
           // logic the canvas uses applies here — keeps the tile and
           // the on-canvas render in lockstep.
