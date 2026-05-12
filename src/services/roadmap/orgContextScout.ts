@@ -252,6 +252,15 @@ async function runScout(args: {
     // tool set, so this guarantee holds even if a future prompt
     // change tells the agent to write something.
     readonly: true,
+    // Strip codebase-research tools (`learn_concept`,
+    // `read_concepts_for_repo`, `repo_agent`, etc.) and `web_search`.
+    // The scout's job is org-level context (initiatives, notes,
+    // decisions, research docs, connection docs, features in flight
+    // elsewhere) — not code architecture or external research.
+    // Without this filter the agent reaches for code-research tools
+    // when 9+ workspaces are in scope and ends up summarizing code
+    // instead of canvas content.
+    stripCodeResearchTools: true,
     // Programmatic caller, no live UI subscriber — suppress the
     // HIGHLIGHT_NODES Pusher fan-out that the org chat surface
     // uses for "the agent is researching node X" animations.
@@ -266,18 +275,38 @@ async function runScout(args: {
 }
 
 /**
- * Build the scout's user message. Kept intentionally short and high-
- * level — we trust the org agent's existing system prompt + canvas
- * tools to figure out what's relevant. The plan-request message is
- * embedded so the agent can judge relevance against it.
+ * Build the scout's user message.
+ *
+ * The prompt is shaped to steer the agent toward CANVAS content
+ * (initiatives, milestones, features pinned to workspace canvases,
+ * research docs, connection docs, authored notes/decisions, edges
+ * between them) and AWAY from code spelunking. Code-research tools
+ * are also filtered out at the caller (`stripCodeResearchTools: true`
+ * on `runCanvasAgent`), so the agent literally cannot reach for
+ * `learn_concept` / `repo_agent` / web search even if it wanted to —
+ * but the prompt reinforces intent so the agent doesn't waste turns
+ * looking for tools that aren't there.
+ *
+ * Output format is constrained to terse bullets with no preface so
+ * the plan agent that consumes this downstream gets clean, scannable
+ * context instead of conversational framing.
  */
 function buildScoutPrompt(planRequestMessage: string): string {
   return [
-    `A user in this organization is starting plan mode for a new feature. Their request:`,
+    `A user is starting plan mode for a new feature. Their request:`,
     "",
     planRequestMessage.trim(),
     "",
-    `Explore the root canvas and the workspace sub-canvases to get a high-level view of the org as a whole. Surface anything relevant to their plan request — be quick. If nothing in the org context seems relevant, reply with exactly: ${NO_CONTEXT_SENTINEL}`,
+    `Scan the org's CANVASES (root canvas, workspace sub-canvases, initiative sub-canvases) for context that may matter to this plan. Look at: initiatives in flight, milestones, features already pinned to workspaces, research docs, connection docs, authored notes/decisions, edges showing relationships. Do NOT explore code — focus on the planning layer.`,
+    "",
+    `Be QUICK. Aim for 3-6 tool calls total.`,
+    "",
+    `Output format — STRICT:`,
+    `- No preamble. No "Based on..." or "Here's what I found...". Just the content.`,
+    `- Terse bullets, one item per line, each starting with "- ".`,
+    `- Each bullet: a name in **bold**, then a one-line summary of why it's relevant.`,
+    `- Max 8 bullets. If you have more, keep only the most relevant.`,
+    `- If nothing in the org context is meaningfully relevant to this plan, reply with EXACTLY this single token and nothing else: ${NO_CONTEXT_SENTINEL}`,
     "",
     `End your reply with [END_OF_ANSWER].`,
   ].join("\n");

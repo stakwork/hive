@@ -104,6 +104,58 @@ function filterReadonly(tools: ToolSet): ToolSet {
 }
 
 // ---------------------------------------------------------------------------
+// Code-research tool names — stripped when `stripCodeResearchTools: true` is
+// requested.
+//
+// Use case: the plan-mode org-context scout (`scoutOrgContext`) only wants
+// canvas/initiative/research/connection context, not deep codebase research.
+// Without this filter the scout will reach for `learn_concept` /
+// `read_concepts_for_repo` / `repo_agent` and end up reporting on code
+// architecture instead of org-level information (initiatives, notes,
+// decisions, research docs).
+//
+// Stripping happens by base name (after the `{slug}__` prefix in multi-WS
+// mode). `web_search` is also stripped because the scout should not be
+// doing external research.
+//
+// Tools that are NOT stripped — they're org-context-shaped, not code:
+//   - list_features / read_feature / list_tasks / read_task / check_status
+//     (MCP-backed workspace meta — useful for "what's this workspace
+//     working on" without diving into code)
+//   - everything in the canvas/initiative/research/connection toolsets.
+// ---------------------------------------------------------------------------
+
+const CODE_RESEARCH_BASE_NAMES: ReadonlySet<string> = new Set([
+  "list_concepts",
+  "learn_concept",
+  "recent_commits",
+  "recent_contributions",
+  "repo_agent",
+  "search_logs",
+  "read_concepts_for_repo",
+]);
+
+/**
+ * Strip the multi-workspace `{slug}__` prefix so we can compare a tool
+ * name against the base-name list. For single-WS mode (no namespace)
+ * the input is already the base name.
+ */
+function baseToolName(name: string): string {
+  const idx = name.indexOf("__");
+  return idx === -1 ? name : name.slice(idx + 2);
+}
+
+function filterCodeResearch(tools: ToolSet): ToolSet {
+  const out: ToolSet = {};
+  for (const [name, def] of Object.entries(tools)) {
+    if (name === "web_search") continue; // shared, not namespaced
+    if (CODE_RESEARCH_BASE_NAMES.has(baseToolName(name))) continue;
+    out[name] = def;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
@@ -179,6 +231,20 @@ export interface RunCanvasAgentOptions {
    * (no live UI subscriber) should set it `true`.
    */
   silentPusher?: boolean;
+  /**
+   * When `true`, strip codebase-research tools (`learn_concept`,
+   * `read_concepts_for_repo`, `repo_agent`, `recent_commits`,
+   * `recent_contributions`, `search_logs`, `list_concepts`) and the
+   * shared `web_search` tool, leaving only canvas/initiative/
+   * research/connection tools plus MCP-backed workspace meta
+   * (`list_features`, `read_feature`, `list_tasks`, etc.).
+   *
+   * Use for callers that want org-level context only — the plan-mode
+   * org-context scout sets this so the agent doesn't wander into
+   * code exploration when it should be summarizing canvas notes,
+   * initiatives, decisions, and research docs.
+   */
+  stripCodeResearchTools?: boolean;
   /** Caller-owned side effects. */
   hooks?: CanvasAgentHooks;
 }
@@ -362,6 +428,7 @@ export async function runCanvasAgent(
     messages,
     readonly = false,
     silentPusher = false,
+    stripCodeResearchTools = false,
     hooks,
   } = opts;
 
@@ -483,6 +550,9 @@ export async function runCanvasAgent(
   if (readonly) {
     tools = filterReadonly(tools);
   }
+  if (stripCodeResearchTools) {
+    tools = filterCodeResearch(tools);
+  }
 
   // ------------------------------------------------------------------
   // Assemble final message list + sanitize
@@ -501,6 +571,7 @@ export async function runCanvasAgent(
     workspaces: workspaceSlugs,
     orgId: orgId ?? null,
     readonly,
+    stripCodeResearchTools,
     silentPusher,
   });
 
