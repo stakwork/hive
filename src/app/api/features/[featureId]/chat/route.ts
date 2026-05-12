@@ -113,6 +113,11 @@ export async function POST(
 ) {
   try {
     const { featureId } = await params;
+    // Unconditional entry breadcrumb so the request is visible in
+    // logs even when something fails before any other log fires.
+    console.log(
+      `[features/chat] POST /api/features/${featureId}/chat received`,
+    );
 
     const feature = await db.feature.findUnique({
       where: { id: featureId },
