@@ -13,7 +13,12 @@ export default function NewPlanPage() {
 
   const handleSubmit = async (
     message: string,
-    options?: { isPrototype: boolean; selectedRepoId: string | null; model?: string },
+    options?: {
+      isPrototype: boolean;
+      selectedRepoId: string | null;
+      selectedWorkflow?: { workflowId: number; workflowName: string; workflowRefId: string } | null;
+      model?: string;
+    },
   ) => {
     setIsLoading(true);
     try {

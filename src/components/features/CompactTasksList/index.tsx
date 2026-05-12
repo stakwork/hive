@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, FolderOpen, Copy, Sparkles } from "lucide-react";
+import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, Copy, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
@@ -19,6 +19,8 @@ import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { TargetSelector, encodeTargetValue, type TargetSelection } from "@/components/shared/TargetSelector";
+import { isDevelopmentMode } from "@/lib/runtime";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import { usePusherConnection, type TaskTitleUpdateEvent, type DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
@@ -127,7 +129,8 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       })),
     [workspace?.repositories]
   );
-  const showRepoSelector = workspaceRepos.length > 1;
+  const isStakwork = workspace?.slug === "stakwork" || isDevelopmentMode();
+  const showTargetSelector = workspaceRepos.length > 1 || isStakwork;
 
   const startableTasks = tasks.filter((task) => !task.assignee && task.status === "TODO");
 
@@ -235,7 +238,17 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
 
   const handleUpdateTask = async (
     taskId: string,
-    updates: { status?: TaskStatus; autoMerge?: boolean; runBuild?: boolean; runTestSuite?: boolean; repositoryId?: string | null; model?: string | null }
+    updates: {
+      status?: TaskStatus;
+      autoMerge?: boolean;
+      runBuild?: boolean;
+      runTestSuite?: boolean;
+      repositoryId?: string | null;
+      model?: string | null;
+      workflowId?: number;
+      workflowName?: string;
+      workflowRefId?: string;
+    }
   ) => {
     // Optimistically apply the update immediately
     setOptimisticUpdates(prev => ({ ...prev, [taskId]: { ...prev[taskId], ...updates } }));
@@ -641,29 +654,33 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
               </div>
 
               <div className="flex items-center gap-3 mt-1.5 pl-[18px] text-[10px] text-muted-foreground">
-                {showRepoSelector && (
+                {showTargetSelector && (
                   <div onClick={(e) => e.stopPropagation()}>
-                    <Select
-                      value={task.repository?.id || workspaceRepos[0]?.id || ""}
-                      onValueChange={(value) =>
-                        handleUpdateTask(task.id, { repositoryId: value })
+                    <TargetSelector
+                      value={
+                        task.workflowTask
+                          ? encodeTargetValue({ type: "workflow", workflowId: task.workflowTask.workflowId, workflowName: task.workflowTask.workflowName ?? "", workflowRefId: task.workflowTask.workflowRefId ?? "" })
+                          : task.repository?.id
+                            ? encodeTargetValue({ type: "repo", repositoryId: task.repository.id })
+                            : workspaceRepos[0]?.id
+                              ? encodeTargetValue({ type: "repo", repositoryId: workspaceRepos[0].id })
+                              : undefined
                       }
+                      onChange={(selection: TargetSelection) => {
+                        if (selection.type === "repo") {
+                          handleUpdateTask(task.id, { repositoryId: selection.repositoryId });
+                        } else {
+                          handleUpdateTask(task.id, {
+                            workflowId: selection.workflowId,
+                            workflowName: selection.workflowName,
+                            workflowRefId: selection.workflowRefId,
+                          });
+                        }
+                      }}
+                      repositories={workspaceRepos}
                       disabled={task.status !== "TODO"}
-                    >
-                      <SelectTrigger className="h-5 text-[10px] px-1.5 py-0 w-auto max-w-[120px] border-muted bg-muted/50 gap-1 [&>svg]:h-3 [&>svg]:w-3">
-                        <div className="flex items-center gap-1 overflow-hidden min-w-0">
-                          <FolderOpen className="h-3 w-3 shrink-0" />
-                          <span className="truncate min-w-0 block"><SelectValue /></span>
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {workspaceRepos.map((repo) => (
-                          <SelectItem key={repo.id} value={repo.id} className="text-xs">
-                            {repo.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      size="sm"
+                    />
                   </div>
                 )}
                 <div
