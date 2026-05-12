@@ -32,6 +32,7 @@ vi.mock("@/services/s3", () => ({
   })),
 }));
 vi.mock("@/services/task-workflow", () => ({ callStakworkAPI: vi.fn().mockResolvedValue(null) }));
+vi.mock("@/services/roadmap/orgContextScout", () => ({ scoutOrgContext: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/services/task-coordinator", () => ({ buildFeatureContext: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn().mockResolvedValue(undefined) },

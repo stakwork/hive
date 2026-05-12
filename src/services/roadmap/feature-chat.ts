@@ -18,6 +18,7 @@ import {
 } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { joinRepoUrls } from "@/lib/helpers/repository";
+import { scoutOrgContext } from "@/services/roadmap/orgContextScout";
 
 /**
  * Fetch chat history for a feature, excluding a specific message.
@@ -345,6 +346,18 @@ export async function sendFeatureChatMessage({
       (attachments ?? []).map((a) => getS3Service().generatePresignedDownloadUrl(a.path)),
     );
 
+    // Org-wide context scout. Best-effort: returns null on any
+    // failure / opt-out / no-org / non-first-message / sentinel,
+    // and we attach orgContext to the Stakwork dispatch only when
+    // it produced something. Gated by env PLAN_MODE_ORG_CONTEXT_ENABLED
+    // — default off so this is dark-launched.
+    const orgContext = await scoutOrgContext({
+      workspaceId: feature.workspaceId,
+      userId,
+      message,
+      isFirstMessage,
+    });
+
     stakworkData = await callStakworkAPI({
       taskId: featureId,
       message,
@@ -364,6 +377,7 @@ export async function sendFeatureChatMessage({
       webhook,
       featureId,
       featureContext,
+      orgContext: orgContext ?? undefined,
       planEdited,
       isPrototype: isPrototype && isFirstMessage,
       subAgents: extraSwarms,

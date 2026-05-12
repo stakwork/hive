@@ -45,6 +45,10 @@ vi.mock("@/services/task-workflow", () => ({
   callStakworkAPI: vi.fn().mockResolvedValue({ data: null }),
 }));
 
+vi.mock("@/services/roadmap/orgContextScout", () => ({
+  scoutOrgContext: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock("@/lib/auth/nextauth", () => ({
   getGithubUsernameAndPAT: vi.fn().mockResolvedValue(null),
 }));

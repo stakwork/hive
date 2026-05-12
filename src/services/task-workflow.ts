@@ -606,6 +606,14 @@ export async function callStakworkAPI(params: {
   isPrototype?: boolean;
   subAgents?: { name: string, url: string; apiKey: string; repoUrls: string }[];
   taskModel?: string;
+  /**
+   * Plan-mode org-context scout output. When provided, surfaced to
+   * the Stakwork workflow as `vars.orgContext`. See
+   * `src/services/roadmap/orgContextScout.ts` for the producer.
+   * Treated as an opaque prose string — the plan agent reads it as
+   * additional context alongside `featureContext`.
+   */
+  orgContext?: string;
 }) {
   const {
     taskId,
@@ -639,6 +647,7 @@ export async function callStakworkAPI(params: {
     isPrototype,
     subAgents,
     taskModel,
+    orgContext,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -689,6 +698,14 @@ export async function callStakworkAPI(params: {
   }
   if (featureContext !== undefined) {
     vars.featureContext = featureContext;
+  }
+  if (orgContext !== undefined) {
+    // Plan-mode org-wide context scouted from the org canvases. Sibling
+    // to featureContext but org-scoped (across all workspaces in the
+    // org), as opposed to feature/workspace-scoped. Only set when the
+    // scout returned non-null text (PLAN_MODE_ORG_CONTEXT_ENABLED gates
+    // the producer side).
+    vars.orgContext = orgContext;
   }
   if (podId) {
     vars.podId = podId;
