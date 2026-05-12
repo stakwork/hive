@@ -1048,9 +1048,10 @@ describe("executeTaskCoordinatorRuns", () => {
 
       // 5 eligible candidate tasks (no deps)
       const candidates = Array.from({ length: 5 }, () => createCandidateTask());
-      // findMany called 3 times: orphan sweep ([]), stale tasks ([]), ticket sweep candidates
+      // findMany called 4 times: orphan sweep, limbo sweep, stale tasks, ticket sweep candidates
       vi.mocked(mockDb.task.findMany)
-        .mockResolvedValueOnce([]) // orphan sweep (new)
+        .mockResolvedValueOnce([]) // orphan sweep
+        .mockResolvedValueOnce([]) // limbo sweep (IN_PROGRESS + no stakworkProjectId)
         .mockResolvedValueOnce([]) // stale tasks query
         .mockResolvedValueOnce(candidates as any); // ticket sweep candidates
 
@@ -1071,6 +1072,7 @@ describe("executeTaskCoordinatorRuns", () => {
       const candidates = Array.from({ length: 2 }, () => createCandidateTask());
       vi.mocked(mockDb.task.findMany)
         .mockResolvedValueOnce([]) // orphan sweep
+        .mockResolvedValueOnce([]) // limbo sweep
         .mockResolvedValueOnce([]) // stale tasks query
         .mockResolvedValueOnce(candidates as any);
 
@@ -1090,6 +1092,7 @@ describe("executeTaskCoordinatorRuns", () => {
       const candidates = Array.from({ length: 3 }, () => createCandidateTask());
       vi.mocked(mockDb.task.findMany)
         .mockResolvedValueOnce([]) // orphan sweep
+        .mockResolvedValueOnce([]) // limbo sweep
         .mockResolvedValueOnce([]) // stale tasks
         .mockResolvedValueOnce(candidates as any);
 
@@ -1119,6 +1122,7 @@ describe("executeTaskCoordinatorRuns", () => {
       const ws2Candidates = Array.from({ length: 2 }, () => createCandidateTask());
       vi.mocked(mockDb.task.findMany)
         .mockResolvedValueOnce([])          // orphan sweep
+        .mockResolvedValueOnce([])          // limbo sweep
         .mockResolvedValueOnce([])          // stale tasks
         .mockResolvedValueOnce(ws1Candidates as any) // ws-1 ticket sweep
         .mockResolvedValueOnce(ws2Candidates as any); // ws-2 ticket sweep
@@ -1140,6 +1144,7 @@ describe("executeTaskCoordinatorRuns", () => {
       const candidates = Array.from({ length: 2 }, () => createCandidateTask());
       vi.mocked(mockDb.task.findMany)
         .mockResolvedValueOnce([]) // orphan sweep
+        .mockResolvedValueOnce([]) // limbo sweep
         .mockResolvedValueOnce([]) // stale tasks
         .mockResolvedValueOnce(candidates as any);
 
@@ -1162,6 +1167,7 @@ describe("executeTaskCoordinatorRuns", () => {
       const candidates = [createCandidateTask()];
       vi.mocked(mockDb.task.findMany)
         .mockResolvedValueOnce([]) // orphan sweep
+        .mockResolvedValueOnce([]) // limbo sweep
         .mockResolvedValueOnce([]) // stale tasks
         .mockResolvedValueOnce(candidates as any);
 
