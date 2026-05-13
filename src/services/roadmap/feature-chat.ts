@@ -89,6 +89,15 @@ const FEATURE_SELECT_FOR_CHAT = {
       // linked to a SourceControlOrg yet — in that case we skip
       // org-callback wiring and the swarm runs without it.
       sourceControlOrgId: true,
+      // Eager-load the linked org's identity so the org-MCP server
+      // entry sent to the swarm can use the org's actual name as the
+      // server prefix (e.g. `stakwork_org_agent` instead of the
+      // opaque `hive-org_org_agent`). `githubLogin` is the slug-safe
+      // identifier (lowercased, no spaces); `name` is the display
+      // form for surfacing in the tool description.
+      sourceControlOrg: {
+        select: { githubLogin: true, name: true },
+      },
       swarm: {
         select: {
           swarmUrl: true,
@@ -425,6 +434,7 @@ export async function sendFeatureChatMessage({
     // pre-callback behavior.
     let orgMcpServers: McpServerConfig[] | undefined;
     const orgIdForCallback = feature.workspace.sourceControlOrgId;
+    const orgForCallback = feature.workspace.sourceControlOrg;
     if (orgIdForCallback) {
       // Mint is best-effort: a transient DB error inside the mint
       // helper would otherwise abort the entire plan-mode dispatch,
@@ -443,9 +453,19 @@ export async function sendFeatureChatMessage({
           purpose: `plan-mode:${featureId}`,
         });
         if (mintOutcome.ok) {
+          // Use the org's GitHub login as the MCP server name so the
+          // agent sees a tool id like `stakwork_org_agent` rather than
+          // a generic `hive-org_org_agent`. `githubLogin` is already
+          // slug-safe (lowercase, no spaces); fall back to "hive-org"
+          // if the eager-loaded join somehow came back null (shouldn't
+          // happen given `orgIdForCallback` is non-null here, but the
+          // mint path is best-effort and we don't want a server-name
+          // edge case to break dispatch).
+          const orgMcpServerName =
+            orgForCallback?.githubLogin ?? "hive-org";
           orgMcpServers = [
             {
-              name: "hive-org",
+              name: orgMcpServerName,
               url: process.env.HIVE_MCP_URL || "https://hive.sphinx.chat/mcp",
               token: mintOutcome.token,
               toolFilter: ["org_agent"],
