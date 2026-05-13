@@ -163,18 +163,27 @@ async function getWorkspaceAuth(
 //     /api/mcp/org-token for plan-mode swarm callbacks and (future)
 //     voice agents.
 //
+// `options.orgName` is consumed only on the org branch; it's the
+// display label interpolated into `org_agent`'s title and description
+// so the calling agent sees something like "Ask the Stakwork org
+// agent…" instead of the generic "Ask the Hive org agent…". Resolved
+// upstream in `handleMcpRequest` from the org JWT's `orgId`.
+//
 // Mutually exclusive on purpose — an org-scope token does not get
 // the workspace tool surface, and a workspace-scope token does not
 // get `org_agent`. Crossing the scopes would silently widen the
 // authorization granted at mint time.
-function createServer(scope: "workspace" | "org" = "workspace"): McpServer {
+function createServer(
+  scope: "workspace" | "org" = "workspace",
+  options: { orgName?: string } = {},
+): McpServer {
   const server = new McpServer(
     { name: "hive", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
 
   if (scope === "org") {
-    registerOrgTools(server);
+    registerOrgTools(server, { orgName: options.orgName });
     return server;
   }
 
@@ -728,8 +737,29 @@ export async function handleMcpRequest(req: Request): Promise<Response> {
       ? "org"
       : "workspace";
 
+  // For org-scope, resolve the org's display name once per request so
+  // the `org_agent` tool description can name the org concretely
+  // (e.g. "Stakwork") instead of the generic "this organization".
+  // Best-effort: a DB hiccup or a row with neither `name` nor
+  // `githubLogin` falls back to the generic description rather than
+  // failing the request — the tool still works, the agent just sees
+  // less context.
+  let orgName: string | undefined;
+  if (scope === "org") {
+    const orgId = (authInfo.extra as OrgMcpAuthExtra).orgId;
+    try {
+      const org = await db.sourceControlOrg.findUnique({
+        where: { id: orgId },
+        select: { name: true, githubLogin: true },
+      });
+      orgName = org?.name ?? org?.githubLogin ?? undefined;
+    } catch (err) {
+      console.warn("[MCP] org name lookup failed:", err);
+    }
+  }
+
   // Fresh server + stateless transport per request
-  const server = createServer(scope);
+  const server = createServer(scope, { orgName });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // stateless
   });

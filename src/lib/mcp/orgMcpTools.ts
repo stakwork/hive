@@ -135,44 +135,89 @@ async function resolveOrgWorkspaceSlugs(
  * Register the `org_agent` tool on the given MCP server. Only called
  * by the handler when the auth-info's scope is `"org"`. Workspace-
  * scope tokens never see this tool registered.
+ *
+ * `orgName` is the human-readable identifier the agent will see
+ * interpolated into the tool's title and description (e.g. "Stakwork").
+ * Passing the org's actual name here — instead of the generic word
+ * "this" — gives the LLM a concrete anchor for when to reach for the
+ * tool, especially in multi-org agent contexts. The tool's *id* stays
+ * `org_agent` regardless: other code (toolFilter on the swarm side,
+ * grep targets, log prefixes) hardcodes that literal, and we don't
+ * want a rename to cascade.
  */
-export function registerOrgTools(server: McpServer): void {
+export function registerOrgTools(
+  server: McpServer,
+  options: { orgName?: string } = {},
+): void {
+  // Description language is intentionally generic. The caller is a
+  // planning/coding agent that has no model for Hive's internal
+  // surfaces (canvases, initiatives, research, etc.) — and shouldn't
+  // need one. What it needs is a clear signal of *when* to reach for
+  // this tool: high-level, cross-cutting, organizational context that
+  // it can't reconstruct from its own narrow tool surface. So the
+  // description describes the *kind of question* the tool answers,
+  // not the underlying data model.
+  //
+  // The org name is interpolated when known so the LLM has a concrete
+  // anchor (e.g. "Ask Stakwork…"), but the wording stays natural when
+  // it isn't ("Ask the organization…").
+  const orgLabel = options.orgName?.trim() || "";
+  const titleLabel = orgLabel ? `${orgLabel} Org Agent` : "Org Agent";
+  const subject = orgLabel || "the organization";
+
   server.registerTool(
     "org_agent",
     {
-      title: "Org Agent",
+      title: titleLabel,
       description:
-        "Ask the Hive org agent a question about this organization. The agent has " +
-        "access to the org canvases (root + per-workspace + per-initiative), all " +
-        "initiatives, research notes, connections, and every workspace's features, " +
-        "tasks, and code concepts. It will explore on its own and return a text " +
-        "answer. Use this whenever you need org-wide context — high-level direction, " +
-        "cross-workspace relationships, prior research, planning history.",
+        `Ask ${subject} a question and get a written answer back. ` +
+        "Use this when you need broader context that goes beyond the specific " +
+        "task or repository you're working on — things like overall direction " +
+        "and priorities, how different efforts across the company relate, prior " +
+        "decisions and the reasoning behind them, ongoing work in other areas, " +
+        "or background research and notes. " +
+        "Especially worth calling when a request you've been given is " +
+        "ambiguous or open-ended and you want to understand where it fits " +
+        "before committing to an approach — for example, checking whether " +
+        "related work already exists, what the surrounding priorities are, " +
+        "or why the request might be coming up now. " +
+        "Good fit: strategic, cross-cutting, \"why are we doing this\", or " +
+        "\"how does this fit in\" questions. Not a good fit: narrow lookups " +
+        "you can answer with your own tools (single files, single PRs, " +
+        "syntax questions). " +
+        "The answer comes back as prose, not structured data — phrase your " +
+        "question the way you would ask a knowledgeable teammate.",
       inputSchema: {
         prompt: z
           .string()
           .min(1)
           .describe(
-            "Free-form question for the org agent. Be specific — e.g. " +
-              "'Are there any active initiatives related to billing across the org?' " +
-              "rather than 'tell me about the org'.",
+            "The question to ask, in plain language. Two shapes both work " +
+              "well: (1) a targeted question when you know what you need — " +
+              "e.g. \"Is anyone else working on rate limiting, and what " +
+              "approach did they take?\"; (2) an orienting question when " +
+              "you've been handed a request and want to understand where it " +
+              "fits — e.g. \"I need to add SSO support to the dashboard. Is " +
+              "there related work, prior discussion, or context I should " +
+              "know about before designing this?\" Include enough of the " +
+              "request itself for the answer to be relevant; avoid vague " +
+              "prompts like \"tell me about the org\".",
           ),
         scope: z
           .string()
           .optional()
           .describe(
-            "Optional canvas scope hint. Omit (default) to start at the org root " +
-              "canvas. Pass an initiative ref like 'initiative:<id>' or a workspace " +
-              "ref like 'ws:<slug>' to anchor the agent at a specific drill-down.",
+            "Optional hint about where to focus. Omit if unsure — the default " +
+              "covers the whole organization. If you already know the question " +
+              "is about a specific team or product area and you know its " +
+              "workspace slug, you can pass `ws:<slug>` to start there.",
           ),
         readonly: z
           .boolean()
           .optional()
           .describe(
-            "Force read-only mode regardless of token permissions. Defaults to " +
-              "the safest mode the token allows (read-only for read-only tokens; " +
-              "writable for write-capable tokens). Pass `true` to narrow a writable " +
-              "token to a read-only run.",
+            "Ask in read-only mode. Defaults to whatever the token allows. " +
+              "You normally don't need to set this.",
           ),
       },
     },
