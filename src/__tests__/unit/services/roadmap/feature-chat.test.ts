@@ -328,12 +328,13 @@ describe("sendFeatureChatMessage — taskModel forwarding", () => {
   });
 
   test("passes taskModel to callStakworkAPI when model param is provided", async () => {
-    await sendFeatureChatMessage({
+    const { dispatchPromise } = await sendFeatureChatMessage({
       featureId: "feature-123",
       userId: "user-123",
       message: "Hello",
       model: "opus",
     });
+    await dispatchPromise;
 
     expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
     const callArg = mockCallStakworkAPI.mock.calls[0][0];
@@ -341,11 +342,12 @@ describe("sendFeatureChatMessage — taskModel forwarding", () => {
   });
 
   test("passes undefined taskModel when model param is omitted", async () => {
-    await sendFeatureChatMessage({
+    const { dispatchPromise } = await sendFeatureChatMessage({
       featureId: "feature-123",
       userId: "user-123",
       message: "Hello",
     });
+    await dispatchPromise;
 
     expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
     const callArg = mockCallStakworkAPI.mock.calls[0][0];
@@ -355,12 +357,13 @@ describe("sendFeatureChatMessage — taskModel forwarding", () => {
   test.each(["sonnet", "haiku", "kimi", "gemini", "gpt"] as const)(
     "forwards model '%s' as taskModel to callStakworkAPI",
     async (model) => {
-      await sendFeatureChatMessage({
+      const { dispatchPromise } = await sendFeatureChatMessage({
         featureId: "feature-123",
         userId: "user-123",
         message: "Hello",
         model,
       });
+      await dispatchPromise;
 
       const callArg = mockCallStakworkAPI.mock.calls[0][0];
       expect(callArg.taskModel).toBe(model);

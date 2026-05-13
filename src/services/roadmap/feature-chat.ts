@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { getS3Service } from "@/services/s3";
@@ -107,6 +108,58 @@ const FEATURE_SELECT_FOR_CHAT = {
     },
   },
 } as const;
+
+/**
+ * Module-level registry of in-flight background plan-mode dispatches.
+ * Populated when `sendFeatureChatMessage` launches `dispatchPlanModeWorkflow`
+ * and pruned when each dispatch settles.
+ *
+ * Production code never reads this — the HTTP route returns
+ * immediately after the user ChatMessage is persisted and lets
+ * dispatches finish in the background. The registry exists so tests
+ * (and the documented `__flushPendingPlanModeDispatches` helper
+ * below) can deterministically wait for all dispatches to settle
+ * before asserting on `callStakworkAPI` mock calls.
+ */
+const pendingPlanModeDispatches = new Set<Promise<void>>();
+
+/**
+ * Test-only helper: await every currently-in-flight plan-mode
+ * dispatch. Used by route-level unit tests that POST to the chat
+ * endpoint and then immediately assert on the Stakwork mock. The
+ * production HTTP route never calls this — it's exported for test
+ * ergonomics so we don't have to thread `dispatchPromise` through
+ * the API response.
+ *
+ * Returns once every dispatch in the registry has settled. New
+ * dispatches kicked off while we're awaiting are NOT included
+ * (callers that need a settled state should call this after their
+ * last fetch/POST).
+ */
+export async function __flushPendingPlanModeDispatches(): Promise<void> {
+  await Promise.all(Array.from(pendingPlanModeDispatches));
+}
+
+/**
+ * Shape of the feature record passed to `dispatchPlanModeWorkflow`.
+ * Captures everything from `FEATURE_SELECT_FOR_CHAT` plus the
+ * `workflowStatus` and `model` fields the dispatch flow also reads.
+ * Derived from a no-op Prisma payload type so it stays in sync with
+ * the actual select shape without restating every field.
+ */
+type FeatureForChatDispatch = NonNullable<
+  Awaited<
+    ReturnType<
+      typeof db.feature.findUnique<{
+        where: { id: string };
+        select: typeof FEATURE_SELECT_FOR_CHAT & {
+          workflowStatus: true;
+          model: true;
+        };
+      }>
+    >
+  >
+>;
 
 /**
  * Parse @workspace-slug mentions from a message, resolve each to swarm
@@ -293,9 +346,163 @@ export async function sendFeatureChatMessage({
     config.STAKWORK_API_KEY &&
     config.STAKWORK_BASE_URL &&
     config.STAKWORK_WORKFLOW_ID;
-  let stakworkData = null;
+
+  // Handle to the background dispatch Promise (or undefined when
+  // Stakwork is not configured). Returned from this function so
+  // callers that *want* to wait for the dispatch (tests, future
+  // synchronous tools) can await it; the HTTP route ignores it.
+  let dispatchPromise: Promise<void> | undefined;
 
   if (useStakwork) {
+    // Optimistically flip workflowStatus to IN_PROGRESS *before*
+    // launching the background work. This preserves the
+    // "already running" guard at the top of this function under
+    // double-clicks / racing requests, which previously relied on
+    // the awaited callStakworkAPI completing before we returned.
+    //
+    // We capture the prior status so the background task can revert
+    // it if Stakwork never confirms a project — matching the
+    // pre-existing semantics of "leave workflowStatus unchanged on
+    // dispatch failure" from the caller's perspective.
+    const priorWorkflowStatus = feature.workflowStatus;
+    await db.feature.update({
+      where: { id: featureId },
+      data: { workflowStatus: WorkflowStatus.IN_PROGRESS },
+    });
+    try {
+      await pusherServer.trigger(
+        getFeatureChannelName(featureId),
+        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+        { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
+      );
+    } catch (error) {
+      console.error(
+        "Error broadcasting optimistic workflow status (feature):",
+        error,
+      );
+    }
+
+    // Background dispatch — the scout (up to 60s) and Stakwork hop
+    // are not on the user-visible critical path. The caller returns
+    // as soon as the ChatMessage row is persisted; the plan chat
+    // view's Pusher subscription picks up any subsequent events
+    // (NEW_MESSAGE for the assistant reply, FEATURE_UPDATED so the
+    // client refetches and learns the new stakworkProjectId).
+    //
+    // We use Next.js's `after()` so the work is scheduled to run
+    // after the response is sent AND the serverless runtime is
+    // kept alive (via Vercel's `waitUntil`) until it settles. A
+    // raw `void promise` would be killed on Vercel when the
+    // function returns; `after()` is the safe equivalent.
+    //
+    // We also keep a Promise reference (`dispatchPromise`) and
+    // register it in `pendingPlanModeDispatches` so unit tests can
+    // deterministically wait for the dispatch via
+    // `__flushPendingPlanModeDispatches`. In tests there's no
+    // request context for `after()` to hook into; the Promise
+    // reference is the test-friendly path.
+    dispatchPromise = dispatchPlanModeWorkflow({
+      featureId,
+      userId,
+      message,
+      contextTags,
+      webhook,
+      bodyHistory,
+      isPrototype,
+      attachments,
+      model,
+      skipOrgContextScout,
+      chatMessageId: chatMessage.id,
+      feature,
+      priorWorkflowStatus,
+    }).catch((error) => {
+      // Top-level safety net — every async step inside the dispatch
+      // already has its own try/catch with status reversion, so
+      // landing here means something truly unexpected (e.g. a
+      // programming error in the dispatch function itself).
+      console.error(
+        "[feature-chat] background plan-mode dispatch crashed:",
+        error,
+      );
+    });
+    // Register the dispatch so test code (and any future tooling)
+    // can await all in-flight dispatches via
+    // `__flushPendingPlanModeDispatches`. Self-prunes on settle.
+    pendingPlanModeDispatches.add(dispatchPromise);
+    dispatchPromise.finally(() => {
+      pendingPlanModeDispatches.delete(dispatchPromise!);
+    });
+    // Tell the Next.js runtime to keep the serverless invocation
+    // alive until the dispatch settles. Wrapped in try/catch
+    // because `after()` throws when called outside a request
+    // context (e.g. unit tests that call this service directly
+    // without going through the route handler). In that case the
+    // Promise reference + flush helper is the supported path.
+    try {
+      after(() => dispatchPromise!);
+    } catch (error) {
+      // Expected in non-request contexts (unit tests, scripts).
+      // Production HTTP / MCP / proposal paths all go through a
+      // route handler, so `after()` will be available there.
+      if (process.env.NODE_ENV !== "test") {
+        console.warn(
+          "[feature-chat] after() unavailable; dispatch will run as plain Promise (may be killed on Vercel if caller is not in a request context):",
+          error,
+        );
+      }
+    }
+  }
+
+  return { chatMessage, stakworkData: null, dispatchPromise };
+}
+
+/**
+ * Background half of plan-mode dispatch: org-context scout +
+ * Stakwork workflow call + post-dispatch status reconciliation.
+ *
+ * Split out of `sendFeatureChatMessage` so the API response can
+ * return as soon as the user's ChatMessage is persisted. The scout
+ * is the main cost (up to 60s soft cap, ~20s typical) and was
+ * previously blocking the user-visible "next screen" transition.
+ *
+ * Error handling matches the pre-split inline behaviour: any failure
+ * to dispatch leaves the feature in its prior workflow status and
+ * logs to console. The plan chat view's Pusher subscription is the
+ * channel for any successful state changes.
+ */
+async function dispatchPlanModeWorkflow(args: {
+  featureId: string;
+  userId: string;
+  message: string;
+  contextTags: { type: string; id: string }[];
+  webhook?: string;
+  bodyHistory?: Record<string, unknown>[];
+  isPrototype?: boolean;
+  attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>;
+  model?: string;
+  skipOrgContextScout: boolean;
+  chatMessageId: string;
+  feature: FeatureForChatDispatch;
+  priorWorkflowStatus: WorkflowStatus | null;
+}): Promise<void> {
+  const {
+    featureId,
+    userId,
+    message,
+    contextTags,
+    webhook,
+    bodyHistory,
+    isPrototype,
+    attachments,
+    model,
+    skipOrgContextScout,
+    chatMessageId,
+    feature,
+    priorWorkflowStatus,
+  } = args;
+
+  let stakworkData: Awaited<ReturnType<typeof callStakworkAPI>> | null = null;
+  try {
     const githubProfile = await getGithubUsernameAndPAT(
       userId,
       feature.workspace.slug,
@@ -316,7 +523,7 @@ export async function sendFeatureChatMessage({
 
     const dbHistory = await fetchFeatureChatHistory(
       featureId,
-      chatMessage.id,
+      chatMessageId,
     );
 
     // Drop failed exchanges: keep USER+ASSISTANT pairs only when
@@ -433,27 +640,88 @@ export async function sendFeatureChatMessage({
       attachments: attachmentUrls,
       taskModel: feature.model || model || undefined,
     });
+  } catch (error) {
+    console.error(
+      "[feature-chat] background plan-mode dispatch failed before Stakwork confirmed:",
+      error,
+    );
+  }
 
-    // Only update workflow status when Stakwork confirms a project was created
-    if (stakworkData?.projectId) {
+  // Reconcile workflow status with the dispatch outcome. We
+  // optimistically flipped to IN_PROGRESS before this background
+  // task ran (to preserve the "already running" race guard); now
+  // either confirm the in-progress state with the real projectId,
+  // or revert to the prior status so the feature isn't stuck
+  // showing IN_PROGRESS forever after a dispatch failure.
+  if (stakworkData?.projectId) {
+    try {
       await db.feature.update({
         where: { id: featureId },
         data: {
+          // workflowStatus already IN_PROGRESS from the optimistic
+          // flip; we still write it explicitly so the field stays
+          // self-documenting alongside workflowStartedAt /
+          // stakworkProjectId.
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: new Date(),
           stakworkProjectId: stakworkData.projectId,
         },
       });
+    } catch (error) {
+      console.error(
+        "[feature-chat] failed to persist stakworkProjectId after dispatch:",
+        error,
+      );
+    }
 
+    // Broadcast FEATURE_UPDATED so the plan chat view refetches and
+    // picks up the new stakworkProjectId. Before this function was
+    // split, the project_id was returned synchronously in the chat
+    // POST response and the client used it directly to subscribe to
+    // project logs (see `data.workflow?.project_id` in
+    // PlanChatView's sendMessage). Now that the dispatch is
+    // backgrounded, the response has no project_id — the only path
+    // for the client to learn about it is a refetch, which this
+    // event triggers.
+    //
+    // Best-effort: if Pusher fails, the client will still eventually
+    // refresh on tab visibility change or natural re-mount, just
+    // with a longer delay.
+    try {
+      await pusherServer.trigger(
+        getFeatureChannelName(featureId),
+        PUSHER_EVENTS.FEATURE_UPDATED,
+        { featureId, timestamp: new Date().toISOString() },
+      );
+    } catch (error) {
+      console.error(
+        "[feature-chat] failed to broadcast FEATURE_UPDATED after dispatch:",
+        error,
+      );
+    }
+  } else {
+    // Dispatch never produced a projectId — Stakwork errored, hit
+    // a network failure, or returned a body-level failure. Revert
+    // the optimistic status flip so the feature is dispatchable
+    // again (mirrors the pre-split behaviour of "leave
+    // workflowStatus unchanged on dispatch failure" from the
+    // caller's perspective: the user-visible end state matches
+    // priorWorkflowStatus either way).
+    try {
+      await db.feature.update({
+        where: { id: featureId },
+        data: { workflowStatus: priorWorkflowStatus },
+      });
       await pusherServer.trigger(
         getFeatureChannelName(featureId),
         PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-        { taskId: featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },
+        { taskId: featureId, workflowStatus: priorWorkflowStatus },
+      );
+    } catch (error) {
+      console.error(
+        "[feature-chat] failed to revert optimistic workflow status:",
+        error,
       );
     }
-    // All other cases (network error, non-2xx, body-level failure, missing project_id):
-    // no-op — leave workflowStatus unchanged
   }
-
-  return { chatMessage, stakworkData };
 }

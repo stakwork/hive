@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 import { callStakworkAPI } from "@/services/task-workflow";
+import { __flushPendingPlanModeDispatches } from "@/services/roadmap/feature-chat";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -135,6 +136,23 @@ function createChatRequest(body: Record<string, unknown>) {
 
 const featureParams = Promise.resolve({ featureId: "feature-123" });
 
+/**
+ * Run the chat POST route and then wait for any backgrounded
+ * plan-mode dispatch to settle. The production route returns the
+ * HTTP response as soon as the user's ChatMessage is persisted —
+ * the Stakwork dispatch runs in the background — so tests that
+ * assert on `callStakworkAPI` mock calls need to flush before
+ * reading `.mock.calls`. See `__flushPendingPlanModeDispatches` in
+ * `src/services/roadmap/feature-chat.ts`.
+ */
+async function postAndFlush(
+  request: NextRequest,
+): Promise<Awaited<ReturnType<typeof POST>>> {
+  const response = await POST(request, { params: featureParams });
+  await __flushPendingPlanModeDispatches();
+  return response;
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("POST /api/features/[featureId]/chat — history merging", () => {
@@ -170,7 +188,7 @@ describe("POST /api/features/[featureId]/chat — history merging", () => {
       history: bodyHistory,
     });
 
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
     expect(response.status).toBe(201);
 
     expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
@@ -211,7 +229,7 @@ describe("POST /api/features/[featureId]/chat — history merging", () => {
 
     const request = createChatRequest({ message: "New message without history" });
 
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
     expect(response.status).toBe(201);
 
     expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
@@ -243,7 +261,7 @@ describe("POST /api/features/[featureId]/chat — isPrototype flag", () => {
       isPrototype: true,
     });
 
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
     expect(response.status).toBe(201);
 
     expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
@@ -270,7 +288,7 @@ describe("POST /api/features/[featureId]/chat — isPrototype flag", () => {
       isPrototype: true,
     });
 
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
     expect(response.status).toBe(201);
 
     expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
@@ -284,7 +302,7 @@ describe("POST /api/features/[featureId]/chat — isPrototype flag", () => {
 
     const request = createChatRequest({ message: "Standard plan message" });
 
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
     expect(response.status).toBe(201);
 
     expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
@@ -306,7 +324,7 @@ describe("POST /api/features/[featureId]/chat — model forwarding", () => {
   it("forwards model from request body to callStakworkAPI as taskModel", async () => {
     const request = createChatRequest({ message: "Plan this feature", model: "opus" });
 
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
     expect(response.status).toBe(201);
 
     expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
@@ -317,7 +335,7 @@ describe("POST /api/features/[featureId]/chat — model forwarding", () => {
   it("passes undefined taskModel to callStakworkAPI when model is not in request body", async () => {
     const request = createChatRequest({ message: "Plan this feature" });
 
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
     expect(response.status).toBe(201);
 
     expect(mockCallStakworkAPI).toHaveBeenCalledOnce();
@@ -330,7 +348,7 @@ describe("POST /api/features/[featureId]/chat — model forwarding", () => {
     async (model) => {
       const request = createChatRequest({ message: "Test", model });
 
-      const response = await POST(request, { params: featureParams });
+      const response = await postAndFlush(request);
       expect(response.status).toBe(201);
 
       const callArg = mockCallStakworkAPI.mock.calls[0][0];

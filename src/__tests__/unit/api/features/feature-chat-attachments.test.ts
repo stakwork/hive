@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus } from "@/lib/chat";
 import { callStakworkAPI } from "@/services/task-workflow";
+import { __flushPendingPlanModeDispatches } from "@/services/roadmap/feature-chat";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -145,6 +146,23 @@ function createChatRequest(body: Record<string, unknown>) {
 
 const featureParams = Promise.resolve({ featureId: "feature-123" });
 
+/**
+ * Run the chat POST route and then wait for any backgrounded
+ * plan-mode dispatch to settle. The production route returns the
+ * HTTP response as soon as the user's ChatMessage is persisted —
+ * the Stakwork dispatch (incl. attachment URL signing) runs in the
+ * background — so tests that assert on `callStakworkAPI` mock calls
+ * need to flush before reading `.mock.calls`. See
+ * `__flushPendingPlanModeDispatches` in `feature-chat.ts`.
+ */
+async function postAndFlush(
+  request: NextRequest,
+): Promise<Awaited<ReturnType<typeof POST>>> {
+  const response = await POST(request, { params: featureParams });
+  await __flushPendingPlanModeDispatches();
+  return response;
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("POST /api/features/[featureId]/chat — attachment handling", () => {
@@ -158,7 +176,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
 
   it("returns 400 when no message and no attachments are provided", async () => {
     const request = createChatRequest({});
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error).toBe("Message is required");
@@ -166,7 +184,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
 
   it("returns 400 when message is empty string and attachments is empty array", async () => {
     const request = createChatRequest({ message: "", attachments: [] });
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error).toBe("Message is required");
@@ -184,7 +202,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
     );
 
     const request = createChatRequest({ message: "", attachments: [attachment] });
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
 
     expect(response.status).toBe(201);
     const responseData = await response.json();
@@ -206,7 +224,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
     );
 
     const request = createChatRequest({ message: "Check this image", attachments: [attachment] });
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
 
     expect(response.status).toBe(201);
     const responseData = await response.json();
@@ -225,7 +243,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
     );
 
     const request = createChatRequest({ message: "See screenshot", attachments: [attachment] });
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
 
     expect(response.status).toBe(201);
     expect(db.chatMessage.create).toHaveBeenCalledWith(
@@ -261,7 +279,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
       message: "Here's the diagram",
       attachments: [attachment],
     });
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
 
     expect(response.status).toBe(201);
     const callArg = vi.mocked(callStakworkAPI).mock.calls[0][0];
@@ -281,7 +299,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
     );
 
     const request = createChatRequest({ message: "Two images", attachments });
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
 
     expect(response.status).toBe(201);
     const callArg = vi.mocked(callStakworkAPI).mock.calls[0][0];
@@ -295,7 +313,7 @@ describe("POST /api/features/[featureId]/chat — attachment handling", () => {
     vi.mocked(db.chatMessage.create).mockResolvedValue(makeChatMessage() as any);
 
     const request = createChatRequest({ message: "Text only message" });
-    const response = await POST(request, { params: featureParams });
+    const response = await postAndFlush(request);
 
     expect(response.status).toBe(201);
     const callArg = vi.mocked(callStakworkAPI).mock.calls[0][0];
