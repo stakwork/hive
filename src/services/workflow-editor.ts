@@ -6,7 +6,7 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
-import { WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus, TaskStatus } from "@prisma/client";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -214,11 +214,13 @@ export async function triggerWorkflowEditorRun(params: {
       workflowStatus: WorkflowStatus;
       workflowStartedAt: Date;
       haltRetryAttempted: boolean;
+      status: TaskStatus;
       stakworkProjectId?: number;
     } = {
       workflowStatus: WorkflowStatus.IN_PROGRESS,
       workflowStartedAt: new Date(),
       haltRetryAttempted: false,
+      status: TaskStatus.IN_PROGRESS,
     };
 
     if (result.data?.project_id) {
