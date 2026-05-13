@@ -928,6 +928,108 @@ describe("CompactTasksList", () => {
     });
   });
 
+  describe("Mark Complete action menu item", () => {
+    const workflowTask = { id: "wt-1", taskId: "task-wf", workflowId: "wf-1", workflowName: "My Workflow", workflowRefId: "ref-1" };
+
+    test("shows 'Mark Complete' for workflow task with status TODO", () => {
+      const task = createMockTask({ id: "task-wf-todo", status: "TODO", workflowTask });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("action-mark-complete")).toBeInTheDocument();
+    });
+
+    test("shows 'Mark Complete' for workflow task with status IN_PROGRESS", () => {
+      const task = createMockTask({ id: "task-wf-ip", status: "IN_PROGRESS", workflowTask });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("action-mark-complete")).toBeInTheDocument();
+    });
+
+    test("does NOT show 'Mark Complete' for workflow task with status DONE", () => {
+      const task = createMockTask({ id: "task-wf-done", status: "DONE", workflowTask });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("action-mark-complete")).not.toBeInTheDocument();
+    });
+
+    test("does NOT show 'Mark Complete' for non-workflow task", () => {
+      const task = createMockTask({ id: "task-non-wf", status: "TODO", workflowTask: null });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("action-mark-complete")).not.toBeInTheDocument();
+    });
+
+    test("calls PATCH /api/tasks/:id with { status: 'DONE' } on click", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
+        if (typeof url === "string" && url.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+      });
+      const task = createMockTask({ id: "task-wf-click", status: "TODO", workflowTask });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      screen.getByTestId("action-mark-complete").click();
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/tasks/task-wf-click",
+          expect.objectContaining({
+            method: "PATCH",
+            body: JSON.stringify({ status: "DONE" }),
+          })
+        );
+      });
+
+      fetchSpy.mockRestore();
+    });
+  });
+
   describe("Repo SelectTrigger truncation", () => {
     test("SelectTrigger inner div has overflow-hidden to prevent long repo names wrapping", () => {
       const task = createMockTask({

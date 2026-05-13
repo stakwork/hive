@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, Copy, Sparkles } from "lucide-react";
+import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, Copy, Sparkles, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
@@ -309,6 +309,21 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
     }
   };
 
+  const handleMarkComplete = async (taskId: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "DONE" }),
+      });
+      if (!response.ok) throw new Error("Failed to mark complete");
+      // Pusher real-time + updateFeatureStatusFromTasks handle visual update
+    } catch (error) {
+      console.error("Failed to mark complete:", error);
+      toast.error("Failed to mark task as complete");
+    }
+  };
+
   const handleStartTask = async (taskId: string) => {
     if (startingTaskId) return;
     setStartingTaskId(taskId);
@@ -608,8 +623,18 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
             });
           }
 
-          const isTerminalWorkflow = ['ERROR', 'FAILED', 'HALTED'].includes(task.workflowStatus ?? '');
           const isWorkflowTask = !!task.workflowTask;
+
+          if (isWorkflowTask && (task.status === "TODO" || task.status === "IN_PROGRESS")) {
+            actionMenuItems.push({
+              label: "Mark Complete",
+              icon: CheckCircle,
+              variant: "default" as const,
+              onClick: () => handleMarkComplete(task.id),
+            });
+          }
+
+          const isTerminalWorkflow = ['ERROR', 'FAILED', 'HALTED'].includes(task.workflowStatus ?? '');
           const isRetrying = retryingTaskId === task.id;
 
           return (
