@@ -23,6 +23,14 @@ import {
   type WorkspaceAuth,
   type McpToolResult,
 } from "@/lib/mcp/mcpTools";
+import {
+  registerOrgTools,
+  type OrgMcpAuthExtra,
+} from "@/lib/mcp/orgMcpTools";
+import {
+  isOrgPermission,
+  type OrgPermission,
+} from "@/lib/mcp/orgPermissions";
 
 // Available tools registry
 const AVAILABLE_TOOLS = [
@@ -143,12 +151,32 @@ async function getWorkspaceAuth(
   };
 }
 
-// Create a fresh McpServer with tools registered
-function createServer(): McpServer {
+// Create a fresh McpServer with tools registered.
+//
+// `scope` selects which tool family is exposed:
+//   - "workspace" (default): all the existing workspace-scoped tools
+//     keyed off a single workspace + swarm. Used by long-lived
+//     hive_* API keys and the legacy workspace JWTs minted by
+//     /api/livekit-token.
+//   - "org": exposes only `org_agent`, the single callback tool that
+//     wraps `runCanvasAgent`. Used by org-JWTs minted from
+//     /api/mcp/org-token for plan-mode swarm callbacks and (future)
+//     voice agents.
+//
+// Mutually exclusive on purpose — an org-scope token does not get
+// the workspace tool surface, and a workspace-scope token does not
+// get `org_agent`. Crossing the scopes would silently widen the
+// authorization granted at mint time.
+function createServer(scope: "workspace" | "org" = "workspace"): McpServer {
   const server = new McpServer(
     { name: "hive", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
+
+  if (scope === "org") {
+    registerOrgTools(server);
+    return server;
+  }
 
   server.registerTool(
     "list_concepts",
@@ -408,7 +436,15 @@ function createServer(): McpServer {
   return server;
 }
 
-// Verify a short-lived JWT (signed by generate-link) and resolve workspace
+// Verify a short-lived JWT and resolve into an AuthInfo. Dispatches
+// on the `scope` claim:
+//   - "org"        → org-scope tokens minted by /api/mcp/org-token,
+//                    verified by `verifyOrgJwt`. Carries org-wide
+//                    permissions + org membership re-check.
+//   - "workspace"  → legacy workspace tokens minted by /api/livekit-
+//     or absent       token. Carries a workspace slug + per-tool
+//                    swarm credentials. Default for any token without
+//                    a `scope` claim (back-compat).
 async function verifyJwt(
   token: string,
   url: URL,
@@ -416,37 +452,48 @@ async function verifyJwt(
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret) return undefined;
 
+  let payload: Record<string, unknown>;
   try {
-    const payload = jwt.verify(token, jwtSecret) as {
-      slug?: string;
-      userId?: string;
-    };
-    if (!payload.slug) return undefined;
+    payload = jwt.verify(token, jwtSecret) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
 
+  // Org-scope branch — no workspace lookup, no swarm resolution.
+  if (payload.scope === "org") {
+    return verifyOrgJwt(token, payload);
+  }
+
+  // Workspace-scope branch (default). The legacy token shape carries
+  // `slug` + `userId`; tokens without `slug` are rejected.
+  const wsPayload = payload as { slug?: string; userId?: string };
+  if (!wsPayload.slug) return undefined;
+
+  try {
     const workspace = await db.workspace.findFirst({
-      where: { slug: payload.slug, deleted: false },
+      where: { slug: wsPayload.slug, deleted: false },
       select: { id: true, slug: true, name: true, ownerId: true },
     });
     if (!workspace) {
-      console.log("[MCP] JWT workspace not found:", payload.slug);
+      console.log("[MCP] JWT workspace not found:", wsPayload.slug);
       return undefined;
     }
 
     // IDOR hardening: if the JWT carries a userId (minted by
     // /api/livekit-token), re-validate that the user is still a member of
     // the workspace at use time. Legacy JWTs without userId are rejected.
-    if (!payload.userId) {
+    if (!wsPayload.userId) {
       console.log("[MCP] JWT missing userId claim — rejecting legacy token");
       return undefined;
     }
 
-    const isOwner = workspace.ownerId === payload.userId;
+    const isOwner = workspace.ownerId === wsPayload.userId;
     if (!isOwner) {
       const membership = await db.workspaceMember.findUnique({
         where: {
           workspaceId_userId: {
             workspaceId: workspace.id,
-            userId: payload.userId,
+            userId: wsPayload.userId,
           },
         },
         select: { role: true },
@@ -491,8 +538,107 @@ async function verifyJwt(
       } as McpAuthExtra,
     };
   } catch {
+    // Preserves the original function's behavior: any DB error here
+    // falls through to a 401. Refactoring to surface a 500 would be a
+    // policy change worth its own discussion.
     return undefined;
   }
+}
+
+// Verify a short-lived org-scope JWT (signed by /api/mcp/org-token).
+//
+// Shape (see also `orgMcpTools.ts`):
+//   {
+//     scope: "org",
+//     orgId: string,
+//     userId: string,
+//     permissions: ("read" | "write")[],
+//     purpose: string,
+//     iat, exp, jti
+//   }
+//
+// Re-validates org membership at use time (mirrors workspace-JWT IDOR
+// hardening): a user removed from every workspace in the org after
+// the token was minted should not be able to drive the org agent.
+async function verifyOrgJwt(
+  token: string,
+  payload: Record<string, unknown>,
+): Promise<AuthInfo | undefined> {
+  const orgId = typeof payload.orgId === "string" ? payload.orgId : undefined;
+  const userId =
+    typeof payload.userId === "string" ? payload.userId : undefined;
+  const purpose =
+    typeof payload.purpose === "string" ? payload.purpose : "unknown";
+  const jti = typeof payload.jti === "string" ? payload.jti : undefined;
+  const rawPermissions = Array.isArray(payload.permissions)
+    ? payload.permissions
+    : [];
+
+  if (!orgId || !userId) {
+    console.log("[MCP] Org JWT missing orgId or userId");
+    return undefined;
+  }
+
+  // Normalize + filter to known permissions. Unknown values are
+  // silently dropped rather than failing the token outright, so
+  // additive future permissions don't break older verifiers in
+  // mixed-version deployments.
+  const permissions: OrgPermission[] = rawPermissions.filter(isOrgPermission);
+  if (!permissions.includes("read")) {
+    console.log("[MCP] Org JWT missing required 'read' permission");
+    return undefined;
+  }
+
+  // Re-validate org membership: user must own or be an active member
+  // of at least one workspace under this org. Same predicate as
+  // `resolveAuthorizedOrgId` but inlined to keep the org-id known
+  // (we don't need to re-resolve it from a githubLogin).
+  //
+  // DB errors fall through to 401 (return undefined) to match the
+  // workspace-JWT branch's behavior — verification is best-effort and
+  // a transient DB blip should not get distinguished from "not a
+  // member" to the client.
+  let membership: { id: string } | null;
+  try {
+    membership = await db.workspace.findFirst({
+      where: {
+        sourceControlOrgId: orgId,
+        deleted: false,
+        OR: [
+          { ownerId: userId },
+          { members: { some: { userId, leftAt: null } } },
+        ],
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    console.error("[MCP] Org JWT membership check failed:", err);
+    return undefined;
+  }
+  if (!membership) {
+    console.log(
+      `[MCP] Org JWT user ${userId} no longer has membership in org ${orgId}`,
+    );
+    return undefined;
+  }
+
+  console.log(
+    `[MCP] Org JWT verified: org=${orgId} user=${userId} perms=${permissions.join(",")} purpose=${purpose}`,
+  );
+
+  return {
+    token,
+    clientId: orgId,
+    scopes: [],
+    extra: {
+      scope: "org" as const,
+      orgId,
+      userId,
+      permissions,
+      purpose,
+      jti,
+    } satisfies OrgMcpAuthExtra,
+  };
 }
 
 async function verifyToken(req: Request): Promise<AuthInfo | undefined> {
@@ -573,8 +719,17 @@ export async function handleMcpRequest(req: Request): Promise<Response> {
   const authInfo = await verifyToken(req);
   if (!authInfo) return UNAUTHORIZED();
 
+  // Pick the tool family based on the token's scope. Org-scope tokens
+  // get a server with just `org_agent`; workspace-scope tokens get the
+  // full existing tool surface. The auth context is mutually
+  // exclusive — see `createServer` for the rationale.
+  const scope =
+    (authInfo.extra as { scope?: string } | undefined)?.scope === "org"
+      ? "org"
+      : "workspace";
+
   // Fresh server + stateless transport per request
-  const server = createServer();
+  const server = createServer(scope);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // stateless
   });

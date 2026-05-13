@@ -34,9 +34,44 @@ You have access to tools called list_concepts and learn_concept. list_concepts f
 When you are done print "[END_OF_ANSWER]"`;
 }
 
-export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], repoUrls: string[], clueMsgs: ModelMessage[] | null, description?: string, members?: WorkspaceMemberInfo[]): ModelMessage[] {
+/**
+ * Org-aware overlay for the single-workspace quick-ask prompt.
+ *
+ * When the caller is an org-scope agent (the org SidebarChat for an
+ * org that happens to have one workspace, or the org-MCP `org_agent`
+ * tool for the same) we append the canvas + connection prompt
+ * suffixes so the agent knows about — and how to use — the
+ * canvas/initiative/research/connection tool families merged in by
+ * `runCanvasAgent`'s single-workspace branch. Without this overlay
+ * the agent would have the tools available but no guidance on when
+ * to reach for them.
+ *
+ * Mirrors the multi-workspace branch's `getMultiWorkspacePrefixMessages`,
+ * which appends the same suffixes whenever `orgId` is set.
+ */
+export interface SingleWorkspaceOrgContext {
+  orgId: string;
+  scope?: CanvasScopeHint;
+}
+
+export function getQuickAskPrefixMessages(
+  concepts: Record<string, unknown>[],
+  repoUrls: string[],
+  clueMsgs: ModelMessage[] | null,
+  description?: string,
+  members?: WorkspaceMemberInfo[],
+  orgContext?: SingleWorkspaceOrgContext,
+): ModelMessage[] {
+  const baseSystem = getQuickAskSystemPrompt(repoUrls, description, members);
+  const systemContent = orgContext
+    ? baseSystem +
+      getConnectionPromptSuffix() +
+      getCanvasPromptSuffix() +
+      getCanvasScopeHint(orgContext.scope)
+    : baseSystem;
+
   return [
-    { role: "system", content: getQuickAskSystemPrompt(repoUrls, description, members) },
+    { role: "system", content: systemContent },
     {
       role: "assistant",
       content: [
