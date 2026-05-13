@@ -10,6 +10,7 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getApiKeyForModel, getDefaultModel } from "@/lib/ai/models";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { isDevelopmentMode } from "@/lib/runtime";
+import type { McpServerConfig } from "@/services/mcpServers";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -616,7 +617,7 @@ export async function callStakworkAPI(params: {
    * short-lived JWT. Future writers (voice, etc.) build their own
    * entries the same way. Absent when no callback is configured.
    */
-  mcpServers?: import("@/services/mcpServers").McpServer[];
+  mcpServers?: McpServerConfig[];
 }) {
   const {
     taskId,

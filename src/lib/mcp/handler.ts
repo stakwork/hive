@@ -462,38 +462,36 @@ async function verifyJwt(
     return verifyOrgJwt(token, payload);
   }
 
-  // Workspace-scope branch (default). Re-wrap the verified payload in
-  // the legacy shape the rest of this function expects.
-  const workspacePayload = payload as { slug?: string; userId?: string };
-  if (!workspacePayload.slug) return undefined;
+  // Workspace-scope branch (default). The legacy token shape carries
+  // `slug` + `userId`; tokens without `slug` are rejected.
+  const wsPayload = payload as { slug?: string; userId?: string };
+  if (!wsPayload.slug) return undefined;
 
   try {
-    const payload = workspacePayload;
-
     const workspace = await db.workspace.findFirst({
-      where: { slug: payload.slug, deleted: false },
+      where: { slug: wsPayload.slug, deleted: false },
       select: { id: true, slug: true, name: true, ownerId: true },
     });
     if (!workspace) {
-      console.log("[MCP] JWT workspace not found:", payload.slug);
+      console.log("[MCP] JWT workspace not found:", wsPayload.slug);
       return undefined;
     }
 
     // IDOR hardening: if the JWT carries a userId (minted by
     // /api/livekit-token), re-validate that the user is still a member of
     // the workspace at use time. Legacy JWTs without userId are rejected.
-    if (!payload.userId) {
+    if (!wsPayload.userId) {
       console.log("[MCP] JWT missing userId claim — rejecting legacy token");
       return undefined;
     }
 
-    const isOwner = workspace.ownerId === payload.userId;
+    const isOwner = workspace.ownerId === wsPayload.userId;
     if (!isOwner) {
       const membership = await db.workspaceMember.findUnique({
         where: {
           workspaceId_userId: {
             workspaceId: workspace.id,
-            userId: payload.userId,
+            userId: wsPayload.userId,
           },
         },
         select: { role: true },
@@ -538,6 +536,9 @@ async function verifyJwt(
       } as McpAuthExtra,
     };
   } catch {
+    // Preserves the original function's behavior: any DB error here
+    // falls through to a 401. Refactoring to surface a 500 would be a
+    // policy change worth its own discussion.
     return undefined;
   }
 }
@@ -590,17 +591,28 @@ async function verifyOrgJwt(
   // of at least one workspace under this org. Same predicate as
   // `resolveAuthorizedOrgId` but inlined to keep the org-id known
   // (we don't need to re-resolve it from a githubLogin).
-  const membership = await db.workspace.findFirst({
-    where: {
-      sourceControlOrgId: orgId,
-      deleted: false,
-      OR: [
-        { ownerId: userId },
-        { members: { some: { userId, leftAt: null } } },
-      ],
-    },
-    select: { id: true },
-  });
+  //
+  // DB errors fall through to 401 (return undefined) to match the
+  // workspace-JWT branch's behavior — verification is best-effort and
+  // a transient DB blip should not get distinguished from "not a
+  // member" to the client.
+  let membership: { id: string } | null;
+  try {
+    membership = await db.workspace.findFirst({
+      where: {
+        sourceControlOrgId: orgId,
+        deleted: false,
+        OR: [
+          { ownerId: userId },
+          { members: { some: { userId, leftAt: null } } },
+        ],
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    console.error("[MCP] Org JWT membership check failed:", err);
+    return undefined;
+  }
   if (!membership) {
     console.log(
       `[MCP] Org JWT user ${userId} no longer has membership in org ${orgId}`,

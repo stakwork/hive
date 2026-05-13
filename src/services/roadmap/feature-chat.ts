@@ -20,7 +20,7 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { joinRepoUrls } from "@/lib/helpers/repository";
 import { scoutOrgContext } from "@/services/roadmap/orgContextScout";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
-import type { McpServer } from "@/services/mcpServers";
+import type { McpServerConfig } from "@/services/mcpServers";
 
 /**
  * Fetch chat history for a feature, excluding a specific message.
@@ -423,37 +423,49 @@ export async function sendFeatureChatMessage({
     // membership lost, etc.) leaves `orgMcpServers` undefined and the
     // swarm runs without the callback — equivalent to the
     // pre-callback behavior.
-    let orgMcpServers: McpServer[] | undefined;
+    let orgMcpServers: McpServerConfig[] | undefined;
     const orgIdForCallback = feature.workspace.sourceControlOrgId;
     if (orgIdForCallback) {
-      const mintOutcome = await mintOrgToken({
-        orgId: orgIdForCallback,
-        userId,
-        // Plan-mode dispatches a read-only token. The plan agent on
-        // the swarm can ask `org_agent` questions but cannot trigger
-        // canvas writes or propose_* cards via this surface. Voice
-        // and other writers will mint their own tokens with their
-        // own permissions when those flows land.
-        requestedPermissions: ["read"],
-        purpose: `plan-mode:${featureId}`,
-      });
-      if (mintOutcome.ok) {
-        orgMcpServers = [
-          {
-            name: "hive-org",
-            url: process.env.HIVE_MCP_URL || "https://hive.sphinx.chat/mcp",
-            token: mintOutcome.token,
-            toolFilter: ["org_agent"],
-          },
-        ];
-        console.log(
-          `[feature-chat] minted org-MCP token for ${featureId}: ` +
-            `org=${orgIdForCallback} perms=${mintOutcome.granted.join(",")} jti=${mintOutcome.jti}`,
-        );
-      } else {
-        console.warn(
-          `[feature-chat] mintOrgToken failed for ${featureId}: ${mintOutcome.error} ` +
-            `— swarm will run without org callback`,
+      // Mint is best-effort: a transient DB error inside the mint
+      // helper would otherwise abort the entire plan-mode dispatch,
+      // which is too aggressive. The callback is a nice-to-have; if
+      // we can't issue a token, the swarm just runs without it.
+      try {
+        const mintOutcome = await mintOrgToken({
+          orgId: orgIdForCallback,
+          userId,
+          // Plan-mode dispatches a read-only token. The plan agent on
+          // the swarm can ask `org_agent` questions but cannot trigger
+          // canvas writes or propose_* cards via this surface. Voice
+          // and other writers will mint their own tokens with their
+          // own permissions when those flows land.
+          requestedPermissions: ["read"],
+          purpose: `plan-mode:${featureId}`,
+        });
+        if (mintOutcome.ok) {
+          orgMcpServers = [
+            {
+              name: "hive-org",
+              url: process.env.HIVE_MCP_URL || "https://hive.sphinx.chat/mcp",
+              token: mintOutcome.token,
+              toolFilter: ["org_agent"],
+            },
+          ];
+          console.log(
+            `[feature-chat] minted org-MCP token for ${featureId}: ` +
+              `org=${orgIdForCallback} perms=${mintOutcome.granted.join(",")} jti=${mintOutcome.jti}`,
+          );
+        } else {
+          console.warn(
+            `[feature-chat] mintOrgToken failed for ${featureId}: ${mintOutcome.error} ` +
+              `— swarm will run without org callback`,
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[feature-chat] mintOrgToken threw for ${featureId} ` +
+            `— swarm will run without org callback:`,
+          error,
         );
       }
     }

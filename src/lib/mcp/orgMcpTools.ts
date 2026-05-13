@@ -221,7 +221,10 @@ export function registerOrgTools(server: McpServer): void {
 
       // Optional scope hint. The org canvas agent's prompt builder
       // interprets `currentCanvasRef` to seed the agent's starting
-      // canvas — we forward the caller's hint verbatim.
+      // canvas — we forward the caller's hint verbatim. Works
+      // regardless of how many workspaces the org has: `runCanvasAgent`
+      // merges the org tool families into both the single- and
+      // multi-workspace branches when `orgId` is set.
       const scopeHint = args.scope
         ? { currentCanvasRef: args.scope }
         : undefined;

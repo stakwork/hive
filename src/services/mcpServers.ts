@@ -1,5 +1,5 @@
 /**
- * Wire-format types for MCP server config passed from Hive to the
+ * Wire-format type for MCP server config passed from Hive to the
  * swarm-side `repo/agent`.
  *
  * `repo/agent` accepts an array of these on its workflow vars (as
@@ -8,12 +8,16 @@
  * `McpServer` interface in repo/agent.
  *
  * Hive callers (plan-mode dispatch, future voice agent, etc.) build
- * `McpServer[]` arrays and forward them verbatim through
+ * `McpServerConfig[]` arrays and forward them verbatim through
  * `callStakworkAPI({ mcpServers })`. The stakwork workflow does no
  * reshaping — it lands on `vars.mcpServers` and repo/agent picks it
  * up directly.
+ *
+ * Named `McpServerConfig` (not `McpServer`) to avoid colliding with
+ * `@modelcontextprotocol/sdk`'s `McpServer` class, which is the
+ * server-side runtime used by `src/lib/mcp/handler.ts`.
  */
-export interface McpServer {
+export interface McpServerConfig {
   /** Display name used by repo/agent for logging/UX. */
   name: string;
   /** Fully-qualified MCP endpoint URL. */

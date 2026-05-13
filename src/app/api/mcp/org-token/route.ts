@@ -17,7 +17,8 @@
  *   - Caller must be an authenticated NextAuth user (middleware-
  *     enforced; this route is in the protected default).
  *   - Caller must be a member of the requested org (any active
- *     workspace under it). Otherwise 403.
+ *     workspace under it). Otherwise 404 (unified to avoid leaking
+ *     org existence to non-members).
  *   - `write` permission is only granted to OWNER/ADMIN/PM members;
  *     others get a read-only token regardless of what they asked
  *     for. The response surfaces the actually-granted set so the
@@ -103,6 +104,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { error: "Invalid permission value" },
           { status: 400 },
+        );
+      default:
+        // Exhaustiveness fallback — if `MintOrgTokenFailure` grows a
+        // new variant and we forget to handle it here, this branch
+        // catches it at runtime. (A compile-time `never` guard would
+        // be stricter, but cleanly typing it tripped over the
+        // discriminated-union narrowing of `outcome.error`.)
+        return NextResponse.json(
+          { error: "Unhandled mint error" },
+          { status: 500 },
         );
     }
   }

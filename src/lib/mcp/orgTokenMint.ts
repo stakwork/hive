@@ -42,6 +42,18 @@ import {
  *
  * Owners are handled separately (they don't have a WorkspaceMember
  * row — their authority comes from `Workspace.ownerId`).
+ *
+ * NOTE on the PM choice: this is INTENTIONALLY broader than the
+ * existing `resolveAuthorizedOrgId` helper (which restricts admin
+ * actions to ADMIN+owner). PMs are included here because the org
+ * MCP agent's `write` surface — propose_* cards plus direct canvas/
+ * research/initiative mutations — is the same surface PMs already
+ * have through the org SidebarChat UI. Forbidding PMs from minting
+ * a `write` org-token would create a weird asymmetry where they can
+ * drive the writes in the browser but not via voice/automation.
+ *
+ * If you ever want to tighten this back to ADMIN-only, also revisit
+ * what the org SidebarChat does for PMs.
  */
 const WRITE_AUTHORIZING_ROLES: ReadonlySet<WorkspaceRole> = new Set([
   WorkspaceRole.ADMIN,
