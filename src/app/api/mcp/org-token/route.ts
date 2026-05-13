@@ -32,7 +32,7 @@ import {
   mintOrgToken,
   DEFAULT_ORG_TOKEN_TTL_SECONDS,
 } from "@/lib/mcp/orgTokenMint";
-import { ORG_PERMISSIONS } from "@/lib/mcp/orgMcpTools";
+import { ORG_PERMISSIONS } from "@/lib/mcp/orgPermissions";
 
 // Hard upper bound on the requested TTL. The default helper allows
 // `ttlSeconds` overrides for callers like batch jobs that legitimately

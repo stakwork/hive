@@ -25,10 +25,12 @@ import {
 } from "@/lib/mcp/mcpTools";
 import {
   registerOrgTools,
-  isOrgPermission,
   type OrgMcpAuthExtra,
-  type OrgPermission,
 } from "@/lib/mcp/orgMcpTools";
+import {
+  isOrgPermission,
+  type OrgPermission,
+} from "@/lib/mcp/orgPermissions";
 
 // Available tools registry
 const AVAILABLE_TOOLS = [

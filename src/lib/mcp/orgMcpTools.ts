@@ -45,27 +45,23 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
+import type { OrgPermission } from "@/lib/mcp/orgPermissions";
 
 // ---------------------------------------------------------------------------
 // Permission model
 // ---------------------------------------------------------------------------
 
-/**
- * Valid permission values. `read` is the baseline (every org token
- * holds it). `write` enables direct mutations inside `runCanvasAgent`
- * (update_canvas, save_research, propose_*, etc).
- *
- * Kept as a flat array so additive future values (`admin`, `propose`,
- * etc) don't break existing tokens — absent values default to "not
- * granted".
- */
-export type OrgPermission = "read" | "write";
-
-export const ORG_PERMISSIONS: readonly OrgPermission[] = ["read", "write"];
-
-export function isOrgPermission(v: unknown): v is OrgPermission {
-  return typeof v === "string" && (ORG_PERMISSIONS as readonly string[]).includes(v);
-}
+// `OrgPermission`, `ORG_PERMISSIONS`, and `isOrgPermission` live in
+// `orgPermissions.ts` (zero-import module). Importers that only need
+// the permission vocabulary should pull from there directly — not via
+// this module — so they don't drag in `runCanvasAgent`'s transitive
+// graph. Re-exported here for convenience of callers that already
+// import other things from this module.
+export type { OrgPermission } from "@/lib/mcp/orgPermissions";
+export {
+  ORG_PERMISSIONS,
+  isOrgPermission,
+} from "@/lib/mcp/orgPermissions";
 
 /**
  * Auth context carried on the MCP `AuthInfo.extra` for org-scope

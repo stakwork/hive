@@ -30,10 +30,15 @@ import jwt from "jsonwebtoken";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { WorkspaceRole } from "@prisma/client";
+// Import from the dep-free `orgPermissions` module rather than
+// `orgMcpTools` so this file does NOT pull `runCanvasAgent` (and its
+// transitive `services/workspace.ts` chain) into the import graph at
+// module load. That chain trips up unit tests that mock `@/config/env`
+// — see the note at the top of `orgPermissions.ts`.
 import {
   ORG_PERMISSIONS,
   type OrgPermission,
-} from "@/lib/mcp/orgMcpTools";
+} from "@/lib/mcp/orgPermissions";
 
 /**
  * Roles that authorize minting a `write` permission. PMs and above
