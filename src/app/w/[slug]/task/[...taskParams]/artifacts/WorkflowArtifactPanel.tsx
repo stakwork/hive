@@ -16,6 +16,7 @@ import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
 import { ProjectInfoCard } from "@/components/ProjectInfoCard";
 import { StakworkRunDropdown } from "@/components/StakworkRunDropdown";
 import { computeWorkflowDiff } from "@/lib/utils/workflow-diff";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
@@ -47,6 +48,42 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     setIsModalOpen(false);
   }, [clickedStep, onStepSelect]);
 
+  // Group artifacts by workflowId for multi-workflow support
+  const workflowGroups = useMemo(() => {
+    const map = new Map<string, { workflowId: number | string; workflowName: string; artifacts: Artifact[] }>();
+    for (const artifact of artifacts) {
+      const content = artifact.content as WorkflowContent;
+      if (!content?.workflowId) continue;
+      const key = String(content.workflowId);
+      if (!map.has(key)) {
+        map.set(key, {
+          workflowId: content.workflowId,
+          workflowName: content.workflowName || `Workflow ${key}`,
+          artifacts: [],
+        });
+      }
+      map.get(key)!.artifacts.push(artifact);
+    }
+    return Array.from(map.values());
+  }, [artifacts]);
+
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(
+    () => String(workflowGroups[0]?.workflowId ?? '')
+  );
+
+  // Reset to first group when workflowGroups changes (new artifacts arrive)
+  useEffect(() => {
+    if (workflowGroups.length > 0) {
+      setSelectedWorkflowId(String(workflowGroups[0].workflowId));
+    }
+  }, [workflowGroups]);
+
+  // Scope artifacts to the selected workflow group
+  const activeArtifacts = useMemo(() => {
+    if (workflowGroups.length <= 1) return artifacts; // backward compat
+    return workflowGroups.find(g => String(g.workflowId) === selectedWorkflowId)?.artifacts ?? artifacts;
+  }, [workflowGroups, selectedWorkflowId, artifacts]);
+
   if (artifacts.length === 0) {
     return (
       <div className="flex items-center justify-center h-full p-8">
@@ -73,7 +110,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     let workflowVersionId: string | number | undefined;
 
     // Iterate oldest to newest - later values override earlier ones
-    for (const artifact of artifacts) {
+    for (const artifact of activeArtifacts) {
       const content = artifact.content as WorkflowContent;
       if (content?.workflowJson) workflowJson = content.workflowJson;
       if (content?.originalWorkflowJson) originalWorkflowJson = content.originalWorkflowJson;
@@ -97,7 +134,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       debuggerProjectId,
       workflowVersionId,
     };
-  }, [artifacts]);
+  }, [activeArtifacts]);
 
   const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
 
@@ -117,6 +154,13 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     }
     return computeWorkflowDiff(originalWorkflowJson ?? null, workflowJson ?? null);
   }, [hasChanges, originalWorkflowJson, workflowJson]);
+
+  // Tab fallback: if Changes tab is active but selected workflow has no diff, reset to editor
+  useEffect(() => {
+    if (activeDisplayTab === 'changes' && !originalWorkflowJson) {
+      setActiveDisplayTab('editor');
+    }
+  }, [selectedWorkflowId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Parse workflowJson if present (direct mode from graph)
   const parsedWorkflowData = useMemo(() => {
@@ -210,6 +254,22 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
               hiveUrl={`/w/${slug}/projects?id=${projectId}`}
               variant="button"
             />
+          </div>
+        )}
+        {workflowGroups.length > 1 && (
+          <div className="px-2 pt-2 pb-1 flex-shrink-0">
+            <Select value={selectedWorkflowId} onValueChange={setSelectedWorkflowId}>
+              <SelectTrigger className="w-full h-8 text-sm">
+                <SelectValue placeholder="Select workflow" />
+              </SelectTrigger>
+              <SelectContent>
+                {workflowGroups.map((g) => (
+                  <SelectItem key={String(g.workflowId)} value={String(g.workflowId)}>
+                    {g.workflowName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
         <Tabs
