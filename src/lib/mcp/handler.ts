@@ -9,6 +9,8 @@ import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import {
   mcpListConcepts,
   mcpLearnConcept,
+  mcpStakgraphSearch,
+  mcpStakgraphAsk,
   mcpListFeatures,
   mcpReadFeature,
   mcpCreateFeature,
@@ -25,9 +27,12 @@ import {
 } from "@/lib/mcp/mcpTools";
 
 // Available tools registry
+  // TODO: add "stakgraph_map", "stakgraph_nodes", "stakgraph_code"
 const AVAILABLE_TOOLS = [
   "list_concepts",
   "learn_concept",
+  "stakgraph_search",
+  "stakgraph_ask",
   "list_features",
   "read_feature",
   "create_feature",
@@ -145,10 +150,7 @@ async function getWorkspaceAuth(
 
 // Create a fresh McpServer with tools registered
 function createServer(): McpServer {
-  const server = new McpServer(
-    { name: "hive", version: "1.0.0" },
-    { capabilities: { tools: {} } },
-  );
+  const server = new McpServer({ name: "hive", version: "1.0.0" }, { capabilities: { tools: {} } });
 
   server.registerTool(
     "list_concepts",
@@ -173,9 +175,7 @@ function createServer(): McpServer {
       description:
         "Fetch documentation for a specific concept by ID. Returns the documentation content for the concept.",
       inputSchema: {
-        conceptId: z
-          .string()
-          .describe("The ID of the concept to retrieve documentation for"),
+        conceptId: z.string().describe("The ID of the concept to retrieve documentation for"),
       },
     },
     async ({ conceptId }: { conceptId: string }, extra) => {
@@ -183,6 +183,75 @@ function createServer(): McpServer {
       const result = getCredentialsFromAuth(authExtra, "learn_concept");
       if (result.error) return result.error;
       return mcpLearnConcept(result.credentials, conceptId);
+    },
+  );
+
+  // ----- Stakgraph code-graph tools -----
+
+  server.registerTool(
+    "stakgraph_search",
+    {
+      title: "Search Codebase",
+      description:
+        "Search the code graph by keyword (fulltext), semantic meaning (vector), or both combined (hybrid). Use hybrid for best recall. Returns ranked code nodes such as functions, classes, and endpoints.",
+      inputSchema: {
+        query: z.string().describe("Search query — keywords or natural language"),
+        method: z
+          .enum(["fulltext", "vector", "hybrid"])
+          .optional()
+          .describe(
+            "Search strategy: fulltext (BM25 keyword), vector (semantic similarity), or hybrid (both combined via RRF). Defaults to hybrid.",
+          )
+          .default("hybrid"),
+        node_types: z
+          .array(z.string())
+          .optional()
+          .describe('Filter results to specific node types, e.g. ["Function", "Class", "Endpoint"]'),
+        limit: z.number().optional().describe("Maximum number of results to return. Defaults to 25."),
+        language: z.string().optional().describe('Filter by programming language, e.g. "typescript" or "python"'),
+        concise: z.boolean().optional().describe("If true, return only node name and filename without code bodies."),
+      },
+    },
+    async (
+      {
+        query,
+        method,
+        node_types,
+        limit,
+        language,
+        concise,
+      }: {
+        query: string;
+        method?: "fulltext" | "vector" | "hybrid";
+        node_types?: string[];
+        limit?: number;
+        language?: string;
+        concise?: boolean;
+      },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = getCredentialsFromAuth(authExtra, "stakgraph_search");
+      if (result.error) return result.error;
+      return mcpStakgraphSearch(result.credentials, { query, method, node_types, limit, language, concise });
+    },
+  );
+
+  server.registerTool(
+    "stakgraph_ask",
+    {
+      title: "Ask Codebase",
+      description:
+        'Ask a natural-language question about the codebase. Runs an AI pipeline that decomposes the question, explores the code graph with hybrid search, and synthesises a coherent answer. Best for multi-hop understanding queries like "How does authentication work?"',
+      inputSchema: {
+        question: z.string().describe("The question to ask about the codebase"),
+      },
+    },
+    async ({ question }: { question: string }, extra) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = getCredentialsFromAuth(authExtra, "stakgraph_ask");
+      if (result.error) return result.error;
+      return mcpStakgraphAsk(result.credentials, { question });
     },
   );
 
@@ -211,9 +280,7 @@ function createServer(): McpServer {
       description:
         "Read a feature's plan details and full chat message history. Also indicates whether the planning workflow is currently running.",
       inputSchema: {
-        featureId: z
-          .string()
-          .describe("The ID of the feature to read"),
+        featureId: z.string().describe("The ID of the feature to read"),
       },
     },
     async ({ featureId }: { featureId: string }, extra) => {
@@ -228,21 +295,15 @@ function createServer(): McpServer {
     "create_feature",
     {
       title: "Create Feature",
-      description:
-        "Create a new feature in the workspace with a brief description and optional requirements.",
+      description: "Create a new feature in the workspace with a brief description and optional requirements.",
       inputSchema: {
         title: z.string().describe("The title of the feature"),
         brief: z.string().describe("A brief description of the feature"),
-        requirements: z
-          .string()
-          .optional()
-          .describe("Optional detailed requirements for the feature"),
+        requirements: z.string().optional().describe("Optional detailed requirements for the feature"),
         creator: z
           .string()
           .optional()
-          .describe(
-            "Name of the creator (matched against name or alias). Falls back to workspace owner if not found.",
-          ),
+          .describe("Name of the creator (matched against name or alias). Falls back to workspace owner if not found."),
       },
     },
     async (
@@ -286,9 +347,7 @@ function createServer(): McpServer {
       description:
         "Read a task's details and full chat message history. Also indicates whether the task workflow is currently running.",
       inputSchema: {
-        taskId: z
-          .string()
-          .describe("The ID of the task to read"),
+        taskId: z.string().describe("The ID of the task to read"),
       },
     },
     async ({ taskId }: { taskId: string }, extra) => {
@@ -303,14 +362,10 @@ function createServer(): McpServer {
     "create_task",
     {
       title: "Create Task",
-      description:
-        "Create a new task in the workspace with a title and optional description and priority.",
+      description: "Create a new task in the workspace with a title and optional description and priority.",
       inputSchema: {
         title: z.string().describe("The title of the task"),
-        description: z
-          .string()
-          .optional()
-          .describe("A description of the task"),
+        description: z.string().optional().describe("A description of the task"),
         priority: z
           .enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"])
           .optional()
@@ -318,9 +373,7 @@ function createServer(): McpServer {
         creator: z
           .string()
           .optional()
-          .describe(
-            "Name of the creator (matched against name or alias). Falls back to workspace owner if not found.",
-          ),
+          .describe("Name of the creator (matched against name or alias). Falls back to workspace owner if not found."),
       },
     },
     async (
@@ -362,9 +415,7 @@ function createServer(): McpServer {
       if (result.error) return result.error;
       // Resolve the creator separately — only filter when explicitly provided.
       // If the name doesn't match anyone, return all (no filter).
-      const filterUserId = creator
-        ? await findWorkspaceUser(result.auth!.workspaceId, creator)
-        : undefined;
+      const filterUserId = creator ? await findWorkspaceUser(result.auth!.workspaceId, creator) : undefined;
       return mcpCheckStatus(result.auth!, filterUserId);
     },
   );
@@ -378,26 +429,24 @@ function createServer(): McpServer {
       description:
         "Send a message to a feature's planning chat or a task's agent chat. Provide exactly one of featureId or taskId. For features this triggers the AI planning workflow; for tasks it triggers the agent workflow.",
       inputSchema: {
-        featureId: z
-          .string()
-          .optional()
-          .describe("The ID of the feature to send a message to"),
-        taskId: z
-          .string()
-          .optional()
-          .describe("The ID of the task to send a message to"),
-        message: z
-          .string()
-          .describe("The message text to send"),
+        featureId: z.string().optional().describe("The ID of the feature to send a message to"),
+        taskId: z.string().optional().describe("The ID of the task to send a message to"),
+        message: z.string().describe("The message text to send"),
         creator: z
           .string()
           .optional()
-          .describe(
-            "Name of the sender (matched against name or alias). Falls back to workspace owner if not found.",
-          ),
+          .describe("Name of the sender (matched against name or alias). Falls back to workspace owner if not found."),
       },
     },
-    async ({ featureId, taskId, message, creator }: { featureId?: string; taskId?: string; message: string; creator?: string }, extra) => {
+    async (
+      {
+        featureId,
+        taskId,
+        message,
+        creator,
+      }: { featureId?: string; taskId?: string; message: string; creator?: string },
+      extra,
+    ) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "send_message", creator);
       if (result.error) return result.error;
