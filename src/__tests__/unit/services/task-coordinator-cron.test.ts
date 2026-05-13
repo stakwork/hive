@@ -31,6 +31,10 @@ vi.mock("@/services/task-workflow", () => ({
   startTaskWorkflow: vi.fn(),
 }));
 
+vi.mock("@/services/workflow-editor", () => ({
+  triggerWorkflowEditorRun: vi.fn(),
+}));
+
 vi.mock("@/lib/pods", () => ({
   releaseTaskPod: vi.fn().mockResolvedValue({ success: true, podDropped: false, taskCleared: false }),
 }));
@@ -48,9 +52,10 @@ const { db: mockDb } = await import("@/lib/db");
 const { getPoolStatusFromPods: mockGetPoolStatusFromPods } = await import("@/lib/pods/status-queries");
 const { acceptJanitorRecommendation: mockAcceptJanitorRecommendation } = await import("@/services/janitor");
 const { startTaskWorkflow: mockStartTaskWorkflow } = await import("@/services/task-workflow");
+const { triggerWorkflowEditorRun: mockTriggerWorkflowEditorRun } = await import("@/services/workflow-editor");
 
 // Import functions under test
-const { executeTaskCoordinatorRuns, processTicketSweep, areDependenciesSatisfied } = await import("@/services/task-coordinator-cron");
+const { executeTaskCoordinatorRuns, processTicketSweep, processWorkflowTaskSweep } = await import("@/services/task-coordinator-cron");
 
 // Test Helpers - Setup and assertion utilities
 const TestHelpers = {
@@ -1048,11 +1053,12 @@ describe("executeTaskCoordinatorRuns", () => {
 
       // 5 eligible candidate tasks (no deps)
       const candidates = Array.from({ length: 5 }, () => createCandidateTask());
-      // findMany called 4 times: orphan sweep, limbo sweep, stale tasks, ticket sweep candidates
+      // findMany called 5 times: orphan sweep, limbo sweep, stale tasks, workflow sweep, ticket sweep candidates
       vi.mocked(mockDb.task.findMany)
         .mockResolvedValueOnce([]) // orphan sweep
         .mockResolvedValueOnce([]) // limbo sweep (IN_PROGRESS + no stakworkProjectId)
         .mockResolvedValueOnce([]) // stale tasks query
+        .mockResolvedValueOnce([]) // workflow task sweep candidates
         .mockResolvedValueOnce(candidates as any); // ticket sweep candidates
 
       TestHelpers.setupRecommendations([]);
@@ -1074,6 +1080,7 @@ describe("executeTaskCoordinatorRuns", () => {
         .mockResolvedValueOnce([]) // orphan sweep
         .mockResolvedValueOnce([]) // limbo sweep
         .mockResolvedValueOnce([]) // stale tasks query
+        .mockResolvedValueOnce([]) // workflow task sweep candidates
         .mockResolvedValueOnce(candidates as any);
 
       TestHelpers.setupRecommendations([]);
@@ -1094,6 +1101,7 @@ describe("executeTaskCoordinatorRuns", () => {
         .mockResolvedValueOnce([]) // orphan sweep
         .mockResolvedValueOnce([]) // limbo sweep
         .mockResolvedValueOnce([]) // stale tasks
+        .mockResolvedValueOnce([]) // workflow task sweep candidates
         .mockResolvedValueOnce(candidates as any);
 
       TestHelpers.setupRecommendations([]);
@@ -1124,6 +1132,9 @@ describe("executeTaskCoordinatorRuns", () => {
         .mockResolvedValueOnce([])          // orphan sweep
         .mockResolvedValueOnce([])          // limbo sweep
         .mockResolvedValueOnce([])          // stale tasks
+        // workspaces run in parallel; both workflow sweeps happen before either ticket sweep
+        .mockResolvedValueOnce([])          // ws-1 workflow sweep candidates (no workflow tasks)
+        .mockResolvedValueOnce([])          // ws-2 workflow sweep candidates (no workflow tasks)
         .mockResolvedValueOnce(ws1Candidates as any) // ws-1 ticket sweep
         .mockResolvedValueOnce(ws2Candidates as any); // ws-2 ticket sweep
 
@@ -1146,6 +1157,7 @@ describe("executeTaskCoordinatorRuns", () => {
         .mockResolvedValueOnce([]) // orphan sweep
         .mockResolvedValueOnce([]) // limbo sweep
         .mockResolvedValueOnce([]) // stale tasks
+        .mockResolvedValueOnce([]) // workflow task sweep candidates
         .mockResolvedValueOnce(candidates as any);
 
       TestHelpers.setupRecommendations([]);
@@ -1169,6 +1181,7 @@ describe("executeTaskCoordinatorRuns", () => {
         .mockResolvedValueOnce([]) // orphan sweep
         .mockResolvedValueOnce([]) // limbo sweep
         .mockResolvedValueOnce([]) // stale tasks
+        .mockResolvedValueOnce([]) // workflow task sweep candidates
         .mockResolvedValueOnce(candidates as any);
 
       const recommendation = JanitorTestDataFactory.createPendingRecommendation("HIGH");
@@ -1497,5 +1510,206 @@ describe("processTicketSweep", () => {
 
     expect(result).toBe(0);
     expect(mockStartTaskWorkflow).toHaveBeenCalledTimes(3);
+  });
+
+  test("candidate query includes workflowTask: null filter to exclude workflow tasks", async () => {
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([] as any);
+
+    await processTicketSweep("ws-1", "workspace-1", 5);
+
+    expect(mockDb.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            { workflowTask: null },
+          ]),
+        }),
+      })
+    );
+  });
+});
+
+// --- Workflow task factory ---
+function createWorkflowCandidateTask(overrides: Record<string, any> = {}) {
+  return {
+    id: `wf-task-${Math.random().toString(36).slice(2, 8)}`,
+    description: "Test workflow task description",
+    createdById: "user-1",
+    dependsOnTaskIds: [],
+    workflowTask: {
+      id: `wt-${Math.random().toString(36).slice(2, 8)}`,
+      taskId: `wf-task-${Math.random().toString(36).slice(2, 8)}`,
+      workflowId: 42,
+      workflowName: "Test Workflow",
+      workflowRefId: "ref-42",
+      workflowVersionId: null,
+    },
+    feature: null,
+    ...overrides,
+  };
+}
+
+describe("processWorkflowTaskSweep", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+    vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+    vi.mocked(mockTriggerWorkflowEditorRun).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("SATISFIED dependency → triggerWorkflowEditorRun called, returns 1", async () => {
+    const task = createWorkflowCandidateTask();
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([task] as any);
+
+    const result = await processWorkflowTaskSweep("ws-1", "workspace-1");
+
+    expect(result).toBe(1);
+    expect(mockTriggerWorkflowEditorRun).toHaveBeenCalledWith({
+      taskId: task.id,
+      workflowTask: task.workflowTask,
+      message: task.description,
+      userId: task.createdById,
+    });
+    expect(mockStartTaskWorkflow).not.toHaveBeenCalled();
+  });
+
+  test("PENDING dependency → task skipped, triggerWorkflowEditorRun NOT called", async () => {
+    const blockerId = "blocker-task-id";
+    const task = createWorkflowCandidateTask({ dependsOnTaskIds: [blockerId] });
+    vi.mocked(mockDb.task.findMany)
+      .mockResolvedValueOnce([task] as any) // candidates
+      .mockResolvedValue([] as any); // dep fetch returns 0 → length mismatch → PENDING
+
+    const result = await processWorkflowTaskSweep("ws-1", "workspace-1");
+
+    expect(result).toBe(0);
+    expect(mockTriggerWorkflowEditorRun).not.toHaveBeenCalled();
+    expect(mockDb.task.update).not.toHaveBeenCalled();
+  });
+
+  test("PERMANENTLY_BLOCKED dependency → systemAssigneeType cleared, task NOT dispatched", async () => {
+    const blockerId = "cancelled-task-id";
+    const task = createWorkflowCandidateTask({ dependsOnTaskIds: [blockerId] });
+
+    // dep fetch returns a CANCELLED task with no PR artifacts → PERMANENTLY_BLOCKED
+    vi.mocked(mockDb.task.findMany)
+      .mockResolvedValueOnce([task] as any) // candidates
+      .mockResolvedValueOnce([{ // dep task
+        id: blockerId,
+        status: "CANCELLED",
+        chatMessages: [],
+      }] as any);
+
+    const result = await processWorkflowTaskSweep("ws-1", "workspace-1");
+
+    expect(result).toBe(0);
+    expect(mockTriggerWorkflowEditorRun).not.toHaveBeenCalled();
+    expect(mockDb.task.update).toHaveBeenCalledWith({
+      where: { id: task.id },
+      data: { systemAssigneeType: null },
+    });
+  });
+
+  test("multiple tasks: SATISFIED dispatched, PENDING skipped, PERMANENTLY_BLOCKED cleared", async () => {
+    const blockerId = "blocker-id";
+    const cancelledDepId = "cancelled-dep-id";
+
+    const satisfiedTask = createWorkflowCandidateTask({ id: "wf-satisfied" });
+    const pendingTask = createWorkflowCandidateTask({ id: "wf-pending", dependsOnTaskIds: [blockerId] });
+    const blockedTask = createWorkflowCandidateTask({ id: "wf-blocked", dependsOnTaskIds: [cancelledDepId] });
+
+    vi.mocked(mockDb.task.findMany)
+      .mockResolvedValueOnce([satisfiedTask, pendingTask, blockedTask] as any) // candidates
+      .mockResolvedValueOnce([] as any) // dep check for pendingTask → PENDING (length mismatch)
+      .mockResolvedValueOnce([{ id: cancelledDepId, status: "CANCELLED", chatMessages: [] }] as any); // dep check for blockedTask
+
+    const result = await processWorkflowTaskSweep("ws-1", "workspace-1");
+
+    expect(result).toBe(1);
+    expect(mockTriggerWorkflowEditorRun).toHaveBeenCalledTimes(1);
+    expect(mockTriggerWorkflowEditorRun).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: satisfiedTask.id })
+    );
+    expect(mockDb.task.update).toHaveBeenCalledWith({
+      where: { id: blockedTask.id },
+      data: { systemAssigneeType: null },
+    });
+  });
+
+  test("no candidates → returns 0, no dispatch calls", async () => {
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([] as any);
+
+    const result = await processWorkflowTaskSweep("ws-1", "workspace-1");
+
+    expect(result).toBe(0);
+    expect(mockTriggerWorkflowEditorRun).not.toHaveBeenCalled();
+  });
+
+  test("uses description as message; falls back to feature.createdById when task.createdById is null", async () => {
+    const task = createWorkflowCandidateTask({
+      createdById: null,
+      description: "My workflow description",
+      feature: { createdById: "feature-owner" },
+    });
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([task] as any);
+
+    await processWorkflowTaskSweep("ws-1", "workspace-1");
+
+    expect(mockTriggerWorkflowEditorRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "My workflow description",
+        userId: "feature-owner",
+      })
+    );
+  });
+
+  test("falls back to default message when description is null", async () => {
+    const task = createWorkflowCandidateTask({ description: null });
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([task] as any);
+
+    await processWorkflowTaskSweep("ws-1", "workspace-1");
+
+    expect(mockTriggerWorkflowEditorRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Start working on this workflow task.",
+      })
+    );
+  });
+
+  test("dispatch error does not abort sweep — other tasks still processed", async () => {
+    const task1 = createWorkflowCandidateTask({ id: "wf-ok-1" });
+    const task2 = createWorkflowCandidateTask({ id: "wf-fail" });
+    const task3 = createWorkflowCandidateTask({ id: "wf-ok-2" });
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([task1, task2, task3] as any);
+
+    vi.mocked(mockTriggerWorkflowEditorRun)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("Stakwork error"))
+      .mockResolvedValueOnce(undefined);
+
+    const result = await processWorkflowTaskSweep("ws-1", "workspace-1");
+
+    expect(result).toBe(2);
+    expect(mockTriggerWorkflowEditorRun).toHaveBeenCalledTimes(3);
+  });
+
+  test("candidate query includes workflowTask: { isNot: null } filter", async () => {
+    vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([] as any);
+
+    await processWorkflowTaskSweep("ws-1", "workspace-1");
+
+    expect(mockDb.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            { workflowTask: { isNot: null } },
+          ]),
+        }),
+      })
+    );
   });
 });
