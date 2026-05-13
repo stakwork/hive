@@ -609,6 +609,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
           }
 
           const isTerminalWorkflow = ['ERROR', 'FAILED', 'HALTED'].includes(task.workflowStatus ?? '');
+          const isWorkflowTask = !!task.workflowTask;
           const isRetrying = retryingTaskId === task.id;
 
           return (
@@ -692,39 +693,45 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                     />
                   </div>
                 )}
-                <div
-                  className="flex items-center gap-1.5"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MiniToggle
-                    checked={displayTask.autoMerge ?? false}
-                    onChange={(autoMerge) => handleUpdateTask(task.id, { autoMerge })}
-                    disabled={task.status !== "TODO"}
-                  />
-                  <span>auto-merge</span>
-                </div>
-                <div
-                  className="flex items-center gap-1.5"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MiniToggle
-                    checked={displayTask.runBuild ?? true}
-                    onChange={(runBuild) => handleUpdateTask(task.id, { runBuild })}
-                    disabled={task.status !== "TODO"}
-                  />
-                  <span>run build</span>
-                </div>
-                <div
-                  className="flex items-center gap-1.5"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MiniToggle
-                    checked={displayTask.runTestSuite ?? true}
-                    onChange={(runTestSuite) => handleUpdateTask(task.id, { runTestSuite })}
-                    disabled={task.status !== "TODO"}
-                  />
-                  <span>run tests</span>
-                </div>
+                {!isWorkflowTask && (
+                  <div
+                    className="flex items-center gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MiniToggle
+                      checked={displayTask.autoMerge ?? false}
+                      onChange={(autoMerge) => handleUpdateTask(task.id, { autoMerge })}
+                      disabled={task.status !== "TODO"}
+                    />
+                    <span>auto-merge</span>
+                  </div>
+                )}
+                {!isWorkflowTask && (
+                  <div
+                    className="flex items-center gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MiniToggle
+                      checked={displayTask.runBuild ?? true}
+                      onChange={(runBuild) => handleUpdateTask(task.id, { runBuild })}
+                      disabled={task.status !== "TODO"}
+                    />
+                    <span>run build</span>
+                  </div>
+                )}
+                {!isWorkflowTask && (
+                  <div
+                    className="flex items-center gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MiniToggle
+                      checked={displayTask.runTestSuite ?? true}
+                      onChange={(runTestSuite) => handleUpdateTask(task.id, { runTestSuite })}
+                      disabled={task.status !== "TODO"}
+                    />
+                    <span>run tests</span>
+                  </div>
+                )}
                 {llmModels.length > 0 && (
                   <div onClick={(e) => e.stopPropagation()}>
                     <Select
