@@ -481,7 +481,7 @@ describe("PromptsPanel - Version History", () => {
 
     await waitFor(() => {
       expect(getByText("Current")).toBeInTheDocument();
-      expect(getByText("Live")).toBeInTheDocument();
+      expect(getByText("Latest")).toBeInTheDocument();
     });
 
     // Verify Current appears before historical versions
