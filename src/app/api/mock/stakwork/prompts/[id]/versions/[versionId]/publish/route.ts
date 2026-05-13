@@ -13,6 +13,7 @@ const mockPrompts = new Map([
       description: "Generates structured user stories from feature descriptions",
       workflow_id: 101,
       current_version_id: 3,
+      published_version_id: 2,
       version_count: 5,
       created_at: "2024-01-15T10:00:00Z",
       updated_at: "2024-02-20T14:30:00Z",
@@ -28,6 +29,7 @@ const mockPrompts = new Map([
       description: "AI-powered code review with focus on quality and security",
       workflow_id: 102,
       current_version_id: 5,
+      published_version_id: 5,
       version_count: 2,
       created_at: "2024-01-20T09:00:00Z",
       updated_at: "2024-02-25T16:45:00Z",
@@ -43,6 +45,7 @@ const mockPrompts = new Map([
       description: "Generates clear API documentation with examples",
       workflow_id: 103,
       current_version_id: 2,
+      published_version_id: 2,
       version_count: 1,
       created_at: "2024-02-01T11:00:00Z",
       updated_at: "2024-02-27T10:00:00Z",
@@ -84,10 +87,10 @@ export async function POST(
       );
     }
 
-    // Update current_version_id in the mock store
+    // Update published_version_id in the mock store (current_version_id tracks latest saved, not published)
     mockPrompts.set(promptId, {
       ...prompt,
-      current_version_id: versionIdNum,
+      published_version_id: versionIdNum,
       updated_at: new Date().toISOString(),
     });
 
