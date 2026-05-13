@@ -71,6 +71,12 @@ vi.mock("@/lib/auth/workspace-resolver", () => ({
   }),
 }));
 
+// Mock triggerWorkflowEditorRun so workflow tasks don't hit the external API
+vi.mock("@/services/workflow-editor", () => ({
+  triggerWorkflowEditorRun: vi.fn().mockResolvedValue(undefined),
+  saveWorkflowArtifact: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Helper to create authenticated request with CRON_SECRET
 function createAuthenticatedRequest(): NextRequest {
   const headers = new Headers();
@@ -986,6 +992,150 @@ describe("Integration: /api/cron/task-coordinator", () => {
       expect(result.errorCount).toBe(0);
       expect(result.errors).toEqual([]);
       expect(result.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO format
+    });
+  });
+
+  describe("Phase 4: Workflow Task Sweep", () => {
+    test("workflow task with SATISFIED deps and zero available pods → dispatch fires", async () => {
+      // Override pool mock to return 0 available pods for this test
+      const { getPoolStatusFromPods } = await import("@/lib/pods/status-queries");
+      vi.mocked(getPoolStatusFromPods).mockResolvedValueOnce({
+        runningVms: 0,
+        pendingVms: 0,
+        failedVms: 0,
+        usedVms: 0,
+        unusedVms: 0,
+        lastCheck: new Date().toISOString(),
+        queuedCount: 0,
+      });
+
+      // Create feature + phase
+      const feature = await db.feature.create({
+        data: {
+          title: "Workflow Feature",
+          workspaceId: testWorkspace.id,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+        },
+      });
+
+      // Create a workflow task assigned to TASK_COORDINATOR with no dependencies
+      const workflowTicket = await db.task.create({
+        data: {
+          title: "Workflow Task - No Deps",
+          description: "Run this workflow",
+          workspaceId: testWorkspace.id,
+          featureId: feature.id,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+          status: "TODO",
+          mode: "workflow_editor",
+          sourceType: "TASK_COORDINATOR",
+          systemAssigneeType: "TASK_COORDINATOR",
+          priority: "HIGH",
+          dependsOnTaskIds: [],
+        },
+      });
+
+      // Attach a WorkflowTask record
+      await db.workflowTask.create({
+        data: {
+          taskId: workflowTicket.id,
+          workflowId: 99,
+          workflowName: "My Workflow",
+          workflowRefId: "ref-99",
+        },
+      });
+
+      const mockRequest = createAuthenticatedRequest();
+      process.env.TASK_COORDINATOR_ENABLED = "true";
+
+      const response = await GET(mockRequest);
+      const result = await response.json();
+
+      expect(response.status).toBe(200);
+
+      // triggerWorkflowEditorRun must have been called despite 0 pods
+      const { triggerWorkflowEditorRun } = await import("@/services/workflow-editor");
+      expect(triggerWorkflowEditorRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: workflowTicket.id,
+          message: "Run this workflow",
+          userId: testUser.id,
+        })
+      );
+    });
+
+    test("workflow task with PENDING dep → dispatch NOT fired", async () => {
+      // Create a blocking task that is still TODO (not done)
+      const blockingTask = await db.task.create({
+        data: {
+          title: "Blocking Task",
+          workspaceId: testWorkspace.id,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+          status: "TODO",
+          mode: "agent",
+          sourceType: "USER",
+          priority: "HIGH",
+        },
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Workflow Feature 2",
+          workspaceId: testWorkspace.id,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+        },
+      });
+
+      // Workflow task that depends on the blocking task
+      const workflowTicket = await db.task.create({
+        data: {
+          title: "Workflow Task - Has Dep",
+          description: "This should be blocked",
+          workspaceId: testWorkspace.id,
+          featureId: feature.id,
+          createdById: testUser.id,
+          updatedById: testUser.id,
+          status: "TODO",
+          mode: "workflow_editor",
+          sourceType: "TASK_COORDINATOR",
+          systemAssigneeType: "TASK_COORDINATOR",
+          priority: "HIGH",
+          dependsOnTaskIds: [blockingTask.id],
+        },
+      });
+
+      await db.workflowTask.create({
+        data: {
+          taskId: workflowTicket.id,
+          workflowId: 100,
+          workflowName: "Blocked Workflow",
+          workflowRefId: "ref-100",
+        },
+      });
+
+      const mockRequest = createAuthenticatedRequest();
+      process.env.TASK_COORDINATOR_ENABLED = "true";
+
+      vi.clearAllMocks();
+      // Re-apply the triggerWorkflowEditorRun mock after clearAllMocks
+      const { triggerWorkflowEditorRun } = await import("@/services/workflow-editor");
+      vi.mocked(triggerWorkflowEditorRun).mockResolvedValue(undefined);
+
+      const response = await GET(mockRequest);
+      expect(response.status).toBe(200);
+
+      // triggerWorkflowEditorRun must NOT have been called
+      expect(triggerWorkflowEditorRun).not.toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: workflowTicket.id })
+      );
+
+      // Task should remain assigned to coordinator (not cleared)
+      const after = await db.task.findUnique({ where: { id: workflowTicket.id } });
+      expect(after?.systemAssigneeType).toBe("TASK_COORDINATOR");
     });
   });
 });
