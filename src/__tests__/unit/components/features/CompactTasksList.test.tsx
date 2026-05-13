@@ -1378,6 +1378,57 @@ describe("CompactTasksList", () => {
       expect(toggles[1]).not.toBeDisabled(); // runBuild
       expect(toggles[2]).not.toBeDisabled(); // runTestSuite
     });
+
+    test("hides auto-merge, run build, and run tests toggles for workflow tasks", () => {
+      const task = createMockTask({
+        id: "task-workflow",
+        workflowTask: {
+          id: "wt-1",
+          workflowId: 123,
+          workflowName: "My Workflow",
+          workflowRefId: "ref-123",
+          workflowVersionId: null,
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByText("auto-merge")).not.toBeInTheDocument();
+      expect(screen.queryByText("run build")).not.toBeInTheDocument();
+      expect(screen.queryByText("run tests")).not.toBeInTheDocument();
+    });
+
+    test("shows all three toggles for repo-targeted tasks (workflowTask is null)", () => {
+      const task = createMockTask({
+        id: "task-repo",
+        workflowTask: null,
+        runBuild: true,
+        runTestSuite: true,
+        autoMerge: false,
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText("auto-merge")).toBeInTheDocument();
+      expect(screen.getByText("run build")).toBeInTheDocument();
+      expect(screen.getByText("run tests")).toBeInTheDocument();
+    });
   });
 
   describe("Optimistic updates", () => {
