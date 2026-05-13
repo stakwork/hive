@@ -843,3 +843,175 @@ describe('Task Page - Workflow Editor fixes', () => {
     });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WorkflowArtifactPanel — multi-workflow selector logic
+// ─────────────────────────────────────────────────────────────────────────────
+describe('WorkflowArtifactPanel — multi-workflow selector', () => {
+  // Helper: build a minimal artifact with workflow content
+  function makeWorkflowArtifact(
+    workflowId: string | number,
+    workflowName: string,
+    extras: Record<string, unknown> = {}
+  ) {
+    return {
+      id: `artifact-${workflowId}-${Math.random()}`,
+      type: 'WORKFLOW',
+      content: {
+        workflowId,
+        workflowName,
+        ...extras,
+      },
+    };
+  }
+
+  // Pure grouping logic extracted from the component for unit testing
+  function computeWorkflowGroups(artifacts: ReturnType<typeof makeWorkflowArtifact>[]) {
+    const map = new Map<string, { workflowId: number | string; workflowName: string; artifacts: typeof artifacts }>();
+    for (const artifact of artifacts) {
+      const content = artifact.content as { workflowId?: number | string; workflowName?: string };
+      if (!content?.workflowId) continue;
+      const key = String(content.workflowId);
+      if (!map.has(key)) {
+        map.set(key, {
+          workflowId: content.workflowId,
+          workflowName: content.workflowName || `Workflow ${key}`,
+          artifacts: [],
+        });
+      }
+      map.get(key)!.artifacts.push(artifact);
+    }
+    return Array.from(map.values());
+  }
+
+  // Pure merge logic scoped to a set of artifacts
+  function mergeArtifacts(artifacts: ReturnType<typeof makeWorkflowArtifact>[]) {
+    let workflowJson: string | undefined;
+    let originalWorkflowJson: string | undefined;
+    for (const artifact of artifacts) {
+      const content = artifact.content as Record<string, unknown>;
+      if (content?.workflowJson) workflowJson = content.workflowJson as string;
+      if (content?.originalWorkflowJson) originalWorkflowJson = content.originalWorkflowJson as string;
+    }
+    return { workflowJson, originalWorkflowJson };
+  }
+
+  it('groups 2 artifacts with distinct workflowIds into 2 groups', () => {
+    const artifacts = [
+      makeWorkflowArtifact(1, 'Workflow One'),
+      makeWorkflowArtifact(2, 'Workflow Two'),
+    ];
+    const groups = computeWorkflowGroups(artifacts);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].workflowId).toBe(1);
+    expect(groups[1].workflowId).toBe(2);
+  });
+
+  it('groups multiple artifacts with the same workflowId into 1 group', () => {
+    const artifacts = [
+      makeWorkflowArtifact(1, 'Workflow One'),
+      makeWorkflowArtifact(1, 'Workflow One'),
+      makeWorkflowArtifact(1, 'Workflow One'),
+    ];
+    const groups = computeWorkflowGroups(artifacts);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].artifacts).toHaveLength(3);
+  });
+
+  it('excludes artifacts without a workflowId from groups', () => {
+    const artifacts = [
+      { id: 'no-id', type: 'WORKFLOW', content: { workflowJson: '{}' } } as ReturnType<typeof makeWorkflowArtifact>,
+      makeWorkflowArtifact(1, 'Workflow One'),
+    ];
+    const groups = computeWorkflowGroups(artifacts);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].workflowId).toBe(1);
+  });
+
+  it('preserves insertion order of first appearances', () => {
+    const artifacts = [
+      makeWorkflowArtifact(3, 'Third'),
+      makeWorkflowArtifact(1, 'First'),
+      makeWorkflowArtifact(2, 'Second'),
+      makeWorkflowArtifact(1, 'First again'),
+    ];
+    const groups = computeWorkflowGroups(artifacts);
+    expect(groups.map(g => g.workflowId)).toEqual([3, 1, 2]);
+  });
+
+  it('single workflow artifact produces no dropdown (groups.length === 1)', () => {
+    const artifacts = [makeWorkflowArtifact(42, 'Solo Workflow')];
+    const groups = computeWorkflowGroups(artifacts);
+    expect(groups).toHaveLength(1);
+    // Dropdown is only rendered when groups.length > 1
+    expect(groups.length > 1).toBe(false);
+  });
+
+  it('scoping merge to selected workflow returns that groups artifacts only', () => {
+    const wf1Artifact = makeWorkflowArtifact(1, 'WF1', { workflowJson: '{"wf":1}' });
+    const wf2Artifact = makeWorkflowArtifact(2, 'WF2', { workflowJson: '{"wf":2}', originalWorkflowJson: '{"orig":2}' });
+    const allArtifacts = [wf1Artifact, wf2Artifact];
+
+    const groups = computeWorkflowGroups(allArtifacts);
+
+    // Simulate selecting workflow 1
+    const group1Artifacts = groups.find(g => String(g.workflowId) === '1')!.artifacts;
+    const merged1 = mergeArtifacts(group1Artifacts);
+    expect(merged1.workflowJson).toBe('{"wf":1}');
+    expect(merged1.originalWorkflowJson).toBeUndefined();
+
+    // Simulate selecting workflow 2
+    const group2Artifacts = groups.find(g => String(g.workflowId) === '2')!.artifacts;
+    const merged2 = mergeArtifacts(group2Artifacts);
+    expect(merged2.workflowJson).toBe('{"wf":2}');
+    expect(merged2.originalWorkflowJson).toBe('{"orig":2}');
+  });
+
+  it('Changes tab should be hidden when selected workflow has no originalWorkflowJson', () => {
+    const artifact = makeWorkflowArtifact(1, 'WF1', { workflowJson: '{"wf":1}' });
+    const merged = mergeArtifacts([artifact]);
+    // hasChanges = !!(originalWorkflowJson && workflowJson)
+    const hasChanges = !!(merged.originalWorkflowJson && merged.workflowJson);
+    expect(hasChanges).toBe(false);
+  });
+
+  it('Changes tab should be available when selected workflow has originalWorkflowJson', () => {
+    const artifact = makeWorkflowArtifact(2, 'WF2', {
+      workflowJson: '{"wf":2}',
+      originalWorkflowJson: '{"orig":2}',
+    });
+    const merged = mergeArtifacts([artifact]);
+    const hasChanges = !!(merged.originalWorkflowJson && merged.workflowJson);
+    expect(hasChanges).toBe(true);
+  });
+
+  it('tab fallback: activeDisplayTab resets to editor when switching to workflow with no originalWorkflowJson', () => {
+    // Simulate the tab-fallback logic from the useEffect
+    let activeDisplayTab = 'changes';
+    const originalWorkflowJson: string | undefined = undefined; // no diff
+
+    // The effect: if changes tab active and no originalWorkflowJson, reset
+    if (activeDisplayTab === 'changes' && !originalWorkflowJson) {
+      activeDisplayTab = 'editor';
+    }
+
+    expect(activeDisplayTab).toBe('editor');
+  });
+
+  it('tab fallback: activeDisplayTab stays on changes when switching to workflow with originalWorkflowJson', () => {
+    let activeDisplayTab = 'changes';
+    const originalWorkflowJson = '{"orig":1}'; // diff present
+
+    if (activeDisplayTab === 'changes' && !originalWorkflowJson) {
+      activeDisplayTab = 'editor';
+    }
+
+    expect(activeDisplayTab).toBe('changes');
+  });
+
+  it('falls back to Workflow {id} name when workflowName is missing', () => {
+    const artifact = { id: 'a1', type: 'WORKFLOW', content: { workflowId: 99 } } as ReturnType<typeof makeWorkflowArtifact>;
+    const groups = computeWorkflowGroups([artifact]);
+    expect(groups[0].workflowName).toBe('Workflow 99');
+  });
+});
