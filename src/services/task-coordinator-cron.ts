@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { Prisma, WorkflowStatus } from "@prisma/client";
 import { startTaskWorkflow } from "@/services/task-workflow";
+import { triggerWorkflowEditorRun } from "@/services/workflow-editor";
 import { releaseTaskPod } from "@/lib/pods";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
@@ -144,6 +145,7 @@ export async function processTicketSweep(
         { deleted: false },
         { OR: [{ workflowStatus: WorkflowStatus.PENDING }, { workflowStatus: null }] },
         { stakworkProjectId: null },
+        { workflowTask: null }, // Repo/coding tasks only — workflow tasks handled by processWorkflowTaskSweep
         { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
       ],
     },
@@ -228,6 +230,100 @@ export async function processTicketSweep(
 
   if (dispatched === 0) {
     console.log(`[TaskCoordinator] No tickets with satisfied dependencies found for workspace ${workspaceSlug}`);
+  }
+
+  return dispatched;
+}
+
+/**
+ * Process workflow task sweep — dispatch eligible TASK_COORDINATOR workflow tasks
+ * independently of pod availability. Dependencies are enforced via the tri-state check.
+ * No slot limit: all eligible workflow tasks are dispatched in a single run.
+ */
+export async function processWorkflowTaskSweep(
+  workspaceId: string,
+  workspaceSlug: string
+): Promise<number> {
+  console.log(`[TaskCoordinator][Workflow] Processing workflow task sweep for workspace ${workspaceSlug}`);
+
+  const candidateTasks = await db.task.findMany({
+    where: {
+      AND: [
+        { workspaceId },
+        { status: "TODO" },
+        { systemAssigneeType: "TASK_COORDINATOR" },
+        { deleted: false },
+        { OR: [{ workflowStatus: WorkflowStatus.PENDING }, { workflowStatus: null }] },
+        { stakworkProjectId: null },
+        { workflowTask: { isNot: null } }, // Workflow tasks only
+        { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
+      ],
+    },
+    select: {
+      id: true,
+      description: true,
+      createdById: true,
+      dependsOnTaskIds: true,
+      workflowTask: true,
+      feature: {
+        select: { createdById: true },
+      },
+    },
+    orderBy: [
+      { priority: "desc" },
+      { createdAt: "asc" },
+    ],
+  });
+
+  if (candidateTasks.length === 0) {
+    console.log(`[TaskCoordinator][Workflow] No candidate workflow tasks found for workspace ${workspaceSlug}`);
+    return 0;
+  }
+
+  console.log(`[TaskCoordinator][Workflow] Found ${candidateTasks.length} candidate workflow tasks, checking dependencies...`);
+
+  let dispatched = 0;
+
+  for (const task of candidateTasks) {
+    const depResult = await checkDependencies(task.dependsOnTaskIds);
+
+    if (depResult === "PERMANENTLY_BLOCKED") {
+      console.log(`[TaskCoordinator][Workflow] Unassigning task ${task.id} - dependency permanently blocked`);
+      await db.task.update({
+        where: { id: task.id },
+        data: { systemAssigneeType: null },
+      });
+      continue;
+    }
+
+    if (depResult === "PENDING") {
+      console.log(`[TaskCoordinator][Workflow] Skipping task ${task.id} - dependencies not satisfied`);
+      continue;
+    }
+
+    // SATISFIED — dispatch via workflow-editor run
+    const userId = task.createdById ?? task.feature?.createdById;
+    if (!userId) {
+      console.warn(`[TaskCoordinator][Workflow] Skipping task ${task.id} - no userId available`);
+      continue;
+    }
+
+    try {
+      await triggerWorkflowEditorRun({
+        taskId: task.id,
+        workflowTask: task.workflowTask!,
+        message: task.description ?? "Start working on this workflow task.",
+        userId,
+      });
+      dispatched++;
+      console.log(`[TaskCoordinator][Workflow] Successfully dispatched workflow task ${task.id}`);
+    } catch (error) {
+      console.error(`[TaskCoordinator][Workflow] Error dispatching workflow task ${task.id}:`, error);
+    }
+  }
+
+  if (dispatched === 0) {
+    console.log(`[TaskCoordinator][Workflow] No workflow tasks with satisfied dependencies found for workspace ${workspaceSlug}`);
   }
 
   return dispatched;
@@ -501,6 +597,19 @@ async function processWorkspace(workspace: EnabledWorkspace): Promise<WorkspaceR
   if (!workspace.swarm?.id) {
     console.log(`[TaskCoordinator] Skipping workspace ${workspace.slug}: No pool configured`);
     return result;
+  }
+
+  // Always run workflow task sweep regardless of pod availability
+  try {
+    const workflowDispatched = await processWorkflowTaskSweep(workspace.id, workspace.slug);
+    result.tasksCreated += workflowDispatched;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[TaskCoordinator] Workflow task sweep failed for workspace ${workspace.slug}:`, errorMessage);
+    result.errors.push({
+      workspaceSlug: workspace.slug,
+      error: `Workflow task sweep failed: ${errorMessage}`,
+    });
   }
 
   // Check available pods using local DB (same source of truth as UI)
