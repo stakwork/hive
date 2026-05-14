@@ -412,6 +412,8 @@ export async function runCanvasAgent(
     if (orgId) {
       // Merge org-scoped tool families. The caller is responsible for
       // having already validated org membership before calling us.
+      // Mirrored in the single-workspace branch below — keep these
+      // two sites in sync.
       tools = {
         ...tools,
         ...buildConnectionTools(orgId, userId),
@@ -469,12 +471,36 @@ export async function runCanvasAgent(
     const concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
     features = (concepts.features as Record<string, unknown>[]) || [];
 
+    // Single-workspace + orgId: an org-scope caller (e.g. the org-MCP
+    // `org_agent` tool, or the org SidebarChat for an org that
+    // happens to have just one workspace) gets the canvas/initiative/
+    // research/connection tool overlay on top of the per-workspace
+    // tools. The org-aware prompt suffixes get appended by
+    // `getQuickAskPrefixMessages` below so the agent knows the tools
+    // exist and how to use them.
+    //
+    // Public-viewer requests never carry orgId (the caller in
+    // `quick/route.ts` rejects that combination), so this branch is
+    // member-auth only and `userId` is non-null.
+    if (orgId && userId) {
+      tools = {
+        ...tools,
+        ...buildConnectionTools(orgId, userId),
+        ...buildCanvasTools(orgId),
+        ...buildInitiativeTools(orgId, userId),
+        ...buildResearchTools(orgId, userId, capturedWebSearchResults),
+      };
+    }
+
     prefixMessages = getQuickAskPrefixMessages(
       features,
       ws.repoUrls,
       [],
       ws.description,
       ws.members,
+      orgId
+        ? { orgId, scope: buildScopeHint(scope, []) }
+        : undefined,
     );
     primarySwarmUrl = ws.swarmUrl;
     primarySwarmApiKey = ws.swarmApiKey;

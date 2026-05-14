@@ -10,6 +10,7 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getApiKeyForModel, getDefaultModel } from "@/lib/ai/models";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { isDevelopmentMode } from "@/lib/runtime";
+import type { McpServerConfig } from "@/services/mcpServers";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -606,6 +607,17 @@ export async function callStakworkAPI(params: {
   isPrototype?: boolean;
   subAgents?: { name: string, url: string; apiKey: string; repoUrls: string }[];
   taskModel?: string;
+  /**
+   * MCP servers to expose to the swarm-side `repo/agent`. The agent
+   * receives these on its workflow vars and treats each as a tool
+   * source (per its `McpServer` interface).
+   *
+   * Plan-mode populates this with a single entry for Hive's
+   * org-scope MCP (`org_agent`), minted per-dispatch with a
+   * short-lived JWT. Future writers (voice, etc.) build their own
+   * entries the same way. Absent when no callback is configured.
+   */
+  mcpServers?: McpServerConfig[];
 }) {
   const {
     taskId,
@@ -639,6 +651,7 @@ export async function callStakworkAPI(params: {
     isPrototype,
     subAgents,
     taskModel,
+    mcpServers,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -714,6 +727,13 @@ export async function callStakworkAPI(params: {
   }
   if (subAgents?.length) {
     vars.subAgents = subAgents;
+  }
+  if (mcpServers?.length) {
+    // Forwarded verbatim to the stakwork workflow, which lands it on
+    // `vars.mcpServers` for repo/agent to consume. Shape matches
+    // repo/agent's `McpServer` interface exactly so the workflow
+    // does no reshaping in the middle.
+    vars.mcpServers = mcpServers;
   }
   if (process.env.EXA_API_KEY) {
     vars.searchApiKey = process.env.EXA_API_KEY;

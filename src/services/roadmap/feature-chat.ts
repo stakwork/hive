@@ -19,6 +19,8 @@ import {
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { joinRepoUrls } from "@/lib/helpers/repository";
 import { scoutOrgContext } from "@/services/roadmap/orgContextScout";
+import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
+import type { McpServerConfig } from "@/services/mcpServers";
 
 /**
  * Fetch chat history for a feature, excluding a specific message.
@@ -82,6 +84,20 @@ const FEATURE_SELECT_FOR_CHAT = {
     select: {
       slug: true,
       ownerId: true,
+      // Required so plan-mode dispatch can mint an org-scope MCP
+      // token for the swarm callback. Null when the workspace isn't
+      // linked to a SourceControlOrg yet — in that case we skip
+      // org-callback wiring and the swarm runs without it.
+      sourceControlOrgId: true,
+      // Eager-load the linked org's identity so the org-MCP server
+      // entry sent to the swarm can use the org's actual name as the
+      // server prefix (e.g. `stakwork_org_agent` instead of the
+      // opaque `hive-org_org_agent`). `githubLogin` is the slug-safe
+      // identifier (lowercased, no spaces); `name` is the display
+      // form for surfacing in the tool description.
+      sourceControlOrg: {
+        select: { githubLogin: true, name: true },
+      },
       swarm: {
         select: {
           swarmUrl: true,
@@ -394,6 +410,86 @@ export async function sendFeatureChatMessage({
           message,
           isFirstMessage,
         });
+
+    // Org-scope MCP server entry for the swarm-side repo/agent.
+    //
+    // Where the legacy scout pushes a one-shot org brief into
+    // `featureContext.orgContext`, this entry lets the plan agent on
+    // the swarm call BACK into Hive's `org_agent` tool as many times
+    // as it wants during its run — iterative, on-demand org context
+    // instead of a pre-emptive blob. The two live side by side for
+    // now; the scout is still gated by PLAN_MODE_ORG_CONTEXT_ENABLED
+    // and can be turned off independently.
+    //
+    // Shape matches repo/agent's `McpServer` interface verbatim so the
+    // stakwork workflow can forward `vars.mcpServers` straight through
+    // without reshaping. `toolFilter` is set explicitly to `["org_agent"]`
+    // even though the org-scope handler already exposes only that tool;
+    // belt-and-suspenders against any future surface expansion sneaking
+    // into the plan-mode tool list without an explicit code change here.
+    //
+    // Best-effort: any failure (no org link, JWT_SECRET missing,
+    // membership lost, etc.) leaves `orgMcpServers` undefined and the
+    // swarm runs without the callback — equivalent to the
+    // pre-callback behavior.
+    let orgMcpServers: McpServerConfig[] | undefined;
+    const orgIdForCallback = feature.workspace.sourceControlOrgId;
+    const orgForCallback = feature.workspace.sourceControlOrg;
+    if (orgIdForCallback) {
+      // Mint is best-effort: a transient DB error inside the mint
+      // helper would otherwise abort the entire plan-mode dispatch,
+      // which is too aggressive. The callback is a nice-to-have; if
+      // we can't issue a token, the swarm just runs without it.
+      try {
+        const mintOutcome = await mintOrgToken({
+          orgId: orgIdForCallback,
+          userId,
+          // Plan-mode dispatches a read-only token. The plan agent on
+          // the swarm can ask `org_agent` questions but cannot trigger
+          // canvas writes or propose_* cards via this surface. Voice
+          // and other writers will mint their own tokens with their
+          // own permissions when those flows land.
+          requestedPermissions: ["read"],
+          purpose: `plan-mode:${featureId}`,
+        });
+        if (mintOutcome.ok) {
+          // Use the org's GitHub login as the MCP server name so the
+          // agent sees a tool id like `stakwork_org_agent` rather than
+          // a generic `hive-org_org_agent`. `githubLogin` is already
+          // slug-safe (lowercase, no spaces); fall back to "hive-org"
+          // if the eager-loaded join somehow came back null (shouldn't
+          // happen given `orgIdForCallback` is non-null here, but the
+          // mint path is best-effort and we don't want a server-name
+          // edge case to break dispatch).
+          const orgMcpServerName =
+            orgForCallback?.githubLogin ?? "hive-org";
+          orgMcpServers = [
+            {
+              name: orgMcpServerName,
+              url: process.env.HIVE_MCP_URL || "https://hive.sphinx.chat/mcp",
+              token: mintOutcome.token,
+              toolFilter: ["org_agent"],
+            },
+          ];
+          console.log(
+            `[feature-chat] minted org-MCP token for ${featureId}: ` +
+              `org=${orgIdForCallback} perms=${mintOutcome.granted.join(",")} jti=${mintOutcome.jti}`,
+          );
+        } else {
+          console.warn(
+            `[feature-chat] mintOrgToken failed for ${featureId}: ${mintOutcome.error} ` +
+              `— swarm will run without org callback`,
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[feature-chat] mintOrgToken threw for ${featureId} ` +
+            `— swarm will run without org callback:`,
+          error,
+        );
+      }
+    }
+
     if (orgContext && featureContext) {
       featureContext = { ...featureContext, orgContext };
     } else if (orgContext && !featureContext) {
@@ -432,6 +528,7 @@ export async function sendFeatureChatMessage({
       subAgents: extraSwarms,
       attachments: attachmentUrls,
       taskModel: feature.model || model || undefined,
+      mcpServers: orgMcpServers,
     });
 
     // Only update workflow status when Stakwork confirms a project was created
