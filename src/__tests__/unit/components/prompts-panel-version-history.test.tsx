@@ -796,4 +796,188 @@ describe("PromptsPanel - Version History", () => {
       expect(diffContent).toContain("First version"); // v1 content
     });
   });
+
+  test("Published badge appears on Current row when current_version_id === published_version_id", async () => {
+    const publishedCurrentPrompt = {
+      ...mockPromptWithHistory,
+      current_version_id: 3,
+      published_version_id: 3,
+    };
+
+    global.fetch = vi.fn((url) => {
+      if (url.includes("/api/workflow/prompts?")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { prompts: [publishedCurrentPrompt], total: 1, size: 10, page: 1 },
+          }),
+        });
+      }
+      if (url.includes("/versions") && !url.includes("/versions/")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              prompt_id: publishedCurrentPrompt.id,
+              prompt_name: publishedCurrentPrompt.name,
+              versions: mockVersions,
+              current_version_id: publishedCurrentPrompt.current_version_id,
+              version_count: publishedCurrentPrompt.version_count,
+            },
+          }),
+        });
+      }
+      if (url.includes(`/api/workflow/prompts/${publishedCurrentPrompt.id}`)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: publishedCurrentPrompt }),
+        });
+      }
+      return Promise.reject(new Error("Not found"));
+    }) as any;
+
+    const { findByText, getByText, getAllByText } = render(<PromptsPanel />);
+
+    const promptButton = await findByText("Test Prompt");
+    fireEvent.click(promptButton);
+
+    const historyButton = await findByText(/View History/i);
+    fireEvent.click(historyButton);
+
+    await waitFor(() => {
+      expect(getByText("Current")).toBeInTheDocument();
+      expect(getByText("v1")).toBeInTheDocument();
+    });
+
+    // Published badge should appear exactly once (on the Current row)
+    const publishedBadges = getAllByText("Published");
+    expect(publishedBadges).toHaveLength(1);
+
+    // The badge should be near the "Current" label, not a historical version
+    const currentButton = getByText("Current").closest("button");
+    expect(currentButton?.textContent).toContain("Published");
+  });
+
+  test("Published badge appears on historical version row when published_version_id matches an older version", async () => {
+    const publishedHistoricalPrompt = {
+      ...mockPromptWithHistory,
+      current_version_id: 3,
+      published_version_id: 1,
+    };
+
+    global.fetch = vi.fn((url) => {
+      if (url.includes("/api/workflow/prompts?")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { prompts: [publishedHistoricalPrompt], total: 1, size: 10, page: 1 },
+          }),
+        });
+      }
+      if (url.includes("/versions") && !url.includes("/versions/")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              prompt_id: publishedHistoricalPrompt.id,
+              prompt_name: publishedHistoricalPrompt.name,
+              versions: mockVersions,
+              current_version_id: publishedHistoricalPrompt.current_version_id,
+              version_count: publishedHistoricalPrompt.version_count,
+            },
+          }),
+        });
+      }
+      if (url.includes(`/api/workflow/prompts/${publishedHistoricalPrompt.id}`)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: publishedHistoricalPrompt }),
+        });
+      }
+      return Promise.reject(new Error("Not found"));
+    }) as any;
+
+    const { findByText, getByText, getAllByText, queryByText } = render(<PromptsPanel />);
+
+    const promptButton = await findByText("Test Prompt");
+    fireEvent.click(promptButton);
+
+    const historyButton = await findByText(/View History/i);
+    fireEvent.click(historyButton);
+
+    await waitFor(() => {
+      expect(getByText("Current")).toBeInTheDocument();
+      expect(getByText("v1")).toBeInTheDocument();
+    });
+
+    // Published badge should appear exactly once (on the v1 historical row)
+    const publishedBadges = getAllByText("Published");
+    expect(publishedBadges).toHaveLength(1);
+
+    // Current button should NOT contain "Published"
+    const currentButton = getByText("Current").closest("button");
+    expect(currentButton?.textContent).not.toContain("Published");
+  });
+
+  test("No Published badge appears anywhere when published_version_id is null", async () => {
+    const unpublishedPrompt = {
+      ...mockPromptWithHistory,
+      current_version_id: 3,
+      published_version_id: null,
+    };
+
+    global.fetch = vi.fn((url) => {
+      if (url.includes("/api/workflow/prompts?")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { prompts: [unpublishedPrompt], total: 1, size: 10, page: 1 },
+          }),
+        });
+      }
+      if (url.includes("/versions") && !url.includes("/versions/")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              prompt_id: unpublishedPrompt.id,
+              prompt_name: unpublishedPrompt.name,
+              versions: mockVersions,
+              current_version_id: unpublishedPrompt.current_version_id,
+              version_count: unpublishedPrompt.version_count,
+            },
+          }),
+        });
+      }
+      if (url.includes(`/api/workflow/prompts/${unpublishedPrompt.id}`)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: unpublishedPrompt }),
+        });
+      }
+      return Promise.reject(new Error("Not found"));
+    }) as any;
+
+    const { findByText, getByText, queryByText } = render(<PromptsPanel />);
+
+    const promptButton = await findByText("Test Prompt");
+    fireEvent.click(promptButton);
+
+    const historyButton = await findByText(/View History/i);
+    fireEvent.click(historyButton);
+
+    await waitFor(() => {
+      expect(getByText("Current")).toBeInTheDocument();
+      expect(getByText("v1")).toBeInTheDocument();
+    });
+
+    // No Published badge should appear anywhere
+    expect(queryByText("Published")).not.toBeInTheDocument();
+  });
 });
