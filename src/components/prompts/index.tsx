@@ -1051,7 +1051,15 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                           {isCurrentA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
                           {isCurrentB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
                         </div>
-                        <span className="text-xs text-muted-foreground">Latest</span>
+                        <div className="flex items-center gap-2">
+                          {selectedPrompt.published_version_id !== null &&
+                            selectedPrompt.current_version_id === selectedPrompt.published_version_id && (
+                              <Badge variant="default" className="text-xs flex-shrink-0 bg-green-600 text-white">
+                                Published
+                              </Badge>
+                            )}
+                          <span className="text-xs text-muted-foreground">Latest</span>
+                        </div>
                       </div>
                     </button>
                   );
@@ -1063,7 +1071,8 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                     const isSelectedA = selectedVersionAId === version.id;
                     const isSelectedB = selectedVersionBId === version.id;
                     const isSelected = isSelectedA || isSelectedB;
-                    const isLive = version.id === selectedPrompt.published_version_id;
+                    const isLive = version.id === selectedPrompt.published_version_id &&
+                                  version.id !== selectedPrompt.current_version_id;
 
                     return (
                       <div key={version.id} className="relative flex items-center gap-2">
