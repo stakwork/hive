@@ -36,6 +36,7 @@ export function candidateTasksWhere(workspaceId: string) {
       { deleted: false },
       { OR: [{ workflowStatus: WorkflowStatus.PENDING }, { workflowStatus: null }] },
       { stakworkProjectId: null },
+      { workflowTask: null }, // Repo/coding tasks only — workflow tasks handled by processWorkflowTaskSweep
       { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" as const } } }] },
     ],
   };
