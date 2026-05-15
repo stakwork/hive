@@ -26,6 +26,7 @@ import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getModelValue } from "@/lib/ai/models";
+import { isClarifyingQuestions } from "@/types/stakwork";
 import { DiffToken, PlanData, PlanSection, SectionHighlights } from "./PlanArtifact";
 
 function generateUniqueId(): string {
@@ -93,6 +94,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const { data: session } = useSession();
   const { isSuperAdmin } = useWorkspace();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
@@ -295,6 +298,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     fetchLlmModels();
   }, []);
 
+  // Keep messagesRef in sync for use in handleSSEMessage without stale closures
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   // Resolve selectedModel once both feature and models are loaded.
   // Prefer the persisted feature.model; only fall back to the plan default
   // when the feature has no model set. Runs once on initial load.
@@ -326,6 +334,26 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     };
   }, [refetchFeature, loadMessages]);
 
+  const fetchSuggestions = useCallback(async (msgs: ChatMessage[]) => {
+    try {
+      const res = await fetch(`/api/features/${featureId}/suggestions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: msgs.slice(-5).map((m) => ({ role: m.role, message: m.message })),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          setSuggestions(data.suggestions);
+        }
+      }
+    } catch {
+      // Fail silently
+    }
+  }, [featureId]);
+
   const handleSSEMessage = useCallback((message: ChatMessage) => {
     setMessages((msgs) => {
       const exists = msgs.some((m) => m.id === message.id);
@@ -334,11 +362,24 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     });
     setIsLoading(false);
     onStreamMessage(message);
-  }, [onStreamMessage]);
+
+    // Generate suggestion chips after assistant messages (skip clarifying questions)
+    if (message.role === ChatRole.ASSISTANT) {
+      const hasClarifyingQuestions = message.artifacts?.some(
+        (a) => a.type === "PLAN" && isClarifyingQuestions(a.content),
+      );
+      if (!hasClarifyingQuestions) {
+        fetchSuggestions([...messagesRef.current, message]);
+      }
+    }
+  }, [onStreamMessage, fetchSuggestions]);
 
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
       setWorkflowStatus(update.workflowStatus);
+      if (update.workflowStatus === WorkflowStatus.IN_PROGRESS) {
+        setSuggestions([]);
+      }
       if (
         update.workflowStatus === WorkflowStatus.COMPLETED ||
         update.workflowStatus === WorkflowStatus.FAILED ||
@@ -370,6 +411,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const sendMessage = useCallback(
     async (messageText: string, attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>) => {
+      setSuggestions([]);
       const newMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
@@ -583,7 +625,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     llmModels,
     hasMessages,
     typingUsers,
-    onTypingStart: () => sendTyping(true),
+    suggestions,
+    onSuggestionSelect: (s: string) => sendMessage(s),
+    onTypingStart: () => { setSuggestions([]); sendTyping(true); },
     onTypingStop: () => sendTyping(false),
   };
 

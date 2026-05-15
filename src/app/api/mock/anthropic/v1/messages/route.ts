@@ -13,6 +13,9 @@ import { mockAnthropicState } from "@/lib/mock/anthropic-state";
 
 // Mock data for different generation types
 const MOCK_GENERATION_DATA: Record<string, unknown> = {
+  suggestions: {
+    suggestions: ["Yes, go ahead", "Looks good to me", "LGTM!"],
+  },
   userStories: {
     stories: [
       { title: "As a user, I want to log in with my email so that I can access my account securely" },
@@ -112,6 +115,7 @@ function detectGenerationType(prompt: string, system: string, tools: unknown[]):
   // Check for tool names first (AI SDK sends schema as a tool)
   if (tools && tools.length > 0) {
     const toolStr = JSON.stringify(tools).toLowerCase();
+    if (toolStr.includes("suggestions")) return "suggestions";
     if (toolStr.includes("stories")) return "userStories";
     if (toolStr.includes("phases") || toolStr.includes("tasks")) return "phasesTickets";
   }
