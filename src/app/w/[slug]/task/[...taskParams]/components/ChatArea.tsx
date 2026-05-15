@@ -16,6 +16,7 @@ import { ArrowLeft, FlaskConical, Loader2, Monitor, Pencil, Server, ServerOff, U
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { TypingIndicator } from "@/components/chat/TypingIndicator";
+import { SuggestionChips } from "@/components/plan/SuggestionChips";
 import { ChatInput } from "./ChatInput";
 import type { StreamContext } from "./WorkflowStatusBadge";
 import { ChatMessage } from "./ChatMessage";
@@ -66,6 +67,8 @@ interface ChatAreaProps {
   typingUsers?: string[];
   onTypingStart?: () => void;
   onTypingStop?: () => void;
+  suggestions?: string[];
+  onSuggestionSelect?: (s: string) => void;
 }
 
 export function ChatArea({
@@ -113,6 +116,8 @@ export function ChatArea({
   typingUsers,
   onTypingStart,
   onTypingStop,
+  suggestions,
+  onSuggestionSelect,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -392,6 +397,11 @@ export function ChatArea({
 
       {/* Typing Indicator */}
       <TypingIndicator typingUsers={typingUsers ?? []} />
+
+      {/* Quick-reply suggestion chips (plan mode only) */}
+      {isPlanChat && !inputDisabled && !!suggestions?.length && !!onSuggestionSelect && (
+        <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
+      )}
 
       {/* Input Bar */}
       <ChatInput
