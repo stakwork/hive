@@ -54,8 +54,13 @@ vi.mock("@/config/env", async () => {
       USE_MOCKS: true,
       MOCK_BASE: "http://localhost:3000",
       // Off by default in tests. Per-test opt-in by re-mocking
-      // `@/config/env` with BIFROST_ENABLED: true.
-      BIFROST_ENABLED: false,
+      // `@/config/env` with either:
+      //   - BIFROST_ENABLED: "true" / "all" / "*"   (all workspaces)
+      //   - BIFROST_ENABLED: "ws-slug,other-slug"   (allow-list)
+      // Note the value is now a raw string (was previously boolean);
+      // callers should use `isBifrostEnabledForWorkspace(slug)` rather
+      // than reading the field directly.
+      BIFROST_ENABLED: "",
     },
   };
 });

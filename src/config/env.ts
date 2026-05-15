@@ -89,13 +89,21 @@ export const optionalEnvVars = {
   MEMPOOL_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/mempool`
     : 'https://mempool.space',
-  // When "true", the agent-spawn path provisions a per-(workspace,user)
-  // Bifrost Virtual Key (lazy, idempotent) and forwards it to
-  // `repo/agent` as `apiKey` + `baseUrl`. When unset or anything else,
+  // Bifrost rollout gate. Accepted values:
+  //   - unset / "" / "false"         -> off for everyone
+  //   - "true" / "all" / "*"          -> on for every workspace
+  //   - "<slug1>,<slug2>,…"           -> on only for these workspace slugs
+  //
+  // When "on" for a workspace, the agent-spawn path provisions a
+  // per-(workspace,user) Bifrost Virtual Key (lazy, idempotent) and
+  // forwards it to `repo/agent` as `apiKey` + `baseUrl`. When off,
   // LLM calls keep using whatever default the agent/swarm picked
   // (preserves pre-Bifrost behavior). See
   // `gateway/plans/phase-1-reconciler.md`.
-  BIFROST_ENABLED: process.env.BIFROST_ENABLED === "true",
+  //
+  // Callers MUST go through `isBifrostEnabledForWorkspace(slug)` —
+  // direct equality checks on this raw string are a bug.
+  BIFROST_ENABLED: process.env.BIFROST_ENABLED || "",
 } as const;
 
 /**
@@ -149,6 +157,39 @@ export function isSuperAdminUserId(userId: string): boolean {
     .map((id) => id.trim())
     .filter(Boolean);
   return list.includes(userId.trim());
+}
+
+/**
+ * Decide whether the Bifrost rollout gate is open for a given workspace.
+ *
+ * `BIFROST_ENABLED` accepts three shapes:
+ *   - "true" / "all" / "*"     -> on for every workspace
+ *   - "slug1,slug2,…"          -> on only for these workspace slugs
+ *   - unset / "" / "false"     -> off for everyone
+ *
+ * Matching is case-insensitive and trims whitespace. Passing an empty /
+ * missing slug always returns `false` so untrusted callers can't accidentally
+ * enable the gate via empty input.
+ *
+ * @param workspaceSlug - The slug of the workspace to check
+ * @returns `true` iff Bifrost should be considered enabled for this workspace
+ */
+export function isBifrostEnabledForWorkspace(
+  workspaceSlug: string | null | undefined,
+): boolean {
+  const raw = (process.env.BIFROST_ENABLED || "").trim().toLowerCase();
+  if (!raw || raw === "false") return false;
+  if (raw === "true" || raw === "all" || raw === "*") return true;
+
+  // CSV path: empty slug never matches.
+  const slug = (workspaceSlug ?? "").trim().toLowerCase();
+  if (!slug) return false;
+
+  const allowList = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return allowList.includes(slug);
 }
 
 // Combined environment configuration
