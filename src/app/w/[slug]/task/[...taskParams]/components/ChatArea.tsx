@@ -399,7 +399,7 @@ export function ChatArea({
       <TypingIndicator typingUsers={typingUsers ?? []} />
 
       {/* Quick-reply suggestion chips (plan mode only) */}
-      {isPlanChat && !inputDisabled && !!suggestions?.length && !!onSuggestionSelect && (
+      {isPlanChat && !isLoading && !!suggestions?.length && !!onSuggestionSelect && (
         <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
       )}
 

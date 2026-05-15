@@ -24,15 +24,15 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ featureId: string }> },
 ) {
+  const { featureId } = await params;
   try {
-    const { featureId } = await params;
-
     const feature = await db.feature.findUnique({
       where: { id: featureId },
       select: { workspaceId: true },
     });
 
     if (!feature) {
+      console.warn("[suggestions] feature not found", { featureId });
       return NextResponse.json({ suggestions: [] }, { status: 200 });
     }
 
@@ -40,12 +40,16 @@ export async function POST(
       workspaceId: feature.workspaceId,
     });
     const ok = requireReadAccess(access);
-    if (ok instanceof NextResponse) return NextResponse.json({ suggestions: [] }, { status: 200 });
+    if (ok instanceof NextResponse) {
+      console.warn("[suggestions] workspace access denied", { featureId, workspaceId: feature.workspaceId });
+      return NextResponse.json({ suggestions: [] }, { status: 200 });
+    }
 
     const body = await request.json();
     const messages: Array<{ role: string; message: string }> = body.messages ?? [];
 
     if (messages.length === 0) {
+      console.warn("[suggestions] no messages in request body", { featureId });
       return NextResponse.json({ suggestions: [] });
     }
 
@@ -64,9 +68,13 @@ export async function POST(
       prompt: `Conversation:\n${conversationText}\n\nGenerate 2–3 short affirmative reply chips for the user.`,
     });
 
+    console.info("[suggestions] generated", { featureId, count: result.object.suggestions.length, suggestions: result.object.suggestions });
     return NextResponse.json({ suggestions: result.object.suggestions });
-  } catch {
-    // Fail silently — never surface errors to the client
+  } catch (error) {
+    console.error("[suggestions] failed", {
+      featureId,
+      error: error instanceof Error ? { name: error.name, message: error.message } : error,
+    });
     return NextResponse.json({ suggestions: [] });
   }
 }
