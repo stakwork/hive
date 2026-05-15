@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import type { EncryptedData } from "@/types/encryption";
 import type { BifrostAdminCreds } from "./types";
 import { DEFAULT_BIFROST_PORT } from "./constants";
 
@@ -76,11 +75,16 @@ export async function resolveBifrost(
 
   const baseUrl = deriveBifrostBaseUrl(swarm.swarmUrl);
 
+  // `decryptField` handles raw JSON-string ciphertext or plaintext
+  // (migration safety) — match the idiom used everywhere else in the
+  // codebase rather than parsing ourselves.
   const encryption = EncryptionService.getInstance();
   let adminPassword: string;
   try {
-    const parsed = JSON.parse(swarm.bifrostAdminPassword) as EncryptedData;
-    adminPassword = encryption.decryptField("bifrostAdminPassword", parsed);
+    adminPassword = encryption.decryptField(
+      "bifrostAdminPassword",
+      swarm.bifrostAdminPassword,
+    );
   } catch (err) {
     throw new BifrostConfigError(
       `Failed to decrypt Bifrost admin password for workspace ${workspaceId}: ${

@@ -89,6 +89,13 @@ export const optionalEnvVars = {
   MEMPOOL_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/mempool`
     : 'https://mempool.space',
+  // When "true", the agent-spawn path provisions a per-(workspace,user)
+  // Bifrost Virtual Key (lazy, idempotent) and forwards it to
+  // `repo/agent` as `apiKey` + `baseUrl`. When unset or anything else,
+  // LLM calls keep using whatever default the agent/swarm picked
+  // (preserves pre-Bifrost behavior). See
+  // `gateway/plans/phase-1-reconciler.md`.
+  BIFROST_ENABLED: process.env.BIFROST_ENABLED === "true",
 } as const;
 
 /**

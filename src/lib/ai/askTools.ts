@@ -15,6 +15,11 @@ import {
 } from "@/lib/mcp/mcpTools";
 import { reconcileBifrostVK } from "@/services/bifrost";
 import { logger } from "@/lib/logger";
+import { optionalEnvVars } from "@/config/env";
+
+// Inlined to avoid a circular import with workspaceConfig.ts.
+// Keep in sync with `PUBLIC_VIEWER_USER_ID` there.
+const PUBLIC_VIEWER_USER_ID = "__public_viewer__";
 
 export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
   const r = await fetch(`${swarmUrl}/gitree/features`, {
@@ -138,8 +143,10 @@ function resolveRepo(
 /**
  * Lazy Bifrost VK provisioning helper. Returns `{ apiKey, baseUrl }`
  * to forward to the swarm's `/repo/agent` when we have a
- * `(workspaceId, userId)` pair. Returns `undefined` for org-scope or
- * public-viewer paths where there's no per-user VK.
+ * `(workspaceId, userId)` pair. Returns `undefined` for:
+ *   - any caller when `BIFROST_ENABLED !== "true"` (the entire
+ *     Bifrost path is gated behind this flag);
+ *   - org-scope / public-viewer paths where there's no per-user VK.
  *
  * Reconcile failures are logged and swallowed (return `undefined`) —
  * we'd rather fall back to the swarm's default LLM key than break
@@ -149,7 +156,12 @@ function resolveRepo(
 export async function maybeReconcileBifrost(
   workspaceAuth?: WorkspaceAuth,
 ): Promise<{ apiKey: string; baseUrl: string } | undefined> {
+  // Feature flag gate. When off, callers behave exactly as before —
+  // no apiKey/baseUrl injection, no reconcile, no Bifrost HTTP.
+  if (!optionalEnvVars.BIFROST_ENABLED) return undefined;
   if (!workspaceAuth?.workspaceId || !workspaceAuth?.userId) return undefined;
+  // Public viewers have no real user identity — no per-user VK.
+  if (workspaceAuth.userId === PUBLIC_VIEWER_USER_ID) return undefined;
   try {
     const result = await reconcileBifrostVK(
       workspaceAuth.workspaceId,

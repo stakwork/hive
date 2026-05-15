@@ -53,6 +53,9 @@ vi.mock("@/config/env", async () => {
       LOG_LEVEL: mockConfig.LOG_LEVEL,
       USE_MOCKS: true,
       MOCK_BASE: "http://localhost:3000",
+      // Off by default in tests. Per-test opt-in by re-mocking
+      // `@/config/env` with BIFROST_ENABLED: true.
+      BIFROST_ENABLED: false,
     },
   };
 });

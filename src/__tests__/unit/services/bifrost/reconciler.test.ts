@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { reconcileBifrostVK } from "@/services/bifrost/reconciler";
-import type { BifrostClient } from "@/services/bifrost/BifrostClient";
+import { BifrostHttpError, type BifrostClient } from "@/services/bifrost/BifrostClient";
 import { dbMock } from "@/__tests__/support/mocks/prisma";
 
 // withLock should just run the fn synchronously in unit tests — Redis isn't
@@ -10,7 +10,10 @@ vi.mock("@/lib/locks/redis-lock", () => ({
   LockAcquireTimeoutError: class LockAcquireTimeoutError extends Error {},
 }));
 
-// EncryptionService — round-trip via a deterministic JSON envelope.
+// EncryptionService — minimal round-trip: encryptField returns a
+// deterministic envelope (whose JSON.stringify form is a real string);
+// decryptField accepts either the raw envelope or a JSON-stringified
+// envelope (matching the real implementation), and throws on garbage.
 vi.mock("@/lib/encryption", () => ({
   EncryptionService: {
     getInstance: vi.fn(() => ({
@@ -21,9 +24,22 @@ vi.mock("@/lib/encryption", () => ({
         version: "1",
         encryptedAt: "2026-01-01T00:00:00Z",
       })),
-      decryptField: vi.fn(
-        (_field: string, payload: { data: string }) => payload.data,
-      ),
+      decryptField: vi.fn((_field: string, input: unknown) => {
+        let payload: { data?: unknown } | null = null;
+        if (typeof input === "string") {
+          try {
+            payload = JSON.parse(input);
+          } catch {
+            throw new Error("Invalid encrypted data");
+          }
+        } else if (input && typeof input === "object") {
+          payload = input as { data?: unknown };
+        }
+        if (!payload || typeof payload.data !== "string") {
+          throw new Error("Invalid encrypted data format");
+        }
+        return payload.data;
+      }),
     })),
   },
 }));
@@ -356,5 +372,182 @@ describe("reconcileBifrostVK", () => {
     });
     expect(result.vkValue).toBe("sk-bf-RESTORED");
     expect(dbMock.workspaceMember.update).toHaveBeenCalled();
+  });
+
+  it("recovers when Customer create races: 400 dup-key → readback", async () => {
+    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+      id: "mem-1",
+      bifrostVkValue: null,
+      bifrostVkId: null,
+      bifrostCustomerId: null,
+    } as never);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // First listCustomers: empty (nothing exists yet)
+    // createCustomer: 400 with duplicate-key body (race lost)
+    // Second listCustomers (readback): the winning row is now there
+    // listVirtualKeys/createVirtualKey: proceed normally
+    const listCustomers = vi
+      .fn()
+      .mockResolvedValueOnce({
+        customers: [],
+        count: 0,
+        total_count: 0,
+        limit: 50,
+        offset: 0,
+      })
+      .mockResolvedValueOnce({
+        customers: [
+          { id: "cust-winner", name: USER_ID, created_at: "2026-01-01" },
+        ],
+        count: 1,
+        total_count: 1,
+        limit: 50,
+        offset: 0,
+      });
+    const createCustomer = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new BifrostHttpError(
+          400,
+          { error: "Failed to create customer: duplicate key value" },
+          "Bifrost POST /api/governance/customers failed: 400 duplicate key value",
+        ),
+      );
+
+    const client = makeClientStub({
+      listCustomers,
+      createCustomer,
+      listVirtualKeys: vi.fn().mockResolvedValue({
+        virtual_keys: [],
+        count: 0,
+        total_count: 0,
+        limit: 50,
+        offset: 0,
+      }),
+      createVirtualKey: vi.fn().mockResolvedValue({
+        message: "ok",
+        virtual_key: {
+          id: "vk-1",
+          name: USER_ID,
+          value: "sk-bf-AFTER-RACE",
+          customer_id: "cust-winner",
+          created_at: "2026-01-01",
+        },
+      }),
+    });
+
+    const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+      clientFactory: () => client,
+    });
+
+    expect(result.customerId).toBe("cust-winner");
+    expect(result.vkValue).toBe("sk-bf-AFTER-RACE");
+    expect(listCustomers).toHaveBeenCalledTimes(2);
+    expect(createCustomer).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers when VK create races: 400 dup-key → readback", async () => {
+    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+      id: "mem-1",
+      bifrostVkValue: null,
+      bifrostVkId: null,
+      bifrostCustomerId: null,
+    } as never);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Customer already exists; VK list says none → try createVirtualKey →
+    // 400 dup-key → readback finds the winning row.
+    const listVirtualKeys = vi
+      .fn()
+      .mockResolvedValueOnce({
+        virtual_keys: [],
+        count: 0,
+        total_count: 0,
+        limit: 50,
+        offset: 0,
+      })
+      .mockResolvedValueOnce({
+        virtual_keys: [
+          {
+            id: "vk-winner",
+            name: USER_ID,
+            value: "sk-bf-WINNER",
+            customer_id: "cust-1",
+            created_at: "2026-01-01",
+          },
+        ],
+        count: 1,
+        total_count: 1,
+        limit: 50,
+        offset: 0,
+      });
+    const createVirtualKey = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new BifrostHttpError(
+          400,
+          {
+            error:
+              "Failed to create virtual key: duplicate key value violates unique constraint",
+          },
+          "Bifrost POST /api/governance/virtual-keys failed: 400 duplicate key value violates unique constraint",
+        ),
+      );
+
+    const client = makeClientStub({
+      listCustomers: vi.fn().mockResolvedValue({
+        customers: [
+          { id: "cust-1", name: USER_ID, created_at: "2026-01-01" },
+        ],
+        count: 1,
+        total_count: 1,
+        limit: 50,
+        offset: 0,
+      }),
+      listVirtualKeys,
+      createVirtualKey,
+    });
+
+    const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+      clientFactory: () => client,
+    });
+
+    expect(result.vkId).toBe("vk-winner");
+    expect(result.vkValue).toBe("sk-bf-WINNER");
+    expect(listVirtualKeys).toHaveBeenCalledTimes(2);
+    expect(createVirtualKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT swallow non-duplicate Bifrost 400s on Customer create", async () => {
+    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+      id: "mem-1",
+      bifrostVkValue: null,
+      bifrostVkId: null,
+      bifrostCustomerId: null,
+    } as never);
+
+    const client = makeClientStub({
+      listCustomers: vi.fn().mockResolvedValue({
+        customers: [],
+        count: 0,
+        total_count: 0,
+        limit: 50,
+        offset: 0,
+      }),
+      createCustomer: vi.fn().mockRejectedValue(
+        new BifrostHttpError(
+          400,
+          { error: "Customer name is required" },
+          "Bifrost POST /api/governance/customers failed: 400 Customer name is required",
+        ),
+      ),
+    });
+
+    await expect(
+      reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      }),
+    ).rejects.toMatchObject({ name: "BifrostHttpError", status: 400 });
   });
 });
