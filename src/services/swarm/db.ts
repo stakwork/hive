@@ -91,6 +91,8 @@ export const select = {
   pendingRepairTrigger: true,
   description: true,
   repairAgentDisabled: true,
+  bifrostAdminUser: true,
+  bifrostAdminPassword: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {

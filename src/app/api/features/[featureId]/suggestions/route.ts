@@ -8,12 +8,17 @@ import { z } from "zod";
 export const runtime = "nodejs";
 
 const SUGGESTIONS_SYSTEM_PROMPT =
-  "Generate 2–3 very short (2–5 words) affirmative quick-reply chips for a product planning chat. " +
+  "Generate exactly 3 very short (2–5 words) affirmative quick-reply chips for a product planning chat. " +
   "Responses must be purely confirmatory (e.g. 'Yes, go ahead', 'Looks good', 'LGTM!'). " +
-  "Never answer questions, solve problems, or add new information.";
+  "Never answer questions, solve problems, or add new information. " +
+  "Return an array with 3 distinct items.";
 
+// Note: do not use `.min(N)` for N > 1 here. Some providers (e.g. Gemini)
+// reject JSON Schema arrays whose `minItems` is anything other than 0 or 1,
+// which makes the whole call throw and we silently return []. Enforce shape
+// in the prompt and clamp in code instead.
 const suggestionsSchema = z.object({
-  suggestions: z.array(z.string()).min(2).max(3),
+  suggestions: z.array(z.string()).max(4),
 });
 
 /**
@@ -65,11 +70,16 @@ export async function POST(
       model,
       schema: suggestionsSchema,
       system: SUGGESTIONS_SYSTEM_PROMPT,
-      prompt: `Conversation:\n${conversationText}\n\nGenerate 2–3 short affirmative reply chips for the user.`,
+      prompt: `Conversation:\n${conversationText}\n\nGenerate exactly 3 short affirmative reply chips for the user.`,
     });
 
-    console.info("[suggestions] generated", { featureId, count: result.object.suggestions.length, suggestions: result.object.suggestions });
-    return NextResponse.json({ suggestions: result.object.suggestions });
+    const suggestions = result.object.suggestions
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .slice(0, 4);
+
+    console.info("[suggestions] generated", { featureId, count: suggestions.length, suggestions });
+    return NextResponse.json({ suggestions });
   } catch (error) {
     console.error("[suggestions] failed", {
       featureId,

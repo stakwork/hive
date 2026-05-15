@@ -34,7 +34,9 @@ export type EncryptableField =
   | "vercelWebhookSecret"
   | "sphinxBotSecret"
   | "lightningPubkey"
-  | "fiatPaymentPassword";
+  | "fiatPaymentPassword"
+  | "bifrostAdminPassword"
+  | "bifrostVk";
 
 export interface EncryptionError extends Error {
   code: "ENCRYPTION_FAILED" | "DECRYPTION_FAILED" | "INVALID_KEY" | "INVALID_DATA";
