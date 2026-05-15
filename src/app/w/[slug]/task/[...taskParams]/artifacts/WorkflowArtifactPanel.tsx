@@ -10,7 +10,8 @@ import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Upload, Loader2, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
 import { PromptsPanel } from "@/components/prompts";
 import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
 import { ProjectInfoCard } from "@/components/ProjectInfoCard";
@@ -24,13 +25,16 @@ interface WorkflowArtifactPanelProps {
   onStepSelect?: (step: WorkflowTransition) => void;
   onVersionChange?: (versionId: string) => void;
   isSuperAdmin?: boolean;
+  taskId?: string;
 }
 
-export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange, isSuperAdmin = false }: WorkflowArtifactPanelProps) {
+export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange, isSuperAdmin = false, taskId }: WorkflowArtifactPanelProps) {
   const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork" | "children">("editor");
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isPublished, setIsPublished] = useState(false);
 
   const handleStepClick = useCallback((step: WorkflowTransition) => {
     setClickedStep(step);
@@ -155,6 +159,48 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     return computeWorkflowDiff(originalWorkflowJson ?? null, workflowJson ?? null);
   }, [hasChanges, originalWorkflowJson, workflowJson]);
 
+  const latestArtifactId = activeArtifacts[activeArtifacts.length - 1]?.id;
+
+  const handlePublish = async () => {
+    if (!mergedContent.workflowId) {
+      toast.error("Missing workflow ID");
+      return;
+    }
+    setIsPublishing(true);
+    try {
+      const res = await fetch('/api/workflow/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflowId: mergedContent.workflowId,
+          workflowRefId: mergedContent.workflowRefId,
+          artifactId: latestArtifactId,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to publish workflow');
+      }
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to publish workflow');
+      setIsPublished(true);
+      toast.success('Workflow published successfully');
+      if (taskId) {
+        await fetch(`/api/tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'DONE' }),
+        });
+      }
+    } catch (err) {
+      toast.error('Failed to publish workflow', {
+        description: err instanceof Error ? err.message : 'Unknown error',
+      });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   // Tab fallback: if Changes tab is active but selected workflow has no diff, reset to editor
   useEffect(() => {
     if (activeDisplayTab === 'changes' && !originalWorkflowJson) {
@@ -270,6 +316,24 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
                 ))}
               </SelectContent>
             </Select>
+          </div>
+        )}
+        {hasChanges && (
+          <div className="flex justify-end px-2 pb-1 flex-shrink-0">
+            <Button
+              size="sm"
+              onClick={handlePublish}
+              disabled={isPublishing || isPublished}
+              className={isPublished ? 'gap-2 bg-green-600 hover:bg-green-600 text-white' : 'gap-2'}
+            >
+              {isPublished ? (
+                <><CheckCircle2 className="w-4 h-4" />Published</>
+              ) : isPublishing ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Publishing...</>
+              ) : (
+                <><Upload className="w-4 h-4" />Publish</>
+              )}
+            </Button>
           </div>
         )}
         <Tabs
