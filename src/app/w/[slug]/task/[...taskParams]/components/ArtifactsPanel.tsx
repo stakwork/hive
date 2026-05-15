@@ -470,6 +470,7 @@ export function ArtifactsPanel({
                 onStepSelect={onStepSelect}
                 onVersionChange={onVersionChange}
                 isSuperAdmin={isSuperAdmin}
+                taskId={taskId}
               />
             </div>
           )}
