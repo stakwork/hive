@@ -13,6 +13,8 @@ import {
   findWorkspaceUser,
   type WorkspaceAuth,
 } from "@/lib/mcp/mcpTools";
+import { reconcileBifrostVK } from "@/services/bifrost";
+import { logger } from "@/lib/logger";
 
 export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
   const r = await fetch(`${swarmUrl}/gitree/features`, {
@@ -51,15 +53,30 @@ export async function repoAgent(
     model?: string;
     skills?: Record<string, boolean>;
     subAgents?: SubAgent[];
-  }
+  },
+  /**
+   * Optional Bifrost routing. When provided, the swarm-side `repo/agent`
+   * uses `bifrost.apiKey` as the LLM bearer token and `bifrost.baseUrl`
+   * as the LLM base URL — i.e. agent traffic flows through this
+   * workspace's Bifrost rather than calling LLM providers directly.
+   * Plumbed in via `params.apiKey` / `params.baseUrl` on the body per
+   * the stakgraph protocol.
+   */
+  bifrost?: { apiKey: string; baseUrl: string },
 ): Promise<Record<string, string>> {
+  const body: Record<string, unknown> = { ...params };
+  if (bifrost) {
+    body.apiKey = bifrost.apiKey;
+    body.baseUrl = bifrost.baseUrl;
+  }
+
   const initiateResponse = await fetch(`${swarmUrl}/repo/agent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-api-token": swarmApiKey,
     },
-    body: JSON.stringify(params),
+    body: JSON.stringify(body),
   });
 
   if (!initiateResponse.ok) {
@@ -116,6 +133,41 @@ function resolveRepo(
     return { owner, repo };
   }
   return { owner: repoMap[0].owner, repo: repoMap[0].repo };
+}
+
+/**
+ * Lazy Bifrost VK provisioning helper. Returns `{ apiKey, baseUrl }`
+ * to forward to the swarm's `/repo/agent` when we have a
+ * `(workspaceId, userId)` pair. Returns `undefined` for org-scope or
+ * public-viewer paths where there's no per-user VK.
+ *
+ * Reconcile failures are logged and swallowed (return `undefined`) —
+ * we'd rather fall back to the swarm's default LLM key than break
+ * chat. Per the plan, this lazy path is the trigger; subsequent
+ * calls hit the cached VK on `WorkspaceMember`.
+ */
+export async function maybeReconcileBifrost(
+  workspaceAuth?: WorkspaceAuth,
+): Promise<{ apiKey: string; baseUrl: string } | undefined> {
+  if (!workspaceAuth?.workspaceId || !workspaceAuth?.userId) return undefined;
+  try {
+    const result = await reconcileBifrostVK(
+      workspaceAuth.workspaceId,
+      workspaceAuth.userId,
+    );
+    return { apiKey: result.vkValue, baseUrl: result.baseUrl };
+  } catch (err) {
+    logger.warn(
+      "Bifrost VK reconcile failed; falling back to default LLM key",
+      "BIFROST_VK",
+      {
+        workspaceId: workspaceAuth.workspaceId,
+        userId: workspaceAuth.userId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+    return undefined;
+  }
 }
 
 export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string, workspaceAuth?: WorkspaceAuth) {
@@ -221,12 +273,23 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
       execute: async ({ prompt }: { prompt: string }) => {
         const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE! DO NOT DO A THOROUGH SEARCH OF THE REPO. TRY TO FINISH THE EXPLORATION VERY QUICKLY!`;
         try {
+          // Lazy Bifrost VK provisioning. If we have workspace + user
+          // context, route LLM calls through this workspace's Bifrost
+          // by passing the user's VK as `apiKey` and Bifrost's
+          // baseUrl. Otherwise (org/public-viewer paths), fall back
+          // to the swarm's default LLM key.
+          const bifrost = await maybeReconcileBifrost(workspaceAuth);
           // Pass comma-separated repo URLs for multi-repo support
-          const rr = await repoAgent(swarmUrl, swarmApiKey, {
-            repo_url: repoUrls.join(","),
-            prompt: prompt2,
-            pat,
-          });
+          const rr = await repoAgent(
+            swarmUrl,
+            swarmApiKey,
+            {
+              repo_url: repoUrls.join(","),
+              prompt: prompt2,
+              pat,
+            },
+            bifrost,
+          );
           return rr.content;
         } catch (e) {
           console.error("Error executing repo agent:", e);

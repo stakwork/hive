@@ -2,7 +2,7 @@ import { tool, ToolSet, Tool } from "ai";
 import { z } from "zod";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { WorkspaceConfig } from "./types";
-import { listConcepts, repoAgent } from "./askTools";
+import { listConcepts, maybeReconcileBifrost, repoAgent } from "./askTools";
 import { shouldTrimConceptsToIds } from "./conceptsTrim";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
@@ -230,11 +230,23 @@ export function askToolsMulti(
       execute: async ({ prompt }: { prompt: string }) => {
         const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE!`;
         try {
-          const rr = await repoAgent(ws.swarmUrl, ws.swarmApiKey, {
-            repo_url: ws.repoUrls.join(","),
-            prompt: prompt2,
-            pat: ws.pat,
+          // Per-workspace Bifrost VK so each workspace's spend gets
+          // attributed to its own Customer/VK on its own Bifrost.
+          const bifrost = await maybeReconcileBifrost({
+            workspaceId: ws.workspaceId,
+            workspaceSlug: ws.slug,
+            userId: ws.userId,
           });
+          const rr = await repoAgent(
+            ws.swarmUrl,
+            ws.swarmApiKey,
+            {
+              repo_url: ws.repoUrls.join(","),
+              prompt: prompt2,
+              pat: ws.pat,
+            },
+            bifrost,
+          );
           return rr.content;
         } catch (e) {
           console.error(`Error executing repo agent for ${ws.slug}:`, e);
