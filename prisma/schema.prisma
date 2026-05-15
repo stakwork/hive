@@ -249,16 +249,20 @@ model Workspace {
 }
 
 model WorkspaceMember {
-  id             String        @id @default(cuid())
-  workspaceId    String        @map("workspace_id")
-  userId         String        @map("user_id")
-  role           WorkspaceRole @default(VIEWER)
-  joinedAt       DateTime      @default(now()) @map("joined_at")
-  leftAt         DateTime?     @map("left_at")
-  lastAccessedAt DateTime?     @map("last_accessed_at")
-  description    String?       @map("description")
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id                String        @id @default(cuid())
+  workspaceId       String        @map("workspace_id")
+  userId            String        @map("user_id")
+  role              WorkspaceRole @default(VIEWER)
+  joinedAt          DateTime      @default(now()) @map("joined_at")
+  leftAt            DateTime?     @map("left_at")
+  lastAccessedAt    DateTime?     @map("last_accessed_at")
+  description       String?       @map("description")
+  bifrostVkValue    String?       @map("bifrost_vk_value")
+  bifrostVkId       String?       @map("bifrost_vk_id")
+  bifrostCustomerId String?       @map("bifrost_customer_id")
+  bifrostSyncedAt   DateTime?     @map("bifrost_synced_at")
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
   @@index([workspaceId])
@@ -343,6 +347,8 @@ model Swarm {
   podCompletedAt          DateTime?             @map("pod_completed_at")
   repairAgentDisabled     Boolean               @default(false) @map("repair_agent_disabled")
   description             String?
+  bifrostAdminUser        String?               @map("bifrost_admin_user")
+  bifrostAdminPassword    String?               @map("bifrost_admin_password")
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
   workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
