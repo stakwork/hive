@@ -1,8 +1,8 @@
+import { BifrostCredsDevLog } from "@/components/settings/BifrostCredsDevLog";
 import { SettingsTabs } from "@/components/settings/SettingsTabs";
 import { PageHeader } from "@/components/ui/page-header";
 import { isBifrostEnabledForWorkspace } from "@/config/env";
 import { authOptions } from "@/lib/auth/nextauth";
-import { resolveBifrost } from "@/services/bifrost";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
@@ -29,39 +29,24 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
     notFound();
   }
 
-  // DEV: dump Bifrost admin credentials to server console so developers
-  // can log into the LLM dashboard while the proper UI is being built.
-  // Gated behind the same workspace-scoped rollout flag the reconciler
-  // uses (`isBifrostEnabledForWorkspace` — see `lib/ai/askTools.ts`)
-  // AND behind workspace OWNER/ADMIN (the notFound() above), so the
-  // log only fires in deployments that have opted in to Bifrost for
-  // this workspace AND only for users entitled to see the password.
+  // DEV: when the rollout flag is on for this workspace, mount a
+  // client-side helper that fetches the admin creds and dumps them to
+  // the browser DevTools console. Gated server-side here so the
+  // component is omitted from the React tree entirely for workspaces
+  // that haven't opted in (no client-side flag leak).
   //
-  // Triggers the same lazy bootstrap path the future UI will use, so
-  // visiting /w/<slug>/settings on a fresh swarm is enough to provision
-  // and cache the admin password on the Swarm row.
+  // The `/api/workspaces/[slug]/bifrost/credentials` route the helper
+  // hits enforces workspace OWNER/ADMIN server-side, so even if a
+  // viewer somehow rendered this component the route would 403.
   //
-  // Remove once the dashboard card lands in SettingsTabs.
-  if (isBifrostEnabledForWorkspace(workspace.slug)) {
-    try {
-      const creds = await resolveBifrost(workspace.id);
-      console.log(
-        `[bifrost-creds] workspace=${workspace.slug} ` +
-          `dashboard=${creds.baseUrl} ` +
-          `user=${creds.adminUser} ` +
-          `password=${creds.adminPassword}`,
-      );
-    } catch (err) {
-      console.warn(
-        `[bifrost-creds] workspace=${workspace.slug} unavailable: ` +
-          (err instanceof Error ? err.message : String(err)),
-      );
-    }
-  }
+  // Remove once the proper "Open dashboard / copy password" card
+  // lands in SettingsTabs.
+  const showBifrostDevLog = isBifrostEnabledForWorkspace(workspace.slug);
 
   return (
     <div className="space-y-6">
       <PageHeader title="Workspace Settings" />
+      {showBifrostDevLog && <BifrostCredsDevLog slug={workspace.slug} />}
       <SettingsTabs
         workspaceId={workspace.id}
         workspaceName={workspace.name}
