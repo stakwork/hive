@@ -45,7 +45,18 @@ export interface BifrostProviderConfig {
   virtual_key_id?: string;
   provider: string;
   weight?: number | null;
+  /** ["*"] = allow all models; empty array = deny all. */
   allowed_models: string[];
+  /**
+   * REQUEST-only field. Bifrost maps `["*"]` -> `allow_all_keys: true`;
+   * a list of provider-key UUIDs -> attach those specific keys. If
+   * omitted, the VK ends up with zero attached keys and every inference
+   * fails with "no keys found for provider: …". Field name comes from
+   * the Go handler (`KeyIDs json:"key_ids"`) — NOT the same as the
+   * response-side `keys` array.
+   */
+  key_ids?: string[];
+  /** Response-side: hydrated provider keys. Read-only from our POV. */
   allow_all_keys?: boolean;
   keys?: unknown[];
   budgets?: unknown[];
