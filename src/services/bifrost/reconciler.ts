@@ -249,9 +249,20 @@ async function ensureVirtualKey(
       name: userId,
       description: `Hive user ${userId} — auto-provisioned`,
       customer_id: customerId,
+      // `key_ids: ["*"]` tells Bifrost to set `allow_all_keys: true` on
+      // each provider_config — i.e. the VK is permitted to use every
+      // provider-level API key configured on the gateway. Without this,
+      // Bifrost defaults to "no attached keys" and inference fails with
+      // `no keys found for provider: <p> and model: <m>` (even though
+      // the provider key clearly exists). The field name is `key_ids`
+      // on the request, NOT `keys` — the response-side `keys` array is
+      // a different (hydrated, read-only) field. See the Bifrost Go
+      // handler: `KeyIDs schemas.WhiteList json:"key_ids"` in
+      // transports/bifrost-http/handlers/governance.go.
       provider_configs: DEFAULT_PROVIDERS.map((provider) => ({
         provider,
         allowed_models: ["*"],
+        key_ids: ["*"],
       })),
     });
     return { virtualKey: created.virtual_key, createdVk: true };

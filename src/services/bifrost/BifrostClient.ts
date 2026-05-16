@@ -51,6 +51,14 @@ interface CreateVirtualKeyInput {
   provider_configs: Array<{
     provider: BifrostProvider;
     allowed_models: string[];
+    /**
+     * `["*"]` -> Bifrost sets `allow_all_keys: true` on the resulting
+     * provider_config. A list of UUIDs attaches those specific provider
+     * keys. Omitted = no keys attached = inference fails with
+     * "no keys found for provider: …". See types.ts and the Go handler
+     * (`KeyIDs json:"key_ids"`).
+     */
+    key_ids?: string[];
   }>;
 }
 
