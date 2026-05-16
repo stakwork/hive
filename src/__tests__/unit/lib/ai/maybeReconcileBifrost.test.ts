@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock the reconciler BEFORE importing the SUT so the import binding
 // picks up the mock.
@@ -6,28 +6,9 @@ vi.mock("@/services/bifrost", () => ({
   reconcileBifrostVK: vi.fn(),
 }));
 
-// The flag lives on `optionalEnvVars.BIFROST_ENABLED`. The base test
-// env mock (src/__tests__/support/mocks/env.ts) sets it to `false`.
-// We override that per-test below.
-const envState = { BIFROST_ENABLED: false };
-vi.mock("@/config/env", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/config/env")>("@/config/env");
-  return {
-    ...actual,
-    optionalEnvVars: new Proxy(
-      {},
-      {
-        get(_t, prop: string) {
-          if (prop === "BIFROST_ENABLED") return envState.BIFROST_ENABLED;
-          // Fall through to a safe default for anything else the
-          // module-under-test might read.
-          return undefined;
-        },
-      },
-    ),
-  };
-});
+// The rollout gate now lives in `isBifrostEnabledForWorkspace`, which
+// reads `process.env.BIFROST_ENABLED` directly. Manipulate the env
+// var per-test rather than mocking the field on `optionalEnvVars`.
 
 const { maybeReconcileBifrost } = await import("@/lib/ai/askTools");
 const bifrostModule = await import("@/services/bifrost");
@@ -38,27 +19,37 @@ const auth = {
   userId: "u_alice",
 };
 
+const ORIGINAL_BIFROST_ENABLED = process.env.BIFROST_ENABLED;
+
 describe("maybeReconcileBifrost feature flag", () => {
   beforeEach(() => {
     vi.mocked(bifrostModule.reconcileBifrostVK).mockReset();
+    delete process.env.BIFROST_ENABLED;
   });
 
-  it("returns undefined and never calls the reconciler when BIFROST_ENABLED is false", async () => {
-    envState.BIFROST_ENABLED = false;
+  afterEach(() => {
+    if (ORIGINAL_BIFROST_ENABLED === undefined) {
+      delete process.env.BIFROST_ENABLED;
+    } else {
+      process.env.BIFROST_ENABLED = ORIGINAL_BIFROST_ENABLED;
+    }
+  });
+
+  it("returns undefined and never calls the reconciler when the gate is unset", async () => {
     const result = await maybeReconcileBifrost(auth);
     expect(result).toBeUndefined();
     expect(bifrostModule.reconcileBifrostVK).not.toHaveBeenCalled();
   });
 
-  it("returns undefined when BIFROST_ENABLED is true but workspaceAuth is missing", async () => {
-    envState.BIFROST_ENABLED = true;
+  it("returns undefined when BIFROST_ENABLED=true but workspaceAuth is missing", async () => {
+    process.env.BIFROST_ENABLED = "true";
     const result = await maybeReconcileBifrost(undefined);
     expect(result).toBeUndefined();
     expect(bifrostModule.reconcileBifrostVK).not.toHaveBeenCalled();
   });
 
   it("returns undefined for the public viewer even when enabled", async () => {
-    envState.BIFROST_ENABLED = true;
+    process.env.BIFROST_ENABLED = "true";
     const result = await maybeReconcileBifrost({
       workspaceId: "ws-1",
       workspaceSlug: "ws-slug",
@@ -68,8 +59,8 @@ describe("maybeReconcileBifrost feature flag", () => {
     expect(bifrostModule.reconcileBifrostVK).not.toHaveBeenCalled();
   });
 
-  it("calls the reconciler and forwards { apiKey, baseUrl } when enabled and auth present", async () => {
-    envState.BIFROST_ENABLED = true;
+  it("calls the reconciler when BIFROST_ENABLED=true (all workspaces)", async () => {
+    process.env.BIFROST_ENABLED = "true";
     vi.mocked(bifrostModule.reconcileBifrostVK).mockResolvedValueOnce({
       workspaceId: "ws-1",
       userId: "u_alice",
@@ -91,8 +82,33 @@ describe("maybeReconcileBifrost feature flag", () => {
     );
   });
 
+  it("calls the reconciler when the workspace slug is in the CSV allow-list", async () => {
+    process.env.BIFROST_ENABLED = "other-slug,ws-slug,another";
+    vi.mocked(bifrostModule.reconcileBifrostVK).mockResolvedValueOnce({
+      workspaceId: "ws-1",
+      userId: "u_alice",
+      customerId: "cust-1",
+      vkId: "vk-1",
+      vkValue: "sk-bf-CSV",
+      baseUrl: "http://bifrost.test:8181",
+      created: false,
+    });
+
+    const result = await maybeReconcileBifrost(auth);
+    expect(result?.apiKey).toBe("sk-bf-CSV");
+    expect(bifrostModule.reconcileBifrostVK).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT call the reconciler when slug is absent from the CSV allow-list", async () => {
+    process.env.BIFROST_ENABLED = "only-other-slug,yet-another";
+
+    const result = await maybeReconcileBifrost(auth);
+    expect(result).toBeUndefined();
+    expect(bifrostModule.reconcileBifrostVK).not.toHaveBeenCalled();
+  });
+
   it("swallows reconcile errors and returns undefined (fallback to default LLM key)", async () => {
-    envState.BIFROST_ENABLED = true;
+    process.env.BIFROST_ENABLED = "true";
     vi.mocked(bifrostModule.reconcileBifrostVK).mockRejectedValueOnce(
       new Error("bifrost unreachable"),
     );
