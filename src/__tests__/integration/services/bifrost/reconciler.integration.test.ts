@@ -131,7 +131,10 @@ describe("reconcileBifrostVK (integration)", () => {
     expect(result.vkValue).toBe("sk-bf-LIVE-1");
     expect(result.customerId).toBe("cust-1");
     expect(result.vkId).toBe("vk-1");
-    expect(result.baseUrl).toBe("https://swarm.test.sphinx.chat:8181");
+    // No `model` option supplied -> default provider (anthropic).
+    expect(result.baseUrl).toBe(
+      "https://swarm.test.sphinx.chat:8181/anthropic/v1",
+    );
     expect(result.created).toBe(true);
 
     // Persisted on the WorkspaceMember row, encrypted.

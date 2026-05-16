@@ -10,11 +10,16 @@ import {
 import { validateWorkspaceAccess } from "@/services/workspace";
 
 /**
- * GET /api/workspaces/[slug]/bifrost/vk
+ * GET /api/workspaces/[slug]/bifrost/vk[?model=<name>]
  *
  * Returns the caller's per-(workspace,user) Bifrost Virtual Key so a
  * developer can hit the gateway manually with `Authorization: Bearer
  * <vkValue>` from curl / Postman / etc.
+ *
+ * `?model=` is an optional shortcut (`"sonnet"`, `"gpt"`, `"gemini"`,
+ * `"kimi"`, or a full model id) that determines the per-provider
+ * suffix on the returned `baseUrl` (`/anthropic/v1`, `/openai/v1`,
+ * `/genai/v1beta`). Defaults to anthropic — the most common case.
  *
  * Auth: workspace ADMIN or higher. The VK is the caller's own token
  * — but exposing it in a copyable form is still a privileged action
@@ -31,7 +36,7 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  * See gateway/plans/phase-1-reconciler.md for the reconciler contract.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
@@ -70,8 +75,14 @@ export async function GET(
     );
   }
 
+  // Optional `?model=` query so the returned `baseUrl` is suffixed
+  // for the provider the developer plans to curl against.
+  const model = request.nextUrl.searchParams.get("model") ?? undefined;
+
   try {
-    const result = await reconcileBifrostVK(workspaceId, session.user.id);
+    const result = await reconcileBifrostVK(workspaceId, session.user.id, {
+      model,
+    });
 
     return new NextResponse(
       JSON.stringify({

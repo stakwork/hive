@@ -8,13 +8,24 @@ import { DEFAULT_BIFROST_PORT } from "./constants";
 // that needs it.
 
 /**
- * Derive Bifrost's base URL from a swarm URL.
+ * Derive Bifrost's *gateway-root* base URL from a swarm URL.
+ *
+ * This is the root the Bifrost admin/governance API lives at —
+ * `/health`, `/_plugin/*`, `/api/governance/*`. Provider routes
+ * (`/anthropic/v1/*`, `/openai/v1/*`, `/genai/v1beta/*`) hang off
+ * this root.
+ *
+ * Callers should NOT mix this URL with LLM-SDK code paths — for
+ * those, go through `reconcileBifrostVK({ model })`, which returns
+ * a fully-formed per-provider URL keyed to the caller's model.
+ * Keeping the root and the LLM URL in separate code paths is what
+ * makes "every LLM caller gets the right URL for free" true.
  *
  * Rule: keep scheme + host, replace (or set) port to
  * `DEFAULT_BIFROST_PORT` (8181), and strip path / query / hash.
  * The gateway is a sibling listener on the same host — its routes
- * (`/health`, `/_plugin/*`, `/api/governance/*`, `/v1/*`) all live at
- * the root, not under whatever path the swarm's API happens to use.
+ * all live at the root, not under whatever path the swarm's API
+ * happens to use.
  *
  * Examples:
  *   https://swarm-abc.sphinx.chat        -> https://swarm-abc.sphinx.chat:8181
