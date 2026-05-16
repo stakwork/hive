@@ -30,9 +30,12 @@ jobs:
 
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
-        run: npm ci
+        run: npm ci --legacy-peer-deps
         env:
           DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+
+      - name: Generate Prisma client
+        run: npx prisma generate
 
       - name: Cache Next.js build
         uses: actions/cache@v4
