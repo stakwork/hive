@@ -20,9 +20,26 @@ function validateCanvasData(value: unknown): value is {
   return true;
 }
 
-async function findOrg(githubLogin: string) {
-  return db.sourceControlOrg.findUnique({
-    where: { githubLogin },
+/**
+ * Resolve the org by githubLogin while simultaneously verifying the caller
+ * has at least one workspace in it.  Returns null when the org does not exist
+ * OR the user has no workspace there (both cases → 404 to avoid leaking
+ * whether the org exists at all).
+ */
+async function findOrgForUser(githubLogin: string, userId: string) {
+  return db.sourceControlOrg.findFirst({
+    where: {
+      githubLogin,
+      workspaces: {
+        some: {
+          deleted: false,
+          OR: [
+            { ownerId: userId },
+            { members: { some: { userId, leftAt: null } } },
+          ],
+        },
+      },
+    },
     select: { id: true },
   });
 }
@@ -48,7 +65,7 @@ export async function GET(
   }
 
   try {
-    const org = await findOrg(githubLogin);
+    const org = await findOrgForUser(githubLogin, userOrResponse.id);
     if (!org) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
@@ -88,7 +105,7 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid canvas data" }, { status: 400 });
     }
 
-    const org = await findOrg(githubLogin);
+    const org = await findOrgForUser(githubLogin, userOrResponse.id);
     if (!org) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
