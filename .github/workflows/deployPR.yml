@@ -389,7 +389,7 @@ jobs:
               --env "PREVIEW_LINK_BRANCH=${{ github.event.pull_request.head.ref }}" \
               --yes 2>&1); then
               # Extract the Preview URL from the output
-              DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'Preview: \Khttps://[^\s]+' | head -1)
+              DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'Preview[:\s]+\Khttps://[^\s]+' | head -1)
               if [ -z "$DEPLOYMENT_URL" ]; then
                 echo "Failed to extract deployment URL from output:"
                 echo "$DEPLOY_OUTPUT"
