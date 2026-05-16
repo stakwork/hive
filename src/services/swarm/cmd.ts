@@ -35,6 +35,10 @@ export interface SwarmCmdResponse {
 }
 
 function getCmdBaseUrlFromSwarmUrl(swarmUrl: string): string {
+  if (process.env.USE_MOCKS === "true") {
+    const mockBase = process.env.NEXTAUTH_URL || "http://localhost:3000";
+    return `${mockBase}/api/mock/swarm-super-admin`;
+  }
   const url = new URL(swarmUrl);
   return `${url.protocol}//${url.hostname}:8800`;
 }
@@ -46,6 +50,7 @@ function getCmdBaseUrlFromSwarmUrl(swarmUrl: string): string {
 export async function getSwarmCmdJwt(swarmUrl: string, swarmPassword: string, username = "admin"): Promise<string> {
   const baseUrl = getCmdBaseUrlFromSwarmUrl(swarmUrl);
   const loginUrl = `${baseUrl}/api/login`;
+  // Note: in mock mode (USE_MOCKS=true) loginUrl points to the mock login endpoint
 
   const allowInsecure = process.env.SWARM_CMD_ALLOW_INSECURE === "true";
   const previousTlsSetting = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
@@ -100,7 +105,9 @@ export async function swarmCmdRequest({
   tag?: string;
 }): Promise<SwarmCmdResponse> {
   const baseUrl = getCmdBaseUrlFromSwarmUrl(swarmUrl);
-  const url = new URL("/api/cmd", baseUrl);
+  // Use string concatenation so the path from baseUrl (e.g. mock path) is preserved.
+  // new URL("/api/cmd", base) would strip the base path for root-relative paths.
+  const url = new URL(`${baseUrl}/api/cmd`);
   url.searchParams.set("txt", JSON.stringify(cmd));
   url.searchParams.set("tag", tag);
 
@@ -122,9 +129,9 @@ export async function swarmCmdRequest({
     let data: unknown = undefined;
     try {
       data = rawText ? JSON.parse(rawText) : undefined;
-      // Handle sphinx-swarm double-encoded JSON responses (string wrapping a JSON object)
+      // Handle sphinx-swarm double-encoded JSON responses (string wrapping a JSON object/array)
       if (typeof data === "string") {
-        try { data = JSON.parse(data); } catch { /* leave as-is */ }
+        try { data = JSON.parse(data); } catch { /* leave as string */ }
       }
     } catch {
       data = undefined;
