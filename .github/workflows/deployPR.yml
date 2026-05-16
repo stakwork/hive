@@ -109,6 +109,12 @@ jobs:
                 echo "$response"
                 return 0
               fi
+              # Fast-fail on permanent "not found" errors — retrying will not help
+              if echo "$response" | jq -r '.message // empty' 2>/dev/null | grep -qi "not found"; then
+                echo "⚠️  Neon API permanent error for $url — got: ${response:0:120}" >&2
+                echo "$response"
+                return 1
+              fi
               echo "⚠️  Neon API bad/empty response (attempt $attempt/5) for $url — got: ${response:0:120}" >&2
               sleep 10
             done
@@ -192,7 +198,16 @@ jobs:
 
           # Wait until endpoint is ready (GET endpoint does not return credentials)
           for i in {1..30}; do
-            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint")
+            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint") || {
+              # Endpoint may have been deleted externally (race condition / concurrent run)
+              if echo "$STATUS" | grep -q "not found"; then
+                echo "⚠️  Endpoint $ENDPOINT_ID was deleted mid-wait, will recreate..."
+                ENDPOINT_ID=""
+                break
+              fi
+              echo "❌ Failed to poll endpoint status after retries"
+              exit 1
+            }
             STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
             DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
             if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
@@ -201,6 +216,82 @@ jobs:
             echo "Waiting for endpoint... ($i)"
             sleep 3
           done
+
+          # If endpoint disappeared during the wait loop, find or create a replacement
+          if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
+            echo "🔄 Re-fetching branches and endpoints to find/create a replacement..."
+
+            # The branch itself may have been deleted — re-verify and recreate if needed
+            BRANCHES_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" "branches")
+            BRANCH_ID=$(echo "$BRANCHES_JSON" | jq -r ".branches[] | select(.name==\"$BRANCH_NAME\") | .id")
+
+            if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
+              echo "⚠️  Branch $BRANCH_NAME no longer exists — recreating..."
+              RESPONSE=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches" "branch" \
+                -X POST \
+                -H "Content-Type: application/json" \
+                -d "{\"branch\":{\"name\":\"$BRANCH_NAME\",\"parent_id\":\"$PARENT_BRANCH_ID\",\"expires_at\":\"$EXPIRY\"}}")
+              BRANCH_ID=$(echo "$RESPONSE" | jq -r '.branch.id')
+              if [ -z "$BRANCH_ID" ] || [ "$BRANCH_ID" = "null" ]; then
+                echo "❌ Failed to recreate branch $BRANCH_NAME"
+                exit 1
+              fi
+              echo "✅ Branch recreated: $BRANCH_ID"
+              # Wait for the new branch to be ready
+              for i in {1..20}; do
+                BRANCH_STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$BRANCH_ID" "branch")
+                STATE=$(echo "$BRANCH_STATUS" | jq -r '.branch.current_state')
+                if [ "$STATE" = "ready" ]; then break; fi
+                echo "Waiting for recreated branch... ($i)"
+                sleep 3
+              done
+            fi
+
+            ENDPOINTS_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" "endpoints")
+            ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
+
+            if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
+              RESPONSE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+                -X POST -H "Content-Type: application/json" \
+                -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\",\"type\":\"read_write\"}}" \
+                "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints")
+
+              if echo "$RESPONSE" | jq -e '.endpoint' > /dev/null 2>&1; then
+                ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+              else
+                echo "⚠️  Endpoint creation failed: $(echo "$RESPONSE" | jq -r '.message // .code // empty')"
+                echo "♻️  Looking for a stale endpoint to reassign..."
+                STALE_ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r \
+                  --arg bid "$BRANCH_ID" \
+                  --arg pbid "$PARENT_BRANCH_ID" \
+                  '.endpoints[] | select(.branch_id != $bid and .branch_id != $pbid and .type == "read_write") | .id' \
+                  | head -1)
+                if [ -z "$STALE_ENDPOINT_ID" ] || [ "$STALE_ENDPOINT_ID" = "null" ]; then
+                  echo "❌ No stale endpoint available to reassign"
+                  exit 1
+                fi
+                echo "♻️  Reassigning endpoint $STALE_ENDPOINT_ID to branch $BRANCH_ID..."
+                RESPONSE=$(neon_curl \
+                  "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$STALE_ENDPOINT_ID" "endpoint" \
+                  -X PATCH \
+                  -H "Content-Type: application/json" \
+                  -d "{\"endpoint\":{\"branch_id\":\"$BRANCH_ID\"}}")
+                ENDPOINT_ID=$(echo "$RESPONSE" | jq -r '.endpoint.id')
+              fi
+            fi
+
+            # Wait for the replacement endpoint to be ready
+            for i in {1..30}; do
+              STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint")
+              STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
+              DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
+              if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
+                break
+              fi
+              echo "Waiting for replacement endpoint... ($i)"
+              sleep 3
+            done
+          fi
 
           if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
             echo "❌ Endpoint never became ready"
@@ -426,16 +517,27 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const deployment = await github.rest.repos.createDeployment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: context.sha,
-              environment: `preview-${{ github.event.pull_request.number }}`,
-              auto_merge: false,
-              required_contexts: [],
-              description: 'PR preview deployment'
-            });
-            return deployment.data.id;
+            const maxAttempts = 5;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              try {
+                const deployment = await github.rest.repos.createDeployment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: context.sha,
+                  environment: `preview-${{ github.event.pull_request.number }}`,
+                  auto_merge: false,
+                  required_contexts: [],
+                  description: 'PR preview deployment'
+                });
+                return deployment.data.id;
+              } catch (err) {
+                console.log(`Attempt ${attempt}/${maxAttempts} failed: ${err.status} ${err.message}`);
+                if (attempt === maxAttempts) throw err;
+                const wait = attempt * 15000;
+                console.log(`Waiting ${wait / 1000}s before retry...`);
+                await new Promise(r => setTimeout(r, wait));
+              }
+            }
 
       - name: Mark Success
         if: success() && steps.deployment.outputs.result

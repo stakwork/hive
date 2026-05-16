@@ -30,7 +30,12 @@ export async function GET(
       repository = mockGitHubState.createRepository(owner, repo);
     }
 
-    const branches = mockGitHubState.getBranches(owner, repo);
+    const page = Math.max(1, parseInt(request.nextUrl.searchParams.get("page") ?? "1", 10));
+    const perPage = Math.max(1, parseInt(request.nextUrl.searchParams.get("per_page") ?? "100", 10));
+
+    const allBranches = mockGitHubState.getBranches(owner, repo);
+    const start = (page - 1) * perPage;
+    const branches = allBranches.slice(start, start + perPage);
     return NextResponse.json(branches);
   } catch (error) {
     console.error("Mock GitHub branches error:", error);
