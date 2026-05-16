@@ -5,9 +5,14 @@
  */
 
 // Valid model names that can be passed from frontend
-export type ModelName = "sonnet" | "opus" | "haiku" | "kimi" | "gemini" | "gpt";
+// Using string & {} preserves autocomplete for known aliases while accepting full provider/name strings
+export type ModelName = (string & {});
 
-export const VALID_MODELS: ModelName[] = ["sonnet", "opus", "haiku", "kimi", "gemini", "gpt"];
+/**
+ * @deprecated Use `isValidModel` instead. Callers checking VALID_MODELS.includes() should
+ * migrate to `isValidModel()` which accepts both legacy short aliases and full provider/name strings.
+ */
+export const VALID_MODELS: string[] = ["sonnet", "opus", "haiku", "kimi", "gemini", "gpt"];
 
 // Map model names to their API key environment variables
 export const API_KEY_ENV_VARS: Record<ModelName, string> = {
@@ -19,8 +24,8 @@ export const API_KEY_ENV_VARS: Record<ModelName, string> = {
   kimi: "OPENROUTER_API_KEY",
 };
 
-export function isValidModel(model: unknown): model is ModelName {
-  return typeof model === "string" && VALID_MODELS.includes(model as ModelName);
+export function isValidModel(model: unknown): model is string {
+  return typeof model === "string" && model.trim().length > 0;
 }
 
 // Map LlmProvider enum values to their API key environment variables

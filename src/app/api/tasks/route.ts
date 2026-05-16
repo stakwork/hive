@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { extractPrArtifact, sanitizeTask } from "@/lib/helpers/tasks";
 import { Priority, Prisma, TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { VALID_MODELS } from "@/lib/ai/models";
+import { isValidModel } from "@/lib/ai/models";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
 import { toPublicTasks } from "@/lib/auth/public-redact";
@@ -544,7 +544,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate model if provided
-    const taskModel = model && VALID_MODELS.includes(model) ? model : null;
+    const taskModel = isValidModel(model) ? model : null;
 
     // Create the task
     const task = await db.task.create({
