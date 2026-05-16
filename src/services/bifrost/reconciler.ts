@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { withLock } from "@/lib/locks/redis-lock";
+import { gatewayUrlForModel } from "aieo";
 
 import { BifrostClient, BifrostHttpError } from "./BifrostClient";
 import {
@@ -45,6 +46,22 @@ export interface ReconcileOptions {
     adminUser: string;
     adminPassword: string;
   }) => BifrostClient;
+  /**
+   * Model the caller intends to use against the returned VK.
+   * Determines the per-provider suffix on the returned `baseUrl`
+   * (e.g. `/anthropic/v1`, `/openai/v1`, `/genai/v1beta`).
+   *
+   * Accepts shortcuts (`"sonnet"`, `"opus"`, `"gpt"`, `"gemini"`,
+   * `"kimi"`), namespaced ids (`"anthropic/claude-sonnet-4-6"`),
+   * or full provider model ids. Falls back to the default provider
+   * (anthropic) when omitted — safe for callers that just need a
+   * working URL and will use Anthropic models.
+   *
+   * Internal admin calls (`BifrostClient` -> `/api/governance/*`)
+   * always use the gateway root regardless of this option; only the
+   * `baseUrl` we return to the caller is suffixed.
+   */
+  model?: string;
 }
 
 export async function reconcileBifrostVK(
@@ -88,6 +105,13 @@ async function doReconcile(
   }
 
   const baseCreds = await resolveBifrost(workspaceId);
+  // Suffix the gateway root with the provider path the caller's
+  // model needs. The admin URL we keep on `baseCreds.baseUrl` stays
+  // root-only — `BifrostClient` below uses that for `/api/governance`
+  // calls. The user-facing `baseUrl` we return is what an LLM SDK or
+  // downstream agent will call directly, so it needs the provider
+  // suffix already applied.
+  const llmBaseUrl = gatewayUrlForModel(options.model, baseCreds.baseUrl);
 
   if (
     member.bifrostVkValue &&
@@ -107,7 +131,7 @@ async function doReconcile(
         customerId: member.bifrostCustomerId,
         vkId: member.bifrostVkId,
         vkValue,
-        baseUrl: baseCreds.baseUrl,
+        baseUrl: llmBaseUrl,
         created: false,
       };
     } catch (err) {
@@ -168,7 +192,7 @@ async function doReconcile(
     customerId: customer.id,
     vkId: virtualKey.id,
     vkValue: virtualKey.value,
-    baseUrl: baseCreds.baseUrl,
+    baseUrl: llmBaseUrl,
     created,
   };
 }

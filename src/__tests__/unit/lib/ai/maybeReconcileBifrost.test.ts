@@ -79,6 +79,28 @@ describe("maybeReconcileBifrost feature flag", () => {
     expect(bifrostModule.reconcileBifrostVK).toHaveBeenCalledWith(
       "ws-1",
       "u_alice",
+      { model: undefined },
+    );
+  });
+
+  it("forwards the caller's model to the reconciler", async () => {
+    process.env.BIFROST_ENABLED = "true";
+    vi.mocked(bifrostModule.reconcileBifrostVK).mockResolvedValueOnce({
+      workspaceId: "ws-1",
+      userId: "u_alice",
+      customerId: "cust-1",
+      vkId: "vk-1",
+      vkValue: "sk-bf-LIVE",
+      baseUrl: "http://bifrost.test:8181/openai/v1",
+      created: false,
+    });
+
+    const result = await maybeReconcileBifrost(auth, "gpt-5");
+    expect(result?.baseUrl).toBe("http://bifrost.test:8181/openai/v1");
+    expect(bifrostModule.reconcileBifrostVK).toHaveBeenCalledWith(
+      "ws-1",
+      "u_alice",
+      { model: "gpt-5" },
     );
   });
 
