@@ -1051,7 +1051,7 @@ const serviceCategory: CategoryDefinition = {
       size: 18,
     },
   },
-} as CategoryDefinition;
+} as unknown as CategoryDefinition;
 
 // ---------------------------------------------------------------------------
 // Research card — DB-projected on root or initiative canvases.

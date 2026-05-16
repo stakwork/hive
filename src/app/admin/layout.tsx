@@ -69,6 +69,12 @@ export default async function AdminLayout({
                 >
                   Scorer
                 </Link>
+                <Link
+                  href="/admin/task-coordinator"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Task Coordinator
+                </Link>
               </nav>
             </div>
             <Link

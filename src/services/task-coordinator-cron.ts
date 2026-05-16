@@ -10,6 +10,49 @@ import { acceptJanitorRecommendation } from "@/services/janitor";
 
 export type DependencyCheckResult = "SATISFIED" | "PENDING" | "PERMANENTLY_BLOCKED";
 
+// ─── Shared query helpers (used by both the cron and the admin snapshot) ──────
+
+/**
+ * The canonical where-clause for workspaces that have at least one coordinator
+ * sweep enabled. Used by both the cron runner and the admin snapshot endpoint.
+ */
+export const ENABLED_WORKSPACE_WHERE: Prisma.WorkspaceWhereInput = {
+  deleted: false,
+  janitorConfig: {
+    OR: [{ recommendationSweepEnabled: true }, { ticketSweepEnabled: true }],
+  },
+};
+
+/**
+ * Build the canonical Prisma where-clause for coordinator candidate tasks
+ * (TODO, assigned to TASK_COORDINATOR, not yet dispatched, feature not CANCELLED).
+ */
+export function candidateTasksWhere(workspaceId: string) {
+  return {
+    AND: [
+      { workspaceId },
+      { status: "TODO" as const },
+      { systemAssigneeType: "TASK_COORDINATOR" as const },
+      { deleted: false },
+      { OR: [{ workflowStatus: WorkflowStatus.PENDING }, { workflowStatus: null }] },
+      { stakworkProjectId: null },
+      { workflowTask: null }, // Repo/coding tasks only — workflow tasks handled by processWorkflowTaskSweep
+      { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" as const } } }] },
+    ],
+  };
+}
+
+/**
+ * The canonical Prisma where-clause for pending janitor recommendations in a
+ * workspace. Used by both the cron runner and the admin snapshot endpoint.
+ */
+export function pendingRecommendationsWhere(workspaceId: string) {
+  return {
+    status: "PENDING" as const,
+    janitorRun: { janitorConfig: { workspaceId } },
+  };
+}
+
 export interface TaskCoordinatorExecutionResult {
   success: boolean;
   workspacesProcessed: number;
@@ -137,18 +180,7 @@ export async function processTicketSweep(
 
   // Fetch enough candidates to survive dependency filtering
   const candidateTasks = await db.task.findMany({
-    where: {
-      AND: [
-        { workspaceId },
-        { status: "TODO" },
-        { systemAssigneeType: "TASK_COORDINATOR" },
-        { deleted: false },
-        { OR: [{ workflowStatus: WorkflowStatus.PENDING }, { workflowStatus: null }] },
-        { stakworkProjectId: null },
-        { workflowTask: null }, // Repo/coding tasks only — workflow tasks handled by processWorkflowTaskSweep
-        { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
-      ],
-    },
+    where: candidateTasksWhere(workspaceId),
     select: {
       id: true,
       title: true,
@@ -749,15 +781,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
 
     // Get all non-deleted workspaces with either sweep enabled
     const enabledWorkspaces = await db.workspace.findMany({
-      where: {
-        deleted: false,
-        janitorConfig: {
-          OR: [
-            { recommendationSweepEnabled: true },
-            { ticketSweepEnabled: true }
-          ]
-        }
-      },
+      where: ENABLED_WORKSPACE_WHERE,
       include: {
         janitorConfig: true,
         swarm: true,

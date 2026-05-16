@@ -110,6 +110,7 @@ describe('signIn callback', () => {
           email: 'mockuser@mock.dev',
           image: 'https://avatars.githubusercontent.com/u/1?v=4',
           emailVerified: expect.any(Date),
+          role: 'SUPER_ADMIN',
         },
       });
       // The user ID is mutated in the callback, so workspace operations use the new ID
@@ -144,6 +145,7 @@ describe('signIn callback', () => {
         id: 'existing-user-456',
         email: 'existinguser@mock.dev',
         name: 'Existing User',
+        role: 'SUPER_ADMIN',
       };
 
       (db.user.findUnique as any).mockResolvedValue(existingUser);

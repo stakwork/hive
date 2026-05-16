@@ -155,6 +155,7 @@ describe("nextauth.ts - signIn callback", () => {
           email: mockUser.email,
           image: mockUser.image,
           emailVerified: expect.any(Date),
+          role: "SUPER_ADMIN",
         },
       });
       expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("new-user-id");
@@ -193,11 +194,12 @@ describe("nextauth.ts - signIn callback", () => {
         session_state: null,
       };
 
-      // Mock existing user
+      // Mock existing user (already SUPER_ADMIN — no update needed)
       (db.user.findUnique as any).mockResolvedValue({
         id: "existing-user-id",
         email: mockUser.email,
         name: mockUser.name,
+        role: "SUPER_ADMIN",
       });
 
       // Mock workspace creation
