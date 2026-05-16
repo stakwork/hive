@@ -120,7 +120,18 @@ export interface ReconcileResult {
   customerId: string;
   vkId: string;
   vkValue: string;
-  /** Bifrost base URL that owns this VK (e.g. "https://swarm.example:8181"). */
+  /**
+   * **Fully-formed per-provider LLM base URL** for the model the
+   * caller asked about (or anthropic's path by default).
+   * E.g. `https://swarm.example:8181/anthropic/v1`,
+   *      `https://swarm.example:8181/openai/v1`,
+   *      `https://swarm.example:8181/genai/v1beta`.
+   *
+   * Hand this straight to an LLM SDK / Goose / workflow node — no
+   * additional URL fix-up needed. The gateway root (used for admin
+   * calls) lives on `BifrostAdminCreds.baseUrl`; we don't surface it
+   * here on purpose so nothing in the LLM path can use the wrong URL.
+   */
   baseUrl: string;
   /** True iff Customer or VK was created during this call (audit signal). */
   created: boolean;

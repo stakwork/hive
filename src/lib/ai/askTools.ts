@@ -66,6 +66,10 @@ export async function repoAgent(
    * workspace's Bifrost rather than calling LLM providers directly.
    * Plumbed in via `params.apiKey` / `params.baseUrl` on the body per
    * the stakgraph protocol.
+   *
+   * `baseUrl` is already the fully-formed per-provider URL — the
+   * reconciler resolves it for you (see `maybeReconcileBifrost`).
+   * Pass it through verbatim; no normalization here.
    */
   bifrost?: { apiKey: string; baseUrl: string },
 ): Promise<Record<string, string>> {
@@ -142,20 +146,34 @@ function resolveRepo(
 
 /**
  * Lazy Bifrost VK provisioning helper. Returns `{ apiKey, baseUrl }`
- * to forward to the swarm's `/repo/agent` when we have a
+ * to forward to anything that makes LLM calls — `/repo/agent`,
+ * Goose, raw SDK callers, workflow nodes — when we have a
  * `(workspaceId, userId)` pair. Returns `undefined` for:
  *   - any caller when Bifrost is not rolled out to this workspace per
  *     `isBifrostEnabledForWorkspace(workspaceSlug)` (the rollout gate
  *     supports per-slug allow-lists in addition to "all on" / off);
  *   - org-scope / public-viewer paths where there's no per-user VK.
  *
+ * The returned `baseUrl` is the **fully-formed per-provider URL**
+ * (e.g. `https://swarm:8181/anthropic/v1`), already suffixed for the
+ * model you pass. Every downstream caller can hand it straight to an
+ * SDK / Goose / workflow node — no per-call URL fix-up needed.
+ *
  * Reconcile failures are logged and swallowed (return `undefined`) —
  * we'd rather fall back to the swarm's default LLM key than break
  * chat. Per the plan, this lazy path is the trigger; subsequent
  * calls hit the cached VK on `WorkspaceMember`.
+ *
+ * @param model Optional model shortcut (`"sonnet"`, `"opus"`, `"gpt"`,
+ *   `"gemini"`, `"kimi"`), namespaced model id
+ *   (`"anthropic/claude-sonnet-4-6"`, `"openrouter/moonshotai/..."`),
+ *   or full provider model id. Determines which provider suffix the
+ *   returned `baseUrl` gets. Defaults to the default provider
+ *   (anthropic) when omitted.
  */
 export async function maybeReconcileBifrost(
   workspaceAuth?: WorkspaceAuth,
+  model?: string,
 ): Promise<{ apiKey: string; baseUrl: string } | undefined> {
   // Workspace-scoped feature flag. When off for this slug, callers
   // behave exactly as before — no apiKey/baseUrl injection, no
@@ -170,6 +188,7 @@ export async function maybeReconcileBifrost(
     const result = await reconcileBifrostVK(
       workspaceAuth.workspaceId,
       workspaceAuth.userId,
+      { model },
     );
     return { apiKey: result.vkValue, baseUrl: result.baseUrl };
   } catch (err) {

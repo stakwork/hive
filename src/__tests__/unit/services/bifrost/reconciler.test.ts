@@ -101,7 +101,11 @@ describe("reconcileBifrostVK", () => {
       customerId: "cust-1",
       vkId: "vk-1",
       vkValue: "sk-bf-CACHED",
-      baseUrl: "http://bifrost.test:8181",
+      // No `model` option supplied -> defaults to the anthropic
+      // suffix. The admin URL `BifrostClient` uses is still the
+      // root from `resolveBifrost` (mocked above); this is the
+      // LLM-facing URL we hand back to callers.
+      baseUrl: "http://bifrost.test:8181/anthropic/v1",
       created: false,
     });
     expect(client.listCustomers).not.toHaveBeenCalled();
@@ -549,5 +553,55 @@ describe("reconcileBifrostVK", () => {
         clientFactory: () => client,
       }),
     ).rejects.toMatchObject({ name: "BifrostHttpError", status: 400 });
+  });
+
+  describe("model -> baseUrl suffixing", () => {
+    /**
+     * Helper: stub the cache-hit fast-path and run the reconciler
+     * with a given `model`, returning just the `baseUrl` field.
+     * Lets us spot-check the suffix mapping cheaply without
+     * exercising the full Customer/VK creation flow.
+     */
+    async function reconcileWithModel(
+      model: string | undefined,
+    ): Promise<string> {
+      vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+        id: "mem-1",
+        bifrostVkValue: JSON.stringify({
+          data: "sk-bf-CACHED",
+          iv: "iv",
+          tag: "tag",
+          version: "1",
+          encryptedAt: "x",
+        }),
+        bifrostVkId: "vk-1",
+        bifrostCustomerId: "cust-1",
+      } as never);
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => makeClientStub(),
+        model,
+      });
+      return result.baseUrl;
+    }
+
+    it.each([
+      ["sonnet", "http://bifrost.test:8181/anthropic/v1"],
+      ["opus", "http://bifrost.test:8181/anthropic/v1"],
+      ["haiku", "http://bifrost.test:8181/anthropic/v1"],
+      [
+        "anthropic/claude-sonnet-4-6",
+        "http://bifrost.test:8181/anthropic/v1",
+      ],
+      ["gpt-5", "http://bifrost.test:8181/openai/v1"],
+      ["gpt", "http://bifrost.test:8181/openai/v1"],
+      ["gemini", "http://bifrost.test:8181/genai/v1beta"],
+      // OpenRouter rides Bifrost's OpenAI route.
+      ["kimi", "http://bifrost.test:8181/openai/v1"],
+      // Default (no model) -> anthropic.
+      [undefined, "http://bifrost.test:8181/anthropic/v1"],
+    ])("model=%s -> baseUrl=%s", async (model, expected) => {
+      await expect(reconcileWithModel(model)).resolves.toBe(expected);
+    });
   });
 });
