@@ -182,16 +182,16 @@ describe("createAndSendNotification", () => {
       await createAndSendNotification(baseInput);
 
       expect(create).toHaveBeenCalledOnce();
-      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
-      expect(update).toHaveBeenCalledWith(
+      expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: "notif-1" },
           data: expect.objectContaining({
             sendAfter: expect.any(Date),
             message: baseInput.message,
           }),
         })
       );
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
     });
   });
 

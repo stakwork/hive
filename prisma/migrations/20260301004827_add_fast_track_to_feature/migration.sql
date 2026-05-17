@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE "features" ADD COLUMN     "is_fast_track" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "features" ADD COLUMN IF NOT EXISTS "is_fast_track" BOOLEAN NOT NULL DEFAULT false;
