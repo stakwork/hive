@@ -36,12 +36,14 @@ import { deriveBifrostBaseUrl } from "./resolve";
  *      org isn't registered with this pubkey. Stamp the Swarm row
  *      with the new (orgId, pubkey, syncedAt).
  *
- * Lazy-only: triggered from `maybeReconcileBifrost` before
+ * Lazy-only: triggered from `getBifrostForLLM` (the master
+ * reconciler in `services/bifrost/orchestrator.ts`) before
  * `reconcileBifrostVK`. Failure is logged and surfaced via the
  * return value (`status: "skipped" | "failed"`); the caller
- * decides whether to abort. In phase 5 the caller swallows because
- * macaroon enforcement is off — the plugin still verifies VKs and
- * LLM calls succeed even if the trust registry is briefly stale.
+ * decides whether to abort. In phase 5 the orchestrator swallows
+ * because macaroon enforcement is off — the plugin still verifies
+ * VKs and LLM calls succeed even if the trust registry is briefly
+ * stale.
  *
  * See `gateway/plans/phases/phase-5-trust-registry.md` §"Hive's
  * reconciler addition".
@@ -368,10 +370,10 @@ function failed(
   context: Record<string, unknown>,
 ): TrustReconcileResult {
   // Log at warn (not error) — phase-5 trust reconcile is best-effort
-  // and the caller (maybeReconcileBifrost) swallows the failure.
-  // Macaroon enforcement is still off, so this doesn't break LLM
-  // calls; it just means the plugin's trust registry won't be in
-  // sync if/when enforcement turns on.
+  // and the caller (getBifrostForLLM in orchestrator.ts) swallows
+  // the failure. Macaroon enforcement is still off, so this doesn't
+  // break LLM calls; it just means the plugin's trust registry
+  // won't be in sync if/when enforcement turns on.
   logger.warn("Bifrost trust reconcile failed", BIFROST_TRUST_LOG_TAG, {
     workspaceId,
     ...context,

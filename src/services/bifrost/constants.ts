@@ -62,9 +62,10 @@ export const BIFROST_LOG_TAG = "BIFROST_VK";
 //      workspace's plugin via `/_plugin/trust`. Cached by
 //      (orgId, pubkey) on the Swarm row; only re-syncs on mismatch.
 //
-// Both are lazy, triggered from `maybeReconcileBifrost`. Failure on
-// either is logged and swallowed — the VK reconciler still runs and
-// LLM calls continue (macaroon enforcement is off through phase 5).
+// Both are lazy, triggered from `getBifrostForLLM` (the master
+// reconciler in `orchestrator.ts`). Failure on either is logged
+// and swallowed — the VK reconciler still runs and LLM calls
+// continue (macaroon enforcement is off through phase 5).
 
 /** Redis key prefix for the per-SourceControlOrg keygen mutex. */
 export const MACAROON_ORG_LOCK_PREFIX = "macaroon-org:lock";
