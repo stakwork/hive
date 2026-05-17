@@ -1,9 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Mock the reconciler BEFORE importing the SUT so the import binding
-// picks up the mock.
+// Mock the reconcilers BEFORE importing the SUT so the import bindings
+// pick up the mocks. `ensureBifrostTrust` was added in phase 5 (see
+// `gateway/plans/phases/phase-5-trust-registry.md`) and runs ahead of
+// `reconcileBifrostVK`; it returns a status discriminator, not throws,
+// so the default mock returns a "cached" result.
 vi.mock("@/services/bifrost", () => ({
   reconcileBifrostVK: vi.fn(),
+  ensureBifrostTrust: vi.fn(async () => ({
+    workspaceId: "ws-1",
+    status: "cached" as const,
+    macaroonOrgId: "gh_stakwork",
+    macaroonOrgPubkey: "02" + "ab".repeat(32),
+  })),
 }));
 
 // The rollout gate now lives in `isBifrostEnabledForWorkspace`, which
@@ -24,6 +33,15 @@ const ORIGINAL_BIFROST_ENABLED = process.env.BIFROST_ENABLED;
 describe("maybeReconcileBifrost feature flag", () => {
   beforeEach(() => {
     vi.mocked(bifrostModule.reconcileBifrostVK).mockReset();
+    vi.mocked(bifrostModule.ensureBifrostTrust).mockReset();
+    // Default: trust reconcile succeeds (cache hit). Individual tests
+    // override to exercise the failure path.
+    vi.mocked(bifrostModule.ensureBifrostTrust).mockResolvedValue({
+      workspaceId: "ws-1",
+      status: "cached",
+      macaroonOrgId: "gh_stakwork",
+      macaroonOrgPubkey: "02" + "ab".repeat(32),
+    });
     delete process.env.BIFROST_ENABLED;
   });
 
@@ -140,5 +158,101 @@ describe("maybeReconcileBifrost feature flag", () => {
 
     const result = await maybeReconcileBifrost(auth);
     expect(result).toBeUndefined();
+  });
+
+  // ── Phase-5 trust reconcile integration ──────────────────────────────
+  // The trust reconcile runs ahead of the VK reconcile and is
+  // deliberately non-fatal: any failure is logged inside
+  // `ensureBifrostTrust` and surfaced via `status: "failed"`, but the
+  // VK reconcile still runs. Macaroon enforcement is off through phase
+  // 5, so a trust hiccup doesn't break LLM calls.
+
+  it("runs trust reconcile before VK reconcile", async () => {
+    process.env.BIFROST_ENABLED = "true";
+    const order: string[] = [];
+    vi.mocked(bifrostModule.ensureBifrostTrust).mockImplementation(
+      async () => {
+        order.push("trust");
+        return {
+          workspaceId: "ws-1",
+          status: "cached",
+          macaroonOrgId: "gh_stakwork",
+          macaroonOrgPubkey: "02" + "ab".repeat(32),
+        };
+      },
+    );
+    vi.mocked(bifrostModule.reconcileBifrostVK).mockImplementation(
+      async () => {
+        order.push("vk");
+        return {
+          workspaceId: "ws-1",
+          userId: "u_alice",
+          customerId: "cust-1",
+          vkId: "vk-1",
+          vkValue: "sk-bf-LIVE",
+          baseUrl: "http://bifrost.test:8181/anthropic/v1",
+          created: false,
+        };
+      },
+    );
+
+    await maybeReconcileBifrost(auth);
+    expect(order).toEqual(["trust", "vk"]);
+  });
+
+  it("still calls the VK reconciler when trust reconcile returns 'failed'", async () => {
+    process.env.BIFROST_ENABLED = "true";
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(bifrostModule.ensureBifrostTrust).mockResolvedValueOnce({
+      workspaceId: "ws-1",
+      status: "failed",
+      error: new Error("plugin unreachable"),
+    });
+    vi.mocked(bifrostModule.reconcileBifrostVK).mockResolvedValueOnce({
+      workspaceId: "ws-1",
+      userId: "u_alice",
+      customerId: "cust-1",
+      vkId: "vk-1",
+      vkValue: "sk-bf-DEGRADED",
+      baseUrl: "http://bifrost.test:8181/anthropic/v1",
+      created: false,
+    });
+
+    const result = await maybeReconcileBifrost(auth);
+    expect(result?.apiKey).toBe("sk-bf-DEGRADED");
+    expect(bifrostModule.reconcileBifrostVK).toHaveBeenCalledTimes(1);
+  });
+
+  it("still calls the VK reconciler when trust reconcile itself throws", async () => {
+    // Defensive: `ensureBifrostTrust` is supposed to catch its own
+    // errors and return `failed`, but if it ever throws unexpectedly
+    // (e.g. lock-acquire timeout bubbles up), we want VK reconcile to
+    // still run.
+    process.env.BIFROST_ENABLED = "true";
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(bifrostModule.ensureBifrostTrust).mockRejectedValueOnce(
+      new Error("lock acquire timeout"),
+    );
+    vi.mocked(bifrostModule.reconcileBifrostVK).mockResolvedValueOnce({
+      workspaceId: "ws-1",
+      userId: "u_alice",
+      customerId: "cust-1",
+      vkId: "vk-1",
+      vkValue: "sk-bf-DEGRADED",
+      baseUrl: "http://bifrost.test:8181/anthropic/v1",
+      created: false,
+    });
+
+    const result = await maybeReconcileBifrost(auth);
+    expect(result?.apiKey).toBe("sk-bf-DEGRADED");
+  });
+
+  it("skips trust reconcile entirely when the feature flag is off", async () => {
+    // No BIFROST_ENABLED set — the flag gate short-circuits before
+    // either reconciler runs.
+    const result = await maybeReconcileBifrost(auth);
+    expect(result).toBeUndefined();
+    expect(bifrostModule.ensureBifrostTrust).not.toHaveBeenCalled();
+    expect(bifrostModule.reconcileBifrostVK).not.toHaveBeenCalled();
   });
 });

@@ -51,3 +51,49 @@ export const BIFROST_HTTP_TIMEOUT_MS = 15_000;
 
 /** Log tag used by all Bifrost-related logger calls. */
 export const BIFROST_LOG_TAG = "BIFROST_VK";
+
+// ─── Phase-5 trust registry ────────────────────────────────────────────
+//
+// Two reconcilers chain in front of the VK reconciler:
+//   1. ensureMacaroonOrgKeys  — autogenerates the org's macaroon
+//      signing keypair on first use (custodial, phase-1 of
+//      cryptographic-identity.md).
+//   2. ensureBifrostTrust     — registers the org pubkey with the
+//      workspace's plugin via `/_plugin/trust`. Cached by
+//      (orgId, pubkey) on the Swarm row; only re-syncs on mismatch.
+//
+// Both are lazy, triggered from `maybeReconcileBifrost`. Failure on
+// either is logged and swallowed — the VK reconciler still runs and
+// LLM calls continue (macaroon enforcement is off through phase 5).
+
+/** Redis key prefix for the per-SourceControlOrg keygen mutex. */
+export const MACAROON_ORG_LOCK_PREFIX = "macaroon-org:lock";
+
+/** Redis key prefix for the per-workspace trust reconcile mutex. */
+export const BIFROST_TRUST_LOCK_PREFIX = "bifrost-trust:lock";
+
+/** TTL for the trust / org-keys reconcile locks. */
+export const BIFROST_TRUST_LOCK_TTL_MS = 30_000;
+
+/** How long to wait to acquire the trust / org-keys lock. */
+export const BIFROST_TRUST_LOCK_ACQUIRE_TIMEOUT_MS = 20_000;
+
+/** Log tag for trust reconciliation. */
+export const BIFROST_TRUST_LOG_TAG = "BIFROST_TRUST";
+
+/** Log tag for org macaroon key autogen. */
+export const MACAROON_ORG_LOG_TAG = "MACAROON_ORG";
+
+/**
+ * `revocation_poll_seconds` value the plugin will store when we
+ * register an org. The plugin doesn't actively poll yet (revocation
+ * is phase 6+), but the field is required on the trust entry and
+ * sets the future polling cadence.
+ */
+export const DEFAULT_REVOCATION_POLL_SECONDS = 60;
+
+/**
+ * Stable prefix on macaroon org_id strings derived from a
+ * SourceControlOrg.githubLogin. `gh_stakwork` etc.
+ */
+export const MACAROON_ORG_ID_PREFIX = "gh_";
