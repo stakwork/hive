@@ -55,23 +55,46 @@ export async function repoAgent(
   },
   /**
    * Optional Bifrost routing. When provided, the swarm-side `repo/agent`
-   * uses `bifrost.apiKey` as the LLM bearer token and `bifrost.baseUrl`
-   * as the LLM base URL — i.e. agent traffic flows through this
-   * workspace's Bifrost rather than calling LLM providers directly.
-   * Plumbed in via `params.apiKey` / `params.baseUrl` on the body per
-   * the stakgraph protocol.
+   * uses `bifrost.apiKey` as the LLM bearer token, `bifrost.baseUrl`
+   * as the LLM base URL, and forwards `bifrost.headers` (today: the
+   * `x-macaroon` minted by the orchestrator for cost-per-agent
+   * observability) onto the outbound LLM call. Plumbed via
+   * `params.apiKey` / `params.baseUrl` / `params.headers` on the body
+   * per the stakgraph protocol.
    *
    * `baseUrl` is already the fully-formed per-provider URL — the
    * reconciler resolves it for you (see `getBifrostForLLM` in
    * `@/services/bifrost`). Pass it through verbatim; no
    * normalization here.
+   *
+   * `headers` can be empty when the orchestrator's macaroon mint
+   * failed; that's an accepted degraded state (shadow mode — no
+   * `x-macaroon`, no dim on `logs.db`, but the LLM call still runs).
+   *
+   * The accepted shape is a structural subset of `BifrostInvocation`
+   * from `@/services/bifrost/orchestrator` so callers can pass the
+   * orchestrator return value verbatim. The shape is duck-typed
+   * (`{ apiKey, baseUrl, headers? }`) so legacy callers that hand-
+   * roll a `{ apiKey, baseUrl }` object still type-check.
    */
-  bifrost?: { apiKey: string; baseUrl: string },
+  bifrost?: {
+    apiKey: string;
+    baseUrl: string;
+    headers?: Record<string, string>;
+  },
 ): Promise<Record<string, string>> {
   const body: Record<string, unknown> = { ...params };
   if (bifrost) {
     body.apiKey = bifrost.apiKey;
     body.baseUrl = bifrost.baseUrl;
+    if (bifrost.headers && Object.keys(bifrost.headers).length > 0) {
+      // Forwarded as a plain object alongside apiKey/baseUrl; the
+      // swarm-side `/repo/agent` handler reads `body.headers` and
+      // attaches each entry to the outbound LLM HTTP call. Empty
+      // map ⇒ omit the field entirely so older swarm versions that
+      // don't read `headers` don't see a stray key.
+      body.headers = bifrost.headers;
+    }
   }
 
   const initiateResponse = await fetch(`${swarmUrl}/repo/agent`, {
@@ -247,7 +270,13 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
           // have a `(workspaceId, userId)` pair and the rollout flag
           // is on; otherwise returns undefined and we fall back to
           // the swarm's default LLM key.
-          const bifrost = await getBifrostForLLM(workspaceAuth);
+          //
+          // `agentName: "repo-agent"` is what shows up as the
+          // `agent-name` dim on the gateway's `logs.db`, driving the
+          // cost-per-agent rollups operators care about.
+          const bifrost = await getBifrostForLLM(workspaceAuth, {
+            agentName: "repo-agent",
+          });
           // Pass comma-separated repo URLs for multi-repo support
           const rr = await repoAgent(
             swarmUrl,

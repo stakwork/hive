@@ -27,6 +27,19 @@ export {
   MacaroonOrgKeysError,
 } from "./macaroon-org-keys";
 export type { MacaroonOrgKeys } from "./macaroon-org-keys";
+export {
+  ensureMacaroonUserKeys,
+  MacaroonUserKeysError,
+} from "./macaroon-user-keys";
+export type { MacaroonUserKeys } from "./macaroon-user-keys";
+export {
+  mintInvocationMacaroon,
+  MacaroonIssuerError,
+} from "./macaroon-issuer";
+export type {
+  MintInvocationOptions,
+  MintedMacaroon,
+} from "./macaroon-issuer";
 export { ensureBifrostTrust } from "./trust-reconciler";
 export type {
   TrustReconcileResult,

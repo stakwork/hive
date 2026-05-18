@@ -37,7 +37,8 @@ export type EncryptableField =
   | "fiatPaymentPassword"
   | "bifrostAdminPassword"
   | "bifrostVk"
-  | "macaroonOrgPrivkey";
+  | "macaroonOrgPrivkey"
+  | "macaroonUserPrivkey";
 
 export interface EncryptionError extends Error {
   code: "ENCRYPTION_FAILED" | "DECRYPTION_FAILED" | "INVALID_KEY" | "INVALID_DATA";

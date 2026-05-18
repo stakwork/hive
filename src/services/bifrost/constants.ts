@@ -98,3 +98,36 @@ export const DEFAULT_REVOCATION_POLL_SECONDS = 60;
  * SourceControlOrg.githubLogin. `gh_stakwork` etc.
  */
 export const MACAROON_ORG_ID_PREFIX = "gh_";
+
+// ─── Phase-4 per-user macaroon identity ──────────────────────────────
+//
+// Each user owns one ed25519 keypair that signs every invocation
+// macaroon. Custodial in phase 1 — Hive holds the privkey encrypted
+// at rest and signs on the user's behalf. Phase 2+ moves the privkey
+// off the platform (Yubikey / Passkey / Sphinx app); the wire format
+// doesn't change, only the signer location does.
+
+/** Redis key prefix for the per-User keygen mutex. */
+export const MACAROON_USER_LOCK_PREFIX = "macaroon-user:lock";
+
+/** Log tag for user macaroon key autogen. */
+export const MACAROON_USER_LOG_TAG = "MACAROON_USER";
+
+/** Log tag for the macaroon-issuer hot path. */
+export const MACAROON_ISSUER_LOG_TAG = "MACAROON_ISSUER";
+
+/**
+ * Default per-invocation budget. Conservative — the per-call cap in
+ * v2's threat model. Callers narrow further per agent.
+ */
+export const MACAROON_DEFAULT_MAX_COST_USD = 10.0;
+
+/** Default per-invocation step budget. */
+export const MACAROON_DEFAULT_MAX_STEPS = 200;
+
+/**
+ * Default macaroon TTL — long enough to cover a single agent run with
+ * polling, short enough that a stolen macaroon expires before it can
+ * do material damage. Caller can shorten per call site.
+ */
+export const MACAROON_DEFAULT_TTL_SECONDS = 3600;
