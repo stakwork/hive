@@ -120,10 +120,10 @@ export const MACAROON_ISSUER_LOG_TAG = "MACAROON_ISSUER";
  * Default per-invocation budget. Conservative — the per-call cap in
  * v2's threat model. Callers narrow further per agent.
  */
-export const MACAROON_DEFAULT_MAX_COST_USD = 10.0;
+export const MACAROON_DEFAULT_MAX_COST_USD = 100.0;
 
 /** Default per-invocation step budget. */
-export const MACAROON_DEFAULT_MAX_STEPS = 200;
+export const MACAROON_DEFAULT_MAX_STEPS = 2000;
 
 /**
  * Default macaroon TTL — long enough to cover a single agent run with
