@@ -12,6 +12,7 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
+import { fetchLatestWorkflowJson } from "@/services/workflow-editor";
 
 
 export const runtime = "nodejs";
@@ -272,6 +273,9 @@ export async function POST(request: NextRequest) {
       // Create a new WORKFLOW artifact with the projectId so the panel can poll it
       if (result.data?.project_id) {
         try {
+          // Fetch live baseline at run-start time (agent hasn't touched workflow yet)
+          const baselineWorkflowJson = await fetchLatestWorkflowJson(Number(workflowId));
+
           const newMessage = await db.chatMessage.create({
             data: {
               taskId,
@@ -288,7 +292,8 @@ export async function POST(request: NextRequest) {
                       workflowId: workflowId,
                       workflowName: workflowName || `Workflow ${workflowId}`,
                       workflowRefId: workflowRefId || "",
-                      originalWorkflowJson: workflowJson || "",
+                      originalWorkflowJson: "",
+                      ...(baselineWorkflowJson ? { workflowJson: baselineWorkflowJson } : {}),
                     },
                   },
                 ],

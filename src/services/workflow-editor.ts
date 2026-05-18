@@ -14,6 +14,44 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 
+/**
+ * Fetch the latest workflow JSON from the graph API for a given workflow ID.
+ * Used to capture a baseline snapshot at run-start time so the Changes tab
+ * can compute a diff after the agent edits the workflow.
+ * Non-fatal: returns null if env vars are missing or the fetch fails.
+ */
+export async function fetchLatestWorkflowJson(workflowId: number): Promise<string | null> {
+  const graphApiUrl = process.env.STAKWORK_JARVIS_URL;
+  const graphApiKey = process.env.STAKWORK_GRAPH_API_KEY;
+  if (!graphApiUrl || !graphApiKey) return null;
+  try {
+    const res = await fetch(`${graphApiUrl}/api/graph/search/attributes`, {
+      method: "POST",
+      headers: { "x-api-token": graphApiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        node_type: ["Workflow_version"],
+        include_properties: true,
+        limit: 50,
+        skip: 0,
+        skip_cache: true,
+        search_filters: [{ attribute: "workflow_id", value: workflowId, comparator: "=" }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const nodes: any[] = data.nodes ?? data.data ?? [];
+    // Sort descending client-side — same pattern as versions route
+    nodes.sort(
+      (a, b) => (b.properties?.workflow_version_id ?? 0) - (a.properties?.workflow_version_id ?? 0)
+    );
+    const latestJson = nodes[0]?.properties?.workflow_json;
+    if (!latestJson) return null;
+    return typeof latestJson === "string" ? latestJson : JSON.stringify(latestJson);
+  } catch {
+    return null;
+  }
+}
+
 interface WorkflowTaskContext {
   workflowId: number;
   workflowName?: string | null;
@@ -232,6 +270,9 @@ export async function triggerWorkflowEditorRun(params: {
     // Seed a WORKFLOW artifact so the task page can poll the project
     if (result.data?.project_id) {
       try {
+        // Fetch live baseline at run-start time (agent hasn't touched workflow yet)
+        const baselineWorkflowJson = await fetchLatestWorkflowJson(workflowId);
+
         const newMessage = await db.chatMessage.create({
           data: {
             taskId,
@@ -249,6 +290,7 @@ export async function triggerWorkflowEditorRun(params: {
                     workflowName: workflowName || `Workflow ${workflowId}`,
                     workflowRefId: workflowRefId || "",
                     originalWorkflowJson: "",
+                    ...(baselineWorkflowJson ? { workflowJson: baselineWorkflowJson } : {}),
                   },
                 },
               ],

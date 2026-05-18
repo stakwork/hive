@@ -1014,4 +1014,42 @@ describe('WorkflowArtifactPanel — multi-workflow selector', () => {
     const groups = computeWorkflowGroups([artifact]);
     expect(groups[0].workflowName).toBe('Workflow 99');
   });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Plan Mode workflow task — Changes tab baseline (run-start fetch)
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('Plan Mode workflow task — Changes tab baseline', () => {
+    it('hasChanges is true when run artifact has workflowJson and agent artifact has originalWorkflowJson', () => {
+      // Run artifact (from fixed triggerWorkflowEditorRun / route) has workflowJson set
+      const runArtifact = makeWorkflowArtifact(1, 'WF1', { workflowJson: '{"step":"original"}' });
+      // Agent response artifact (from chat/response) has both fields set after the edit
+      const agentArtifact = makeWorkflowArtifact(1, 'WF1', {
+        workflowJson: '{"step":"updated"}',
+        originalWorkflowJson: '{"step":"original"}',
+      });
+      const merged = mergeArtifacts([runArtifact, agentArtifact]);
+      // hasChanges = !!(originalWorkflowJson && workflowJson)
+      expect(!!(merged.originalWorkflowJson && merged.workflowJson)).toBe(true);
+    });
+
+    it('hasChanges is false when run artifact has no workflowJson (env vars missing path)', () => {
+      // Simulates fetchLatestWorkflowJson returning null because env vars are not configured
+      const runArtifact = makeWorkflowArtifact(1, 'WF1', {});
+      const merged = mergeArtifacts([runArtifact]);
+      expect(!!(merged.originalWorkflowJson && merged.workflowJson)).toBe(false);
+    });
+
+    it('run artifact workflowJson is used as diff baseline even without prior seed artifact', () => {
+      // Plan Mode: no prior seed artifact with workflowJson — run artifact provides the baseline
+      const runArtifact = makeWorkflowArtifact(1, 'WF1', { workflowJson: '{"nodes":["A","B"]}' });
+      const agentArtifact = makeWorkflowArtifact(1, 'WF1', {
+        workflowJson: '{"nodes":["A","B","C"]}',
+        originalWorkflowJson: '{"nodes":["A","B"]}',
+      });
+      const merged = mergeArtifacts([runArtifact, agentArtifact]);
+      expect(merged.originalWorkflowJson).toBe('{"nodes":["A","B"]}');
+      expect(merged.workflowJson).toBe('{"nodes":["A","B","C"]}');
+      expect(!!(merged.originalWorkflowJson && merged.workflowJson)).toBe(true);
+    });
+  });
 });
