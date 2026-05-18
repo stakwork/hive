@@ -28,10 +28,17 @@ import type {
  * Phase-1 Hive VK Reconciler.
  *
  * For a `(workspaceId, userId)` pair, ensure the workspace's Bifrost
- * has one Customer (`name=userId`, $1000/day, 1000 RPM / 5M TPM) and
- * one VK (`name=userId`, attached to that Customer, permissive
- * provider configs). Stash the VK `value` (encrypted) on
- * `WorkspaceMember` keyed by `(workspaceId, userId)`. Idempotent.
+ * has one Customer and one VK named `{githubLogin}-{userId}` (or just
+ * `userId` when the user has no GitHubAuth — e.g. Sphinx-only logins).
+ * The Customer gets $1000/day, 1000 RPM / 5M TPM; the VK is attached
+ * to that Customer with permissive provider configs. Stash the VK
+ * `value` (encrypted) on `WorkspaceMember` keyed by `(workspaceId,
+ * userId)`. Idempotent.
+ *
+ * The `{githubLogin}-{userId}` form is a UX nicety: the Bifrost admin
+ * UI lists Customers/VKs by name, and the bare cuid is unreadable.
+ * `userId` remains the source of truth for identity; the login is
+ * just a display affordance and we never look users up by it.
  *
  * Triggered lazily on first LLM use. Subsequent callers hit the
  * cached VK on `WorkspaceMember` without ever talking to Bifrost.
@@ -88,7 +95,11 @@ async function doReconcile(
 ): Promise<ReconcileResult> {
   const encryption = EncryptionService.getInstance();
 
-  // 1. Fast-path: cached VK on WorkspaceMember.
+  // 1. Fast-path: cached VK on WorkspaceMember. We also grab the
+  // user's GitHub login so we can name new Bifrost entities
+  // `{login}-{userId}` — purely so the Bifrost admin UI is readable.
+  // The login is only consulted on the create path; cached
+  // reconciliations don't need it.
   const member = await db.workspaceMember.findUnique({
     where: { workspaceId_userId: { workspaceId, userId } },
     select: {
@@ -96,6 +107,11 @@ async function doReconcile(
       bifrostVkValue: true,
       bifrostVkId: true,
       bifrostCustomerId: true,
+      user: {
+        select: {
+          githubAuth: { select: { githubUsername: true } },
+        },
+      },
     },
   });
   if (!member) {
@@ -103,6 +119,11 @@ async function doReconcile(
       `User ${userId} is not a member of workspace ${workspaceId}`,
     );
   }
+
+  const bifrostName = buildBifrostName(
+    userId,
+    member.user?.githubAuth?.githubUsername ?? null,
+  );
 
   const baseCreds = await resolveBifrost(workspaceId);
   // Suffix the gateway root with the provider path the caller's
@@ -154,12 +175,15 @@ async function doReconcile(
 
   let created = false;
 
-  const { customer, createdCustomer } = await ensureCustomer(client, userId);
+  const { customer, createdCustomer } = await ensureCustomer(
+    client,
+    bifrostName,
+  );
   if (createdCustomer) created = true;
 
   const { virtualKey, createdVk } = await ensureVirtualKey(
     client,
-    userId,
+    bifrostName,
     customer.id,
   );
   if (createdVk) created = true;
@@ -181,6 +205,7 @@ async function doReconcile(
   logger.info("Bifrost VK reconciled", BIFROST_LOG_TAG, {
     workspaceId,
     userId,
+    bifrostName,
     customerId: customer.id,
     vkId: virtualKey.id,
     created,
@@ -199,9 +224,9 @@ async function doReconcile(
 
 async function ensureCustomer(
   client: BifrostClient,
-  userId: string,
+  name: string,
 ): Promise<{ customer: BifrostCustomer; createdCustomer: boolean }> {
-  const existing = await findExactCustomer(client, userId);
+  const existing = await findExactCustomer(client, name);
   if (existing) return { customer: existing, createdCustomer: false };
 
   // None — create. If a concurrent caller wins the create race (Bifrost
@@ -211,7 +236,7 @@ async function ensureCustomer(
   // and read back. The mutex makes this rare; this is defense in depth.
   try {
     const created = await client.createCustomer({
-      name: userId,
+      name,
       budget: {
         max_limit: DEFAULT_CUSTOMER_BUDGET_USD,
         reset_duration: DEFAULT_BUDGET_RESET_DURATION,
@@ -226,12 +251,12 @@ async function ensureCustomer(
     return { customer: created.customer, createdCustomer: true };
   } catch (err) {
     if (isDuplicateKeyError(err)) {
-      const readback = await findExactCustomer(client, userId);
+      const readback = await findExactCustomer(client, name);
       if (readback) {
         logger.warn(
           "Bifrost Customer create raced; using readback",
           BIFROST_LOG_TAG,
-          { userId, picked: readback.id },
+          { name, picked: readback.id },
         );
         return { customer: readback, createdCustomer: false };
       }
@@ -242,11 +267,11 @@ async function ensureCustomer(
 
 async function findExactCustomer(
   client: BifrostClient,
-  userId: string,
+  name: string,
 ): Promise<BifrostCustomer | null> {
   // Bifrost's `search` is substring matching, so filter to exact name.
-  const list = await client.listCustomers({ search: userId, limit: 50 });
-  const exact = list.customers.filter((c) => c.name === userId);
+  const list = await client.listCustomers({ search: name, limit: 50 });
+  const exact = list.customers.filter((c) => c.name === name);
 
   if (exact.length === 0) return null;
   if (exact.length === 1) return exact[0];
@@ -255,23 +280,23 @@ async function findExactCustomer(
   logger.warn(
     "Multiple Bifrost Customers found with the same name; using oldest",
     BIFROST_LOG_TAG,
-    { userId, found: exact.length, picked: oldest.id },
+    { name, found: exact.length, picked: oldest.id },
   );
   return oldest;
 }
 
 async function ensureVirtualKey(
   client: BifrostClient,
-  userId: string,
+  name: string,
   customerId: string,
 ): Promise<{ virtualKey: BifrostVirtualKey; createdVk: boolean }> {
-  const existing = await findExactVirtualKey(client, userId, customerId);
+  const existing = await findExactVirtualKey(client, name, customerId);
   if (existing) return { virtualKey: existing, createdVk: false };
 
   try {
     const created = await client.createVirtualKey({
-      name: userId,
-      description: `Hive user ${userId} — auto-provisioned`,
+      name,
+      description: `Hive user ${name} — auto-provisioned`,
       customer_id: customerId,
       // `key_ids: ["*"]` tells Bifrost to set `allow_all_keys: true` on
       // each provider_config — i.e. the VK is permitted to use every
@@ -294,12 +319,12 @@ async function ensureVirtualKey(
     // VK names are uniquely indexed at the DB level (plan §4). On a
     // dup-key race, read back per the plan.
     if (isDuplicateKeyError(err)) {
-      const readback = await findExactVirtualKey(client, userId, customerId);
+      const readback = await findExactVirtualKey(client, name, customerId);
       if (readback) {
         logger.warn(
           "Bifrost VK create raced; using readback",
           BIFROST_LOG_TAG,
-          { userId, customerId, picked: readback.id },
+          { name, customerId, picked: readback.id },
         );
         return { virtualKey: readback, createdVk: false };
       }
@@ -310,16 +335,16 @@ async function ensureVirtualKey(
 
 async function findExactVirtualKey(
   client: BifrostClient,
-  userId: string,
+  name: string,
   customerId: string,
 ): Promise<BifrostVirtualKey | null> {
   const list = await client.listVirtualKeys({
-    search: userId,
+    search: name,
     customer_id: customerId,
     limit: 50,
   });
   const exact = list.virtual_keys.filter(
-    (vk) => vk.name === userId && vk.customer_id === customerId,
+    (vk) => vk.name === name && vk.customer_id === customerId,
   );
 
   if (exact.length === 0) return null;
@@ -329,9 +354,31 @@ async function findExactVirtualKey(
   logger.warn(
     "Multiple Bifrost VKs found for customer/name; using oldest",
     BIFROST_LOG_TAG,
-    { userId, customerId, found: exact.length, picked: oldest.id },
+    { name, customerId, found: exact.length, picked: oldest.id },
   );
   return oldest;
+}
+
+/**
+ * Build the human-readable Bifrost Customer/VK name for a user.
+ *
+ * Format: `{githubLogin}-{userId}` when we have a GitHub login,
+ * otherwise the bare `userId`. The login is a display nicety only —
+ * the trailing `userId` is what makes the name unique and what we'd
+ * grep for; everything keyed off identity (cache, locks, lookups)
+ * stays on `userId`.
+ *
+ * GitHub logins are already constrained to `[A-Za-z0-9-]` (≤39 chars),
+ * so no extra sanitization is needed. We still guard against an empty
+ * string just in case a `GitHubAuth` row exists with a blank
+ * `githubUsername`.
+ */
+export function buildBifrostName(
+  userId: string,
+  githubLogin: string | null,
+): string {
+  const login = githubLogin?.trim();
+  return login ? `${login}-${userId}` : userId;
 }
 
 function isDuplicateKeyError(err: unknown): boolean {
