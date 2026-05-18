@@ -362,17 +362,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     });
     setIsLoading(false);
     onStreamMessage(message);
-
-    // Generate suggestion chips after assistant messages (skip clarifying questions)
-    if (message.role === ChatRole.ASSISTANT) {
-      const hasClarifyingQuestions = message.artifacts?.some(
-        (a) => a.type === "PLAN" && isClarifyingQuestions(a.content),
-      );
-      if (!hasClarifyingQuestions) {
-        fetchSuggestions([...messagesRef.current, message]);
-      }
-    }
-  }, [onStreamMessage, fetchSuggestions]);
+  }, [onStreamMessage]);
 
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
@@ -393,6 +383,55 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     },
     [onStreamStatusUpdate],
   );
+
+  // Fire suggestion fetch when the workflow FRESHLY transitions to COMPLETED
+  // and the last message is an assistant turn. Two design constraints:
+  //
+  // 1. Page-load skip: don't fetch when the feature is hydrated with an already-
+  //    completed workflow. Otherwise every user who opens an old feature would
+  //    trigger a Haiku call. We only want to fetch when the user is actively
+  //    in-session and the workflow has just finished.
+  //
+  // 2. Pusher race: WORKFLOW_STATUS_UPDATE and NEW_MESSAGE for the brief can
+  //    arrive in either order. We track a 'pending' flag set on the live
+  //    transition, and fire whenever the assistant message becomes the last
+  //    one — regardless of arrival order.
+  const prevWorkflowStatusRef = useRef<WorkflowStatus | null>(null);
+  const pendingSuggestionFetchRef = useRef(false);
+  const lastFetchedSuggestionKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const prev = prevWorkflowStatusRef.current;
+    prevWorkflowStatusRef.current = workflowStatus;
+
+    // A real transition requires a known prior state that wasn't already
+    // COMPLETED — this excludes the initial null → COMPLETED hydration jump.
+    const justCompleted =
+      prev !== null &&
+      prev !== WorkflowStatus.COMPLETED &&
+      workflowStatus === WorkflowStatus.COMPLETED;
+    if (justCompleted) pendingSuggestionFetchRef.current = true;
+
+    // If the workflow leaves COMPLETED (e.g. user sent another message),
+    // drop any stale pending intent.
+    if (workflowStatus !== WorkflowStatus.COMPLETED) {
+      pendingSuggestionFetchRef.current = false;
+    }
+
+    if (!pendingSuggestionFetchRef.current) return;
+
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== ChatRole.ASSISTANT) return;
+    if (lastFetchedSuggestionKeyRef.current === last.id) return;
+    const hasClarifyingQuestions = last.artifacts?.some(
+      (a) => a.type === "PLAN" && isClarifyingQuestions(a.content),
+    );
+    if (hasClarifyingQuestions) return;
+
+    lastFetchedSuggestionKeyRef.current = last.id;
+    pendingSuggestionFetchRef.current = false;
+    fetchSuggestions(messages);
+  }, [workflowStatus, messages, fetchSuggestions]);
 
   const handleFeatureTitleUpdate = useCallback(
     (update: FeatureTitleUpdateEvent) => {

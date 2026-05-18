@@ -16,7 +16,6 @@ import { ArrowLeft, FlaskConical, Loader2, Monitor, Pencil, Server, ServerOff, U
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { TypingIndicator } from "@/components/chat/TypingIndicator";
-import { SuggestionChips } from "@/components/plan/SuggestionChips";
 import { ChatInput } from "./ChatInput";
 import type { StreamContext } from "./WorkflowStatusBadge";
 import { ChatMessage } from "./ChatMessage";
@@ -376,32 +375,40 @@ export function ChatArea({
         ref={messagesContainerRef}
         className={cn("flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40", isMobile && "pb-28", isMobile && taskTitle && "pt-16")}
       >
-        {messages
-          .filter((msg) => !msg.replyId) // Hide messages that are replies
-          .map((msg) => {
-            // Find if this message has been replied to
-            const replyMessage = messages.find((m) => m.replyId === msg.id);
+        {(() => {
+          const visibleMessages = messages.filter((msg) => !msg.replyId);
+          // The plan-mode chip suggestions dock inside the bubble of the
+          // most recent assistant message in the visible list.
+          const lastAssistantIdx = (() => {
+            for (let i = visibleMessages.length - 1; i >= 0; i--) {
+              if (visibleMessages[i].role !== "USER") return i;
+            }
+            return -1;
+          })();
+          const showChips =
+            isPlanChat && !isLoading && !!suggestions?.length && !!onSuggestionSelect;
 
+          return visibleMessages.map((msg, i) => {
+            const replyMessage = messages.find((m) => m.replyId === msg.id);
+            const dockChipsHere = showChips && i === lastAssistantIdx;
             return (
               <ChatMessage
                 key={msg.id}
                 message={msg}
                 replyMessage={replyMessage}
                 onArtifactAction={onArtifactAction}
+                suggestions={dockChipsHere ? suggestions : undefined}
+                onSuggestionSelect={dockChipsHere ? onSuggestionSelect : undefined}
               />
             );
-          })}
+          });
+        })()}
 
         <div ref={messagesEndRef} />
       </div>
 
       {/* Typing Indicator */}
       <TypingIndicator typingUsers={typingUsers ?? []} />
-
-      {/* Quick-reply suggestion chips (plan mode only) */}
-      {isPlanChat && !isLoading && !!suggestions?.length && !!onSuggestionSelect && (
-        <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
-      )}
 
       {/* Input Bar */}
       <ChatInput

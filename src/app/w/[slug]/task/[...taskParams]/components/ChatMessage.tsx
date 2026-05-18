@@ -17,6 +17,7 @@ import { isClarifyingQuestions } from "@/types/stakwork";
 import type { ClarifyingQuestionsResponse } from "@/types/stakwork";
 import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
 import { AnsweredClarifyingQuestions } from "@/components/features/ClarifyingQuestionsPreview/AnsweredClarifyingQuestions";
+import { SuggestionChips } from "@/components/plan/SuggestionChips";
 
 /**
  * Parse message content to extract <logs> sections
@@ -39,6 +40,10 @@ interface ChatMessageProps {
   message: ChatMessageType;
   replyMessage?: ChatMessageType;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
+  // Suggestion chips docked to the bottom of this message's bubble.
+  // Passed only to the most recent assistant message in plan-mode chat.
+  suggestions?: string[];
+  onSuggestionSelect?: (s: string) => void;
 }
 
 // Custom comparison function for React.memo
@@ -54,10 +59,20 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
   // Compare replyMessage if present
   const replyMessageEqual = prevProps.replyMessage?.id === nextProps.replyMessage?.id;
 
-  return messageEqual && replyMessageEqual;
+  // Suggestions array reference changes when PlanChatView resets state, so a
+  // simple identity compare is enough to keep the docked chips in sync.
+  const suggestionsEqual = prevProps.suggestions === nextProps.suggestions;
+
+  return messageEqual && replyMessageEqual && suggestionsEqual;
 }
 
-export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({
+  message,
+  replyMessage,
+  onArtifactAction,
+  suggestions,
+  onSuggestionSelect,
+}: ChatMessageProps) {
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
@@ -116,6 +131,14 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             {/* Workflow URL Link for message bubble */}
             {message.workflowUrl && (
               <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100" />
+            )}
+
+            {/* Suggestion chips — docked inside the bubble for the latest
+                assistant turn. Renders only when chips are provided. */}
+            {message.role !== "USER" && suggestions && suggestions.length > 0 && onSuggestionSelect && (
+              <div className="mt-2.5 pt-2.5 border-t border-border/60">
+                <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
+              </div>
             )}
           </div>
         )}

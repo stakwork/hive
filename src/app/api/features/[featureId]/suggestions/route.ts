@@ -8,10 +8,21 @@ import { z } from "zod";
 export const runtime = "nodejs";
 
 const SUGGESTIONS_SYSTEM_PROMPT =
-  "Generate exactly 3 very short (2–5 words) affirmative quick-reply chips for a product planning chat. " +
-  "Responses must be purely confirmatory (e.g. 'Yes, go ahead', 'Looks good', 'LGTM!'). " +
-  "Never answer questions, solve problems, or add new information. " +
-  "Return an array with 3 distinct items.";
+  "You decide whether to offer quick-reply chips a user might tap to respond to the assistant's most recent message in a product planning chat. Return between 0 and 4 chips — pick the number that fits the assistant's turn, not a fixed count.\n\n" +
+  "RETURN AN EMPTY ARRAY when:\n" +
+  "- The assistant directs the user to take an action OUTSIDE the chat (e.g. 'Hit the Generate Tasks button', 'click the button in the top right', 'go to the Tasks tab', 'open the canvas'). There's nothing useful to chip — the user should click the thing, not reply.\n" +
+  "- The assistant has clearly wrapped up and isn't inviting a reply.\n" +
+  "- A short verbal reply would feel out of place (e.g. the assistant is presenting a finished artifact and pointing to UI).\n\n" +
+  "OTHERWISE, choose the count based on context:\n" +
+  "- If the assistant offered specific options (e.g. 'A / B / C', a numbered list), return ONE chip per option, mirroring the assistant's own short labels. If there are 2 options, return 2 chips; 4 options, return 4 chips.\n" +
+  "- If the assistant asked for confirmation or approval, return 2–3 affirmative replies (e.g. 'Looks good', 'Go ahead', 'Ship it').\n" +
+  "- If the assistant asked an open question, return 2–4 distinct plausible next steps the user might take.\n\n" +
+  "Rules:\n" +
+  "- Hard limit: never more than 4 chips.\n" +
+  "- Each chip 2–5 words, natural and conversational.\n" +
+  "- Chips must be distinct from each other.\n" +
+  "- Never answer the assistant's question on the user's behalf, never solve the underlying problem, never add new information the assistant didn't already mention.\n" +
+  "- Write from the user's voice, not the assistant's.";
 
 // Note: do not use `.min(N)` for N > 1 here. Some providers (e.g. Gemini)
 // reject JSON Schema arrays whose `minItems` is anything other than 0 or 1,
@@ -70,7 +81,11 @@ export async function POST(
       model,
       schema: suggestionsSchema,
       system: SUGGESTIONS_SYSTEM_PROMPT,
-      prompt: `Conversation:\n${conversationText}\n\nGenerate exactly 3 short affirmative reply chips for the user.`,
+      prompt:
+        `Conversation:\n${conversationText}\n\n` +
+        `Look at the assistant's most recent message and decide:\n` +
+        `1) If the assistant has directed the user to a UI action ('Hit Generate Tasks', 'click X in the top right') or otherwise wrapped up, return an empty suggestions array.\n` +
+        `2) Otherwise, return between 1 and 4 short quick-reply chips — pick the count that fits the assistant's turn. If the assistant offered specific options, return one chip per option (mirror the assistant's labels). If confirming, propose 2–3 affirmative replies. If open-ended, propose 2–4 distinct next steps. Cap at 4.`,
     });
 
     const suggestions = result.object.suggestions
