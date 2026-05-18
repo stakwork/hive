@@ -13,7 +13,7 @@ export function SuggestionChips({ suggestions, onSelect }: SuggestionChipsProps)
   if (suggestions.length === 0) return null;
 
   return (
-    <div className="flex flex-row flex-wrap gap-2 px-4 pb-2">
+    <div className="flex flex-row flex-wrap gap-2 pt-1">
       <AnimatePresence>
         {suggestions.map((suggestion, index) => (
           <motion.button
@@ -24,9 +24,9 @@ export function SuggestionChips({ suggestions, onSelect }: SuggestionChipsProps)
             transition={{ duration: 0.15, delay: index * 0.04 }}
             onClick={() => onSelect(suggestion)}
             className={cn(
-              "rounded-full border border-border/70 bg-transparent px-3.5 py-1.5 text-sm font-medium text-foreground/80 cursor-pointer",
+              "rounded-full bg-background border border-border px-3.5 py-1.5 text-sm font-medium text-foreground/85 cursor-pointer shadow-sm",
               "transition-all duration-150",
-              "hover:border-foreground/40 hover:text-foreground hover:scale-[1.03]",
+              "hover:bg-accent hover:text-foreground hover:scale-[1.03]",
               "active:scale-100",
             )}
           >
