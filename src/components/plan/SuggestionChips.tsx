@@ -24,9 +24,9 @@ export function SuggestionChips({ suggestions, onSelect }: SuggestionChipsProps)
             transition={{ duration: 0.15, delay: index * 0.04 }}
             onClick={() => onSelect(suggestion)}
             className={cn(
-              "rounded-full bg-accent px-3.5 py-1.5 text-sm font-medium text-accent-foreground cursor-pointer",
+              "rounded-full border border-border/70 bg-transparent px-3.5 py-1.5 text-sm font-medium text-foreground/80 cursor-pointer",
               "transition-all duration-150",
-              "hover:bg-accent/80 hover:scale-[1.03]",
+              "hover:border-foreground/40 hover:text-foreground hover:scale-[1.03]",
               "active:scale-100",
             )}
           >

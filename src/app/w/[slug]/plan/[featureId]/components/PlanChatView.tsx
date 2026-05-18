@@ -362,17 +362,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     });
     setIsLoading(false);
     onStreamMessage(message);
-
-    // Generate suggestion chips after assistant messages (skip clarifying questions)
-    if (message.role === ChatRole.ASSISTANT) {
-      const hasClarifyingQuestions = message.artifacts?.some(
-        (a) => a.type === "PLAN" && isClarifyingQuestions(a.content),
-      );
-      if (!hasClarifyingQuestions) {
-        fetchSuggestions([...messagesRef.current, message]);
-      }
-    }
-  }, [onStreamMessage, fetchSuggestions]);
+  }, [onStreamMessage]);
 
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
@@ -389,9 +379,25 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         setIsLoading(false);
         setIsChainVisible(false);
       }
+      // Generate suggestion chips only when the workflow has fully completed.
+      // Stakwork can post multiple intermediate assistant ChatMessages during a
+      // single run (tool calls, research updates), so triggering off per-message
+      // arrival would show chips while the agent is still working.
+      if (update.workflowStatus === WorkflowStatus.COMPLETED) {
+        const msgs = messagesRef.current;
+        const last = msgs[msgs.length - 1];
+        if (last?.role === ChatRole.ASSISTANT) {
+          const hasClarifyingQuestions = last.artifacts?.some(
+            (a) => a.type === "PLAN" && isClarifyingQuestions(a.content),
+          );
+          if (!hasClarifyingQuestions) {
+            fetchSuggestions(msgs);
+          }
+        }
+      }
       onStreamStatusUpdate(update);
     },
-    [onStreamStatusUpdate],
+    [onStreamStatusUpdate, fetchSuggestions],
   );
 
   const handleFeatureTitleUpdate = useCallback(

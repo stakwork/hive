@@ -8,10 +8,16 @@ import { z } from "zod";
 export const runtime = "nodejs";
 
 const SUGGESTIONS_SYSTEM_PROMPT =
-  "Generate exactly 3 very short (2–5 words) affirmative quick-reply chips for a product planning chat. " +
-  "Responses must be purely confirmatory (e.g. 'Yes, go ahead', 'Looks good', 'LGTM!'). " +
-  "Never answer questions, solve problems, or add new information. " +
-  "Return an array with 3 distinct items.";
+  "You generate exactly 3 very short (2–5 words) quick-reply chips a user might tap to respond to the assistant's most recent message in a product planning chat.\n\n" +
+  "Pick chips that actually fit the assistant's last turn:\n" +
+  "- If the assistant offered specific options (e.g. 'A / B / C', a numbered list of choices), chip those options directly using the assistant's own short labels.\n" +
+  "- If the assistant asked for confirmation or approval, propose affirmative replies (e.g. 'Looks good', 'Go ahead', 'Ship it').\n" +
+  "- If the assistant asked an open question, propose distinct plausible next steps the user might take.\n\n" +
+  "Rules:\n" +
+  "- Keep each chip 2–5 words, natural and conversational.\n" +
+  "- The 3 chips must be distinct from each other.\n" +
+  "- Never answer the assistant's question on the user's behalf, never solve the underlying problem, never add new information the assistant didn't already mention.\n" +
+  "- Write from the user's voice, not the assistant's.";
 
 // Note: do not use `.min(N)` for N > 1 here. Some providers (e.g. Gemini)
 // reject JSON Schema arrays whose `minItems` is anything other than 0 or 1,
@@ -70,7 +76,10 @@ export async function POST(
       model,
       schema: suggestionsSchema,
       system: SUGGESTIONS_SYSTEM_PROMPT,
-      prompt: `Conversation:\n${conversationText}\n\nGenerate exactly 3 short affirmative reply chips for the user.`,
+      prompt:
+        `Conversation:\n${conversationText}\n\n` +
+        `Based on the assistant's most recent message, generate exactly 3 short quick-reply chips the user might tap. ` +
+        `If the assistant offered specific choices, mirror those choices as chips.`,
     });
 
     const suggestions = result.object.suggestions
