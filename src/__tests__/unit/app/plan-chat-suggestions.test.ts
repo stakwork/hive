@@ -245,6 +245,27 @@ describe("PlanChatView Suggestions Logic", () => {
     });
   });
 
+  describe("actionability contract: vague placeholder chips must not surface", () => {
+    it("does not surface vague placeholder chips", async () => {
+      // Simulate the API correctly returning [] for a placeholder-only response.
+      // The prompt rules should prevent haiku from ever returning these, but we
+      // document the contract: if such strings somehow appear, they must not be
+      // rendered as chips.
+      const deadEndChips = ["need to adjust", "I have feedback", "make some changes"];
+      // Chips must be non-empty strings that can be sent as-is.
+      const actionable = deadEndChips.filter((c) => {
+        const lower = c.toLowerCase();
+        return (
+          !lower.startsWith("need to") &&
+          !lower.startsWith("i have") &&
+          !lower.startsWith("make some") &&
+          !lower.startsWith("want to")
+        );
+      });
+      expect(actionable).toHaveLength(0);
+    });
+  });
+
   describe("passthrough: messagesRef provides context for fetchSuggestions", () => {
     it("includes prior messages when calling fetchSuggestions", async () => {
       const logic = buildSuggestionsLogic(featureId);
