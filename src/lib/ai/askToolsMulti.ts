@@ -2,7 +2,8 @@ import { tool, ToolSet, Tool } from "ai";
 import { z } from "zod";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { WorkspaceConfig } from "./types";
-import { listConcepts, maybeReconcileBifrost, repoAgent } from "./askTools";
+import { listConcepts, repoAgent } from "./askTools";
+import { getBifrostForLLM } from "@/services/bifrost";
 import { shouldTrimConceptsToIds } from "./conceptsTrim";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
@@ -232,7 +233,7 @@ export function askToolsMulti(
         try {
           // Per-workspace Bifrost VK so each workspace's spend gets
           // attributed to its own Customer/VK on its own Bifrost.
-          const bifrost = await maybeReconcileBifrost({
+          const bifrost = await getBifrostForLLM({
             workspaceId: ws.workspaceId,
             workspaceSlug: ws.slug,
             userId: ws.userId,

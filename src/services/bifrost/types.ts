@@ -149,3 +149,51 @@ export type BifrostProvider =
   | "openai"
   | "openrouter"
   | "gemini";
+
+// ─── Phase-5 trust registry wire shapes ────────────────────────────────
+//
+// These mirror `gateway/internal/trust/types.go` and the doc
+// `gateway/plans/phases/phase-5-trust-registry.md`. Auth is Bearer
+// (the swarm's provisioning token), NOT Basic — different from the
+// governance endpoints.
+
+/** GET /_plugin/trust/status response body. */
+export interface TrustStatusResponse {
+  claimed: boolean;
+  org_count: number;
+  orgs: string[];
+  seed_source: "env" | "api" | "" | null;
+  last_modified: string;
+}
+
+/**
+ * POST /_plugin/trust request body. The plugin canonicalises the
+ * pubkey to lowercase hex on its side, so we send whatever encoding
+ * we have on disk and rely on the plugin to normalise.
+ */
+export interface TrustOrgUpsert {
+  org_id: string;
+  pubkey: string;
+  issuer_url: string;
+  revocation_poll_seconds: number;
+}
+
+/** POST /_plugin/trust response body. */
+export interface TrustUpsertResponse {
+  ok: boolean;
+  org_id: string;
+}
+
+/**
+ * GET /_plugin/trust/:org_id response body — the persisted Org row
+ * including any active rotation grace state. We only read the fields
+ * we care about; grace_pubkeys etc. are passed through opaque.
+ */
+export interface TrustOrgRow {
+  org_id: string;
+  pubkey: string;
+  issuer_url: string;
+  revocation_poll_seconds: number;
+  grace_pubkeys?: string[];
+  grace_until?: string;
+}

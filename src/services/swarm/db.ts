@@ -93,6 +93,9 @@ export const select = {
   repairAgentDisabled: true,
   bifrostAdminUser: true,
   bifrostAdminPassword: true,
+  bifrostTrustedOrgId: true,
+  bifrostTrustedPubkey: true,
+  bifrostTrustSyncedAt: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
