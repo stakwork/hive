@@ -3,6 +3,7 @@ import { validationError, serverError, forbiddenError, isApiError } from "@/type
 import { validateUserBelongsToOrg } from "@/services/workspace";
 import { ModelMessage, generateObject } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { getBifrostForLLM } from "@/services/bifrost";
 import { z } from "zod";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { getMiddlewareContext } from "@/lib/middleware/utils";
@@ -293,8 +294,13 @@ export async function POST(request: NextRequest) {
       // finishes. Populated via the onStepFinish hook below.
       const learnedConceptIds = new Set<string>();
 
-      const { result, primarySwarmUrl, primarySwarmApiKey } =
-        await runCanvasAgent({
+      const {
+        result,
+        primarySwarmUrl,
+        primarySwarmApiKey,
+        primaryWorkspaceId,
+        primaryUserId,
+      } = await runCanvasAgent({
           userId,
           orgId: orgId && isMultiWorkspace ? orgId : undefined,
           workspaceSlugs: slugs,
@@ -372,7 +378,38 @@ export async function POST(request: NextRequest) {
             .join("\n\n");
 
           const followUpApiKey = getApiKeyForProvider("anthropic");
-          const followUpModel = getModel("anthropic", followUpApiKey, primarySlug);
+          // Route the follow-up `generateObject` through Bifrost under
+          // the SAME `agentName` as the main stream. Follow-ups are
+          // part of the same user-facing turn — splitting them into a
+          // separate dim would fragment the per-surface rollups
+          // operators actually want. So: orgId present → "canvas-agent",
+          // absent → "chat-agent", matching `runCanvasAgent`. Returns
+          // `undefined` and falls back to the default key when
+          // BIFROST_ENABLED doesn't cover the primary slug, or for
+          // public-viewer requests.
+          const followUpBifrost = await getBifrostForLLM(
+            {
+              workspaceId: primaryWorkspaceId,
+              workspaceSlug: primarySlug,
+              userId: primaryUserId,
+            },
+            {
+              agentName:
+                orgId && isMultiWorkspace ? "canvas-agent" : "chat-agent",
+            },
+          );
+          const followUpModel = getModel(
+            "anthropic",
+            followUpBifrost?.apiKey ?? followUpApiKey,
+            primarySlug,
+            undefined,
+            followUpBifrost
+              ? {
+                  baseUrl: followUpBifrost.baseUrl,
+                  headers: followUpBifrost.headers,
+                }
+              : undefined,
+          );
 
           const followUpResult = await generateObject({
             model: followUpModel,

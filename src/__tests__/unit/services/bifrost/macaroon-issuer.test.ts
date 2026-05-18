@@ -13,6 +13,10 @@ import {
   mintInvocationMacaroon,
   MacaroonIssuerError,
 } from "@/services/bifrost/macaroon-issuer";
+import {
+  MACAROON_DEFAULT_MAX_COST_USD,
+  MACAROON_DEFAULT_MAX_STEPS,
+} from "@/services/bifrost/constants";
 import { dbMock } from "@/__tests__/support/mocks/prisma";
 
 // Bypass Redis lock in unit tests.
@@ -180,9 +184,12 @@ describe("mintInvocationMacaroon", () => {
       agentName: "default-agent",
     });
     const claims = verify(minted.token, policy, new Date());
-    // Defaults from constants.ts.
-    expect(claims.effective_caveats.max_cost_usd).toBe(10);
-    expect(claims.effective_caveats.max_steps).toBe(200);
+    // Defaults from constants.ts — imported so this test tracks the
+    // source of truth instead of asserting magic numbers.
+    expect(claims.effective_caveats.max_cost_usd).toBe(
+      MACAROON_DEFAULT_MAX_COST_USD,
+    );
+    expect(claims.effective_caveats.max_steps).toBe(MACAROON_DEFAULT_MAX_STEPS);
     // ~1h from now ±60s (allow for clock skew in CI).
     const expMs = new Date(claims.effective_caveats.exp).getTime();
     const expected = Date.now() + 3600_000;
