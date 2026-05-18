@@ -19,8 +19,13 @@ const SUGGESTIONS_SYSTEM_PROMPT =
   "- If the assistant asked an open question, return 2–4 distinct plausible next steps the user might take.\n\n" +
   "Rules:\n" +
   "- Hard limit: never more than 4 chips.\n" +
-  "- Each chip 2–5 words, natural and conversational.\n" +
+  "- Each chip 2–6 words, natural and conversational — written as if the user is typing it themselves.\n" +
   "- Chips must be distinct from each other.\n" +
+  "- EVERY chip must be immediately sendable as-is. The user taps it; the message is sent; no further typing required.\n" +
+  "- NEVER produce placeholder chips that require follow-up typing: e.g. 'need to adjust', 'I have feedback', 'make some changes', 'want to tweak it'. These are dead-ends — the user clicks, nothing useful happens.\n" +
+  "- For option picks: mirror the assistant's label concisely — e.g. 'Option 1 works for me', 'Go with Option A', 'Pick the second one'.\n" +
+  "- For confirmations: be decisive — e.g. 'Yes, looks good to me', 'Let\\'s proceed', 'Ship it'.\n" +
+  "- For open questions: suggest a concrete stance or direction — e.g. 'Keep it simple', 'Add more detail', 'Focus on mobile first'.\n" +
   "- Never answer the assistant's question on the user's behalf, never solve the underlying problem, never add new information the assistant didn't already mention.\n" +
   "- Write from the user's voice, not the assistant's.";
 
@@ -85,7 +90,8 @@ export async function POST(
         `Conversation:\n${conversationText}\n\n` +
         `Look at the assistant's most recent message and decide:\n` +
         `1) If the assistant has directed the user to a UI action ('Hit Generate Tasks', 'click X in the top right') or otherwise wrapped up, return an empty suggestions array.\n` +
-        `2) Otherwise, return between 1 and 4 short quick-reply chips — pick the count that fits the assistant's turn. If the assistant offered specific options, return one chip per option (mirror the assistant's labels). If confirming, propose 2–3 affirmative replies. If open-ended, propose 2–4 distinct next steps. Cap at 4.`,
+        `2) Otherwise, return between 1 and 4 short quick-reply chips — pick the count that fits the assistant's turn. If the assistant offered specific options, return one chip per option (mirror the assistant's labels). If confirming, propose 2–3 affirmative replies. If open-ended, propose 2–4 distinct next steps. Cap at 4.\n` +
+        `3) Never produce a chip whose text requires the user to still type something after clicking. If you cannot form a self-contained, actionable chip, omit it — return fewer chips or an empty array rather than a dead-end placeholder.`,
     });
 
     const suggestions = result.object.suggestions
