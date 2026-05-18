@@ -233,11 +233,17 @@ export function askToolsMulti(
         try {
           // Per-workspace Bifrost VK so each workspace's spend gets
           // attributed to its own Customer/VK on its own Bifrost.
-          const bifrost = await getBifrostForLLM({
-            workspaceId: ws.workspaceId,
-            workspaceSlug: ws.slug,
-            userId: ws.userId,
-          });
+          // `agentName: "repo-agent"` matches the single-workspace
+          // call site so cost-per-agent rollups aggregate across
+          // both flows.
+          const bifrost = await getBifrostForLLM(
+            {
+              workspaceId: ws.workspaceId,
+              workspaceSlug: ws.slug,
+              userId: ws.userId,
+            },
+            { agentName: "repo-agent" },
+          );
           const rr = await repoAgent(
             ws.swarmUrl,
             ws.swarmApiKey,
