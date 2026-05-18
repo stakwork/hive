@@ -203,6 +203,16 @@ export interface RunCanvasAgentResult {
   /** The primary slug — useful for Pusher channel naming in `after()`. */
   primarySlug: string;
   /**
+   * Resolved primary-workspace identity. Surfaced so post-stream
+   * `after()` work (e.g. the follow-up-questions `generateObject`)
+   * can route its own LLM call through Bifrost via `getBifrostForLLM`
+   * without re-resolving the workspace config or re-issuing a DB
+   * lookup. `primaryUserId` is `PUBLIC_VIEWER_USER_ID` for
+   * public-viewer requests — the orchestrator handles that case.
+   */
+  primaryWorkspaceId: string;
+  primaryUserId: string;
+  /**
    * Whether the agent had any write tools available. False when
    * `readonly` was passed; useful for logging / metrics.
    */
@@ -645,6 +655,10 @@ export async function runCanvasAgent(
     primarySwarmApiKey,
     features,
     primarySlug,
+    // Both branches above always assign these — the non-null assertion
+    // reflects the invariant rather than a runtime check.
+    primaryWorkspaceId: primaryWorkspaceId!,
+    primaryUserId: primaryUserId!,
     readonly,
   };
 }
