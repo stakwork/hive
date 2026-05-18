@@ -13,13 +13,7 @@ import {
   findWorkspaceUser,
   type WorkspaceAuth,
 } from "@/lib/mcp/mcpTools";
-import { reconcileBifrostVK } from "@/services/bifrost";
-import { logger } from "@/lib/logger";
-import { isBifrostEnabledForWorkspace } from "@/config/env";
-
-// Inlined to avoid a circular import with workspaceConfig.ts.
-// Keep in sync with `PUBLIC_VIEWER_USER_ID` there.
-const PUBLIC_VIEWER_USER_ID = "__public_viewer__";
+import { getBifrostForLLM } from "@/services/bifrost";
 
 export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
   const r = await fetch(`${swarmUrl}/gitree/features`, {
@@ -68,8 +62,9 @@ export async function repoAgent(
    * the stakgraph protocol.
    *
    * `baseUrl` is already the fully-formed per-provider URL — the
-   * reconciler resolves it for you (see `maybeReconcileBifrost`).
-   * Pass it through verbatim; no normalization here.
+   * reconciler resolves it for you (see `getBifrostForLLM` in
+   * `@/services/bifrost`). Pass it through verbatim; no
+   * normalization here.
    */
   bifrost?: { apiKey: string; baseUrl: string },
 ): Promise<Record<string, string>> {
@@ -142,67 +137,6 @@ function resolveRepo(
     return { owner, repo };
   }
   return { owner: repoMap[0].owner, repo: repoMap[0].repo };
-}
-
-/**
- * Lazy Bifrost VK provisioning helper. Returns `{ apiKey, baseUrl }`
- * to forward to anything that makes LLM calls — `/repo/agent`,
- * Goose, raw SDK callers, workflow nodes — when we have a
- * `(workspaceId, userId)` pair. Returns `undefined` for:
- *   - any caller when Bifrost is not rolled out to this workspace per
- *     `isBifrostEnabledForWorkspace(workspaceSlug)` (the rollout gate
- *     supports per-slug allow-lists in addition to "all on" / off);
- *   - org-scope / public-viewer paths where there's no per-user VK.
- *
- * The returned `baseUrl` is the **fully-formed per-provider URL**
- * (e.g. `https://swarm:8181/anthropic/v1`), already suffixed for the
- * model you pass. Every downstream caller can hand it straight to an
- * SDK / Goose / workflow node — no per-call URL fix-up needed.
- *
- * Reconcile failures are logged and swallowed (return `undefined`) —
- * we'd rather fall back to the swarm's default LLM key than break
- * chat. Per the plan, this lazy path is the trigger; subsequent
- * calls hit the cached VK on `WorkspaceMember`.
- *
- * @param model Optional model shortcut (`"sonnet"`, `"opus"`, `"gpt"`,
- *   `"gemini"`, `"kimi"`), namespaced model id
- *   (`"anthropic/claude-sonnet-4-6"`, `"openrouter/moonshotai/..."`),
- *   or full provider model id. Determines which provider suffix the
- *   returned `baseUrl` gets. Defaults to the default provider
- *   (anthropic) when omitted.
- */
-export async function maybeReconcileBifrost(
-  workspaceAuth?: WorkspaceAuth,
-  model?: string,
-): Promise<{ apiKey: string; baseUrl: string } | undefined> {
-  // Workspace-scoped feature flag. When off for this slug, callers
-  // behave exactly as before — no apiKey/baseUrl injection, no
-  // reconcile, no Bifrost HTTP.
-  if (!isBifrostEnabledForWorkspace(workspaceAuth?.workspaceSlug)) {
-    return undefined;
-  }
-  if (!workspaceAuth?.workspaceId || !workspaceAuth?.userId) return undefined;
-  // Public viewers have no real user identity — no per-user VK.
-  if (workspaceAuth.userId === PUBLIC_VIEWER_USER_ID) return undefined;
-  try {
-    const result = await reconcileBifrostVK(
-      workspaceAuth.workspaceId,
-      workspaceAuth.userId,
-      { model },
-    );
-    return { apiKey: result.vkValue, baseUrl: result.baseUrl };
-  } catch (err) {
-    logger.warn(
-      "Bifrost VK reconcile failed; falling back to default LLM key",
-      "BIFROST_VK",
-      {
-        workspaceId: workspaceAuth.workspaceId,
-        userId: workspaceAuth.userId,
-        error: err instanceof Error ? err.message : String(err),
-      },
-    );
-    return undefined;
-  }
 }
 
 export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string[], pat: string, apiKey: string, workspaceAuth?: WorkspaceAuth) {
@@ -308,12 +242,12 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
       execute: async ({ prompt }: { prompt: string }) => {
         const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE! DO NOT DO A THOROUGH SEARCH OF THE REPO. TRY TO FINISH THE EXPLORATION VERY QUICKLY!`;
         try {
-          // Lazy Bifrost VK provisioning. If we have workspace + user
-          // context, route LLM calls through this workspace's Bifrost
-          // by passing the user's VK as `apiKey` and Bifrost's
-          // baseUrl. Otherwise (org/public-viewer paths), fall back
-          // to the swarm's default LLM key.
-          const bifrost = await maybeReconcileBifrost(workspaceAuth);
+          // Master Bifrost reconciler — see `services/bifrost/orchestrator.ts`.
+          // Routes LLM calls through this workspace's Bifrost when we
+          // have a `(workspaceId, userId)` pair and the rollout flag
+          // is on; otherwise returns undefined and we fall back to
+          // the swarm's default LLM key.
+          const bifrost = await getBifrostForLLM(workspaceAuth);
           // Pass comma-separated repo URLs for multi-repo support
           const rr = await repoAgent(
             swarmUrl,

@@ -154,6 +154,16 @@ model SourceControlOrg {
   schematic            String?              @map("schematic")
   createdAt            DateTime             @default(now()) @map("created_at")
   updatedAt            DateTime             @updatedAt @map("updated_at")
+  // Phase-5 macaroon identity. Each source-control org becomes a
+  // macaroon-signing org in the LLM governance stack. Keys are
+  // auto-generated on first LLM use (custodial, phase 1 of
+  // `gateway/plans/cryptographic-identity.md`); the private key
+  // moves off the platform in phase 2+. macaroonOrgId derives
+  // from githubLogin (`gh_<login>`) and is captured here so a
+  // later GitHub rename doesn't change the org's macaroon identity.
+  macaroonOrgId       String?              @unique @map("macaroon_org_id")
+  macaroonOrgPubkey   String?              @map("macaroon_org_pubkey")    // hex compressed secp256k1 (33 bytes / 66 hex chars)
+  macaroonOrgPrivkey  String?              @map("macaroon_org_privkey")   // encrypted; custodial in phase 1
   tokens               SourceControlToken[]
   workspaces           Workspace[]
   sharedConversations  SharedConversation[]
@@ -349,6 +359,15 @@ model Swarm {
   description             String?
   bifrostAdminUser        String?               @map("bifrost_admin_user")
   bifrostAdminPassword    String?               @map("bifrost_admin_password")
+  // Phase-5 trust-registry reconcile cache. Content-addressed by
+  // (orgId, pubkey) — when either of these differs from the
+  // workspace's SourceControlOrg.{macaroonOrgId, macaroonOrgPubkey},
+  // the next LLM call re-syncs against the plugin's
+  // `/_plugin/trust` admin API. See
+  // `gateway/plans/phases/phase-5-trust-registry.md`.
+  bifrostTrustedOrgId     String?               @map("bifrost_trusted_org_id")
+  bifrostTrustedPubkey    String?               @map("bifrost_trusted_pubkey")
+  bifrostTrustSyncedAt    DateTime?             @map("bifrost_trust_synced_at")
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
   workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

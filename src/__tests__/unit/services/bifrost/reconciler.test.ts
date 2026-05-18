@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { reconcileBifrostVK } from "@/services/bifrost/reconciler";
+import {
+  buildBifrostName,
+  reconcileBifrostVK,
+} from "@/services/bifrost/reconciler";
 import { BifrostHttpError, type BifrostClient } from "@/services/bifrost/BifrostClient";
 import { dbMock } from "@/__tests__/support/mocks/prisma";
 
@@ -602,6 +605,93 @@ describe("reconcileBifrostVK", () => {
       [undefined, "http://bifrost.test:8181/anthropic/v1"],
     ])("model=%s -> baseUrl=%s", async (model, expected) => {
       await expect(reconcileWithModel(model)).resolves.toBe(expected);
+    });
+  });
+
+  describe("buildBifrostName", () => {
+    it("prefixes the userId with the GitHub login when available", () => {
+      expect(buildBifrostName("u_alice", "Evanfeenstra")).toBe(
+        "Evanfeenstra-u_alice",
+      );
+    });
+
+    it("falls back to the bare userId when no GitHub login exists", () => {
+      expect(buildBifrostName("u_alice", null)).toBe("u_alice");
+    });
+
+    it("treats a blank/whitespace login as missing", () => {
+      expect(buildBifrostName("u_alice", "   ")).toBe("u_alice");
+    });
+  });
+
+  describe("uses the {login}-{userId} naming when GitHubAuth exists", () => {
+    it("passes the prefixed name to Bifrost create + lookup", async () => {
+      vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+        id: "mem-1",
+        bifrostVkValue: null,
+        bifrostVkId: null,
+        bifrostCustomerId: null,
+        user: { githubAuth: { githubUsername: "Evanfeenstra" } },
+      } as never);
+
+      const expectedName = `Evanfeenstra-${USER_ID}`;
+
+      const client = makeClientStub({
+        listCustomers: vi.fn().mockResolvedValue({
+          customers: [],
+          count: 0,
+          total_count: 0,
+          limit: 50,
+          offset: 0,
+        }),
+        createCustomer: vi.fn().mockResolvedValue({
+          message: "ok",
+          customer: {
+            id: "cust-1",
+            name: expectedName,
+            created_at: "2026-01-01",
+          },
+        }),
+        listVirtualKeys: vi.fn().mockResolvedValue({
+          virtual_keys: [],
+          count: 0,
+          total_count: 0,
+          limit: 50,
+          offset: 0,
+        }),
+        createVirtualKey: vi.fn().mockResolvedValue({
+          message: "ok",
+          virtual_key: {
+            id: "vk-1",
+            name: expectedName,
+            value: "sk-bf-NEW",
+            customer_id: "cust-1",
+            created_at: "2026-01-01",
+          },
+        }),
+      });
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      // Lookups go through `search` (substring) — assert the
+      // human-readable name flows all the way through.
+      expect(client.listCustomers).toHaveBeenCalledWith(
+        expect.objectContaining({ search: expectedName }),
+      );
+      expect(client.createCustomer).toHaveBeenCalledWith(
+        expect.objectContaining({ name: expectedName }),
+      );
+      expect(client.listVirtualKeys).toHaveBeenCalledWith(
+        expect.objectContaining({ search: expectedName }),
+      );
+      expect(client.createVirtualKey).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: expectedName,
+          description: expect.stringContaining(expectedName),
+        }),
+      );
     });
   });
 });
