@@ -2,6 +2,7 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { CornerDownLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SuggestionChipsProps {
@@ -13,7 +14,7 @@ export function SuggestionChips({ suggestions, onSelect }: SuggestionChipsProps)
   if (suggestions.length === 0) return null;
 
   return (
-    <div className="flex flex-row flex-wrap gap-2 pt-1">
+    <div className="flex flex-row flex-wrap gap-2 pt-2">
       <AnimatePresence>
         {suggestions.map((suggestion, index) => (
           <motion.button
@@ -24,12 +25,15 @@ export function SuggestionChips({ suggestions, onSelect }: SuggestionChipsProps)
             transition={{ duration: 0.15, delay: index * 0.04 }}
             onClick={() => onSelect(suggestion)}
             className={cn(
-              "rounded-full bg-background border border-border px-3.5 py-1.5 text-sm font-medium text-foreground/85 cursor-pointer shadow-sm",
+              "group inline-flex items-center gap-1.5 rounded-full cursor-pointer",
+              "border border-primary/30 bg-primary/10 px-3.5 py-1.5",
+              "text-sm font-medium text-primary",
               "transition-all duration-150",
-              "hover:bg-accent hover:text-foreground hover:scale-[1.03]",
+              "hover:bg-primary/20 hover:border-primary/50 hover:scale-[1.03]",
               "active:scale-100",
             )}
           >
+            <CornerDownLeft className="h-3 w-3 opacity-60 group-hover:opacity-100 transition-opacity" />
             {suggestion}
           </motion.button>
         ))}
