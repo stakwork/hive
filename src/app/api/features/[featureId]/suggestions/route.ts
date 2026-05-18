@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { getToken } from "next-auth/jwt";
 import { db } from "@/lib/db";
-import { resolveWorkspaceAccess, requireReadAccess } from "@/lib/auth/workspace-access";
+import { authOptions } from "@/lib/auth/nextauth";
+import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { generateObject } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { z } from "zod";
@@ -38,6 +41,20 @@ const suggestionsSchema = z.object({
 });
 
 /**
+ * Resolve user identity from session cookie (web UI) or Bearer token (Sphinx app).
+ * Route is marked webhook in middleware config so we authenticate manually here.
+ */
+async function getUserId(request: NextRequest): Promise<string | null> {
+  const session = await getServerSession(authOptions);
+  if (session?.user && (session.user as { id?: string }).id) {
+    return (session.user as { id: string }).id;
+  }
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET! });
+  if (token?.id && typeof token.id === "string") return token.id;
+  return null;
+}
+
+/**
  * POST /api/features/[featureId]/suggestions
  * Generate 2–3 affirmative quick-reply chip suggestions based on recent conversation.
  */
@@ -49,7 +66,10 @@ export async function POST(
   try {
     const feature = await db.feature.findUnique({
       where: { id: featureId },
-      select: { workspaceId: true },
+      select: {
+        workspaceId: true,
+        workspace: { select: { ownerId: true, isPublicViewable: true } },
+      },
     });
 
     if (!feature) {
@@ -57,13 +77,34 @@ export async function POST(
       return NextResponse.json({ suggestions: [] }, { status: 200 });
     }
 
-    const access = await resolveWorkspaceAccess(request, {
-      workspaceId: feature.workspaceId,
-    });
-    const ok = requireReadAccess(access);
-    if (ok instanceof NextResponse) {
-      console.warn("[suggestions] workspace access denied", { featureId, workspaceId: feature.workspaceId });
-      return NextResponse.json({ suggestions: [] }, { status: 200 });
+    const { workspaceId, workspace } = feature;
+    const userId = await getUserId(request);
+
+    let hasAccess = false;
+
+    if (userId) {
+      if (workspace.ownerId === userId) {
+        hasAccess = true;
+      } else {
+        const member = await db.workspaceMember.findUnique({
+          where: { workspaceId_userId: { workspaceId, userId } },
+          select: { id: true },
+        });
+        if (member) {
+          hasAccess = true;
+        } else if (await checkIsSuperAdmin(userId)) {
+          hasAccess = true;
+        }
+      }
+    }
+
+    if (!hasAccess) {
+      if (workspace.isPublicViewable) {
+        hasAccess = true;
+      } else {
+        console.warn("[suggestions] workspace access denied", { featureId, workspaceId });
+        return NextResponse.json({ suggestions: [] }, { status: 200 });
+      }
     }
 
     const body = await request.json();
