@@ -111,6 +111,7 @@
     "ecpair": "^3.0.0",
     "elkjs": "^0.11.0",
     "framer-motion": "^12.23.24",
+    "gatekey": "^0.1.0",
     "gitsee": "^1.0.13",
     "globrex": "^0.1.2",
     "gsap": "^3.13.0",

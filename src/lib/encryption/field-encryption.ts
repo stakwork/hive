@@ -72,6 +72,7 @@ export class FieldEncryptionService {
       "bifrostAdminPassword",
       "bifrostVk",
       "macaroonOrgPrivkey",
+      "macaroonUserPrivkey",
     ];
 
     return encryptableFields.includes(fieldName as EncryptableField);
