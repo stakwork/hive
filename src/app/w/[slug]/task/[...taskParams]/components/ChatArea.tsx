@@ -392,16 +392,18 @@ export function ChatArea({
             );
           })}
 
+        {/* Quick-reply suggestion chips (plan mode only) — attached to the
+            last assistant message so they share the messages-area surface
+            and scroll with the conversation. */}
+        {isPlanChat && !isLoading && !!suggestions?.length && !!onSuggestionSelect && (
+          <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
       {/* Typing Indicator */}
       <TypingIndicator typingUsers={typingUsers ?? []} />
-
-      {/* Quick-reply suggestion chips (plan mode only) */}
-      {isPlanChat && !isLoading && !!suggestions?.length && !!onSuggestionSelect && (
-        <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
-      )}
 
       {/* Input Bar */}
       <ChatInput
