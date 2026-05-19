@@ -4,8 +4,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 /**
- * Unit tests for the per-run Stakwork link icon feature on AgentChatMessage
- * and the workflowRunMap derivation logic in AgentChatArea.
+ * Unit tests for the per-run Stakwork link icon feature on AgentChatMessage.
+ * stakworkProjectId is now stored directly on the ChatMessage row and passed
+ * as msg.stakworkProjectId — no artifact scanning required.
  */
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -20,7 +21,7 @@ function AgentChatMessage({
   stakworkProjectId,
   isSuperAdmin = false,
 }: {
-  message: { id: string; role: string; message?: string };
+  message: { id: string; role: string; message?: string; stakworkProjectId?: string | null };
   stakworkProjectId?: string;
   isSuperAdmin?: boolean;
 }) {
@@ -72,179 +73,6 @@ function AgentChatMessage({
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Helper: build workflowRunMap (mirrors the useMemo in AgentChatArea)
-// ──────────────────────────────────────────────────────────────────────────────
-type ArtifactLike = { type: string; content?: { projectId?: string } };
-type MessageLike = {
-  id: string;
-  role: 'USER' | 'ASSISTANT';
-  message?: string;
-  artifacts?: ArtifactLike[];
-};
-
-function buildWorkflowRunMap(
-  messages: MessageLike[],
-  taskMode: string,
-  isSuperAdmin: boolean
-): Map<string, string> {
-  if (taskMode !== 'workflow_editor' || !isSuperAdmin) return new Map<string, string>();
-  const map = new Map<string, string>();
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
-    if (msg.role !== 'USER') continue;
-    for (let j = i + 1; j < messages.length; j++) {
-      if (messages[j].role === 'USER') break;
-      const workflowArtifact = messages[j].artifacts?.find(
-        (a) => a.type === 'WORKFLOW' && a.content?.projectId
-      );
-      if (workflowArtifact) {
-        map.set(msg.id, workflowArtifact.content!.projectId!);
-        break;
-      }
-    }
-  }
-  return map;
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Tests: workflowRunMap derivation
-// ──────────────────────────────────────────────────────────────────────────────
-describe('workflowRunMap derivation', () => {
-  it('maps USER message id to projectId from following WORKFLOW artifact', () => {
-    const messages: MessageLike[] = [
-      { id: 'user-1', role: 'USER', message: 'hello' },
-      {
-        id: 'assistant-1',
-        role: 'ASSISTANT',
-        artifacts: [{ type: 'WORKFLOW', content: { projectId: '123' } }],
-      },
-    ];
-    const map = buildWorkflowRunMap(messages, 'workflow_editor', true);
-    expect(map.get('user-1')).toBe('123');
-  });
-
-  it('correctly pairs multiple USER messages with their respective runs', () => {
-    const messages: MessageLike[] = [
-      { id: 'user-1', role: 'USER', message: 'first' },
-      {
-        id: 'assistant-1',
-        role: 'ASSISTANT',
-        artifacts: [{ type: 'WORKFLOW', content: { projectId: '100' } }],
-      },
-      { id: 'user-2', role: 'USER', message: 'second' },
-      {
-        id: 'assistant-2',
-        role: 'ASSISTANT',
-        artifacts: [{ type: 'WORKFLOW', content: { projectId: '200' } }],
-      },
-    ];
-    const map = buildWorkflowRunMap(messages, 'workflow_editor', true);
-    expect(map.get('user-1')).toBe('100');
-    expect(map.get('user-2')).toBe('200');
-  });
-
-  it('returns no entry for a USER message with no following WORKFLOW artifact', () => {
-    const messages: MessageLike[] = [
-      { id: 'user-1', role: 'USER', message: 'no run yet' },
-      { id: 'assistant-1', role: 'ASSISTANT', artifacts: [] },
-    ];
-    const map = buildWorkflowRunMap(messages, 'workflow_editor', true);
-    expect(map.has('user-1')).toBe(false);
-  });
-
-  it('returns no entry when the WORKFLOW artifact has no projectId', () => {
-    const messages: MessageLike[] = [
-      { id: 'user-1', role: 'USER', message: 'hello' },
-      {
-        id: 'assistant-1',
-        role: 'ASSISTANT',
-        artifacts: [{ type: 'WORKFLOW', content: {} }],
-      },
-    ];
-    const map = buildWorkflowRunMap(messages, 'workflow_editor', true);
-    expect(map.has('user-1')).toBe(false);
-  });
-
-  it('stops scanning at the next USER message (does not cross boundaries)', () => {
-    const messages: MessageLike[] = [
-      { id: 'user-1', role: 'USER', message: 'first' },
-      { id: 'assistant-1', role: 'ASSISTANT', artifacts: [] },
-      { id: 'user-2', role: 'USER', message: 'second' },
-      {
-        id: 'assistant-2',
-        role: 'ASSISTANT',
-        artifacts: [{ type: 'WORKFLOW', content: { projectId: '999' } }],
-      },
-    ];
-    const map = buildWorkflowRunMap(messages, 'workflow_editor', true);
-    // user-1's scan stops at user-2, so no projectId from assistant-2
-    expect(map.has('user-1')).toBe(false);
-    expect(map.get('user-2')).toBe('999');
-  });
-
-  it('ignores non-WORKFLOW artifact types', () => {
-    const messages: MessageLike[] = [
-      { id: 'user-1', role: 'USER', message: 'hello' },
-      {
-        id: 'assistant-1',
-        role: 'ASSISTANT',
-        artifacts: [{ type: 'PULL_REQUEST', content: { projectId: 'should-not-match' } }],
-      },
-    ];
-    const map = buildWorkflowRunMap(messages, 'workflow_editor', true);
-    expect(map.has('user-1')).toBe(false);
-  });
-
-  it('picks the first WORKFLOW artifact when multiple follow a USER message', () => {
-    const messages: MessageLike[] = [
-      { id: 'user-1', role: 'USER', message: 'hello' },
-      {
-        id: 'assistant-1',
-        role: 'ASSISTANT',
-        artifacts: [{ type: 'WORKFLOW', content: { projectId: 'first-id' } }],
-      },
-      {
-        id: 'assistant-2',
-        role: 'ASSISTANT',
-        artifacts: [{ type: 'WORKFLOW', content: { projectId: 'second-id' } }],
-      },
-    ];
-    const map = buildWorkflowRunMap(messages, 'workflow_editor', true);
-    expect(map.get('user-1')).toBe('first-id');
-  });
-});
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Tests: AgentChatArea guard — empty map when conditions not met
-// ──────────────────────────────────────────────────────────────────────────────
-describe('workflowRunMap guard conditions', () => {
-  const messages: MessageLike[] = [
-    { id: 'user-1', role: 'USER', message: 'hello' },
-    {
-      id: 'assistant-1',
-      role: 'ASSISTANT',
-      artifacts: [{ type: 'WORKFLOW', content: { projectId: '42' } }],
-    },
-  ];
-
-  it('returns empty map when taskMode !== workflow_editor', () => {
-    const map = buildWorkflowRunMap(messages, 'live', true);
-    expect(map.size).toBe(0);
-  });
-
-  it('returns empty map when isSuperAdmin is false', () => {
-    const map = buildWorkflowRunMap(messages, 'workflow_editor', false);
-    expect(map.size).toBe(0);
-  });
-
-  it('returns populated map only when both conditions are met', () => {
-    const map = buildWorkflowRunMap(messages, 'workflow_editor', true);
-    expect(map.size).toBe(1);
-    expect(map.get('user-1')).toBe('42');
-  });
-});
-
-// ──────────────────────────────────────────────────────────────────────────────
 // Tests: AgentChatMessage rendering
 // ──────────────────────────────────────────────────────────────────────────────
 describe('AgentChatMessage — Stakwork link icon', () => {
@@ -281,6 +109,17 @@ describe('AgentChatMessage — Stakwork link icon', () => {
     render(
       <AgentChatMessage
         message={userMessage}
+        isSuperAdmin={true}
+        stakworkProjectId={undefined}
+      />
+    );
+    expect(screen.queryByLabelText('View run on Stakwork')).toBeNull();
+  });
+
+  it('does NOT render link icon when stakworkProjectId is null (pre-migration messages)', () => {
+    render(
+      <AgentChatMessage
+        message={{ ...userMessage, stakworkProjectId: null }}
         isSuperAdmin={true}
         stakworkProjectId={undefined}
       />
@@ -326,5 +165,18 @@ describe('AgentChatMessage — Stakwork link icon', () => {
       />
     );
     expect(screen.queryByTestId('stakwork-link-wrapper')).toBeNull();
+  });
+
+  it('renders link icon for non-workflow_editor task modes when stakworkProjectId is set', () => {
+    // Previously the link was only shown for workflow_editor taskMode via the artifact scan.
+    // Now it appears for any task mode when stakworkProjectId is non-null.
+    render(
+      <AgentChatMessage
+        message={userMessage}
+        isSuperAdmin={true}
+        stakworkProjectId="999"
+      />
+    );
+    expect(screen.getByLabelText('View run on Stakwork')).toBeTruthy();
   });
 });

@@ -7,7 +7,8 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 import { extractMermaidBody } from "@/lib/diagrams/mermaid-parser";
 import { resolveExtraSwarms } from "@/services/roadmap/feature-chat";
-import { getBifrostForLLM } from "@/services/bifrost";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const MERMAID_INSTRUCTION =
   "\n\nReturn a mermaid diagram surrounded by backticks like ```mermaid ... ```. Only return the mermaid block, no other commentary.";

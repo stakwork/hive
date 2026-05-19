@@ -516,6 +516,8 @@ export async function sendFeatureChatMessage({
       repo2GraphUrl,
       mode: "plan_mode",
       workspaceId: feature.workspaceId,
+      workspaceSlug: feature.workspace.slug,
+      userId,
       repoUrl,
       baseBranch,
       repoName,

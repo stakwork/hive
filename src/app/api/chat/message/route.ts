@@ -338,6 +338,8 @@ export async function POST(request: NextRequest) {
         taskSource: task.sourceType,
         featureContext,
         workspaceId: task.workspaceId,
+        workspaceSlug: workspace.slug,
+        userId,
         repoUrl,
         baseBranch,
         branch: taskBranch,
@@ -359,6 +361,11 @@ export async function POST(request: NextRequest) {
           workflowStartedAt: new Date(),
           additionalData: { stakworkProjectId: stakworkData.projectId },
         });
+        await db.chatMessage.update({
+          where: { id: chatMessage.id },
+          data: { stakworkProjectId: String(stakworkData.projectId) },
+        });
+        clientMessage.stakworkProjectId = String(stakworkData.projectId);
       }
       // All other cases (network error, non-2xx, body-level failure, missing project_id):
       // no-op — leave workflowStatus unchanged

@@ -1054,6 +1054,13 @@ describe("PR Monitor - Branch Update Operations", () => {
         agentWebhookSecret: null,
         mode: "agent",
         podId: "pod-123",
+        // Bifrost wiring on triggerAgentModeFix needs workspace
+        // identity to mint a macaroon. The orchestrator no-ops
+        // (rollout flag off in tests), but the code path still
+        // reads these fields off `task`.
+        workspaceId: "workspace-123",
+        createdById: "user-123",
+        workspace: { slug: "test-workspace", ownerId: "owner-123" },
       } as any);
 
       // Mock db.task.update

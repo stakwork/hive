@@ -23,6 +23,8 @@ import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
 import { fetchCIStatus } from "./pr-ci";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { releaseTaskPod } from "@/lib/pods/utils";
 
 const LOG_PREFIX = "[PRMonitor]";
@@ -1043,6 +1045,13 @@ export async function triggerAgentModeFix(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // 1. Load task
+    //
+    // `workspaceId` / `workspace.slug` / `createdById` / `workspace.ownerId`
+    // are loaded so we can mint a Bifrost macaroon for the agent-side
+    // LLM calls below. PR-monitor has no end-user session — we
+    // attribute the spend to the task creator (`createdById`),
+    // falling back to the workspace owner when null. Matches the
+    // live-mode counterpart's convention (`triggerLiveModeFix`).
     const task = await db.task.findUnique({
       where: { id: taskId },
       select: {
@@ -1051,6 +1060,11 @@ export async function triggerAgentModeFix(
         agentWebhookSecret: true,
         mode: true,
         podId: true,
+        workspaceId: true,
+        createdById: true,
+        workspace: {
+          select: { slug: true, ownerId: true },
+        },
       },
     });
 
@@ -1108,7 +1122,14 @@ export async function triggerAgentModeFix(
     // Broadcast the trigger message via Pusher
     await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.NEW_MESSAGE, triggerMessage.id);
 
-    // 7. Create agent session
+    // 7. Create agent session.
+    //
+    // Bifrost routing: mint a macaroon under `agent-name=pr-monitor`
+    // so the automated-fix LLM spend lands on `logs.db` as its own
+    // dim, distinct from user-initiated `coder-agent` traffic.
+    // Identity is the task creator (or workspace owner if the task
+    // was system-created). Falls back to the default Anthropic key
+    // when the rollout flag doesn't cover this workspace.
     const sessionUrl = agentUrl.replace(/\/$/, "") + "/session";
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -1117,14 +1138,32 @@ export async function triggerAgentModeFix(
       headers["Authorization"] = `Bearer ${agentPassword}`;
     }
 
+    const bifrostUserId = task.createdById ?? task.workspace.ownerId;
+    const bifrost = await getBifrostForLLM(
+      {
+        workspaceId: task.workspaceId,
+        workspaceSlug: task.workspace.slug,
+        userId: bifrostUserId,
+      },
+      { agentName: "pr-monitor" },
+    );
+
+    const sessionBody: Record<string, unknown> = {
+      sessionId: taskId,
+      webhookUrl,
+      apiKey: bifrost?.apiKey ?? process.env.ANTHROPIC_API_KEY,
+    };
+    if (bifrost) {
+      sessionBody.baseUrl = bifrost.baseUrl;
+      if (Object.keys(bifrost.headers).length > 0) {
+        sessionBody.headers = bifrost.headers;
+      }
+    }
+
     const sessionResponse = await fetch(sessionUrl, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        sessionId: taskId,
-        webhookUrl,
-        apiKey: process.env.ANTHROPIC_API_KEY,
-      }),
+      body: JSON.stringify(sessionBody),
     });
 
     if (!sessionResponse.ok) {
