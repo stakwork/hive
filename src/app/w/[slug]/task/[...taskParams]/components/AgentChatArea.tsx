@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
-import type { Artifact, ChatMessage, WorkflowStatus } from "@/lib/chat";
+import type { Artifact, ChatMessage, WorkflowContent, WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ChevronDown, ExternalLink, Github, GitCommit, Monitor, Server, ServerOff } from "lucide-react";
@@ -87,6 +87,27 @@ export function AgentChatArea({
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const router = useRouter();
   const isMobile = useIsMobile();
+
+  // Build a map of USER message id → Stakwork projectId for workflow editor tasks (super admin only)
+  const workflowRunMap = useMemo(() => {
+    if (taskMode !== 'workflow_editor' || !isSuperAdmin) return new Map<string, string>();
+    const map = new Map<string, string>();
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role !== 'USER') continue;
+      for (let j = i + 1; j < messages.length; j++) {
+        if (messages[j].role === 'USER') break;
+        const workflowArtifact = messages[j].artifacts?.find(
+          (a) => a.type === 'WORKFLOW' && (a.content as WorkflowContent)?.projectId
+        );
+        if (workflowArtifact) {
+          map.set(msg.id, (workflowArtifact.content as WorkflowContent).projectId!);
+          break;
+        }
+      }
+    }
+    return map;
+  }, [messages, taskMode, isSuperAdmin]);
 
   // Check if any message has a PULL_REQUEST artifact
   const hasPrArtifact = messages.some((msg) =>
@@ -281,7 +302,12 @@ export function AgentChatArea({
         isMobile && taskTitle && "pt-16"
       )}>
         {messages.map((msg) => (
-          <AgentChatMessage key={msg.id} message={msg} />
+          <AgentChatMessage
+            key={msg.id}
+            message={msg}
+            stakworkProjectId={workflowRunMap.get(msg.id) ?? undefined}
+            isSuperAdmin={isSuperAdmin}
+          />
         ))}
 
         {/* Show thinking indicator when loading but no assistant message streaming yet */}
