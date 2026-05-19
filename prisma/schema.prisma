@@ -590,6 +590,7 @@ model ChatMessage {
   workflowUrl       String?      @map("workflow_url")
   userId            String?      @map("user_id")
   featureId         String?      @map("feature_id")
+  stakworkProjectId String?      @map("stakwork_project_id")
   artifacts         Artifact[]
   attachments       Attachment[]
   feature           Feature?     @relation(fields: [featureId], references: [id], onDelete: Cascade)
