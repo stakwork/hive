@@ -691,7 +691,7 @@ export function DashboardChat({
 
       // 3. Navigate into Plan Mode
       setShowFeatureModal(false);
-      router.push(`/w/${slug}/plan/${feature.id}`);
+      window.open(`/w/${slug}/plan/${feature.id}`, "_blank", "noopener,noreferrer");
     } catch (error) {
       toast.error("Failed to launch Plan Mode", {
         description: error instanceof Error ? error.message : "Unknown error",
