@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { EncryptionService } from "@/lib/encryption";
 import { generateSignedUrl } from "@/lib/signed-urls";
+import { getBifrostForLLM } from "@/services/bifrost";
 
 const POLL_INTERVAL_MS = 1000;
 const MAX_POLL_ATTEMPTS = 120; // 2 minutes max
@@ -211,24 +212,61 @@ export async function POST(
       headers["x-api-token"] = swarmApiKey;
     }
 
+    // Master Bifrost reconciler — see `services/bifrost/orchestrator.ts`.
+    // Routes LLM calls through this workspace's Bifrost when we have a
+    // `(workspaceId, userId)` pair and the rollout flag is on; otherwise
+    // returns undefined and we fall back to the swarm's default LLM key.
+    //
+    // `agentName: "logs-agent"` is what shows up as the `agent-name` dim
+    // on the gateway's `logs.db`, driving cost-per-agent rollups.
+    const bifrost = workspaceRow
+      ? await getBifrostForLLM(
+          {
+            workspaceId: workspaceRow.id,
+            workspaceSlug: slug,
+            userId: userOrResponse.id,
+          },
+          { agentName: "logs-agent" },
+        )
+      : undefined;
+
     // FIXME update to use the decryptedStakworkApiKey if we update to use keys for workspace
+    const agentBody: Record<string, unknown> = {
+      prompt: prompt.trim(),
+      swarmName,
+      sessionId: sessionId || undefined,
+      model: "haiku",
+      sessionConfig: {
+        truncateToolResults: false,
+        maxToolResultLines: 200,
+        maxToolResultChars: 2000,
+      },
+      workspaceSlug: slug,
+    };
+    if (stakworkRuns.length > 0) {
+      agentBody.stakworkRuns = stakworkRuns;
+      if (decryptedStakworkApiKey) {
+        agentBody.stakworkApiKey = process.env.STAKWORK_API_KEY;
+      }
+    }
+    // Bifrost routing — matches the `repo/agent` protocol wired in
+    // `repoAgent` (`src/lib/ai/askTools.ts`). When provided, the swarm-
+    // side `/logs/agent` uses `apiKey` as the LLM bearer token,
+    // `baseUrl` as the fully-formed per-provider LLM URL, and forwards
+    // `headers` (today: the `x-macaroon` minted by the orchestrator
+    // for cost-per-agent observability) onto the outbound LLM call.
+    // `headers` may be an empty map when the macaroon mint failed —
+    // that's shadow-mode degraded state, the LLM call still runs.
+    if (bifrost) {
+      agentBody.apiKey = bifrost.apiKey;
+      agentBody.baseUrl = bifrost.baseUrl;
+      agentBody.headers = bifrost.headers;
+    }
+
     const agentResponse = await fetch(`${baseUrl}/logs/agent`, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        prompt: prompt.trim(),
-        swarmName,
-        sessionId: sessionId || undefined,
-        model: "haiku",
-        ...(decryptedStakworkApiKey && stakworkRuns.length > 0 ? { stakworkApiKey: process.env.STAKWORK_API_KEY } : {}),
-        ...(stakworkRuns.length > 0 ? { stakworkRuns } : {}),
-        sessionConfig: {
-          truncateToolResults: false,
-          maxToolResultLines: 200,
-          maxToolResultChars: 2000,
-        },
-        workspaceSlug: slug,
-      }),
+      body: JSON.stringify(agentBody),
     });
 
     if (!agentResponse.ok) {

@@ -67,9 +67,10 @@ export async function repoAgent(
    * `@/services/bifrost`). Pass it through verbatim; no
    * normalization here.
    *
-   * `headers` can be empty when the orchestrator's macaroon mint
-   * failed; that's an accepted degraded state (shadow mode — no
-   * `x-macaroon`, no dim on `logs.db`, but the LLM call still runs).
+   * `headers` can be an empty map when the orchestrator's macaroon
+   * mint failed; that's an accepted degraded state (shadow mode —
+   * no `x-macaroon`, no dim on `logs.db`, but the LLM call still
+   * runs). Passed through to the swarm verbatim either way.
    *
    * The accepted shape is a structural subset of `BifrostInvocation`
    * from `@/services/bifrost/orchestrator` so callers can pass the
@@ -87,14 +88,10 @@ export async function repoAgent(
   if (bifrost) {
     body.apiKey = bifrost.apiKey;
     body.baseUrl = bifrost.baseUrl;
-    if (bifrost.headers && Object.keys(bifrost.headers).length > 0) {
-      // Forwarded as a plain object alongside apiKey/baseUrl; the
-      // swarm-side `/repo/agent` handler reads `body.headers` and
-      // attaches each entry to the outbound LLM HTTP call. Empty
-      // map ⇒ omit the field entirely so older swarm versions that
-      // don't read `headers` don't see a stray key.
-      body.headers = bifrost.headers;
-    }
+    // Forwarded as a plain object alongside apiKey/baseUrl; the
+    // swarm-side `/repo/agent` handler reads `body.headers` and
+    // attaches each entry to the outbound LLM HTTP call.
+    body.headers = bifrost.headers ?? {};
   }
 
   const initiateResponse = await fetch(`${swarmUrl}/repo/agent`, {
