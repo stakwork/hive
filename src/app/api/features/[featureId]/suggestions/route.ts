@@ -11,26 +11,29 @@ import { z } from "zod";
 export const runtime = "nodejs";
 
 const SUGGESTIONS_SYSTEM_PROMPT =
-  "You decide whether to offer quick-reply chips a user might tap to respond to the assistant's most recent message in a product planning chat. Return between 0 and 4 chips — pick the number that fits the assistant's turn, not a fixed count.\n\n" +
-  "RETURN AN EMPTY ARRAY when:\n" +
-  "- The assistant directs the user to take an action OUTSIDE the chat (e.g. 'Hit the Generate Tasks button', 'click the button in the top right', 'go to the Tasks tab', 'open the canvas'). There's nothing useful to chip — the user should click the thing, not reply.\n" +
-  "- The assistant has clearly wrapped up and isn't inviting a reply.\n" +
-  "- A short verbal reply would feel out of place (e.g. the assistant is presenting a finished artifact and pointing to UI).\n\n" +
-  "OTHERWISE, choose the count based on context:\n" +
-  "- If the assistant offered specific options (e.g. 'A / B / C', a numbered list), return ONE chip per option, mirroring the assistant's own short labels. If there are 2 options, return 2 chips; 4 options, return 4 chips.\n" +
-  "- If the assistant asked for confirmation or approval, return 2–3 affirmative replies (e.g. 'Looks good', 'Go ahead', 'Ship it').\n" +
-  "- If the assistant asked an open question, return 2–4 distinct plausible next steps the user might take.\n\n" +
-  "Rules:\n" +
-  "- Hard limit: never more than 4 chips.\n" +
-  "- Each chip 2–6 words, natural and conversational — written as if the user is typing it themselves.\n" +
-  "- Chips must be distinct from each other.\n" +
-  "- EVERY chip must be immediately sendable as-is. The user taps it; the message is sent; no further typing required.\n" +
-  "- NEVER produce placeholder chips that require follow-up typing: e.g. 'need to adjust', 'I have feedback', 'make some changes', 'want to tweak it'. These are dead-ends — the user clicks, nothing useful happens.\n" +
-  "- For option picks: mirror the assistant's label concisely — e.g. 'Option 1 works for me', 'Go with Option A', 'Pick the second one'.\n" +
-  "- For confirmations: be decisive — e.g. 'Yes, looks good to me', 'Let\\'s proceed', 'Ship it'.\n" +
-  "- For open questions: suggest a concrete stance or direction — e.g. 'Keep it simple', 'Add more detail', 'Focus on mobile first'.\n" +
-  "- Never answer the assistant's question on the user's behalf, never solve the underlying problem, never add new information the assistant didn't already mention.\n" +
-  "- Write from the user's voice, not the assistant's.";
+  "You generate quick-reply chips for a product manager using Plan Mode — a conversational assistant that helps the PM shape a feature plan (requirements, architecture, task breakdown). The user is a PM, NOT an engineer.\n\n" +
+  "The assistant has just finished a step and is pausing for the PM's input — usually either confirming what was just captured ('Did I get that right?') or offering to move forward ('Ready to move to architecture?'). Your job is to surface 1–4 one-tap replies that push the conversation along without the PM having to type.\n\n" +
+  "Almost every good chip is a short affirmative or a 'next step' nudge. Aim for this vibe:\n" +
+  "- 'Yes, looks good to me'\n" +
+  "- 'That\\'s exactly it'\n" +
+  "- 'Sounds right'\n" +
+  "- 'Let\\'s discuss architecture'\n" +
+  "- 'Go to the next step'\n" +
+  "- 'Move on'\n\n" +
+  "HARD BANS — never produce a chip about any of these:\n" +
+  "- Code, implementation details, or 'showing the fix'. The PM is not looking at code.\n" +
+  "- Time, timelines, deadlines, estimates, scheduling. Plan Mode never discusses time.\n" +
+  "- Walking through implementation or 'how it works under the hood'.\n" +
+  "- Asking the assistant to redo or restate something it just produced ('Draft the requirements' right after it drafted them).\n" +
+  "- Skipping past the phase the assistant named as next (don't jump to implementation when architecture is next).\n" +
+  "- Vague placeholders that need follow-up typing: 'Let\\'s tweak a couple things', 'I have feedback', 'Need to adjust', 'Make some changes'. The PM taps these and is stuck — they still have to type what they actually mean. DEAD-END. Never produce these.\n" +
+  "- Directing the user to a UI element ('Hit the Generate Tasks button') — return [] instead.\n\n" +
+  "Format rules:\n" +
+  "- 1–4 chips total. Fewer is fine. Return [] if nothing genuinely useful fits.\n" +
+  "- Each chip 2–6 words, conversational, in the PM's voice.\n" +
+  "- Chips must be distinct.\n" +
+  "- If the assistant offered explicit options (A / B / C), return one chip per option mirroring its short labels.\n" +
+  "- Otherwise default to simple affirmatives and next-step nudges. When in doubt, return fewer chips rather than reaching for filler.";
 
 // Note: do not use `.min(N)` for N > 1 here. Some providers (e.g. Gemini)
 // reject JSON Schema arrays whose `minItems` is anything other than 0 or 1,
@@ -129,10 +132,7 @@ export async function POST(
       system: SUGGESTIONS_SYSTEM_PROMPT,
       prompt:
         `Conversation:\n${conversationText}\n\n` +
-        `Look at the assistant's most recent message and decide:\n` +
-        `1) If the assistant has directed the user to a UI action ('Hit Generate Tasks', 'click X in the top right') or otherwise wrapped up, return an empty suggestions array.\n` +
-        `2) Otherwise, return between 1 and 4 short quick-reply chips — pick the count that fits the assistant's turn. If the assistant offered specific options, return one chip per option (mirror the assistant's labels). If confirming, propose 2–3 affirmative replies. If open-ended, propose 2–4 distinct next steps. Cap at 4.\n` +
-        `3) Never produce a chip whose text requires the user to still type something after clicking. If you cannot form a self-contained, actionable chip, omit it — return fewer chips or an empty array rather than a dead-end placeholder.`,
+        `Look at the assistant's most recent message. The PM is being asked to confirm what was just captured or to move to the next step. Produce 1–4 short affirmative / next-step chips the PM can tap — or [] if nothing useful fits (e.g. the assistant points to a UI button). Remember the hard bans: no code, no timeline, no implementation, no vague 'tweak / adjust / feedback' placeholders, no redoing what was just done.`,
     });
 
     const suggestions = result.object.suggestions
