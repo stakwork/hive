@@ -26,6 +26,10 @@ vi.mock("@/config/env", () => ({
     STAKWORK_WORKFLOW_ID: "123,456,789",
     API_TIMEOUT: 20000,
   },
+  // Bifrost rollout flag — disabled so the orchestrator short-circuits
+  // without touching the DB. The test mocks the Stakwork fetch but
+  // not Bifrost's reconciler/mint chain.
+  isBifrostEnabledForWorkspace: () => false,
 }));
 
 // Mock external services

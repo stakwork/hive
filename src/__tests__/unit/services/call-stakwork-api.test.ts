@@ -6,6 +6,12 @@ vi.mock("@/lib/utils", () => ({
   getBaseUrl: vi.fn(() => "https://test.example.com"),
 }));
 
+// Note: `@/config/env` is intentionally NOT mocked — the test setup
+// (`src/__tests__/support/mocks/env.ts`) leaves `BIFROST_ENABLED=""`,
+// so `isBifrostEnabledForWorkspace` returns `false` and the
+// orchestrator short-circuits without touching the database. This
+// preserves the real `config.STAKWORK_*` shape these tests rely on.
+
 // Mock fetch globally
 global.fetch = vi.fn();
 const mockFetch = vi.mocked(global.fetch);
@@ -25,6 +31,8 @@ const createTestParams = (overrides = {}) => ({
   mode: "default",
   taskSource: "USER",
   workspaceId: "test-workspace-123",
+  workspaceSlug: "test-workspace",
+  userId: "test-user-123",
   ...overrides,
 });
 

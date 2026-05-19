@@ -338,6 +338,8 @@ export async function POST(request: NextRequest) {
         taskSource: task.sourceType,
         featureContext,
         workspaceId: task.workspaceId,
+        workspaceSlug: workspace.slug,
+        userId,
         repoUrl,
         baseBranch,
         branch: taskBranch,

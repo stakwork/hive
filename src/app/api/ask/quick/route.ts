@@ -3,7 +3,8 @@ import { validationError, serverError, forbiddenError, isApiError } from "@/type
 import { validateUserBelongsToOrg } from "@/services/workspace";
 import { ModelMessage, generateObject } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
-import { getBifrostForLLM } from "@/services/bifrost";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { z } from "zod";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { getMiddlewareContext } from "@/lib/middleware/utils";

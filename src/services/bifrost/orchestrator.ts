@@ -7,9 +7,25 @@ import {
   MACAROON_DEFAULT_TTL_SECONDS,
   MACAROON_ISSUER_LOG_TAG,
 } from "./constants";
-import { mintInvocationMacaroon } from "./macaroon-issuer";
-import { reconcileBifrostVK } from "./reconciler";
-import { ensureBifrostTrust } from "./trust-reconciler";
+
+// NOTE: the three layer modules below — `macaroon-issuer`,
+// `reconciler`, `trust-reconciler` — are loaded LAZILY (dynamic
+// `await import()` inside the run* helpers) rather than as static
+// imports.
+//
+// Why: each layer transitively pulls in heavy deps (secp256k1,
+// gatekey, BifrostClient + ioredis lock, aieo, EncryptionService).
+// When the rollout flag is off — which is the default in test
+// workers and dev — none of those modules need to be in memory.
+// Static imports here would load all of them at every test file
+// that transitively touches an LLM call site, and the integration
+// suite runs single-threaded with cumulative module retention
+// across 250+ files; we hit ERR_WORKER_OUT_OF_MEMORY in CI.
+//
+// Prod cost is negligible: Node module cache makes the second+
+// dynamic import a sub-microsecond Map lookup. The first call after
+// boot pays a one-time ~10ms parse cost, invisible against any
+// real LLM round-trip.
 
 // Inlined to keep this file out of the `@/lib/ai/*` dependency tree
 // (which transitively pulls in `services/workspace` and ioredis).
@@ -120,6 +136,7 @@ export async function getBifrostForLLM(
 
 async function runTrustReconcile(workspaceId: string): Promise<void> {
   try {
+    const { ensureBifrostTrust } = await import("./trust-reconciler");
     const result = await ensureBifrostTrust(workspaceId);
     if (result.status === "failed") {
       // Already logged by ensureBifrostTrust at warn level; we
@@ -147,6 +164,7 @@ async function runVKReconcile(
   model: string | undefined,
 ): Promise<{ apiKey: string; baseUrl: string } | undefined> {
   try {
+    const { reconcileBifrostVK } = await import("./reconciler");
     const result = await reconcileBifrostVK(
       workspaceAuth.workspaceId,
       workspaceAuth.userId,
@@ -178,6 +196,7 @@ async function runMint(
   opts: GetBifrostForLLMOptions,
 ): Promise<{ map: Record<string, string>; runId: string }> {
   try {
+    const { mintInvocationMacaroon } = await import("./macaroon-issuer");
     const minted = await mintInvocationMacaroon({
       workspaceId: workspaceAuth.workspaceId,
       userId: workspaceAuth.userId,
