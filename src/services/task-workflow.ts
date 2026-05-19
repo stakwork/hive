@@ -563,7 +563,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
       });
       await db.chatMessage.update({
         where: { id: chatMessage.id },
-        data: { stakworkProjectId: stakworkData.projectId },
+        data: { stakworkProjectId: String(stakworkData.projectId) },
       });
     }
     // All other cases (network error, non-2xx, body-level failure, missing project_id):
