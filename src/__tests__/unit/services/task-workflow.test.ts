@@ -35,6 +35,10 @@ vi.mock("@/config/env", () => ({
     GEMINI_API_BASE_URL: "https://generativelanguage.googleapis.com",
     API_TIMEOUT: 20000,
   },
+  // Bifrost rollout flag — tests run with it disabled so the
+  // orchestrator short-circuits to `undefined` and behavior matches
+  // the pre-Bifrost code path. See `getBifrostForLLM` for the gate.
+  isBifrostEnabledForWorkspace: () => false,
 }));
 
 vi.mock("@/lib/auth/nextauth", () => ({
