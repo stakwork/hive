@@ -67,7 +67,8 @@ import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt"
 import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodById } from "@/lib/pods";
-import { getBifrostForLLM } from "@/services/bifrost";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const encryptionService = EncryptionService.getInstance();
 

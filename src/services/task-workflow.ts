@@ -11,7 +11,13 @@ import { getApiKeyForModel, getDefaultModel } from "@/lib/ai/models";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { isDevelopmentMode } from "@/lib/runtime";
 import type { McpServerConfig } from "@/services/mcpServers";
-import { getBifrostForLLM } from "@/services/bifrost";
+// Deep-import directly from the orchestrator (rather than the barrel
+// `@/services/bifrost`) so we don't transitively pull in the 17-
+// module surface — BifrostClient / macaroon-keys / trust-reconciler
+// etc. — at every test file's module graph. The integration suite
+// runs single-threaded in a vm and that bloat showed up as worker
+// OOM. Same approach used at every other LLM call site.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const encryptionService = EncryptionService.getInstance();
 

@@ -23,7 +23,8 @@ import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
 import { fetchCIStatus } from "./pr-ci";
-import { getBifrostForLLM } from "@/services/bifrost";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { releaseTaskPod } from "@/lib/pods/utils";
 
 const LOG_PREFIX = "[PRMonitor]";
