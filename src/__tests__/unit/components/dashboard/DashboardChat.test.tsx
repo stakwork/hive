@@ -114,9 +114,12 @@ function mockFetch(...responses: Array<{ ok: boolean; body: unknown }>) {
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
+const mockWindowOpen = vi.fn();
+
 describe("DashboardChat — handleLaunchPlan", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal("open", mockWindowOpen);
   });
 
   test("reads feature.data.id from POST /api/features response and navigates correctly", async () => {
@@ -136,7 +139,7 @@ describe("DashboardChat — handleLaunchPlan", () => {
       const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
       expect(calls).toHaveLength(2);
       expect(calls[1][0]).toBe(`/api/features/${featureId}/chat`);
-      expect(mockPush).toHaveBeenCalledWith(`/w/${mockSlug}/plan/${featureId}`);
+      expect(mockWindowOpen).toHaveBeenCalledWith(`/w/${mockSlug}/plan/${featureId}`, "_blank", "noopener,noreferrer");
     });
   });
 
