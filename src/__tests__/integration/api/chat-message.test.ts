@@ -30,6 +30,11 @@ vi.mock("@/config/env", () => ({
   // without touching the DB. The test mocks the Stakwork fetch but
   // not Bifrost's reconciler/mint chain.
   isBifrostEnabledForWorkspace: () => false,
+  // Default-open agent gate. Workspace gate above already keeps the
+  // orchestrator short-circuited; stubbed here for symmetry so a
+  // future flip of the workspace gate to `true` doesn't quietly
+  // start hitting the agent-gate path with no stub.
+  isBifrostEnabledForAgent: () => true,
 }));
 
 // Mock external services

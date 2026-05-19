@@ -61,6 +61,12 @@ vi.mock("@/config/env", async () => {
       // callers should use `isBifrostEnabledForWorkspace(slug)` rather
       // than reading the field directly.
       BIFROST_ENABLED: "",
+      // Default-open per-agent gate. Empty == "don't filter by
+      // agent" so the workspace gate alone decides — preserves the
+      // pre-`BIFROST_ENABLED_AGENTS` behavior in every test that
+      // already opted into the workspace gate. Per-test override by
+      // re-mocking with a CSV of `BifrostAgentName` values.
+      BIFROST_ENABLED_AGENTS: "",
     },
   };
 });

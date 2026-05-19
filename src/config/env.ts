@@ -104,6 +104,23 @@ export const optionalEnvVars = {
   // Callers MUST go through `isBifrostEnabledForWorkspace(slug)` —
   // direct equality checks on this raw string are a bug.
   BIFROST_ENABLED: process.env.BIFROST_ENABLED || "",
+  // Per-agent rollout gate. ANDed with `BIFROST_ENABLED`: both the
+  // workspace AND the agentName must pass for `getBifrostForLLM` to
+  // return real credentials. Accepted shapes mirror `BIFROST_ENABLED`:
+  //   - unset / "" / "all" / "*" / "true"   -> every agent allowed
+  //                                            (back-compat: no filter)
+  //   - "false"                              -> no agents allowed
+  //   - "<agent1>,<agent2>,…"                -> only these agentNames
+  //
+  // Values are the literal `agentName` strings the orchestrator emits
+  // (see `BifrostAgentName` in `services/bifrost/orchestrator.ts`).
+  // Unlike the workspace gate, the **default is "open"** — an empty
+  // value means "don't filter by agent," preserving today's behavior
+  // for every workspace already enrolled in `BIFROST_ENABLED`.
+  //
+  // Callers MUST go through `isBifrostEnabledForAgent(agentName)` —
+  // direct equality checks on this raw string are a bug.
+  BIFROST_ENABLED_AGENTS: process.env.BIFROST_ENABLED_AGENTS || "",
 } as const;
 
 /**
@@ -190,6 +207,54 @@ export function isBifrostEnabledForWorkspace(
     .map((s) => s.trim())
     .filter(Boolean);
   return allowList.includes(slug);
+}
+
+/**
+ * Decide whether the per-agent Bifrost rollout gate is open for a
+ * given `agentName`. ANDed with {@link isBifrostEnabledForWorkspace}
+ * inside the orchestrator: both gates must pass for an LLM call to
+ * route through Bifrost.
+ *
+ * `BIFROST_ENABLED_AGENTS` accepts four shapes:
+ *   - unset / "" / "true" / "all" / "*"    -> every agent allowed
+ *                                              (back-compat default)
+ *   - "false"                               -> no agents allowed
+ *   - "agent1,agent2,…"                     -> only listed agentNames
+ *
+ * The default-open posture (empty == allow-all) is intentional: this
+ * gate is opt-IN filtering, so adding the env var to an environment
+ * that didn't previously set it can only narrow which agents go
+ * through Bifrost — never silently disable a workspace that the
+ * other gate already enabled.
+ *
+ * Matching is case-insensitive and trims whitespace. Passing an
+ * empty / missing agentName always returns `false` so untrusted
+ * callers can't accidentally pass the gate via empty input.
+ *
+ * @param agentName - The orchestrator's `agentName` (typed as
+ *   `BifrostAgentName` at the call site).
+ * @returns `true` iff Bifrost should be considered enabled for
+ *   this agentName.
+ */
+export function isBifrostEnabledForAgent(
+  agentName: string | null | undefined,
+): boolean {
+  const raw = (process.env.BIFROST_ENABLED_AGENTS || "").trim().toLowerCase();
+  // Default-open: empty / unset / on-tokens all mean "allow every
+  // agent." Note the asymmetry with `isBifrostEnabledForWorkspace`,
+  // which is default-closed. Rationale lives in the env-var JSDoc.
+  if (!raw || raw === "true" || raw === "all" || raw === "*") return true;
+  if (raw === "false") return false;
+  //
+  // CSV path: empty agentName never matches.
+  const name = (agentName ?? "").trim().toLowerCase();
+  if (!name) return false;
+
+  const allowList = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return allowList.includes(name);
 }
 
 // Combined environment configuration

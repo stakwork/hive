@@ -36,6 +36,9 @@ vi.mock("@/config/env", () => ({
   },
   // Bifrost rollout flag — disabled so the orchestrator short-circuits.
   isBifrostEnabledForWorkspace: () => false,
+  // Default-open agent gate (mirrors prod). Workspace gate above
+  // short-circuits first, but stub here for symmetry.
+  isBifrostEnabledForAgent: () => true,
 }));
 vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
