@@ -1,4 +1,7 @@
-import { isBifrostEnabledForWorkspace } from "@/config/env";
+import {
+  isBifrostEnabledForAgent,
+  isBifrostEnabledForWorkspace,
+} from "@/config/env";
 import { logger } from "@/lib/logger";
 
 import {
@@ -32,6 +35,43 @@ import {
 // Must stay in sync with `PUBLIC_VIEWER_USER_ID` in
 // `src/lib/ai/workspaceConfig.ts`.
 const PUBLIC_VIEWER_USER_ID = "__public_viewer__";
+
+/**
+ * The exhaustive registry of `agentName` values any LLM call site in
+ * Hive may emit. The `agent-name` dim on `logs.db` is only useful if
+ * it's drawn from a finite, well-known set — so every new call site
+ * MUST add itself here, and `opts.agentName` on
+ * {@link getBifrostForLLM} is typed against this union to catch
+ * unregistered values at compile time.
+ *
+ * Grouping:
+ *   - chat surfaces (in-process, PR #4078):
+ *     `repo-agent`, `chat-agent`, `canvas-agent`, `diagram-agent`,
+ *     `logs-agent`
+ *   - workflow / agent-session surfaces (PR #4079):
+ *     `plan-agent`, `coder-agent`, `pr-monitor`
+ *
+ * The `coder-agent` entry intentionally covers BOTH the Stakwork
+ * task workflow (live/unit/integration/default) and the hive4 goose
+ * direct agent session — they share the dim because the underlying
+ * work is the same "code-writing agent" shape. The
+ * `BIFROST_ENABLED_AGENTS` env var filters on these literal values,
+ * so listing `coder-agent` opts BOTH surfaces in (or neither).
+ */
+export const BIFROST_AGENT_NAMES = [
+  // Chat surfaces (PR #4078)
+  "repo-agent",
+  "chat-agent",
+  "canvas-agent",
+  "diagram-agent",
+  "logs-agent",
+  // Workflow / agent-session surfaces (PR #4079)
+  "plan-agent",
+  "coder-agent",
+  "pr-monitor",
+] as const;
+
+export type BifrostAgentName = (typeof BIFROST_AGENT_NAMES)[number];
 
 /**
  * Master Bifrost reconciler — the **only** function callers should
@@ -89,7 +129,21 @@ export async function getBifrostForLLM(
   opts: GetBifrostForLLMOptions,
 ): Promise<BifrostInvocation | undefined> {
   // 1. Gates — short-circuit before any DB or HTTP work.
+  //
+  // Two independent rollout gates are ANDed here:
+  //   a. Workspace gate (`BIFROST_ENABLED`): default-closed allow-list
+  //      of workspace slugs that should route through Bifrost at all.
+  //   b. Agent gate (`BIFROST_ENABLED_AGENTS`): default-open allow-list
+  //      of `agentName` values. Lets operators roll Bifrost out per
+  //      surface (e.g. workflow agents only) without enabling every
+  //      LLM call in an enrolled workspace.
+  //
+  // Either gate failing → `undefined` → caller falls back to the
+  // swarm's pre-Bifrost default key (byte-for-byte unchanged path).
   if (!isBifrostEnabledForWorkspace(workspaceAuth?.workspaceSlug)) {
+    return undefined;
+  }
+  if (!isBifrostEnabledForAgent(opts?.agentName)) {
     return undefined;
   }
   if (!workspaceAuth?.workspaceId || !workspaceAuth?.userId) return undefined;
@@ -265,7 +319,7 @@ export interface BifrostInvocation {
   baseUrl: string;
   headers: Record<string, string>;
   runId: string;
-  agentName: string;
+  agentName: BifrostAgentName;
 }
 
 /**
@@ -279,11 +333,12 @@ export interface GetBifrostForLLMOptions {
   /**
    * The agent name that drives the `agent-name` dim that ends up on
    * `logs.db`. Required — see this function's doc for rationale.
-   * Pick a short, human-readable identifier the gateway plugin will
-   * canonicalize from the macaroon's `effective_caveats.agents[-1]`
-   * (e.g. `"repo-agent"`, `"diagram-agent"`).
+   * Typed against {@link BIFROST_AGENT_NAMES} so adding a new LLM
+   * call site forces a registry update at compile time. The gateway
+   * plugin canonicalizes this from the macaroon's
+   * `effective_caveats.agents[-1]`.
    */
-  agentName: string;
+  agentName: BifrostAgentName;
 
   /**
    * Optional model shortcut (`"sonnet"`, `"opus"`, `"gpt"`,

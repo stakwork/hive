@@ -40,9 +40,15 @@ const auth = {
   userId: "u_alice",
 };
 
-const AGENT = { agentName: "test-agent" } as const;
+// Fixture must be a real `BifrostAgentName` value — the orchestrator
+// types `opts.agentName` against the union exported from
+// `services/bifrost/orchestrator`. Pick `repo-agent` as a neutral
+// placeholder; tests that care about the dim itself opt into other
+// values explicitly.
+const AGENT = { agentName: "repo-agent" } as const;
 
 const ORIGINAL_BIFROST_ENABLED = process.env.BIFROST_ENABLED;
+const ORIGINAL_BIFROST_ENABLED_AGENTS = process.env.BIFROST_ENABLED_AGENTS;
 
 /** Sensible default mint result for the happy path. */
 function mockMintOk(runId = "run_fixed_abc") {
@@ -83,6 +89,9 @@ describe("getBifrostForLLM (master reconciler)", () => {
       macaroonOrgPubkey: "02" + "ab".repeat(32),
     });
     delete process.env.BIFROST_ENABLED;
+    // Agent gate is default-open (empty == allow-all) so leaving it
+    // unset matches the prod default for every workspace gate state.
+    delete process.env.BIFROST_ENABLED_AGENTS;
   });
 
   afterEach(() => {
@@ -90,6 +99,11 @@ describe("getBifrostForLLM (master reconciler)", () => {
       delete process.env.BIFROST_ENABLED;
     } else {
       process.env.BIFROST_ENABLED = ORIGINAL_BIFROST_ENABLED;
+    }
+    if (ORIGINAL_BIFROST_ENABLED_AGENTS === undefined) {
+      delete process.env.BIFROST_ENABLED_AGENTS;
+    } else {
+      process.env.BIFROST_ENABLED_AGENTS = ORIGINAL_BIFROST_ENABLED_AGENTS;
     }
   });
 
@@ -131,7 +145,13 @@ describe("getBifrostForLLM (master reconciler)", () => {
   it("returns undefined when agentName is empty (defensive runtime check)", async () => {
     process.env.BIFROST_ENABLED = "true";
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const result = await getBifrostForLLM(auth, { agentName: "" });
+    // Empty string is blocked at compile time by the
+    // `BifrostAgentName` union — this test pins the RUNTIME defensive
+    // check that catches a future `any`-typed caller bypassing the
+    // type. Cast deliberate.
+    const result = await getBifrostForLLM(auth, {
+      agentName: "" as unknown as (typeof AGENT)["agentName"],
+    });
     expect(result).toBeUndefined();
     expect(reconcilerModule.reconcileBifrostVK).not.toHaveBeenCalled();
   });
@@ -149,7 +169,7 @@ describe("getBifrostForLLM (master reconciler)", () => {
       baseUrl: "http://bifrost.test:8181",
       headers: { "x-macaroon": "macaroon-token-base64url" },
       runId: "run_fixed_abc",
-      agentName: "test-agent",
+      agentName: "repo-agent",
     });
     expect(reconcilerModule.reconcileBifrostVK).toHaveBeenCalledWith(
       "ws-1",
@@ -165,7 +185,7 @@ describe("getBifrostForLLM (master reconciler)", () => {
     mockMintOk();
 
     const result = await getBifrostForLLM(auth, {
-      agentName: "test-agent",
+      agentName: "repo-agent",
       model: "gpt-5",
     });
     expect(result?.baseUrl).toBe("http://bifrost.test:8181/openai/v1");
@@ -220,6 +240,66 @@ describe("getBifrostForLLM (master reconciler)", () => {
     expect(issuerModule.mintInvocationMacaroon).not.toHaveBeenCalled();
   });
 
+  // ── Agent gate (BIFROST_ENABLED_AGENTS) ──────────────────────────────
+  // Second gate, ANDed with the workspace gate. Default-OPEN: empty
+  // means "allow every agent," so the workspace gate alone decides.
+  // The CSV form narrows which agentNames go through.
+
+  it("default-open: unset BIFROST_ENABLED_AGENTS allows all agents through", async () => {
+    process.env.BIFROST_ENABLED = "true";
+    delete process.env.BIFROST_ENABLED_AGENTS;
+    mockVKOk();
+    mockMintOk();
+
+    const result = await getBifrostForLLM(auth, { agentName: "coder-agent" });
+    expect(result).toBeDefined();
+    expect(reconcilerModule.reconcileBifrostVK).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls the reconciler when agentName is in the CSV allow-list", async () => {
+    process.env.BIFROST_ENABLED = "true";
+    process.env.BIFROST_ENABLED_AGENTS =
+      "plan-agent,coder-agent,pr-monitor";
+    mockVKOk({ vkValue: "sk-bf-AGENT" });
+    mockMintOk();
+
+    const result = await getBifrostForLLM(auth, { agentName: "coder-agent" });
+    expect(result?.apiKey).toBe("sk-bf-AGENT");
+    expect(reconcilerModule.reconcileBifrostVK).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT call the reconciler when agentName is absent from the CSV allow-list", async () => {
+    process.env.BIFROST_ENABLED = "true";
+    process.env.BIFROST_ENABLED_AGENTS = "plan-agent,coder-agent,pr-monitor";
+    // `repo-agent` is a chat surface, not in the workflow-only list.
+    const result = await getBifrostForLLM(auth, { agentName: "repo-agent" });
+    expect(result).toBeUndefined();
+    expect(reconcilerModule.reconcileBifrostVK).not.toHaveBeenCalled();
+    expect(trustModule.ensureBifrostTrust).not.toHaveBeenCalled();
+    expect(issuerModule.mintInvocationMacaroon).not.toHaveBeenCalled();
+  });
+
+  it('returns undefined when BIFROST_ENABLED_AGENTS="false" even if workspace gate is open', async () => {
+    process.env.BIFROST_ENABLED = "true";
+    process.env.BIFROST_ENABLED_AGENTS = "false";
+
+    const result = await getBifrostForLLM(auth, AGENT);
+    expect(result).toBeUndefined();
+    expect(reconcilerModule.reconcileBifrostVK).not.toHaveBeenCalled();
+  });
+
+  it("workspace gate closed + agent gate open → still undefined (AND semantics)", async () => {
+    // Agent gate allows everything, but the workspace gate is closed
+    // → the orchestrator must NOT call any reconciler. Pins that the
+    // two gates are ANDed, not ORed.
+    delete process.env.BIFROST_ENABLED;
+    process.env.BIFROST_ENABLED_AGENTS = "true";
+
+    const result = await getBifrostForLLM(auth, AGENT);
+    expect(result).toBeUndefined();
+    expect(reconcilerModule.reconcileBifrostVK).not.toHaveBeenCalled();
+  });
+
   // ── VK reconcile failure handling ────────────────────────────────────
 
   it("swallows VK reconcile errors and returns undefined (fallback to default LLM key)", async () => {
@@ -259,7 +339,7 @@ describe("getBifrostForLLM (master reconciler)", () => {
       baseUrl: "http://bifrost.test:8181",
       headers: {},
       runId: "",
-      agentName: "test-agent",
+      agentName: "repo-agent",
     });
   });
 
@@ -272,7 +352,7 @@ describe("getBifrostForLLM (master reconciler)", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await getBifrostForLLM(auth, {
-      agentName: "test-agent",
+      agentName: "repo-agent",
       runId: "run_external_caller_id",
     });
     expect(result?.runId).toBe("run_external_caller_id");
@@ -321,7 +401,7 @@ describe("getBifrostForLLM (master reconciler)", () => {
           token: "tok",
           orgId: "gh_stakwork",
           userId: auth.userId,
-          agentName: "test-agent",
+          agentName: "repo-agent",
           runId: "run_x",
           realm: auth.workspaceId,
           expiresAt: "2099-01-01T00:00:00Z",

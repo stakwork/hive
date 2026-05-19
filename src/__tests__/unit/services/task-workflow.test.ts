@@ -40,6 +40,9 @@ vi.mock("@/config/env", () => ({
   // orchestrator short-circuits to `undefined` and behavior matches
   // the pre-Bifrost code path. See `getBifrostForLLM` for the gate.
   isBifrostEnabledForWorkspace: () => false,
+  // Default-open agent gate (mirrors prod). Workspace gate above
+  // short-circuits first, but stub here for symmetry.
+  isBifrostEnabledForAgent: () => true,
 }));
 
 vi.mock("@/lib/auth/nextauth", () => ({
