@@ -180,7 +180,7 @@ export function isBifrostEnabledForWorkspace(
   const raw = (process.env.BIFROST_ENABLED || "").trim().toLowerCase();
   if (!raw || raw === "false") return false;
   if (raw === "true" || raw === "all" || raw === "*") return true;
-
+  //
   // CSV path: empty slug never matches.
   const slug = (workspaceSlug ?? "").trim().toLowerCase();
   if (!slug) return false;
