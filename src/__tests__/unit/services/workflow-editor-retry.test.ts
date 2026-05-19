@@ -133,6 +133,8 @@ describe("executeWorkflowEditorRetry", () => {
     originalFetch = global.fetch;
     mockedDb.task.update = vi.fn().mockResolvedValue({}) as never;
     mockedDb.chatMessage.create = vi.fn().mockResolvedValue({ id: "msg-new" }) as never;
+    mockedDb.chatMessage.findFirst = vi.fn().mockResolvedValue({ id: "msg-user-1" }) as never;
+    mockedDb.chatMessage.update = vi.fn().mockResolvedValue({}) as never;
   });
 
   afterEach(() => {
@@ -320,6 +322,44 @@ describe("executeWorkflowEditorRetry", () => {
       "new-message",
       expect.anything(),
     );
+  });
+
+  test("updates last USER chatMessage stakworkProjectId on successful retry", async () => {
+    mockedDb.task.findFirst = vi.fn()
+      .mockResolvedValueOnce(makeFullTask()) // executeWorkflowEditorRetry task query
+      .mockResolvedValueOnce(null) as never; // unused fallback
+
+    const lastUserMsgId = "chat-msg-user-last";
+    mockedDb.chatMessage.findFirst = vi.fn().mockResolvedValue({ id: lastUserMsgId }) as never;
+    mockedDb.chatMessage.update = vi.fn().mockResolvedValue({}) as never;
+    mockFetchSuccess(55555);
+
+    await executeWorkflowEditorRetry("task-1", "user-1");
+
+    expect(mockedDb.chatMessage.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ taskId: "task-1", role: ChatRole.USER }),
+        orderBy: { createdAt: "desc" },
+      }),
+    );
+    expect(mockedDb.chatMessage.update).toHaveBeenCalledWith({
+      where: { id: lastUserMsgId },
+      data: { stakworkProjectId: "55555" },
+    });
+  });
+
+  test("does not update chatMessage stakworkProjectId when project_id absent in retry response", async () => {
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeFullTask()) as never;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: {} }),
+    }) as unknown as typeof fetch;
+
+    mockedDb.chatMessage.update = vi.fn().mockResolvedValue({}) as never;
+
+    await executeWorkflowEditorRetry("task-1", "user-1");
+
+    expect(mockedDb.chatMessage.update).not.toHaveBeenCalled();
   });
 });
 

@@ -179,6 +179,20 @@ export async function executeWorkflowEditorRetry(
       },
     });
 
+    if (result.data?.project_id) {
+      // Find the last USER message by id to update stakworkProjectId
+      const lastUserMsg = await db.chatMessage.findFirst({
+        where: { taskId, role: ChatRole.USER },
+        orderBy: { createdAt: "desc" },
+      });
+      if (lastUserMsg) {
+        await db.chatMessage.update({
+          where: { id: lastUserMsg.id },
+          data: { stakworkProjectId: String(result.data.project_id) },
+        });
+      }
+    }
+
     // Create an assistant WORKFLOW artifact message so the frontend can resume polling
     const newMessage = await db.chatMessage.create({
       data: {
