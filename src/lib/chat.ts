@@ -268,6 +268,7 @@ export function createChatMessage(data: {
     attachments: data.attachments || [],
     createdBy: data.createdBy,
     userId: data.createdBy?.id || null,
+    stakworkProjectId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

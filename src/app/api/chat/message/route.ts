@@ -359,6 +359,11 @@ export async function POST(request: NextRequest) {
           workflowStartedAt: new Date(),
           additionalData: { stakworkProjectId: stakworkData.projectId },
         });
+        await db.chatMessage.update({
+          where: { id: chatMessage.id },
+          data: { stakworkProjectId: stakworkData.projectId },
+        });
+        clientMessage.stakworkProjectId = stakworkData.projectId;
       }
       // All other cases (network error, non-2xx, body-level failure, missing project_id):
       // no-op — leave workflowStatus unchanged
