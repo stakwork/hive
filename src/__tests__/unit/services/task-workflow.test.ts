@@ -16,6 +16,7 @@ vi.mock("@/lib/db", () => ({
     },
     chatMessage: {
       create: vi.fn(),
+      update: vi.fn(),
     },
   },
 }));
