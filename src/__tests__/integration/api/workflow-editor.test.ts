@@ -677,6 +677,10 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
       expect(updatedTask?.stakworkProjectId).toBe(99999);
       expect(updatedTask?.workflowStartedAt).toBeDefined();
+
+      // Verify chat message stakworkProjectId is set
+      const updatedMsg = await db.chatMessage.findFirst({ where: { taskId: task.id, role: "USER" } });
+      expect(updatedMsg?.stakworkProjectId).toBe("99999");
     });
 
     test("updates task workflow status to FAILED on API error", async () => {
@@ -723,6 +727,10 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       const updatedTask = await db.task.findUnique({ where: { id: task.id } });
       expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
       expect(updatedTask?.stakworkProjectId).toBeNull();
+
+      // Verify chat message stakworkProjectId remains null
+      const updatedMsg = await db.chatMessage.findFirst({ where: { taskId: task.id, role: "USER" } });
+      expect(updatedMsg?.stakworkProjectId).toBeNull();
     });
   });
 

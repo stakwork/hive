@@ -270,6 +270,13 @@ export async function POST(request: NextRequest) {
         data: updateData,
       });
 
+      if (result.data?.project_id) {
+        await db.chatMessage.update({
+          where: { id: chatMessage.id },
+          data: { stakworkProjectId: String(result.data.project_id) },
+        });
+      }
+
       // Create a new WORKFLOW artifact with the projectId so the panel can poll it
       if (result.data?.project_id) {
         try {
