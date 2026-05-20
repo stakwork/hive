@@ -249,6 +249,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Auto-patch WorkflowTask row when a WORKFLOW artifact arrives with a real workflowId
+    // This handles the case where a task was created with workflowId: null (new workflow)
+    // and the agent has now assigned a real workflowId.
+    if (taskId && taskMode === "workflow_editor") {
+      for (const dbArtifact of chatMessage.artifacts) {
+        if (dbArtifact.type === ArtifactType.WORKFLOW) {
+          const content = dbArtifact.content as WorkflowContent | null;
+          if (content && typeof content.workflowId === "number") {
+            try {
+              await db.workflowTask.upsert({
+                where: { taskId },
+                create: {
+                  taskId,
+                  workflowId: content.workflowId,
+                  workflowName: content.workflowName ?? null,
+                  workflowRefId: content.workflowRefId ?? null,
+                },
+                update: {
+                  workflowId: content.workflowId,
+                  workflowName: content.workflowName ?? null,
+                  workflowRefId: content.workflowRefId ?? null,
+                },
+              });
+              console.log(
+                `[chat/response] Auto-patched WorkflowTask ${taskId} with workflowId ${content.workflowId}`,
+              );
+            } catch (upsertError) {
+              console.error("[chat/response] Failed to auto-patch WorkflowTask:", upsertError);
+            }
+          }
+        }
+      }
+    }
+
     // Process PLAN artifacts — update Feature model with parsed plan content
     if (featureId) {
       for (const dbArtifact of chatMessage.artifacts) {

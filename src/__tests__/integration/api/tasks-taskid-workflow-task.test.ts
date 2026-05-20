@@ -49,11 +49,23 @@ describe("POST /api/tasks/[taskId]/workflow-task", () => {
     expect(response.status).toBe(401);
   });
 
-  test("returns 400 when workflowId is missing", async () => {
+  test("accepts missing workflowId and creates row with null workflowId", async () => {
     const request = createAuthenticatedPostRequest(
       `http://localhost:3000/api/tasks/${task.id}/workflow-task`,
       owner,
       { workflowName: "foo" }
+    );
+    const response = await POST(request, { params: Promise.resolve({ taskId: task.id }) });
+    const data = await expectSuccess(response, 200);
+    expect(data.data.workflowId).toBeNull();
+    expect(data.data.workflowName).toBe("foo");
+  });
+
+  test("returns 400 when workflowId is a non-numeric non-null value", async () => {
+    const request = createAuthenticatedPostRequest(
+      `http://localhost:3000/api/tasks/${task.id}/workflow-task`,
+      owner,
+      { workflowId: "not-a-number", workflowName: "foo" }
     );
     const response = await POST(request, { params: Promise.resolve({ taskId: task.id }) });
     await expectError(response, "workflowId", 400);

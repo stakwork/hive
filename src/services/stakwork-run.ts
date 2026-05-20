@@ -1423,13 +1423,13 @@ async function applyAcceptResult(
           await db.workflowTask.create({
             data: {
               taskId: createdTask.id,
-              workflowId: task.workflowId,
+              workflowId: task.workflowId ?? null,
               workflowName: task.workflowName ?? null,
               workflowRefId: task.workflowRefId ?? null,
             },
           });
           await saveWorkflowArtifact(createdTask.id, {
-            workflowId: task.workflowId,
+            workflowId: task.workflowId ?? null,
             workflowName: task.workflowName,
             workflowRefId: task.workflowRefId,
           });
