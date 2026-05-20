@@ -206,7 +206,8 @@ describe("GitHub Webhook — FEATURE_DEPLOYED_PRODUCTION notification", () => {
     const record = await waitForNotification({
       notificationType: NotificationTriggerType.FEATURE_DEPLOYED_PRODUCTION,
       featureId: feature.id,
-    });
+      status: NotificationTriggerStatus.SENT,
+    }, 8000);
 
     expect(record).not.toBeNull();
     expect(record!.targetUserId).toBe(testSetup.user.id);
