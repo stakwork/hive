@@ -1115,9 +1115,19 @@ export default function TaskChatPage() {
           setProjectId(result.workflow.project_id.toString());
         }
 
-        // Update message status
+        // Update message status and patch stakworkProjectId for the run link
         setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
+          msgs.map((msg) =>
+            msg.id === newMessage.id
+              ? {
+                  ...msg,
+                  status: ChatStatus.SENT,
+                  ...(result.workflow?.project_id && {
+                    stakworkProjectId: result.workflow.project_id.toString(),
+                  }),
+                }
+              : msg,
+          ),
         );
 
         setSelectedStep(null); // Clear step after sending

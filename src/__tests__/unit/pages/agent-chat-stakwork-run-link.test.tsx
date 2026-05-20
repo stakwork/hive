@@ -4,9 +4,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 /**
- * Unit tests for the per-run Stakwork link icon feature on AgentChatMessage.
- * stakworkProjectId is now stored directly on the ChatMessage row and passed
- * as msg.stakworkProjectId — no artifact scanning required.
+ * Unit tests for the per-run Stakwork link icon feature on AgentChatMessage
+ * and ChatMessage (workflow editor mode).
+ * stakworkProjectId is stored directly on the ChatMessage row and passed as
+ * msg.stakworkProjectId — no artifact scanning required.
  */
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -178,5 +179,107 @@ describe('AgentChatMessage — Stakwork link icon', () => {
       />
     );
     expect(screen.getByLabelText('View run on Stakwork')).toBeTruthy();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Minimal self-contained ChatMessage mirror (workflow_editor / ChatArea path)
+// ──────────────────────────────────────────────────────────────────────────────
+function ChatMessage({
+  message,
+  isSuperAdmin = false,
+}: {
+  message: { id: string; role: string; message?: string; stakworkProjectId?: string | null };
+  isSuperAdmin?: boolean;
+}) {
+  const isUser = message.role === 'USER';
+
+  return (
+    <div>
+      <div className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+        {message.message && (
+          <div
+            className={`group px-4 py-1 rounded-md max-w-full shadow-sm relative ${
+              isUser
+                ? 'bg-primary text-primary-foreground rounded-br-md'
+                : 'bg-background text-foreground rounded-bl-md border'
+            }`}
+          >
+            {/* Stakwork run link */}
+            {isSuperAdmin && isUser && message.stakworkProjectId && (
+              <div
+                className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10"
+                data-testid="chat-message-stakwork-link-wrapper"
+              >
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(
+                      `https://jobs.stakwork.com/admin/projects/${message.stakworkProjectId}`,
+                      '_blank',
+                      'noopener,noreferrer'
+                    );
+                  }}
+                  className="h-6 w-6 p-0 hover:bg-background/80 border border-border/50 shadow-sm bg-background"
+                  aria-label="View run on Stakwork"
+                >
+                  <ExternalLinkIcon />
+                </button>
+              </div>
+            )}
+            <span data-testid={isUser ? 'chat-msg-user' : 'chat-msg-assistant'}>{message.message}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests: ChatMessage (workflow editor / ChatArea path)
+// ──────────────────────────────────────────────────────────────────────────────
+describe('ChatMessage — Stakwork link icon (workflow_editor / ChatArea path)', () => {
+  const userMsg = { id: 'cm-1', role: 'USER', message: 'edit this workflow', stakworkProjectId: '42' };
+
+  beforeEach(() => {
+    vi.spyOn(window, 'open').mockImplementation(() => null);
+  });
+
+  it('renders the link button when isSuperAdmin=true and stakworkProjectId is set', () => {
+    render(<ChatMessage message={userMsg} isSuperAdmin={true} />);
+    expect(screen.getByLabelText('View run on Stakwork')).toBeTruthy();
+    expect(screen.getByTestId('chat-message-stakwork-link-wrapper')).toBeTruthy();
+  });
+
+  it('does NOT render the link button when isSuperAdmin=false', () => {
+    render(<ChatMessage message={userMsg} isSuperAdmin={false} />);
+    expect(screen.queryByLabelText('View run on Stakwork')).toBeNull();
+  });
+
+  it('does NOT render the link button when stakworkProjectId is null', () => {
+    render(<ChatMessage message={{ ...userMsg, stakworkProjectId: null }} isSuperAdmin={true} />);
+    expect(screen.queryByLabelText('View run on Stakwork')).toBeNull();
+  });
+
+  it('does NOT render the link button when stakworkProjectId is undefined', () => {
+    render(<ChatMessage message={{ ...userMsg, stakworkProjectId: undefined }} isSuperAdmin={true} />);
+    expect(screen.queryByLabelText('View run on Stakwork')).toBeNull();
+  });
+
+  it('does NOT render the link button on ASSISTANT messages', () => {
+    const assistantMsg = { id: 'cm-2', role: 'ASSISTANT', message: 'done', stakworkProjectId: '42' };
+    render(<ChatMessage message={assistantMsg} isSuperAdmin={true} />);
+    expect(screen.queryByLabelText('View run on Stakwork')).toBeNull();
+  });
+
+  it('opens the correct Stakwork URL in a new tab when clicked', () => {
+    render(<ChatMessage message={userMsg} isSuperAdmin={true} />);
+    const button = screen.getByLabelText('View run on Stakwork');
+    fireEvent.click(button);
+    expect(window.open).toHaveBeenCalledWith(
+      'https://jobs.stakwork.com/admin/projects/42',
+      '_blank',
+      'noopener,noreferrer'
+    );
   });
 });

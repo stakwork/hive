@@ -2,7 +2,8 @@
 
 import React, { memo, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
@@ -44,6 +45,7 @@ interface ChatMessageProps {
   // Passed only to the most recent assistant message in plan-mode chat.
   suggestions?: string[];
   onSuggestionSelect?: (s: string) => void;
+  isSuperAdmin?: boolean;
 }
 
 // Custom comparison function for React.memo
@@ -54,6 +56,7 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
     prevProps.message.updatedAt === nextProps.message.updatedAt &&
     prevProps.message.artifacts === nextProps.message.artifacts &&
     prevProps.message.workflowUrl === nextProps.message.workflowUrl &&
+    prevProps.message.stakworkProjectId === nextProps.message.stakworkProjectId &&
     prevProps.message.createdBy?.id === nextProps.message.createdBy?.id;
 
   // Compare replyMessage if present
@@ -63,7 +66,9 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
   // simple identity compare is enough to keep the docked chips in sync.
   const suggestionsEqual = prevProps.suggestions === nextProps.suggestions;
 
-  return messageEqual && replyMessageEqual && suggestionsEqual;
+  const superAdminEqual = prevProps.isSuperAdmin === nextProps.isSuperAdmin;
+
+  return messageEqual && replyMessageEqual && suggestionsEqual && superAdminEqual;
 }
 
 export const ChatMessage = memo(function ChatMessage({
@@ -72,6 +77,7 @@ export const ChatMessage = memo(function ChatMessage({
   onArtifactAction,
   suggestions,
   onSuggestionSelect,
+  isSuperAdmin = false,
 }: ChatMessageProps) {
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
@@ -104,6 +110,27 @@ export const ChatMessage = memo(function ChatMessage({
                 : "bg-background text-foreground rounded-bl-md border"
             }`}
           >
+            {/* Stakwork run link — visible on hover for super admins in workflow editor */}
+            {isSuperAdmin && message.role === "USER" && message.stakworkProjectId && (
+              <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(
+                      `https://jobs.stakwork.com/admin/projects/${message.stakworkProjectId}`,
+                      "_blank",
+                      "noopener,noreferrer"
+                    );
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 hover:bg-background/80 border border-border/50 shadow-sm bg-background"
+                  aria-label="View run on Stakwork"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
             <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
               {messageContent}
             </MarkdownRenderer>

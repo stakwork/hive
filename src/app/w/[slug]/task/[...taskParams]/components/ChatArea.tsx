@@ -399,6 +399,7 @@ export function ChatArea({
                 onArtifactAction={onArtifactAction}
                 suggestions={dockChipsHere ? suggestions : undefined}
                 onSuggestionSelect={dockChipsHere ? onSuggestionSelect : undefined}
+                isSuperAdmin={isSuperAdmin}
               />
             );
           });
