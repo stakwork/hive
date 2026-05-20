@@ -797,7 +797,7 @@ export const milestoneTimelineProjector: Projector = {
       }
     });
 
-    return { nodes, edges, columns: buildTimelineColumns(new Date()) };
+    return { nodes, edges };
   },
 };
 
