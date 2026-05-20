@@ -1395,7 +1395,7 @@ async function applyAcceptResult(
         // Resolve repositoryId from repoUrl if provided by AI, fallback to first repo
         const repositoryId = (task.repoUrl && repoUrlToId.get(task.repoUrl)) || firstRepoId;
 
-        const isWorkflowTask = !!task.workflowId;
+        const isWorkflowTask = task.mode === "workflow_editor";
 
         const createdTask = await db.task.create({
           data: {

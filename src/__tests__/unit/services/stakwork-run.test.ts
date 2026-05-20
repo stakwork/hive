@@ -2528,6 +2528,7 @@ describe("Stakwork Run Service", () => {
                 workflowId: 42,
                 workflowName: "test-workflow",
                 workflowRefId: "ref-001",
+                mode: "workflow_editor",
               },
               {
                 tempId: "t-plain",
@@ -2592,6 +2593,156 @@ describe("Stakwork Run Service", () => {
         workflowName: "test-workflow",
         workflowRefId: "ref-001",
       });
+    });
+
+    test("should treat task with mode='live' and workflowId as a coding task (not workflow)", async () => {
+      const mockRun = {
+        id: "run-live-1",
+        type: StakworkRunType.TASK_GENERATION,
+        featureId: "feature-live",
+        workspaceId: "ws-1",
+        status: WorkflowStatus.IN_PROGRESS,
+        autoAccept: true,
+        workspace: { slug: "test-workspace", ownerId: "workspace-owner-id" },
+        feature: { createdById: "feature-creator-id" },
+      };
+
+      const mockFeature = {
+        id: "feature-live",
+        title: "Live Feature",
+        phases: [{ id: "phase-live", name: "Phase 1", order: 0 }],
+        workspace: { id: "ws-1" },
+      };
+
+      const mockCreatedTask = { id: "created-live-task" };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        status: WorkflowStatus.COMPLETED,
+        decision: StakworkRunDecision.ACCEPTED,
+      });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/org/repo" }]);
+      mockedDb.task.create = vi.fn().mockResolvedValueOnce(mockCreatedTask);
+      mockedDb.workflowTask = { create: vi.fn().mockResolvedValue({ id: "wt-1" }) } as any;
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockedSaveWorkflowArtifact = vi.mocked(saveWorkflowArtifact);
+      mockedSaveWorkflowArtifact.mockClear();
+
+      const taskGenerationResult = {
+        phases: [
+          {
+            tasks: [
+              {
+                tempId: "t-live",
+                title: "Live Mode Task",
+                description: "Has workflowId but mode is live",
+                priority: "MEDIUM",
+                workflowId: 42,
+                workflowName: "test-workflow",
+                workflowRefId: "ref-001",
+                mode: "live",
+              },
+            ],
+          },
+        ],
+      };
+
+      await processStakworkRunWebhook(
+        { project_status: "completed", result: taskGenerationResult },
+        { type: "TASK_GENERATION", workspace_id: "ws-1", feature_id: "feature-live" }
+      );
+
+      // Should be created as a coding task: repositoryId populated, mode NOT workflow_editor
+      expect(mockedDb.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: "Live Mode Task",
+          repositoryId: "repo-1",
+        }),
+      });
+      const taskCall = (mockedDb.task.create as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(taskCall[0].data.mode).not.toBe("workflow_editor");
+
+      // No WorkflowTask row created
+      expect(mockedDb.workflowTask.create).not.toHaveBeenCalled();
+      // No workflow artifact saved
+      expect(mockedSaveWorkflowArtifact).not.toHaveBeenCalled();
+    });
+
+    test("should treat task with no mode field as a coding task (backwards compat)", async () => {
+      const mockRun = {
+        id: "run-nomode-1",
+        type: StakworkRunType.TASK_GENERATION,
+        featureId: "feature-nomode",
+        workspaceId: "ws-1",
+        status: WorkflowStatus.IN_PROGRESS,
+        autoAccept: true,
+        workspace: { slug: "test-workspace", ownerId: "workspace-owner-id" },
+        feature: { createdById: "feature-creator-id" },
+      };
+
+      const mockFeature = {
+        id: "feature-nomode",
+        title: "No Mode Feature",
+        phases: [{ id: "phase-nomode", name: "Phase 1", order: 0 }],
+        workspace: { id: "ws-1" },
+      };
+
+      const mockCreatedTask = { id: "created-nomode-task" };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        status: WorkflowStatus.COMPLETED,
+        decision: StakworkRunDecision.ACCEPTED,
+      });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/org/repo" }]);
+      mockedDb.task.create = vi.fn().mockResolvedValueOnce(mockCreatedTask);
+      mockedDb.workflowTask = { create: vi.fn().mockResolvedValue({ id: "wt-1" }) } as any;
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockedSaveWorkflowArtifact = vi.mocked(saveWorkflowArtifact);
+      mockedSaveWorkflowArtifact.mockClear();
+
+      const taskGenerationResult = {
+        phases: [
+          {
+            tasks: [
+              {
+                tempId: "t-nomode",
+                title: "No Mode Task",
+                description: "No mode field at all",
+                priority: "MEDIUM",
+              },
+            ],
+          },
+        ],
+      };
+
+      await processStakworkRunWebhook(
+        { project_status: "completed", result: taskGenerationResult },
+        { type: "TASK_GENERATION", workspace_id: "ws-1", feature_id: "feature-nomode" }
+      );
+
+      // Should be created as a coding task: repositoryId populated
+      expect(mockedDb.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: "No Mode Task",
+          repositoryId: "repo-1",
+        }),
+      });
+      const taskCall = (mockedDb.task.create as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(taskCall[0].data.mode).toBeUndefined();
+
+      // No WorkflowTask row created
+      expect(mockedDb.workflowTask.create).not.toHaveBeenCalled();
+      // No workflow artifact saved
+      expect(mockedSaveWorkflowArtifact).not.toHaveBeenCalled();
     });
 
     test("should fallback to workspace owner when feature has no creator", async () => {
