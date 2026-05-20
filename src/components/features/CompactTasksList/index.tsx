@@ -693,7 +693,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   <div onClick={(e) => e.stopPropagation()}>
                     <TargetSelector
                       value={
-                        task.workflowTask
+                        task.workflowTask && task.workflowTask.workflowId != null
                           ? encodeTargetValue({ type: "workflow", workflowId: task.workflowTask.workflowId, workflowName: task.workflowTask.workflowName ?? "", workflowRefId: task.workflowTask.workflowRefId ?? "" })
                           : task.repository?.id
                             ? encodeTargetValue({ type: "repo", repositoryId: task.repository.id })

@@ -637,7 +637,7 @@ model Attachment {
 model WorkflowTask {
   id                String   @id @default(cuid())
   taskId            String   @unique @map("task_id")
-  workflowId        Int      @map("workflow_id")
+  workflowId        Int?     @map("workflow_id")
   workflowName      String?  @map("workflow_name")
   workflowRefId     String?  @map("workflow_ref_id")
   workflowVersionId String?  @map("workflow_version_id")

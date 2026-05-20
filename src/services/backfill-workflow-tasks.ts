@@ -58,12 +58,12 @@ export async function backfillWorkflowTasks(
     const artifact = messageWithArtifact.artifacts[0];
     const content = artifact.content as WorkflowArtifactContent | null;
 
-    if (!content || typeof content.workflowId !== "number") {
-      console.warn(
-        `[WorkflowTask Backfill] Skipping task ${task.id} — WORKFLOW artifact missing workflowId`,
+    const numericWorkflowId = typeof content?.workflowId === "number" ? content.workflowId : null;
+
+    if (numericWorkflowId === null) {
+      console.log(
+        `[WorkflowTask Backfill] Created row with null workflowId for task ${task.id} — workflow not yet assigned`,
       );
-      skipped++;
-      continue;
     }
 
     await client.workflowTask.upsert({
@@ -71,10 +71,10 @@ export async function backfillWorkflowTasks(
       update: {},
       create: {
         taskId: task.id,
-        workflowId: content.workflowId,
-        workflowName: content.workflowName ?? null,
-        workflowRefId: content.workflowRefId ?? null,
-        workflowVersionId: content.workflowVersionId ?? null,
+        workflowId: numericWorkflowId,
+        workflowName: content?.workflowName ?? null,
+        workflowRefId: content?.workflowRefId ?? null,
+        workflowVersionId: content?.workflowVersionId ?? null,
       },
     });
 

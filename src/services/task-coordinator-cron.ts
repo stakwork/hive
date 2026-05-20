@@ -256,6 +256,7 @@ export async function processWorkflowTaskSweep(
         { OR: [{ workflowStatus: WorkflowStatus.PENDING }, { workflowStatus: null }] },
         { stakworkProjectId: null },
         { workflowTask: { isNot: null } }, // Workflow tasks only
+        { workflowTask: { is: { workflowId: { not: null } } } }, // Skip tasks with unassigned workflowId
         { OR: [{ featureId: null }, { feature: { status: { not: "CANCELLED" } } }] },
       ],
     },
@@ -285,6 +286,12 @@ export async function processWorkflowTaskSweep(
   let dispatched = 0;
 
   for (const task of candidateTasks) {
+    // Safety guard: skip tasks where workflowId has not been assigned yet
+    if (!task.workflowTask?.workflowId) {
+      console.log(`[TaskCoordinator][Workflow] Skipping task ${task.id} — workflowId not yet assigned`);
+      continue;
+    }
+
     const depResult = await checkDependencies(task.dependsOnTaskIds);
 
     if (depResult === "PERMANENTLY_BLOCKED") {
