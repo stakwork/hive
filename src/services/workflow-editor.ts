@@ -20,7 +20,8 @@ import { fetchChatHistory } from "@/lib/helpers/chat-history";
  * can compute a diff after the agent edits the workflow.
  * Non-fatal: returns null if env vars are missing or the fetch fails.
  */
-export async function fetchLatestWorkflowJson(workflowId: number): Promise<string | null> {
+export async function fetchLatestWorkflowJson(workflowId: number | null): Promise<string | null> {
+  if (workflowId === null) return null;
   const graphApiUrl = process.env.STAKWORK_JARVIS_URL;
   const graphApiKey = process.env.STAKWORK_GRAPH_API_KEY;
   if (!graphApiUrl || !graphApiKey) return null;
@@ -53,7 +54,7 @@ export async function fetchLatestWorkflowJson(workflowId: number): Promise<strin
 }
 
 interface WorkflowTaskContext {
-  workflowId: number;
+  workflowId: number | null;
   workflowName?: string | null;
   workflowRefId?: string | null;
   workflowVersionId?: string | null;
@@ -83,8 +84,8 @@ export async function saveWorkflowArtifact(
             {
               type: ArtifactType.WORKFLOW,
               content: {
-                workflowId: workflowId,
-                workflowName: workflowName || `Workflow ${workflowId}`,
+                workflowId: workflowId ?? null,
+                workflowName: workflowName || (workflowId ? `Workflow ${workflowId}` : "New Workflow"),
                 workflowRefId: workflowRefId || "",
                 originalWorkflowJson: "",
               },
@@ -117,6 +118,12 @@ export async function triggerWorkflowEditorRun(params: {
 }): Promise<void> {
   const { taskId, workflowTask, message, userId } = params;
   const { workflowId, workflowName, workflowRefId, workflowVersionId } = workflowTask;
+
+  if (workflowId === null) {
+    const msg = `[workflow-editor] Cannot dispatch task ${taskId} — workflowId not yet assigned`;
+    console.error(msg);
+    throw new Error(msg);
+  }
 
   if (!config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID) {
     throw new Error("Workflow editor is not configured (STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID missing)");
@@ -286,8 +293,8 @@ export async function triggerWorkflowEditorRun(params: {
                   type: ArtifactType.WORKFLOW,
                   content: {
                     projectId: result.data.project_id.toString(),
-                    workflowId: workflowId,
-                    workflowName: workflowName || `Workflow ${workflowId}`,
+                    workflowId: workflowId ?? null,
+                    workflowName: workflowName || (workflowId ? `Workflow ${workflowId}` : "New Workflow"),
                     workflowRefId: workflowRefId || "",
                     originalWorkflowJson: "",
                     ...(baselineWorkflowJson ? { workflowJson: baselineWorkflowJson } : {}),
