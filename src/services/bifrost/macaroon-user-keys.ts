@@ -40,7 +40,12 @@ import {
  */
 
 export interface MacaroonUserKeys {
-  /** `User.id` (the cuid). Used directly as macaroon `user_id`. */
+  /**
+   * `User.id` (the cuid). The lookup/lock key for this module. The
+   * macaroon's `user_authorization.user_id` claim is a human-readable
+   * derivative (`{login}-{userId}`) built in `mintInvocationMacaroon`
+   * — don't conflate the two.
+   */
   userId: string;
   /** Hex-encoded 32-byte ed25519 public key (64 hex chars). */
   userPubkey: string;

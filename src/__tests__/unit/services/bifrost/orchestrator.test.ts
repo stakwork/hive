@@ -56,9 +56,14 @@ function mockMintOk(runId = "run_fixed_abc") {
     token: "macaroon-token-base64url",
     orgId: "gh_stakwork",
     userId: auth.userId,
+    // Default fixture has no GitHub login wired, so the wire-form id
+    // falls through to the bare `userId` — same shape as
+    // `buildBifrostName(userId, null)`.
+    macaroonUserId: auth.userId,
     agentName: AGENT.agentName,
     runId,
-    realm: auth.workspaceId,
+    // Realm is the slug now — see macaroon-issuer's `realm` JSDoc.
+    realm: auth.workspaceSlug,
     expiresAt: new Date(Date.now() + 3600_000).toISOString(),
   });
 }
@@ -401,9 +406,10 @@ describe("getBifrostForLLM (master reconciler)", () => {
           token: "tok",
           orgId: "gh_stakwork",
           userId: auth.userId,
+          macaroonUserId: auth.userId,
           agentName: "repo-agent",
           runId: "run_x",
-          realm: auth.workspaceId,
+          realm: auth.workspaceSlug,
           expiresAt: "2099-01-01T00:00:00Z",
         };
       },

@@ -57,6 +57,7 @@ vi.mock("@/lib/encryption", () => ({
 }));
 
 const WORKSPACE_ID = "ws_1";
+const WORKSPACE_SLUG = "acme-ws";
 const USER_ID = "user_1";
 const SC_ORG_ID = "scorg_1";
 const GITHUB_LOGIN = "acme";
@@ -86,6 +87,7 @@ const USER_PRIV_HEX =
 function seedHappyPath() {
   vi.mocked(dbMock.workspace.findUnique).mockResolvedValue({
     id: WORKSPACE_ID,
+    slug: WORKSPACE_SLUG,
     sourceControlOrgId: SC_ORG_ID,
   } as never);
 
@@ -142,7 +144,7 @@ describe("mintInvocationMacaroon", () => {
     expect(minted.orgId).toBe(`gh_${GITHUB_LOGIN}`);
     expect(minted.userId).toBe(USER_ID);
     expect(minted.agentName).toBe("ask-repo-agent");
-    expect(minted.realm).toBe(WORKSPACE_ID);
+    expect(minted.realm).toBe(WORKSPACE_SLUG);
     expect(minted.runId).toMatch(/^[0-9a-f-]{36}$/i); // UUID
     expect(new Date(minted.expiresAt).getTime()).toBeGreaterThan(Date.now());
 
@@ -155,7 +157,7 @@ describe("mintInvocationMacaroon", () => {
     expect(claims.org_id).toBe(`gh_${GITHUB_LOGIN}`);
     expect(claims.user_id).toBe(USER_ID);
     expect(claims.agent_name).toBe("ask-repo-agent");
-    expect(claims.realm).toBe(WORKSPACE_ID);
+    expect(claims.realm).toBe(WORKSPACE_SLUG);
     expect(claims.run_id).toBe(minted.runId);
     expect(claims.effective_caveats.max_cost_usd).toBe(5);
     expect(claims.effective_caveats.max_steps).toBe(100);
@@ -210,10 +212,10 @@ describe("mintInvocationMacaroon", () => {
     expect(parsed.user_authorization.user_id).toBe(USER_ID);
     expect(parsed.user_authorization.user_pubkey.alg).toBe("ed25519");
     expect(parsed.user_authorization.permissions).toEqual({
-      realms: [WORKSPACE_ID],
+      realms: [WORKSPACE_SLUG],
       agents: ["parse-test"],
     });
-    expect(parsed.invocation.realm).toBe(WORKSPACE_ID);
+    expect(parsed.invocation.realm).toBe(WORKSPACE_SLUG);
     expect(parsed.invocation.agents).toEqual(["parse-test"]);
     expect(parsed.invocation.user_sig.alg).toBe("ed25519");
     expect(parsed.attenuations).toEqual([]);
@@ -236,6 +238,7 @@ describe("mintInvocationMacaroon", () => {
   it("throws MacaroonIssuerError when the workspace has no sourceControlOrgId", async () => {
     vi.mocked(dbMock.workspace.findUnique).mockResolvedValueOnce({
       id: WORKSPACE_ID,
+      slug: WORKSPACE_SLUG,
       sourceControlOrgId: null,
     } as never);
 
@@ -272,6 +275,51 @@ describe("mintInvocationMacaroon", () => {
         agentName: "",
       }),
     ).rejects.toBeInstanceOf(MacaroonIssuerError);
+  });
+
+  it("stamps `{githubLogin}-{userId}` as the macaroon user_id when a login is present", async () => {
+    await seedHappyPath();
+    // Override the default user fixture to include a GitHub login so
+    // the issuer's `buildBifrostName` call resolves to the
+    // human-readable form. Pubkey/privkey are carried over from the
+    // happy-path seed via `mockResolvedValue`'s last-write-wins.
+    const { ed25519PublicKey, bytesToHex } = await import("gatekey");
+    const userPubHex = bytesToHex(
+      ed25519PublicKey(secp.etc.hexToBytes(USER_PRIV_HEX)),
+    );
+    vi.mocked(dbMock.user.findUnique).mockResolvedValue({
+      id: USER_ID,
+      macaroonUserPubkey: userPubHex,
+      macaroonUserPrivkey: JSON.stringify({ data: USER_PRIV_HEX }),
+      githubAuth: { githubUsername: "alice" },
+    } as never);
+
+    const minted = await mintInvocationMacaroon({
+      workspaceId: WORKSPACE_ID,
+      userId: USER_ID,
+      agentName: "ask-repo-agent",
+    });
+
+    expect(minted.userId).toBe(USER_ID); // immutable cuid echoed back
+    expect(minted.macaroonUserId).toBe(`alice-${USER_ID}`);
+
+    const claims = verify(minted.token, policy, new Date());
+    expect(claims.user_id).toBe(`alice-${USER_ID}`);
+  });
+
+  it("falls back to bare userId when no GitHub login is on file", async () => {
+    await seedHappyPath();
+    // Default `seedHappyPath` user fixture omits `githubAuth`, so the
+    // optional-chain in the issuer resolves to `null` and
+    // `buildBifrostName` returns the bare `userId`.
+    const minted = await mintInvocationMacaroon({
+      workspaceId: WORKSPACE_ID,
+      userId: USER_ID,
+      agentName: "ask-repo-agent",
+    });
+    expect(minted.macaroonUserId).toBe(USER_ID);
+    const claims = verify(minted.token, policy, new Date());
+    expect(claims.user_id).toBe(USER_ID);
   });
 
   it("each mint produces a fresh nonce pair", async () => {
