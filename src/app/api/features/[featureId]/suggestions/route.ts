@@ -12,6 +12,9 @@ export const runtime = "nodejs";
 
 const SUGGESTIONS_SYSTEM_PROMPT =
   "You generate quick-reply chips for a product manager using Plan Mode — a conversational assistant that helps the PM shape a feature plan (requirements, architecture, task breakdown). The user is a PM, NOT an engineer.\n\n" +
+  "OVERRIDE RULE — check this FIRST, before anything else:\n" +
+  "If the assistant's most recent message mentions any UI element the user is supposed to interact with — e.g. 'hit Generate Tasks', 'click the button in the top right', 'go to the Tasks tab', 'open the canvas', 'press the X button', 'use the toolbar' — RETURN AN EMPTY ARRAY. No chips. The button is the next step, not a chat reply. This is true EVEN IF the assistant also asks a follow-up question like 'Want any tweaks first?' — the presence of the UI directive wins. Do not rationalize chips around it.\n\n" +
+  "Otherwise:\n" +
   "The assistant has just finished a step and is pausing for the PM's input — usually either confirming what was just captured ('Did I get that right?') or offering to move forward ('Ready to move to architecture?'). Your job is to surface 1–4 one-tap replies that push the conversation along without the PM having to type.\n\n" +
   "Almost every good chip is a short affirmative or a 'next step' nudge. Aim for this vibe:\n" +
   "- 'Yes, looks good to me'\n" +
@@ -26,8 +29,7 @@ const SUGGESTIONS_SYSTEM_PROMPT =
   "- Walking through implementation or 'how it works under the hood'.\n" +
   "- Asking the assistant to redo or restate something it just produced ('Draft the requirements' right after it drafted them).\n" +
   "- Skipping past the phase the assistant named as next (don't jump to implementation when architecture is next).\n" +
-  "- Vague placeholders that need follow-up typing: 'Let\\'s tweak a couple things', 'I have feedback', 'Need to adjust', 'Make some changes'. The PM taps these and is stuck — they still have to type what they actually mean. DEAD-END. Never produce these.\n" +
-  "- Directing the user to a UI element ('Hit the Generate Tasks button') — return [] instead.\n\n" +
+  "- Vague placeholders that need follow-up typing: 'Let\\'s tweak a couple things', 'I have feedback', 'Need to adjust', 'Make some changes'. The PM taps these and is stuck — they still have to type what they actually mean. DEAD-END. Never produce these.\n\n" +
   "Format rules:\n" +
   "- 1–4 chips total. Fewer is fine. Return [] if nothing genuinely useful fits.\n" +
   "- Each chip 2–6 words, conversational, in the PM's voice.\n" +
@@ -132,7 +134,9 @@ export async function POST(
       system: SUGGESTIONS_SYSTEM_PROMPT,
       prompt:
         `Conversation:\n${conversationText}\n\n` +
-        `Look at the assistant's most recent message. The PM is being asked to confirm what was just captured or to move to the next step. Produce 1–4 short affirmative / next-step chips the PM can tap — or [] if nothing useful fits (e.g. the assistant points to a UI button). Remember the hard bans: no code, no timeline, no implementation, no vague 'tweak / adjust / feedback' placeholders, no redoing what was just done.`,
+        `Look at the assistant's most recent message.\n` +
+        `STEP 1: Does it mention ANY UI element to click/press/open (button, tab, panel, top-right area, toolbar, etc.)? If yes, return []. Do not generate chips. The button is the next step. This holds even if the assistant also asks a follow-up question.\n` +
+        `STEP 2: Otherwise, produce 1–4 short affirmative / next-step chips the PM can tap. Remember the hard bans: no code, no timeline, no implementation, no vague 'tweak / adjust / feedback' placeholders, no redoing what was just done.`,
     });
 
     const suggestions = result.object.suggestions
