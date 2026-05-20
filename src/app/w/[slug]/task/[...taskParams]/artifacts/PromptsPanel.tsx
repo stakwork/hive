@@ -695,7 +695,7 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
     let stats = { additions: 0, deletions: 0 };
 
     if (versionAContent && versionBContent) {
-      diffChanges = diffLines(versionAContent, versionBContent);
+      diffChanges = diffLines(versionBContent, versionAContent);
       stats = diffChanges.reduce(
         (acc, part) => {
           const lines = part.value.split('\n').filter(line => line !== '');
@@ -745,8 +745,8 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
                       className={cn(
                         "w-full text-left px-3 py-2 rounded transition-colors text-sm",
                         "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
-                        isCurrentA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
-                        isCurrentB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                        isCurrentA && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                        isCurrentB && "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500",
                         !isCurrentSelected && "bg-muted/50"
                       )}
                     >
@@ -754,8 +754,8 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
                         <div className="flex items-center gap-2">
                           <Zap className="w-3 h-3" />
                           <span className="font-mono font-medium">Current</span>
-                          {isCurrentA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
-                          {isCurrentB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                          {isCurrentA && <span className="text-xs text-green-600 dark:text-green-400 font-medium">A</span>}
+                          {isCurrentB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
                         </div>
                         <span className="text-xs text-muted-foreground">Live</span>
                       </div>
@@ -777,16 +777,16 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
                         className={cn(
                           "w-full text-left px-3 py-2 rounded transition-colors text-sm",
                           "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
-                          isSelectedA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
-                          isSelectedB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                          isSelectedA && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                          isSelectedB && "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500",
                           !isSelected && "bg-muted/50"
                         )}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="font-mono font-medium">v{version.version_number}</span>
-                            {isSelectedA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
-                            {isSelectedB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                            {isSelectedA && <span className="text-xs text-green-600 dark:text-green-400 font-medium">A</span>}
+                            {isSelectedB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
                           </div>
                           <span className="text-xs text-muted-foreground">
                             {formatTimestamp(version.created_at)}

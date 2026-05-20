@@ -251,7 +251,7 @@ describe("PromptsPanel - Version History", () => {
     fireEvent.click(v3Button!);
 
     await waitFor(() => {
-      expect(v3Button).toHaveClass("bg-blue-100");
+      expect(v3Button).toHaveClass("bg-green-100");
     });
 
     // Click v1 to select as B
@@ -259,7 +259,7 @@ describe("PromptsPanel - Version History", () => {
     fireEvent.click(v1Button!);
 
     await waitFor(() => {
-      expect(v1Button).toHaveClass("bg-green-100");
+      expect(v1Button).toHaveClass("bg-red-100");
     });
   });
 
@@ -606,7 +606,7 @@ describe("PromptsPanel - Version History", () => {
     fireEvent.click(currentButton!);
 
     await waitFor(() => {
-      expect(currentButton).toHaveClass("bg-blue-100");
+      expect(currentButton).toHaveClass("bg-green-100");
     });
 
     // Click v1 to select as B
@@ -614,7 +614,7 @@ describe("PromptsPanel - Version History", () => {
     fireEvent.click(v1Button!);
 
     await waitFor(() => {
-      expect(v1Button).toHaveClass("bg-green-100");
+      expect(v1Button).toHaveClass("bg-red-100");
     });
   });
 
