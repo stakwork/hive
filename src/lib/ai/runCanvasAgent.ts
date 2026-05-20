@@ -63,6 +63,7 @@ import {
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
+import { getProviderOptions } from "aieo";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
@@ -601,6 +602,23 @@ export async function runCanvasAgent(
       : undefined,
   );
 
+  // ------------------------------------------------------------------
+  // Provider options — enables Anthropic auto prompt caching
+  // (top-level `cache_control` field, supported by @ai-sdk/anthropic
+  // 3.0.75+ as bundled by aieo). Also threads `thinking` config.
+  // The aieo SDK copy resolves under `node_modules/aieo/node_modules/
+  // @ai-sdk/anthropic`, which is the one that actually serializes
+  // these options into the API request — confirmed in the SDK source
+  // (dist/index.js ~line 3246: `cache_control: anthropicOptions.cacheControl`).
+  // ------------------------------------------------------------------
+  // Cast: aieo bundles its own `@ai-sdk/provider` type copy, so the
+  // returned union doesn't structurally match the `SharedV3ProviderOptions`
+  // shape from hive's top-level `ai` package. The runtime payload is
+  // identical — aieo created the model with the SDK that consumes it.
+  const providerOptions = getProviderOptions(
+    provider,
+  ) as unknown as Parameters<typeof streamText>[0]["providerOptions"];
+
   console.log("[runCanvasAgent] streamText:", {
     model: (model as { modelId?: string })?.modelId,
     toolsCount: Object.keys(tools).length,
@@ -612,6 +630,8 @@ export async function runCanvasAgent(
     bifrost: bifrost
       ? { runId: bifrost.runId, agentName: bifrost.agentName }
       : null,
+    cacheControl: (providerOptions as { anthropic?: { cacheControl?: unknown } })
+      ?.anthropic?.cacheControl ?? null,
   });
 
   // ------------------------------------------------------------------
@@ -621,6 +641,7 @@ export async function runCanvasAgent(
     model,
     tools,
     messages: modelMessages,
+    providerOptions,
     stopWhen: createHasEndMarkerCondition(),
     stopSequences: ["[END_OF_ANSWER]"],
     onStepFinish: async (sf) => {

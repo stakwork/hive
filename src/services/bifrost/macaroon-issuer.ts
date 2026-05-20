@@ -22,6 +22,7 @@ import {
 } from "./constants";
 import { ensureMacaroonOrgKeys } from "./macaroon-org-keys";
 import { ensureMacaroonUserKeys } from "./macaroon-user-keys";
+import { buildBifrostName } from "./reconciler";
 
 /**
  * Phase-4 macaroon issuer.
@@ -33,7 +34,7 @@ import { ensureMacaroonUserKeys } from "./macaroon-user-keys";
  * org_sig         ←  signUserAuthorizationSingle(ua, orgPrivkey)
  * user_pubkey     ←  User.macaroonUserPubkey         (ed25519)
  * user_sig        ←  signInvocation(inv, userPrivkey)
- * realm           ←  Workspace.id                    (stable; survives slug rename)
+ * realm           ←  Workspace.slug                  (human-readable; see note)
  * agents          ←  [agentName]                     (the dim that ends up on logs.db)
  * run_id          ←  caller-supplied or fresh UUID
  * ```
@@ -53,10 +54,20 @@ import { ensureMacaroonUserKeys } from "./macaroon-user-keys";
 
 export interface MintInvocationOptions {
   /**
-   * `Workspace.id` — used as the macaroon `realm`. We pick id (not
-   * slug) so a future slug rename doesn't invalidate in-flight
-   * macaroons. The pure verifier doesn't interpret the realm string;
-   * it only checks `invocation.realm ∈ user_authorization.permissions.realms`.
+   * `Workspace.id` — the immutable lookup key. We resolve this to
+   * `Workspace.slug` internally and use the slug as the macaroon
+   * `realm`, on the (current) premise that realms are observability
+   * dims rather than load-bearing authorization checks: a readable
+   * slug in `logs.db` is worth more to operators than cuid stability.
+   *
+   * The pure verifier doesn't interpret the realm string; it only
+   * checks `invocation.realm ∈ user_authorization.permissions.realms`,
+   * and since we mint both layers in the same call they always line
+   * up. If/when phase 2+ starts pre-signing UAs at onboarding and
+   * re-using them across mints, revisit this — a workspace rename
+   * would then invalidate the pre-signed UA. At that point switch
+   * realm back to `Workspace.id` and surface the slug as a separate
+   * non-authoritative dim.
    */
   workspaceId: string;
 
@@ -99,13 +110,30 @@ export interface MintedMacaroon {
   token: string;
   /** Resolved org_id (e.g. `"gh_stakwork"`). */
   orgId: string;
-  /** Echoed back for caller-side logging. */
+  /**
+   * The immutable `User.id` (cuid). Echoed back for caller-side
+   * logging and as the key for any Hive-side bookkeeping. Distinct
+   * from {@link macaroonUserId} below: this is the lookup handle;
+   * the macaroon claim is the human-readable form.
+   */
   userId: string;
+  /**
+   * The `user_authorization.user_id` that ended up on the wire —
+   * `{githubLogin}-{userId}` when we have a login, otherwise the
+   * bare `userId`. Matches `buildBifrostName` so the same identifier
+   * shape appears in Bifrost admin UI, `logs.db` dimensions, and
+   * macaroon claims. Use this when grepping logs.
+   */
+  macaroonUserId: string;
   /** Echoed back for caller-side logging. */
   agentName: string;
   /** Either the caller-supplied or auto-generated run id. */
   runId: string;
-  /** Workspace realm (= `Workspace.id`). */
+  /**
+   * Workspace realm — set to `Workspace.slug`. See the note on
+   * {@link MintInvocationOptions.workspaceId} for the rationale and
+   * the conditions under which this should switch back to the id.
+   */
   realm: string;
   /** UTC RFC3339 timestamp for the macaroon's `exp`. Caller logs this. */
   expiresAt: string;
@@ -147,13 +175,25 @@ export async function mintInvocationMacaroon(
   if (!userId) throw new MacaroonIssuerError("userId is required");
   if (!agentName) throw new MacaroonIssuerError("agentName is required");
 
-  // 1. Resolve workspace → source-control org. Mirrors the lookup
-  // in `ensureBifrostTrust` so the two stay in sync about which org
-  // owns which workspace.
-  const ws = await db.workspace.findUnique({
-    where: { id: workspaceId },
-    select: { id: true, sourceControlOrgId: true },
-  });
+  // 1. Resolve workspace → source-control org, and pull the user's
+  // GitHub login alongside so we can mint a human-readable
+  // `user_authorization.user_id`. Mirrors the lookup in
+  // `ensureBifrostTrust` so the two stay in sync about which org
+  // owns which workspace, and the lookup in `reconciler.ts` for the
+  // login (same `buildBifrostName` shape ends up on the wire in
+  // both places).
+  const [ws, userRow] = await Promise.all([
+    db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { id: true, slug: true, sourceControlOrgId: true },
+    }),
+    db.user.findUnique({
+      where: { id: userId },
+      select: {
+        githubAuth: { select: { githubUsername: true } },
+      },
+    }),
+  ]);
   if (!ws) {
     throw new MacaroonIssuerError(`Workspace ${workspaceId} not found`);
   }
@@ -162,6 +202,26 @@ export async function mintInvocationMacaroon(
       `Workspace ${workspaceId} has no sourceControlOrgId; cannot mint macaroon`,
     );
   }
+  // `Workspace.slug` is `@unique` and `NOT NULL` in the schema, so the
+  // empty-string check is defensive against a hypothetical future
+  // soft-rename / undo flow rather than a real production case.
+  if (!ws.slug) {
+    throw new MacaroonIssuerError(
+      `Workspace ${workspaceId} has no slug; cannot mint macaroon`,
+    );
+  }
+  const realm = ws.slug;
+
+  // `{login}-{userId}` when we have a login, otherwise bare `userId`.
+  // The trailing cuid is what makes the claim immutable and unique
+  // forever; the leading login is a grep-friendly display label so
+  // operators reading `logs.db` can eyeball who spent what. Identity-
+  // keyed bookkeeping (key lookup, locks, DB writes) stays on the
+  // raw `userId` — see `ensureMacaroonUserKeys` below.
+  const macaroonUserId = buildBifrostName(
+    userId,
+    userRow?.githubAuth?.githubUsername ?? null,
+  );
 
   // 2. Fetch (or autogen) org + user keypairs in parallel. Both are
   // idempotent and individually locked; running them concurrently
@@ -195,7 +255,10 @@ export async function mintInvocationMacaroon(
   };
 
   const uaUnsigned: UserAuthorizationUnsigned = {
-    user_id: userId,
+    // Human-readable on the wire (`{login}-{userId}`); the raw cuid
+    // remains the key for everything Hive-side. See `MintedMacaroon.userId`
+    // vs. `macaroonUserId` for the split.
+    user_id: macaroonUserId,
     user_pubkey: userEd25519Pubkey,
     permissions: {
       // Phase 1 — narrow exactly to what this invocation needs.
@@ -204,7 +267,7 @@ export async function mintInvocationMacaroon(
       // onboarding (Yubikey-signed user keys can't be re-asked on
       // every call) and attenuate via the invocation; until then
       // single-mint is the simpler shape.
-      realms: [workspaceId],
+      realms: [realm],
       agents: [agentName],
     },
     iat,
@@ -215,7 +278,7 @@ export async function mintInvocationMacaroon(
 
   // 4. Build + sign the `invocation` layer (user → run).
   const invUnsigned: InvocationUnsigned = {
-    realm: workspaceId,
+    realm,
     agents: [agentName],
     run_id: runId,
     max_cost_usd: maxCostUsd,
@@ -237,7 +300,9 @@ export async function mintInvocationMacaroon(
 
   logger.debug?.("Minted macaroon", MACAROON_ISSUER_LOG_TAG, {
     workspaceId,
+    realm,
     userId,
+    macaroonUserId,
     agentName,
     runId,
     orgId: orgKeys.macaroonOrgId,
@@ -250,9 +315,10 @@ export async function mintInvocationMacaroon(
     token,
     orgId: orgKeys.macaroonOrgId,
     userId,
+    macaroonUserId,
     agentName,
     runId,
-    realm: workspaceId,
+    realm,
     expiresAt: exp,
   };
 }
