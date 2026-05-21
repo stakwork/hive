@@ -209,21 +209,19 @@ describe("triggerWorkflowEditorRun", () => {
     ).rejects.toThrow("Task missing-task not found");
   });
 
-  test("throws immediately when workflowId is null — before any external calls", async () => {
-    // fetch should never be called
-    global.fetch = vi.fn() as unknown as typeof fetch;
+  test("proceeds with null workflowId — signals new workflow creation", async () => {
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
+    mockFetchSuccess();
 
-    await expect(
-      triggerWorkflowEditorRun({
-        taskId: "task-1",
-        userId: "user-1",
-        message: "Edit the workflow",
-        workflowTask: { workflowId: null, workflowName: null, workflowRefId: null },
-      }),
-    ).rejects.toThrow("[workflow-editor] Cannot dispatch task task-1 — workflowId not yet assigned");
+    await triggerWorkflowEditorRun({
+      taskId: "task-1",
+      userId: "user-1",
+      message: "Edit the workflow",
+      workflowTask: { workflowId: null, workflowName: null, workflowRefId: null },
+    });
 
-    // No DB or fetch calls made
-    expect(global.fetch).not.toHaveBeenCalled();
-    expect(mockedDb.task.findFirst).not.toHaveBeenCalled();
+    // DB lookup was attempted (not short-circuited) and Stakwork was called
+    expect(mockedDb.task.findFirst).toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalled();
   });
 });
