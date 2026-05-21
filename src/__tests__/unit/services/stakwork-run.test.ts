@@ -1158,6 +1158,127 @@ describe("Stakwork Run Service", () => {
       );
     });
 
+    test("should use featureId in project name when featureId is present", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue({
+        id: "feature-abc",
+        title: "Test Feature",
+        brief: null,
+        architecture: null,
+        userStories: [],
+        workspace: { description: null },
+        phases: [],
+      });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: "feature-abc",
+        },
+        "user-1"
+      );
+
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          name: "ai-gen-architecture-feature-abc",
+        })
+      );
+    });
+
+    test("should fall back to Date.now() in project name when featureId is null", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: null,
+        },
+        "user-1"
+      );
+
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          name: expect.stringMatching(/^ai-gen-architecture-\d+$/),
+        })
+      );
+    });
+
     test("should throw active_run error when a PENDING TASK_GENERATION run already exists for the same feature", async () => {
       const mockWorkspace = {
         id: "ws-1",
