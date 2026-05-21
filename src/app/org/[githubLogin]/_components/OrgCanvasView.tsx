@@ -117,7 +117,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   //   2. A `ResizeObserver` on the container catches subsequent
   //      viewport resizes (window resize, devtools open, etc.) so
   //      `rightInset` stays correct without depending on the panel
-  //      itself changing size.
+  //      itself changing size. 
   //
   // `useLayoutEffect` (vs `useEffect`) so the canvas's `rightInset`
   // is correct on the very first commit, eliminating the visible
