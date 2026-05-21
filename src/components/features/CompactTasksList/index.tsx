@@ -359,6 +359,10 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
           status: "TODO",
           autoMerge: false,
           dependsOnTaskIds: task.dependsOnTaskIds ?? [],
+          // Carry forward workflow identity for workflow_editor tasks
+          workflowId: task.workflowTask?.workflowId ?? undefined,
+          workflowName: task.workflowTask?.workflowName ?? undefined,
+          workflowRefId: task.workflowTask?.workflowRefId ?? undefined,
         }),
       });
       if (!response.ok) throw new Error("Failed to duplicate task");
