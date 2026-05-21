@@ -35,7 +35,10 @@ export async function fetchLatestWorkflowJson(workflowId: number | null): Promis
         limit: 50,
         skip: 0,
         skip_cache: true,
-        search_filters: [{ attribute: "workflow_id", value: workflowId, comparator: "=" }],
+        search_filters: [
+          { attribute: "workflow_id", value: workflowId, comparator: "=" },
+          { attribute: "published", value: true, comparator: "=" },
+        ],
       }),
     });
     if (!res.ok) return null;
