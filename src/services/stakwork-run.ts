@@ -36,6 +36,7 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
 import { saveWorkflowArtifact } from "@/services/workflow-editor";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -334,6 +335,46 @@ export async function createStakworkRun(
 
     if (workspace.slug === "stakwork" || isDevelopmentMode()) {
       vars.workflowPlanningEnabled = true;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Bifrost routing for the Stakwork-side LLM calls (TASK_GENERATION
+    // only). Mirrors the wiring in `task-workflow.ts` for `plan-agent`:
+    // when the rollout flag covers this workspace and agent, mint a
+    // per-workflow Bifrost VK + macaroon and overlay `vars.apiKey` /
+    // `vars.baseUrl` / `vars.headers`. The workflow worker reads those
+    // three keys and threads them onto every LLM HTTP call it makes.
+    //
+    // Gated on TASK_GENERATION because the four run types that share
+    // `STAKWORK_AI_GENERATION_WORKFLOW_ID` (ARCHITECTURE, USER_STORIES,
+    // REQUIREMENTS, TASK_GENERATION) are deliberately rolled out one at
+    // a time so the per-agent dim on `logs.db` stays meaningful and
+    // each rollout can be observed independently. `task-generation` is
+    // registered in `BIFROST_AGENT_NAMES`; the others are not.
+    //
+    // When the flag is off or the orchestrator returns `undefined`,
+    // leave the existing payload untouched (no `vars.apiKey` is set
+    // here, so Stakwork falls back to the swarm-default key — the same
+    // byte-for-byte behavior this function has always had).
+    if (input.type === StakworkRunType.TASK_GENERATION) {
+      const bifrost = await getBifrostForLLM(
+        {
+          workspaceId: input.workspaceId,
+          workspaceSlug: workspace.slug,
+          userId,
+        },
+        { agentName: "task-generation", runId: run.id },
+      );
+      if (bifrost) {
+        vars.apiKey = bifrost.apiKey;
+        vars.baseUrl = bifrost.baseUrl;
+        if (Object.keys(bifrost.headers).length > 0) {
+          // Empty headers map = mint failed (shadow-mode degraded).
+          // Don't ship an empty `headers` key so workflow versions
+          // that don't read it stay byte-identical.
+          vars.headers = bifrost.headers;
+        }
+      }
     }
 
     const stakworkPayload = {

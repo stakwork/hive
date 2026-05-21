@@ -49,7 +49,7 @@ const PUBLIC_VIEWER_USER_ID = "__public_viewer__";
  *     `repo-agent`, `chat-agent`, `canvas-agent`, `diagram-agent`,
  *     `logs-agent`
  *   - workflow / agent-session surfaces (PR #4079):
- *     `plan-agent`, `coder-agent`, `pr-monitor`
+ *     `plan-agent`, `coder-agent`, `pr-monitor`, `task-generation`
  *
  * The `coder-agent` entry intentionally covers BOTH the Stakwork
  * task workflow (live/unit/integration/default) and the hive4 goose
@@ -57,6 +57,15 @@ const PUBLIC_VIEWER_USER_ID = "__public_viewer__";
  * work is the same "code-writing agent" shape. The
  * `BIFROST_ENABLED_AGENTS` env var filters on these literal values,
  * so listing `coder-agent` opts BOTH surfaces in (or neither).
+ *
+ * `task-generation` is the structured-JSON ticket generator
+ * dispatched by `createStakworkRun` for `StakworkRunType.TASK_GENERATION`
+ * — a sibling to `plan-agent` on the AI-generation workflow. Per-agent
+ * dim lets us see TASK_GENERATION cost separately from the other run
+ * types that share `STAKWORK_AI_GENERATION_WORKFLOW_ID`. Note the bare
+ * name (no `-agent` suffix) is intentional — it matches the
+ * `StakworkRunType.TASK_GENERATION` enum value rather than the
+ * Bifrost `{name}-agent` convention used elsewhere in this list.
  */
 export const BIFROST_AGENT_NAMES = [
   // Chat surfaces (PR #4078)
@@ -69,6 +78,7 @@ export const BIFROST_AGENT_NAMES = [
   "plan-agent",
   "coder-agent",
   "pr-monitor",
+  "task-generation",
 ] as const;
 
 export type BifrostAgentName = (typeof BIFROST_AGENT_NAMES)[number];
