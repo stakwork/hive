@@ -1697,7 +1697,7 @@ describe("processWorkflowTaskSweep", () => {
     expect(mockTriggerWorkflowEditorRun).toHaveBeenCalledTimes(3);
   });
 
-  test("candidate query includes workflowTask filters to exclude non-workflow and null-workflowId tasks", async () => {
+  test("candidate query includes workflowTask filter to exclude non-workflow tasks", async () => {
     vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([] as any);
 
     await processWorkflowTaskSweep("ws-1", "workspace-1");
@@ -1707,14 +1707,13 @@ describe("processWorkflowTaskSweep", () => {
         where: expect.objectContaining({
           AND: expect.arrayContaining([
             { workflowTask: { isNot: null } },
-            { workflowTask: { is: { workflowId: { not: null } } } },
           ]),
         }),
       })
     );
   });
 
-  test("task with null workflowId is skipped — not dispatched, skip log emitted", async () => {
+  test("task with null workflowId is dispatched — null signals new workflow creation", async () => {
     const nullWorkflowTask = createWorkflowCandidateTask({
       id: "wf-null-id",
       workflowTask: {
@@ -1729,14 +1728,9 @@ describe("processWorkflowTaskSweep", () => {
 
     vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([nullWorkflowTask] as any);
 
-    const consoleSpy = vi.spyOn(console, "log");
-
     const result = await processWorkflowTaskSweep("ws-1", "workspace-1");
 
-    expect(result).toBe(0);
-    expect(mockTriggerWorkflowEditorRun).not.toHaveBeenCalled();
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Skipping task wf-null-id — workflowId not yet assigned"),
-    );
+    expect(result).toBe(1);
+    expect(mockTriggerWorkflowEditorRun).toHaveBeenCalledTimes(1);
   });
 });

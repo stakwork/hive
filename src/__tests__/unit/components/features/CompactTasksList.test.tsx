@@ -1612,7 +1612,6 @@ describe("CompactTasksList", () => {
       expect(screen.queryByText("New workflow")).not.toBeInTheDocument();
     });
   });
-
   describe("Optimistic updates", () => {
     beforeEach(() => {
       mockRoadmapUpdateTicket.mockClear();
