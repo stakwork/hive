@@ -695,12 +695,13 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                       value={
                         task.workflowTask && task.workflowTask.workflowId != null
                           ? encodeTargetValue({ type: "workflow", workflowId: task.workflowTask.workflowId, workflowName: task.workflowTask.workflowName ?? "", workflowRefId: task.workflowTask.workflowRefId ?? "" })
-                          : task.repository?.id
+                          : !isWorkflowTask && task.repository?.id
                             ? encodeTargetValue({ type: "repo", repositoryId: task.repository.id })
-                            : workspaceRepos[0]?.id
+                            : !isWorkflowTask && workspaceRepos[0]?.id
                               ? encodeTargetValue({ type: "repo", repositoryId: workspaceRepos[0].id })
                               : undefined
                       }
+                      placeholder={isWorkflowTask && task.workflowTask?.workflowId == null ? "New workflow" : undefined}
                       onChange={(selection: TargetSelection) => {
                         if (selection.type === "repo") {
                           handleUpdateTask(task.id, { repositoryId: selection.repositoryId });

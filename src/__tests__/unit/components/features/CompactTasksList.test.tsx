@@ -1533,6 +1533,85 @@ describe("CompactTasksList", () => {
     });
   });
 
+  describe("TargetSelector placeholder — workflow tasks with no workflowId", () => {
+    test("shows 'New workflow' placeholder for workflow_editor task with null workflowId", () => {
+      const task = createMockTask({
+        id: "task-null-wf",
+        status: "TODO",
+        workflowTask: {
+          id: "wt-null",
+          taskId: "task-null-wf",
+          workflowId: null,
+          workflowName: null,
+          workflowRefId: null,
+          workflowVersionId: null,
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText("Needs workflow")).not.toBeInTheDocument();
+      expect(screen.getByText("New workflow")).toBeInTheDocument();
+    });
+
+    test("does NOT show 'New workflow' placeholder when workflowTask has a real workflowId", () => {
+      const task = createMockTask({
+        id: "task-real-wf",
+        status: "TODO",
+        workflowTask: {
+          id: "wt-real",
+          taskId: "task-real-wf",
+          workflowId: 42,
+          workflowName: "Real Workflow",
+          workflowRefId: "ref-42",
+          workflowVersionId: null,
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText("New workflow")).not.toBeInTheDocument();
+    });
+
+    test("does NOT show 'New workflow' placeholder for non-workflow tasks (workflowTask is null)", () => {
+      const task = createMockTask({
+        id: "task-no-wf",
+        status: "TODO",
+        workflowTask: null,
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText("New workflow")).not.toBeInTheDocument();
+    });
+  });
   describe("Optimistic updates", () => {
     beforeEach(() => {
       mockRoadmapUpdateTicket.mockClear();
