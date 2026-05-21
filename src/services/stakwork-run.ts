@@ -337,7 +337,7 @@ export async function createStakworkRun(
     }
 
     const stakworkPayload = {
-      name: `ai-gen-${input.type.toLowerCase()}-${Date.now()}`,
+      name: `ai-gen-${input.type.toLowerCase()}-${input.featureId ?? Date.now()}`,
       workflow_id: parseInt(workflowId),
       webhook_url: workflowWebhookUrl,
       workflow_params: {
