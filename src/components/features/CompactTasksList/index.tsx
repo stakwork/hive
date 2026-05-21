@@ -689,14 +689,6 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
               </div>
 
               <div className="flex items-center gap-3 mt-1.5 pl-[18px] text-[10px] text-muted-foreground">
-                {task.workflowTask?.workflowId === null && (
-                  <span
-                    className="inline-flex items-center shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
-                    data-testid="needs-workflow-badge"
-                  >
-                    Needs workflow
-                  </span>
-                )}
                 {showTargetSelector && (
                   <div onClick={(e) => e.stopPropagation()}>
                     <TargetSelector

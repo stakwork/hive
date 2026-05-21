@@ -119,12 +119,6 @@ export async function triggerWorkflowEditorRun(params: {
   const { taskId, workflowTask, message, userId } = params;
   const { workflowId, workflowName, workflowRefId, workflowVersionId } = workflowTask;
 
-  if (workflowId === null) {
-    const msg = `[workflow-editor] Cannot dispatch task ${taskId} — workflowId not yet assigned`;
-    console.error(msg);
-    throw new Error(msg);
-  }
-
   if (!config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID) {
     throw new Error("Workflow editor is not configured (STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID missing)");
   }
