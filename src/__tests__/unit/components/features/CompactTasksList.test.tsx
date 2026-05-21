@@ -1533,8 +1533,8 @@ describe("CompactTasksList", () => {
     });
   });
 
-  describe("Needs workflow badge — null workflowId", () => {
-    test("renders 'Needs workflow' badge when workflowTask.workflowId is null", () => {
+  describe("TargetSelector placeholder — workflow tasks with no workflowId", () => {
+    test("shows 'New workflow' placeholder for workflow_editor task with null workflowId", () => {
       const task = createMockTask({
         id: "task-null-wf",
         status: "TODO",
@@ -1558,11 +1558,12 @@ describe("CompactTasksList", () => {
         />
       );
 
-      expect(screen.getByTestId("needs-workflow-badge")).toBeInTheDocument();
-      expect(screen.getByText("Needs workflow")).toBeInTheDocument();
+      expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText("Needs workflow")).not.toBeInTheDocument();
+      expect(screen.getByText("New workflow")).toBeInTheDocument();
     });
 
-    test("does NOT render 'Needs workflow' badge when workflowTask has a real workflowId", () => {
+    test("does NOT show 'New workflow' placeholder when workflowTask has a real workflowId", () => {
       const task = createMockTask({
         id: "task-real-wf",
         status: "TODO",
@@ -1587,10 +1588,10 @@ describe("CompactTasksList", () => {
       );
 
       expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
-      expect(screen.queryByText("Needs workflow")).not.toBeInTheDocument();
+      expect(screen.queryByText("New workflow")).not.toBeInTheDocument();
     });
 
-    test("does NOT render 'Needs workflow' badge when workflowTask is null (non-workflow task)", () => {
+    test("does NOT show 'New workflow' placeholder for non-workflow tasks (workflowTask is null)", () => {
       const task = createMockTask({
         id: "task-no-wf",
         status: "TODO",
@@ -1608,7 +1609,7 @@ describe("CompactTasksList", () => {
       );
 
       expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
-      expect(screen.queryByText("Needs workflow")).not.toBeInTheDocument();
+      expect(screen.queryByText("New workflow")).not.toBeInTheDocument();
     });
   });
 
