@@ -79,6 +79,17 @@ export function BifrostCredsDevLog({ slug }: { slug: string }) {
           customerId: string;
           userId: string;
           created: boolean;
+          macaroon: {
+            token: string;
+            orgId: string;
+            macaroonUserId: string;
+            agentName: string;
+            runId: string;
+            realm: string;
+            expiresAt: string;
+            maxCostUsd: number;
+          } | null;
+          macaroonError: string | null;
         };
         console.log(
           `[bifrost-vk] workspace=${slug}\n` +
@@ -87,14 +98,27 @@ export function BifrostCredsDevLog({ slug }: { slug: string }) {
             `  vkId:       ${data.vkId}\n` +
             `  customerId: ${data.customerId}\n` +
             `  userId:     ${data.userId}\n` +
-            `  created:    ${data.created}\n` +
-            `\n` +
-            `  Try it:\n` +
-            `    curl ${data.baseUrl}/v1/chat/completions \\\n` +
-            `      -H 'Authorization: Bearer ${data.vkValue}' \\\n` +
-            `      -H 'Content-Type: application/json' \\\n` +
-            `      -d '{"model":"anthropic/claude-haiku-4-5-20251001","max_tokens":20,"messages":[{"role":"user","content":"hi"}]}'`,
+            `  created:    ${data.created}`,
         );
+
+        if (data.macaroon) {
+          const m = data.macaroon;
+          console.log(
+            `[bifrost-macaroon] workspace=${slug}\n` +
+              `  token:          ${m.token}\n` +
+              `  orgId:          ${m.orgId}\n` +
+              `  macaroonUserId: ${m.macaroonUserId}\n` +
+              `  agentName:      ${m.agentName}\n` +
+              `  runId:          ${m.runId}\n` +
+              `  realm:          ${m.realm}\n` +
+              `  expiresAt:      ${m.expiresAt}\n` +
+              `  maxCostUsd:     $${m.maxCostUsd}`,
+          );
+        } else if (data.macaroonError) {
+          console.warn(
+            `[bifrost-macaroon] mint failed for workspace=${slug}: ${data.macaroonError}`,
+          );
+        }
       })
       .catch((err) => {
         if (cancelled) return;
