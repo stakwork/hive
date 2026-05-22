@@ -104,6 +104,15 @@ vi.mock("@/config/env", () => ({
     POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
     API_TIMEOUT: 10000,
   },
+  // Bifrost gates — the orchestrator imports these directly (see
+  // src/services/bifrost/orchestrator.ts). `createStakworkRun` calls
+  // `getBifrostForLLM` for TASK_GENERATION runs, which would otherwise
+  // hit the real env-var reader and throw under this fully-replaced
+  // mock. Returning `false` from the workspace gate makes the
+  // orchestrator short-circuit to `undefined`, leaving the payload
+  // byte-identical to the pre-Bifrost behavior these tests assert.
+  isBifrostEnabledForWorkspace: vi.fn().mockReturnValue(false),
+  isBifrostEnabledForAgent: vi.fn().mockReturnValue(false),
 }));
 
 const mockedDb = vi.mocked(db);
