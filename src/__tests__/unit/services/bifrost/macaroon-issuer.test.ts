@@ -144,7 +144,6 @@ describe("mintInvocationMacaroon", () => {
     expect(minted.orgId).toBe(`gh_${GITHUB_LOGIN}`);
     expect(minted.userId).toBe(USER_ID);
     expect(minted.agentName).toBe("ask-repo-agent");
-    expect(minted.realm).toBe(WORKSPACE_SLUG);
     expect(minted.runId).toMatch(/^[0-9a-f-]{36}$/i); // UUID
     expect(new Date(minted.expiresAt).getTime()).toBeGreaterThan(Date.now());
 
@@ -153,15 +152,23 @@ describe("mintInvocationMacaroon", () => {
     // canonicalization, wrong signature scheme, wrong key binding,
     // wrong narrowing between layers — all the cross-language
     // contract issues fixtures catch on the gatekey side.
+    //
+    // Phase-11 claims surface: `agent_name` is the leaf of
+    // `effective_caveats.agents` (here, the single-element invocation
+    // list); `realm` is gone — the swarm carries its own self-identity
+    // on the trust registry, not on the macaroon.
     const claims = verify(minted.token, policy, new Date());
     expect(claims.org_id).toBe(`gh_${GITHUB_LOGIN}`);
     expect(claims.user_id).toBe(USER_ID);
     expect(claims.agent_name).toBe("ask-repo-agent");
-    expect(claims.realm).toBe(WORKSPACE_SLUG);
     expect(claims.run_id).toBe(minted.runId);
     expect(claims.effective_caveats.max_cost_usd).toBe(5);
     expect(claims.effective_caveats.max_steps).toBe(100);
     expect(claims.effective_caveats.agents).toEqual(["ask-repo-agent"]);
+    // Issuer mints simple-deployment macaroons: no `budget` block,
+    // no `realm_budgets`. Permitted-realms passes through as null.
+    expect(claims.effective_caveats.budget).toBeNull();
+    expect(claims.permitted_realms).toBeNull();
   });
 
   it("respects a caller-supplied runId", async () => {
@@ -206,17 +213,19 @@ describe("mintInvocationMacaroon", () => {
       agentName: "parse-test",
     });
 
+    // Phase-11 wire shape: `agents` is top-level on the UA (no more
+    // `permissions` wrapper), and the invocation no longer carries a
+    // singular `realm` field. The issuer omits the optional `budget`
+    // block entirely — simple-deployment mode.
     const parsed = decodeMacaroon(minted.token);
     expect(parsed.v).toBe(1);
     expect(parsed.org_id).toBe(`gh_${GITHUB_LOGIN}`);
     expect(parsed.user_authorization.user_id).toBe(USER_ID);
     expect(parsed.user_authorization.user_pubkey.alg).toBe("ed25519");
-    expect(parsed.user_authorization.permissions).toEqual({
-      realms: [WORKSPACE_SLUG],
-      agents: ["parse-test"],
-    });
-    expect(parsed.invocation.realm).toBe(WORKSPACE_SLUG);
+    expect(parsed.user_authorization.agents).toEqual(["parse-test"]);
+    expect(parsed.user_authorization.budget).toBeUndefined();
     expect(parsed.invocation.agents).toEqual(["parse-test"]);
+    expect(parsed.invocation.budget).toBeUndefined();
     expect(parsed.invocation.user_sig.alg).toBe("ed25519");
     expect(parsed.attenuations).toEqual([]);
   });

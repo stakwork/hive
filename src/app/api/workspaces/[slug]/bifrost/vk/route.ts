@@ -154,7 +154,6 @@ export async function GET(
               macaroonUserId: macaroon.macaroonUserId,
               agentName: macaroon.agentName,
               runId: macaroon.runId,
-              realm: macaroon.realm,
               expiresAt: macaroon.expiresAt,
               maxCostUsd: DEV_MACAROON_MAX_COST_USD,
             }
