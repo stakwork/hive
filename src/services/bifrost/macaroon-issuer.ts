@@ -25,7 +25,7 @@ import { ensureMacaroonUserKeys } from "./macaroon-user-keys";
 import { buildBifrostName } from "./reconciler";
 
 /**
- * Phase-4 macaroon issuer.
+ * Phase-4/11 macaroon issuer.
  *
  * Custodial / phase-1 happy path:
  *
@@ -34,17 +34,24 @@ import { buildBifrostName } from "./reconciler";
  * org_sig         ←  signUserAuthorizationSingle(ua, orgPrivkey)
  * user_pubkey     ←  User.macaroonUserPubkey         (ed25519)
  * user_sig        ←  signInvocation(inv, userPrivkey)
- * realm           ←  Workspace.slug                  (human-readable; see note)
  * agents          ←  [agentName]                     (the dim that ends up on logs.db)
  * run_id          ←  caller-supplied or fresh UUID
  * ```
  *
  * The minted macaroon goes into the `x-macaroon` HTTP header on
  * Bifrost-bound LLM calls. The gateway plugin verifies it, stamps
- * `agent-name` / `run-id` / `user-id` / `realm-id` onto Bifrost's
- * dimensions map, and Bifrost's logging plugin records cost-per-
- * dimension into `logs.db` — that's the minimal-slice payoff:
- * cost-per-agent observability with no Redis accumulators yet.
+ * `agent-name` / `run-id` / `user-id` onto Bifrost's dimensions
+ * map, and Bifrost's logging plugin records cost-per-dimension
+ * into `logs.db` — that's the minimal-slice payoff: cost-per-agent
+ * observability with no Redis accumulators yet.
+ *
+ * Phase-11 wire shape: `permissions` is gone (agents lifted to
+ * top-level on UA), `invocation.realm` is gone, and no `budget`
+ * block is emitted by this issuer — the swarm enforces only
+ * `max_cost_usd` / `max_steps` per call. The swarm's self-identity
+ * (`realm_id`) lives on the trust registry, set by the trust
+ * reconciler from `Workspace.slug`; the issuer doesn't touch it.
+ * See `gateway/plans/phases/phase-11-symmetric-recursive-authorization.md`.
  *
  * Failure posture: the issuer throws. Call sites wrap in a
  * `try`/`catch` and proceed without the header on failure (shadow
@@ -54,20 +61,12 @@ import { buildBifrostName } from "./reconciler";
 
 export interface MintInvocationOptions {
   /**
-   * `Workspace.id` — the immutable lookup key. We resolve this to
-   * `Workspace.slug` internally and use the slug as the macaroon
-   * `realm`, on the (current) premise that realms are observability
-   * dims rather than load-bearing authorization checks: a readable
-   * slug in `logs.db` is worth more to operators than cuid stability.
-   *
-   * The pure verifier doesn't interpret the realm string; it only
-   * checks `invocation.realm ∈ user_authorization.permissions.realms`,
-   * and since we mint both layers in the same call they always line
-   * up. If/when phase 2+ starts pre-signing UAs at onboarding and
-   * re-using them across mints, revisit this — a workspace rename
-   * would then invalidate the pre-signed UA. At that point switch
-   * realm back to `Workspace.id` and surface the slug as a separate
-   * non-authoritative dim.
+   * `Workspace.id` — the immutable lookup key. Used to resolve the
+   * owning `SourceControlOrg` so we know which org keypair to sign
+   * with. Phase 11 dropped the `realm` field from the macaroon
+   * wire shape, so the workspace's slug no longer travels on the
+   * macaroon itself; the swarm's self-identity is registered on
+   * the trust registry separately (see `trust-reconciler.ts`).
    */
   workspaceId: string;
 
@@ -129,12 +128,6 @@ export interface MintedMacaroon {
   agentName: string;
   /** Either the caller-supplied or auto-generated run id. */
   runId: string;
-  /**
-   * Workspace realm — set to `Workspace.slug`. See the note on
-   * {@link MintInvocationOptions.workspaceId} for the rationale and
-   * the conditions under which this should switch back to the id.
-   */
-  realm: string;
   /** UTC RFC3339 timestamp for the macaroon's `exp`. Caller logs this. */
   expiresAt: string;
 }
@@ -185,7 +178,7 @@ export async function mintInvocationMacaroon(
   const [ws, userRow] = await Promise.all([
     db.workspace.findUnique({
       where: { id: workspaceId },
-      select: { id: true, slug: true, sourceControlOrgId: true },
+      select: { id: true, sourceControlOrgId: true },
     }),
     db.user.findUnique({
       where: { id: userId },
@@ -202,15 +195,6 @@ export async function mintInvocationMacaroon(
       `Workspace ${workspaceId} has no sourceControlOrgId; cannot mint macaroon`,
     );
   }
-  // `Workspace.slug` is `@unique` and `NOT NULL` in the schema, so the
-  // empty-string check is defensive against a hypothetical future
-  // soft-rename / undo flow rather than a real production case.
-  if (!ws.slug) {
-    throw new MacaroonIssuerError(
-      `Workspace ${workspaceId} has no slug; cannot mint macaroon`,
-    );
-  }
-  const realm = ws.slug;
 
   // `{login}-{userId}` when we have a login, otherwise bare `userId`.
   // The trailing cuid is what makes the claim immutable and unique
@@ -260,16 +244,13 @@ export async function mintInvocationMacaroon(
     // vs. `macaroonUserId` for the split.
     user_id: macaroonUserId,
     user_pubkey: userEd25519Pubkey,
-    permissions: {
-      // Phase 1 — narrow exactly to what this invocation needs.
-      // No reason to grant broader permissions on a custodial UA
-      // we control end-to-end. Phase 2+ will mint broader UAs at
-      // onboarding (Yubikey-signed user keys can't be re-asked on
-      // every call) and attenuate via the invocation; until then
-      // single-mint is the simpler shape.
-      realms: [realm],
-      agents: [agentName],
-    },
+    // Phase 11: `agents` is top-level on the UA (no more `permissions`
+    // wrapper). Narrow exactly to what this invocation needs — no
+    // reason to grant broader permissions on a custodial UA we
+    // control end-to-end. No `budget` block: this issuer mints
+    // simple-deployment macaroons (single-swarm, per-call caps via
+    // `invocation.max_cost_usd`, no UA-cumulative or per-realm caps).
+    agents: [agentName],
     iat,
     exp,
     nonce: randomNonceHex(),
@@ -277,8 +258,10 @@ export async function mintInvocationMacaroon(
   const ua = signUserAuthorizationSingle(uaUnsigned, orgPrivkey);
 
   // 4. Build + sign the `invocation` layer (user → run).
+  // Phase 11 dropped the singular `realm` field. The swarm enforces
+  // its own self-identity via the trust registry (see
+  // `trust-reconciler.ts`); the macaroon no longer carries one.
   const invUnsigned: InvocationUnsigned = {
-    realm,
     agents: [agentName],
     run_id: runId,
     max_cost_usd: maxCostUsd,
@@ -300,7 +283,6 @@ export async function mintInvocationMacaroon(
 
   logger.debug?.("Minted macaroon", MACAROON_ISSUER_LOG_TAG, {
     workspaceId,
-    realm,
     userId,
     macaroonUserId,
     agentName,
@@ -318,7 +300,6 @@ export async function mintInvocationMacaroon(
     macaroonUserId,
     agentName,
     runId,
-    realm,
     expiresAt: exp,
   };
 }

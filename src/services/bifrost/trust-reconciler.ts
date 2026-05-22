@@ -20,7 +20,7 @@ import {
 import { deriveBifrostBaseUrl } from "./resolve";
 
 /**
- * Phase-5 Hive trust reconciler.
+ * Phase-5 Hive trust reconciler (with phase-11 realm_id sync).
  *
  * For a `workspaceId`:
  *   1. Resolve its `SourceControlOrg` (may be null → no-op).
@@ -33,8 +33,11 @@ import { deriveBifrostBaseUrl } from "./resolve";
  *   4. Mismatch → acquire a per-workspace Redis lock, hit the
  *      plugin's `GET /_plugin/trust/status` (defensive — saves a
  *      POST if already in sync), then `POST /_plugin/trust` if the
- *      org isn't registered with this pubkey. Stamp the Swarm row
- *      with the new (orgId, pubkey, syncedAt).
+ *      org isn't registered with this pubkey. Phase 11: while we
+ *      have the status response in hand, also reconcile the
+ *      swarm's `realm_id` against the workspace slug — one extra
+ *      `PUT /_plugin/trust/realm_id` if they diverge. Stamp the
+ *      Swarm row with the new (orgId, pubkey, syncedAt).
  *
  * Lazy-only: triggered from `getBifrostForLLM` (the master
  * reconciler in `services/bifrost/orchestrator.ts`) before
@@ -45,8 +48,20 @@ import { deriveBifrostBaseUrl } from "./resolve";
  * VKs and LLM calls succeed even if the trust registry is briefly
  * stale.
  *
+ * The realm_id sync rides along on the cache-miss path only:
+ * single-swarm deployments that never trip an org-pubkey change
+ * also never trigger a realm_id round-trip. If an operator
+ * manually clears the plugin's realm_id, the next time the
+ * (orgId, pubkey) cache is invalidated (key rotation, new
+ * workspace) the reconciler will re-publish it. For the rare
+ * "force realm_id resync without rotating keys" case, an
+ * operator can clear `Swarm.bifrostTrustedPubkey` to bust the
+ * cache.
+ *
  * See `gateway/plans/phases/phase-5-trust-registry.md` §"Hive's
- * reconciler addition".
+ * reconciler addition" and
+ * `gateway/plans/phases/phase-11-symmetric-recursive-authorization.md`
+ * §"Where the swarm's realm_id lives".
  */
 
 export type TrustReconcileStatus =
@@ -107,9 +122,13 @@ export async function ensureBifrostTrust(
   workspaceId: string,
   options: TrustReconcileOptions = {},
 ): Promise<TrustReconcileResult> {
+  // Phase 11 reads `slug` too: the swarm's `realm_id` is published
+  // to the plugin as the workspace slug (human-readable identifier,
+  // grep-friendly in logs). See `syncLocked` for the realm_id sync
+  // logic.
   const ws = await db.workspace.findUnique({
     where: { id: workspaceId },
-    select: { id: true, sourceControlOrgId: true },
+    select: { id: true, slug: true, sourceControlOrgId: true },
   });
   if (!ws) {
     return { workspaceId, status: "skipped-no-org" };
@@ -189,7 +208,15 @@ export async function ensureBifrostTrust(
   try {
     return await withLock(
       lockKey,
-      () => syncLocked(workspaceId, swarm.swarmUrl!, swarm.swarmApiKey!, keys, options),
+      () =>
+        syncLocked(
+          workspaceId,
+          swarm.swarmUrl!,
+          swarm.swarmApiKey!,
+          keys,
+          ws.slug,
+          options,
+        ),
       {
         ttlMs: BIFROST_TRUST_LOCK_TTL_MS,
         acquireTimeoutMs: BIFROST_TRUST_LOCK_ACQUIRE_TIMEOUT_MS,
@@ -208,6 +235,7 @@ async function syncLocked(
   swarmUrl: string,
   encryptedToken: string,
   keys: MacaroonOrgKeys,
+  desiredRealmId: string,
   options: TrustReconcileOptions,
 ): Promise<TrustReconcileResult> {
   // Re-check the cache inside the lock — a racing caller may have
@@ -260,6 +288,31 @@ async function syncLocked(
     status = await client.getTrustStatus();
   } catch (err) {
     throw wrapHttpError(err, "GET /_plugin/trust/status");
+  }
+
+  // Phase 11: reconcile the swarm's `realm_id` against the workspace
+  // slug while we have the status in hand. The plugin's status
+  // response omits the field when unset, so `??""` normalises the
+  // single-swarm case. We only PUT on actual divergence to keep this
+  // a no-op on warm reconciles. Empty `desiredRealmId` (defensive —
+  // `Workspace.slug` is NOT NULL) leaves the plugin's value alone
+  // rather than clearing it, since clearing is an explicit operator
+  // intent we shouldn't infer from missing data.
+  if (desiredRealmId && (status.realm_id ?? "") !== desiredRealmId) {
+    try {
+      await client.setRealmId(desiredRealmId);
+      logger.info(
+        "Bifrost trust realm_id updated",
+        BIFROST_TRUST_LOG_TAG,
+        {
+          workspaceId,
+          previousRealmId: status.realm_id ?? "",
+          newRealmId: desiredRealmId,
+        },
+      );
+    } catch (err) {
+      throw wrapHttpError(err, "PUT /_plugin/trust/realm_id");
+    }
   }
 
   // If the org is already in the list, do a precise GET to compare

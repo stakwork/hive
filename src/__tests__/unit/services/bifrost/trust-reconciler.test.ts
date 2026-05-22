@@ -53,6 +53,7 @@ vi.mock("@/services/bifrost/resolve", async () => {
 });
 
 const WORKSPACE_ID = "ws-1";
+const WORKSPACE_SLUG = "acme-ws";
 const SCORG_ID = "scorg-1";
 const ORG_PUBKEY = "02" + "ab".repeat(32);
 const ENCRYPTED_TOKEN = JSON.stringify({ data: "provisioning-secret-plain" });
@@ -61,6 +62,7 @@ type PluginClientStub = {
   getTrustStatus: ReturnType<typeof vi.fn>;
   getTrustOrg: ReturnType<typeof vi.fn>;
   upsertTrust: ReturnType<typeof vi.fn>;
+  setRealmId: ReturnType<typeof vi.fn>;
 };
 
 function makePluginClient(
@@ -70,6 +72,10 @@ function makePluginClient(
     getTrustStatus: vi.fn(),
     getTrustOrg: vi.fn(),
     upsertTrust: vi.fn(),
+    // Phase-11 realm_id sync. Default to a successful no-op return so
+    // tests that don't care about realm_id don't need to wire one
+    // up. Tests that DO care override to assert calls / arguments.
+    setRealmId: vi.fn().mockResolvedValue({ ok: true, realm_id: "" }),
     ...overrides,
   } as unknown as BifrostPluginClient;
 }
@@ -566,5 +572,226 @@ describe("ensureBifrostTrust", () => {
     expect(result.status).toBe("failed");
     expect(dbMock.swarm.findUnique).not.toHaveBeenCalled();
     expect(client.getTrustStatus).not.toHaveBeenCalled();
+  });
+
+  // ─── phase 11: realm_id sync ──────────────────────────────────────
+  //
+  // The reconciler publishes `Workspace.slug` as the swarm's
+  // `realm_id` whenever it walks the cache-miss path (i.e. it already
+  // has the plugin's status response in hand). On the cache-hit hot
+  // path it skips the round-trip entirely. We test both branches plus
+  // the "already in sync" no-op and a write-on-divergence case.
+
+  it("publishes the workspace slug as realm_id when the plugin has none", async () => {
+    vi.mocked(dbMock.workspace.findUnique).mockResolvedValueOnce({
+      id: WORKSPACE_ID,
+      slug: WORKSPACE_SLUG,
+      sourceControlOrgId: SCORG_ID,
+    } as never);
+    vi.mocked(dbMock.swarm.findUnique)
+      .mockResolvedValueOnce({
+        id: "swarm-1",
+        swarmUrl: "http://swarm.test",
+        swarmApiKey: ENCRYPTED_TOKEN,
+        bifrostTrustedOrgId: null,
+        bifrostTrustedPubkey: null,
+        bifrostTrustSyncedAt: null,
+      } as never)
+      .mockResolvedValueOnce({
+        bifrostTrustedOrgId: null,
+        bifrostTrustedPubkey: null,
+      } as never);
+    vi.mocked(dbMock.swarm.update).mockResolvedValueOnce({} as never);
+
+    const client = makePluginClient({
+      getTrustStatus: vi.fn().mockResolvedValue({
+        claimed: false,
+        org_count: 0,
+        orgs: [],
+        seed_source: "",
+        last_modified: "",
+        // `realm_id` absent → simple-deployment mode on the plugin
+        // side. Hive should publish the workspace slug.
+      }),
+      upsertTrust: vi
+        .fn()
+        .mockResolvedValue({ ok: true, org_id: "gh_stakwork" }),
+    });
+
+    const result = await ensureBifrostTrust(WORKSPACE_ID, {
+      pluginClientFactory: () => client,
+      ensureKeysFn: defaultEnsureKeys(),
+    });
+
+    expect(result.status).toBe("upserted");
+    expect(client.setRealmId).toHaveBeenCalledTimes(1);
+    expect(client.setRealmId).toHaveBeenCalledWith(WORKSPACE_SLUG);
+  });
+
+  it("does not call setRealmId when the plugin's realm_id already matches", async () => {
+    // Idempotency: a warm reconcile that happens to also trip the
+    // cache miss (e.g. pubkey rotation) shouldn't churn the plugin's
+    // realm_id when it's already correct.
+    vi.mocked(dbMock.workspace.findUnique).mockResolvedValueOnce({
+      id: WORKSPACE_ID,
+      slug: WORKSPACE_SLUG,
+      sourceControlOrgId: SCORG_ID,
+    } as never);
+    vi.mocked(dbMock.swarm.findUnique)
+      .mockResolvedValueOnce({
+        id: "swarm-1",
+        swarmUrl: "http://swarm.test",
+        swarmApiKey: ENCRYPTED_TOKEN,
+        bifrostTrustedOrgId: null,
+        bifrostTrustedPubkey: null,
+        bifrostTrustSyncedAt: null,
+      } as never)
+      .mockResolvedValueOnce({
+        bifrostTrustedOrgId: null,
+        bifrostTrustedPubkey: null,
+      } as never);
+    vi.mocked(dbMock.swarm.update).mockResolvedValueOnce({} as never);
+
+    const client = makePluginClient({
+      getTrustStatus: vi.fn().mockResolvedValue({
+        claimed: false,
+        org_count: 0,
+        orgs: [],
+        seed_source: "",
+        last_modified: "",
+        realm_id: WORKSPACE_SLUG, // already in sync
+      }),
+      upsertTrust: vi
+        .fn()
+        .mockResolvedValue({ ok: true, org_id: "gh_stakwork" }),
+    });
+
+    const result = await ensureBifrostTrust(WORKSPACE_ID, {
+      pluginClientFactory: () => client,
+      ensureKeysFn: defaultEnsureKeys(),
+    });
+
+    expect(result.status).toBe("upserted");
+    expect(client.setRealmId).not.toHaveBeenCalled();
+  });
+
+  it("PUTs setRealmId when the plugin's realm_id diverges from the workspace slug", async () => {
+    // E.g. the workspace was renamed (rare) or the plugin was
+    // bootstrapped with a stale value via the env seed.
+    vi.mocked(dbMock.workspace.findUnique).mockResolvedValueOnce({
+      id: WORKSPACE_ID,
+      slug: WORKSPACE_SLUG,
+      sourceControlOrgId: SCORG_ID,
+    } as never);
+    vi.mocked(dbMock.swarm.findUnique)
+      .mockResolvedValueOnce({
+        id: "swarm-1",
+        swarmUrl: "http://swarm.test",
+        swarmApiKey: ENCRYPTED_TOKEN,
+        bifrostTrustedOrgId: null,
+        bifrostTrustedPubkey: null,
+        bifrostTrustSyncedAt: null,
+      } as never)
+      .mockResolvedValueOnce({
+        bifrostTrustedOrgId: null,
+        bifrostTrustedPubkey: null,
+      } as never);
+    vi.mocked(dbMock.swarm.update).mockResolvedValueOnce({} as never);
+
+    const client = makePluginClient({
+      getTrustStatus: vi.fn().mockResolvedValue({
+        claimed: false,
+        org_count: 0,
+        orgs: [],
+        seed_source: "",
+        last_modified: "",
+        realm_id: "stale-old-slug",
+      }),
+      upsertTrust: vi
+        .fn()
+        .mockResolvedValue({ ok: true, org_id: "gh_stakwork" }),
+    });
+
+    const result = await ensureBifrostTrust(WORKSPACE_ID, {
+      pluginClientFactory: () => client,
+      ensureKeysFn: defaultEnsureKeys(),
+    });
+
+    expect(result.status).toBe("upserted");
+    expect(client.setRealmId).toHaveBeenCalledTimes(1);
+    expect(client.setRealmId).toHaveBeenCalledWith(WORKSPACE_SLUG);
+  });
+
+  it("does not touch the plugin's realm_id on the cache-hit hot path", async () => {
+    // Steady state: (orgId, pubkey) cache matches, we never even
+    // call getTrustStatus, so realm_id can't possibly drift via
+    // this reconcile. A drifted realm_id requires bursting the
+    // org/pubkey cache to reconcile — see the module doc.
+    vi.mocked(dbMock.workspace.findUnique).mockResolvedValueOnce({
+      id: WORKSPACE_ID,
+      slug: WORKSPACE_SLUG,
+      sourceControlOrgId: SCORG_ID,
+    } as never);
+    vi.mocked(dbMock.swarm.findUnique).mockResolvedValueOnce({
+      id: "swarm-1",
+      swarmUrl: "http://swarm.test",
+      swarmApiKey: ENCRYPTED_TOKEN,
+      bifrostTrustedOrgId: "gh_stakwork",
+      bifrostTrustedPubkey: ORG_PUBKEY,
+      bifrostTrustSyncedAt: new Date("2026-01-01"),
+    } as never);
+
+    const client = makePluginClient();
+    const result = await ensureBifrostTrust(WORKSPACE_ID, {
+      pluginClientFactory: () => client,
+      ensureKeysFn: defaultEnsureKeys(),
+    });
+
+    expect(result.status).toBe("cached");
+    expect(client.getTrustStatus).not.toHaveBeenCalled();
+    expect(client.setRealmId).not.toHaveBeenCalled();
+  });
+
+  it("returns 'failed' when setRealmId rejects (does not stamp cache)", async () => {
+    vi.mocked(dbMock.workspace.findUnique).mockResolvedValueOnce({
+      id: WORKSPACE_ID,
+      slug: WORKSPACE_SLUG,
+      sourceControlOrgId: SCORG_ID,
+    } as never);
+    vi.mocked(dbMock.swarm.findUnique)
+      .mockResolvedValueOnce({
+        id: "swarm-1",
+        swarmUrl: "http://swarm.test",
+        swarmApiKey: ENCRYPTED_TOKEN,
+        bifrostTrustedOrgId: null,
+        bifrostTrustedPubkey: null,
+        bifrostTrustSyncedAt: null,
+      } as never)
+      .mockResolvedValueOnce({
+        bifrostTrustedOrgId: null,
+        bifrostTrustedPubkey: null,
+      } as never);
+
+    const client = makePluginClient({
+      getTrustStatus: vi.fn().mockResolvedValue({
+        claimed: false,
+        org_count: 0,
+        orgs: [],
+        seed_source: "",
+        last_modified: "",
+      }),
+      setRealmId: vi
+        .fn()
+        .mockRejectedValue(new BifrostHttpError(500, undefined, "boom")),
+    });
+
+    const result = await ensureBifrostTrust(WORKSPACE_ID, {
+      pluginClientFactory: () => client,
+      ensureKeysFn: defaultEnsureKeys(),
+    });
+
+    expect(result.status).toBe("failed");
+    expect(client.upsertTrust).not.toHaveBeenCalled();
+    expect(dbMock.swarm.update).not.toHaveBeenCalled();
   });
 });
