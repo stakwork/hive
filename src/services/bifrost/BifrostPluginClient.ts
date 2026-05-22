@@ -3,6 +3,8 @@ import { BifrostHttpError } from "./BifrostClient";
 import type {
   TrustOrgRow,
   TrustOrgUpsert,
+  TrustRealmIDRequest,
+  TrustRealmIDResponse,
   TrustStatusResponse,
   TrustUpsertResponse,
 } from "./types";
@@ -92,8 +94,23 @@ export class BifrostPluginClient {
     );
   }
 
+  /**
+   * PUT /_plugin/trust/realm_id — set (or clear, with `""`) the
+   * swarm's own self-identity. Added in phase 11 so multi-swarm
+   * deployments can pin a per-swarm realm-id without redeploying
+   * the plugin. Idempotent: re-sending the same value is a no-op.
+   */
+  async setRealmId(realmId: string): Promise<TrustRealmIDResponse> {
+    const body: TrustRealmIDRequest = { realm_id: realmId };
+    return this.request<TrustRealmIDResponse>(
+      "PUT",
+      "/_plugin/trust/realm_id",
+      body,
+    );
+  }
+
   private async request<T>(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT",
     path: string,
     body?: unknown,
   ): Promise<T> {

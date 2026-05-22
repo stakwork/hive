@@ -164,6 +164,28 @@ export interface TrustStatusResponse {
   orgs: string[];
   seed_source: "env" | "api" | "" | null;
   last_modified: string;
+  /**
+   * Phase-11: the swarm's own self-identity. Single-swarm
+   * deployments leave this unset and the plugin's status omits the
+   * field (`omitempty` on the Go side). Multi-swarm deployments
+   * set it via `PUT /_plugin/trust/realm_id`; the trust reconciler
+   * keeps it in sync with the workspace's slug.
+   */
+  realm_id?: string;
+}
+
+/**
+ * PUT /_plugin/trust/realm_id request body. Sending an empty string
+ * clears the swarm's self-identity (back to single-swarm mode).
+ */
+export interface TrustRealmIDRequest {
+  realm_id: string;
+}
+
+/** PUT /_plugin/trust/realm_id response body. */
+export interface TrustRealmIDResponse {
+  ok: boolean;
+  realm_id: string;
 }
 
 /**

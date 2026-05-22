@@ -85,7 +85,6 @@ export function BifrostCredsDevLog({ slug }: { slug: string }) {
             macaroonUserId: string;
             agentName: string;
             runId: string;
-            realm: string;
             expiresAt: string;
             maxCostUsd: number;
           } | null;
@@ -110,7 +109,6 @@ export function BifrostCredsDevLog({ slug }: { slug: string }) {
               `  macaroonUserId: ${m.macaroonUserId}\n` +
               `  agentName:      ${m.agentName}\n` +
               `  runId:          ${m.runId}\n` +
-              `  realm:          ${m.realm}\n` +
               `  expiresAt:      ${m.expiresAt}\n` +
               `  maxCostUsd:     $${m.maxCostUsd}`,
           );
