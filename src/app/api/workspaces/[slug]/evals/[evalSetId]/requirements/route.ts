@@ -27,6 +27,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { slug, evalSetId } = await params;
+    console.log(`[Evals Requirements POST] slug=${slug}, evalSetId=${evalSetId}, userId=${userOrResponse.id}`);
 
     const body = await request.json();
     const { name, description, prompt_snippet, positive_cases, negative_cases, order } =
@@ -56,10 +57,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
     if (!swarmAccessResult.success) {
+      console.warn(`[Evals Requirements POST] Swarm access denied: ${swarmAccessResult.error.type}`);
       return handleSwarmAccessError(swarmAccessResult.error);
     }
+    console.log(`[Evals Requirements POST] Swarm access granted — swarmName=${swarmAccessResult.data.swarmName}, apiKey present=${!!swarmAccessResult.data.swarmApiKey}`);
 
     if (process.env.USE_MOCKS === "true") {
+      console.log(`[Evals Requirements POST] USE_MOCKS=true, routing to mock endpoint`);
       const mockResponse = await fetch(
         `${request.nextUrl.origin}/api/mock/evals/${evalSetId}/requirements`,
         {
@@ -74,6 +78,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
     const config = { jarvisUrl, apiKey: swarmApiKey };
+    console.log(`[Evals Requirements POST] Jarvis URL: ${jarvisUrl}`);
 
     const nodeResult = await addNode(config, {
       node_type: "EvalRequirement",
@@ -85,6 +90,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         negative_cases,
       },
     });
+    console.log(`[Evals Requirements POST] addNode result: success=${nodeResult.success}, ref_id=${nodeResult.ref_id ?? 'n/a'}, error=${nodeResult.error ?? 'none'}`);
 
     if (!nodeResult.success || !nodeResult.ref_id) {
       return NextResponse.json(
@@ -101,8 +107,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       source: { ref_id: evalSetId },
       target: { ref_id: nodeResult.ref_id },
     });
+    console.log(`[Evals Requirements POST] addEdge result: success=${edgeResult.success}, error=${edgeResult.error ?? 'none'}`);
 
     if (!edgeResult.success) {
+      console.warn(`[Evals Requirements POST] Failed to link requirement to eval set: ${edgeResult.error}`);
       return NextResponse.json(
         { error: edgeResult.error ?? "Failed to link requirement to eval set" },
         { status: 502 },

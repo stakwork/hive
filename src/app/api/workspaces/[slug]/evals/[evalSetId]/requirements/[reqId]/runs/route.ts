@@ -39,13 +39,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         { status: 400 },
       );
     }
+    console.log(`[Evals Runs POST] slug=${slug}, reqId=${reqId}, userId=${userOrResponse.id}, session_ids.length=${session_ids.length}`);
 
     const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
     if (!swarmAccessResult.success) {
+      console.warn(`[Evals Runs POST] Swarm access denied: ${swarmAccessResult.error.type}`);
       return handleSwarmAccessError(swarmAccessResult.error);
     }
+    console.log(`[Evals Runs POST] Swarm access granted — swarmName=${swarmAccessResult.data.swarmName}, apiKey present=${!!swarmAccessResult.data.swarmApiKey}`);
 
     if (process.env.USE_MOCKS === "true") {
+      console.log(`[Evals Runs POST] USE_MOCKS=true, routing to mock endpoint`);
       const mockResponse = await fetch(
         `${request.nextUrl.origin}/api/mock/evals/${_evalSetId}/requirements/${reqId}/runs`,
         {
@@ -60,6 +64,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
     const config = { jarvisUrl, apiKey: swarmApiKey };
+    console.log(`[Evals Runs POST] Jarvis URL: ${jarvisUrl}`);
 
     const results = await Promise.all(
       session_ids.map((session_id: string) =>
@@ -72,7 +77,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     );
 
     const failed = results.filter((r) => !r.success);
+    console.log(`[Evals Runs POST] addEdge results: ${results.length - failed.length} succeeded, ${failed.length} failed`);
     if (failed.length > 0) {
+      console.warn(`[Evals Runs POST] ${failed.length}/${results.length} edge(s) failed`);
       return NextResponse.json(
         { error: `Failed to link ${failed.length} session(s)` },
         { status: 502 },

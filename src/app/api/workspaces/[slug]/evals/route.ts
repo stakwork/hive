@@ -27,13 +27,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { slug } = await params;
+    console.log(`[Evals GET] slug=${slug}, userId=${userOrResponse.id}`);
 
     const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
     if (!swarmAccessResult.success) {
+      console.warn(`[Evals GET] Swarm access denied: ${swarmAccessResult.error.type}`);
       return handleSwarmAccessError(swarmAccessResult.error);
     }
+    console.log(`[Evals GET] Swarm access granted — swarmName=${swarmAccessResult.data.swarmName}, apiKey present=${!!swarmAccessResult.data.swarmApiKey}`);
 
     if (process.env.USE_MOCKS === "true") {
+      console.log(`[Evals GET] USE_MOCKS=true, routing to mock endpoint`);
       const mockResponse = await fetch(
         `${request.nextUrl.origin}/api/mock/evals`,
         { headers: { "Content-Type": "application/json" } },
@@ -43,7 +47,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
+    console.log(`[Evals GET] Jarvis URL: ${jarvisUrl}`);
 
+    console.log(`[Evals GET] Fetching swarm: ${jarvisUrl}/v2/nodes?type=EvalSet&limit=100`);
     const response = await fetch(
       `${jarvisUrl}/v2/nodes?type=EvalSet&limit=100`,
       {
@@ -53,8 +59,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         },
       },
     );
+    console.log(`[Evals GET] Swarm response status: ${response.status}`);
 
     if (!response.ok) {
+      console.warn(`[Evals GET] Swarm returned non-OK status: ${response.status}`);
       return NextResponse.json(
         { error: "Failed to fetch eval sets" },
         { status: 502 },
@@ -89,10 +97,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
     if (!swarmAccessResult.success) {
+      console.warn(`[Evals POST] Swarm access denied: ${swarmAccessResult.error.type}`);
       return handleSwarmAccessError(swarmAccessResult.error);
     }
+    console.log(`[Evals POST] slug=${slug}, userId=${userOrResponse.id}`);
+    console.log(`[Evals POST] Swarm access granted — swarmName=${swarmAccessResult.data.swarmName}, apiKey present=${!!swarmAccessResult.data.swarmApiKey}`);
 
     if (process.env.USE_MOCKS === "true") {
+      console.log(`[Evals POST] USE_MOCKS=true, routing to mock endpoint`);
       const mockResponse = await fetch(
         `${request.nextUrl.origin}/api/mock/evals`,
         {
@@ -106,11 +118,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
+    console.log(`[Evals POST] Jarvis URL: ${jarvisUrl}`);
 
     const result = await addNode(
       { jarvisUrl, apiKey: swarmApiKey },
       { node_type: "EvalSet", node_data: { name: name.trim(), description } },
     );
+    console.log(`[Evals POST] addNode result: success=${result.success}, ref_id=${result.ref_id ?? 'n/a'}, error=${result.error ?? 'none'}`);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 502 });
