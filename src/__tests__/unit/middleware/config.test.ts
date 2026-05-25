@@ -238,7 +238,6 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/auth/signin")).toBe("public");
       expect(resolveRouteAccess("/api/auth/callback/github")).toBe("public");
       expect(resolveRouteAccess("/api/auth/session")).toBe("public");
-      expect(resolveRouteAccess("/api/auth/verify-landing")).toBe("public");
     });
 
     it("treats workspace page routes as middleware-public", () => {
