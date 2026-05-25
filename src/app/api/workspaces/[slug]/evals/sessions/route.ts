@@ -26,13 +26,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { slug } = await params;
+    console.log(`[Evals Sessions GET] slug=${slug}, userId=${userOrResponse.id}`);
 
     const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
     if (!swarmAccessResult.success) {
+      console.warn(`[Evals Sessions GET] Swarm access denied: ${swarmAccessResult.error.type}`);
       return handleSwarmAccessError(swarmAccessResult.error);
     }
+    console.log(`[Evals Sessions GET] Swarm access granted — swarmName=${swarmAccessResult.data.swarmName}, apiKey present=${!!swarmAccessResult.data.swarmApiKey}`);
 
     if (process.env.USE_MOCKS === "true") {
+      console.log(`[Evals Sessions GET] USE_MOCKS=true, routing to mock endpoint`);
       // Return the AgentSession nodes from the mock graph endpoint
       const mockResponse = await fetch(
         `${request.nextUrl.origin}/api/mock/jarvis/graph`,
@@ -50,7 +54,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
+    console.log(`[Evals Sessions GET] Jarvis URL: ${jarvisUrl}`);
 
+    console.log(`[Evals Sessions GET] Fetching swarm: ${jarvisUrl}/v2/nodes?type=AgentSession&limit=50`);
     const response = await fetch(
       `${jarvisUrl}/v2/nodes?type=AgentSession&limit=50`,
       {
@@ -60,8 +66,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         },
       },
     );
+    console.log(`[Evals Sessions GET] Swarm response status: ${response.status}`);
 
     if (!response.ok) {
+      console.warn(`[Evals Sessions GET] Swarm returned non-OK status: ${response.status}`);
       return NextResponse.json(
         { error: "Failed to fetch agent sessions" },
         { status: 502 },
