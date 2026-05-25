@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -41,7 +41,7 @@ describe("addNode", () => {
       expect(result).toEqual({ success: true, ref_id: "node-abc-123" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://test-swarm.sphinx.chat:8444/v2/nodes",
+        "https://test-swarm.sphinx.chat:8444/node",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
@@ -215,7 +215,7 @@ describe("addNode", () => {
       );
 
       const calledUrl = mockFetch.mock.calls[0][0] as string;
-      expect(calledUrl).toBe("https://test.sphinx.chat:8444/v2/nodes");
+      expect(calledUrl).toBe("https://test.sphinx.chat:8444/node");
     });
   });
 });
@@ -232,12 +232,12 @@ describe("addEdge", () => {
   };
 
   describe("Success cases", () => {
-    test("calls POST /v2/edges with correct body and headers", async () => {
+    test("calls POST /node/edge with correct body and headers", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => ({
-          status: "success",
+          status: "Success",
           status_messages: [],
         }),
       });
@@ -247,7 +247,7 @@ describe("addEdge", () => {
       expect(result).toEqual({ success: true });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://test-swarm.sphinx.chat:8444/v2/edges",
+        "https://test-swarm.sphinx.chat:8444/node/edge",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
@@ -258,11 +258,23 @@ describe("addEdge", () => {
       );
     });
 
+    test("returns success with capital-S 'Success' status from /node/edge", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "Success", status_messages: [] }),
+      });
+
+      const result = await addEdge(config, edgePayload);
+
+      expect(result).toEqual({ success: true });
+    });
+
     test("works with EVAL_RUN edge type (no edge_data)", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ status: "success", status_messages: [] }),
+        json: async () => ({ status: "Success", status_messages: [] }),
       });
 
       const result = await addEdge(config, {
@@ -329,6 +341,161 @@ describe("addEdge", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Connection refused");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addEdgeBulk
+// ---------------------------------------------------------------------------
+
+describe("addEdgeBulk", () => {
+  const edgeList = [
+    {
+      edge: { edge_type: "HAS_REQUIREMENT" },
+      source: { ref_id: "eval-set-1" },
+      target: { ref_id: "req-1" },
+    },
+    {
+      edge: { edge_type: "HAS_REQUIREMENT" },
+      source: { ref_id: "eval-set-1" },
+      target: { ref_id: "req-2" },
+    },
+  ];
+
+  describe("Success cases", () => {
+    test("calls POST /node/edge/bulk with correct body and headers", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: "Success",
+          status_messages: [],
+        }),
+      });
+
+      const result = await addEdgeBulk(config, edgeList);
+
+      expect(result).toEqual({ success: true, errors: [] });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://test-swarm.sphinx.chat:8444/node/edge/bulk",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "x-api-token": "test-api-key",
+            "Content-Type": "application/json",
+          }),
+          body: JSON.stringify({ edge_list: edgeList }),
+        }),
+      );
+    });
+
+    test("returns success with no errors when status_messages is empty", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "Success", status_messages: [] }),
+      });
+
+      const result = await addEdgeBulk(config, edgeList);
+
+      expect(result.success).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    test("returns success:true with Warning status when no error messages", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: "Warning",
+          status_messages: ["Edge already exists"],
+        }),
+      });
+
+      const result = await addEdgeBulk(config, edgeList);
+
+      expect(result.success).toBe(false); // Warning is not "success"
+      expect(result.errors).toHaveLength(0); // no "error" prefixed messages
+    });
+  });
+
+  describe("Partial errors surfaced from status_messages", () => {
+    test("collects error-prefixed status_messages as errors", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: "Success",
+          status_messages: [
+            "Error: invalid ref_id for item 2",
+            "Edge created successfully",
+            "error: missing source node",
+          ],
+        }),
+      });
+
+      const result = await addEdgeBulk(config, edgeList);
+
+      expect(result.success).toBe(true);
+      expect(result.errors).toEqual([
+        "Error: invalid ref_id for item 2",
+        "error: missing source node",
+      ]);
+    });
+
+    test("ignores non-error status_messages", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: "Success",
+          status_messages: ["Edge created", "Already exists (skipped)"],
+        }),
+      });
+
+      const result = await addEdgeBulk(config, edgeList);
+
+      expect(result.errors).toHaveLength(0);
+    });
+  });
+
+  describe("Failure cases", () => {
+    test("returns failure when HTTP response is not ok", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => "Internal server error",
+      });
+
+      const result = await addEdgeBulk(config, edgeList);
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain("500");
+    });
+
+    test("returns failure when fetch throws", async () => {
+      mockFetch.mockRejectedValueOnce(new Error("Network timeout"));
+
+      const result = await addEdgeBulk(config, edgeList);
+
+      expect(result.success).toBe(false);
+      expect(result.errors[0]).toBe("Network timeout");
+    });
+
+    test("handles empty edge list gracefully", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "Success", status_messages: [] }),
+      });
+
+      const result = await addEdgeBulk(config, []);
+
+      expect(result.success).toBe(true);
+      expect(result.errors).toHaveLength(0);
     });
   });
 });
