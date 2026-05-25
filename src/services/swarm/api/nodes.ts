@@ -73,7 +73,7 @@ export async function addNode(
 ): Promise<{ success: boolean; ref_id?: string; error?: string }> {
   const result = await jarvisRequest({
     config,
-    endpoint: "/v2/nodes",
+    endpoint: "/node",
     method: "POST",
     data: payload,
   });
@@ -117,7 +117,7 @@ export async function addEdge(
 ): Promise<{ success: boolean; error?: string }> {
   const result = await jarvisRequest({
     config,
-    endpoint: "/v2/edges",
+    endpoint: "/node/edge",
     method: "POST",
     data: payload,
   });
@@ -137,11 +137,47 @@ export async function addEdge(
     m.toLowerCase().includes("already exists"),
   );
 
-  if (body?.status === "success" || isAlreadyExists) {
+  if (body?.status?.toLowerCase() === "success" || isAlreadyExists) {
     return { success: true };
   }
 
   return { success: false, error: "Edge creation returned unexpected status" };
+}
+
+export async function addEdgeBulk(
+  config: JarvisConnectionConfig,
+  edgeList: Array<{
+    edge: { edge_type: string; weight?: number; edge_data?: Record<string, unknown> };
+    source: { ref_id: string };
+    target: { ref_id: string };
+  }>,
+): Promise<{ success: boolean; errors: string[] }> {
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/node/edge/bulk",
+    method: "POST",
+    data: { edge_list: edgeList },
+  });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      errors: [result.error || `Failed to create edges (status: ${result.status})`],
+    };
+  }
+
+  const body = result.body as
+    | { status?: string; status_messages?: string[] }
+    | undefined;
+
+  const errors = (body?.status_messages ?? []).filter((m) =>
+    m.toLowerCase().startsWith("error"),
+  );
+
+  return {
+    success: body?.status?.toLowerCase() === "success",
+    errors,
+  };
 }
 
 export async function updateNode(
