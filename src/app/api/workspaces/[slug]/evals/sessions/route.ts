@@ -27,6 +27,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { slug } = await params;
 
+    const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
+    if (!swarmAccessResult.success) {
+      return handleSwarmAccessError(swarmAccessResult.error);
+    }
+
     if (process.env.USE_MOCKS === "true") {
       // Return the AgentSession nodes from the mock graph endpoint
       const mockResponse = await fetch(
@@ -41,11 +46,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         success: true,
         data: { nodes: sessionNodes, total: sessionNodes.length },
       });
-    }
-
-    const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
-    if (!swarmAccessResult.success) {
-      return handleSwarmAccessError(swarmAccessResult.error);
     }
 
     const { swarmName, swarmApiKey } = swarmAccessResult.data;

@@ -40,6 +40,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
+    if (!swarmAccessResult.success) {
+      return handleSwarmAccessError(swarmAccessResult.error);
+    }
+
     if (process.env.USE_MOCKS === "true") {
       const mockResponse = await fetch(
         `${request.nextUrl.origin}/api/mock/evals/${_evalSetId}/requirements/${reqId}/runs`,
@@ -50,11 +55,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         },
       );
       return NextResponse.json(await mockResponse.json());
-    }
-
-    const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
-    if (!swarmAccessResult.success) {
-      return handleSwarmAccessError(swarmAccessResult.error);
     }
 
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
