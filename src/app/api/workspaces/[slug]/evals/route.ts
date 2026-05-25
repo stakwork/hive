@@ -28,17 +28,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { slug } = await params;
 
+    const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
+    if (!swarmAccessResult.success) {
+      return handleSwarmAccessError(swarmAccessResult.error);
+    }
+
     if (process.env.USE_MOCKS === "true") {
       const mockResponse = await fetch(
         `${request.nextUrl.origin}/api/mock/evals`,
         { headers: { "Content-Type": "application/json" } },
       );
       return NextResponse.json(await mockResponse.json());
-    }
-
-    const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
-    if (!swarmAccessResult.success) {
-      return handleSwarmAccessError(swarmAccessResult.error);
     }
 
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
@@ -87,6 +87,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
 
+    const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
+    if (!swarmAccessResult.success) {
+      return handleSwarmAccessError(swarmAccessResult.error);
+    }
+
     if (process.env.USE_MOCKS === "true") {
       const mockResponse = await fetch(
         `${request.nextUrl.origin}/api/mock/evals`,
@@ -97,11 +102,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         },
       );
       return NextResponse.json(await mockResponse.json());
-    }
-
-    const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
-    if (!swarmAccessResult.success) {
-      return handleSwarmAccessError(swarmAccessResult.error);
     }
 
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
