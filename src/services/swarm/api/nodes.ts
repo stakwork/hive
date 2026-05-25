@@ -7,6 +7,7 @@ interface JarvisApiResponse {
   ok: boolean;
   status: number;
   error?: string;
+  body?: unknown;
 }
 
 async function jarvisRequest({
@@ -44,9 +45,17 @@ async function jarvisRequest({
       };
     }
 
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      // Not all responses have a JSON body
+    }
+
     return {
       ok: true,
       status: response.status,
+      body,
     };
   } catch (error) {
     console.error("[Jarvis Nodes] Request error:", error);
@@ -56,6 +65,83 @@ async function jarvisRequest({
       error: error instanceof Error ? error.message : "Request failed",
     };
   }
+}
+
+export async function addNode(
+  config: JarvisConnectionConfig,
+  payload: { node_type: string; node_data: Record<string, unknown> },
+): Promise<{ success: boolean; ref_id?: string; error?: string }> {
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/v2/nodes",
+    method: "POST",
+    data: payload,
+  });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      error: result.error || `Failed to create node (status: ${result.status})`,
+    };
+  }
+
+  const body = result.body as
+    | { status?: string; data?: { ref_id?: string }; nodes?: Array<{ ref_id?: string }>; status_messages?: string[] }
+    | undefined;
+
+  // Treat "already exists" warnings as success
+  const isAlreadyExists = body?.status_messages?.some((m) =>
+    m.toLowerCase().includes("already exists"),
+  );
+
+  const ref_id =
+    body?.data?.ref_id ?? body?.nodes?.[0]?.ref_id;
+
+  if (body?.status === "success" || isAlreadyExists) {
+    return { success: true, ref_id };
+  }
+
+  return {
+    success: false,
+    error: "Node creation returned unexpected status",
+  };
+}
+
+export async function addEdge(
+  config: JarvisConnectionConfig,
+  payload: {
+    edge: { edge_type: string; edge_data?: Record<string, unknown> };
+    source: { ref_id: string };
+    target: { ref_id: string };
+  },
+): Promise<{ success: boolean; error?: string }> {
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/v2/edges",
+    method: "POST",
+    data: payload,
+  });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      error: result.error || `Failed to create edge (status: ${result.status})`,
+    };
+  }
+
+  const body = result.body as
+    | { status?: string; status_messages?: string[] }
+    | undefined;
+
+  const isAlreadyExists = body?.status_messages?.some((m) =>
+    m.toLowerCase().includes("already exists"),
+  );
+
+  if (body?.status === "success" || isAlreadyExists) {
+    return { success: true };
+  }
+
+  return { success: false, error: "Edge creation returned unexpected status" };
 }
 
 export async function updateNode(
