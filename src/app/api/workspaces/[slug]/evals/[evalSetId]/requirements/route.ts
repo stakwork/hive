@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
+import type { JarvisNode } from "@/types/jarvis";
 
 
 type RouteParams = { params: Promise<{ slug: string; evalSetId: string }> };
@@ -18,6 +19,74 @@ function handleSwarmAccessError(error: { type: string }) {
   };
   const errorInfo = errorMap[error.type] || { message: "Unknown error", status: 500 };
   return NextResponse.json({ error: errorInfo.message }, { status: errorInfo.status });
+}
+
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  try {
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+
+    const { slug, evalSetId } = await params;
+    console.log(`[Evals Requirements GET] slug=${slug}, evalSetId=${evalSetId}, userId=${userOrResponse.id}`);
+
+    const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
+    if (!swarmAccessResult.success) {
+      console.warn(`[Evals Requirements GET] Swarm access denied: ${swarmAccessResult.error.type}`);
+      return handleSwarmAccessError(swarmAccessResult.error);
+    }
+
+    if (process.env.USE_MOCKS === "true") {
+      console.log(`[Evals Requirements GET] USE_MOCKS=true, routing to mock endpoint`);
+      const mockResponse = await fetch(
+        `${request.nextUrl.origin}/api/mock/evals/${evalSetId}/requirements`,
+        { method: "GET" },
+      );
+      return NextResponse.json(await mockResponse.json());
+    }
+
+    const { swarmName, swarmApiKey } = swarmAccessResult.data;
+    const jarvisUrl = getJarvisUrl(swarmName);
+    console.log(`[Evals Requirements GET] Jarvis URL: ${jarvisUrl}`);
+
+    const edgeType = encodeURIComponent("['HAS_REQUIREMENT']");
+    const nodeType = encodeURIComponent("['EvalRequirement']");
+    const url = `${jarvisUrl}/v2/nodes/${evalSetId}?expand=edges&edge_type=${edgeType}&node_type=${nodeType}&depth=1`;
+
+    const jarvisRes = await fetch(url, {
+      headers: { "x-api-token": swarmApiKey },
+    });
+
+    if (!jarvisRes.ok) {
+      const text = await jarvisRes.text().catch(() => "");
+      console.error(`[Evals Requirements GET] Jarvis error ${jarvisRes.status}: ${text}`);
+      return NextResponse.json(
+        { error: "Failed to fetch requirements from Jarvis" },
+        { status: 502 },
+      );
+    }
+
+    const jarvisData = await jarvisRes.json();
+    const nodes: JarvisNode[] = jarvisData?.nodes ?? [];
+    const edges: Array<{ target_ref_id: string; properties?: { order?: number }; edge_data?: { order?: number } }> =
+      jarvisData?.edges ?? [];
+
+    // Merge edge order into each node's properties
+    for (const node of nodes) {
+      const edge = edges.find((e) => e.target_ref_id === node.ref_id);
+      if (edge) {
+        const order = edge.properties?.order ?? edge.edge_data?.order;
+        if (order !== undefined) {
+          node.properties = { ...node.properties, order };
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, data: { nodes, total: nodes.length } });
+  } catch (error) {
+    console.error("[Evals/Requirements] GET error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
