@@ -424,7 +424,6 @@ describe("POST /api/workspaces/[slug]/logs-agent", () => {
         prompt: "test prompt",
         swarmName: "swarm38",
         sessionId: "session-abc",
-        model: "haiku",
         sessionConfig: {
           truncateToolResults: false,
           maxToolResultLines: 200,
