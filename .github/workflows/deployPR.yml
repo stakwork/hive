@@ -192,11 +192,23 @@ jobs:
 
           # Wait until endpoint is ready (GET endpoint does not return credentials)
           for i in {1..30}; do
-            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint")
-            STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
-            DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
+            # Use || true so set -e doesn't exit if neon_curl returns non-zero (e.g. endpoint temporarily not found)
+            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint" || true)
+            STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state // empty')
+            DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host // empty')
             if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then
               break
+            fi
+            # If the endpoint vanished (e.g. stale reassignment failed), re-discover the endpoint for this branch
+            if [ -z "$STATE" ]; then
+              echo "⚠️  Endpoint $ENDPOINT_ID unavailable, re-fetching endpoints for branch $BRANCH_ID..."
+              REFRESHED=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+                "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" || echo '{}')
+              NEW_ID=$(echo "$REFRESHED" | jq -r ".endpoints[]? | select(.branch_id==\"$BRANCH_ID\") | .id" | head -1)
+              if [ -n "$NEW_ID" ] && [ "$NEW_ID" != "null" ] && [ "$NEW_ID" != "$ENDPOINT_ID" ]; then
+                echo "♻️  Switching to endpoint $NEW_ID for branch $BRANCH_ID"
+                ENDPOINT_ID="$NEW_ID"
+              fi
             fi
             echo "Waiting for endpoint... ($i)"
             sleep 3
