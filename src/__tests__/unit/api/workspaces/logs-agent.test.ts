@@ -44,6 +44,9 @@ vi.mock("@/lib/helpers/swarm-access", () => ({
 vi.mock("@/lib/logger", () => ({
   logger: {
     error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
