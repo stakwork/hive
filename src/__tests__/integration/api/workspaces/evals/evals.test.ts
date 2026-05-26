@@ -228,7 +228,7 @@ describe("Evals API — Integration Tests", () => {
 
         expect(nodesService.addNode).toHaveBeenCalledWith(
           expect.objectContaining({ apiKey: expect.any(String) }),
-          { node_type: "EvalSet", node_data: { name: "My Eval Set", description: "A description" } },
+          { node_type: "EvalSet", node_data: { id: expect.any(String), name: "My Eval Set", description: "A description" } },
         );
       });
     });
