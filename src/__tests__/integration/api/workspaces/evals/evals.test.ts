@@ -1,6 +1,8 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET as getEvalSets, POST as createEvalSet } from "@/app/api/workspaces/[slug]/evals/route";
+import { PUT as updateEvalSet, DELETE as deleteEvalSet } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/route";
 import { POST as createRequirement } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/route";
+import { PUT as updateRequirement, DELETE as deleteRequirement } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/route";
 import { POST as linkRuns } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/runs/route";
 import { GET as getSessions } from "@/app/api/workspaces/[slug]/evals/sessions/route";
 import {
@@ -12,8 +14,11 @@ import {
 import {
   createAuthenticatedGetRequest,
   createAuthenticatedPostRequest,
+  createAuthenticatedPutRequest,
+  createAuthenticatedDeleteRequest,
   createGetRequest,
   createPostRequest,
+  createDeleteRequest,
 } from "@/__tests__/support/helpers/request-builders";
 import {
   expectSuccess,
@@ -887,6 +892,434 @@ describe("Evals API — Integration Tests", () => {
         });
 
         expect(response.status).toBe(502);
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // PUT /api/workspaces/[slug]/evals/[evalSetId]
+  // ---------------------------------------------------------------------------
+  describe("PUT /api/workspaces/[slug]/evals/[evalSetId]", () => {
+    describe("Success", () => {
+      test("updates eval set with valid name and description", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-1`,
+          owner,
+          { name: "Updated Name", description: "Updated desc" },
+        );
+
+        const response = await updateEvalSet(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(nodesService.updateNode).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            ref_id: "eval-1",
+            node_type: "EvalSet",
+            node_data: expect.objectContaining({ name: "Updated Name" }),
+          }),
+        );
+      });
+    });
+
+    describe("Validation", () => {
+      test("returns 400 when name is missing", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-1`,
+          owner,
+          { description: "No name provided" },
+        );
+
+        const response = await updateEvalSet(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-1" }),
+        });
+
+        await expectError(response, "name is required", 400);
+      });
+
+      test("returns 400 when name is empty string", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-1`,
+          owner,
+          { name: "   " },
+        );
+
+        const response = await updateEvalSet(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-1" }),
+        });
+
+        await expectError(response, "name is required", 400);
+      });
+    });
+
+    describe("Auth failures", () => {
+      test("rejects unauthenticated requests", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-1`,
+          owner,
+          { name: "Test" },
+        );
+        // Simulate unauthenticated by creating a plain PUT
+        const unauthRequest = createDeleteRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-1`,
+        );
+        // Use a user not in the workspace
+        const nonMember = await createTestUser();
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const authRequest = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-1`,
+          nonMember,
+          { name: "Test" },
+        );
+
+        const response = await updateEvalSet(authRequest, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-1" }),
+        });
+
+        await expectForbidden(response, "Access denied");
+      });
+    });
+
+    describe("Service failures", () => {
+      test("returns 502 when updateNode fails", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({
+          success: false,
+          error: "Jarvis unavailable",
+        });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-1`,
+          owner,
+          { name: "Updated" },
+        );
+
+        const response = await updateEvalSet(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-1" }),
+        });
+
+        expect(response.status).toBe(502);
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DELETE /api/workspaces/[slug]/evals/[evalSetId]
+  // ---------------------------------------------------------------------------
+  describe("DELETE /api/workspaces/[slug]/evals/[evalSetId]", () => {
+    describe("Success", () => {
+      test("deletes eval set successfully", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.deleteNode).mockResolvedValueOnce({ success: true });
+
+        const request = createAuthenticatedDeleteRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-1`,
+          owner,
+        );
+
+        const response = await deleteEvalSet(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(nodesService.deleteNode).toHaveBeenCalledWith(expect.any(Object), "eval-1");
+      });
+    });
+
+    describe("Auth failures", () => {
+      test("rejects non-member", async () => {
+        const owner = await createTestUser();
+        const nonMember = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedDeleteRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-1`,
+          nonMember,
+        );
+
+        const response = await deleteEvalSet(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-1" }),
+        });
+
+        await expectForbidden(response, "Access denied");
+      });
+    });
+
+    describe("Service failures", () => {
+      test("returns 502 when deleteNode fails", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.deleteNode).mockResolvedValueOnce({
+          success: false,
+          error: "Delete failed",
+        });
+
+        const request = createAuthenticatedDeleteRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-1`,
+          owner,
+        );
+
+        const response = await deleteEvalSet(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-1" }),
+        });
+
+        expect(response.status).toBe(502);
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // PUT /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]
+  // ---------------------------------------------------------------------------
+  describe("PUT /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]", () => {
+    const validReqBody = {
+      name: "Check output",
+      description: "Verifies correct output",
+      prompt_snippet: "Summarize this text",
+      positive_cases: ["Good summary"],
+      negative_cases: ["Bad summary"],
+    };
+
+    describe("Success", () => {
+      test("updates requirement with valid fields", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+          owner,
+          validReqBody,
+        );
+
+        const response = await updateRequirement(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(nodesService.updateNode).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            ref_id: "req-1",
+            node_type: "EvalRequirement",
+            node_data: expect.objectContaining({
+              name: "Check output",
+              prompt_snippet: "Summarize this text",
+            }),
+          }),
+        );
+      });
+    });
+
+    describe("Validation", () => {
+      test("returns 400 when name is missing", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+          owner,
+          { ...validReqBody, name: "" },
+        );
+
+        const response = await updateRequirement(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectError(response, "name is required", 400);
+      });
+
+      test("returns 400 when prompt_snippet is missing", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+          owner,
+          { ...validReqBody, prompt_snippet: "" },
+        );
+
+        const response = await updateRequirement(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectError(response, "prompt_snippet is required", 400);
+      });
+
+      test("returns 400 when positive_cases is empty", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+          owner,
+          { ...validReqBody, positive_cases: [] },
+        );
+
+        const response = await updateRequirement(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectError(response, "positive_cases must be a non-empty array", 400);
+      });
+
+      test("returns 400 when negative_cases is empty", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+          owner,
+          { ...validReqBody, negative_cases: [] },
+        );
+
+        const response = await updateRequirement(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectError(response, "negative_cases must be a non-empty array", 400);
+      });
+    });
+
+    describe("Auth failures", () => {
+      test("rejects non-member", async () => {
+        const owner = await createTestUser();
+        const nonMember = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+          nonMember,
+          validReqBody,
+        );
+
+        const response = await updateRequirement(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectForbidden(response, "Access denied");
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DELETE /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]
+  // ---------------------------------------------------------------------------
+  describe("DELETE /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]", () => {
+    describe("Success", () => {
+      test("deletes requirement successfully", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.deleteNode).mockResolvedValueOnce({ success: true });
+
+        const request = createAuthenticatedDeleteRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+          owner,
+        );
+
+        const response = await deleteRequirement(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(nodesService.deleteNode).toHaveBeenCalledWith(expect.any(Object), "req-1");
+      });
+    });
+
+    describe("Auth failures", () => {
+      test("rejects non-member", async () => {
+        const owner = await createTestUser();
+        const nonMember = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedDeleteRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+          nonMember,
+        );
+
+        const response = await deleteRequirement(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectForbidden(response, "Access denied");
+      });
+    });
+
+    describe("Swarm not configured", () => {
+      test("returns 400 when workspace has no swarm", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+
+        const request = createAuthenticatedDeleteRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+          owner,
+        );
+
+        const response = await deleteRequirement(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectError(response, "Swarm not configured", 400);
       });
     });
   });

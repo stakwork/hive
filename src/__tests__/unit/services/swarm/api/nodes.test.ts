@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge, addEdgeBulk } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk, updateNode, deleteNode, deleteEdge } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -496,6 +496,257 @@ describe("addEdgeBulk", () => {
 
       expect(result.success).toBe(true);
       expect(result.errors).toHaveLength(0);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateNode
+// ---------------------------------------------------------------------------
+
+describe("updateNode", () => {
+  describe("Success cases", () => {
+    test("calls PUT /node with node_data (not properties) in request body", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success" }),
+      });
+
+      const result = await updateNode(config, {
+        ref_id: "eval-set-1",
+        node_type: "EvalSet",
+        node_data: { name: "Updated Name", description: "Updated desc" },
+      });
+
+      expect(result).toEqual({ success: true });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://test-swarm.sphinx.chat:8444/node",
+        expect.objectContaining({
+          method: "PUT",
+          headers: expect.objectContaining({
+            "x-api-token": "test-api-key",
+            "Content-Type": "application/json",
+          }),
+          body: JSON.stringify({
+            ref_id: "eval-set-1",
+            node_type: "EvalSet",
+            node_data: { name: "Updated Name", description: "Updated desc" },
+          }),
+        }),
+      );
+
+      // Verify that legacy 'properties' key is NOT sent
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(sentBody).not.toHaveProperty("properties");
+    });
+
+    test("returns success for EvalRequirement update", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success" }),
+      });
+
+      const result = await updateNode(config, {
+        ref_id: "req-1",
+        node_type: "EvalRequirement",
+        node_data: {
+          name: "Check output",
+          prompt_snippet: "Summarize this",
+          positive_cases: ["Good"],
+          negative_cases: ["Bad"],
+        },
+      });
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("Failure cases", () => {
+    test("returns failure when HTTP response is not ok", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => "Server error",
+      });
+
+      const result = await updateNode(config, {
+        ref_id: "eval-1",
+        node_type: "EvalSet",
+        node_data: { name: "Fail" },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("500");
+    });
+
+    test("returns failure when fetch throws", async () => {
+      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+      const result = await updateNode(config, {
+        ref_id: "eval-1",
+        node_type: "EvalSet",
+        node_data: { name: "Throw" },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Network error");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteNode
+// ---------------------------------------------------------------------------
+
+describe("deleteNode", () => {
+  describe("Success cases", () => {
+    test("calls DELETE /node/{refId} with X-Is-Admin: true header", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success" }),
+      });
+
+      const result = await deleteNode(config, "eval-set-abc");
+
+      expect(result).toEqual({ success: true });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://test-swarm.sphinx.chat:8444/node/eval-set-abc",
+        expect.objectContaining({
+          method: "DELETE",
+          headers: expect.objectContaining({
+            "x-api-token": "test-api-key",
+            "X-Is-Admin": "true",
+            "Content-Type": "application/json",
+          }),
+        }),
+      );
+    });
+
+    test("returns success even when response body has no status field", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+        json: async () => { throw new Error("No body"); },
+      });
+
+      const result = await deleteNode(config, "node-1");
+
+      expect(result.success).toBe(true);
+    });
+
+    test("URL encodes the refId", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success" }),
+      });
+
+      await deleteNode(config, "node with spaces");
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toBe("https://test-swarm.sphinx.chat:8444/node/node%20with%20spaces");
+    });
+  });
+
+  describe("Failure cases", () => {
+    test("returns failure when HTTP response is not ok", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => "Not found",
+      });
+
+      const result = await deleteNode(config, "missing-node");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("404");
+    });
+
+    test("returns failure when fetch throws", async () => {
+      mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
+
+      const result = await deleteNode(config, "node-1");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Connection refused");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteEdge
+// ---------------------------------------------------------------------------
+
+describe("deleteEdge", () => {
+  describe("Success cases", () => {
+    test("calls DELETE /node/edge/{refId} without X-Is-Admin header", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success" }),
+      });
+
+      const result = await deleteEdge(config, "edge-ref-123");
+
+      expect(result).toEqual({ success: true });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://test-swarm.sphinx.chat:8444/node/edge/edge-ref-123",
+        expect.objectContaining({
+          method: "DELETE",
+          headers: expect.objectContaining({
+            "x-api-token": "test-api-key",
+          }),
+        }),
+      );
+
+      // Verify X-Is-Admin is NOT present
+      const calledHeaders = mockFetch.mock.calls[0][1].headers as Record<string, string>;
+      expect(calledHeaders).not.toHaveProperty("X-Is-Admin");
+    });
+
+    test("URL encodes the edgeRefId", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success" }),
+      });
+
+      await deleteEdge(config, "edge/with/slashes");
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toBe(
+        "https://test-swarm.sphinx.chat:8444/node/edge/edge%2Fwith%2Fslashes",
+      );
+    });
+  });
+
+  describe("Failure cases", () => {
+    test("returns failure when HTTP response is not ok", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => "Server error",
+      });
+
+      const result = await deleteEdge(config, "edge-1");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("500");
+    });
+
+    test("returns failure when fetch throws", async () => {
+      mockFetch.mockRejectedValueOnce(new Error("Timeout"));
+
+      const result = await deleteEdge(config, "edge-1");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Timeout");
     });
   });
 });
