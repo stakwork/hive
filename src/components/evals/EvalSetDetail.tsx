@@ -38,7 +38,7 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/workspaces/${slug}/evals?evalSetId=${evalSet.ref_id}`,
+        `/api/workspaces/${slug}/evals/${evalSet.ref_id}/requirements`,
       );
       const data = await res.json();
       const nodes: RequirementNode[] = (data?.data?.nodes ?? []).sort(
