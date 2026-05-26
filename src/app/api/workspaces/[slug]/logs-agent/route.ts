@@ -347,6 +347,12 @@ export async function POST(
       agentBody.headers = bifrost.headers;
     }
 
+    const skipPrintVal = process.env.SKIP_LOG_AGENT_PRINT_PROGRESS;
+    const dontPrint = skipPrintVal === "true" || skipPrintVal === "1";
+    if (!dontPrint) {
+      agentBody.printAgentProgress = true;
+    }
+
     const agentResponse = await fetch(`${baseUrl}/logs/agent`, {
       method: "POST",
       headers,
