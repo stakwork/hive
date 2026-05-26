@@ -6,7 +6,7 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
-import { WorkflowStatus, TaskStatus } from "@prisma/client";
+import { WorkflowStatus, TaskStatus, StakworkRunType } from "@prisma/client";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -131,6 +131,7 @@ export async function triggerWorkflowEditorRun(params: {
     where: { id: taskId, deleted: false },
     select: {
       workspaceId: true,
+      featureId: true,
       workspace: {
         select: {
           slug: true,
@@ -273,6 +274,18 @@ export async function triggerWorkflowEditorRun(params: {
 
     // Seed a WORKFLOW artifact so the task page can poll the project
     if (result.data?.project_id) {
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.WORKFLOW_EDITOR,
+          taskId,
+          featureId: task.featureId ?? null,
+          workspaceId: task.workspaceId,
+          projectId: result.data.project_id,
+          status: WorkflowStatus.IN_PROGRESS,
+          webhookUrl: workflowWebhookUrl,
+        },
+      });
+
       try {
         // Fetch live baseline at run-start time (agent hasn't touched workflow yet)
         const baselineWorkflowJson = await fetchLatestWorkflowJson(workflowId);
