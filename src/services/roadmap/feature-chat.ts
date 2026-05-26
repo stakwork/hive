@@ -254,7 +254,7 @@ export async function sendFeatureChatMessage({
 
   // Authorization: caller must be workspace owner or member before any write
   const isOwner = feature.workspace.ownerId === userId;
-  const isMember = feature.workspace.members.some((m) => m.userId === userId);
+  const isMember = feature.workspace.members?.some((m) => m.userId === userId) ?? false;
   if (!isOwner && !isMember) {
     throw new Error("Access denied");
   }
