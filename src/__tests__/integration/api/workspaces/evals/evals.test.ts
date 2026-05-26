@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET as getEvalSets, POST as createEvalSet } from "@/app/api/workspaces/[slug]/evals/route";
-import { POST as createRequirement } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/route";
+import { GET as getRequirements, POST as createRequirement } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/route";
 import { POST as linkRuns } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/runs/route";
 import { GET as getSessions } from "@/app/api/workspaces/[slug]/evals/sessions/route";
 import {
@@ -353,6 +353,187 @@ describe("Evals API — Integration Tests", () => {
 
         const response = await createEvalSet(request, {
           params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        expect(response.status).toBe(502);
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/workspaces/[slug]/evals/[evalSetId]/requirements
+  // ---------------------------------------------------------------------------
+  describe("GET /api/workspaces/[slug]/evals/[evalSetId]/requirements", () => {
+    describe("Success", () => {
+      test("returns requirements with order merged from edges", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const mockNodes = [
+          { ref_id: "req-1", node_type: "EvalRequirement", properties: { name: "Req A" } },
+          { ref_id: "req-2", node_type: "EvalRequirement", properties: { name: "Req B" } },
+        ];
+        const mockEdges = [
+          { target_ref_id: "req-1", properties: { order: 0 } },
+          { target_ref_id: "req-2", properties: { order: 1 } },
+        ];
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: mockNodes, edges: mockEdges }),
+        } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-set-1/requirements`,
+          owner,
+        );
+
+        const response = await getRequirements(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-set-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.data.nodes).toHaveLength(2);
+        expect(data.data.total).toBe(2);
+        expect(data.data.nodes[0].properties.order).toBe(0);
+        expect(data.data.nodes[1].properties.order).toBe(1);
+      });
+
+      test("returns empty array when eval set has no requirements", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [], edges: [] }),
+        } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-set-empty/requirements`,
+          owner,
+        );
+
+        const response = await getRequirements(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-set-empty" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.data.nodes).toEqual([]);
+        expect(data.data.total).toBe(0);
+      });
+
+      test("calls Jarvis with correct URL including Python list literal params", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const fetchMock = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [], edges: [] }),
+        } as any);
+        global.fetch = fetchMock;
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/my-eval-set/requirements`,
+          owner,
+        );
+
+        await getRequirements(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "my-eval-set" }),
+        });
+
+        const calledUrl: string = fetchMock.mock.calls[0][0];
+        expect(calledUrl).toContain("/v2/nodes/my-eval-set");
+        expect(calledUrl).toContain("expand=edges");
+        expect(calledUrl).toContain(encodeURIComponent("['HAS_REQUIREMENT']"));
+        expect(calledUrl).toContain(encodeURIComponent("['EvalRequirement']"));
+        expect(calledUrl).toContain("depth=1");
+      });
+    });
+
+    describe("Auth failures", () => {
+      test("rejects unauthenticated requests", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+
+        const request = createGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-set-1/requirements`,
+        );
+
+        const response = await getRequirements(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-set-1" }),
+        });
+
+        await expectUnauthorized(response);
+      });
+
+      test("rejects non-member", async () => {
+        const owner = await createTestUser();
+        const nonMember = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-set-1/requirements`,
+          nonMember,
+        );
+
+        const response = await getRequirements(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-set-1" }),
+        });
+
+        await expectForbidden(response, "Access denied");
+      });
+    });
+
+    describe("Swarm not configured", () => {
+      test("returns 400 when workspace has no swarm", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-set-1/requirements`,
+          owner,
+        );
+
+        const response = await getRequirements(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-set-1" }),
+        });
+
+        await expectError(response, "Swarm not configured", 400);
+      });
+    });
+
+    describe("Upstream failure", () => {
+      test("returns 502 when Jarvis returns non-ok", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          text: async () => "Service Unavailable",
+        } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-set-1/requirements`,
+          owner,
+        );
+
+        const response = await getRequirements(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-set-1" }),
         });
 
         expect(response.status).toBe(502);
