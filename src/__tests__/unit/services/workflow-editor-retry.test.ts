@@ -59,6 +59,7 @@ function makeFullTask(overrides: Record<string, unknown> = {}) {
     id: "task-1",
     createdById: "user-1",
     workspaceId: "ws-1",
+    featureId: "feature-1",
     workspace: {
       slug: "test-workspace",
       ownerId: "user-1",
@@ -135,6 +136,7 @@ describe("executeWorkflowEditorRetry", () => {
     mockedDb.chatMessage.create = vi.fn().mockResolvedValue({ id: "msg-new" }) as never;
     mockedDb.chatMessage.findFirst = vi.fn().mockResolvedValue({ id: "msg-user-1" }) as never;
     mockedDb.chatMessage.update = vi.fn().mockResolvedValue({}) as never;
+    mockedDb.stakworkRun = { create: vi.fn().mockResolvedValue({}) } as never;
   });
 
   afterEach(() => {
@@ -360,6 +362,37 @@ describe("executeWorkflowEditorRetry", () => {
     await executeWorkflowEditorRetry("task-1", "user-1");
 
     expect(mockedDb.chatMessage.update).not.toHaveBeenCalled();
+  });
+
+  test("creates StakworkRun with WORKFLOW_EDITOR type on successful retry", async () => {
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeFullTask()) as never;
+    mockFetchSuccess(888);
+
+    await executeWorkflowEditorRetry("task-1", "user-1");
+
+    expect(mockedDb.stakworkRun.create).toHaveBeenCalledWith({
+      data: {
+        type: "WORKFLOW_EDITOR",
+        taskId: "task-1",
+        featureId: "feature-1",
+        workspaceId: "ws-1",
+        projectId: 888,
+        status: WorkflowStatus.IN_PROGRESS,
+        webhookUrl: "http://localhost:3000/api/stakwork/webhook?task_id=task-1",
+      },
+    });
+  });
+
+  test("does NOT create StakworkRun when project_id is absent in retry response", async () => {
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeFullTask()) as never;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: {} }),
+    }) as unknown as typeof fetch;
+
+    await executeWorkflowEditorRetry("task-1", "user-1");
+
+    expect(mockedDb.stakworkRun.create).not.toHaveBeenCalled();
   });
 });
 

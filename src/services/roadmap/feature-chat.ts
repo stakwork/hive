@@ -7,6 +7,8 @@ import {
   ArtifactType,
   WorkflowStatus,
 } from "@/lib/chat";
+import { StakworkRunType } from "@prisma/client";
+import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { callStakworkAPI } from "@/services/task-workflow";
@@ -248,6 +250,13 @@ export async function sendFeatureChatMessage({
 
   if (!feature) {
     throw new Error("Feature not found");
+  }
+
+  // Authorization: caller must be workspace owner or member before any write
+  const isOwner = feature.workspace.ownerId === userId;
+  const isMember = feature.workspace.members.some((m) => m.userId === userId);
+  if (!isOwner && !isMember) {
+    throw new Error("Access denied");
   }
 
   // Prevent sending while the planning workflow is already running
@@ -541,6 +550,17 @@ export async function sendFeatureChatMessage({
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: new Date(),
           stakworkProjectId: stakworkData.projectId,
+        },
+      });
+
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.PLAN_CHAT,
+          featureId,
+          workspaceId: feature.workspaceId,
+          projectId: stakworkData.projectId,
+          status: WorkflowStatus.IN_PROGRESS,
+          webhookUrl: `${getBaseUrl()}/api/stakwork/webhook?task_id=${featureId}`,
         },
       });
 
