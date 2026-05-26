@@ -347,6 +347,8 @@ export async function POST(
       agentBody.headers = bifrost.headers;
     }
 
+    agentBody.printAgentProgress = true;
+
     const agentResponse = await fetch(`${baseUrl}/logs/agent`, {
       method: "POST",
       headers,
