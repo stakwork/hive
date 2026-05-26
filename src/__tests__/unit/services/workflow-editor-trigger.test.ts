@@ -60,6 +60,7 @@ function makeTask() {
   return {
     id: "task-1",
     workspaceId: "ws-1",
+    featureId: "feature-1",
     workspace: {
       slug: "stakwork",
       ownerId: "user-1",
@@ -108,6 +109,7 @@ describe("triggerWorkflowEditorRun", () => {
     mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
     mockedDb.task.update = vi.fn().mockResolvedValue({}) as never;
     mockedDb.chatMessage.create = vi.fn().mockResolvedValue({ id: "msg-1" }) as never;
+    mockedDb.stakworkRun = { create: vi.fn().mockResolvedValue({}) } as never;
   });
 
   afterEach(() => {
@@ -223,5 +225,44 @@ describe("triggerWorkflowEditorRun", () => {
     // DB lookup was attempted (not short-circuited) and Stakwork was called
     expect(mockedDb.task.findFirst).toHaveBeenCalled();
     expect(global.fetch).toHaveBeenCalled();
+  });
+
+  test("creates StakworkRun with WORKFLOW_EDITOR type when project_id is present", async () => {
+    mockFetchSuccess(456);
+
+    await triggerWorkflowEditorRun({
+      taskId: "task-1",
+      userId: "user-1",
+      message: "Edit the workflow",
+      workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+    });
+
+    expect(mockedDb.stakworkRun.create).toHaveBeenCalledWith({
+      data: {
+        type: "WORKFLOW_EDITOR",
+        taskId: "task-1",
+        featureId: "feature-1",
+        workspaceId: "ws-1",
+        projectId: 456,
+        status: WorkflowStatus.IN_PROGRESS,
+        webhookUrl: "http://localhost:3000/api/stakwork/webhook?task_id=task-1",
+      },
+    });
+  });
+
+  test("does NOT create StakworkRun when project_id is absent", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: {} }),
+    }) as unknown as typeof fetch;
+
+    await triggerWorkflowEditorRun({
+      taskId: "task-1",
+      userId: "user-1",
+      message: "Edit the workflow",
+      workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+    });
+
+    expect(mockedDb.stakworkRun.create).not.toHaveBeenCalled();
   });
 });

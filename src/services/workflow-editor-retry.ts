@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { WorkflowStatus, ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
+import { WorkflowStatus, ChatRole, ChatStatus, ArtifactType, StakworkRunType } from "@prisma/client";
 import { config } from "@/config/env";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -40,6 +40,7 @@ export async function executeWorkflowEditorRetry(
       id: true,
       createdById: true,
       workspaceId: true,
+      featureId: true,
       workspace: {
         select: {
           slug: true,
@@ -180,6 +181,18 @@ export async function executeWorkflowEditorRetry(
     });
 
     if (result.data?.project_id) {
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.WORKFLOW_EDITOR,
+          taskId,
+          featureId: task.featureId ?? null,
+          workspaceId: task.workspaceId,
+          projectId: result.data.project_id,
+          status: WorkflowStatus.IN_PROGRESS,
+          webhookUrl: workflowWebhookUrl,
+        },
+      });
+
       // Find the last USER message by id to update stakworkProjectId
       const lastUserMsg = await db.chatMessage.findFirst({
         where: { taskId, role: ChatRole.USER },

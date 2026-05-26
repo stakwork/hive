@@ -504,6 +504,7 @@ model Task {
   deployments            Deployment[]
   notifications          NotificationTrigger[]
   screenshots            Screenshot[]
+  stakworkRuns           StakworkRun[]
   workflowTask           WorkflowTask?
   assignee               User?                 @relation("TaskAssignee", fields: [assigneeId], references: [id])
   createdBy              User                  @relation("TaskCreator", fields: [createdById], references: [id])
@@ -861,6 +862,7 @@ model StakworkRun {
   type        StakworkRunType
   featureId   String?              @map("feature_id")
   workspaceId String               @map("workspace_id")
+  taskId      String?              @map("task_id")
   status      WorkflowStatus       @default(PENDING)
   result      String?
   dataType    String               @default("string") @map("data_type")
@@ -871,10 +873,12 @@ model StakworkRun {
   autoAccept  Boolean              @default(false) @map("auto_accept")
   agentLogs   AgentLog[]
   feature     Feature?             @relation(fields: [featureId], references: [id])
+  task        Task?                @relation(fields: [taskId], references: [id])
   workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([featureId])
+  @@index([taskId])
   @@index([type])
   @@index([status])
   @@index([projectId])
@@ -1338,6 +1342,8 @@ enum StakworkRunType {
   DIAGRAM_GENERATION
   LEARNING
   REPO_AGENT
+  PLAN_CHAT
+  WORKFLOW_EDITOR
 }
 
 enum StakworkRunDecision {
