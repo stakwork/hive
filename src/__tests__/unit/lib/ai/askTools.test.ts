@@ -25,7 +25,7 @@ vi.mock("@ai-sdk/mcp", () => ({
   createMCPClient: mockCreateMCPClient,
 }));
 
-import { askTools } from "@/lib/ai/askTools";
+import { askTools, repoAgent } from "@/lib/ai/askTools";
 
 describe("askTools", () => {
   const mockSwarmUrl = "https://swarm.example.com";
@@ -425,6 +425,89 @@ describe("askTools", () => {
       const result = await tools.repo_agent.execute({ prompt: "Analyze this code" });
 
       expect(result).toBe("Could not execute repo agent");
+    });
+  });
+
+  describe("repoAgent function — ignoreRepoInfo param", () => {
+    it("includes ignoreRepoInfo: true in request body when passed", async () => {
+      vi.useFakeTimers();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ request_id: "req-ignore-1" }),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: "completed", result: { content: "raw result" } }),
+      });
+
+      const promise = repoAgent(
+        mockSwarmUrl,
+        mockSwarmApiKey,
+        { repo_url: mockRepoUrl, prompt: "My raw prompt", ignoreRepoInfo: true },
+      );
+
+      await vi.advanceTimersByTimeAsync(5000);
+      await promise;
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.ignoreRepoInfo).toBe(true);
+
+      vi.useRealTimers();
+    });
+
+    it("does not include ignoreRepoInfo in request body when omitted", async () => {
+      vi.useFakeTimers();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ request_id: "req-no-ignore" }),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: "completed", result: { content: "result" } }),
+      });
+
+      const promise = repoAgent(
+        mockSwarmUrl,
+        mockSwarmApiKey,
+        { repo_url: mockRepoUrl, prompt: "My prompt" },
+      );
+
+      await vi.advanceTimersByTimeAsync(5000);
+      await promise;
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.ignoreRepoInfo).toBeUndefined();
+
+      vi.useRealTimers();
+    });
+
+    it("does not include ignoreRepoInfo in request body when explicitly false", async () => {
+      vi.useFakeTimers();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ request_id: "req-false-ignore" }),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: "completed", result: { content: "result" } }),
+      });
+
+      const promise = repoAgent(
+        mockSwarmUrl,
+        mockSwarmApiKey,
+        { repo_url: mockRepoUrl, prompt: "My prompt", ignoreRepoInfo: false },
+      );
+
+      await vi.advanceTimersByTimeAsync(5000);
+      await promise;
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body.ignoreRepoInfo).toBe(false);
+
+      vi.useRealTimers();
     });
   });
 
