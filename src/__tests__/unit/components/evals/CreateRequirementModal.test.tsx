@@ -22,12 +22,8 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogContent: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="dialog-content">{children}</div>
   ),
-  DialogHeader: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DialogTitle: ({ children }: { children: React.ReactNode }) => (
-    <h2>{children}</h2>
-  ),
+  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
   DialogFooter: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="dialog-footer">{children}</div>
   ),
@@ -51,6 +47,27 @@ vi.mock("@/components/ui/textarea", () => ({
   ),
 }));
 
+// Mock TagInput: renders a plain input; pressing Enter calls onChange([...items, value])
+vi.mock("@/components/ui/tag-input", () => ({
+  TagInput: ({ items, onChange, placeholder, error }: any) => (
+    <div>
+      <input
+        data-testid={`tag-input-${placeholder}`}
+        placeholder={placeholder}
+        onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            const val = (e.currentTarget as HTMLInputElement).value.trim();
+            if (val) onChange([...items, val]);
+            (e.currentTarget as HTMLInputElement).value = "";
+          }
+        }}
+      />
+      {error && <p>{error}</p>}
+    </div>
+  ),
+}));
+
 import { CreateRequirementModal } from "@/components/evals/CreateRequirementModal";
 import { toast } from "sonner";
 
@@ -61,6 +78,13 @@ const defaultProps = {
   order: 0,
   onCreated: vi.fn(),
 };
+
+/** Helper: type into a TagInput mock and press Enter to add a chip */
+async function addTagItem(placeholder: string, value: string) {
+  const input = screen.getByTestId(`tag-input-${placeholder}`);
+  await userEvent.type(input, value);
+  await userEvent.keyboard("{Enter}");
+}
 
 describe("CreateRequirementModal — validation", () => {
   beforeEach(() => {
@@ -77,13 +101,12 @@ describe("CreateRequirementModal — validation", () => {
   it("blocks submission when name is empty", async () => {
     render(<CreateRequirementModal {...defaultProps} />);
 
-    // Fill in all required fields except name
     await userEvent.type(
       screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
       "Some prompt",
     );
-    await userEvent.type(screen.getByPlaceholderText("The agent correctly..."), "Good output");
-    await userEvent.type(screen.getByPlaceholderText("The agent fails to..."), "Bad output");
+    await addTagItem("The agent correctly...", "Good output");
+    await addTagItem("The agent fails to...", "Bad output");
 
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
 
@@ -101,7 +124,7 @@ describe("CreateRequirementModal — validation", () => {
       screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
       "Some prompt",
     );
-    await userEvent.type(screen.getByPlaceholderText("The agent fails to..."), "Bad output");
+    await addTagItem("The agent fails to...", "Bad output");
     // Leave positive_cases blank
 
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
@@ -120,7 +143,7 @@ describe("CreateRequirementModal — validation", () => {
       screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
       "Some prompt",
     );
-    await userEvent.type(screen.getByPlaceholderText("The agent correctly..."), "Good output");
+    await addTagItem("The agent correctly...", "Good output");
     // Leave negative_cases blank
 
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
@@ -155,8 +178,8 @@ describe("CreateRequirementModal — validation", () => {
       screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
       "Some prompt",
     );
-    await userEvent.type(screen.getByPlaceholderText("The agent correctly..."), "Good output");
-    await userEvent.type(screen.getByPlaceholderText("The agent fails to..."), "Bad output");
+    await addTagItem("The agent correctly...", "Good output");
+    await addTagItem("The agent fails to...", "Bad output");
 
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
 
@@ -181,8 +204,8 @@ describe("CreateRequirementModal — validation", () => {
       screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
       "Prompt",
     );
-    await userEvent.type(screen.getByPlaceholderText("The agent correctly..."), "Good");
-    await userEvent.type(screen.getByPlaceholderText("The agent fails to..."), "Bad");
+    await addTagItem("The agent correctly...", "Good");
+    await addTagItem("The agent fails to...", "Bad");
 
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
 
@@ -191,7 +214,7 @@ describe("CreateRequirementModal — validation", () => {
     });
   });
 
-  it("splits multi-line positive/negative cases correctly", async () => {
+  it("sends multiple positive/negative cases correctly", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ success: true }),
@@ -204,11 +227,12 @@ describe("CreateRequirementModal — validation", () => {
       screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
       "Prompt",
     );
-    // Type multi-line values using the textarea
-    const posTextarea = screen.getByPlaceholderText("The agent correctly...");
-    await userEvent.type(posTextarea, "Case one{Enter}Case two");
-    const negTextarea = screen.getByPlaceholderText("The agent fails to...");
-    await userEvent.type(negTextarea, "Neg one{Enter}{Enter}Neg two");
+    // Add two positive cases via separate Enter presses
+    await addTagItem("The agent correctly...", "Case one");
+    await addTagItem("The agent correctly...", "Case two");
+    // Add two negative cases via separate Enter presses
+    await addTagItem("The agent fails to...", "Neg one");
+    await addTagItem("The agent fails to...", "Neg two");
 
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
 
@@ -218,7 +242,6 @@ describe("CreateRequirementModal — validation", () => {
 
     const callBody = JSON.parse((global.fetch as any).mock.calls[0][1].body);
     expect(callBody.positive_cases).toEqual(["Case one", "Case two"]);
-    // Empty lines should be filtered out
     expect(callBody.negative_cases).toEqual(["Neg one", "Neg two"]);
   });
 });
