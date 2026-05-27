@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { TagInput } from "@/components/ui/tag-input";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface CreateRequirementModalProps {
@@ -31,8 +32,8 @@ export function CreateRequirementModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [promptSnippet, setPromptSnippet] = useState("");
-  const [positiveCases, setPositiveCases] = useState("");
-  const [negativeCases, setNegativeCases] = useState("");
+  const [positiveCases, setPositiveCases] = useState<string[]>([]);
+  const [negativeCases, setNegativeCases] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -40,8 +41,8 @@ export function CreateRequirementModal({
     setName("");
     setDescription("");
     setPromptSnippet("");
-    setPositiveCases("");
-    setNegativeCases("");
+    setPositiveCases([]);
+    setNegativeCases([]);
     setErrors({});
     onOpenChange(false);
   }
@@ -50,11 +51,9 @@ export function CreateRequirementModal({
     const next: Record<string, string> = {};
     if (!name.trim()) next.name = "Name is required";
     if (!promptSnippet.trim()) next.promptSnippet = "Prompt snippet is required";
-    const posLines = positiveCases.split("\n").map((l) => l.trim()).filter(Boolean);
-    const negLines = negativeCases.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (posLines.length === 0) next.positiveCases = "At least one positive case is required";
-    if (negLines.length === 0) next.negativeCases = "At least one negative case is required";
-    return { next, posLines, negLines };
+    if (positiveCases.length === 0) next.positiveCases = "At least one positive case is required";
+    if (negativeCases.length === 0) next.negativeCases = "At least one negative case is required";
+    return { next, posLines: positiveCases, negLines: negativeCases };
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -141,30 +140,28 @@ export function CreateRequirementModal({
 
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="req-positive">
-              Positive Cases (one per line) <span className="text-destructive">*</span>
+              Positive Cases <span className="text-destructive">*</span>
             </label>
-            <Textarea
+            <TagInput
               id="req-positive"
-              value={positiveCases}
-              onChange={(e) => { setPositiveCases(e.target.value); setErrors((p) => ({ ...p, positiveCases: "" })); }}
+              items={positiveCases}
+              onChange={(items) => { setPositiveCases(items); setErrors((p) => ({ ...p, positiveCases: "" })); }}
               placeholder="The agent correctly..."
-              rows={3}
+              error={errors.positiveCases}
             />
-            {errors.positiveCases && <p className="text-xs text-destructive">{errors.positiveCases}</p>}
           </div>
 
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="req-negative">
-              Negative Cases (one per line) <span className="text-destructive">*</span>
+              Negative Cases <span className="text-destructive">*</span>
             </label>
-            <Textarea
+            <TagInput
               id="req-negative"
-              value={negativeCases}
-              onChange={(e) => { setNegativeCases(e.target.value); setErrors((p) => ({ ...p, negativeCases: "" })); }}
+              items={negativeCases}
+              onChange={(items) => { setNegativeCases(items); setErrors((p) => ({ ...p, negativeCases: "" })); }}
               placeholder="The agent fails to..."
-              rows={3}
+              error={errors.negativeCases}
             />
-            {errors.negativeCases && <p className="text-xs text-destructive">{errors.negativeCases}</p>}
           </div>
 
           <DialogFooter>
