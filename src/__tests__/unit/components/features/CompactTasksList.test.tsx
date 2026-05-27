@@ -1235,6 +1235,74 @@ describe("CompactTasksList", () => {
       const graph = screen.getByTestId("dependency-graph");
       expect(graph.className).toContain("h-[380px]");
     });
+
+    test("auto-opens graph when tasks transition from 0 to N (post-generation)", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const feature = createMockFeature([]);
+
+      const { rerender } = render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Initially no tasks → hasDependencies = false → collapsible not rendered
+      expect(screen.queryByTestId("collapsible")).not.toBeInTheDocument();
+
+      // Tasks arrive via Pusher / generation
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const updatedFeature = createMockFeature([task1, task2]);
+
+      rerender(
+        <CompactTasksList
+          feature={updatedFeature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("collapsible")).toHaveAttribute("data-open", "true");
+    });
+
+    test("does not auto-open graph when adding a task to an already-populated list (N → N+1)", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      // Start with 1 task — graphOpen initialises to false
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const feature = createMockFeature([task1]);
+
+      const { rerender } = render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Initially no dependencies on the 1 task → hasDependencies = false → collapsible not rendered
+      expect(screen.queryByTestId("collapsible")).not.toBeInTheDocument();
+
+      // A second task is added (1 → 2, not 0 → N)
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const updatedFeature = createMockFeature([task1, task2]);
+
+      rerender(
+        <CompactTasksList
+          feature={updatedFeature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Graph should remain closed — effect only fires on 0 → N transition
+      expect(screen.getByTestId("collapsible")).toHaveAttribute("data-open", "false");
+    });
   });
 
   describe("Pusher feature channel subscription", () => {
