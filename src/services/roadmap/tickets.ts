@@ -18,6 +18,7 @@ import { saveWorkflowArtifact } from "@/services/workflow-editor";
 import { parsePRUrl, getOctokitForWorkspace, checkRepoAllowsAutoMerge } from "@/lib/github";
 import { AutoMergeNotAllowedError, AutoMergeCheckFailedError } from "@/lib/github/errors";
 import { logger } from "@/lib/logger";
+import { releaseTaskPod } from "@/lib/pods/utils";
 
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater).
@@ -741,6 +742,27 @@ export async function deleteTicket(
         },
       },
     });
+  }
+
+  // Release any active pod before soft-delete to avoid orphaned pods
+  const podInfo = await db.task.findUnique({
+    where: { id: taskId },
+    select: { podId: true, workspaceId: true },
+  });
+
+  if (podInfo?.podId) {
+    try {
+      await releaseTaskPod({
+        taskId,
+        podId: podInfo.podId,
+        workspaceId: podInfo.workspaceId,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
+    } catch (err) {
+      console.error("[deleteTicket] Failed to release pod:", err);
+    }
   }
 
   // Perform soft-delete
