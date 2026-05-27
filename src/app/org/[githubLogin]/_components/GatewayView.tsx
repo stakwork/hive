@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
+
+const SESSION_REFRESH_THRESHOLD_MS = 7 * 60 * 60 * 1000; // 7 hours
 
 interface GatewayViewProps {
   githubLogin: string;
@@ -27,41 +29,71 @@ interface TicketResponse {
  *
  * On any failure (no swarm configured, gateway unreachable, etc.) we
  * surface a centered message instead of an empty iframe.
+ *
+ * A `visibilitychange` listener silently re-mints a fresh ticket and
+ * reloads the iframe when the user returns to the tab after >7 hours,
+ * preventing a broken/logged-out state when the `bifrost_session`
+ * cookie has expired.
  */
 export function GatewayView({ githubLogin }: GatewayViewProps) {
   const [src, setSrc] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const loadedAt = useRef<number | null>(null);
+  const cancelRef = useRef<boolean>(false);
+
+  const loadGateway = async () => {
+    loadedAt.current = null;
+    cancelRef.current = false;
+
+    try {
+      const resp = await fetch(
+        `/api/orgs/${encodeURIComponent(githubLogin)}/gateway/ticket`,
+        { method: "POST" },
+      );
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || `HTTP ${resp.status}`);
+      }
+      const body = (await resp.json()) as TicketResponse;
+      if (cancelRef.current) return;
+      // Trailing slash on `/ui/` matters — the SPA's wouter base
+      // expects it; without the slash the gateway 302s back here.
+      setSrc(
+        `${body.url.replace(/\/$/, "")}/_plugin/ui/?ticket=${encodeURIComponent(body.ticket)}`,
+      );
+      loadedAt.current = Date.now();
+    } catch (e) {
+      if (!cancelRef.current) setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false;
     setSrc(null);
     setErr(null);
-
-    (async () => {
-      try {
-        const resp = await fetch(
-          `/api/orgs/${encodeURIComponent(githubLogin)}/gateway/ticket`,
-          { method: "POST" },
-        );
-        if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(text || `HTTP ${resp.status}`);
-        }
-        const body = (await resp.json()) as TicketResponse;
-        if (cancelled) return;
-        // Trailing slash on `/ui/` matters — the SPA's wouter base
-        // expects it; without the slash the gateway 302s back here.
-        setSrc(
-          `${body.url.replace(/\/$/, "")}/_plugin/ui/?ticket=${encodeURIComponent(body.ticket)}`,
-        );
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
-      }
-    })();
+    loadGateway();
 
     return () => {
-      cancelled = true;
+      cancelRef.current = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [githubLogin]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      if (
+        loadedAt.current !== null &&
+        Date.now() - loadedAt.current > SESSION_REFRESH_THRESHOLD_MS
+      ) {
+        setSrc(null); // show spinner immediately
+        setErr(null);
+        loadGateway();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [githubLogin]);
 
   if (err) {
