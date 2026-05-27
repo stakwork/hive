@@ -617,7 +617,7 @@ describe('ChatMessage', () => {
         />
       );
 
-      const bubble = screen.getByTestId('markdown-renderer').parentElement!;
+      const bubble = screen.getByTestId('markdown-renderer').parentElement!.parentElement!;
       expect(bubble).toHaveClass('group');
     });
 
