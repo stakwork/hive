@@ -7,6 +7,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { EvalSetCard } from "./EvalSetCard";
 import { EvalSetDetail } from "./EvalSetDetail";
 import { CreateEvalSetModal } from "./CreateEvalSetModal";
+import { EditEvalSetModal } from "./EditEvalSetModal";
 import type { JarvisNode } from "@/types/jarvis";
 
 export function EvalDashboard() {
@@ -15,6 +16,7 @@ export function EvalDashboard() {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [selected, setSelected] = useState<JarvisNode | null>(null);
+  const [editTarget, setEditTarget] = useState<JarvisNode | null>(null);
 
   async function fetchEvalSets() {
     setLoading(true);
@@ -33,6 +35,19 @@ export function EvalDashboard() {
     fetchEvalSets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
+
+  async function handleDelete(evalSet: JarvisNode) {
+    try {
+      const res = await fetch(`/api/workspaces/${slug}/evals/${evalSet.ref_id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Request failed");
+      toast.success("Eval set deleted");
+      fetchEvalSets();
+    } catch {
+      toast.error("Failed to delete eval set");
+    }
+  }
 
   if (selected) {
     return (
@@ -74,6 +89,8 @@ export function EvalDashboard() {
               key={evalSet.ref_id}
               evalSet={evalSet}
               onClick={() => setSelected(evalSet)}
+              onEdit={() => setEditTarget(evalSet)}
+              onDelete={() => handleDelete(evalSet)}
             />
           ))}
         </div>
@@ -87,6 +104,18 @@ export function EvalDashboard() {
           setCreateOpen(false);
         }}
       />
+
+      {editTarget !== null && (
+        <EditEvalSetModal
+          open={true}
+          onOpenChange={(open) => { if (!open) setEditTarget(null); }}
+          evalSet={editTarget}
+          onUpdated={() => {
+            fetchEvalSets();
+            setEditTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }
