@@ -33,7 +33,7 @@ function generateUniqueId(): string {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
-const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS", "VERIFY"];
+const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS", "VERIFY", "LOGS"];
 
 const PLAN_SECTION_KEYS = ["brief", "requirements", "architecture", "user-stories"] as const;
 

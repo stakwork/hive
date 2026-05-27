@@ -4,7 +4,7 @@ import React from "react";
 import { ArtifactType } from "@/lib/chat";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Monitor, Network, FileCode, Code2, Terminal, ClipboardList, ListChecks, ShieldCheck } from "lucide-react";
+import { Monitor, Network, FileCode, Code2, Terminal, ClipboardList, ListChecks, ShieldCheck, ScrollText } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,7 @@ const VISUAL_ARTIFACTS: ArtifactButton[] = [
   { type: "PLAN", icon: ClipboardList, label: "Plan" },
   { type: "TASKS", icon: ListChecks, label: "Tasks" },
   { type: "VERIFY", icon: ShieldCheck, label: "Verify" },
+  { type: "LOGS", icon: ScrollText, label: "Logs" },
   { type: "BROWSER", icon: Monitor, label: "Live Preview" },
   { type: "GRAPH", icon: PiGraphFill, label: "Graph" },
   { type: "WORKFLOW", icon: Network, label: "Workflow" },
@@ -29,7 +30,7 @@ const CODE_ARTIFACTS: ArtifactButton[] = [
   { type: "IDE", icon: Terminal, label: "IDE" },
 ];
 
-const LABELED_TABS = new Set<ArtifactType>(["PLAN", "TASKS", "VERIFY"]);
+const LABELED_TABS = new Set<ArtifactType>(["PLAN", "TASKS", "VERIFY", "LOGS"]);
 
 interface ArtifactsHeaderProps {
   availableArtifacts: ArtifactType[];
