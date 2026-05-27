@@ -4,6 +4,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 globalThis.React = React;
 
@@ -23,6 +24,55 @@ vi.mock("@/components/evals/LinkRunModal", () => ({
   LinkRunModal: () => null,
 }));
 
+vi.mock("@/components/evals/EditRequirementModal", () => ({
+  EditRequirementModal: ({
+    open,
+    requirement,
+    onUpdated,
+    onOpenChange,
+  }: {
+    open: boolean;
+    requirement: { properties?: { name?: string }; ref_id: string };
+    onUpdated: () => void;
+    onOpenChange: (open: boolean) => void;
+  }) =>
+    open ? (
+      <div data-testid="edit-req-modal">
+        <span data-testid="edit-req-name">{String(requirement.properties?.name ?? "")}</span>
+        <button data-testid="mock-save-req" onClick={onUpdated}>Save</button>
+        <button data-testid="mock-close-req" onClick={() => onOpenChange(false)}>Close</button>
+      </div>
+    ) : null,
+}));
+
+vi.mock("@/components/ui/action-menu", () => ({
+  ActionMenu: ({
+    actions,
+  }: {
+    actions: Array<{
+      label: string;
+      onClick?: () => void;
+      confirmation?: { onConfirm: () => void };
+    }>;
+  }) => (
+    <div data-testid="action-menu">
+      {actions.map((action, i) => (
+        <button
+          key={i}
+          data-testid={`req-action-${action.label.toLowerCase()}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (action.onClick) action.onClick();
+            if (action.confirmation) action.confirmation.onConfirm();
+          }}
+        >
+          {action.label}
+        </button>
+      ))}
+    </div>
+  ),
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({ children, onClick, ...props }: any) => (
     <button onClick={onClick} {...props}>{children}</button>
@@ -40,10 +90,13 @@ vi.mock("@/components/ui/skeleton", () => ({
 vi.mock("lucide-react", () => ({
   ArrowLeft: () => <span>←</span>,
   Link2: () => <span>🔗</span>,
+  Pencil: () => <span>✏️</span>,
   Plus: () => <span>+</span>,
+  Trash2: () => <span>🗑️</span>,
 }));
 
 import { EvalSetDetail } from "@/components/evals/EvalSetDetail";
+import { toast } from "sonner";
 
 const EVAL_SET = {
   ref_id: "eval-set-1",
@@ -83,7 +136,7 @@ describe("EvalSetDetail", () => {
     vi.clearAllMocks();
   });
 
-  it("fetches from the correct requirements endpoint (not the list-all-evals endpoint)", async () => {
+  it("fetches from the correct requirements endpoint", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       json: async () => ({ data: { nodes: [], total: 0 } }),
     });
@@ -96,9 +149,7 @@ describe("EvalSetDetail", () => {
     });
 
     const calledUrl: string = fetchMock.mock.calls[0][0];
-    // Must call the requirements endpoint
     expect(calledUrl).toBe("/api/workspaces/test-ws/evals/eval-set-1/requirements");
-    // Must NOT call the list-all endpoint
     expect(calledUrl).not.toContain("?evalSetId=");
   });
 
@@ -138,7 +189,6 @@ describe("EvalSetDetail", () => {
   });
 
   it("renders requirements sorted by order property", async () => {
-    // Return in reverse order — component should sort by order
     const reversedNodes = [...MOCK_REQUIREMENTS].reverse();
     global.fetch = vi.fn().mockResolvedValue({
       json: async () => ({ data: { nodes: reversedNodes, total: 2 } }),
@@ -164,6 +214,96 @@ describe("EvalSetDetail", () => {
 
     await waitFor(() => {
       expect(screen.getByText("My Eval Set")).toBeTruthy();
+    });
+  });
+
+  it("renders ActionMenu for each requirement row", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_REQUIREMENTS, total: 2 } }),
+    }) as any;
+
+    render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("action-menu")).toHaveLength(2);
+    });
+  });
+
+  it("opens EditRequirementModal with correct requirement when Edit is clicked", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_REQUIREMENTS, total: 2 } }),
+    }) as any;
+
+    render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+
+    await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(2));
+
+    const editButtons = screen.getAllByTestId("req-action-edit");
+    await userEvent.click(editButtons[0]);
+
+    expect(screen.getByTestId("edit-req-modal")).toBeTruthy();
+    expect(screen.getByTestId("edit-req-name").textContent).toBe("Req Alpha");
+  });
+
+  it("re-fetches after requirement is updated and closes modal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_REQUIREMENTS, total: 2 } }),
+    });
+    global.fetch = fetchMock as any;
+
+    render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+
+    await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(2));
+
+    await userEvent.click(screen.getAllByTestId("req-action-edit")[0]);
+    await userEvent.click(screen.getByTestId("mock-save-req"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByTestId("edit-req-modal")).toBeNull();
+  });
+
+  it("calls DELETE API and refreshes list when Delete is confirmed", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ json: async () => ({ data: { nodes: MOCK_REQUIREMENTS, total: 2 } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) }) // DELETE
+      .mockResolvedValue({ json: async () => ({ data: { nodes: [MOCK_REQUIREMENTS[1]], total: 1 } }) });
+    global.fetch = fetchMock as any;
+
+    render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+
+    await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(2));
+
+    const deleteButtons = screen.getAllByTestId("req-action-delete");
+    await userEvent.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/workspaces/test-ws/evals/eval-set-1/requirements/req-1",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("Requirement deleted");
+    });
+  });
+
+  it("shows error toast when DELETE requirement fails", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ json: async () => ({ data: { nodes: MOCK_REQUIREMENTS, total: 2 } }) })
+      .mockResolvedValueOnce({ ok: false }); // DELETE fails
+    global.fetch = fetchMock as any;
+
+    render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+
+    await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(2));
+
+    await userEvent.click(screen.getAllByTestId("req-action-delete")[0]);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to delete requirement");
     });
   });
 });
