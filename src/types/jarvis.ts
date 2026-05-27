@@ -18,7 +18,8 @@ export interface JarvisResponse {
 
 export interface UpdateNodeRequest {
   ref_id: string;
-  properties: Record<string, unknown>;
+  node_type: string;
+  node_data: Record<string, unknown>;
 }
 
 export interface JarvisConnectionConfig {

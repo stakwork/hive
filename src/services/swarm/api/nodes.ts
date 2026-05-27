@@ -190,7 +190,8 @@ export async function updateNode(
     method: "PUT",
     data: {
       ref_id: request.ref_id,
-      properties: request.properties,
+      node_type: request.node_type,
+      node_data: request.node_data,
     },
   });
 
@@ -202,4 +203,76 @@ export async function updateNode(
   }
 
   return { success: true };
+}
+
+export async function deleteNode(
+  config: JarvisConnectionConfig,
+  refId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const url = `${config.jarvisUrl.replace(/\/$/, "")}/node/${encodeURIComponent(refId)}`;
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "x-api-token": config.apiKey,
+        "X-Is-Admin": "true",
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      console.error("[Jarvis Nodes] deleteNode failed:", response.status, responseText);
+      return {
+        success: false,
+        error: `Request failed with status ${response.status}`,
+      };
+    }
+
+    const body = await response.json().catch(() => ({})) as { status?: string };
+    if (body?.status === "success") {
+      return { success: true };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("[Jarvis Nodes] deleteNode error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Request failed",
+    };
+  }
+}
+
+export async function deleteEdge(
+  config: JarvisConnectionConfig,
+  edgeRefId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const url = `${config.jarvisUrl.replace(/\/$/, "")}/node/edge/${encodeURIComponent(edgeRefId)}`;
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "x-api-token": config.apiKey,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      console.error("[Jarvis Nodes] deleteEdge failed:", response.status, responseText);
+      return {
+        success: false,
+        error: `Request failed with status ${response.status}`,
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("[Jarvis Nodes] deleteEdge error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Request failed",
+    };
+  }
 }
