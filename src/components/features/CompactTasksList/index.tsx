@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, Copy, Sparkles, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -124,6 +124,14 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   }, [defaultPhase?.tasks]);
 
   const [graphOpen, setGraphOpen] = useState(tasks.length > 1);
+
+  const prevTasksLengthRef = useRef(tasks.length);
+  useEffect(() => {
+    if (prevTasksLengthRef.current === 0 && tasks.length > 0) {
+      setGraphOpen(true);
+    }
+    prevTasksLengthRef.current = tasks.length;
+  }, [tasks.length]);
 
   const hasDependencies = useMemo(
     () => tasks.some((t) => (t.dependsOnTaskIds ?? []).length > 0),
