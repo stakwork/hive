@@ -3,9 +3,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Link2, Plus } from "lucide-react";
+import { ActionMenu } from "@/components/ui/action-menu";
+import { ArrowLeft, Link2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { CreateRequirementModal } from "./CreateRequirementModal";
+import { EditRequirementModal } from "./EditRequirementModal";
 import { LinkRunModal } from "./LinkRunModal";
 import type { JarvisNode } from "@/types/jarvis";
 
@@ -33,6 +35,7 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<{ reqId: string } | null>(null);
+  const [editReqTarget, setEditReqTarget] = useState<RequirementNode | null>(null);
 
   async function fetchRequirements() {
     setLoading(true);
@@ -57,6 +60,20 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
     fetchRequirements();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evalSet.ref_id, slug]);
+
+  async function handleDeleteRequirement(reqId: string) {
+    try {
+      const res = await fetch(
+        `/api/workspaces/${slug}/evals/${evalSet.ref_id}/requirements/${reqId}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error("Request failed");
+      toast.success("Requirement deleted");
+      fetchRequirements();
+    } catch {
+      toast.error("Failed to delete requirement");
+    }
+  }
 
   const evalSetName = String(evalSet.properties?.name ?? "Eval Set");
 
@@ -143,15 +160,37 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
                       </p>
                     )}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0"
-                    onClick={() => setLinkTarget({ reqId: req.ref_id })}
-                  >
-                    <Link2 className="mr-1 h-3 w-3" />
-                    Link Run
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setLinkTarget({ reqId: req.ref_id })}
+                    >
+                      <Link2 className="mr-1 h-3 w-3" />
+                      Link Run
+                    </Button>
+                    <ActionMenu
+                      actions={[
+                        {
+                          label: "Edit",
+                          icon: Pencil,
+                          onClick: () => setEditReqTarget(req),
+                        },
+                        {
+                          label: "Delete",
+                          icon: Trash2,
+                          variant: "destructive",
+                          confirmation: {
+                            title: "Delete requirement?",
+                            description:
+                              "This will permanently remove this requirement from the eval set.",
+                            confirmText: "Delete",
+                            onConfirm: () => handleDeleteRequirement(req.ref_id),
+                          },
+                        },
+                      ]}
+                    />
+                  </div>
                 </div>
               </div>
             );
@@ -174,6 +213,19 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
           evalSetId={evalSet.ref_id}
           reqId={linkTarget.reqId}
           onLinked={fetchRequirements}
+        />
+      )}
+
+      {editReqTarget !== null && (
+        <EditRequirementModal
+          open={true}
+          onOpenChange={(open) => { if (!open) setEditReqTarget(null); }}
+          evalSetId={evalSet.ref_id}
+          requirement={editReqTarget}
+          onUpdated={() => {
+            fetchRequirements();
+            setEditReqTarget(null);
+          }}
         />
       )}
     </div>

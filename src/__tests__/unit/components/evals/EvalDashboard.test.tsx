@@ -19,9 +19,25 @@ vi.mock("sonner", () => ({
 
 // Mock child components so we can test EvalDashboard in isolation
 vi.mock("@/components/evals/EvalSetCard", () => ({
-  EvalSetCard: ({ evalSet, onClick }: { evalSet: { properties?: { name?: string }; ref_id: string }; onClick: () => void }) => (
+  EvalSetCard: ({
+    evalSet,
+    onClick,
+    onEdit,
+    onDelete,
+  }: {
+    evalSet: { properties?: { name?: string }; ref_id: string };
+    onClick: () => void;
+    onEdit: () => void;
+    onDelete: () => void;
+  }) => (
     <div data-testid="eval-set-card" onClick={onClick}>
-      {String(evalSet.properties?.name ?? evalSet.ref_id)}
+      <span>{String(evalSet.properties?.name ?? evalSet.ref_id)}</span>
+      <button data-testid={`edit-${evalSet.ref_id}`} onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+        Edit
+      </button>
+      <button data-testid={`delete-${evalSet.ref_id}`} onClick={(e) => { e.stopPropagation(); onDelete(); }}>
+        Delete
+      </button>
     </div>
   ),
 }));
@@ -44,6 +60,27 @@ vi.mock("@/components/evals/CreateEvalSetModal", () => ({
     ) : null,
 }));
 
+vi.mock("@/components/evals/EditEvalSetModal", () => ({
+  EditEvalSetModal: ({
+    open,
+    evalSet,
+    onUpdated,
+    onOpenChange,
+  }: {
+    open: boolean;
+    evalSet: { properties?: { name?: string } };
+    onUpdated: () => void;
+    onOpenChange: (open: boolean) => void;
+  }) =>
+    open ? (
+      <div data-testid="edit-modal">
+        <span data-testid="edit-modal-name">{String(evalSet.properties?.name ?? "")}</span>
+        <button data-testid="mock-save" onClick={onUpdated}>Save</button>
+        <button data-testid="mock-close" onClick={() => onOpenChange(false)}>Close</button>
+      </div>
+    ) : null,
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({ children, onClick, size, ...props }: any) => (
     <button onClick={onClick} {...props}>{children}</button>
@@ -59,6 +96,7 @@ vi.mock("lucide-react", () => ({
 }));
 
 import { EvalDashboard } from "@/components/evals/EvalDashboard";
+import { toast } from "sonner";
 
 const MOCK_NODES = [
   { ref_id: "eval-1", node_type: "EvalSet", properties: { name: "Code Quality Evals", description: "desc1" } },
@@ -71,7 +109,6 @@ describe("EvalDashboard", () => {
   });
 
   it("shows skeleton cards while loading", async () => {
-    // Never resolve to stay in loading state
     global.fetch = vi.fn(() => new Promise(() => {})) as any;
 
     render(<EvalDashboard />);
@@ -90,9 +127,7 @@ describe("EvalDashboard", () => {
     await waitFor(() => {
       expect(screen.getByTestId("empty-state")).toBeTruthy();
     });
-    expect(screen.getByTestId("empty-state").textContent).toContain(
-      "No eval sets yet",
-    );
+    expect(screen.getByTestId("empty-state").textContent).toContain("No eval sets yet");
   });
 
   it("renders eval set cards when nodes are returned", async () => {
@@ -177,6 +212,84 @@ describe("EvalDashboard", () => {
 
     await waitFor(() => {
       expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2);
+    });
+  });
+
+  it("opens EditEvalSetModal with the correct eval set when Edit is clicked", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_NODES, total: 2 } }),
+    }) as any;
+
+    render(<EvalDashboard />);
+
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2));
+
+    await userEvent.click(screen.getByTestId("edit-eval-1"));
+
+    expect(screen.getByTestId("edit-modal")).toBeTruthy();
+    expect(screen.getByTestId("edit-modal-name").textContent).toBe("Code Quality Evals");
+  });
+
+  it("re-fetches after eval set is updated and closes modal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_NODES, total: 2 } }),
+    });
+    global.fetch = fetchMock as any;
+
+    render(<EvalDashboard />);
+
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2));
+
+    await userEvent.click(screen.getByTestId("edit-eval-1"));
+    await userEvent.click(screen.getByTestId("mock-save"));
+
+    await waitFor(() => {
+      // fetch called again after update
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    // Modal closed
+    expect(screen.queryByTestId("edit-modal")).toBeNull();
+  });
+
+  it("calls DELETE API and refreshes list when Delete is confirmed", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ json: async () => ({ data: { nodes: MOCK_NODES, total: 2 } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) }) // DELETE
+      .mockResolvedValue({ json: async () => ({ data: { nodes: [MOCK_NODES[1]], total: 1 } }) }); // re-fetch
+    global.fetch = fetchMock as any;
+
+    render(<EvalDashboard />);
+
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2));
+
+    await userEvent.click(screen.getByTestId("delete-eval-1"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/workspaces/test-ws/evals/eval-1",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("Eval set deleted");
+    });
+  });
+
+  it("shows error toast when DELETE fails", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ json: async () => ({ data: { nodes: MOCK_NODES, total: 2 } }) })
+      .mockResolvedValueOnce({ ok: false }); // DELETE fails
+    global.fetch = fetchMock as any;
+
+    render(<EvalDashboard />);
+
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2));
+
+    await userEvent.click(screen.getByTestId("delete-eval-1"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to delete eval set");
     });
   });
 });

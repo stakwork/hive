@@ -1,13 +1,17 @@
+import { Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ActionMenu } from "@/components/ui/action-menu";
 import type { JarvisNode } from "@/types/jarvis";
 
 interface EvalSetCardProps {
   evalSet: JarvisNode;
   onClick: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }
 
-export function EvalSetCard({ evalSet, onClick }: EvalSetCardProps) {
+export function EvalSetCard({ evalSet, onClick, onEdit, onDelete }: EvalSetCardProps) {
   const name = String(evalSet.properties?.name ?? "Unnamed Eval Set");
   const description = evalSet.properties?.description
     ? String(evalSet.properties.description)
@@ -26,9 +30,32 @@ export function EvalSetCard({ evalSet, onClick }: EvalSetCardProps) {
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base font-semibold">{name}</CardTitle>
-          <Badge variant="secondary" className="shrink-0">
-            {requirementCount} req{requirementCount !== 1 ? "s" : ""}
-          </Badge>
+          <div className="flex items-center gap-1 shrink-0">
+            <Badge variant="secondary">
+              {requirementCount} req{requirementCount !== 1 ? "s" : ""}
+            </Badge>
+            <ActionMenu
+              actions={[
+                {
+                  label: "Edit",
+                  icon: Pencil,
+                  onClick: onEdit,
+                },
+                {
+                  label: "Delete",
+                  icon: Trash2,
+                  variant: "destructive",
+                  confirmation: {
+                    title: "Delete eval set?",
+                    description:
+                      "This will remove the eval set. Requirements will not be deleted.",
+                    confirmText: "Delete",
+                    onConfirm: onDelete,
+                  },
+                },
+              ]}
+            />
+          </div>
         </div>
       </CardHeader>
       {description && (
