@@ -53,6 +53,7 @@ export async function repoAgent(
     model?: string;
     skills?: Record<string, boolean>;
     subAgents?: SubAgent[];
+    ignoreRepoInfo?: boolean;
   },
   /**
    * Optional Bifrost routing. When provided, the swarm-side `repo/agent`
