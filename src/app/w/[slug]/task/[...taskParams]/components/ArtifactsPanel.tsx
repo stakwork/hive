@@ -11,13 +11,14 @@ import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowAr
 import { PlanArtifactPanel, PlanData, SectionHighlights } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
 import { CompactTasksList } from "@/components/features/CompactTasksList";
 import { VerifyPanel } from "@/app/w/[slug]/plan/[featureId]/components/VerifyPanel";
+import { LogsArtifactPanel } from "@/components/agent-logs/LogsArtifactPanel";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import type { FeatureDetail } from "@/types/roadmap";
 
-const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
+const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS", "LOGS"];
 
 // Tabs that should auto-switch when they first become available,
 // overriding whatever tab is currently active (e.g. ephemeral WORKFLOW).
@@ -65,6 +66,7 @@ export function ArtifactsPanel({
   isSuperAdmin = false,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
+  const [agentLogId, setAgentLogId] = useState<string | null>(null);
   
   // Support controlled mode (plan) and uncontrolled mode (task)
   const isControlled = controlledTab !== undefined;
@@ -156,6 +158,27 @@ export function ArtifactsPanel({
   const hasFeature = !!feature && !!featureId && !!onFeatureUpdate;
   const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
   const hasArchitecture = !!feature?.architecture;
+
+  // Resolve the most recent agent log ID for the current feature (plan mode only)
+  useEffect(() => {
+    if (!hasFeature || !featureId || !workspaceId) return;
+
+    const resolveAgentLogId = async () => {
+      try {
+        const res = await fetch(
+          `/api/agent-logs?feature_id=${featureId}&workspace_id=${workspaceId}&limit=1`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const firstLog = data?.data?.[0] ?? null;
+        setAgentLogId(firstLog?.id ?? null);
+      } catch {
+        // best-effort — silently ignore
+      }
+    };
+
+    resolveAgentLogId();
+  }, [hasFeature, featureId, workspaceId]);
 
   // Fetch attachment count once when tasks first exist — drives Verify tab enabled state
   useEffect(() => {
@@ -305,6 +328,7 @@ export function ArtifactsPanel({
     if (planData) tabs.push("PLAN");
     if (hasFeature && showTasksTab) tabs.push("TASKS");
     if (hasFeature && showVerifyTab) tabs.push("VERIFY");
+    if (hasFeature && !!agentLogId) tabs.push("LOGS");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
@@ -312,7 +336,7 @@ export function ArtifactsPanel({
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [planData, hasFeature, showTasksTab, showVerifyTab, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [planData, hasFeature, showTasksTab, showVerifyTab, agentLogId, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab, or fall back when active tab is removed
   // Guard: don't reset during active generation to prevent TASKS tab from disappearing
@@ -422,6 +446,11 @@ export function ArtifactsPanel({
               <div className="h-full overflow-auto p-4">
                 <VerifyPanel feature={feature!} workspaceId={workspaceId!} />
               </div>
+            </div>
+          )}
+          {hasFeature && agentLogId && (
+            <div className="h-full" hidden={activeTab !== "LOGS"}>
+              <LogsArtifactPanel logId={agentLogId} />
             </div>
           )}
           {codeArtifacts.length > 0 && (
