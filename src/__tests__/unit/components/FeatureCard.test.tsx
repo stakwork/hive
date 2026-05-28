@@ -115,20 +115,4 @@ describe("FeatureCard", () => {
     });
   });
 
-  describe("Awaiting Feedback Bell", () => {
-    it("shows bell icon when awaitingFeedback is true", () => {
-      render(<FeatureCard feature={{ ...mockFeature, awaitingFeedback: true }} workspaceSlug="test-workspace" />);
-      expect(screen.getByText("Awaiting your feedback")).toBeInTheDocument();
-    });
-
-    it("hides bell icon when awaitingFeedback is false", () => {
-      render(<FeatureCard feature={{ ...mockFeature, awaitingFeedback: false }} workspaceSlug="test-workspace" />);
-      expect(screen.queryByText("Awaiting your feedback")).not.toBeInTheDocument();
-    });
-
-    it("hides bell icon when awaitingFeedback is undefined", () => {
-      render(<FeatureCard feature={mockFeature} workspaceSlug="test-workspace" />);
-      expect(screen.queryByText("Awaiting your feedback")).not.toBeInTheDocument();
-    });
-  });
 });

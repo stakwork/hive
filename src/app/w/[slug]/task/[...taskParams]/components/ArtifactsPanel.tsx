@@ -66,7 +66,7 @@ export function ArtifactsPanel({
   isSuperAdmin = false,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
-  const [agentLogId, setAgentLogId] = useState<string | null>(null);
+  const [agentLogs, setAgentLogs] = useState<{ id: string; agent: string; createdAt: string }[]>([]);
   
   // Support controlled mode (plan) and uncontrolled mode (task)
   const isControlled = controlledTab !== undefined;
@@ -159,25 +159,36 @@ export function ArtifactsPanel({
   const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
   const hasArchitecture = !!feature?.architecture;
 
-  // Resolve the most recent agent log ID for the current feature (plan mode only)
+  // Fetch agent logs for the current feature (plan mode only)
   useEffect(() => {
     if (!hasFeature || !featureId || !workspaceId) return;
 
-    const resolveAgentLogId = async () => {
+    const resolveAgentLogs = async () => {
       try {
         const res = await fetch(
-          `/api/agent-logs?feature_id=${featureId}&workspace_id=${workspaceId}&limit=1`
+          `/api/agent-logs?feature_id=${featureId}&workspace_id=${workspaceId}&limit=20`
         );
         if (!res.ok) return;
         const data = await res.json();
-        const firstLog = data?.data?.[0] ?? null;
-        setAgentLogId(firstLog?.id ?? null);
+        const logs = (data?.data ?? []).map(
+          (l: { id: string; agent: string; createdAt: string }) => ({
+            id: l.id,
+            agent: l.agent,
+            createdAt: l.createdAt,
+          }),
+        );
+        // API returns desc (newest first); we want ascending (earliest left, latest right)
+        logs.sort(
+          (a: { createdAt: string }, b: { createdAt: string }) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+        setAgentLogs(logs);
       } catch {
         // best-effort — silently ignore
       }
     };
 
-    resolveAgentLogId();
+    resolveAgentLogs();
   }, [hasFeature, featureId, workspaceId]);
 
   // Fetch attachment count once when tasks first exist — drives Verify tab enabled state
@@ -328,7 +339,7 @@ export function ArtifactsPanel({
     if (planData) tabs.push("PLAN");
     if (hasFeature && showTasksTab) tabs.push("TASKS");
     if (hasFeature && showVerifyTab) tabs.push("VERIFY");
-    if (hasFeature && !!agentLogId) tabs.push("LOGS");
+    if (hasFeature && agentLogs.length > 0) tabs.push("LOGS");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
@@ -336,7 +347,7 @@ export function ArtifactsPanel({
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [planData, hasFeature, showTasksTab, showVerifyTab, agentLogId, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [planData, hasFeature, showTasksTab, showVerifyTab, agentLogs.length, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab, or fall back when active tab is removed
   // Guard: don't reset during active generation to prevent TASKS tab from disappearing
@@ -448,9 +459,9 @@ export function ArtifactsPanel({
               </div>
             </div>
           )}
-          {hasFeature && agentLogId && (
+          {hasFeature && agentLogs.length > 0 && featureId && (
             <div className="h-full" hidden={activeTab !== "LOGS"}>
-              <LogsArtifactPanel logId={agentLogId} />
+              <LogsArtifactPanel logs={agentLogs} featureId={featureId} />
             </div>
           )}
           {codeArtifacts.length > 0 && (
