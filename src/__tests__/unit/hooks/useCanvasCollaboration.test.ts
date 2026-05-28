@@ -27,16 +27,13 @@ vi.mock("@/lib/pusher", () => ({
   },
 }));
 
-// Route helper — re-export the real function shape so the hook can import it
-vi.mock(
-  "@/app/api/orgs/[githubLogin]/canvas/collaboration/route",
-  () => ({
-    getCanvasPresenceChannelName: (githubLogin: string, canvasRef: string) => {
-      const safeRef = (canvasRef || "root").replace(/[^a-zA-Z0-9_\-=@]/g, "-");
-      return `canvas-presence-${githubLogin}-${safeRef}`;
-    },
-  }),
-);
+// Mock the presence-channel helper the hook actually imports from
+vi.mock("@/lib/canvas/presence-channel", () => ({
+  getCanvasPresenceChannelName: (githubLogin: string, canvasRef: string) => {
+    const safeRef = (canvasRef || "root").replace(/[^a-zA-Z0-9_\-=@]/g, "-");
+    return `canvas-presence-${githubLogin}-${safeRef}`;
+  },
+}));
 
 global.fetch = vi.fn();
 const mockSendBeacon = vi.fn(() => true);
