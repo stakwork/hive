@@ -104,14 +104,17 @@ vi.mock("@/components/agent-logs/LogsArtifactPanel", () => ({
   LogsArtifactPanel: ({
     logs,
     lastUpdated,
+    streamingLog,
   }: {
-    logs: { id: string }[];
+    logs: { id: string; agent: string }[];
     lastUpdated?: Record<string, number>;
+    streamingLog?: { agent: string; conversation: { role: string; content: string }[] } | null;
   }) =>
     React.createElement("div", {
       "data-testid": "logs-panel",
       "data-log-ids": logs.map((l) => l.id).join(","),
       "data-last-updated": lastUpdated ? JSON.stringify(lastUpdated) : "",
+      "data-streaming-agent": streamingLog?.agent ?? "",
     }),
 }));
 
@@ -277,6 +280,80 @@ describe("ArtifactsPanel — LOGS tab", () => {
     await waitFor(() => {
       expect(mockUseAgentLogs).toHaveBeenCalledWith(null, null);
     });
+  });
+
+  it("shows LOGS tab when streamingLog is set even with no canonical logs", async () => {
+    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
+
+    const feature = makeFeature();
+    render(
+      React.createElement(ArtifactsPanel, {
+        artifacts: [],
+        workspaceId: "ws-1",
+        featureId: "feat-1",
+        feature,
+        onFeatureUpdate: vi.fn(),
+        planData,
+        controlledTab: "LOGS" as const,
+        onControlledTabChange: vi.fn(),
+        streamingLog: { agent: "plan-agent-abc", conversation: [] },
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("logs-panel")).toBeDefined();
+    });
+  });
+
+  it("passes streamingLog to LogsArtifactPanel", async () => {
+    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
+
+    const feature = makeFeature();
+    const streamingLog = {
+      agent: "plan-agent-xyz",
+      conversation: [{ role: "assistant" as const, content: "🔧 search_files" }],
+    };
+
+    render(
+      React.createElement(ArtifactsPanel, {
+        artifacts: [],
+        workspaceId: "ws-1",
+        featureId: "feat-1",
+        feature,
+        onFeatureUpdate: vi.fn(),
+        planData,
+        controlledTab: "LOGS" as const,
+        onControlledTabChange: vi.fn(),
+        streamingLog,
+      })
+    );
+
+    await waitFor(() => {
+      const panel = screen.getByTestId("logs-panel");
+      expect(panel.getAttribute("data-streaming-agent")).toBe("plan-agent-xyz");
+    });
+  });
+
+  it("does not show LOGS tab when both agentLogs and streamingLog are empty/null", async () => {
+    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
+
+    const feature = makeFeature();
+    render(
+      React.createElement(ArtifactsPanel, {
+        artifacts: [],
+        workspaceId: "ws-1",
+        featureId: "feat-1",
+        feature,
+        onFeatureUpdate: vi.fn(),
+        planData,
+        streamingLog: null,
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("logs-panel")).toBeNull();
+    });
+    expect(screen.queryByText("Logs")).toBeNull();
   });
 });
 

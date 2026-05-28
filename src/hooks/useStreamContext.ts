@@ -23,6 +23,7 @@ export function useStreamContext() {
         requestId: content.requestId,
         eventsToken: content.eventsToken,
         baseUrl: content.baseUrl,
+        agent: content.agent,
       });
     }
   }
