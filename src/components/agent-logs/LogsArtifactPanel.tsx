@@ -14,6 +14,7 @@ interface AgentLogItem {
 
 interface LogsArtifactPanelProps {
   logs: AgentLogItem[];
+  lastUpdated?: Record<string, number>;
 }
 
 interface LogState {
@@ -36,7 +37,7 @@ function formatAgentLabel(agent: string): string {
   return match ? `${titleCased} Agent` : titleCased;
 }
 
-export function LogsArtifactPanel({ logs }: LogsArtifactPanelProps) {
+export function LogsArtifactPanel({ logs, lastUpdated }: LogsArtifactPanelProps) {
   // Default to the latest (rightmost — parent already sorts ascending by timestamp)
   const [selectedId, setSelectedId] = useState<string | null>(
     () => logs[logs.length - 1]?.id ?? null,
@@ -49,6 +50,21 @@ export function LogsArtifactPanel({ logs }: LogsArtifactPanelProps) {
       setSelectedId(logs[logs.length - 1]?.id ?? null);
     }
   }, [logs, selectedId]);
+
+  // When a log is externally updated (via Pusher), clear its cache so the
+  // stats fetch re-runs and the user sees fresh content without re-clicking.
+  useEffect(() => {
+    if (!selectedId) return;
+    setLogStates((prev) => {
+      const entry = prev[selectedId];
+      if (!entry) return prev; // not yet loaded — initial fetch will handle it
+      // Remove the stale entry so the fetch effect re-runs
+      const next = { ...prev };
+      delete next[selectedId];
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId ? (lastUpdated?.[selectedId] ?? 0) : 0]);
 
   // Fetch stats for the selected log if we don't have them cached yet
   useEffect(() => {
