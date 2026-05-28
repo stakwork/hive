@@ -3,7 +3,7 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 
 globalThis.React = React;
 
@@ -82,6 +82,12 @@ vi.mock("@/hooks/useStakworkGeneration", () => ({
   }),
 }));
 
+// Mock useAgentLogs so ArtifactsPanel doesn't need Pusher or fetch
+const mockUseAgentLogs = vi.fn(() => ({ agentLogs: [], lastUpdated: {} }));
+vi.mock("@/hooks/useAgentLogs", () => ({
+  useAgentLogs: (...args: unknown[]) => mockUseAgentLogs(...args),
+}));
+
 vi.mock("@/app/w/[slug]/plan/[featureId]/components/PlanArtifact", () => ({
   PlanArtifactPanel: () => React.createElement("div", { "data-testid": "plan-panel" }),
 }));
@@ -95,10 +101,17 @@ vi.mock("@/app/w/[slug]/plan/[featureId]/components/VerifyPanel", () => ({
 }));
 
 vi.mock("@/components/agent-logs/LogsArtifactPanel", () => ({
-  LogsArtifactPanel: ({ logs }: { logs: { id: string }[] }) =>
+  LogsArtifactPanel: ({
+    logs,
+    lastUpdated,
+  }: {
+    logs: { id: string }[];
+    lastUpdated?: Record<string, number>;
+  }) =>
     React.createElement("div", {
       "data-testid": "logs-panel",
       "data-log-ids": logs.map((l) => l.id).join(","),
+      "data-last-updated": lastUpdated ? JSON.stringify(lastUpdated) : "",
     }),
 }));
 
@@ -110,7 +123,7 @@ vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts", () => ({
   DiffArtifactPanel: () => null,
 }));
 
-// ── Component under test ──────────────────────────────────────────────────────
+// ── Components under test ─────────────────────────────────────────────────────
 
 import { ArtifactsPanel } from "@/app/w/[slug]/task/[...taskParams]/components/ArtifactsPanel";
 import type { FeatureDetail } from "@/types/roadmap";
@@ -136,25 +149,20 @@ function makeFeature(overrides: Partial<FeatureDetail> = {}): FeatureDetail {
 
 const planData = { featureTitle: "Test Feature", sections: [] };
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── ArtifactsPanel — LOGS tab ─────────────────────────────────────────────────
 
 describe("ArtifactsPanel — LOGS tab", () => {
   beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  it("does not show LOGS tab when no agent log exists for the feature", async () => {
-    // Simulate fetch returning empty data
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: [], total: 0, hasMore: false }),
-    });
-
-    // attachments count call
-    mockFetch.mockResolvedValueOnce({
+    vi.clearAllMocks();
+    // attachments count call (still uses fetch directly)
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ count: 0 }),
     });
+  });
+
+  it("does not show LOGS tab when useAgentLogs returns empty list", async () => {
+    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
 
     const feature = makeFeature();
     render(
@@ -168,31 +176,18 @@ describe("ArtifactsPanel — LOGS tab", () => {
       })
     );
 
-    // Wait for async effects to settle
     await waitFor(() => {
       expect(screen.queryByTestId("logs-panel")).toBeNull();
     });
-
     expect(screen.queryByText("Logs")).toBeNull();
   });
 
-  it("shows LOGS tab and renders LogsArtifactPanel when an agent log exists", async () => {
-    // First fetch: agent logs resolver → returns a log
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        data: [
-          { id: "log-abc", agent: "coding-agent-feat-1", createdAt: "2026-05-28T09:00:00Z" },
-        ],
-        total: 1,
-        hasMore: false,
-      }),
-    });
-
-    // Second fetch: attachments count
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ count: 0 }),
+  it("shows LOGS tab and renders LogsArtifactPanel when useAgentLogs returns logs", async () => {
+    mockUseAgentLogs.mockReturnValue({
+      agentLogs: [
+        { id: "log-abc", agent: "coding-agent-feat-1", createdAt: "2026-05-28T09:00:00Z" },
+      ],
+      lastUpdated: {},
     });
 
     const feature = makeFeature();
@@ -216,11 +211,38 @@ describe("ArtifactsPanel — LOGS tab", () => {
     expect(screen.getByTestId("logs-panel").getAttribute("data-log-ids")).toBe("log-abc");
   });
 
-  it("calls the correct API endpoint to resolve agent log for feature", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [], total: 0, hasMore: false }),
+  it("passes lastUpdated from useAgentLogs to LogsArtifactPanel", async () => {
+    const lastUpdated = { "log-abc": 1234567890 };
+    mockUseAgentLogs.mockReturnValue({
+      agentLogs: [
+        { id: "log-abc", agent: "coding-agent-feat-1", createdAt: "2026-05-28T09:00:00Z" },
+      ],
+      lastUpdated,
     });
+
+    const feature = makeFeature();
+    render(
+      React.createElement(ArtifactsPanel, {
+        artifacts: [],
+        workspaceId: "ws-1",
+        featureId: "feat-1",
+        feature,
+        onFeatureUpdate: vi.fn(),
+        planData,
+        controlledTab: "LOGS" as const,
+        onControlledTabChange: vi.fn(),
+      })
+    );
+
+    await waitFor(() => {
+      const panel = screen.getByTestId("logs-panel");
+      const passed = JSON.parse(panel.getAttribute("data-last-updated") || "{}");
+      expect(passed["log-abc"]).toBe(1234567890);
+    });
+  });
+
+  it("calls useAgentLogs with featureId and workspaceId", async () => {
+    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
 
     const feature = makeFeature();
     render(
@@ -235,9 +257,27 @@ describe("ArtifactsPanel — LOGS tab", () => {
     );
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/agent-logs?feature_id=feat-99&workspace_id=ws-42&limit=20")
-      );
+      expect(mockUseAgentLogs).toHaveBeenCalledWith("feat-99", "ws-42");
+    });
+  });
+
+  it("passes null to useAgentLogs when there is no feature", async () => {
+    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
+
+    // No feature / onFeatureUpdate props → hasFeature is false
+    render(
+      React.createElement(ArtifactsPanel, {
+        artifacts: [],
+        workspaceId: "ws-1",
+        featureId: "feat-1",
+        planData,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockUseAgentLogs).toHaveBeenCalledWith(null, null);
     });
   });
 });
+
+

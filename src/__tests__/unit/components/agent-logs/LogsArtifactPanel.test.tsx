@@ -3,7 +3,7 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 globalThis.React = React;
@@ -239,6 +239,108 @@ describe("LogsArtifactPanel", () => {
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith("/api/agent-logs/log-plan/stats");
+    });
+  });
+});
+
+// ── lastUpdated cache invalidation ────────────────────────────────────────────
+
+describe("LogsArtifactPanel — lastUpdated cache invalidation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:fake");
+    globalThis.URL.revokeObjectURL = vi.fn();
+  });
+
+  it("re-fetches stats when lastUpdated changes for the selected log", async () => {
+    const logId = "log-xyz";
+    const statsResponse = {
+      conversation: [{ role: "user", content: "Hello", toolCalls: [] }],
+      stats: { messageCount: 1, estimatedTokens: 10, toolCalls: {}, bashCommands: [] },
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => statsResponse,
+    });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    const { rerender } = render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [{ id: logId, agent: "plan-agent-x" }],
+        lastUpdated: {},
+      })
+    );
+
+    // Wait for initial fetch
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(`/api/agent-logs/${logId}/stats`);
+    });
+
+    const callCountAfterMount = mockFetch.mock.calls.length;
+
+    // Simulate lastUpdated bump (Pusher event landed)
+    act(() => {
+      rerender(
+        React.createElement(LogsArtifactPanel, {
+          logs: [{ id: logId, agent: "plan-agent-x" }],
+          lastUpdated: { [logId]: Date.now() },
+        })
+      );
+    });
+
+    // Should have triggered a new stats fetch
+    await waitFor(() => {
+      expect(mockFetch.mock.calls.length).toBeGreaterThan(callCountAfterMount);
+    });
+  });
+
+  it("does not re-fetch when lastUpdated changes for a different (non-selected) log", async () => {
+    // Component auto-selects the LAST log in the array
+    const otherId = "log-other";
+    const selectedId = "log-selected";
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        conversation: [{ role: "user", content: "Hi", toolCalls: [] }],
+        stats: { messageCount: 1, estimatedTokens: 5, toolCalls: {}, bashCommands: [] },
+      }),
+    });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    const { rerender } = render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [
+          { id: otherId, agent: "coder-agent-x" },
+          { id: selectedId, agent: "plan-agent-x" },
+        ],
+        lastUpdated: {},
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(`/api/agent-logs/${selectedId}/stats`);
+    });
+
+    const callCountAfterMount = mockFetch.mock.calls.length;
+
+    // Bump lastUpdated for the non-selected log only
+    act(() => {
+      rerender(
+        React.createElement(LogsArtifactPanel, {
+          logs: [
+            { id: otherId, agent: "coder-agent-x" },
+            { id: selectedId, agent: "plan-agent-x" },
+          ],
+          lastUpdated: { [otherId]: Date.now() },
+        })
+      );
+    });
+
+    // No additional fetch should have been triggered
+    await waitFor(() => {
+      expect(mockFetch.mock.calls.length).toBe(callCountAfterMount);
     });
   });
 });
