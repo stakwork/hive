@@ -291,9 +291,43 @@ describe("MessageBubble — assistant long text truncation", () => {
     expect(screen.queryByText("Show more")).toBeNull();
   });
 
-  test("user messages are never truncated regardless of length", () => {
-    const userMsg: ParsedMessage = { role: "user", content: "A".repeat(2000) };
-    render(<MessageBubble message={userMsg} />);
+  test("short assistant text has no Show more button (recheck)", () => {
+    const shortMsg: ParsedMessage = { role: "assistant", content: "Short." };
+    render(<MessageBubble message={shortMsg} />);
+    expect(screen.queryByText("Show more")).toBeNull();
+  });
+});
+
+describe("MessageBubble — user long text truncation", () => {
+  const longText = "B".repeat(2000);
+  const msg: ParsedMessage = { role: "user", content: longText };
+
+  test("truncates user text over 1500 chars with Show more button", () => {
+    render(<MessageBubble message={msg} />);
+    expect(screen.getByText("Show more")).toBeTruthy();
+    const para = screen.getByText((_, el) => el?.tagName === "P" && (el.textContent?.length ?? 0) <= 1500);
+    expect(para).toBeTruthy();
+  });
+
+  test("expands user message to full text after clicking Show more", async () => {
+    const user = userEvent.setup();
+    render(<MessageBubble message={msg} />);
+    await user.click(screen.getByText("Show more"));
+    expect(screen.getByText("Show less")).toBeTruthy();
+    expect(screen.getByText(longText)).toBeTruthy();
+  });
+
+  test("collapses user message again after clicking Show less", async () => {
+    const user = userEvent.setup();
+    render(<MessageBubble message={msg} />);
+    await user.click(screen.getByText("Show more"));
+    await user.click(screen.getByText("Show less"));
+    expect(screen.getByText("Show more")).toBeTruthy();
+  });
+
+  test("short user message has no Show more button", () => {
+    const shortMsg: ParsedMessage = { role: "user", content: "Short user text." };
+    render(<MessageBubble message={shortMsg} />);
     expect(screen.queryByText("Show more")).toBeNull();
   });
 });
