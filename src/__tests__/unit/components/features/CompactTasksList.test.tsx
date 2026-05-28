@@ -1628,7 +1628,7 @@ describe("CompactTasksList", () => {
 
       expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
       expect(screen.queryByText("Needs workflow")).not.toBeInTheDocument();
-      expect(screen.getByText("New workflow")).toBeInTheDocument();
+      expect(screen.getByText("New Workflow")).toBeInTheDocument();
     });
 
     test("does NOT show 'New workflow' placeholder when workflowTask has a real workflowId", () => {
@@ -1656,7 +1656,7 @@ describe("CompactTasksList", () => {
       );
 
       expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
-      expect(screen.queryByText("New workflow")).not.toBeInTheDocument();
+      expect(screen.queryByText("New Workflow")).not.toBeInTheDocument();
     });
 
     test("does NOT show 'New workflow' placeholder for non-workflow tasks (workflowTask is null)", () => {
@@ -1677,7 +1677,7 @@ describe("CompactTasksList", () => {
       );
 
       expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
-      expect(screen.queryByText("New workflow")).not.toBeInTheDocument();
+      expect(screen.queryByText("New Workflow")).not.toBeInTheDocument();
     });
   });
   describe("Optimistic updates", () => {

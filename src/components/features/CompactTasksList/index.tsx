@@ -265,6 +265,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       workflowId?: number;
       workflowName?: string;
       workflowRefId?: string;
+      isNewWorkflow?: boolean;
     }
   ) => {
     // Optimistically apply the update immediately
@@ -368,9 +369,13 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
           autoMerge: false,
           dependsOnTaskIds: task.dependsOnTaskIds ?? [],
           // Carry forward workflow identity for workflow_editor tasks
-          workflowId: task.workflowTask?.workflowId ?? undefined,
-          workflowName: task.workflowTask?.workflowName ?? undefined,
-          workflowRefId: task.workflowTask?.workflowRefId ?? undefined,
+          ...(task.workflowTask && task.workflowTask.workflowId == null
+            ? { isNewWorkflow: true }
+            : {
+                workflowId: task.workflowTask?.workflowId ?? undefined,
+                workflowName: task.workflowTask?.workflowName ?? undefined,
+                workflowRefId: task.workflowTask?.workflowRefId ?? undefined,
+              }),
         }),
       });
       if (!response.ok) throw new Error("Failed to duplicate task");
@@ -707,16 +712,19 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                       value={
                         task.workflowTask && task.workflowTask.workflowId != null
                           ? encodeTargetValue({ type: "workflow", workflowId: task.workflowTask.workflowId, workflowName: task.workflowTask.workflowName ?? "", workflowRefId: task.workflowTask.workflowRefId ?? "" })
-                          : !isWorkflowTask && task.repository?.id
-                            ? encodeTargetValue({ type: "repo", repositoryId: task.repository.id })
-                            : !isWorkflowTask && workspaceRepos[0]?.id
-                              ? encodeTargetValue({ type: "repo", repositoryId: workspaceRepos[0].id })
-                              : undefined
+                          : isWorkflowTask && task.workflowTask?.workflowId == null
+                            ? encodeTargetValue({ type: "new-workflow" })
+                            : !isWorkflowTask && task.repository?.id
+                              ? encodeTargetValue({ type: "repo", repositoryId: task.repository.id })
+                              : !isWorkflowTask && workspaceRepos[0]?.id
+                                ? encodeTargetValue({ type: "repo", repositoryId: workspaceRepos[0].id })
+                                : undefined
                       }
-                      placeholder={isWorkflowTask && task.workflowTask?.workflowId == null ? "New workflow" : undefined}
                       onChange={(selection: TargetSelection) => {
                         if (selection.type === "repo") {
                           handleUpdateTask(task.id, { repositoryId: selection.repositoryId });
+                        } else if (selection.type === "new-workflow") {
+                          handleUpdateTask(task.id, { isNewWorkflow: true });
                         } else {
                           handleUpdateTask(task.id, {
                             workflowId: selection.workflowId,

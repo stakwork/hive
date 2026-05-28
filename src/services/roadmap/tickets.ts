@@ -224,7 +224,7 @@ export async function createTicket(
   const bountyCode = await ensureUniqueBountyCode();
 
   // Workflow tasks get mode: workflow_editor and no repositoryId
-  const isWorkflowTask = !!data.workflowId;
+  const isWorkflowTask = !!data.workflowId || data.isNewWorkflow === true;
 
   const task = await db.task.create({
     data: {
@@ -305,6 +305,16 @@ export async function createTicket(
       workflowId: data.workflowId,
       workflowName: data.workflowName,
       workflowRefId: data.workflowRefId,
+    });
+  } else if (data.isNewWorkflow) {
+    // New-workflow task: create a WorkflowTask with null IDs (no artifact to seed yet)
+    await db.workflowTask.create({
+      data: {
+        taskId: task.id,
+        workflowId: null,
+        workflowName: null,
+        workflowRefId: null,
+      },
     });
   }
 
@@ -596,6 +606,15 @@ export async function updateTicket(
         },
       });
     }
+  } else if (data.isNewWorkflow === true) {
+    // Switch to new-workflow mode (null workflowId)
+    updateData.mode = "workflow_editor";
+    updateData.repositoryId = null;
+    await db.workflowTask.upsert({
+      where: { taskId },
+      create: { taskId, workflowId: null, workflowName: null, workflowRefId: null },
+      update: { workflowId: null, workflowName: null, workflowRefId: null },
+    });
   } else if (data.repositoryId !== undefined && data.repositoryId !== null) {
     // Switching back to a repo — remove WorkflowTask if one exists
     await db.workflowTask.deleteMany({ where: { taskId } });
