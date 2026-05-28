@@ -69,7 +69,7 @@ describe("LogsArtifactPanel", () => {
     );
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logs: singleLog, featureId: FEATURE_ID }));
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
 
     expect(screen.getByTestId("log-loading")).toBeDefined();
   });
@@ -81,7 +81,7 @@ describe("LogsArtifactPanel", () => {
     });
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logs: singleLog, featureId: FEATURE_ID }));
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
 
     await waitFor(() => {
       expect(screen.getAllByTestId("log-message")).toHaveLength(2);
@@ -98,7 +98,7 @@ describe("LogsArtifactPanel", () => {
     render(
       React.createElement(LogsArtifactPanel, {
         logs: [{ id: "log-456", agent: `coding-agent-${FEATURE_ID}` }],
-        featureId: FEATURE_ID,
+  
       }),
     );
 
@@ -114,7 +114,7 @@ describe("LogsArtifactPanel", () => {
     });
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logs: singleLog, featureId: FEATURE_ID }));
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
 
     await waitFor(() => screen.getAllByTestId("log-message"));
     expect(screen.getByText("Download")).toBeDefined();
@@ -141,7 +141,7 @@ describe("LogsArtifactPanel", () => {
     render(
       React.createElement(LogsArtifactPanel, {
         logs: [{ id: "log-789", agent: `coding-agent-${FEATURE_ID}` }],
-        featureId: FEATURE_ID,
+  
       }),
     );
 
@@ -164,7 +164,7 @@ describe("LogsArtifactPanel", () => {
           { id: "log-code", agent: `coding-agent-${FEATURE_ID}` },
           { id: "log-test", agent: `test-agent-${FEATURE_ID}` },
         ],
-        featureId: FEATURE_ID,
+  
       }),
     );
 
@@ -184,7 +184,7 @@ describe("LogsArtifactPanel", () => {
           { id: "log-code", agent: `coding-agent-${FEATURE_ID}` },
           { id: "log-test", agent: `test-agent-${FEATURE_ID}` },
         ],
-        featureId: FEATURE_ID,
+  
       }),
     );
 
@@ -206,7 +206,7 @@ describe("LogsArtifactPanel", () => {
           { id: "log-plan", agent: `plan-agent-${FEATURE_ID}` },
           { id: "log-code", agent: `coding-agent-${FEATURE_ID}` },
         ],
-        featureId: FEATURE_ID,
+  
       }),
     );
 

@@ -459,9 +459,9 @@ export function ArtifactsPanel({
               </div>
             </div>
           )}
-          {hasFeature && agentLogs.length > 0 && featureId && (
+          {hasFeature && agentLogs.length > 0 && (
             <div className="h-full" hidden={activeTab !== "LOGS"}>
-              <LogsArtifactPanel logs={agentLogs} featureId={featureId} />
+              <LogsArtifactPanel logs={agentLogs} />
             </div>
           )}
           {codeArtifacts.length > 0 && (
