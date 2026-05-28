@@ -382,8 +382,8 @@ export function MessageBubble({
   // Skip messages with no displayable content
   if (!textContent) return null;
 
-  // Long-text truncation for assistant messages
-  const isLong = isAssistant && textContent.length > LONG_TEXT_THRESHOLD;
+  // Long-text truncation for assistant and user messages
+  const isLong = (isAssistant || isUser) && textContent.length > LONG_TEXT_THRESHOLD;
   const displayedText =
     isLong && !showMore ? textContent.slice(0, LONG_TEXT_THRESHOLD) : textContent;
 
@@ -408,7 +408,19 @@ export function MessageBubble({
         )}
       >
         {isUser ? (
-          <p className="text-sm whitespace-pre-wrap break-words">{unescapeLogString(textContent)}</p>
+          <>
+            <p className="text-sm whitespace-pre-wrap break-words">
+              {unescapeLogString(displayedText)}
+            </p>
+            {isLong && (
+              <button
+                onClick={() => setShowMore((s) => !s)}
+                className="mt-1 text-xs text-primary-foreground/70 hover:underline"
+              >
+                {showMore ? "Show less" : "Show more"}
+              </button>
+            )}
+          </>
         ) : (
           <>
             <MarkdownRenderer variant="assistant" size="compact">
