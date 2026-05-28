@@ -16,6 +16,7 @@ import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
+import { useAgentLogs } from "@/hooks/useAgentLogs";
 import type { FeatureDetail } from "@/types/roadmap";
 
 const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS", "LOGS"];
@@ -66,7 +67,6 @@ export function ArtifactsPanel({
   isSuperAdmin = false,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
-  const [agentLogs, setAgentLogs] = useState<{ id: string; agent: string; createdAt: string }[]>([]);
   
   // Support controlled mode (plan) and uncontrolled mode (task)
   const isControlled = controlledTab !== undefined;
@@ -159,37 +159,11 @@ export function ArtifactsPanel({
   const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
   const hasArchitecture = !!feature?.architecture;
 
-  // Fetch agent logs for the current feature (plan mode only)
-  useEffect(() => {
-    if (!hasFeature || !featureId || !workspaceId) return;
-
-    const resolveAgentLogs = async () => {
-      try {
-        const res = await fetch(
-          `/api/agent-logs?feature_id=${featureId}&workspace_id=${workspaceId}&limit=20`
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        const logs = (data?.data ?? []).map(
-          (l: { id: string; agent: string; createdAt: string }) => ({
-            id: l.id,
-            agent: l.agent,
-            createdAt: l.createdAt,
-          }),
-        );
-        // API returns desc (newest first); we want ascending (earliest left, latest right)
-        logs.sort(
-          (a: { createdAt: string }, b: { createdAt: string }) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-        );
-        setAgentLogs(logs);
-      } catch {
-        // best-effort — silently ignore
-      }
-    };
-
-    resolveAgentLogs();
-  }, [hasFeature, featureId, workspaceId]);
+  // Live agent logs for the current feature (plan mode only)
+  const { agentLogs, lastUpdated: agentLogsLastUpdated } = useAgentLogs(
+    hasFeature ? featureId : null,
+    hasFeature ? workspaceId : null,
+  );
 
   // Fetch attachment count once when tasks first exist — drives Verify tab enabled state
   useEffect(() => {
@@ -461,7 +435,7 @@ export function ArtifactsPanel({
           )}
           {hasFeature && agentLogs.length > 0 && (
             <div className="h-full" hidden={activeTab !== "LOGS"}>
-              <LogsArtifactPanel logs={agentLogs} />
+              <LogsArtifactPanel logs={agentLogs} lastUpdated={agentLogsLastUpdated} />
             </div>
           )}
           {codeArtifacts.length > 0 && (

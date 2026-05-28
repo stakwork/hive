@@ -296,6 +296,7 @@ describe("pusher.ts", () => {
         CONNECTION_UPDATED: "connection-updated",
         CANVAS_UPDATED: "canvas-updated",
         RESEARCH_UPDATED: "research-updated",
+        AGENT_LOG_UPDATED: "agent-log-updated",
       });
     });
 

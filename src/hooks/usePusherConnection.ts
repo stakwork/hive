@@ -58,6 +58,13 @@ export interface FeatureTitleUpdateEvent {
   newTitle: string;
 }
 
+export interface AgentLogUpdateEvent {
+  id: string;
+  agent: string;
+  createdAt: string;
+  isNew: boolean;
+}
+
 interface UsePusherConnectionOptions {
   taskId?: string | null;
   featureId?: string | null;
@@ -72,6 +79,7 @@ interface UsePusherConnectionOptions {
   onDeploymentStatusChange?: (update: DeploymentStatusChangeEvent) => void;
   onFeatureUpdated?: () => void;
   onFeatureTitleUpdate?: (update: FeatureTitleUpdateEvent) => void;
+  onAgentLogUpdate?: (event: AgentLogUpdateEvent) => void;
   connectionReadyDelay?: number; // Configurable delay for connection readiness
 }
 
@@ -99,6 +107,7 @@ export function usePusherConnection({
   onDeploymentStatusChange,
   onFeatureUpdated,
   onFeatureTitleUpdate,
+  onAgentLogUpdate,
   connectionReadyDelay = 100, // Default 100ms delay to prevent race conditions
 }: UsePusherConnectionOptions): UsePusherConnectionReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -116,6 +125,7 @@ export function usePusherConnection({
   const onDeploymentStatusChangeRef = useRef(onDeploymentStatusChange);
   const onFeatureUpdatedRef = useRef(onFeatureUpdated);
   const onFeatureTitleUpdateRef = useRef(onFeatureTitleUpdate);
+  const onAgentLogUpdateRef = useRef(onAgentLogUpdate);
   const currentChannelIdRef = useRef<string | null>(null);
   const currentChannelTypeRef = useRef<"task" | "feature" | "workspace" | null>(null);
 
@@ -128,6 +138,7 @@ export function usePusherConnection({
   onDeploymentStatusChangeRef.current = onDeploymentStatusChange;
   onFeatureUpdatedRef.current = onFeatureUpdated;
   onFeatureTitleUpdateRef.current = onFeatureTitleUpdate;
+  onAgentLogUpdateRef.current = onAgentLogUpdate;
 
   // Stable disconnect function
   const disconnect = useCallback(() => {
@@ -311,6 +322,11 @@ export function usePusherConnection({
             if (onFeatureTitleUpdateRef.current) {
               onFeatureTitleUpdateRef.current(update);
             }
+          });
+
+          // Agent log upserted for a feature — live Logs tab updates
+          channel.bind(PUSHER_EVENTS.AGENT_LOG_UPDATED, (event: AgentLogUpdateEvent) => {
+            if (onAgentLogUpdateRef.current) onAgentLogUpdateRef.current(event);
           });
         }
 

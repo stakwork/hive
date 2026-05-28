@@ -75,4 +75,6 @@ export const PUSHER_EVENTS = {
   RESEARCH_UPDATED: "research-updated",
   // Canvas events (system-canvas document on the org)
   CANVAS_UPDATED: "canvas-updated",
+  // Agent log upserted for a feature — triggers live Logs tab updates in plan view
+  AGENT_LOG_UPDATED: "agent-log-updated",
 } as const;
