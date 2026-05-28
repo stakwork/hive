@@ -842,6 +842,329 @@ describe('Task Page - Workflow Editor fixes', () => {
       expect(setters.setIsRetrying).toHaveBeenCalledWith(false);
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // handleSend — null currentWorkflowContext guard (routing fix)
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('handleSend — null currentWorkflowContext blocks send with toast', () => {
+    type WorkflowContext = {
+      workflowId: number;
+      workflowName: string;
+      workflowRefId: string;
+      workflowVersionId?: string;
+    };
+
+    /**
+     * Simulates the new guard logic added to handleSend:
+     * - If taskMode is workflow_editor AND currentWorkflowContext is null → toast.error + return
+     * - Otherwise proceed
+     */
+    function simulateHandleSend(opts: {
+      taskMode: string;
+      currentWorkflowContext: WorkflowContext | null;
+      currentTaskId: string | null;
+      toastError: ReturnType<typeof vi.fn>;
+      sendMessage: ReturnType<typeof vi.fn>;
+    }) {
+      const { taskMode, currentWorkflowContext, currentTaskId, toastError, sendMessage } = opts;
+
+      // New null-context guard (the fix)
+      if (taskMode === 'workflow_editor' && !currentWorkflowContext) {
+        toastError('Workflow context is missing — please reload the page.');
+        return;
+      }
+
+      // Existing workflow_editor path
+      if (taskMode === 'workflow_editor' && currentWorkflowContext && currentTaskId) {
+        // workflowRefId intentionally NOT checked — empty is allowed for new workflows
+        sendMessage('/api/workflow-editor');
+        return;
+      }
+
+      // Non-workflow_editor path
+      sendMessage('/api/chat/message');
+    }
+
+    it('shows toast error and does not call sendMessage when context is null in workflow_editor mode', () => {
+      const toastError = vi.fn();
+      const sendMessage = vi.fn();
+
+      simulateHandleSend({
+        taskMode: 'workflow_editor',
+        currentWorkflowContext: null,
+        currentTaskId: 'task-1',
+        toastError,
+        sendMessage,
+      });
+
+      expect(toastError).toHaveBeenCalledWith('Workflow context is missing — please reload the page.');
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('proceeds to /api/workflow-editor when context is non-null in workflow_editor mode', () => {
+      const toastError = vi.fn();
+      const sendMessage = vi.fn();
+
+      simulateHandleSend({
+        taskMode: 'workflow_editor',
+        currentWorkflowContext: {
+          workflowId: 1,
+          workflowName: 'Test',
+          workflowRefId: 'ref-abc',
+        },
+        currentTaskId: 'task-1',
+        toastError,
+        sendMessage,
+      });
+
+      expect(toastError).not.toHaveBeenCalled();
+      expect(sendMessage).toHaveBeenCalledWith('/api/workflow-editor');
+    });
+
+    it('proceeds to /api/workflow-editor even when workflowRefId is empty (new workflow creation)', () => {
+      const toastError = vi.fn();
+      const sendMessage = vi.fn();
+
+      simulateHandleSend({
+        taskMode: 'workflow_editor',
+        currentWorkflowContext: {
+          workflowId: 1,
+          workflowName: 'New Workflow',
+          workflowRefId: '', // intentionally empty
+        },
+        currentTaskId: 'task-1',
+        toastError,
+        sendMessage,
+      });
+
+      expect(toastError).not.toHaveBeenCalled();
+      expect(sendMessage).toHaveBeenCalledWith('/api/workflow-editor');
+    });
+
+    it('routes to /api/chat/message in non-workflow_editor mode (no context guard triggered)', () => {
+      const toastError = vi.fn();
+      const sendMessage = vi.fn();
+
+      simulateHandleSend({
+        taskMode: 'agent',
+        currentWorkflowContext: null,
+        currentTaskId: 'task-1',
+        toastError,
+        sendMessage,
+      });
+
+      expect(toastError).not.toHaveBeenCalled();
+      expect(sendMessage).toHaveBeenCalledWith('/api/chat/message');
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // handleNewMessage — reconstruct context from WORKFLOW artifact when null
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('handleNewMessage — reconstruct context from WORKFLOW artifact when prev is null', () => {
+    type WorkflowContext = {
+      workflowId: number;
+      workflowName: string;
+      workflowRefId: string;
+      workflowVersionId?: string;
+    };
+
+    type ArtifactContent = {
+      workflowId?: number;
+      workflowName?: string;
+      workflowRefId?: string;
+      workflowVersionId?: string | number;
+    };
+
+    /**
+     * Simulates the updated handleNewMessage logic:
+     * - Matches on workflowId (not just workflowRefId)
+     * - When prev is null, reconstructs full context from scratch
+     */
+    function simulateHandleNewMessage(opts: {
+      taskMode: string;
+      artifactContent: ArtifactContent;
+      currentContext: WorkflowContext | null;
+    }): WorkflowContext | null {
+      const { taskMode, artifactContent, currentContext } = opts;
+
+      if (taskMode !== 'workflow_editor') return currentContext;
+
+      // Updated filter: match on workflowId (not just workflowRefId)
+      const hasWorkflowArtifact = !!artifactContent.workflowId;
+
+      if (!hasWorkflowArtifact) return currentContext;
+
+      const content = artifactContent;
+
+      if (currentContext) {
+        return content.workflowRefId ? { ...currentContext, workflowRefId: content.workflowRefId } : currentContext;
+      }
+
+      // Reconstruct from scratch if context was null
+      return {
+        workflowId: content.workflowId!,
+        workflowName: content.workflowName || `Workflow ${content.workflowId}`,
+        workflowRefId: content.workflowRefId || '',
+        ...(content.workflowVersionId != null && { workflowVersionId: String(content.workflowVersionId) }),
+      };
+    }
+
+    it('reconstructs full context from WORKFLOW artifact when prev is null', () => {
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        artifactContent: {
+          workflowId: 42,
+          workflowName: 'My Flow',
+          workflowRefId: 'ref-from-artifact',
+          workflowVersionId: 'v-123',
+        },
+        currentContext: null,
+      });
+
+      expect(result).toEqual({
+        workflowId: 42,
+        workflowName: 'My Flow',
+        workflowRefId: 'ref-from-artifact',
+        workflowVersionId: 'v-123',
+      });
+    });
+
+    it('uses default workflowName when artifact has no name', () => {
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        artifactContent: {
+          workflowId: 99,
+          // no workflowName
+        },
+        currentContext: null,
+      });
+
+      expect(result?.workflowName).toBe('Workflow 99');
+    });
+
+    it('uses empty string for workflowRefId when artifact has none', () => {
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        artifactContent: {
+          workflowId: 7,
+          // no workflowRefId
+        },
+        currentContext: null,
+      });
+
+      expect(result?.workflowRefId).toBe('');
+    });
+
+    it('omits workflowVersionId when artifact has none', () => {
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        artifactContent: {
+          workflowId: 7,
+        },
+        currentContext: null,
+      });
+
+      expect(result).not.toHaveProperty('workflowVersionId');
+    });
+
+    it('converts numeric workflowVersionId to string', () => {
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        artifactContent: {
+          workflowId: 7,
+          workflowVersionId: 123 as unknown as string,
+        },
+        currentContext: null,
+      });
+
+      expect(result?.workflowVersionId).toBe('123');
+      expect(typeof result?.workflowVersionId).toBe('string');
+    });
+
+    it('matches artifact by workflowId alone (no workflowRefId required)', () => {
+      // This validates the widened filter: artifact with only workflowId (no workflowRefId) still matches
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        artifactContent: {
+          workflowId: 55,
+          // no workflowRefId
+        },
+        currentContext: null,
+      });
+
+      // Should reconstruct context (not stay null)
+      expect(result).not.toBeNull();
+      expect(result?.workflowId).toBe(55);
+    });
+
+    it('only updates workflowRefId when prev context exists (does not replace entire context)', () => {
+      const prevContext: WorkflowContext = {
+        workflowId: 42,
+        workflowName: 'Existing Flow',
+        workflowRefId: 'old-ref',
+        workflowVersionId: 'v-old',
+      };
+
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        artifactContent: {
+          workflowId: 42,
+          workflowRefId: 'new-ref',
+        },
+        currentContext: prevContext,
+      });
+
+      expect(result?.workflowRefId).toBe('new-ref');
+      expect(result?.workflowName).toBe('Existing Flow');   // preserved
+      expect(result?.workflowVersionId).toBe('v-old');      // preserved
+    });
+
+    it('leaves prev context unchanged when artifact has no workflowRefId and prev exists', () => {
+      const prevContext: WorkflowContext = {
+        workflowId: 42,
+        workflowName: 'Existing Flow',
+        workflowRefId: 'unchanged-ref',
+      };
+
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        artifactContent: {
+          workflowId: 42,
+          // no workflowRefId
+        },
+        currentContext: prevContext,
+      });
+
+      expect(result?.workflowRefId).toBe('unchanged-ref');
+    });
+
+    it('does nothing when taskMode is not workflow_editor', () => {
+      const result = simulateHandleNewMessage({
+        taskMode: 'agent',
+        artifactContent: {
+          workflowId: 42,
+          workflowRefId: 'new-ref',
+        },
+        currentContext: null,
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('does nothing when artifact has no workflowId', () => {
+      const result = simulateHandleNewMessage({
+        taskMode: 'workflow_editor',
+        artifactContent: {
+          // no workflowId
+          workflowRefId: 'some-ref',
+        },
+        currentContext: null,
+      });
+
+      expect(result).toBeNull();
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
