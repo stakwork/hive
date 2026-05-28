@@ -10,7 +10,6 @@ import type { ParsedMessage, AgentLogStats } from "@/lib/utils/agent-log-stats";
 interface AgentLogItem {
   id: string;
   agent: string;
-  featureTitle?: string | null;
 }
 
 interface LogsArtifactPanelProps {
@@ -136,7 +135,6 @@ export function LogsArtifactPanel({ logs }: LogsArtifactPanelProps) {
   }, [logs]);
 
   const current = selectedId ? logStates[selectedId] : null;
-  const selectedLog = selectedId ? logs.find((l) => l.id === selectedId) ?? null : null;
   const hasContent = !!current && (current.conversation !== null || current.rawContent !== "");
 
   return (
@@ -181,15 +179,6 @@ export function LogsArtifactPanel({ logs }: LogsArtifactPanelProps) {
       {current?.error && !current.loading && (
         <div className="text-center py-12">
           <p className="text-destructive text-sm">{current.error}</p>
-        </div>
-      )}
-
-      {selectedLog && (selectedLog.featureTitle || selectedLog.agent) && (
-        <div className="mb-3 space-y-0.5">
-          {selectedLog.featureTitle && (
-            <p className="text-sm font-medium text-foreground">{selectedLog.featureTitle}</p>
-          )}
-          <p className="text-xs text-muted-foreground font-mono break-all">{selectedLog.agent}</p>
         </div>
       )}
 

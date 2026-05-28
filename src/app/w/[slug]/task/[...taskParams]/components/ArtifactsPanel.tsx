@@ -66,9 +66,7 @@ export function ArtifactsPanel({
   isSuperAdmin = false,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
-  const [agentLogs, setAgentLogs] = useState<
-    { id: string; agent: string; createdAt: string; featureTitle: string | null }[]
-  >([]);
+  const [agentLogs, setAgentLogs] = useState<{ id: string; agent: string; createdAt: string }[]>([]);
   
   // Support controlled mode (plan) and uncontrolled mode (task)
   const isControlled = controlledTab !== undefined;
@@ -173,11 +171,10 @@ export function ArtifactsPanel({
         if (!res.ok) return;
         const data = await res.json();
         const logs = (data?.data ?? []).map(
-          (l: { id: string; agent: string; createdAt: string; featureTitle?: string | null }) => ({
+          (l: { id: string; agent: string; createdAt: string }) => ({
             id: l.id,
             agent: l.agent,
             createdAt: l.createdAt,
-            featureTitle: l.featureTitle ?? null,
           }),
         );
         // API returns desc (newest first); we want ascending (earliest left, latest right)
