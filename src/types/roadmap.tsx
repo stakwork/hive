@@ -691,6 +691,8 @@ export interface CreateRoadmapTaskRequest {
   workflowId?: number;
   workflowName?: string;
   workflowRefId?: string;
+  /** true = workflow_editor task targeting a brand-new workflow; mutually exclusive with workflowId */
+  isNewWorkflow?: boolean;
 }
 
 export interface UpdateRoadmapTaskRequest {
@@ -712,6 +714,8 @@ export interface UpdateRoadmapTaskRequest {
   workflowId?: number;
   workflowName?: string;
   workflowRefId?: string;
+  /** true = workflow_editor task targeting a brand-new workflow; mutually exclusive with workflowId */
+  isNewWorkflow?: boolean;
 }
 
 export interface ReorderRoadmapTasksRequest {
