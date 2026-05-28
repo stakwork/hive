@@ -55,6 +55,21 @@ vi.mock("lucide-react", () => ({
   Wrench: () => null,
   Code2: () => null,
   Share2: () => <span data-testid="share-icon" />,
+  ChevronDown: () => null,
+  ChevronRight: () => null,
+  Copy: () => <span data-testid="icon-copy" />,
+  Check: () => <span data-testid="icon-check" />,
+}));
+
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: any) => <>{children}</>,
+  TooltipTrigger: ({ children }: any) => <>{children}</>,
+  TooltipContent: ({ children }: any) => <div>{children}</div>,
+}));
+
+vi.mock("@/lib/utils/agent-log-pairing", () => ({
+  buildToolCallIndex: vi.fn(() => new Map()),
+  getConsumedResultIds: vi.fn(() => new Set()),
 }));
 
 // --- Import component after mocks ---
@@ -176,7 +191,7 @@ describe("ToolCallItem — rendered via LogDetailDialog", () => {
     expect(screen.queryByText("(show)")).not.toBeInTheDocument();
   });
 
-  test("shows (show) toggle when AI SDK input is present", async () => {
+  test("shows (hide) toggle when AI SDK input is present (expanded by default)", async () => {
     global.fetch = makeStatsFetch([
       aiSdkToolCallMessage("developer__shell", { command: "ls -la" }),
     ]);
@@ -184,11 +199,11 @@ describe("ToolCallItem — rendered via LogDetailDialog", () => {
     render(<LogDetailDialog open logId="log-3" onOpenChange={noop} />);
 
     await waitFor(() => {
-      expect(screen.getByText("(show)")).toBeInTheDocument();
+      expect(screen.getByText("(hide)")).toBeInTheDocument();
     });
   });
 
-  test("shows (show) toggle when OpenAI function.arguments is present", async () => {
+  test("shows (hide) toggle when OpenAI function.arguments is present (expanded by default)", async () => {
     global.fetch = makeStatsFetch([
       openaiToolCallMessage("bash", '{"command":"echo hello"}'),
     ]);
@@ -196,11 +211,11 @@ describe("ToolCallItem — rendered via LogDetailDialog", () => {
     render(<LogDetailDialog open logId="log-4" onOpenChange={noop} />);
 
     await waitFor(() => {
-      expect(screen.getByText("(show)")).toBeInTheDocument();
+      expect(screen.getByText("(hide)")).toBeInTheDocument();
     });
   });
 
-  test("clicking (show) expands args and changes label to (hide)", async () => {
+  test("args are visible by default and clicking (hide) collapses them", async () => {
     const user = userEvent.setup();
     global.fetch = makeStatsFetch([
       aiSdkToolCallMessage("developer__shell", { command: "ls -la" }),
@@ -208,18 +223,19 @@ describe("ToolCallItem — rendered via LogDetailDialog", () => {
 
     render(<LogDetailDialog open logId="log-5" onOpenChange={noop} />);
 
+    // Args visible by default
     await waitFor(() => {
-      expect(screen.getByText("(show)")).toBeInTheDocument();
+      expect(screen.getByText(/ls -la/)).toBeInTheDocument();
+      expect(screen.getByText("(hide)")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("(show)"));
+    await user.click(screen.getByText("(hide)"));
 
-    expect(screen.getByText("(hide)")).toBeInTheDocument();
-    // The pre block with args should now be visible
-    expect(screen.getByText(/ls -la/)).toBeInTheDocument();
+    expect(screen.getByText("(show)")).toBeInTheDocument();
+    expect(screen.queryByText(/ls -la/)).not.toBeInTheDocument();
   });
 
-  test("clicking (hide) collapses args again", async () => {
+  test("clicking (show) after collapse re-expands args", async () => {
     const user = userEvent.setup();
     global.fetch = makeStatsFetch([
       aiSdkToolCallMessage("developer__shell", { command: "ls -la" }),
@@ -227,44 +243,39 @@ describe("ToolCallItem — rendered via LogDetailDialog", () => {
 
     render(<LogDetailDialog open logId="log-6" onOpenChange={noop} />);
 
-    await waitFor(() => expect(screen.getByText("(show)")).toBeInTheDocument());
-
-    await user.click(screen.getByText("(show)"));
-    expect(screen.getByText("(hide)")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("(hide)")).toBeInTheDocument());
 
     await user.click(screen.getByText("(hide)"));
     expect(screen.getByText("(show)")).toBeInTheDocument();
+
+    await user.click(screen.getByText("(show)"));
+    expect(screen.getByText("(hide)")).toBeInTheDocument();
+    expect(screen.getByText(/ls -la/)).toBeInTheDocument();
   });
 
-  test("AI SDK input is JSON-stringified in the expanded pre block", async () => {
-    const user = userEvent.setup();
+  test("AI SDK input is JSON-stringified and visible in the pre block by default", async () => {
     const input = { command: "echo hello" };
     global.fetch = makeStatsFetch([aiSdkToolCallMessage("developer__shell", input)]);
 
     render(<LogDetailDialog open logId="log-7" onOpenChange={noop} />);
 
-    await waitFor(() => expect(screen.getByText("(show)")).toBeInTheDocument());
-    await user.click(screen.getByText("(show)"));
-
-    // The expanded content should contain the JSON-stringified input
-    expect(screen.getByText(/echo hello/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/echo hello/)).toBeInTheDocument();
+    });
   });
 
-  test("OpenAI function.arguments string is rendered verbatim in the expanded pre block", async () => {
-    const user = userEvent.setup();
+  test("OpenAI function.arguments string is rendered verbatim in the pre block by default", async () => {
     const argsStr = '{"command":"echo world"}';
     global.fetch = makeStatsFetch([openaiToolCallMessage("bash", argsStr)]);
 
     render(<LogDetailDialog open logId="log-8" onOpenChange={noop} />);
 
-    await waitFor(() => expect(screen.getByText("(show)")).toBeInTheDocument());
-    await user.click(screen.getByText("(show)"));
-
-    expect(screen.getByText(/echo world/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/echo world/)).toBeInTheDocument();
+    });
   });
 
-  test("truncates args longer than 2000 chars with '... (truncated)' suffix", async () => {
-    const user = userEvent.setup();
+  test("truncates args longer than 2000 chars with '... (truncated)' suffix (visible by default)", async () => {
     const longValue = "x".repeat(2500);
     global.fetch = makeStatsFetch([
       aiSdkToolCallMessage("developer__shell", { big: longValue }),
@@ -272,10 +283,9 @@ describe("ToolCallItem — rendered via LogDetailDialog", () => {
 
     render(<LogDetailDialog open logId="log-9" onOpenChange={noop} />);
 
-    await waitFor(() => expect(screen.getByText("(show)")).toBeInTheDocument());
-    await user.click(screen.getByText("(show)"));
-
-    expect(screen.getByText(/\.\.\. \(truncated\)/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/\.\.\. \(truncated\)/)).toBeInTheDocument();
+    });
   });
 
   test("existing tool result expand/collapse is unaffected", async () => {
