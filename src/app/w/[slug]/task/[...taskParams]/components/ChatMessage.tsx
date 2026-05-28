@@ -103,14 +103,8 @@ export const ChatMessage = memo(function ChatMessage({
     >
       <div className={`flex items-end gap-2 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
         {message.message && (
-          <div
-            className={`group px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm relative ${
-              message.role === "USER"
-                ? "bg-primary text-primary-foreground rounded-br-md"
-                : "bg-background text-foreground rounded-bl-md border"
-            }`}
-          >
-            {/* Stakwork run link — visible on hover for super admins in workflow editor */}
+          <div className="group relative min-w-0 max-w-full">
+            {/* Stakwork run link — sibling of bubble, not clipped by overflow-hidden */}
             {isSuperAdmin && message.role === "USER" && message.stakworkProjectId && (
               <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
                 <Button
@@ -131,6 +125,13 @@ export const ChatMessage = memo(function ChatMessage({
                 </Button>
               </div>
             )}
+            <div
+              className={`px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm ${
+                message.role === "USER"
+                  ? "bg-primary text-primary-foreground rounded-br-md"
+                  : "bg-background text-foreground rounded-bl-md border"
+              }`}
+            >
             <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
               {messageContent}
             </MarkdownRenderer>
@@ -167,6 +168,7 @@ export const ChatMessage = memo(function ChatMessage({
                 <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
               </div>
             )}
+            </div>
           </div>
         )}
 

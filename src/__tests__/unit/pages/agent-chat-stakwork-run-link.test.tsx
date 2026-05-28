@@ -198,14 +198,8 @@ function ChatMessage({
     <div>
       <div className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
         {message.message && (
-          <div
-            className={`group px-4 py-1 rounded-md max-w-full shadow-sm relative ${
-              isUser
-                ? 'bg-primary text-primary-foreground rounded-br-md'
-                : 'bg-background text-foreground rounded-bl-md border'
-            }`}
-          >
-            {/* Stakwork run link */}
+          <div className="group relative min-w-0 max-w-full">
+            {/* Stakwork run link — sibling of bubble, not clipped by overflow-hidden */}
             {isSuperAdmin && isUser && message.stakworkProjectId && (
               <div
                 className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10"
@@ -227,7 +221,15 @@ function ChatMessage({
                 </button>
               </div>
             )}
-            <span data-testid={isUser ? 'chat-msg-user' : 'chat-msg-assistant'}>{message.message}</span>
+            <div
+              className={`px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm ${
+                isUser
+                  ? 'bg-primary text-primary-foreground rounded-br-md'
+                  : 'bg-background text-foreground rounded-bl-md border'
+              }`}
+            >
+              <span data-testid={isUser ? 'chat-msg-user' : 'chat-msg-assistant'}>{message.message}</span>
+            </div>
           </div>
         )}
       </div>
