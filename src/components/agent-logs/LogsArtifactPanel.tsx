@@ -10,6 +10,7 @@ import type { ParsedMessage, AgentLogStats } from "@/lib/utils/agent-log-stats";
 interface AgentLogItem {
   id: string;
   agent: string;
+  featureTitle?: string | null;
 }
 
 interface LogsArtifactPanelProps {
@@ -120,12 +121,22 @@ export function LogsArtifactPanel({ logs }: LogsArtifactPanelProps) {
     }
   };
 
-  const tabs = useMemo(
-    () => logs.map((l) => ({ id: l.id, label: formatAgentLabel(l.agent) })),
-    [logs],
-  );
+  const tabs = useMemo(() => {
+    const base = logs.map((l) => ({ id: l.id, label: formatAgentLabel(l.agent) }));
+    const counts = base.reduce<Record<string, number>>((acc, t) => {
+      acc[t.label] = (acc[t.label] ?? 0) + 1;
+      return acc;
+    }, {});
+    const seen: Record<string, number> = {};
+    return base.map((t) => {
+      if (counts[t.label] <= 1) return t;
+      seen[t.label] = (seen[t.label] ?? 0) + 1;
+      return { ...t, label: `${t.label} ${seen[t.label]}` };
+    });
+  }, [logs]);
 
   const current = selectedId ? logStates[selectedId] : null;
+  const selectedLog = selectedId ? logs.find((l) => l.id === selectedId) ?? null : null;
   const hasContent = !!current && (current.conversation !== null || current.rawContent !== "");
 
   return (
@@ -170,6 +181,15 @@ export function LogsArtifactPanel({ logs }: LogsArtifactPanelProps) {
       {current?.error && !current.loading && (
         <div className="text-center py-12">
           <p className="text-destructive text-sm">{current.error}</p>
+        </div>
+      )}
+
+      {selectedLog && (selectedLog.featureTitle || selectedLog.agent) && (
+        <div className="mb-3 space-y-0.5">
+          {selectedLog.featureTitle && (
+            <p className="text-sm font-medium text-foreground">{selectedLog.featureTitle}</p>
+          )}
+          <p className="text-xs text-muted-foreground font-mono break-all">{selectedLog.agent}</p>
         </div>
       )}
 

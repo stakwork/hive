@@ -173,6 +173,27 @@ describe("LogsArtifactPanel", () => {
     expect(screen.getByRole("tab", { name: "Test Agent" })).toBeDefined();
   });
 
+  it("numbers duplicate agent labels by timestamp order", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [
+          { id: "log-plan", agent: "plan-agent-task1" },
+          { id: "log-code-1", agent: "coding-agent-task1" },
+          { id: "log-code-2", agent: "coding-agent-task2" },
+          { id: "log-code-3", agent: "coding-agent-task3" },
+        ],
+      }),
+    );
+
+    expect(screen.getByRole("tab", { name: "Plan Agent" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Coding Agent 1" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Coding Agent 2" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Coding Agent 3" })).toBeDefined();
+  });
+
   it("defaults to the last (latest) log tab", async () => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
 
