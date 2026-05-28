@@ -69,7 +69,7 @@ describe("LogsArtifactPanel", () => {
     );
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logs: singleLog, featureId: FEATURE_ID }));
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
 
     expect(screen.getByTestId("log-loading")).toBeDefined();
   });
@@ -81,7 +81,7 @@ describe("LogsArtifactPanel", () => {
     });
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logs: singleLog, featureId: FEATURE_ID }));
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
 
     await waitFor(() => {
       expect(screen.getAllByTestId("log-message")).toHaveLength(2);
@@ -98,7 +98,7 @@ describe("LogsArtifactPanel", () => {
     render(
       React.createElement(LogsArtifactPanel, {
         logs: [{ id: "log-456", agent: `coding-agent-${FEATURE_ID}` }],
-        featureId: FEATURE_ID,
+  
       }),
     );
 
@@ -114,7 +114,7 @@ describe("LogsArtifactPanel", () => {
     });
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logs: singleLog, featureId: FEATURE_ID }));
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
 
     await waitFor(() => screen.getAllByTestId("log-message"));
     expect(screen.getByText("Download")).toBeDefined();
@@ -141,7 +141,7 @@ describe("LogsArtifactPanel", () => {
     render(
       React.createElement(LogsArtifactPanel, {
         logs: [{ id: "log-789", agent: `coding-agent-${FEATURE_ID}` }],
-        featureId: FEATURE_ID,
+  
       }),
     );
 
@@ -164,13 +164,34 @@ describe("LogsArtifactPanel", () => {
           { id: "log-code", agent: `coding-agent-${FEATURE_ID}` },
           { id: "log-test", agent: `test-agent-${FEATURE_ID}` },
         ],
-        featureId: FEATURE_ID,
+  
       }),
     );
 
     expect(screen.getByRole("tab", { name: "Plan Agent" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "Coding Agent" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "Test Agent" })).toBeDefined();
+  });
+
+  it("numbers duplicate agent labels by timestamp order", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [
+          { id: "log-plan", agent: "plan-agent-task1" },
+          { id: "log-code-1", agent: "coding-agent-task1" },
+          { id: "log-code-2", agent: "coding-agent-task2" },
+          { id: "log-code-3", agent: "coding-agent-task3" },
+        ],
+      }),
+    );
+
+    expect(screen.getByRole("tab", { name: "Plan Agent" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Coding Agent 1" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Coding Agent 2" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Coding Agent 3" })).toBeDefined();
   });
 
   it("defaults to the last (latest) log tab", async () => {
@@ -184,7 +205,7 @@ describe("LogsArtifactPanel", () => {
           { id: "log-code", agent: `coding-agent-${FEATURE_ID}` },
           { id: "log-test", agent: `test-agent-${FEATURE_ID}` },
         ],
-        featureId: FEATURE_ID,
+  
       }),
     );
 
@@ -206,7 +227,7 @@ describe("LogsArtifactPanel", () => {
           { id: "log-plan", agent: `plan-agent-${FEATURE_ID}` },
           { id: "log-code", agent: `coding-agent-${FEATURE_ID}` },
         ],
-        featureId: FEATURE_ID,
+  
       }),
     );
 
