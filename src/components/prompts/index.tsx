@@ -20,6 +20,7 @@ import {
 import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock, Trash2, Zap, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { estimateTokens, formatTokenCount } from "@/lib/utils/token-estimate";
 import { useDebounce } from "@/hooks/useDebounce";
 import { diffLines } from "diff";
 
@@ -32,11 +33,13 @@ interface PromptUsage {
   step_id: string;
 }
 
+// Prompt list item (from API list endpoint)
 interface Prompt {
   id: number;
   name: string;
   description: string;
   usage_notation: string;
+  value?: string;
   usages?: PromptUsage[];
 }
 
@@ -129,6 +132,10 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [formName, setFormName] = useState("");
   const [formValue, setFormValue] = useState("");
   const [formDescription, setFormDescription] = useState("");
+
+  // Debounced form value for live token count
+  const debouncedFormValue = useDebounce(formValue, 300);
+  const liveTokenCount = estimateTokens(debouncedFormValue);
 
   const isFullpage = variant === "fullpage";
 
@@ -682,6 +689,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 onChange={(e) => setFormValue(e.target.value)}
                 disabled={isSaving}
               />
+              <p className="text-xs text-muted-foreground text-right mt-1">{formatTokenCount(liveTokenCount)}</p>
             </div>
 
           </div>
@@ -886,16 +894,24 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Prompt Value
-                </label>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Prompt Value
+                  </label>
+                  <span className="text-xs text-muted-foreground">
+                    {formatTokenCount(estimateTokens(isEditing ? debouncedFormValue : selectedPrompt.value))}
+                  </span>
+                </div>
                 {isEditing ? (
-                  <Textarea
-                    className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[500px]" : "min-h-[200px]")}
-                    value={formValue}
-                    onChange={(e) => setFormValue(e.target.value)}
-                    disabled={isSaving}
-                  />
+                  <>
+                    <Textarea
+                      className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[500px]" : "min-h-[200px]")}
+                      value={formValue}
+                      onChange={(e) => setFormValue(e.target.value)}
+                      disabled={isSaving}
+                    />
+                    <p className="text-xs text-muted-foreground text-right mt-1">{formatTokenCount(liveTokenCount)}</p>
+                  </>
                 ) : (
                   <pre className={cn(
                     "mt-1 text-sm bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap font-mono",
@@ -1273,6 +1289,11 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
               >
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium truncate flex-1">{prompt.name}</span>
+                  {prompt.value != null && (
+                    <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded flex-shrink-0">
+                      {formatTokenCount(estimateTokens(prompt.value))}
+                    </span>
+                  )}
                   {prompt.usages && prompt.usages.length > 0 && (
                     <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded flex-shrink-0">
                       {prompt.usages.length} {prompt.usages.length === 1 ? "usage" : "usages"}

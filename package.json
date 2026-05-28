@@ -114,6 +114,7 @@
     "gatekey": "^0.1.1",
     "gitsee": "^1.0.13",
     "globrex": "^0.1.2",
+    "gpt-tokenizer": "^3.4.0",
     "gsap": "^3.13.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
