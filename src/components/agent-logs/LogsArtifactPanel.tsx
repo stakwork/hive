@@ -14,7 +14,6 @@ interface AgentLogItem {
 
 interface LogsArtifactPanelProps {
   logs: AgentLogItem[];
-  featureId: string;
 }
 
 interface LogState {
@@ -25,16 +24,19 @@ interface LogState {
   error: string | null;
 }
 
-function formatAgentLabel(agent: string, featureId: string): string {
-  // "test-agent-cmpp75an00001l8049l77y5el" → "Test Agent"
-  const stripped = agent.endsWith(`-${featureId}`) ? agent.slice(0, -(featureId.length + 1)) : agent;
-  return stripped
+function formatAgentLabel(agent: string): string {
+  // "test-agent-<anything>" → "Test Agent"; "multi-word-agent-<x>" → "Multi Word Agent"
+  const match = agent.match(/^(.+?)-agent\b/i);
+  const prefix = match ? match[1] : agent;
+  const titleCased = prefix
     .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(" ");
+  return match ? `${titleCased} Agent` : titleCased;
 }
 
-export function LogsArtifactPanel({ logs, featureId }: LogsArtifactPanelProps) {
+export function LogsArtifactPanel({ logs }: LogsArtifactPanelProps) {
   // Default to the latest (rightmost — parent already sorts ascending by timestamp)
   const [selectedId, setSelectedId] = useState<string | null>(
     () => logs[logs.length - 1]?.id ?? null,
@@ -119,8 +121,8 @@ export function LogsArtifactPanel({ logs, featureId }: LogsArtifactPanelProps) {
   };
 
   const tabs = useMemo(
-    () => logs.map((l) => ({ id: l.id, label: formatAgentLabel(l.agent, featureId) })),
-    [logs, featureId],
+    () => logs.map((l) => ({ id: l.id, label: formatAgentLabel(l.agent) })),
+    [logs],
   );
 
   const current = selectedId ? logStates[selectedId] : null;
