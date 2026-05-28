@@ -52,6 +52,8 @@ import { categoryAllowedOnScope } from "./canvas-categories";
 import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import useCanvasClipboard from "./useCanvasClipboard";
+import { useSession } from "next-auth/react";
+import { useCanvasCollaboration } from "@/hooks/useCanvasCollaboration";
 
 /**
  * Live-id detection mirrors `src/lib/canvas/scope.ts`'s `isLiveId`.
@@ -345,6 +347,7 @@ export function OrgCanvasBackground({
   onCanvasBreadcrumbChange,
   onLinkedConnectionIdsChange,
 }: OrgCanvasBackgroundProps) {
+  const { data: session } = useSession();
   const [root, setRoot] = useState<CanvasData | null>(null);
   const [subCanvases, setSubCanvases] = useState<Record<string, CanvasData>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -471,11 +474,13 @@ export function OrgCanvasBackground({
     (selection: CanvasSelection) => {
       if (!selection) {
         selectedNodeForClipboardRef.current = null;
+        setSelectedNodeIdForPresence(null);
         onSelectionChange?.(null);
         return;
       }
       if (selection.kind === "node") {
         selectedNodeForClipboardRef.current = selection.node;
+        setSelectedNodeIdForPresence(selection.node.id);
         onSelectionChange?.({
           kind: "node",
           node: selection.node,
@@ -484,6 +489,7 @@ export function OrgCanvasBackground({
         return;
       }
       selectedNodeForClipboardRef.current = null;
+      setSelectedNodeIdForPresence(null);
       // Edge — resolve human labels off the canvas the edge lives on.
       // The refs lag state by one commit, but the edge's endpoints
       // are already in the rendered canvas (it wouldn't have been
@@ -565,6 +571,9 @@ export function OrgCanvasBackground({
 
   // Selected node ref for clipboard — updated inside handleSelectionChange.
   const selectedNodeForClipboardRef = useRef<CanvasNode | null>(null);
+
+  // Selected node id for presence broadcasting.
+  const [selectedNodeIdForPresence, setSelectedNodeIdForPresence] = useState<string | null>(null);
 
   // -------------------------------------------------------------------
   // Single source of truth for canvas scope: the library's breadcrumb
@@ -2040,6 +2049,18 @@ export function OrgCanvasBackground({
     canvasContainerRef,
   });
 
+  // Real-time canvas presence — cursors, selection halos, conflict flash
+  const { collaborators } = useCanvasCollaboration({
+    githubLogin,
+    canvasRef: currentRef,
+    userId: session?.user?.id ?? "",
+    userName: session?.user?.name ?? "",
+    viewportRef: currentViewportRef,
+    containerRef: canvasContainerRef,
+    selectedNodeId: selectedNodeIdForPresence,
+    enabled: !!(session?.user?.id),
+  });
+
   /**
    * Detect a user-drawn edge whose endpoints are a feature card and a
    * milestone card on the initiative canvas. Either direction is
@@ -2858,6 +2879,9 @@ export function OrgCanvasBackground({
           onViewportChange={(vp) => {
             currentViewportRef.current = vp;
           }}
+          // @ts-expect-error collaborators prop will be available once system-canvas-react
+          // is updated with the CollaboratorsOverlay changes from Phase 1.
+          collaborators={collaborators}
         />
         {/*
          * Restore pill — top-right of the canvas area. Shown on any
