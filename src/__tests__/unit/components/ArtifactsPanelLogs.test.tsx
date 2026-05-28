@@ -95,11 +95,10 @@ vi.mock("@/app/w/[slug]/plan/[featureId]/components/VerifyPanel", () => ({
 }));
 
 vi.mock("@/components/agent-logs/LogsArtifactPanel", () => ({
-  LogsArtifactPanel: ({ logs, featureId }: { logs: { id: string }[]; featureId: string }) =>
+  LogsArtifactPanel: ({ logs }: { logs: { id: string }[] }) =>
     React.createElement("div", {
       "data-testid": "logs-panel",
       "data-log-ids": logs.map((l) => l.id).join(","),
-      "data-feature-id": featureId,
     }),
 }));
 
@@ -215,7 +214,6 @@ describe("ArtifactsPanel — LOGS tab", () => {
     });
 
     expect(screen.getByTestId("logs-panel").getAttribute("data-log-ids")).toBe("log-abc");
-    expect(screen.getByTestId("logs-panel").getAttribute("data-feature-id")).toBe("feat-1");
   });
 
   it("calls the correct API endpoint to resolve agent log for feature", async () => {
