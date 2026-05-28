@@ -95,8 +95,12 @@ vi.mock("@/app/w/[slug]/plan/[featureId]/components/VerifyPanel", () => ({
 }));
 
 vi.mock("@/components/agent-logs/LogsArtifactPanel", () => ({
-  LogsArtifactPanel: ({ logId }: { logId: string }) =>
-    React.createElement("div", { "data-testid": "logs-panel", "data-log-id": logId }),
+  LogsArtifactPanel: ({ logs, featureId }: { logs: { id: string }[]; featureId: string }) =>
+    React.createElement("div", {
+      "data-testid": "logs-panel",
+      "data-log-ids": logs.map((l) => l.id).join(","),
+      "data-feature-id": featureId,
+    }),
 }));
 
 vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts", () => ({
@@ -177,7 +181,13 @@ describe("ArtifactsPanel — LOGS tab", () => {
     // First fetch: agent logs resolver → returns a log
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ data: [{ id: "log-abc" }], total: 1, hasMore: false }),
+      json: async () => ({
+        data: [
+          { id: "log-abc", agent: "coding-agent-feat-1", createdAt: "2026-05-28T09:00:00Z" },
+        ],
+        total: 1,
+        hasMore: false,
+      }),
     });
 
     // Second fetch: attachments count
@@ -204,7 +214,8 @@ describe("ArtifactsPanel — LOGS tab", () => {
       expect(screen.getByTestId("logs-panel")).toBeDefined();
     });
 
-    expect(screen.getByTestId("logs-panel").getAttribute("data-log-id")).toBe("log-abc");
+    expect(screen.getByTestId("logs-panel").getAttribute("data-log-ids")).toBe("log-abc");
+    expect(screen.getByTestId("logs-panel").getAttribute("data-feature-id")).toBe("feat-1");
   });
 
   it("calls the correct API endpoint to resolve agent log for feature", async () => {
@@ -227,7 +238,7 @@ describe("ArtifactsPanel — LOGS tab", () => {
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/agent-logs?feature_id=feat-99&workspace_id=ws-42&limit=1")
+        expect.stringContaining("/api/agent-logs?feature_id=feat-99&workspace_id=ws-42&limit=20")
       );
     });
   });

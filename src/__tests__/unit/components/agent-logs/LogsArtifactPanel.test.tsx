@@ -11,42 +11,34 @@ globalThis.React = React;
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 vi.mock("@/components/agent-logs/LogDetailContent", () => ({
-  LogDetailContent: ({
-    loading,
-    error,
-    conversation,
-  }: {
-    loading: boolean;
-    error: string | null;
-    conversation: unknown[] | null;
-  }) => {
-    if (loading) return React.createElement("div", { "data-testid": "log-loading" }, "Loading...");
-    if (error) return React.createElement("div", { "data-testid": "log-error" }, error);
-    return React.createElement(
-      "div",
-      { "data-testid": "log-conversation" },
-      `${conversation?.length ?? 0} messages`
-    );
-  },
+  MessageBubble: ({ message }: { message: { role: string; content: string } }) =>
+    React.createElement("div", { "data-testid": "log-message" }, `${message.role}:${message.content}`),
+  StatsBar: ({ stats }: { stats: { messageCount: number } }) =>
+    React.createElement("div", { "data-testid": "log-stats" }, `messages:${stats.messageCount}`),
+  unescapeLogString: (s: string) => s,
 }));
 
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
     onClick,
+    disabled,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement> & { children?: React.ReactNode }) =>
-    React.createElement("button", { onClick, ...props }, children),
+    React.createElement("button", { onClick, disabled, ...props }, children),
 }));
 
 vi.mock("lucide-react", () => ({
   Download: () => React.createElement("span", null, "download-icon"),
+  Loader2: () => React.createElement("span", { "data-testid": "log-loading" }, "loading-icon"),
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const mockFetch = vi.fn();
 globalThis.fetch = mockFetch;
+
+const FEATURE_ID = "feat-abc";
 
 const fakeStats = {
   conversation: [
@@ -56,12 +48,13 @@ const fakeStats = {
   stats: { messageCount: 2, tokenEstimate: 50, toolUsage: {}, bashCommands: [] },
 };
 
+const singleLog = [{ id: "log-123", agent: `coding-agent-${FEATURE_ID}` }];
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("LogsArtifactPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset URL.createObjectURL
     globalThis.URL.createObjectURL = vi.fn(() => "blob:fake");
     globalThis.URL.revokeObjectURL = vi.fn();
   });
@@ -71,13 +64,12 @@ describe("LogsArtifactPanel", () => {
   });
 
   it("renders loading state initially", async () => {
-    // Delay the fetch so we can observe loading
     mockFetch.mockImplementationOnce(
       () => new Promise((resolve) => setTimeout(() => resolve({ ok: true, json: async () => fakeStats }), 200))
     );
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logId: "log-123" }));
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog, featureId: FEATURE_ID }));
 
     expect(screen.getByTestId("log-loading")).toBeDefined();
   });
@@ -89,12 +81,11 @@ describe("LogsArtifactPanel", () => {
     });
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logId: "log-123" }));
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog, featureId: FEATURE_ID }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("log-conversation")).toBeDefined();
+      expect(screen.getAllByTestId("log-message")).toHaveLength(2);
     });
-    expect(screen.getByTestId("log-conversation").textContent).toContain("2 messages");
   });
 
   it("renders error state when fetch fails", async () => {
@@ -104,12 +95,16 @@ describe("LogsArtifactPanel", () => {
     });
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logId: "log-456" }));
+    render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [{ id: "log-456", agent: `coding-agent-${FEATURE_ID}` }],
+        featureId: FEATURE_ID,
+      }),
+    );
 
     await waitFor(() => {
-      expect(screen.getByTestId("log-error")).toBeDefined();
+      expect(screen.getByText(/Failed to fetch log/)).toBeDefined();
     });
-    expect(screen.getByTestId("log-error").textContent).toContain("Failed to fetch log");
   });
 
   it("renders a download button", async () => {
@@ -119,38 +114,110 @@ describe("LogsArtifactPanel", () => {
     });
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logId: "log-123" }));
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog, featureId: FEATURE_ID }));
 
-    await waitFor(() => screen.getByTestId("log-conversation"));
+    await waitFor(() => screen.getAllByTestId("log-message"));
     expect(screen.getByText("Download")).toBeDefined();
   });
 
-  it("triggers download when download button is clicked", async () => {
+  it("triggers download for the selected log when clicked", async () => {
     mockFetch
       .mockResolvedValueOnce({ ok: true, json: async () => fakeStats })
-      .mockResolvedValueOnce({ ok: true, blob: async () => new Blob(["{}"], { type: "application/json" }) });
+      .mockResolvedValueOnce({
+        ok: true,
+        blob: async () => new Blob(["{}"], { type: "application/json" }),
+      });
 
-    // Track anchor clicks without interfering with React's DOM mounting
-    const clickedHrefs: string[] = [];
     const origCreateElement = document.createElement.bind(document);
     vi.spyOn(document, "createElement").mockImplementation((tag: string, ...args: unknown[]) => {
       const el = origCreateElement(tag, ...(args as []));
       if (tag === "a") {
-        vi.spyOn(el as HTMLAnchorElement, "click").mockImplementation(() => {
-          clickedHrefs.push((el as HTMLAnchorElement).href);
-        });
+        vi.spyOn(el as HTMLAnchorElement, "click").mockImplementation(() => {});
       }
       return el;
     });
 
     const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
-    render(React.createElement(LogsArtifactPanel, { logId: "log-789" }));
+    render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [{ id: "log-789", agent: `coding-agent-${FEATURE_ID}` }],
+        featureId: FEATURE_ID,
+      }),
+    );
 
-    await waitFor(() => screen.getByText("Download"));
+    await waitFor(() => screen.getAllByTestId("log-message"));
     await userEvent.click(screen.getByText("Download"));
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith("/api/agent-logs/log-789/content");
+    });
+  });
+
+  it("renders one tab per agent log with formatted labels", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [
+          { id: "log-plan", agent: `plan-agent-${FEATURE_ID}` },
+          { id: "log-code", agent: `coding-agent-${FEATURE_ID}` },
+          { id: "log-test", agent: `test-agent-${FEATURE_ID}` },
+        ],
+        featureId: FEATURE_ID,
+      }),
+    );
+
+    expect(screen.getByRole("tab", { name: "Plan Agent" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Coding Agent" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Test Agent" })).toBeDefined();
+  });
+
+  it("defaults to the last (latest) log tab", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [
+          { id: "log-plan", agent: `plan-agent-${FEATURE_ID}` },
+          { id: "log-code", agent: `coding-agent-${FEATURE_ID}` },
+          { id: "log-test", agent: `test-agent-${FEATURE_ID}` },
+        ],
+        featureId: FEATURE_ID,
+      }),
+    );
+
+    const testTab = screen.getByRole("tab", { name: "Test Agent" });
+    expect(testTab.getAttribute("aria-selected")).toBe("true");
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("/api/agent-logs/log-test/stats");
+    });
+  });
+
+  it("switches the displayed log when a tab is clicked", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [
+          { id: "log-plan", agent: `plan-agent-${FEATURE_ID}` },
+          { id: "log-code", agent: `coding-agent-${FEATURE_ID}` },
+        ],
+        featureId: FEATURE_ID,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("/api/agent-logs/log-code/stats");
+    });
+
+    await userEvent.click(screen.getByRole("tab", { name: "Plan Agent" }));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("/api/agent-logs/log-plan/stats");
     });
   });
 });
