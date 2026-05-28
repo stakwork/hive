@@ -844,6 +844,9 @@ export async function callStakworkAPI(params: {
     workflowId = stakworkWorkflowIds[2];
   } else if (mode === "integration") {
     workflowId = stakworkWorkflowIds[2];
+  } else if (mode === "workflow_editor" && config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID) {
+    workflowId = config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID;
+    console.warn(`[callStakworkAPI] workflow_editor fell through for task ${taskId} — using fallback routing`);
   } else {
     workflowId = stakworkWorkflowIds[1] || stakworkWorkflowIds[0]; // default to test mode or first
   }

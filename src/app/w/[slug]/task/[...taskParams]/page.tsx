@@ -187,13 +187,22 @@ export default function TaskChatPage() {
     // Update workflowRefId from incoming WORKFLOW artifact (workflow_editor mode only)
     if (taskMode === "workflow_editor") {
       const workflowArtifact = message.artifacts?.find(
-        (a) => a.type === "WORKFLOW" && (a.content as WorkflowContent)?.workflowRefId
+        (a) => a.type === "WORKFLOW" && (a.content as WorkflowContent)?.workflowId
       );
       if (workflowArtifact) {
-        const incomingRefId = (workflowArtifact.content as WorkflowContent).workflowRefId!;
-        setCurrentWorkflowContext((prev) =>
-          prev ? { ...prev, workflowRefId: incomingRefId } : prev
-        );
+        const content = workflowArtifact.content as WorkflowContent;
+        setCurrentWorkflowContext((prev) => {
+          if (prev) {
+            return content.workflowRefId ? { ...prev, workflowRefId: content.workflowRefId } : prev;
+          }
+          // Reconstruct from scratch if context was null
+          return {
+            workflowId: content.workflowId!,
+            workflowName: content.workflowName || `Workflow ${content.workflowId}`,
+            workflowRefId: content.workflowRefId || "",
+            ...(content.workflowVersionId && { workflowVersionId: String(content.workflowVersionId) }),
+          };
+        });
       }
     }
 
@@ -1040,11 +1049,14 @@ export default function TaskChatPage() {
     if (!message.trim() && !attachments?.length && !pendingDebugAttachment && !selectedStep) return;
     if (isLoading) return; // Prevent duplicate sends
 
+    // Handle workflow_editor mode - block send if context is missing
+    if (taskMode === "workflow_editor" && !currentWorkflowContext) {
+      toast.error("Workflow context is missing — please reload the page.");
+      return;
+    }
+
     // Handle workflow_editor mode - always use workflow editor endpoint
     if (taskMode === "workflow_editor" && currentWorkflowContext && currentTaskId) {
-      if (!currentWorkflowContext.workflowRefId) {
-        return;
-      }
       const messageText = message.trim() || (selectedStep ? "Modify this step" : "");
       if (!messageText) return; // Need a message if no step selected
 

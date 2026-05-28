@@ -2907,6 +2907,51 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
         workflow_id: 456, // Second ID as fallback
       });
     });
+
+    test("should use STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID for 'workflow_editor' mode", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      // Set the workflow editor workflow ID on config
+      (mockConfig as Record<string, unknown>).STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID = "54419";
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "workflow_editor",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 54419,
+      });
+
+      // Cleanup
+      delete (mockConfig as Record<string, unknown>).STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID;
+    });
+
+    test("should fall through to default workflow ID when mode is 'workflow_editor' but STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID is not set", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      // Ensure the workflow editor config is NOT set
+      delete (mockConfig as Record<string, unknown>).STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID;
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "workflow_editor",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 456, // falls to else: stakworkWorkflowIds[1]
+      });
+    });
   });
 
   describe("HTTP Request Configuration", () => {
