@@ -18,6 +18,7 @@ import {
   WorkflowStatus,
 } from "@/lib/chat";
 import { useStreamContext } from "@/hooks/useStreamContext";
+import { useStreamedAgentLog } from "@/hooks/useStreamedAgentLog";
 import { getPusherClient } from "@/lib/pusher";
 import type { FeatureDetail } from "@/types/roadmap";
 import { diffWords } from "diff";
@@ -109,6 +110,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [llmModels, setLlmModels] = useState<{ id: string; name: string; provider: string; providerLabel: string | null; isPlanDefault: boolean; isTaskDefault: boolean }[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
+  const streamedLog = useStreamedAgentLog(streamContext);
 
   // Project log WebSocket for live thinking logs
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, false);
@@ -681,6 +683,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     controlledTab: activeTab,
     onControlledTabChange: handleTabChange,
     sectionHighlights,
+    streamingLog: streamedLog,
   };
 
   if (!initialLoadDone) {
