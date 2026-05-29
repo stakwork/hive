@@ -653,6 +653,9 @@ describe("createFeature", () => {
           // wins" resolution in services/roadmap/features.ts.
           initiativeId: null,
           milestoneId: null,
+          // Dependency array defaults to [] when not supplied. Mirrors
+          // `Task.dependsOnTaskIds`'s posture.
+          dependsOnFeatureIds: [],
           createdById: mockUserId,
           updatedById: mockUserId,
           phases: {
