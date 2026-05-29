@@ -22,7 +22,42 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { joinRepoUrls } from "@/lib/helpers/repository";
 import { scoutOrgContext } from "@/services/roadmap/orgContextScout";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
+import { mintWorkspaceToken } from "@/lib/mcp/workspaceTokenMint";
 import type { McpServerConfig } from "@/services/mcpServers";
+
+/**
+ * Task tools exposed to the plan agent via the workspace-scope MCP
+ * callback. The plan agent uses these to look up tasks in its
+ * feature, create new ones (coding or workflow), edit existing ones,
+ * and send messages to the task agents so plan-level decisions can
+ * propagate downstream.
+ *
+ * Note we expose the feature-aware `create_feature_task` and
+ * `create_workflow_task` instead of the generic `create_task` —
+ * those variants carry the task-quality guardrails (granularity,
+ * coding-vs-workflow classification, IDOR reminders) in their tool
+ * descriptions, which the generic `create_task` doesn't. Voice and
+ * other agents still get `create_task` via the default surface;
+ * only the plan agent is locked to the feature-aware variants.
+ *
+ * Intentionally narrow: feature-level reads/writes flow through the
+ * plan agent's normal chat surface (it IS the feature's planner), not
+ * back through MCP. This filter is enforced in two layers:
+ *   1. URL `?tools=` query param → server-side gate in `handler.ts`.
+ *   2. `McpServerConfig.toolFilter` → client-side allow-list in
+ *      repo/agent.
+ * Belt-and-suspenders so a future expansion of `AVAILABLE_TOOLS`
+ * cannot accidentally widen the plan agent's surface without an
+ * explicit code change here.
+ */
+const PLAN_MODE_WORKSPACE_TOOLS = [
+  "list_tasks",
+  "read_task",
+  "create_feature_task",
+  "create_workflow_task",
+  "update_task",
+  "send_to_task_agent",
+] as const;
 
 /**
  * Fetch chat history for a feature, excluding a specific message.
@@ -499,6 +534,74 @@ export async function sendFeatureChatMessage({
       }
     }
 
+    // Workspace-scope MCP server entry for the swarm-side plan agent.
+    //
+    // Where `orgMcpServers` lets the agent reach back into the org-level
+    // canvas surface, this entry lets it reach back into THIS workspace
+    // to operate on the feature's own tasks — list / read / create /
+    // update tasks, and send messages to task agents when a plan-level
+    // decision needs to land in a task chat. Mirrors the
+    // manager-of-planners loop the canvas agent uses on features,
+    // applied one layer down (planner → tasks).
+    //
+    // Best-effort, same as the org callback: any failure (JWT_SECRET
+    // missing, membership lost, etc.) leaves `workspaceMcpServers`
+    // undefined and the plan agent runs without the task callback.
+    let workspaceMcpServers: McpServerConfig[] | undefined;
+    try {
+      const mintOutcome = await mintWorkspaceToken({
+        workspaceId: feature.workspaceId,
+        userId,
+        purpose: `plan-mode:${featureId}`,
+      });
+      if (mintOutcome.ok) {
+        // Server-side filter via `?tools=` — defense in depth alongside
+        // the client-side `toolFilter` below. Both layers gate the same
+        // allow-list; either alone would suffice, both together make
+        // accidental surface expansion harder.
+        const baseUrl =
+          process.env.HIVE_MCP_URL || "https://hive.sphinx.chat/mcp";
+        const toolsParam = PLAN_MODE_WORKSPACE_TOOLS.join(",");
+        const separator = baseUrl.includes("?") ? "&" : "?";
+        const urlWithFilter = `${baseUrl}${separator}tools=${toolsParam}`;
+
+        workspaceMcpServers = [
+          {
+            name: "hive",
+            url: urlWithFilter,
+            token: mintOutcome.token,
+            toolFilter: [...PLAN_MODE_WORKSPACE_TOOLS],
+          },
+        ];
+        console.log(
+          `[feature-chat] minted workspace-MCP token for ${featureId}: ` +
+            `slug=${mintOutcome.slug} tools=${toolsParam}`,
+        );
+      } else {
+        console.warn(
+          `[feature-chat] mintWorkspaceToken failed for ${featureId}: ${mintOutcome.error} ` +
+            `— plan agent will run without task callback`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        `[feature-chat] mintWorkspaceToken threw for ${featureId} ` +
+          `— plan agent will run without task callback:`,
+        error,
+      );
+    }
+
+    // Concatenate org + workspace MCP server entries. Both are
+    // best-effort; either or both may be undefined. The result is
+    // `undefined` only when neither was successfully minted (so
+    // `callStakworkAPI` still gets an undefined `mcpServers` rather
+    // than an empty array — keeps the wire payload identical to the
+    // pre-workspace-MCP era when nothing is minted).
+    const combinedMcpServers: McpServerConfig[] | undefined =
+      orgMcpServers || workspaceMcpServers
+        ? [...(orgMcpServers ?? []), ...(workspaceMcpServers ?? [])]
+        : undefined;
+
     if (orgContext && featureContext) {
       featureContext = { ...featureContext, orgContext };
     } else if (orgContext && !featureContext) {
@@ -539,7 +642,7 @@ export async function sendFeatureChatMessage({
       subAgents: extraSwarms,
       attachments: attachmentUrls,
       taskModel: feature.model || model || undefined,
-      mcpServers: orgMcpServers,
+      mcpServers: combinedMcpServers,
     });
 
     // Only update workflow status when Stakwork confirms a project was created
