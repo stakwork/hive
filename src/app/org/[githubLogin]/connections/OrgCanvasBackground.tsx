@@ -2125,6 +2125,95 @@ export function OrgCanvasBackground({
     [],
   );
 
+  /**
+   * Detect a user-drawn edge whose endpoints are two feature cards on
+   * the initiative canvas. The direction matters: the source is the
+   * BLOCKER (the dependency, the thing that must finish first), the
+   * target is the BLOCKED (the dependent feature whose
+   * `dependsOnFeatureIds` array will gain the blocker's id). Returns
+   * `null` for any other shape — milestone↔feature edges are caught
+   * by `detectFeatureMilestoneEdge` above; the milestone check runs
+   * first in `handleEdgeAdd`.
+   */
+  const detectFeatureBlocksEdge = useCallback(
+    (
+      edge: CanvasEdge,
+    ): { blockerId: string; blockedId: string } | null => {
+      const a = edge.fromNode;
+      const b = edge.toNode;
+      if (a.startsWith("feature:") && b.startsWith("feature:")) {
+        return {
+          blockerId: a.slice("feature:".length),
+          blockedId: b.slice("feature:".length),
+        };
+      }
+      return null;
+    },
+    [],
+  );
+
+  /**
+   * Fire-and-forget PATCH that adds or removes a blocker on a
+   * feature's `dependsOnFeatureIds` array. Read-modify-write because
+   * the column is a flat string array; the service-layer
+   * `updateFeature` runs validation + the cycle check before writing.
+   * Pass `mode: "add"` to append (no-op if already present) or
+   * `"remove"` to filter out. The Pusher fan-out (reused
+   * `notifyFeatureContentRefresh`) handles the canvas refresh.
+   */
+  const patchFeatureBlocks = useCallback(
+    async (
+      blockedId: string,
+      blockerId: string,
+      mode: "add" | "remove",
+    ) => {
+      try {
+        // Read current array first — `dependsOnFeatureIds` is a flat
+        // column and the API expects the full replacement set.
+        const readRes = await fetch(`/api/features/${blockedId}`);
+        if (!readRes.ok) {
+          console.error(
+            "[OrgCanvasBackground] patchFeatureBlocks read failed",
+            readRes.status,
+          );
+          return;
+        }
+        const readBody = await readRes.json();
+        const current: string[] =
+          (readBody?.data?.dependsOnFeatureIds as string[] | undefined) ?? [];
+        const next =
+          mode === "add"
+            ? Array.from(new Set([...current, blockerId]))
+            : current.filter((id) => id !== blockerId);
+        // Skip no-op writes — saves a round trip and avoids
+        // emitting CANVAS_UPDATED for a write that didn't change
+        // anything.
+        if (
+          next.length === current.length &&
+          next.every((id, i) => id === current[i])
+        ) {
+          return;
+        }
+        const res = await fetch(`/api/features/${blockedId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dependsOnFeatureIds: next }),
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          console.error(
+            "[OrgCanvasBackground] patchFeatureBlocks failed",
+            res.status,
+            detail,
+          );
+        }
+      } catch (err) {
+        console.error("[OrgCanvasBackground] patchFeatureBlocks threw", err);
+      }
+    },
+    [],
+  );
+
   const handleEdgeAdd = useCallback(
     (edge: CanvasEdge, canvasRef: string | undefined) => {
       // Intercept feature↔milestone edges as DB membership writes
@@ -2181,9 +2270,48 @@ export function OrgCanvasBackground({
         void patchFeatureMilestone(link.featureId, link.milestoneId);
         return;
       }
+
+      // Feature→feature dependency edge (the "blocks" relation). Same
+      // pattern as the milestone interception: swap the user-drawn
+      // edge's id for the predicted synthetic id, PATCH the DB, let
+      // the Pusher-driven refetch confirm via the projector. The
+      // server-side cycle check in `updateFeature` rejects the write
+      // if it would create a cycle — the optimistic edge then sits
+      // briefly until the next refetch removes it (the projector
+      // won't re-emit a non-persisted dependency).
+      const blocksLink = detectFeatureBlocksEdge(edge);
+      if (blocksLink && blocksLink.blockerId !== blocksLink.blockedId) {
+        const syntheticId =
+          `synthetic:feature-blocks:${blocksLink.blockerId}:${blocksLink.blockedId}`;
+        applyMutation(canvasRef, (c) => {
+          const withoutTemp = removeEdge(c, edge.id);
+          if (withoutTemp.edges?.some((e) => e.id === syntheticId)) {
+            return withoutTemp;
+          }
+          return addEdge(withoutTemp, {
+            id: syntheticId,
+            fromNode: `feature:${blocksLink.blockerId}`,
+            toNode: `feature:${blocksLink.blockedId}`,
+            customData: { kind: "blocks" },
+          } as CanvasEdge);
+        });
+        void patchFeatureBlocks(
+          blocksLink.blockedId,
+          blocksLink.blockerId,
+          "add",
+        );
+        return;
+      }
+
       applyMutation(canvasRef, (c) => addEdge(c, edge));
     },
-    [applyMutation, detectFeatureMilestoneEdge, patchFeatureMilestone],
+    [
+      applyMutation,
+      detectFeatureMilestoneEdge,
+      patchFeatureMilestone,
+      detectFeatureBlocksEdge,
+      patchFeatureBlocks,
+    ],
   );
   const handleEdgeUpdate = useCallback(
     (id: string, patch: EdgeUpdate, canvasRef: string | undefined) => {
@@ -2216,9 +2344,23 @@ export function OrgCanvasBackground({
         void patchFeatureMilestone(featureId, null);
         return;
       }
+      // Deleting a synthetic dependency edge means "this feature no
+      // longer depends on that one." Same posture as the milestone
+      // case: optimistic local remove, then PATCH the
+      // `dependsOnFeatureIds` array minus the blocker. Id format:
+      // `synthetic:feature-blocks:<blockerId>:<blockedId>`.
+      if (id.startsWith("synthetic:feature-blocks:")) {
+        const ids = id.slice("synthetic:feature-blocks:".length).split(":");
+        if (ids.length === 2) {
+          const [blockerId, blockedId] = ids;
+          applyMutation(canvasRef, (c) => removeEdge(c, id));
+          void patchFeatureBlocks(blockedId, blockerId, "remove");
+          return;
+        }
+      }
       applyMutation(canvasRef, (c) => removeEdge(c, id));
     },
-    [applyMutation, patchFeatureMilestone],
+    [applyMutation, patchFeatureMilestone, patchFeatureBlocks],
   );
 
   // Expose the edge-patch path through the parent-supplied ref so

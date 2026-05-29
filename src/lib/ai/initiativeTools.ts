@@ -5,6 +5,7 @@ import { updateFeature } from "@/services/roadmap";
 import {
   assignFeatureOnCanvas,
   notifyFeatureAssignmentRefreshByOrg,
+  notifyFeatureContentRefresh,
   notifyFeatureReassignmentRefresh,
   unassignFeatureOnCanvas,
 } from "@/lib/canvas";
@@ -529,6 +530,159 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
       },
     }),
 
+    // ─── update_feature_plan ─────────────────────────────────────────
+    // Edit the durable plan text on an existing feature: any combo of
+    // `brief`, `requirements`, `architecture`. The cross-workspace
+    // agent's primary tool for keeping multiple features consistent
+    // when a decision affects the plan text of several at once. Direct
+    // DB write — no proposal flow, same posture as
+    // `assign_feature_to_workspace`. Validates org ownership.
+    //
+    // Each field is REPLACE-ONLY on the call; to extend rather than
+    // overwrite, the agent must read first (via the per-workspace
+    // `<slug>__read_feature` tool) and send back the combined text.
+    // This matches `update_research` / `update_connection`'s posture.
+    //
+    // Excluded fields: `title` (canvas card rename PATCH owns it),
+    // `status` / `assigneeId` / `milestoneId` / `initiativeId` (other
+    // tools), `userStories` / `personas` (out of scope — see
+    // `docs/plans/cross-workspace-initiatives.md`).
+    update_feature_plan: tool({
+      description:
+        "Edit a feature's durable plan text — any combination of " +
+        "`brief`, `requirements`, and `architecture`. Use this to keep " +
+        "multiple features in an initiative consistent when a decision " +
+        "affects their plan text (a field name, a session timeout, a " +
+        "chosen library, a renamed entity). Typical loop: call " +
+        "`<slug>__read_feature` for each affected feature, draft " +
+        "updated text, call this tool once per feature. **Direct DB " +
+        "write — no proposal card.** Validates org ownership. Each " +
+        "field passed is REPLACE-ONLY (overwrites the existing text); " +
+        "to extend rather than overwrite, read first and send back the " +
+        "combined text. Fields you don't pass are left untouched. " +
+        "**Don't use this to edit `title`, `status`, `assigneeId`, " +
+        "`milestoneId`, or `initiativeId`** — wrong tool; those are " +
+        "owned by other paths. Don't use it for single-feature edits " +
+        "the per-feature plan chat should handle — this tool exists " +
+        "because the per-feature planner can't see siblings.",
+      inputSchema: z.object({
+        featureId: z
+          .string()
+          .min(1)
+          .describe(
+            "The cuid of the feature to edit. From a canvas live id " +
+              "of the form `feature:<cuid>`, pass just the `<cuid>` " +
+              "part.",
+          ),
+        brief: z
+          .string()
+          .optional()
+          .describe(
+            "Replace the feature's `brief` (the short paragraph of " +
+              "context on the feature page). Omit to leave unchanged.",
+          ),
+        requirements: z
+          .string()
+          .optional()
+          .describe(
+            "Replace the feature's `requirements` (the requirements " +
+              "section). Omit to leave unchanged.",
+          ),
+        architecture: z
+          .string()
+          .optional()
+          .describe(
+            "Replace the feature's `architecture` (the architecture " +
+              "section). Omit to leave unchanged.",
+          ),
+      }),
+      execute: async ({
+        featureId,
+        brief,
+        requirements,
+        architecture,
+      }: {
+        featureId: string;
+        brief?: string;
+        requirements?: string;
+        architecture?: string;
+      }) => {
+        try {
+          // At least one editable field must be present — calling with
+          // only `featureId` would be a no-op that still bumps
+          // `planUpdatedAt`. Surface as an error so the agent sees its
+          // mistake.
+          if (
+            brief === undefined &&
+            requirements === undefined &&
+            architecture === undefined
+          ) {
+            return {
+              error:
+                "Pass at least one of `brief`, `requirements`, or `architecture`.",
+            };
+          }
+
+          // Validate the feature belongs to this org via the workspace
+          // → org chain. Same pattern as `assign_feature_to_workspace`
+          // / `assign_feature_to_initiative`. `updateFeature`'s own
+          // `validateFeatureAccess` will additionally verify the
+          // chat user (`userId` from `buildInitiativeTools`) has
+          // workspace access — the org check here is an extra defense
+          // so a user from org A can't mutate a feature in org B even
+          // if the workspace-access path were ever loosened.
+          const feature = await db.feature.findUnique({
+            where: { id: featureId },
+            select: {
+              workspaceId: true,
+              workspace: {
+                select: { sourceControlOrgId: true },
+              },
+            },
+          });
+          if (!feature) {
+            return { error: "Feature not found" };
+          }
+          if (feature.workspace.sourceControlOrgId !== orgId) {
+            return {
+              error: "Feature does not belong to this organization",
+            };
+          }
+
+          await updateFeature(featureId, userId, {
+            ...(brief !== undefined && { brief }),
+            ...(requirements !== undefined && { requirements }),
+            ...(architecture !== undefined && { architecture }),
+          });
+
+          // Fan out CANVAS_UPDATED. `notifyFeatureContentRefresh`
+          // already covers root + the parent initiative canvas, which
+          // is exactly where the agent's edit might affect a footer
+          // / card render. Workspace canvas is intentionally not
+          // included — see CANVAS.md's "side-channel DB writes" gotcha.
+          void notifyFeatureContentRefresh(
+            featureId,
+            "feature-plan-edited-by-agent",
+          );
+
+          return {
+            status: "updated",
+            featureId,
+            fields: {
+              ...(brief !== undefined && { brief: true }),
+              ...(requirements !== undefined && { requirements: true }),
+              ...(architecture !== undefined && { architecture: true }),
+            },
+          };
+        } catch (e) {
+          console.error("[initiativeTools.update_feature_plan] error:", e);
+          const message =
+            e instanceof Error ? e.message : "Failed to update feature plan";
+          return { error: message };
+        }
+      },
+    }),
+
     // ─── propose_initiative ──────────────────────────────────────────
     // Emit a structured Initiative proposal back to chat. No DB write.
     // Approval (and therefore creation) flows through `/api/ask/quick`'s
@@ -728,6 +882,40 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               "conversation. Approval-time resolves this to the new " +
               "initiative's id once the parent has been approved.",
           ),
+        dependsOnFeatureIds: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Cuids of features that ALREADY EXIST in the DB and must " +
+              "reach completion before this feature can start. " +
+              "Discover them via `read_canvas` (live ids are " +
+              "`feature:<cuid>` — pass just the `<cuid>` part) or " +
+              "`<slug>__list_features`. Validated at propose-time: " +
+              "every id must exist and belong to this org. " +
+              "**NEVER pass a `proposalId` here.** Sibling proposals " +
+              "from this same chat go in `dependsOnProposalIds` " +
+              "instead — they have no DB row yet and would fail " +
+              "this validation. At approval time, this array is " +
+              "unioned with the cuids resolved from " +
+              "`dependsOnProposalIds` and written to " +
+              "`Feature.dependsOnFeatureIds`.",
+          ),
+        dependsOnProposalIds: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "`proposalId`s of OTHER `propose_feature` calls in this " +
+              "same conversation (typically siblings under the same " +
+              "initiative). NOT cuids — these ids only exist in the " +
+              "chat transcript. At approval time the handler scans " +
+              "the conversation for each id's " +
+              "`approvalResult.createdEntityId` and unions the " +
+              "results with `dependsOnFeatureIds`. If a referenced " +
+              "proposal hasn't been approved yet, approval of THIS " +
+              "proposal fails with *'Approve the blocker first.'* " +
+              "**NEVER pass a cuid here.** Existing-DB features go " +
+              "in `dependsOnFeatureIds`.",
+          ),
         rationale: z.string().optional(),
         placement: placementSchema.describe(PLACEMENT_DESCRIPTION),
       }),
@@ -825,6 +1013,76 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
             };
           }
 
+          // ─── Dependency-field validation ────────────────────────
+          // `dependsOnFeatureIds` carries existing-DB cuids. Validate
+          // shape (looks-like-a-cuid) so the agent's most common
+          // confusion — passing a `proposalId` like `"f-backend"` —
+          // fails here with a clear message pointing at the right
+          // field, rather than silently failing at approval time.
+          //
+          // Then validate ownership: every id must exist and live in
+          // a workspace owned by this org. Same query pattern as the
+          // existing initiative/workspace org-ownership checks.
+          //
+          // `dependsOnProposalIds` we deliberately DON'T validate
+          // here — the conversation transcript isn't available to the
+          // tool, so we can't tell if a referenced proposalId is in
+          // this chat. Approval-time handles it.
+          const dedupedDependsOnFeatureIds =
+            input.dependsOnFeatureIds && input.dependsOnFeatureIds.length > 0
+              ? Array.from(new Set(input.dependsOnFeatureIds))
+              : [];
+          if (dedupedDependsOnFeatureIds.length > 0) {
+            // Cheap shape check: cuids start with `c` and are ~25 chars.
+            // Catches the proposalId-in-wrong-field case (`"f-backend"`
+            // doesn't match).
+            const looksWrong = dedupedDependsOnFeatureIds.filter(
+              (id) => !/^c[a-z0-9]{20,}$/.test(id),
+            );
+            if (looksWrong.length > 0) {
+              return {
+                error:
+                  "`dependsOnFeatureIds` expects DB cuids (e.g. " +
+                  "`cmpqr…`), but received: " +
+                  looksWrong.join(", ") +
+                  ". If these are sibling-proposal ids from this chat, " +
+                  "pass them in `dependsOnProposalIds` instead.",
+              };
+            }
+            const existing = await db.feature.findMany({
+              where: {
+                id: { in: dedupedDependsOnFeatureIds },
+                deleted: false,
+                workspace: { sourceControlOrgId: orgId },
+              },
+              select: { id: true },
+            });
+            if (existing.length !== dedupedDependsOnFeatureIds.length) {
+              const found = new Set(existing.map((f) => f.id));
+              const missing = dedupedDependsOnFeatureIds.filter(
+                (id) => !found.has(id),
+              );
+              return {
+                error:
+                  "Feature(s) not found in this organization: " +
+                  missing.join(", "),
+              };
+            }
+          }
+
+          const dedupedDependsOnProposalIds =
+            input.dependsOnProposalIds && input.dependsOnProposalIds.length > 0
+              ? Array.from(new Set(input.dependsOnProposalIds))
+              : [];
+          // Self-reference: a proposal pointing at itself via
+          // `dependsOnProposalIds` is always a cycle.
+          if (dedupedDependsOnProposalIds.includes(input.proposalId)) {
+            return {
+              error:
+                "A proposal cannot depend on itself (self-reference in `dependsOnProposalIds`).",
+            };
+          }
+
           const meta: FeatureProposalMeta = {
             workspaceName: workspace.name,
             workspaceSlug: workspace.slug,
@@ -849,6 +1107,12 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               ...(input.milestoneId && { milestoneId: input.milestoneId }),
               ...(input.parentProposalId && {
                 parentProposalId: input.parentProposalId,
+              }),
+              ...(dedupedDependsOnFeatureIds.length > 0 && {
+                dependsOnFeatureIds: dedupedDependsOnFeatureIds,
+              }),
+              ...(dedupedDependsOnProposalIds.length > 0 && {
+                dependsOnProposalIds: dedupedDependsOnProposalIds,
               }),
               ...(input.placement && {
                 placement: input.placement as Placement,

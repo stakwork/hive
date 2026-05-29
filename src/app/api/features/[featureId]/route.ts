@@ -352,6 +352,25 @@ export async function PATCH(
       });
     }
 
+    // Dependency-array fan-out. Synthetic `feature-blocks` edges live
+    // on the initiative sub-canvas (and a root rollup of dep counts
+    // could be added later). `notifyFeatureContentRefresh` already
+    // covers exactly that surface (root + parent initiative canvas);
+    // reusing it avoids a per-edit-shape helper proliferation. The
+    // action label is the only thing that changes between callers —
+    // Pusher fires CANVAS_UPDATED regardless. Skip when reassignment
+    // also fired (strict superset of the canvases touched).
+    if (
+      body.dependsOnFeatureIds !== undefined &&
+      body.milestoneId === undefined &&
+      body.initiativeId === undefined
+    ) {
+      void notifyFeatureContentRefresh(
+        featureId,
+        "feature-dependency-changed",
+      );
+    }
+
     return NextResponse.json(
       {
         success: true,
