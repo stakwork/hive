@@ -1,6 +1,8 @@
 # Cross-Workspace Initiatives
 
-Let the canvas agent compose Initiatives whose Features span multiple workspaces, keep the resulting Feature plans consistent as they evolve, and order them with a simple "depends on" relation so the agent can eventually build them in the right order. Clarifying questions ride the existing per-feature FORM artifact + `AttentionList` surface — the user jumps from feature to feature in new tabs to answer them, same as today.
+Let the canvas agent compose Initiatives whose Features span multiple workspaces, **coordinate the per-feature planning agents** as the plans evolve, and order the features with a simple "depends on" relation so the work can eventually flow in the right order. Clarifying questions ride the existing per-feature FORM artifact + `AttentionList` surface — the user jumps from feature to feature in new tabs to answer them, same as today.
+
+**The mental model: the canvas agent is a manager of subordinate agents, not a plan editor.** Each Feature has its own planning agent (the "plan_mode" Stakwork workflow), and *that* agent owns the plan text. The canvas agent's role across a cross-workspace initiative is to coordinate those planners — read what each has produced, send them messages when a decision needs to propagate, summarize across siblings for the user. The canvas agent never edits a feature's plan directly; that would be writing the subordinate's report for them.
 
 This is a small extension on top of the existing proposal system. The infrastructure already supports cross-workspace features — what's missing is the agent prompt teaching it the pattern, one column on `Feature`, and one new tool.
 
@@ -17,7 +19,7 @@ This is a small extension on top of the existing proposal system. The infrastruc
 Three canonical scenarios this plan unlocks:
 
 1. **Cross-workspace authoring.** *"Spin up an auth refactor across infra, backend, and web — propose one feature per workspace."* Today the agent has every tool needed but isn't taught this is a first-class pattern; it tends to file everything under a single workspace.
-2. **Consistency editing.** *"The backend just renamed `user_id` to `userId` — fix the other two feature plans."* Today the agent can rename a feature's *title* (canvas card text edit → PATCH) but can't edit `brief` / `requirements` / `architecture` — the durable plan text on each feature.
+2. **Cross-feature coordination.** *"The backend just decided on `userId` — tell the other two planners to align."* Today the canvas agent can read each feature's plan via `<slug>__read_feature` but has no way to send messages back to a per-feature planner. The result: it knows what's diverging but can't do anything about it without the user manually opening each feature page and typing.
 3. **Dependency-ordered execution (data only in v1).** *"The frontend feature can't start until the backend API merges."* Today the canvas can have authored edges between feature cards, but they have no semantics — the projector can't show "A blocks B" as a first-class relation, and there's no way for the agent or a future scheduler to walk the order.
 
 ## The animating principle
@@ -34,11 +36,11 @@ Three canonical scenarios this plan unlocks:
 | --- | --- | --- |
 | `prisma/schema.prisma` | One column on `Feature`: `dependsOnFeatureIds String[] @default([]) @map("depends_on_feature_ids")` | Everything else. No new model, no new enum, no relation. |
 | `src/lib/proposals/types.ts` | `dependsOnFeatureIds?: string[]` and `dependsOnProposalIds?: string[]` on `FeatureProposalPayload` | All other proposal types; `ApprovalIntent` / `ApprovalResult` / `getProposalStatus` |
-| `src/lib/ai/initiativeTools.ts` | One new tool: `update_feature_plan`. Extend `propose_feature` input schema with the two new optional dependency fields. | `propose_initiative`, `propose_milestone`, `assign_feature_to_*`, `read_*` |
+| `src/lib/ai/initiativeTools.ts` | One new tool: `send_to_feature_planner` (delegates a chat message to a feature's per-feature planning agent via `sendFeatureChatMessage`). Extend `propose_feature` input schema with the two new optional dependency fields. | `propose_initiative`, `propose_milestone`, `assign_feature_to_*`, `read_*`. **Critically:** the existing `<slug>__read_feature` tool already returns the full plan (`brief`, `requirements`, `architecture`), `workflowStatus`, AND chat history — so no `read_plan` tool is needed for the manager loop. |
 | `src/lib/proposals/handleApproval.ts` | `approveFeature` resolves `dependsOnProposalIds` (sibling-proposal ids) → feature ids, merges with `dependsOnFeatureIds`, writes the array on create. | The rest of the dispatcher; idempotency scan; landed-on resolution |
-| `src/lib/constants/prompt.ts` | New paragraphs in `getCanvasPromptSuffix()` teaching cross-workspace initiatives, the dependency vocabulary, the `update_feature_plan` tool, and the clarification loop (read open FORM artifacts via per-workspace `<slug>__read_feature`; auto-answer or summarize and let the user click through AttentionList). | Existing initiative/feature/milestone guidance |
+| `src/lib/constants/prompt.ts` | New paragraphs in `getCanvasPromptSuffix()` teaching cross-workspace initiatives, the dependency vocabulary, the **manager-of-planners loop** (`<slug>__read_feature` → `send_to_feature_planner` → `<slug>__read_feature` again), and the clarification loop (read open FORM artifacts; summarize and let the user click through AttentionList). | Existing initiative/feature/milestone guidance |
 | `src/lib/canvas/projectors.ts` | On the initiative sub-canvas, emit a synthetic edge `synthetic:feature-blocks:<blockerId>:<blockedId>` for every `dependsOnFeatureIds` entry where both ends are on this canvas. | All other projector logic; geometry; theme; the existing `AttentionList` signal queries and renderer. |
-| New REST endpoints | None. `update_feature_plan` is a tool that reuses `updateFeature`/`updateFeatureContent` services. | — |
+| New REST endpoints | None. `send_to_feature_planner` reuses the existing `sendFeatureChatMessage` service (`src/services/roadmap/feature-chat.ts:193`), same path the per-feature UI and the proposal-approval flow already use. | — |
 
 ## Phase 1 — prompt: cross-workspace initiatives as a first-class pattern
 
@@ -254,60 +256,105 @@ What this does **not** include:
 
 Theme: add a `customData.kind === "blocks"` arm in `canvas-theme.ts`'s edge renderer for a distinct visual (e.g. dashed line + arrowhead + tooltip "blocks") so it reads differently from authored edges and from feature→milestone synthetic edges.
 
-## Phase 5 — `update_feature_plan` tool: consistency editing
+## Phase 5 — `send_to_feature_planner` tool: manager-of-planners
 
 Add one tool to `src/lib/ai/initiativeTools.ts`.
 
 ```ts
-update_feature_plan: tool({
+send_to_feature_planner: tool({
   description:
-    "Edit a feature's durable plan text — any combination of `brief`, " +
-    "`requirements`, and `architecture`. Use this when the cross-" +
-    "workspace agent needs to keep multiple features consistent — e.g. " +
-    "the backend feature renamed a field from `user_id` to `userId`, " +
-    "so the web and mobile features need their briefs and requirements " +
-    "updated to match. Direct DB write (no proposal flow) — same posture " +
-    "as `assign_feature_to_workspace`. Validates org ownership. Each " +
-    "field is replace-only on this call; to extend rather than overwrite, " +
-    "call `<slug>__read_feature` first and send back the combined text. " +
-    "Fields not passed are left untouched. Edits fan out via " +
-    "`notifyFeatureContentRefresh` so every open canvas refetches.",
+    "Send a message to a feature's per-feature planning agent. Use " +
+    "this for cross-feature coordination — when a decision needs to " +
+    "propagate to a sibling feature's planner, when you need to ask " +
+    "a planner a question, or when you want to push context the " +
+    "planner doesn't have. This is delegation, not editing — the " +
+    "planner owns the plan text; you're sending a chat message and " +
+    "the planner replies asynchronously by updating its own plan. " +
+    "Fire-and-forget: returns once delivered, NOT once the planner " +
+    "replies. Plan workflows take 30–120 seconds; don't poll. To see " +
+    "the reply and the resulting plan, call `<slug>__read_feature` " +
+    "afterward — it returns brief / requirements / architecture PLUS " +
+    "the full chat history including the planner's response. Fails " +
+    "if the planner is currently running (workflowStatus === " +
+    "'IN_PROGRESS' on read_feature's output); wait before sending.",
   inputSchema: z.object({
     featureId: z.string().min(1),
-    brief: z.string().optional(),
-    requirements: z.string().optional(),
-    architecture: z.string().optional(),
+    message: z.string().min(1),
   }),
-  execute: async (input) => { /* validate org ownership, updateFeature, notify */ },
+  execute: async (input) => { /* validate org ownership, sendFeatureChatMessage, return delivery receipt */ },
 }),
 ```
 
-Scope is deliberately narrow — three text fields. Excluded by design:
+### The animating reframe
 
-- **`userStories`** — user stories live in a separate `UserStory` model with their own CRUD path, and the conversational plan chat is where they're typically managed. The cross-workspace consistency loop doesn't need to touch them in v1. If it turns out the agent needs to align user stories across features later, it can ask the user in chat or coordinate via the per-feature plan chat. Future seam.
-- **`personas`** — not in scope.
-- **`title`** — already editable via the canvas card rename → PATCH path; orthogonal mechanism.
-- **`status`, `assigneeId`, `milestoneId`, `initiativeId`** — workflow/assignment fields owned by other tools (`assign_feature_to_initiative`, etc.).
+The earlier version of this plan proposed `update_feature_plan` — a tool that let the canvas agent overwrite `brief` / `requirements` / `architecture` on a sibling feature directly. The team's review rejected that framing:
 
-Why no proposal flow:
+> *The agent editing the feature plan is a chat. So the tool should be like "Send message to plan agent" right? Then see the response. The user is chatting with an agent who is managing the sub agents.*
 
-- The risk profile matches the existing `assign_feature_to_workspace` and the canvas-rename PATCH path: these are reversible content edits the user can review on the feature page. Asking for explicit approval per-field would make the cross-workspace consistency loop unusable — the agent would need to surface 3+ approval cards every time it propagates a field rename.
-- The user's recourse for a bad edit: open the feature page or ask the agent to revert. This matches how feature plan-chat edits work today.
+The right mental model is **manager of subordinate agents**. Each feature has its own planning agent (the `plan_mode` Stakwork workflow). That agent owns the plan text. The canvas agent's job is to coordinate between those agents — message them, read their responses, summarize across them — never to write their reports for them.
 
-Why "plan" not "brief":
+`send_to_feature_planner` is the message-sending side of that loop. The reading side already exists today and didn't need a new tool: `<slug>__read_feature` (in `askToolsMulti.ts`) already returns `brief`, `requirements`, `architecture`, `workflowStatus`, `isWorkflowRunning`, AND the full chat history. That's everything the canvas agent needs to see what each planner has decided and what's still open.
 
-- The tool edits more than just `brief` — `requirements` and `architecture` are durable plan text too. "Brief" lies about scope.
-- "Plan" matches existing vocabulary in this codebase: `<FeaturePlanChat>`, the `planUpdatedAt` column, the "plan_mode" Stakwork workflow. The fields edited here are exactly the text the per-feature planner produces. The name tells the agent "this is the per-feature plan; you're allowed to overwrite it from the canvas-level vantage point."
+### What it does
 
-Discovery surface for the agent: the existing `<slug>__read_feature` tool returns the full feature shape including `brief` / `requirements` / `architecture`. The cross-workspace consistency loop is:
+Thin wrapper over the existing `sendFeatureChatMessage` service in `src/services/roadmap/feature-chat.ts:193` — the same service the per-feature UI and the proposal-approval flow already use. The tool:
 
-1. User says "the backend feature renamed `user_id` to `userId` — fix the others."
-2. Agent calls `<slug>__read_feature` on each feature in the initiative (or just the affected ones).
-3. Agent diffs in its head, drafts updated text for each affected feature.
-4. Agent calls `update_feature_plan` once per feature.
-5. Agent posts a short summary in chat: *"Updated `brief` and `requirements` on Web Login and Mobile Login to use `userId`. The Backend Auth feature already uses it."*
+1. Validates the feature belongs to this org (mirrors every other initiative tool's check).
+2. Returns a structured error if `workflowStatus === "IN_PROGRESS"` so the canvas agent can wait gracefully (the service throws the same error, but a structured response is easier for the agent to recover from).
+3. Prepends the message with `[via canvas agent]` so the per-feature planner can recognize cross-feature-coordination signals in its own chat history.
+4. Calls `sendFeatureChatMessage` with `skipOrgContextScout: true` — the canvas agent already has org-wide context; re-running the scout from inside the planner would burn 30–60s of latency for information the canvas agent could have included in `message`. Mirrors the approval flow's `initialMessage` path.
+5. Returns `{ status: "sent", messageId, awaitingReply: true, stakworkProjectId, note: "..." }` immediately. **No waiting for the planner's reply** — that's asynchronous (Stakwork webhook fires the response 30–120s later as an ASSISTANT `ChatMessage` with a PLAN artifact).
 
-Implementation: `updateFeature` in `src/services/roadmap/features.ts:431` already handles all three fields — the tool wrapper validates org ownership, calls it, and fans `CANVAS_UPDATED` via `notifyFeatureContentRefresh` from `src/lib/canvas/feature-pusher.ts` (which already covers root + parent initiative canvas; see CANVAS.md's "side-channel DB writes from canvas interactions" gotcha for why the workspace canvas is intentionally not in this fan-out — rare enough that a `CANVAS_UPDATED` miss is acceptable).
+### The cross-feature coordination loop
+
+```
+User: "The backend planner decided on `userId`. Make sure the
+       web and mobile features align."
+
+Canvas agent:
+  <web-slug>__read_feature(webFeatureId)
+    → returns plan + chatHistory; sees "user_id" still in brief
+  <mobile-slug>__read_feature(mobileFeatureId)
+    → returns plan + chatHistory; sees "userId" already used
+
+  send_to_feature_planner({
+    featureId: webFeatureId,
+    message: "Aligning auth naming across the initiative — the
+              backend feature settled on `userId` as the canonical
+              name. Please update the plan to match."
+  })
+    → { status: "sent", messageId: "cm...", awaitingReply: true }
+
+Canvas agent replies in chat:
+  "I've sent the alignment message to the web planner; mobile is
+   already using `userId`. I'll check back once the planner has
+   responded."
+
+[30-120s later, user asks "what did the web planner say?"]
+
+Canvas agent:
+  <web-slug>__read_feature(webFeatureId)
+    → returns updated brief mentioning `userId`, plus new ASSISTANT
+      message in chatHistory explaining the change
+  "The web planner updated the brief and requirements to use
+   `userId` throughout. Both web and mobile now match backend."
+```
+
+### What's intentionally NOT in this tool
+
+- **No long-poll / wait for reply.** Plan workflows take 30–120s; holding the canvas-agent tool call open for that long burns context-window budget for no reason. The async response loop is the right architecture; the agent simply circles back via `read_feature` when the user asks or after enough time has passed.
+- **No direct plan-text edits.** Anything that would have been an `update_feature_plan` call is instead a message to the planner asking *it* to make the edit. The planner is responsible for writing its own report.
+- **No batching.** One tool call per feature. If the canvas agent needs to coordinate three features it makes three calls — fine, they're cheap and parallel-safe at the model layer.
+- **No special routing for "this came from canvas agent."** The `[via canvas agent]` prefix is plain text in the message body; the per-feature planner sees it as part of the chat history and can adapt its tone. No new artifact type, no schema change.
+
+### Implementation surface
+
+Files touched in this phase:
+
+- `src/lib/ai/initiativeTools.ts` — add the `send_to_feature_planner` tool entry; import `sendFeatureChatMessage` from `@/services/roadmap/feature-chat`.
+- `src/lib/constants/prompt.ts` — already covered in Phase 7. The prompt teaches the manager-of-planners loop, when to use `read_feature` vs `send_to_feature_planner`, and how to phrase delegation messages.
+
+No schema changes. No new pusher helpers. No new REST endpoints. `sendFeatureChatMessage` already fires its own Pusher events for the feature's chat channel; the per-feature UI updates immediately and the canvas agent picks up the reply on its next `read_feature` call.
 
 ## Phase 6 — clarifications: prompt + AttentionList, no new primitive
 
@@ -319,8 +366,8 @@ The user's original framing was *"the canvas agent can be the 1 single place whe
 What this phase actually adds is **prompt awareness of the clarification loop**, with zero new tools:
 
 - Teach the agent that when it begins coordinating an in-flight initiative, it should call `<slug>__read_feature` on each feature to spot open FORM artifacts in the chat history.
-- Teach it to recognize when multiple features have analogous open questions (e.g. all three features have a FORM about session timeout). The right response: write a one-paragraph summary in canvas chat — *"Web Login, Mobile Login, and Backend Auth all have an open FORM about session timeout. If you tell me one answer here, I can fold it into the three feature briefs via `update_feature_plan`. You'll still need to answer the FORM on each feature page (they're in the AttentionList at the top of this chat) — but the briefs will already reflect the decision when you get there."*
-- Teach it that if the user gives a one-shot answer in canvas chat, the agent calls `update_feature_plan` on each affected feature to fold the decision into `brief` / `requirements` / `architecture`. The user still answers the FORM artifacts on the individual feature pages (the per-feature planner is waiting on those) — the canvas-agent edit just makes the plan text consistent so when the user gets there, the new context is in place.
+- Teach it to recognize when multiple features have analogous open questions (e.g. all three features have a FORM about session timeout). The right response: write a one-paragraph summary in canvas chat — *"Web Login, Mobile Login, and Backend Auth all have an open FORM about session timeout. If you tell me one answer here, I can message each planner to use it. You'll still need to answer the FORM on each feature page (they're in the AttentionList at the top of this chat), but the planners will already have the context."*
+- Teach it that if the user gives a one-shot answer in canvas chat, the agent calls `send_to_feature_planner` on each affected feature with the decision (`"We're aligning on a 30-minute session timeout — please incorporate"`). The user still answers the FORM artifacts on the individual feature pages (the per-feature planner is waiting on those) — the canvas-agent message just gives the planner upstream context, so when the user gets to the feature page, the planner already understands the cross-feature decision.
 
 What this phase intentionally does **not** add:
 
@@ -332,14 +379,16 @@ The honest scope here is: **a single prompt paragraph, no code.** The leverage i
 
 ## Phase 7 — prompt updates
 
-`getCanvasPromptSuffix()` gets a new **Cross-workspace initiatives** section (the Phase 1 wording, expanded), plus tool entries for `update_feature_plan` and the two new `propose_feature` dependency fields, plus the clarification-loop guidance from Phase 6.
+`getCanvasPromptSuffix()` gets a new **Cross-workspace initiatives** section (the Phase 1 wording, expanded) that frames the agent's role as **manager of subordinate agents**, plus the manager-of-planners loop (`<slug>__read_feature` → `send_to_feature_planner` → `<slug>__read_feature` again), the two new `propose_feature` dependency fields, and the clarification-loop guidance from Phase 6.
 
 Key prompt principles:
 
 - **Default to multi-workspace for system-spanning work.** "Add auth," "build a notification system," "ship a new entity end-to-end" — these are multi-feature, multi-workspace by default. Single-workspace features are for genuinely isolated work.
 - **Use `dependsOnProposalIds` deliberately, not exhaustively.** A typical 3-feature stack has 2 edges (infra → backend, backend → frontend), not 6. Over-edged graphs are noisy and constrain the user's flexibility.
-- **`update_feature_plan` is for cross-feature consistency.** It edits `brief` / `requirements` / `architecture` on an existing feature. A single-feature edit goes through the feature's own plan chat. The canvas-level tool exists because the per-feature planner can't see siblings. Don't reach for it to edit user stories, status, or assignment — wrong tool.
-- **Clarifying questions: ask in plain text, then propagate.** If you hit genuine cross-feature ambiguity, write a plain assistant message asking the user. If you discover analogous FORM artifacts open on multiple features, summarize them in chat and offer a one-shot answer that propagates via `update_feature_plan`. Don't reach for a structured primitive — there isn't one.
+- **You are a manager, not an editor.** Per-feature plan text is written by per-feature planning agents. You never edit it directly. You read it (`<slug>__read_feature`), summarize across features, and send messages to the planners (`send_to_feature_planner`) when a decision needs to propagate. The planner replies asynchronously by updating its own plan; you circle back via `read_feature` to see the result.
+- **The read loop is one tool.** `<slug>__read_feature` returns the plan text, the workflow status, AND the chat history — everything you need to know what a feature's planner has decided and what's still open. No separate `read_plan` tool.
+- **Don't poll for planner replies.** Plan workflows take 30–120 seconds. Send a message, tell the user *"I've sent a note to the X planner; I'll check back shortly,"* and move on. Circle back when the user asks or when enough time has passed.
+- **Clarifying questions: ask in plain text, then propagate via planner messages.** If you hit genuine cross-feature ambiguity, write a plain assistant message asking the user. If you discover analogous FORM artifacts open on multiple features, summarize them in chat — and if the user gives a one-shot answer, message each planner with the decision via `send_to_feature_planner` so they have upstream context for the FORM they're already asking about.
 
 ## Approval flow (sequence)
 
@@ -409,7 +458,7 @@ The plan is structured to ship in five independent, user-visible increments:
 1. **Phase 1 (prompt only).** Cross-workspace initiatives work today; we're just teaching the agent. Validate with prompt evals. **Risk: none. Effort: ~half a day.**
 2. **Phase 2 + 3 (column + `propose_feature` extension).** Schema migration, type changes, `approveFeature` resolves the new ids, `createFeature` writes the array. No projector yet — the data is stored but invisible. **Risk: low (mirrors `Task.dependsOnTaskIds` exactly). Effort: ~1–2 days.**
 3. **Phase 4 (projector + canvas gestures).** Synthetic edge rendering on the initiative canvas; click-to-add and click-to-delete intercepts; cycle check on PATCH. **Risk: low (mirrors the feature↔milestone interception pattern exactly). Effort: ~2 days.**
-4. **Phase 5 (`update_feature_plan`).** New tool, no schema, reuse existing `updateFeature` service. **Risk: low. Effort: ~1 day.**
+4. **Phase 5 (`send_to_feature_planner`).** New tool that wraps the existing `sendFeatureChatMessage` service. No schema. The read side of the manager loop is the existing `<slug>__read_feature` tool (already returns plan + chat history + workflow status). **Risk: low. Effort: ~half a day.**
 5. **Phases 6 + 7 (prompt).** Clarification-loop guidance and the consolidated `getCanvasPromptSuffix()` additions for everything in this plan. No code beyond the prompt string. **Risk: none. Effort: ~half a day.**
 
 You can ship 1–3 alone and have a useful demo: multi-workspace initiatives with visible dependency edges. 4 unlocks the "fix divergent briefs" loop. 5 closes the loop by teaching the agent to coordinate clarifications through the existing FORM-artifact + AttentionList surface.

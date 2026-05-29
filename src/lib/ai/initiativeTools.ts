@@ -2,10 +2,10 @@ import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { updateFeature } from "@/services/roadmap";
+import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import {
   assignFeatureOnCanvas,
   notifyFeatureAssignmentRefreshByOrg,
-  notifyFeatureContentRefresh,
   notifyFeatureReassignmentRefresh,
   unassignFeatureOnCanvas,
 } from "@/lib/canvas";
@@ -530,111 +530,103 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
       },
     }),
 
-    // ─── update_feature_plan ─────────────────────────────────────────
-    // Edit the durable plan text on an existing feature: any combo of
-    // `brief`, `requirements`, `architecture`. The cross-workspace
-    // agent's primary tool for keeping multiple features consistent
-    // when a decision affects the plan text of several at once. Direct
-    // DB write — no proposal flow, same posture as
-    // `assign_feature_to_workspace`. Validates org ownership.
+    // ─── send_to_feature_planner ─────────────────────────────────────
+    // Send a message to a feature's per-feature planning agent (the
+    // "plan_mode" Stakwork workflow). This is the canvas agent's
+    // primary cross-feature coordination tool: instead of editing a
+    // sibling feature's plan text directly, the canvas agent delegates
+    // — *the planner writes the plan, the manager only sends messages
+    // and reads results.* Mirrors how a real manager works with a
+    // team of subordinates.
     //
-    // Each field is REPLACE-ONLY on the call; to extend rather than
-    // overwrite, the agent must read first (via the per-workspace
-    // `<slug>__read_feature` tool) and send back the combined text.
-    // This matches `update_research` / `update_connection`'s posture.
+    // **Fire-and-forget.** The plan agent's reply is asynchronous
+    // (Stakwork runs research + synthesis, typically 30–120s). This
+    // tool returns immediately once the message lands in the feature's
+    // chat history; the agent's reply arrives later as an ASSISTANT
+    // ChatMessage carrying a PLAN artifact. To see the reply, call
+    // `<slug>__read_feature` afterward — it returns the full plan
+    // (`brief`, `requirements`, `architecture`), the live
+    // `workflowStatus` / `isWorkflowRunning`, AND the chat history so
+    // the canvas agent can see exactly what was decided.
     //
-    // Excluded fields: `title` (canvas card rename PATCH owns it),
-    // `status` / `assigneeId` / `milestoneId` / `initiativeId` (other
-    // tools), `userStories` / `personas` (out of scope — see
-    // `docs/plans/cross-workspace-initiatives.md`).
-    update_feature_plan: tool({
+    // **Cannot send while the planner is already running.** If
+    // `workflowStatus === "IN_PROGRESS"` the underlying service
+    // throws; the canvas agent should wait (call `read_feature`
+    // periodically) or message a different feature first.
+    //
+    // **Attribution.** The message lands in the feature's chat as
+    // sent by the canvas chat's user, prefixed with `[via canvas
+    // agent]` so the planner can recognize the cross-feature context.
+    // The prompt teaches the agent to lead with the reason it's
+    // reaching out (e.g. *"We're aligning auth across three features
+    // — please use `userId` as the canonical name."*).
+    send_to_feature_planner: tool({
       description:
-        "Edit a feature's durable plan text — any combination of " +
-        "`brief`, `requirements`, and `architecture`. Use this to keep " +
-        "multiple features in an initiative consistent when a decision " +
-        "affects their plan text (a field name, a session timeout, a " +
-        "chosen library, a renamed entity). Typical loop: call " +
-        "`<slug>__read_feature` for each affected feature, draft " +
-        "updated text, call this tool once per feature. **Direct DB " +
-        "write — no proposal card.** Validates org ownership. Each " +
-        "field passed is REPLACE-ONLY (overwrites the existing text); " +
-        "to extend rather than overwrite, read first and send back the " +
-        "combined text. Fields you don't pass are left untouched. " +
-        "**Don't use this to edit `title`, `status`, `assigneeId`, " +
-        "`milestoneId`, or `initiativeId`** — wrong tool; those are " +
-        "owned by other paths. Don't use it for single-feature edits " +
-        "the per-feature plan chat should handle — this tool exists " +
-        "because the per-feature planner can't see siblings.",
+        "Send a message to a feature's per-feature planning agent. " +
+        "Use this when you need a sibling feature's planner to know " +
+        "something or take a decision into account — e.g. *'the " +
+        "backend feature picked userId as the canonical name, please " +
+        "align the web plan to match'*, *'we decided session timeout " +
+        "is 30 minutes — please incorporate'*, or to ask the planner " +
+        "a question. **This is delegation, not editing.** You're " +
+        "sending a chat message; the planner replies asynchronously " +
+        "and updates its own plan. To see the reply and the resulting " +
+        "plan, call `<slug>__read_feature` afterward — its response " +
+        "includes the current `brief` / `requirements` / " +
+        "`architecture` PLUS the full chat history. " +
+        "**The tool returns once the message is delivered, NOT once " +
+        "the planner replies.** The reply is async. Plan workflows " +
+        "typically take 30–120 seconds; don't loop polling. Tell the " +
+        "user *'I've sent a message to the X planner; I'll check back " +
+        "in a moment'* and move on. " +
+        "**Fails if the planner is currently running** " +
+        "(`workflowStatus === 'IN_PROGRESS'`). Wait for the run to " +
+        "finish (use `<slug>__read_feature` to check) before sending. " +
+        "Prefix your message with a one-line reason for context — the " +
+        "planner sees this as the chat history's next user message " +
+        "and a short framing helps it understand cross-feature " +
+        "coordination.",
       inputSchema: z.object({
         featureId: z
           .string()
           .min(1)
           .describe(
-            "The cuid of the feature to edit. From a canvas live id " +
-              "of the form `feature:<cuid>`, pass just the `<cuid>` " +
-              "part.",
+            "The cuid of the feature whose planner to message. From a " +
+              "canvas live id of the form `feature:<cuid>`, pass just " +
+              "the `<cuid>` part.",
           ),
-        brief: z
+        message: z
           .string()
-          .optional()
+          .min(1)
           .describe(
-            "Replace the feature's `brief` (the short paragraph of " +
-              "context on the feature page). Omit to leave unchanged.",
-          ),
-        requirements: z
-          .string()
-          .optional()
-          .describe(
-            "Replace the feature's `requirements` (the requirements " +
-              "section). Omit to leave unchanged.",
-          ),
-        architecture: z
-          .string()
-          .optional()
-          .describe(
-            "Replace the feature's `architecture` (the architecture " +
-              "section). Omit to leave unchanged.",
+            "The message to send to the planner. Lead with a short " +
+              "framing of WHY you're reaching out from the canvas " +
+              "(cross-feature alignment, propagating a decision, " +
+              "etc.) so the planner has context. The system " +
+              "automatically prefixes your message with `[via canvas " +
+              "agent]` so the planner can recognize this isn't a " +
+              "direct user reply.",
           ),
       }),
       execute: async ({
         featureId,
-        brief,
-        requirements,
-        architecture,
+        message,
       }: {
         featureId: string;
-        brief?: string;
-        requirements?: string;
-        architecture?: string;
+        message: string;
       }) => {
         try {
-          // At least one editable field must be present — calling with
-          // only `featureId` would be a no-op that still bumps
-          // `planUpdatedAt`. Surface as an error so the agent sees its
-          // mistake.
-          if (
-            brief === undefined &&
-            requirements === undefined &&
-            architecture === undefined
-          ) {
-            return {
-              error:
-                "Pass at least one of `brief`, `requirements`, or `architecture`.",
-            };
-          }
-
           // Validate the feature belongs to this org via the workspace
-          // → org chain. Same pattern as `assign_feature_to_workspace`
-          // / `assign_feature_to_initiative`. `updateFeature`'s own
-          // `validateFeatureAccess` will additionally verify the
-          // chat user (`userId` from `buildInitiativeTools`) has
-          // workspace access — the org check here is an extra defense
-          // so a user from org A can't mutate a feature in org B even
-          // if the workspace-access path were ever loosened.
+          // → org chain. Same pattern as the other initiative tools.
+          // `sendFeatureChatMessage` will additionally verify the chat
+          // user (`userId` from `buildInitiativeTools`) is a member
+          // or owner of the workspace — the org check here is an
+          // extra defense against cross-org leakage.
           const feature = await db.feature.findUnique({
             where: { id: featureId },
             select: {
               workspaceId: true,
+              workflowStatus: true,
               workspace: {
                 select: { sourceControlOrgId: true },
               },
@@ -648,36 +640,61 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               error: "Feature does not belong to this organization",
             };
           }
+          // Early-return the "already running" case with a clear
+          // message so the agent can tell the user without retrying.
+          // (The service throws the same error, but catching here lets
+          // us return a structured payload instead of an opaque
+          // exception.)
+          if (feature.workflowStatus === "IN_PROGRESS") {
+            return {
+              error:
+                "The planner is currently running on this feature. " +
+                "Use `<slug>__read_feature` to check `workflowStatus` " +
+                "and wait until it leaves `IN_PROGRESS` before sending.",
+              workflowStatus: feature.workflowStatus,
+            };
+          }
 
-          await updateFeature(featureId, userId, {
-            ...(brief !== undefined && { brief }),
-            ...(requirements !== undefined && { requirements }),
-            ...(architecture !== undefined && { architecture }),
+          // Prefix attribution so the planner knows this came from
+          // the canvas agent, not a direct user reply. The planner's
+          // prompt can be taught to weigh canvas-agent messages as
+          // cross-feature coordination signals.
+          const prefixedMessage = `[via canvas agent] ${message}`;
+
+          // `skipOrgContextScout: true` — the canvas agent already
+          // has org-wide context (that's why it's reaching out across
+          // features). Re-running the org-context scout from inside
+          // the per-feature planner would burn 5-60s of latency for
+          // information the canvas agent could have included verbatim
+          // in `message`. Mirrors the approval-flow's `initialMessage`
+          // path (see `handleApproval.ts`).
+          const result = await sendFeatureChatMessage({
+            featureId,
+            userId,
+            message: prefixedMessage,
+            skipOrgContextScout: true,
           });
 
-          // Fan out CANVAS_UPDATED. `notifyFeatureContentRefresh`
-          // already covers root + the parent initiative canvas, which
-          // is exactly where the agent's edit might affect a footer
-          // / card render. Workspace canvas is intentionally not
-          // included — see CANVAS.md's "side-channel DB writes" gotcha.
-          void notifyFeatureContentRefresh(
-            featureId,
-            "feature-plan-edited-by-agent",
-          );
-
           return {
-            status: "updated",
+            status: "sent",
             featureId,
-            fields: {
-              ...(brief !== undefined && { brief: true }),
-              ...(requirements !== undefined && { requirements: true }),
-              ...(architecture !== undefined && { architecture: true }),
-            },
+            messageId: result.chatMessage.id,
+            awaitingReply: true,
+            stakworkProjectId: result.stakworkData?.projectId ?? null,
+            note:
+              "Message delivered. The planner replies asynchronously " +
+              "(typically 30–120s). Call `<slug>__read_feature` after " +
+              "to see the reply and the updated plan.",
           };
         } catch (e) {
-          console.error("[initiativeTools.update_feature_plan] error:", e);
+          console.error(
+            "[initiativeTools.send_to_feature_planner] error:",
+            e,
+          );
           const message =
-            e instanceof Error ? e.message : "Failed to update feature plan";
+            e instanceof Error
+              ? e.message
+              : "Failed to send message to feature planner";
           return { error: message };
         }
       },
