@@ -20,6 +20,7 @@ import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
+  SEND_TO_FEATURE_PLANNER_TOOL,
 } from "@/lib/proposals/types";
 
 /**
@@ -560,7 +561,7 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
     // The prompt teaches the agent to lead with the reason it's
     // reaching out (e.g. *"We're aligning auth across three features
     // — please use `userId` as the canonical name."*).
-    send_to_feature_planner: tool({
+    [SEND_TO_FEATURE_PLANNER_TOOL]: tool({
       description:
         "Send a message to a feature's per-feature planning agent. " +
         "Use this when you need a sibling feature's planner to know " +
@@ -622,13 +623,23 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           // user (`userId` from `buildInitiativeTools`) is a member
           // or owner of the workspace — the org check here is an
           // extra defense against cross-org leakage.
+          // Pull the feature's display fields (title + workspace
+          // slug/name) alongside the auth fields. The chat UI uses
+          // them to render a `SubAgentRunCard` without re-fetching;
+          // mirroring how `propose_feature` returns enough metadata
+          // for `ProposalCard` to render off the tool output alone.
           const feature = await db.feature.findUnique({
             where: { id: featureId },
             select: {
+              title: true,
               workspaceId: true,
               workflowStatus: true,
               workspace: {
-                select: { sourceControlOrgId: true },
+                select: {
+                  slug: true,
+                  name: true,
+                  sourceControlOrgId: true,
+                },
               },
             },
           });
@@ -640,6 +651,13 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               error: "Feature does not belong to this organization",
             };
           }
+          // Captured once so both the success and the IN_PROGRESS
+          // error path can include them — the UI card needs the title
+          // even when the send was rejected, so the user can see
+          // *which* planner the agent tried to message.
+          const featureTitle = feature.title;
+          const workspaceSlug = feature.workspace.slug;
+          const workspaceName = feature.workspace.name;
           // Early-return the "already running" case with a clear
           // message so the agent can tell the user without retrying.
           // (The service throws the same error, but catching here lets
@@ -652,6 +670,10 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
                 "Use `<slug>__read_feature` to check `workflowStatus` " +
                 "and wait until it leaves `IN_PROGRESS` before sending.",
               workflowStatus: feature.workflowStatus,
+              featureId,
+              featureTitle,
+              workspaceSlug,
+              workspaceName,
             };
           }
 
@@ -678,6 +700,9 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           return {
             status: "sent",
             featureId,
+            featureTitle,
+            workspaceSlug,
+            workspaceName,
             messageId: result.chatMessage.id,
             awaitingReply: true,
             stakworkProjectId: result.stakworkData?.projectId ?? null,
