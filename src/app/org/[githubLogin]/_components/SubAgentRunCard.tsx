@@ -1,6 +1,15 @@
 "use client";
 
-import { ExternalLink, Loader2, Send, AlertCircle, Check } from "lucide-react";
+import { useState } from "react";
+import {
+  ExternalLink,
+  Loader2,
+  Send,
+  AlertCircle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 
@@ -201,6 +210,15 @@ interface SubAgentRunCardProps {
 }
 
 export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
+  // Default-collapsed per the canvas-agent-manages-planners plan
+  // (Phase 1). One card per managed feature, persistent for the
+  // lifetime of the conversation; collapsed shows just one line.
+  // Click the header anywhere except the "Open feature" link to
+  // toggle. Phases 2-4 extend this idiom (inbound thread entries,
+  // meaningful status pill, FORM artifact surfacing outside the
+  // collapse); the shape is established here.
+  const [collapsed, setCollapsed] = useState(true);
+
   const latest = run.messages[run.messages.length - 1];
   const latestStatus = latest?.status ?? "sent";
   const planHref =
@@ -210,8 +228,9 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
 
   // Headline status copy. We deliberately don't say "replied" yet —
   // the canvas agent doesn't poll, and showing "waiting" until the
-  // next `read_feature` is honest. A future Pusher-driven flip can
-  // upgrade this label once we wire it up.
+  // next `read_feature` is honest. Phase 2 extends this with inbound
+  // planner messages, at which point `replied` / `waiting for you`
+  // become meaningful.
   const headlineStatus =
     latestStatus === "failed"
       ? "Failed"
@@ -221,84 +240,139 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
           ? `${run.messages.length} messages sent · waiting`
           : "Sent · waiting for reply";
 
+  const StatusIcon =
+    latestStatus === "in_flight" ? (
+      <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-500" />
+    ) : latestStatus === "failed" ? (
+      <AlertCircle className="h-3.5 w-3.5 text-rose-500" />
+    ) : (
+      <Send className="h-3.5 w-3.5 text-sky-500" />
+    );
+
+  const Chevron = collapsed ? (
+    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+  ) : (
+    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+  );
+
   return (
     <div
       data-feature-id={run.featureId}
       className="rounded-lg border bg-card text-card-foreground"
     >
-      <div className="flex items-start gap-2 px-3 py-2.5">
-        <div className="mt-0.5 flex-shrink-0">
-          {latestStatus === "in_flight" ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-500" />
-          ) : latestStatus === "failed" ? (
-            <AlertCircle className="h-3.5 w-3.5 text-rose-500" />
+      {/*
+        Header is a button so the whole row is keyboard-toggleable.
+        The "Open feature" link is a sibling, not a child, so its
+        click doesn't bubble into the toggle. We still stop
+        propagation defensively in case the link is restructured.
+      */}
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        aria-expanded={!collapsed}
+        className="flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-muted/30"
+      >
+        <div className="mt-0.5 flex-shrink-0">{Chevron}</div>
+        <div className="mt-0.5 flex-shrink-0">{StatusIcon}</div>
+        <div className="min-w-0 flex-1">
+          {collapsed ? (
+            // Collapsed: single line — feature · workspace · status.
+            <div className="flex min-w-0 items-baseline gap-1.5 text-sm">
+              <span className="min-w-0 truncate font-medium">
+                {run.featureTitle}
+              </span>
+              {run.workspaceName && (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="text-muted-foreground"
+                  >
+                    ·
+                  </span>
+                  <span className="flex-shrink-0 text-xs text-muted-foreground">
+                    {run.workspaceName}
+                  </span>
+                </>
+              )}
+              <span
+                aria-hidden="true"
+                className="text-muted-foreground"
+              >
+                ·
+              </span>
+              <span className="flex-shrink-0 truncate text-xs text-muted-foreground">
+                {headlineStatus}
+              </span>
+            </div>
           ) : (
-            <Send className="h-3.5 w-3.5 text-sky-500" />
+            // Expanded: the original card chrome (eyebrow + title +
+            // thread + status footer).
+            <>
+              <div className="flex items-baseline gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <span className="font-medium">Feature planner</span>
+                {run.workspaceName && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>{run.workspaceName}</span>
+                  </>
+                )}
+              </div>
+              <div className="mt-0.5 flex items-center gap-1 break-words text-sm font-medium">
+                <span className="min-w-0 truncate">{run.featureTitle}</span>
+                {planHref && (
+                  <a
+                    href={planHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex flex-shrink-0 items-center text-muted-foreground hover:text-foreground"
+                    title="Open feature plan"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+
+              {/* Thread — each canvas-agent → planner message in order. */}
+              <ul className="mt-1.5 space-y-1">
+                {run.messages.map((m, i) => (
+                  <li
+                    key={`${m.messageId}-${i}`}
+                    className="flex items-start gap-1.5 text-xs text-muted-foreground"
+                  >
+                    <span
+                      className="mt-[3px] flex-shrink-0 text-foreground/60"
+                      aria-hidden="true"
+                    >
+                      →
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <span className="break-words italic">
+                        &ldquo;{m.text || "(empty)"}&rdquo;
+                      </span>
+                      {m.status === "failed" && m.errorReason && (
+                        <span className="ml-1 not-italic text-rose-600 dark:text-rose-400">
+                          — {m.errorReason}
+                        </span>
+                      )}
+                      {m.status === "sent" && i < run.messages.length - 1 && (
+                        <Check
+                          className="ml-1 inline h-3 w-3 text-emerald-600 dark:text-emerald-400"
+                          aria-label="Delivered"
+                        />
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-1.5 text-[11px] text-muted-foreground">
+                {headlineStatus}
+              </div>
+            </>
           )}
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-            <span className="font-medium">Feature planner</span>
-            {run.workspaceName && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{run.workspaceName}</span>
-              </>
-            )}
-          </div>
-          <div className="mt-0.5 flex items-center gap-1 break-words text-sm font-medium">
-            <span className="min-w-0 truncate">{run.featureTitle}</span>
-            {planHref && (
-              <a
-                href={planHref}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex flex-shrink-0 items-center text-muted-foreground hover:text-foreground"
-                title="Open feature plan"
-              >
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-          </div>
-
-          {/* Thread — each canvas-agent → planner message in order. */}
-          <ul className="mt-1.5 space-y-1">
-            {run.messages.map((m, i) => (
-              <li
-                key={`${m.messageId}-${i}`}
-                className="flex items-start gap-1.5 text-xs text-muted-foreground"
-              >
-                <span
-                  className="mt-[3px] flex-shrink-0 text-foreground/60"
-                  aria-hidden="true"
-                >
-                  →
-                </span>
-                <div className="min-w-0 flex-1">
-                  <span className="break-words italic">
-                    &ldquo;{m.text || "(empty)"}&rdquo;
-                  </span>
-                  {m.status === "failed" && m.errorReason && (
-                    <span className="ml-1 not-italic text-rose-600 dark:text-rose-400">
-                      — {m.errorReason}
-                    </span>
-                  )}
-                  {m.status === "sent" && i < run.messages.length - 1 && (
-                    <Check
-                      className="ml-1 inline h-3 w-3 text-emerald-600 dark:text-emerald-400"
-                      aria-label="Delivered"
-                    />
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-1.5 text-[11px] text-muted-foreground">
-            {headlineStatus}
-          </div>
-        </div>
-      </div>
+      </button>
     </div>
   );
 }
