@@ -109,6 +109,45 @@ export interface FeatureProposalPayload {
   initialMessage?: string;
   /** Layout hint resolved at approval time. See `Placement`. */
   placement?: Placement;
+
+  /**
+   * Cuids of features that ALREADY EXIST in the DB and must reach
+   * completion before this feature can start. The agent discovered
+   * them via `read_canvas` (live ids are `feature:<cuid>` — pass just
+   * the `<cuid>` part) or via `<slug>__list_features`. Validated at
+   * propose time: every id must exist and belong to this org.
+   *
+   * At approval time, the handler unions this array with the cuids
+   * resolved from `dependsOnProposalIds` and writes the result to
+   * `Feature.dependsOnFeatureIds`.
+   *
+   * **NEVER pass a `proposalId` here.** Sibling proposals go in
+   * `dependsOnProposalIds`. The two arrays exist precisely because
+   * a proposalId has no row yet — it can't be validated here, and
+   * the DB column only accepts real cuids.
+   */
+  dependsOnFeatureIds?: string[];
+
+  /**
+   * `proposalId`s of OTHER proposals in this same chat conversation
+   * (typically sibling `propose_feature` calls under the same
+   * initiative). NOT cuids — these ids only exist in the transcript.
+   *
+   * At approval time the handler scans the conversation for each
+   * id's `approvalResult.createdEntityId` (the cuid created when the
+   * user approved that sibling proposal), and unions the results
+   * with `dependsOnFeatureIds` before writing the final cuid array
+   * to `Feature.dependsOnFeatureIds`.
+   *
+   * If a referenced proposal hasn't been approved yet, approval of
+   * THIS proposal fails with a clear message: *"Approve the blocker
+   * first."* Same UX as the existing `parentProposalId` ordering
+   * error in `approveFeature`.
+   *
+   * **NEVER pass a cuid here.** Already-DB features go in
+   * `dependsOnFeatureIds`.
+   */
+  dependsOnProposalIds?: string[];
 }
 
 /**

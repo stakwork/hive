@@ -788,6 +788,14 @@ model Feature {
   model               String?
   milestoneId         String?               @map("milestone_id")
   initiativeId        String?               @map("initiative_id")
+  // Cuids of features that must reach completion before this feature
+  // can start. Mirror of `Task.dependsOnTaskIds` — same flat-array
+  // posture, same cross-workspace freedom (no per-workspace constraint
+  // on the blocker). Cleanup-on-delete and cycle-check live in the
+  // feature service. The org canvas projector emits a synthetic
+  // `synthetic:feature-blocks:<blockerId>:<blockedId>` edge between
+  // pairs where BOTH endpoints are anchored to the same initiative.
+  dependsOnFeatureIds String[]              @default([]) @map("depends_on_feature_ids")
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
   assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])
