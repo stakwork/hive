@@ -250,6 +250,41 @@ describe("triggerWorkflowEditorRun", () => {
     });
   });
 
+  describe("featureId forwarding", () => {
+    test("includes featureId in vars when task has a featureId", async () => {
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(vars.featureId).toBe("feature-1");
+    });
+
+    test("omits featureId from vars when task has no featureId", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({ ...makeTask(), featureId: null }) as never;
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(Object.prototype.hasOwnProperty.call(vars, "featureId")).toBe(false);
+    });
+  });
+
   test("does NOT create StakworkRun when project_id is absent", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
