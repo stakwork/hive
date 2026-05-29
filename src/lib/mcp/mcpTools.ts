@@ -429,15 +429,28 @@ export async function mcpSendMessage(
 
 /**
  * List tasks for a workspace, ordered by last updated, max 40.
+ * When `featureId` is provided, scopes to tasks belonging to that feature
+ * (and verifies the feature belongs to the workspace first).
  */
 export async function mcpListTasks(
   auth: WorkspaceAuth,
+  featureId?: string,
 ): Promise<McpToolResult> {
   try {
+    if (featureId) {
+      const feature = await db.feature.findUnique({
+        where: { id: featureId },
+        select: { workspaceId: true },
+      });
+      const err = verifyWorkspace(feature, auth, "Feature");
+      if (err) return err;
+    }
+
     const tasks = await db.task.findMany({
       where: {
         workspaceId: auth.workspaceId,
         deleted: false,
+        ...(featureId ? { featureId } : {}),
       },
       select: {
         id: true,
@@ -445,6 +458,7 @@ export async function mcpListTasks(
         status: true,
         priority: true,
         updatedAt: true,
+        featureId: true,
       },
       orderBy: { updatedAt: "desc" },
       take: 40,
@@ -456,6 +470,7 @@ export async function mcpListTasks(
         title: t.title,
         status: t.status,
         priority: t.priority,
+        featureId: t.featureId,
         updatedAt: t.updatedAt.toISOString(),
       })),
     );
@@ -513,14 +528,26 @@ export async function mcpReadTask(
 
 /**
  * Create a new task in the workspace.
+ * When `featureId` is provided, the task is attached to that feature
+ * (after verifying the feature belongs to this workspace).
  */
 export async function mcpCreateTask(
   auth: WorkspaceAuth,
   title: string,
   description?: string,
   priority?: string,
+  featureId?: string,
 ): Promise<McpToolResult> {
   try {
+    if (featureId) {
+      const feature = await db.feature.findUnique({
+        where: { id: featureId },
+        select: { workspaceId: true },
+      });
+      const err = verifyWorkspace(feature, auth, "Feature");
+      if (err) return err;
+    }
+
     const taskPriority =
       priority && Object.values(Priority).includes(priority as Priority)
         ? (priority as Priority)
@@ -534,6 +561,7 @@ export async function mcpCreateTask(
         priority: taskPriority,
         createdById: auth.userId,
         updatedById: auth.userId,
+        ...(featureId ? { featureId } : {}),
       },
     });
 
@@ -542,11 +570,161 @@ export async function mcpCreateTask(
       title: task.title,
       status: task.status,
       priority: task.priority,
+      featureId: task.featureId,
     });
   } catch (error) {
     console.error("Error creating task:", error);
     const msg =
       error instanceof Error ? error.message : "Could not create task";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+/**
+ * Update a task's editable fields. Only `title`, `description`, and
+ * `priority` are updatable here — status / workflowStatus / featureId
+ * changes are intentionally excluded (those are higher-impact and flow
+ * through other paths).
+ *
+ * All three fields are optional; pass only what you want to change.
+ * Empty-string `description` clears the description (set to null);
+ * undefined leaves it untouched.
+ */
+export async function mcpUpdateTask(
+  auth: WorkspaceAuth,
+  taskId: string,
+  updates: {
+    title?: string;
+    description?: string;
+    priority?: string;
+  },
+): Promise<McpToolResult> {
+  try {
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: { workspaceId: true },
+    });
+    const err = verifyWorkspace(task, auth, "Task");
+    if (err) return err;
+
+    const data: {
+      title?: string;
+      description?: string | null;
+      priority?: Priority;
+      updatedById: string;
+    } = { updatedById: auth.userId };
+
+    if (updates.title !== undefined) {
+      const trimmed = updates.title.trim();
+      if (!trimmed) {
+        return mcpError("Error: title cannot be empty");
+      }
+      data.title = trimmed;
+    }
+
+    if (updates.description !== undefined) {
+      const trimmed = updates.description.trim();
+      data.description = trimmed.length ? trimmed : null;
+    }
+
+    if (updates.priority !== undefined) {
+      if (!Object.values(Priority).includes(updates.priority as Priority)) {
+        return mcpError(
+          `Error: invalid priority. Must be one of: ${Object.values(Priority).join(", ")}`,
+        );
+      }
+      data.priority = updates.priority as Priority;
+    }
+
+    // Nothing actually changed beyond updatedById — short-circuit.
+    if (Object.keys(data).length === 1) {
+      return mcpError(
+        "Error: no updatable fields provided (title, description, priority)",
+      );
+    }
+
+    const updated = await db.task.update({
+      where: { id: taskId },
+      data,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        priority: true,
+        featureId: true,
+        updatedAt: true,
+      },
+    });
+
+    return mcpOk({
+      id: updated.id,
+      title: updated.title,
+      description: updated.description,
+      status: updated.status,
+      priority: updated.priority,
+      featureId: updated.featureId,
+      updatedAt: updated.updatedAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("Error updating task:", error);
+    const msg =
+      error instanceof Error ? error.message : "Could not update task";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+/**
+ * Send a message from the feature planner (or any orchestrating agent)
+ * to a task's agent chat. Mirrors `send_to_feature_planner` in
+ * `initiativeTools.ts` — fire-and-forget delegation, async reply,
+ * fails when the task agent is currently running.
+ *
+ * The message is prefixed with `[via plan agent]` so the task agent
+ * can recognize the upstream coordination signal.
+ */
+export async function mcpSendToTaskAgent(
+  auth: WorkspaceAuth,
+  taskId: string,
+  message: string,
+): Promise<McpToolResult> {
+  try {
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: { workspaceId: true, workflowStatus: true },
+    });
+    const err = verifyWorkspace(task, auth, "Task");
+    if (err) return err;
+
+    // Same guard as send_to_feature_planner: don't try to send while a
+    // run is already in flight. The downstream service would throw;
+    // returning a structured error here is friendlier to the caller.
+    if (task!.workflowStatus === "IN_PROGRESS") {
+      return mcpError(
+        "Error: The task agent is currently running. Use read_task to check workflowStatus and wait until it leaves IN_PROGRESS before sending.",
+      );
+    }
+
+    const prefixedMessage = `[via plan agent] ${message}`;
+
+    await sendMessageToStakwork({
+      taskId,
+      message: prefixedMessage,
+      userId: auth.userId,
+    });
+
+    return mcpOk({
+      status: "sent",
+      taskId,
+      awaitingReply: true,
+      note: "Message delivered. The task agent replies asynchronously. Call read_task afterward to see the reply and updated state.",
+    });
+  } catch (error) {
+    console.error("Error sending message to task agent:", error);
+    const msg =
+      error instanceof Error
+        ? error.message
+        : "Could not send message to task agent";
     return mcpError(`Error: ${msg}`);
   }
 }

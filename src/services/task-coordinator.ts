@@ -2,6 +2,14 @@ import { db } from "@/lib/db";
 
 export interface FeatureContext {
   feature: {
+    /**
+     * Feature cuid. Exposed to the plan agent so it can pass this id
+     * to the workspace-scope MCP tools (`list_tasks` with featureId
+     * filter, `create_task` with feature attachment, `update_task`,
+     * `send_to_task_agent`). Without this, the plan agent would have
+     * no way to scope its task operations to its own feature.
+     */
+    id: string;
     title: string;
     brief: string | null;
     userStories: string[];
@@ -76,6 +84,7 @@ export async function buildFeatureContext(
 
   return {
     feature: {
+      id: feature.id,
       title: feature.title,
       brief: feature.brief,
       userStories: feature.userStories.map((us) => us.title),

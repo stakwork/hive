@@ -15,6 +15,8 @@ import {
   mcpListTasks,
   mcpReadTask,
   mcpCreateTask,
+  mcpUpdateTask,
+  mcpSendToTaskAgent,
   mcpSendMessage,
   mcpCheckStatus,
   findWorkspaceUser,
@@ -42,6 +44,8 @@ const AVAILABLE_TOOLS = [
   "list_tasks",
   "read_task",
   "create_task",
+  "update_task",
+  "send_to_task_agent",
   "check_status",
   "send_message",
 ] as const;
@@ -305,14 +309,21 @@ function createServer(
     {
       title: "List Tasks",
       description:
-        "List tasks in the workspace, ordered by last updated. Returns task titles, IDs, statuses, priorities, and last-updated timestamps. Maximum 40 results.",
-      inputSchema: {},
+        "List tasks in the workspace, ordered by last updated. Returns task titles, IDs, statuses, priorities, featureIds, and last-updated timestamps. Maximum 40 results. When `featureId` is provided, scopes results to tasks belonging to that feature.",
+      inputSchema: {
+        featureId: z
+          .string()
+          .optional()
+          .describe(
+            "Optional feature ID. When provided, lists only tasks belonging to this feature.",
+          ),
+      },
     },
-    async (_args, extra) => {
+    async ({ featureId }: { featureId?: string }, extra) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "list_tasks");
       if (result.error) return result.error;
-      return mcpListTasks(result.auth!);
+      return mcpListTasks(result.auth!, featureId);
     },
   );
 
@@ -341,7 +352,7 @@ function createServer(
     {
       title: "Create Task",
       description:
-        "Create a new task in the workspace with a title and optional description and priority.",
+        "Create a new task in the workspace with a title and optional description, priority, and feature.",
       inputSchema: {
         title: z.string().describe("The title of the task"),
         description: z
@@ -352,6 +363,12 @@ function createServer(
           .enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"])
           .optional()
           .describe("Priority level (LOW, MEDIUM, HIGH, CRITICAL). Defaults to MEDIUM."),
+        featureId: z
+          .string()
+          .optional()
+          .describe(
+            "Optional feature ID to attach this task to. The feature must belong to this workspace.",
+          ),
         creator: z
           .string()
           .optional()
@@ -365,14 +382,116 @@ function createServer(
         title,
         description,
         priority,
+        featureId,
         creator,
-      }: { title: string; description?: string; priority?: string; creator?: string },
+      }: {
+        title: string;
+        description?: string;
+        priority?: string;
+        featureId?: string;
+        creator?: string;
+      },
       extra,
     ) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "create_task", creator);
       if (result.error) return result.error;
-      return mcpCreateTask(result.auth!, title, description, priority);
+      return mcpCreateTask(result.auth!, title, description, priority, featureId);
+    },
+  );
+
+  server.registerTool(
+    "update_task",
+    {
+      title: "Update Task",
+      description:
+        "Update an existing task's title, description, and/or priority. Only these three fields are updatable — status, workflow status, and feature attachment are intentionally excluded. Pass only the fields you want to change.",
+      inputSchema: {
+        taskId: z.string().describe("The ID of the task to update"),
+        title: z
+          .string()
+          .optional()
+          .describe("New title for the task"),
+        description: z
+          .string()
+          .optional()
+          .describe(
+            "New description for the task. Pass an empty string to clear the description.",
+          ),
+        priority: z
+          .enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+          .optional()
+          .describe("New priority (LOW, MEDIUM, HIGH, CRITICAL)."),
+        editor: z
+          .string()
+          .optional()
+          .describe(
+            "Name of the user making the edit (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
+    },
+    async (
+      {
+        taskId,
+        title,
+        description,
+        priority,
+        editor,
+      }: {
+        taskId: string;
+        title?: string;
+        description?: string;
+        priority?: string;
+        editor?: string;
+      },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "update_task", editor);
+      if (result.error) return result.error;
+      return mcpUpdateTask(result.auth!, taskId, { title, description, priority });
+    },
+  );
+
+  server.registerTool(
+    "send_to_task_agent",
+    {
+      title: "Send Message to Task Agent",
+      description:
+        "Send a message to a task's agent chat. Use this from the plan agent (or other orchestrating agent) to coordinate with a task — push context, ask a question, or propagate a decision made at the plan level. This is delegation, not editing: the task agent owns its own work; you're sending a chat message and it replies asynchronously. Fire-and-forget — returns once the message is delivered, NOT once the agent replies. Fails if the task agent is currently running (workflowStatus === 'IN_PROGRESS'); use read_task to check and wait until it leaves IN_PROGRESS before sending. The message is automatically prefixed with `[via plan agent]` so the task agent can recognize cross-context coordination signals; lead your message with a one-line reason for context.",
+      inputSchema: {
+        taskId: z
+          .string()
+          .describe("The ID of the task whose agent to message"),
+        message: z
+          .string()
+          .describe(
+            "The message to send. Lead with a short framing of WHY you're reaching out so the task agent has context.",
+          ),
+        sender: z
+          .string()
+          .optional()
+          .describe(
+            "Name of the sender (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
+    },
+    async (
+      {
+        taskId,
+        message,
+        sender,
+      }: { taskId: string; message: string; sender?: string },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(
+        authExtra,
+        "send_to_task_agent",
+        sender,
+      );
+      if (result.error) return result.error;
+      return mcpSendToTaskAgent(result.auth!, taskId, message);
     },
   );
 
