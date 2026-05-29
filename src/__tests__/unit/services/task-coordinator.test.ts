@@ -59,6 +59,7 @@ describe("buildFeatureContext", () => {
 
       expect(result).toEqual({
         feature: {
+          id: "feature-1",
           title: "Payment Integration",
           brief: "Add Stripe payment processing",
           userStories: [
@@ -152,6 +153,7 @@ describe("buildFeatureContext", () => {
 
       expect(result).toEqual({
         feature: {
+          id: "feature-minimal",
           title: "Minimal Feature",
           brief: null,
           userStories: [],
