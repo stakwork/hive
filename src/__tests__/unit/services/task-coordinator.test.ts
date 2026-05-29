@@ -69,6 +69,7 @@ describe("buildFeatureContext", () => {
           requirements: "Support credit cards and ACH payments",
           architecture: "Microservice-based payment gateway",
         },
+        workspaceRepositories: [],
         currentPhase: {
           name: "Development Phase",
           description: "Implementation and testing",
@@ -107,6 +108,19 @@ describe("buildFeatureContext", () => {
         include: {
           userStories: {
             orderBy: { order: "asc" },
+          },
+          workspace: {
+            select: {
+              repositories: {
+                select: {
+                  id: true,
+                  name: true,
+                  repositoryUrl: true,
+                  branch: true,
+                },
+                orderBy: { createdAt: "asc" },
+              },
+            },
           },
         },
       });
@@ -160,6 +174,7 @@ describe("buildFeatureContext", () => {
           requirements: null,
           architecture: null,
         },
+        workspaceRepositories: [],
         currentPhase: {
           name: "Minimal Phase",
           description: null,
@@ -188,6 +203,19 @@ describe("buildFeatureContext", () => {
         include: {
           userStories: {
             orderBy: { order: "asc" },
+          },
+          workspace: {
+            select: {
+              repositories: {
+                select: {
+                  id: true,
+                  name: true,
+                  repositoryUrl: true,
+                  branch: true,
+                },
+                orderBy: { createdAt: "asc" },
+              },
+            },
           },
         },
       });

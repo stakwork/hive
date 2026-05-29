@@ -2,6 +2,7 @@ import { listConcepts } from "@/lib/ai/askTools";
 import { db } from "@/lib/db";
 import { createFeature } from "@/services/roadmap/features";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
+import { createTicket } from "@/services/roadmap/tickets";
 import { sendMessageToStakwork } from "@/services/task-workflow";
 import {
   ArtifactType,
@@ -576,6 +577,196 @@ export async function mcpCreateTask(
     console.error("Error creating task:", error);
     const msg =
       error instanceof Error ? error.message : "Could not create task";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Roadmap task creation (feature-aware, via createTicket service)
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared input for the two roadmap-aware create helpers below.
+ * Pulled into a separate type to keep `mcpCreateFeatureTask` and
+ * `mcpCreateWorkflowTask` honest about their narrow contracts —
+ * neither accepts `status`, `assigneeId`, or `phaseId`; both default
+ * to the feature's first phase and TaskStatus.TODO via `createTicket`.
+ */
+interface McpRoadmapTaskBase {
+  title: string;
+  description?: string;
+  priority?: string;
+}
+
+/**
+ * Resolve a repository identifier against a workspace. Accepts either
+ * a `repositoryId` (cuid) or a `repositoryUrl` (string match against
+ * `Repository.repositoryUrl`). When both are provided, `repositoryId`
+ * wins. Returns the resolved cuid or an error.
+ */
+async function resolveWorkspaceRepository(
+  workspaceId: string,
+  args: { repositoryId?: string; repositoryUrl?: string },
+): Promise<{ repositoryId: string } | { error: string }> {
+  if (args.repositoryId) {
+    const repo = await db.repository.findFirst({
+      where: { id: args.repositoryId, workspaceId },
+      select: { id: true },
+    });
+    if (!repo) {
+      return { error: "Repository not found in this workspace" };
+    }
+    return { repositoryId: repo.id };
+  }
+
+  if (args.repositoryUrl) {
+    const repo = await db.repository.findFirst({
+      where: { workspaceId, repositoryUrl: args.repositoryUrl },
+      select: { id: true },
+    });
+    if (!repo) {
+      return {
+        error: `No repository in this workspace matches repositoryUrl=${args.repositoryUrl}`,
+      };
+    }
+    return { repositoryId: repo.id };
+  }
+
+  return { error: "Either repositoryId or repositoryUrl must be provided" };
+}
+
+/**
+ * Create a feature-anchored CODING task.
+ *
+ * Wraps `createTicket` (the same path the UI uses) so the new row gets
+ * the full validation, phase defaulting, bounty code, Pusher
+ * broadcast, etc. — the MCP surface only adds the repository-resolver
+ * convenience (accepting `repositoryUrl` in addition to
+ * `repositoryId`) and the MCP error/JSON shape.
+ *
+ * Why a separate tool from the generic `mcpCreateTask`? The generic
+ * version is feature-agnostic and used by other agents (voice, etc.)
+ * that don't need to set `featureId` / `repositoryId`. The plan
+ * agent needs the feature-anchored variant with task-quality
+ * guardrails baked into the tool description (see handler.ts).
+ */
+export async function mcpCreateFeatureTask(
+  auth: WorkspaceAuth,
+  featureId: string,
+  base: McpRoadmapTaskBase,
+  repo: { repositoryId?: string; repositoryUrl?: string },
+): Promise<McpToolResult> {
+  try {
+    const feature = await db.feature.findUnique({
+      where: { id: featureId },
+      select: { workspaceId: true },
+    });
+    const err = verifyWorkspace(feature, auth, "Feature");
+    if (err) return err;
+
+    const resolved = await resolveWorkspaceRepository(auth.workspaceId, repo);
+    if ("error" in resolved) {
+      return mcpError(`Error: ${resolved.error}`);
+    }
+
+    const taskPriority =
+      base.priority &&
+      Object.values(Priority).includes(base.priority as Priority)
+        ? (base.priority as Priority)
+        : Priority.MEDIUM;
+
+    const task = await createTicket(featureId, auth.userId, {
+      title: base.title,
+      description: base.description,
+      priority: taskPriority,
+      repositoryId: resolved.repositoryId,
+    });
+
+    return mcpOk({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      featureId: task.featureId,
+      phaseId: task.phaseId,
+      repository: task.repository,
+    });
+  } catch (error) {
+    console.error("Error creating feature coding task:", error);
+    const msg =
+      error instanceof Error
+        ? error.message
+        : "Could not create feature coding task";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+/**
+ * Create a feature-anchored WORKFLOW task (Stakwork workflow editor).
+ *
+ * Sets `mode: "workflow_editor"` internally via `createTicket` (which
+ * derives mode from `workflowId` / `isNewWorkflow`). When
+ * `workflowId` is provided → existing workflow. When omitted → new
+ * workflow (we pass `isNewWorkflow: true`).
+ *
+ * `repositoryId` is intentionally null on workflow tasks — `createTicket`
+ * enforces the workflow-vs-repo mutual exclusion.
+ */
+export async function mcpCreateWorkflowTask(
+  auth: WorkspaceAuth,
+  featureId: string,
+  base: McpRoadmapTaskBase,
+  workflow: {
+    workflowId?: number;
+    workflowName?: string;
+    workflowRefId?: string;
+  },
+): Promise<McpToolResult> {
+  try {
+    const feature = await db.feature.findUnique({
+      where: { id: featureId },
+      select: { workspaceId: true },
+    });
+    const err = verifyWorkspace(feature, auth, "Feature");
+    if (err) return err;
+
+    const taskPriority =
+      base.priority &&
+      Object.values(Priority).includes(base.priority as Priority)
+        ? (base.priority as Priority)
+        : Priority.MEDIUM;
+
+    const hasExistingWorkflow = typeof workflow.workflowId === "number";
+
+    const task = await createTicket(featureId, auth.userId, {
+      title: base.title,
+      description: base.description,
+      priority: taskPriority,
+      ...(hasExistingWorkflow
+        ? {
+            workflowId: workflow.workflowId,
+            workflowName: workflow.workflowName,
+            workflowRefId: workflow.workflowRefId,
+          }
+        : { isNewWorkflow: true }),
+    });
+
+    return mcpOk({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      featureId: task.featureId,
+      phaseId: task.phaseId,
+      workflowId: hasExistingWorkflow ? workflow.workflowId : null,
+      isNewWorkflow: !hasExistingWorkflow,
+    });
+  } catch (error) {
+    console.error("Error creating feature workflow task:", error);
+    const msg =
+      error instanceof Error
+        ? error.message
+        : "Could not create feature workflow task";
     return mcpError(`Error: ${msg}`);
   }
 }

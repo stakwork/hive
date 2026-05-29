@@ -28,8 +28,17 @@ import type { McpServerConfig } from "@/services/mcpServers";
 /**
  * Task tools exposed to the plan agent via the workspace-scope MCP
  * callback. The plan agent uses these to look up tasks in its
- * feature, create new ones, edit existing ones, and send messages to
- * the task agents so plan-level decisions can propagate downstream.
+ * feature, create new ones (coding or workflow), edit existing ones,
+ * and send messages to the task agents so plan-level decisions can
+ * propagate downstream.
+ *
+ * Note we expose the feature-aware `create_feature_task` and
+ * `create_workflow_task` instead of the generic `create_task` —
+ * those variants carry the task-quality guardrails (granularity,
+ * coding-vs-workflow classification, IDOR reminders) in their tool
+ * descriptions, which the generic `create_task` doesn't. Voice and
+ * other agents still get `create_task` via the default surface;
+ * only the plan agent is locked to the feature-aware variants.
  *
  * Intentionally narrow: feature-level reads/writes flow through the
  * plan agent's normal chat surface (it IS the feature's planner), not
@@ -44,7 +53,8 @@ import type { McpServerConfig } from "@/services/mcpServers";
 const PLAN_MODE_WORKSPACE_TOOLS = [
   "list_tasks",
   "read_task",
-  "create_task",
+  "create_feature_task",
+  "create_workflow_task",
   "update_task",
   "send_to_task_agent",
 ] as const;
