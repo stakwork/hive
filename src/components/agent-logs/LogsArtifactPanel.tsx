@@ -6,15 +6,20 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MessageBubble, StatsBar, unescapeLogString } from "./LogDetailContent";
 import type { ParsedMessage, AgentLogStats } from "@/lib/utils/agent-log-stats";
+import type { ConversationMessage } from "@/hooks/useStreamedAgentLog";
 
 interface AgentLogItem {
   id: string;
   agent: string;
 }
 
+/** Synthetic id used for the provisional (streaming) tab */
+const PROVISIONAL_ID = "__provisional__";
+
 interface LogsArtifactPanelProps {
   logs: AgentLogItem[];
   lastUpdated?: Record<string, number>;
+  streamingLog?: { agent: string; conversation: ConversationMessage[] } | null;
 }
 
 interface LogState {
@@ -37,19 +42,38 @@ function formatAgentLabel(agent: string): string {
   return match ? `${titleCased} Agent` : titleCased;
 }
 
-export function LogsArtifactPanel({ logs, lastUpdated }: LogsArtifactPanelProps) {
-  // Default to the latest (rightmost — parent already sorts ascending by timestamp)
-  const [selectedId, setSelectedId] = useState<string | null>(
-    () => logs[logs.length - 1]?.id ?? null,
-  );
+export function LogsArtifactPanel({ logs, lastUpdated, streamingLog }: LogsArtifactPanelProps) {
+  // Whether the provisional streaming tab should be shown (no canonical log for this agent yet)
+  const hasProvisional =
+    !!streamingLog &&
+    !logs.some((l) => l.agent === streamingLog.agent);
+
+  // Default to the latest canonical log, or provisional if no canonical exists yet
+  const defaultId = logs[logs.length - 1]?.id ?? (hasProvisional ? PROVISIONAL_ID : null);
+
+  const [selectedId, setSelectedId] = useState<string | null>(() => defaultId);
   const [logStates, setLogStates] = useState<Record<string, LogState>>({});
 
-  // Keep selection in sync if logs array changes
+  // Keep selection in sync when logs array changes.
+  // If the user was on the provisional tab and the canonical log now exists for that agent,
+  // auto-switch to the canonical entry.
   useEffect(() => {
-    if (!selectedId || !logs.some((l) => l.id === selectedId)) {
-      setSelectedId(logs[logs.length - 1]?.id ?? null);
+    if (selectedId === PROVISIONAL_ID) {
+      if (!hasProvisional) {
+        // Canonical log has arrived — find it by agent and switch
+        const canonical = streamingLog
+          ? logs.find((l) => l.agent === streamingLog.agent)
+          : null;
+        setSelectedId(canonical?.id ?? logs[logs.length - 1]?.id ?? null);
+      }
+      return;
     }
-  }, [logs, selectedId]);
+    if (!selectedId || !logs.some((l) => l.id === selectedId)) {
+      // Fall back to provisional if available, else latest canonical
+      setSelectedId(hasProvisional ? PROVISIONAL_ID : (logs[logs.length - 1]?.id ?? null));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logs, selectedId, hasProvisional]);
 
   // When a log is externally updated (via Pusher), clear its cache so the
   // stats fetch re-runs and the user sees fresh content without re-clicking.
@@ -137,20 +161,29 @@ export function LogsArtifactPanel({ logs, lastUpdated }: LogsArtifactPanelProps)
   };
 
   const tabs = useMemo(() => {
-    const base = logs.map((l) => ({ id: l.id, label: formatAgentLabel(l.agent) }));
+    const base = logs.map((l) => ({ id: l.id, label: formatAgentLabel(l.agent), provisional: false }));
     const counts = base.reduce<Record<string, number>>((acc, t) => {
       acc[t.label] = (acc[t.label] ?? 0) + 1;
       return acc;
     }, {});
     const seen: Record<string, number> = {};
-    return base.map((t) => {
+    const canonical = base.map((t) => {
       if (counts[t.label] <= 1) return t;
       seen[t.label] = (seen[t.label] ?? 0) + 1;
       return { ...t, label: `${t.label} ${seen[t.label]}` };
     });
-  }, [logs]);
+    if (hasProvisional && streamingLog) {
+      canonical.push({
+        id: PROVISIONAL_ID,
+        label: formatAgentLabel(streamingLog.agent),
+        provisional: true,
+      });
+    }
+    return canonical;
+  }, [logs, hasProvisional, streamingLog]);
 
-  const current = selectedId ? logStates[selectedId] : null;
+  const isProvisionalSelected = selectedId === PROVISIONAL_ID;
+  const current = !isProvisionalSelected && selectedId ? logStates[selectedId] : null;
   const hasContent = !!current && (current.conversation !== null || current.rawContent !== "");
 
   return (
@@ -164,13 +197,19 @@ export function LogsArtifactPanel({ logs, lastUpdated }: LogsArtifactPanelProps)
               aria-selected={selectedId === tab.id}
               onClick={() => setSelectedId(tab.id)}
               className={cn(
-                "px-2.5 h-7 text-xs rounded-md transition-colors whitespace-nowrap border",
+                "px-2.5 h-7 text-xs rounded-md transition-colors whitespace-nowrap border flex items-center gap-1.5",
                 selectedId === tab.id
                   ? "bg-muted text-foreground border-border"
                   : "text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground",
               )}
             >
               {tab.label}
+              {tab.provisional && (
+                <span
+                  className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"
+                  aria-label="streaming"
+                />
+              )}
             </button>
           ))}
         </div>
@@ -178,7 +217,7 @@ export function LogsArtifactPanel({ logs, lastUpdated }: LogsArtifactPanelProps)
           variant="outline"
           size="sm"
           onClick={handleDownload}
-          disabled={!selectedId}
+          disabled={!selectedId || isProvisionalSelected}
           className="gap-1.5 h-7 text-xs shrink-0"
         >
           <Download className="h-3 w-3" />
@@ -186,31 +225,58 @@ export function LogsArtifactPanel({ logs, lastUpdated }: LogsArtifactPanelProps)
         </Button>
       </div>
 
-      {current?.loading && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      )}
-
-      {current?.error && !current.loading && (
-        <div className="text-center py-12">
-          <p className="text-destructive text-sm">{current.error}</p>
-        </div>
-      )}
-
-      {current && !current.loading && !current.error && hasContent && (
-        <>
-          {current.stats && <StatsBar stats={current.stats} />}
-          {current.conversation ? (
-            <div className="space-y-3">
-              {current.conversation.map((msg, i) => (
-                <MessageBubble key={i} message={msg} />
-              ))}
+      {/* Provisional (streaming) tab content */}
+      {isProvisionalSelected && streamingLog && (
+        <div className="space-y-3">
+          {streamingLog.conversation.length === 0 ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <pre className="whitespace-pre-wrap break-words font-mono text-sm">
-              {unescapeLogString(current.rawContent)}
-            </pre>
+            <>
+              {streamingLog.conversation.map((msg, i) => (
+                <MessageBubble key={i} message={msg as ParsedMessage} />
+              ))}
+              {/* Pulsing spinner after last message to indicate streaming is ongoing */}
+              <div className="flex items-center gap-2 pl-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Streaming…</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Canonical tab content */}
+      {!isProvisionalSelected && (
+        <>
+          {current?.loading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {current?.error && !current.loading && (
+            <div className="text-center py-12">
+              <p className="text-destructive text-sm">{current.error}</p>
+            </div>
+          )}
+
+          {current && !current.loading && !current.error && hasContent && (
+            <>
+              {current.stats && <StatsBar stats={current.stats} />}
+              {current.conversation ? (
+                <div className="space-y-3">
+                  {current.conversation.map((msg, i) => (
+                    <MessageBubble key={i} message={msg} />
+                  ))}
+                </div>
+              ) : (
+                <pre className="whitespace-pre-wrap break-words font-mono text-sm">
+                  {unescapeLogString(current.rawContent)}
+                </pre>
+              )}
+            </>
           )}
         </>
       )}

@@ -166,6 +166,7 @@ export interface MediaContent {
 }
 
 export interface StreamContent {
+  agent?: string; // e.g. "plan-agent-abced" — optional for backwards compat
   requestId: string;
   eventsToken: string;
   baseUrl: string;
