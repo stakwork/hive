@@ -216,6 +216,10 @@ export async function triggerWorkflowEditorRun(params: {
     tokenReference: getStakworkTokenReference(),
   };
 
+  if (task.featureId) {
+    vars.featureId = task.featureId;
+  }
+
   if (workflowVersionId) {
     vars.workflow_version_id = workflowVersionId;
   }
