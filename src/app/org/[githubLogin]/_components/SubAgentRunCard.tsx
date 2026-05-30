@@ -52,15 +52,32 @@ import type { CanvasChatMessage } from "../_state/canvasChatStore";
 
 /** One round-trip the canvas agent had with the planner. */
 interface RunMessage {
-  /** The id of the canvas-chat message that emitted this tool call. */
+  /** The id of the canvas-chat message that emitted/carries this entry. */
   messageId: string;
   /** The position in the overall conversation; lets us sort runs by recency. */
   messageIndex: number;
-  /** The message body the canvas agent passed via `message` input. */
+  /**
+   * Direction of the entry from the canvas agent's POV:
+   *   - `"out"`: canvas agent → planner (a `send_to_feature_planner`
+   *     tool call).
+   *   - `"in"`: planner → canvas (a fan-out row carrying
+   *     `source: { kind: "planner", ... }`, written by
+   *     `fanOutPlannerMessageToCanvas`).
+   */
+  direction: "out" | "in";
+  /**
+   * For `"out"`: the message body the canvas agent passed via
+   * `message` input.
+   * For `"in"`: the planner's ASSISTANT message content (verbatim
+   * from `ChatMessage.message`).
+   */
   text: string;
-  /** Outcome of this individual send. */
+  /**
+   * Outcome of an outbound send. Inbound entries are always `"sent"`
+   * — they only exist because the planner wrote something.
+   */
   status: "sent" | "in_flight" | "failed";
-  /** Failure reason for "failed" status. Optional for "sent" / "in_flight". */
+  /** Failure reason for outbound `"failed"` entries. */
   errorReason?: string;
 }
 
@@ -98,14 +115,61 @@ interface ToolCallInput {
 }
 
 /**
- * Walk the conversation, find all `send_to_feature_planner` tool
- * calls, and group them by `featureId`. Each group becomes one
- * `SubAgentRun` that `SidebarChat` will render as a single card.
+ * Helper: ensure a `SubAgentRun` exists for `featureId`, creating
+ * it with placeholder metadata if missing. Returns the run so the
+ * caller can push entries and update the anchor.
+ */
+function upsertRun(
+  byFeature: Map<string, SubAgentRun>,
+  featureId: string,
+  seed: { featureTitle?: string; workspaceSlug?: string; workspaceName?: string },
+): SubAgentRun {
+  const existing = byFeature.get(featureId);
+  if (existing) {
+    if (
+      existing.featureTitle === "Unknown feature" &&
+      seed.featureTitle &&
+      seed.featureTitle !== "Unknown feature"
+    ) {
+      existing.featureTitle = seed.featureTitle;
+    }
+    if (!existing.workspaceSlug && seed.workspaceSlug) {
+      existing.workspaceSlug = seed.workspaceSlug;
+    }
+    if (!existing.workspaceName && seed.workspaceName) {
+      existing.workspaceName = seed.workspaceName;
+    }
+    return existing;
+  }
+  const created: SubAgentRun = {
+    featureId,
+    featureTitle: seed.featureTitle ?? "Unknown feature",
+    workspaceSlug: seed.workspaceSlug ?? "",
+    workspaceName: seed.workspaceName ?? "",
+    messages: [],
+    anchorMessageId: "",
+  };
+  byFeature.set(featureId, created);
+  return created;
+}
+
+/**
+ * Walk the conversation, find all entries that belong to a planner
+ * conversation thread, and group them by `featureId`. Each group
+ * becomes one `SubAgentRun` that `SidebarChat` will render as a
+ * single card.
  *
- * Tool calls without a resolvable `featureId` (malformed input, or
- * an error so early the feature lookup didn't happen) are skipped —
- * we can't render a card without knowing which planner the agent
- * meant.
+ * Two entry sources:
+ *   - **Outbound** (`direction: "out"`): canvas-agent tool calls to
+ *     `send_to_feature_planner`. Read from `message.toolCalls[]`.
+ *     Tool calls without a resolvable `featureId` are skipped.
+ *   - **Inbound** (`direction: "in"`): fan-out rows the canvas-
+ *     planner-fanout worker wrote into this conversation, marked
+ *     with `source: { kind: "planner", featureId, plannerMessageId }`.
+ *     Read directly from `message.source`.
+ *
+ * Sort order is overall-conversation chronological — both sources
+ * share the same `messageIndex` axis.
  */
 export function getSubAgentRunsFromMessages(
   messages: CanvasChatMessage[],
@@ -113,6 +177,27 @@ export function getSubAgentRunsFromMessages(
   const byFeature = new Map<string, SubAgentRun>();
 
   messages.forEach((message, messageIndex) => {
+    // ── Inbound: planner → canvas (fan-out row) ────────────────
+    if (message.source?.kind === "planner") {
+      const { featureId } = message.source;
+      const run = upsertRun(byFeature, featureId, {});
+      run.messages.push({
+        messageId: message.id,
+        messageIndex,
+        direction: "in",
+        text: message.content,
+        status: "sent",
+      });
+      // Inbound entries also move the anchor — a planner reply is
+      // the freshest activity for this feature, so the card should
+      // hang under it.
+      run.anchorMessageId = message.id;
+      // Don't fall through to the toolCalls walk: a planner-source
+      // row should never carry a `send_to_feature_planner` tool call.
+      return;
+    }
+
+    // ── Outbound: canvas agent → planner (tool call) ───────────
     if (!message.toolCalls?.length) return;
 
     for (const tc of message.toolCalls) {
@@ -133,56 +218,36 @@ export function getSubAgentRunsFromMessages(
       // error path. Early-error tool failures (feature-not-found,
       // cross-org reject) won't have it — we render with placeholder
       // strings so the user still sees that an attempt was made.
-      const featureTitle = output.featureTitle ?? "Unknown feature";
-      const workspaceSlug = output.workspaceSlug ?? "";
-      const workspaceName = output.workspaceName ?? "";
+      const run = upsertRun(byFeature, featureId, {
+        featureTitle: output.featureTitle,
+        workspaceSlug: output.workspaceSlug,
+        workspaceName: output.workspaceName,
+      });
 
       const runStatus = deriveRunStatus(tc.status, output);
-      const runMessage: RunMessage = {
+      run.messages.push({
         messageId: message.id,
         messageIndex,
+        direction: "out",
         text: input.message ?? "",
         status: runStatus,
         errorReason:
           runStatus === "failed"
             ? output.error ?? tc.errorText ?? undefined
             : undefined,
-      };
-
-      const existing = byFeature.get(featureId);
-      if (existing) {
-        existing.messages.push(runMessage);
-        // We iterate the conversation chronologically, so every new
-        // push is by definition the most recent send for this
-        // feature → it becomes the new anchor (the chat-scroll
-        // position the card hangs under).
-        existing.anchorMessageId = message.id;
-        // Prefer non-placeholder metadata when later calls have it
-        // (e.g. an early call failed before lookup, a later one
-        // succeeded — use the success's metadata for the card).
-        if (existing.featureTitle === "Unknown feature" && output.featureTitle) {
-          existing.featureTitle = output.featureTitle;
-        }
-        if (!existing.workspaceSlug && workspaceSlug) {
-          existing.workspaceSlug = workspaceSlug;
-        }
-        if (!existing.workspaceName && workspaceName) {
-          existing.workspaceName = workspaceName;
-        }
-      } else {
-        byFeature.set(featureId, {
-          featureId,
-          featureTitle,
-          workspaceSlug,
-          workspaceName,
-          messages: [runMessage],
-          anchorMessageId: message.id,
-        });
-      }
+      });
+      // We iterate the conversation chronologically, so every new
+      // push is by definition the most recent send for this
+      // feature → it becomes the new anchor (the chat-scroll
+      // position the card hangs under).
+      run.anchorMessageId = message.id;
     }
   });
 
-  return Array.from(byFeature.values());
+  // Filter out any run that ended up with no anchor (shouldn't
+  // happen in practice — every push sets an anchor — but defensive
+  // against future code paths that pre-create a run).
+  return Array.from(byFeature.values()).filter((r) => r.anchorMessageId);
 }
 
 /**
@@ -221,30 +286,36 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
 
   const latest = run.messages[run.messages.length - 1];
   const latestStatus = latest?.status ?? "sent";
+  const latestDirection = latest?.direction ?? "out";
   const planHref =
     run.workspaceSlug && run.featureId
       ? `/w/${run.workspaceSlug}/plan/${run.featureId}`
       : null;
 
-  // Headline status copy. We deliberately don't say "replied" yet —
-  // the canvas agent doesn't poll, and showing "waiting" until the
-  // next `read_feature` is honest. Phase 2 extends this with inbound
-  // planner messages, at which point `replied` / `waiting for you`
-  // become meaningful.
+  // Headline status copy. With Phase 2 we now see inbound planner
+  // messages too, so the headline can finally say "Replied" when the
+  // last entry is from the planner. Phase 3 will refine further
+  // (FORM artifacts → "Waiting for you"; workflow transitions →
+  // "Plan ready"); Phase 2 keeps it to the three states the data
+  // can support today.
   const headlineStatus =
     latestStatus === "failed"
       ? "Failed"
       : latestStatus === "in_flight"
         ? "Sending..."
-        : run.messages.length > 1
-          ? `${run.messages.length} messages sent · waiting`
-          : "Sent · waiting for reply";
+        : latestDirection === "in"
+          ? "Replied"
+          : run.messages.length > 1
+            ? `${run.messages.length} messages sent · waiting`
+            : "Sent · waiting for reply";
 
   const StatusIcon =
     latestStatus === "in_flight" ? (
       <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-500" />
     ) : latestStatus === "failed" ? (
       <AlertCircle className="h-3.5 w-3.5 text-rose-500" />
+    ) : latestDirection === "in" ? (
+      <Check className="h-3.5 w-3.5 text-emerald-500" />
     ) : (
       <Send className="h-3.5 w-3.5 text-sky-500" />
     );
@@ -333,37 +404,74 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
                 )}
               </div>
 
-              {/* Thread — each canvas-agent → planner message in order. */}
+              {/*
+                Thread — canvas-agent → planner (→) and planner →
+                canvas (←) messages, in conversation-chronological
+                order. The arrow makes direction obvious; inbound
+                entries use the foreground text color (not muted)
+                because they're "fresh content the planner wrote"
+                and visually distinct from the canvas-agent's own
+                outbound sends.
+              */}
               <ul className="mt-1.5 space-y-1">
-                {run.messages.map((m, i) => (
-                  <li
-                    key={`${m.messageId}-${i}`}
-                    className="flex items-start gap-1.5 text-xs text-muted-foreground"
-                  >
-                    <span
-                      className="mt-[3px] flex-shrink-0 text-foreground/60"
-                      aria-hidden="true"
+                {run.messages.map((m, i) => {
+                  const isInbound = m.direction === "in";
+                  return (
+                    <li
+                      key={`${m.messageId}-${i}`}
+                      className={
+                        isInbound
+                          ? "flex items-start gap-1.5 text-xs text-foreground/80"
+                          : "flex items-start gap-1.5 text-xs text-muted-foreground"
+                      }
                     >
-                      →
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <span className="break-words italic">
-                        &ldquo;{m.text || "(empty)"}&rdquo;
+                      <span
+                        className={
+                          isInbound
+                            ? "mt-[3px] flex-shrink-0 text-emerald-600 dark:text-emerald-400"
+                            : "mt-[3px] flex-shrink-0 text-foreground/60"
+                        }
+                        aria-hidden="true"
+                      >
+                        {isInbound ? "←" : "→"}
                       </span>
-                      {m.status === "failed" && m.errorReason && (
-                        <span className="ml-1 not-italic text-rose-600 dark:text-rose-400">
-                          — {m.errorReason}
+                      <div className="min-w-0 flex-1">
+                        <span
+                          className={
+                            isInbound
+                              ? "break-words"
+                              : "break-words italic"
+                          }
+                        >
+                          {isInbound
+                            ? m.text || "(empty)"
+                            : `\u201C${m.text || "(empty)"}\u201D`}
                         </span>
-                      )}
-                      {m.status === "sent" && i < run.messages.length - 1 && (
-                        <Check
-                          className="ml-1 inline h-3 w-3 text-emerald-600 dark:text-emerald-400"
-                          aria-label="Delivered"
-                        />
-                      )}
-                    </div>
-                  </li>
-                ))}
+                        {m.status === "failed" && m.errorReason && (
+                          <span className="ml-1 not-italic text-rose-600 dark:text-rose-400">
+                            — {m.errorReason}
+                          </span>
+                        )}
+                        {/*
+                          Delivered checkmark on outbound entries
+                          that have something — anything — after
+                          them in the thread (a subsequent send OR
+                          a planner reply). The latest outbound
+                          stays without the check until either case
+                          is satisfied.
+                        */}
+                        {!isInbound &&
+                          m.status === "sent" &&
+                          i < run.messages.length - 1 && (
+                            <Check
+                              className="ml-1 inline h-3 w-3 text-emerald-600 dark:text-emerald-400"
+                              aria-label="Delivered"
+                            />
+                          )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
 
               <div className="mt-1.5 text-[11px] text-muted-foreground">

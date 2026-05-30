@@ -227,12 +227,24 @@ export async function POST(request: NextRequest) {
       const transcript: MessageLike[] = Array.isArray(canvasChatMessages)
         ? canvasChatMessages
         : [];
+      // Validate the `conversationId` against this caller before
+      // forwarding it to `handleApproval` — otherwise a malicious
+      // body could stamp `parentCanvasConversationId` onto a feature
+      // pointing at someone else's conversation. Same validation
+      // path as the token-attribution case below.
+      const approvalConversationId = await resolveTokenAttributionRowId({
+        conversationId,
+        userId,
+        workspaceSlug: slugs[0],
+        anonymousId: publicAnonymousId,
+      });
       return await runProposalIntent({
         orgId,
         userId,
         transcript,
         approvalIntent,
         rejectionIntent,
+        ...(approvalConversationId ? { conversationId: approvalConversationId } : {}),
       });
     }
 
@@ -319,6 +331,16 @@ export async function POST(request: NextRequest) {
               typeof selectedNodeId === "string" ? selectedNodeId : undefined,
           },
           messages: convertedMessages,
+          // The validated SharedConversation.id (or null when the
+          // body's `conversationId` failed validation). Forwarded to
+          // `buildInitiativeTools` so `send_to_feature_planner` can
+          // lazy-claim `Feature.parentCanvasConversationId` for
+          // fan-out. Using the validated id (not the raw body field)
+          // prevents a malicious caller from laundering ownership
+          // claims into someone else's conversation.
+          ...(tokenAttributionRowId
+            ? { currentCanvasConversationId: tokenAttributionRowId }
+            : {}),
           // The HTTP chat is a live UI surface; emit HIGHLIGHT_NODES so
           // open clients animate the researched node.
           silentPusher: false,
@@ -534,8 +556,23 @@ async function runProposalIntent(args: {
   transcript: MessageLike[];
   approvalIntent?: ApprovalIntent;
   rejectionIntent?: RejectionIntent;
+  /**
+   * Pre-validated `SharedConversation.id` (validated via
+   * `resolveTokenAttributionRowId` in the caller). Forwarded into
+   * `handleApproval` so feature approvals can stamp
+   * `Feature.parentCanvasConversationId` for fan-out. Never
+   * un-validated — the caller is the trust boundary.
+   */
+  conversationId?: string;
 }): Promise<Response> {
-  const { orgId, userId, transcript, approvalIntent, rejectionIntent } = args;
+  const {
+    orgId,
+    userId,
+    transcript,
+    approvalIntent,
+    rejectionIntent,
+    conversationId,
+  } = args;
 
   let summaryText: string;
   let approvalResultHeader: string | null = null;
@@ -547,6 +584,7 @@ async function runProposalIntent(args: {
       userId,
       messages: transcript,
       intent: approvalIntent,
+      ...(conversationId ? { conversationId } : {}),
     });
     if (!outcome.ok) {
       // Surface validation errors as the assistant text. The card UI

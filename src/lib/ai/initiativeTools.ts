@@ -108,7 +108,21 @@ const PLACEMENT_DESCRIPTION =
  * ownership against `orgId` so an agent invoked under org A can never
  * reassign or propose into org B even if it guesses a cuid.
  */
-export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
+export function buildInitiativeTools(
+  orgId: string,
+  userId: string,
+  /**
+   * Pre-validated `SharedConversation.id` for the canvas conversation
+   * driving this turn. When `send_to_feature_planner` runs and the
+   * targeted feature has no `parentCanvasConversationId` yet, the tool
+   * lazy-claims ownership using this id so future planner ASSISTANT
+   * messages fan out back to the same canvas conversation
+   * (`src/services/canvas-planner-fanout.ts`). Optional — when
+   * absent, the lazy-claim short-circuits and the feature stays
+   * unowned for fan-out purposes.
+   */
+  currentCanvasConversationId?: string,
+): ToolSet {
   return {
     read_initiative: tool({
       description:
@@ -634,6 +648,7 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               title: true,
               workspaceId: true,
               workflowStatus: true,
+              parentCanvasConversationId: true,
               workspace: {
                 select: {
                   slug: true,
@@ -675,6 +690,40 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               workspaceSlug,
               workspaceName,
             };
+          }
+
+          // Lazy-claim ownership: if this feature was created from a
+          // non-canvas surface (per-feature plan page, etc.) it has
+          // no parent canvas conversation yet. The first canvas
+          // conversation to message its planner claims ownership, so
+          // subsequent planner ASSISTANT messages fan out back here
+          // (`src/services/canvas-planner-fanout.ts`). Symmetric with
+          // the eager-claim that `handleApproval.approveFeature` does
+          // on first proposal-approval.
+          //
+          // Singular ownership (v1): if another canvas conversation
+          // already claimed this feature, we do NOT steal the claim.
+          // Planner replies will still fan out — to the original
+          // owner, not this conversation. See "Future seams" in the
+          // plan doc for the join-table promotion path.
+          //
+          // Non-fatal on failure: the message still goes through; the
+          // planner's reply just won't fan out to this conversation.
+          if (
+            !feature.parentCanvasConversationId &&
+            currentCanvasConversationId
+          ) {
+            try {
+              await db.feature.update({
+                where: { id: featureId },
+                data: { parentCanvasConversationId: currentCanvasConversationId },
+              });
+            } catch (e) {
+              console.error(
+                "[send_to_feature_planner] lazy-claim parentCanvasConversationId failed (non-fatal):",
+                e,
+              );
+            }
           }
 
           // Prefix attribution so the planner knows this came from

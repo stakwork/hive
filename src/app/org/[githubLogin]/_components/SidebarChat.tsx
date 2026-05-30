@@ -210,6 +210,21 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               return null;
             }
 
+            // Fan-out messages from planners (and Phase 4's planner-
+            // form answers) render inside their `SubAgentRunCard`,
+            // not as top-level chat bubbles. They stay in the
+            // messages array so `getSubAgentRunsFromMessages` can
+            // walk them and so they round-trip through autosave /
+            // share. Same shape as the approval/rejection early-
+            // return above. See
+            // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
+            if (
+              message.source?.kind === "planner" ||
+              message.source?.kind === "user-answered-planner-form"
+            ) {
+              return null;
+            }
+
             const proposals = getProposalsFromMessage(message);
             const subAgentRuns = subAgentRunsByAnchor.get(message.id);
 

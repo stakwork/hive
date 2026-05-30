@@ -4,7 +4,15 @@ The canvas agent's relationship with the per-feature planner agents becomes a fi
 
 The user's window into all of this is a single **collapsible per-feature card** in the canvas chat — one card per feature the canvas agent is managing, persistent for the lifetime of the conversation, moved to the bottom whenever it has new activity, default-collapsed (just `feature name · workspace · status`) and click-to-expand for the full thread. FORM artifacts override the collapse and surface directly because they're the explicit "user must answer" signal.
 
-Status: **proposed**.
+Status: **in progress** (Phases 1–2 shipped; Phases 3–4 not started).
+
+> **Progress at a glance**
+> - ✅ **Phase 1** — collapse-by-default `SubAgentRunCard` with one-line headline. Shipped.
+> - ✅ **Phase 2** — `Feature.parentCanvasConversationId` schema + ownership claims (eager on approval, lazy on `send_to_feature_planner`), fan-out worker (`src/services/canvas-planner-fanout.ts`), `SELECT ... FOR UPDATE` serialization on the autosave PUT, `CanvasMessageSource` discriminated union on `CanvasChatMessage`, inbound thread entries in the card, render-side filter in `SidebarChat`. Shipped.
+> - ⬜ **Phase 3** — `invokeCanvasAgentOnPlannerMessage` + `stay_silent` tool + per-conversation advisory lock + prompt paragraph + `CANVAS_AUTONOMOUS_TURNS_ENABLED` env gate. Not started.
+> - ⬜ **Phase 4** — `PlannerFormSlot` + `POST /api/orgs/[githubLogin]/planner-forms/answer` endpoint. Not started.
+>
+> Phase 2's fan-out is unconditional — planner ASSISTANT messages already land in the parent canvas conversation today. Phase 3 only adds the *autonomous-response* layer on top; until it ships, the user prompts the canvas agent manually to handle anything they see in the cards.
 
 > **Companion docs — read first.**
 > - `docs/plans/cross-workspace-initiatives.md` — the manager-of-planners framing this builds on, the `send_to_feature_planner` tool, the prompt vocabulary, the `<slug>__read_feature` chat-history-read primitive.
@@ -36,20 +44,25 @@ Three corollaries that drive every design decision below:
 
 ## What gets added vs. unchanged
 
+Status legend: ✅ shipped (Phase 2 cut) · 🟡 partially shipped · ⬜ not started.
+
 | Layer | New | Unchanged |
 | --- | --- | --- |
-| `prisma/schema.prisma` | One column on `Feature`: `parentCanvasConversationId String? @map("parent_canvas_conversation_id")` plus an index. One column on `CanvasChatMessage`'s JSON shape (`source?: PlannerMessageSource`) — no migration, just a TS type addition since `messages` is `Json`. | Everything else. No new model, no new relation table (singular ownership in v1 — see "Future seams" for the join-table promotion path). |
-| `src/lib/proposals/types.ts` | No change. `PlannerMessageSource` lives next to `CanvasChatMessage` in `canvasChatStore.ts` (it's a property of the message shape, not a proposal type). Ownership lookup is a server-side indexed read of `Feature.parentCanvasConversationId`, not a client-side message-scan helper. | All proposal types; `ApprovalResult.kind === "feature"` + `createdEntityId` is already what `handleApproval` uses to set ownership at create time. |
-| `src/lib/proposals/handleApproval.ts` | On `approveFeature`, populate `Feature.parentCanvasConversationId = conversation.id`. ~3-line diff. | Everything else. |
-| `src/lib/ai/initiativeTools.ts` | `send_to_feature_planner` execute body sets `parentCanvasConversationId` if not already set (covers the "canvas agent messages a planner that wasn't proposed here" path). ~5-line diff. | The tool's signature and behaviour. |
-| `src/services/roadmap/feature-chat.ts` | After committing the planner's ASSISTANT message in `sendFeatureChatMessage` (and in the Stakwork webhook write path — `src/app/api/chat/response/route.ts`), call `fanOutPlannerMessageToCanvas(feature, chatMessage)`. The fan-out worker also invokes the canvas agent if the message is "actionable" (FORM artifact, ends-with-question, or workflow-state transition). | Everything else; the per-feature chat experience is untouched. |
-| `src/services/canvas-planner-fanout.ts` | **New.** ~120 lines. Owns the fan-out worker: resolves owning canvas conversation, appends a `CanvasChatMessage`-shaped row to its `messages` JSON (idempotent on `plannerMessageId`), debounces concurrent writes, then optionally triggers `invokeCanvasAgentOnPlannerMessage`. | — |
-| `src/services/canvas-agent-autoturn.ts` | **New.** ~150 lines. Server-side entry point for invoking the canvas agent without an HTTP user: composes a synthetic system addition describing *why* the agent was woken (which planner, which feature, which message), calls `runCanvasAgent`, appends the resulting assistant message(s) to the canvas conversation. Reuses the existing `runCanvasAgent` loop end-to-end — no new agent logic. | The existing `/api/ask/quick` user-driven path; this is a parallel entry point with the same target. |
-| `src/app/org/[githubLogin]/_components/SubAgentRunCard.tsx` | Extended **incrementally across all four phases**: (1) collapsed-by-default with one-line headline; (2) extractor reads inbound `source.kind === "planner"` messages; (3) headline status pill becomes meaningful (`running` / `replied` / `waiting for you` / `failed`); (4) FORM artifacts on the most recent inbound entry render OUTSIDE the collapse via `PlannerFormSlot`. Already-shipped: the outbound-only extractor + thread renderer (current branch). | The rendering primitives — the card's visual idiom is established; phases extend it without rewriting. |
-| `src/app/org/[githubLogin]/_components/SidebarChat.tsx` | Filter `message.source?.kind === "planner"` rows out of the main scroll (they're rendered inside cards only). Card-per-feature placement: move-to-bottom by recomputing the anchor each render based on the latest activity timestamp. ~10-line diff. | The main message-render loop and proposal-card render arm. |
-| `src/app/org/[githubLogin]/_components/PlannerFormSlot.tsx` | **New.** ~80 lines. Renders the planner's most recent unanswered FORM artifact as an inline answer-this-now card, sitting just outside the collapsed `SubAgentRunCard`. Reuses `ClarifyingQuestionsPreview` verbatim. On submit, calls `POST /api/features/[featureId]/chat` with the answer + `replyId` and appends a `source: "user-answered-planner-form"` message to the canvas conversation. | — |
-| `src/app/api/workspaces/[slug]/chat/conversations/[conversationId]/route.ts` | Wrap the PUT's read-modify-write in `db.$transaction` with `SELECT ... FOR UPDATE` on the conversation row. Same wrap inside `fanOutPlannerMessageToCanvas`. Both writers append; Postgres row-level lock serializes them so neither loses data. **No 409s, no client-visible conflict** — the second writer waits a few ms and sees the first writer's append. ~20-line diff. | The endpoint contract; existing callers see no shape change. |
-| `src/lib/constants/prompt.ts` | One new paragraph in `getCanvasPromptSuffix()` teaching the agent that auto-invocation exists: *"Sometimes you'll be invoked not because the user typed a message, but because a planner you're managing just posted one. ... Your job is the same as always: read the conversation, follow the user's standing instructions, and either respond to the planner (`send_to_feature_planner`), write a brief note to the user, or do nothing."* The decision is delegated entirely to the agent reading the conversation — no policy-extractor or classifier feeds it a pre-computed policy. See Phase 3 for the full prompt text. | All other prompt sections, including the existing manager-of-planners loop and the brevity rules. |
+| `prisma/schema.prisma` | ✅ One column on `Feature`: `parentCanvasConversationId String? @map("parent_canvas_conversation_id")` plus an index. ✅ One column on `CanvasChatMessage`'s JSON shape (`source?: CanvasMessageSource`) — no migration, just a TS type addition since `messages` is `Json`. | Everything else. No new model, no new relation table (singular ownership in v1 — see "Future seams" for the join-table promotion path). |
+| `src/lib/proposals/types.ts` | No change. `CanvasMessageSource` lives next to `CanvasChatMessage` in `canvasChatStore.ts` (it's a property of the message shape, not a proposal type). Ownership lookup is a server-side indexed read of `Feature.parentCanvasConversationId`, not a client-side message-scan helper. | All proposal types; `ApprovalResult.kind === "feature"` + `createdEntityId` is already what `handleApproval` uses to set ownership at create time. |
+| `src/lib/proposals/handleApproval.ts` | ✅ Optional `conversationId?` added to `HandleApprovalArgs` and threaded into `approveFeature`. On feature approval, populates `Feature.parentCanvasConversationId = conversationId` (non-fatal — caught + logged). | Everything else. |
+| `src/app/api/ask/quick/route.ts` | ✅ Validates body `conversationId` via the existing `resolveTokenAttributionRowId` *before* forwarding it on both the approval path (→ `handleApproval`) and the canvas-agent path (→ `runCanvasAgent.currentCanvasConversationId`). Prevents a malicious caller laundering ownership into someone else's conversation. | The route's overall shape, the streaming SSE assembly, the token-attribution `onFinish` hook. |
+| `src/lib/ai/runCanvasAgent.ts` | ✅ Added `currentCanvasConversationId?` to `RunCanvasAgentOptions`. Forwarded into both `buildInitiativeTools(orgId, userId, currentCanvasConversationId)` call sites (multi-WS + single-WS branches). | Everything else; tool assembly, prefix-message composition, streamText loop. |
+| `src/lib/ai/initiativeTools.ts` | ✅ Optional third arg on `buildInitiativeTools`. `send_to_feature_planner` selects `parentCanvasConversationId` from the feature row and lazy-claims ownership when null + a current id is present. Never steals an existing claim. Non-fatal on update failure. | The tool's signature for callers (third arg defaults to `undefined`, backwards-compat with existing test callers). |
+| `src/services/roadmap/feature-chat.ts` | No change — `sendFeatureChatMessage` only writes USER messages (the kick-off prompt). The planner's ASSISTANT reply lands via the Stakwork webhook write path; that's the only fan-out site. | Everything; the per-feature chat experience is untouched. |
+| `src/app/api/chat/response/route.ts` | ✅ After the existing `featureId` Pusher trigger and before the notification dispatcher, loads `{ id, parentCanvasConversationId, workspaceId }` and calls `fanOutPlannerMessageToCanvas(feature, chatMessage)`. Wrapped in try/catch — never blocks the webhook response. | The webhook's primary control flow (artifact processing, PLAN-XML parsing, Pusher fan-out, notifications). |
+| `src/services/canvas-planner-fanout.ts` | ✅ **New.** ~170 lines. Owns the fan-out worker: short-circuits when no parent; opens `db.$transaction` with `SELECT ... FOR UPDATE` on `shared_conversations`; idempotency-checks via `source.plannerMessageId`; appends a `planner`-source `CanvasChatMessage` row to `messages` JSON; bumps `lastMessageAt`. Failure-tolerant (caught + logged at top level). 🟡 The Phase 3 hook (invoking the canvas agent on actionable messages) is not yet wired — the function returns after the append. | — |
+| `src/services/canvas-agent-autoturn.ts` | ⬜ **Not started.** ~150 lines. Server-side entry point for invoking the canvas agent without an HTTP user: composes a synthetic system addition describing *why* the agent was woken (which planner, which feature, which message), calls `runCanvasAgent`, appends the resulting assistant message(s) to the canvas conversation. Reuses the existing `runCanvasAgent` loop end-to-end — no new agent logic. | The existing `/api/ask/quick` user-driven path; this is a parallel entry point with the same target. |
+| `src/app/org/[githubLogin]/_components/SubAgentRunCard.tsx` | ✅ Phase 1 — collapsed-by-default with one-line headline. ✅ Phase 2 — extractor reads inbound `source.kind === "planner"` messages and threads them with `direction: "in"`, anchor advances to the freshest entry, render alternates `→` / `←`, headline says `"Replied"` when latest entry is inbound, status icon switches to a green check. ⬜ Phase 3 — meaningful status pill (`running` / `waiting for you` / `failed`) once auto-turns ship. ⬜ Phase 4 — FORM artifacts on the most recent inbound entry render OUTSIDE the collapse via `PlannerFormSlot`. | The rendering primitives — the card's visual idiom is established; remaining phases extend it without rewriting. |
+| `src/app/org/[githubLogin]/_components/SidebarChat.tsx` | ✅ Filter `message.source?.kind === "planner"` AND `"user-answered-planner-form"` rows out of the main scroll (forward-compat for Phase 4). Card-per-feature placement: anchor advances to the most recent activity message for each feature (extractor side). | The main message-render loop and proposal-card render arm. |
+| `src/app/org/[githubLogin]/_components/PlannerFormSlot.tsx` | ⬜ **Not started.** ~80 lines. Renders the planner's most recent unanswered FORM artifact as an inline answer-this-now card, sitting just outside the collapsed `SubAgentRunCard`. Reuses `ClarifyingQuestionsPreview` verbatim. On submit, calls a new `POST /api/orgs/[githubLogin]/planner-forms/answer` endpoint that both forwards to `sendFeatureChatMessage` and appends a `source: { kind: "user-answered-planner-form", ... }` message to the canvas conversation. | — |
+| `src/app/api/workspaces/[slug]/chat/conversations/[conversationId]/route.ts` | ✅ PUT's read-modify-write wrapped in `db.$transaction` with `SELECT messages FROM shared_conversations WHERE id = ? FOR UPDATE`. Ownership check stays outside the transaction; lock + re-read + append + write run inside. Matches the lock in `fanOutPlannerMessageToCanvas` so both writers serialize on the same Postgres row. **No 409s, no client-visible conflict.** | The endpoint contract; existing callers see no shape change. |
+| `src/lib/constants/prompt.ts` | ⬜ **Phase 3.** One new paragraph in `getCanvasPromptSuffix()` teaching the agent that auto-invocation exists: *"Sometimes you'll be invoked not because the user typed a message, but because a planner you're managing just posted one. ... Your job is the same as always: read the conversation, follow the user's standing instructions, and either respond to the planner (`send_to_feature_planner`), write a brief note to the user, or do nothing."* See Phase 3 for the full prompt text. | All other prompt sections, including the existing manager-of-planners loop and the brevity rules. |
 
 ## The animating diagram
 
@@ -94,7 +107,7 @@ Three corollaries that drive every design decision below:
 
 **The fan-out is one-directional and write-only.** Planners don't read the canvas conversation; they just write to their own chat and a worker echoes that write into the parent canvas. The canvas agent — when woken by an actionable echo — can reply by calling `send_to_feature_planner`, which writes a USER message to the planner's chat. **No bidirectional sync, no event bus, no shared state.** Two strict writers, both writing the same message into two places: their own chat and the parent canvas conversation.
 
-## Phase 1 — Card upgrade (UI-only, zero new server)
+## Phase 1 — Card upgrade (UI-only, zero new server) ✅ SHIPPED
 
 Highest-leverage shippable step. Validates the visual idiom before any infrastructure exists. **No fan-out, no inbound messages yet** — the card still only reflects outbound `send_to_feature_planner` calls, but with the new collapsed-by-default chrome.
 
@@ -118,9 +131,14 @@ Open a feature's planner from the canvas chat, send 2-3 messages to it via `send
 
 A noticeably cleaner canvas chat. The "agent did 3 things on my behalf" noise collapses into one line until the user clicks. Functionally equivalent to today otherwise. ~3 hours of work.
 
-## Phase 2 — Fan-out + inbound thread (server, makes planner messages visible)
+## Phase 2 — Fan-out + inbound thread (server, makes planner messages visible) ✅ SHIPPED
 
 The real foundation. Planners post a message → it appears as an inbound thread entry in the parent card. No autonomous canvas-agent invocation yet — the user manually prompts the canvas agent to handle anything they see.
+
+> **Implementation notes (post-ship).**
+> - One deviation from the plan as written: the original Phase 2 text said the fan-out call should be wired into both `sendFeatureChatMessage` *and* the Stakwork webhook. In practice `sendFeatureChatMessage` only commits USER messages (the kick-off prompt). The single ASSISTANT-write path for planner replies is the Stakwork webhook at `src/app/api/chat/response/route.ts`, so the fan-out call lives only there. Open question #2 ("webhook write path coverage") is resolved by inspection: no other `featureId`-scoped ASSISTANT writes exist in the codebase as of the Phase 2 ship.
+> - Ownership-claim flow has a security wrinkle the plan only hinted at: `conversationId` from the request body must be validated against the caller before being stamped onto `Feature.parentCanvasConversationId`, otherwise a malicious client could launder ownership into someone else's conversation. `/api/ask/quick/route.ts` reuses the existing `resolveTokenAttributionRowId` helper for this — both in the approval path (before forwarding to `handleApproval`) and in the canvas-agent path (the validated id becomes `currentCanvasConversationId` passed into `runCanvasAgent` → `buildInitiativeTools`). See `src/app/api/ask/quick/route.ts` and `src/lib/proposals/handleApproval.ts:HandleApprovalArgs.conversationId` for the contract.
+> - Migration: `prisma/migrations/20260529000000_add_feature_parent_canvas_conversation_id/migration.sql`.
 
 ### Schema: `Feature.parentCanvasConversationId`
 
@@ -293,9 +311,11 @@ Both writers append (never reorder), so the only "conflict" is arrival order —
 
 Planners are now visible in the canvas chat. A user who proposed three features and walked away comes back to three cards, each showing the full back-and-forth (one card per feature, threads collapsed). No FORM rendering yet (Phase 4) and no autonomous canvas-agent responses (Phase 3) — the user still has to manually prompt the canvas agent to handle anything they see. But the **data foundation is real**: every planner action is in the parent canvas transcript, share/fork preserves it, and any client (browser, iOS, future surfaces) reading `SharedConversation.messages` sees the same `source`-marked rows.
 
-## Phase 3 — Canvas agent autonomous invocation
+## Phase 3 — Canvas agent autonomous invocation ⬜ NOT STARTED
 
 The triage layer. Wakes the canvas agent server-side on actionable planner messages. The agent reads the conversation and decides what to do — exactly like it does on user-driven turns. **No policy extractor, no classification step.** The user's standing instructions are already in the conversation; the agent already reads the conversation; the prompt teaches it how to behave when the wakeup was machine-driven instead of user-driven.
+
+> **Ready to start.** Phase 2 left a deliberate stub in `src/services/canvas-planner-fanout.ts`: after the append succeeds, the worker is the right place to inspect the planner message for "actionable" signals (FORM artifact, workflow transition, trailing `?`) and dispatch to `invokeCanvasAgentOnPlannerMessage`. The Phase 2 code does not call this yet — the call site is where Phase 3 wires in.
 
 ### Why no policy extractor
 
@@ -422,9 +442,11 @@ Mitigation knobs if cost grows:
 
 The system is autonomously triaging. User says "manage this feature for me, only escalate decisions I have to make." Canvas agent does. Cards show the cumulative back-and-forth, the user comes back to a clean inbox: cards in red headline ("waiting for you"), cards in green ("plan ready"), cards in muted gray ("running silently"). They click the red one, answer, move on.
 
-## Phase 4 — `PlannerFormSlot` (FORMs render inline, user answers in canvas chat)
+## Phase 4 — `PlannerFormSlot` (FORMs render inline, user answers in canvas chat) ⬜ NOT STARTED
 
 The last piece. FORMs from the planner currently force a navigation to `/w/<slug>/plan/<featureId>` to answer. After Phase 4 they're answerable in canvas chat.
+
+> **Already wired (forward-compat).** `CanvasMessageSource` ships with the `user-answered-planner-form` variant declared in Phase 2; `SidebarChat.tsx` already filters that source kind out of the main scroll. Phase 4 just adds the renderer (`PlannerFormSlot`), the answer endpoint, and the extractor branch in `SubAgentRunCard.tsx` that treats `user-answered-planner-form` rows as a third thread-entry class (alongside outbound canvas-agent sends and inbound planner messages).
 
 ### Component
 
@@ -514,9 +536,9 @@ good idea on the tool
 
 ## Order of operations (TL;DR)
 
-1. **Phase 1** — collapse-by-default `SubAgentRunCard` with one-line headline. UI-only. ~3 hours.
-2. **Phase 2** — `Feature.parentCanvasConversationId` + fan-out worker + `SELECT ... FOR UPDATE` serialization on the autosave endpoint. Inbound thread entries become visible. ~1 day.
-3. **Phase 3** — `invokeCanvasAgentOnPlannerMessage` + `stay_silent` tool + per-conversation lock + prompt paragraph teaching auto-invocation. Auto-turn fires on actionable planner messages; the agent reads the conversation and triages per the user's standing instructions. **Gated by `CANVAS_AUTONOMOUS_TURNS_ENABLED` — ships off, flip on after deploy.** ~1 day.
-4. **Phase 4** — `PlannerFormSlot` + answer endpoint. Users answer FORMs in canvas chat. ~half a day.
+1. ✅ **Phase 1** — collapse-by-default `SubAgentRunCard` with one-line headline. UI-only. ~3 hours. **Shipped.**
+2. ✅ **Phase 2** — `Feature.parentCanvasConversationId` + fan-out worker + `SELECT ... FOR UPDATE` serialization on the autosave endpoint. Inbound thread entries become visible. ~1 day. **Shipped.**
+3. ⬜ **Phase 3** — `invokeCanvasAgentOnPlannerMessage` + `stay_silent` tool + per-conversation lock + prompt paragraph teaching auto-invocation. Auto-turn fires on actionable planner messages; the agent reads the conversation and triages per the user's standing instructions. **Gated by `CANVAS_AUTONOMOUS_TURNS_ENABLED` — ships off, flip on after deploy.** ~1 day. **Not started.**
+4. ⬜ **Phase 4** — `PlannerFormSlot` + answer endpoint. Users answer FORMs in canvas chat. ~half a day. **Not started.**
 
 Each phase ships independently and is reversible (delete the new file + the small diffs; restore prior behaviour). No phase blocks the user from doing anything they can do today.
