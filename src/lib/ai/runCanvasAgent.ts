@@ -168,6 +168,18 @@ export interface RunCanvasAgentOptions {
   /** User-visible chat messages, in AI SDK ModelMessage[] form. */
   messages: ModelMessage[];
   /**
+   * Pre-validated `SharedConversation.id` for the active canvas
+   * conversation. Forwarded to `buildInitiativeTools` so
+   * `send_to_feature_planner` can lazy-claim ownership
+   * (`Feature.parentCanvasConversationId`) for features messaged from
+   * this conversation. Optional — when absent, the lazy-claim
+   * short-circuits and the feature stays unowned for fan-out
+   * purposes. The caller MUST validate the id; see
+   * `resolveTokenAttributionRowId` in `/api/ask/quick/route.ts` for
+   * the precedent.
+   */
+  currentCanvasConversationId?: string;
+  /**
    * When `true`, strip all write tools before invoking `streamText`.
    * Use this for read-only callers (e.g. plan-mode org context scout)
    * to guarantee the agent can't mutate canvas/research/connection/
@@ -376,6 +388,7 @@ export async function runCanvasAgent(
     readonly = false,
     silentPusher = false,
     hooks,
+    currentCanvasConversationId,
   } = opts;
 
   if (!Array.isArray(workspaceSlugs) || workspaceSlugs.length === 0) {
@@ -448,7 +461,7 @@ export async function runCanvasAgent(
         ...tools,
         ...buildConnectionTools(orgId, userId),
         ...buildCanvasTools(orgId),
-        ...buildInitiativeTools(orgId, userId),
+        ...buildInitiativeTools(orgId, userId, currentCanvasConversationId),
         ...buildResearchTools(orgId, userId, capturedWebSearchResults),
       };
     }
@@ -519,7 +532,7 @@ export async function runCanvasAgent(
         ...tools,
         ...buildConnectionTools(orgId, userId),
         ...buildCanvasTools(orgId),
-        ...buildInitiativeTools(orgId, userId),
+        ...buildInitiativeTools(orgId, userId, currentCanvasConversationId),
         ...buildResearchTools(orgId, userId, capturedWebSearchResults),
       };
     }

@@ -17,6 +17,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { processScreenshotUpload, processRecordingUpload } from "@/lib/screenshot-upload";
 import { parsePlanXml } from "@/lib/utils/plan-xml";
 import { createAndSendNotification } from "@/services/notifications";
+import { fanOutPlannerMessageToCanvas } from "@/services/canvas-planner-fanout";
 
 export const fetchCache = "force-no-store";
 
@@ -532,6 +533,33 @@ export async function POST(request: NextRequest) {
         await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
       } catch (error) {
         console.error("Error broadcasting feature update to Pusher:", error);
+      }
+
+      // Fan out the planner's ASSISTANT message to the canvas
+      // conversation that owns this feature (if any). The fan-out
+      // worker is failure-tolerant — it logs and swallows errors so
+      // a fan-out hiccup never blocks the webhook response. See
+      // `src/services/canvas-planner-fanout.ts` for the lock /
+      // idempotency model. Phase 3 will add the autonomous-canvas-
+      // agent invocation inside the worker, gated by
+      // `CANVAS_AUTONOMOUS_TURNS_ENABLED`.
+      try {
+        const fanOutFeature = await db.feature.findUnique({
+          where: { id: featureId },
+          select: {
+            id: true,
+            parentCanvasConversationId: true,
+            workspaceId: true,
+          },
+        });
+        if (fanOutFeature) {
+          await fanOutPlannerMessageToCanvas(fanOutFeature, chatMessage);
+        }
+      } catch (e) {
+        console.error(
+          "[chat/response] canvas fan-out failed (non-fatal):",
+          e,
+        );
       }
 
       // Fire plan-page notifications based on artifact types (fire-and-forget)
