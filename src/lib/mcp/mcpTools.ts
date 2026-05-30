@@ -43,10 +43,27 @@ function mcpOk(data: unknown): McpToolResult {
 // ---------------------------------------------------------------------------
 
 /** Artifact types we include in chat history responses. */
-const CHAT_ARTIFACT_TYPES = [ArtifactType.LONGFORM, ArtifactType.BROWSER, ArtifactType.PLAN];
+const CHAT_ARTIFACT_TYPES = [
+  ArtifactType.LONGFORM,
+  ArtifactType.BROWSER,
+  ArtifactType.PLAN,
+  ArtifactType.FORM,
+];
 
-/** Artifact types where only the *last* occurrence is kept (to reduce payload). */
-const LAST_ONLY_ARTIFACT_TYPES: ArtifactType[] = [ArtifactType.BROWSER, ArtifactType.PLAN];
+/**
+ * Artifact types where only the *last* occurrence is kept (to reduce payload).
+ *
+ * FORM is included here so the canvas/manager agent sees the planner's most
+ * recent clarifying question (the structured options the user would see on
+ * the feature plan page) without dragging along every stale form across a
+ * long chat history. PLAN and BROWSER follow the same "latest snapshot only"
+ * convention for the same reason.
+ */
+const LAST_ONLY_ARTIFACT_TYPES: ArtifactType[] = [
+  ArtifactType.BROWSER,
+  ArtifactType.PLAN,
+  ArtifactType.FORM,
+];
 
 type RawMessage = {
   role: string;

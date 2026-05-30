@@ -212,12 +212,26 @@ interface HandleApprovalArgs {
   /** The full chat-side conversation transcript (raw `CanvasChatMessage[]`). */
   messages: MessageLike[];
   intent: ApprovalIntent;
+  /**
+   * Validated `SharedConversation.id` for the canvas conversation this
+   * approval was clicked from. When supplied AND the proposal is a
+   * feature, the new `Feature` row is stamped with
+   * `parentCanvasConversationId = conversationId` so subsequent
+   * planner messages fan out to this conversation
+   * (`src/services/canvas-planner-fanout.ts`). The caller MUST have
+   * validated the id (e.g. via `resolveTokenAttributionRowId`) before
+   * passing it in — otherwise a malicious payload could launder
+   * ownership claims into someone else's conversation.
+   *
+   * Optional. Other approval kinds (initiative, milestone) ignore it.
+   */
+  conversationId?: string;
 }
 
 export async function handleApproval(
   args: HandleApprovalArgs,
 ): Promise<HandleApprovalReturn> {
-  const { orgId, userId, messages, intent } = args;
+  const { orgId, userId, messages, intent, conversationId } = args;
 
   // 1. Find the proposal.
   const proposal = findProposal(messages, intent.proposalId);
@@ -256,6 +270,7 @@ export async function handleApproval(
     messages,
     proposal,
     intent,
+    conversationId,
   });
 }
 
@@ -354,8 +369,14 @@ async function approveFeature(args: {
   messages: MessageLike[];
   proposal: Extract<ProposalOutput, { kind: "feature" }>;
   intent: ApprovalIntent;
+  /**
+   * Validated `SharedConversation.id` to stamp as
+   * `Feature.parentCanvasConversationId` on the new row. See
+   * `HandleApprovalArgs.conversationId` for the validation contract.
+   */
+  conversationId?: string;
 }): Promise<HandleApprovalReturn> {
-  const { orgId, userId, messages, proposal, intent } = args;
+  const { orgId, userId, messages, proposal, intent, conversationId } = args;
 
   const merged: FeatureProposalPayload = {
     ...proposal.payload,
@@ -581,6 +602,28 @@ async function approveFeature(args: {
       ...(merged.milestoneId && { milestoneId: merged.milestoneId }),
       ...(uniqueDeps.length > 0 && { dependsOnFeatureIds: uniqueDeps }),
     });
+
+    // Stamp ownership: this canvas conversation now "owns" the new
+    // feature for fan-out purposes. Planner ASSISTANT messages will
+    // appear in this conversation's `messages` JSON via
+    // `fanOutPlannerMessageToCanvas`. Non-fatal — a stamp failure
+    // just means the feature isn't fanned out (the row still exists,
+    // user can fall back to opening the feature's plan page).
+    // Validation of `conversationId` is the caller's responsibility
+    // (see `HandleApprovalArgs.conversationId` doc).
+    if (conversationId) {
+      try {
+        await db.feature.update({
+          where: { id: feature.id },
+          data: { parentCanvasConversationId: conversationId },
+        });
+      } catch (e) {
+        console.error(
+          "[handleApproval.approveFeature] parentCanvasConversationId stamp failed (non-fatal):",
+          e,
+        );
+      }
+    }
 
     const featurePlacementPayload = {
       workspaceId: merged.workspaceId,

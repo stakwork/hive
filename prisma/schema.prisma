@@ -796,6 +796,29 @@ model Feature {
   // `synthetic:feature-blocks:<blockerId>:<blockedId>` edge between
   // pairs where BOTH endpoints are anchored to the same initiative.
   dependsOnFeatureIds String[]              @default([]) @map("depends_on_feature_ids")
+  /**
+   * The canvas conversation (`SharedConversation.id`) that "owns" this
+   * feature — typically the one where the user approved the
+   * `propose_feature` proposal that created the row. Populated by
+   * `handleApproval.approveFeature` at create time; also populated
+   * lazily by `send_to_feature_planner` if a canvas conversation
+   * messages a planner for a feature that wasn't proposed there.
+   *
+   * Fan-out: when this feature's planner writes an ASSISTANT
+   * message (Stakwork webhook at `/api/chat/response`), the worker
+   * appends a `CanvasChatMessage`-shaped row to the owning
+   * conversation's `messages` JSON via
+   * `fanOutPlannerMessageToCanvas`.
+   *
+   * Singular in v1 (one canvas conversation owns the feature). See
+   * "Future seams" in `docs/plans/canvas-agent-manages-planners.md`
+   * for the join-table promotion path.
+   *
+   * No FK to `SharedConversation` — conversations can be deleted
+   * (user clears chat); the fan-out worker treats a missing target
+   * as a no-op.
+   */
+  parentCanvasConversationId String?         @map("parent_canvas_conversation_id")
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
   assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])
@@ -820,6 +843,7 @@ model Feature {
   @@index([deleted])
   @@index([milestoneId])
   @@index([initiativeId])
+  @@index([parentCanvasConversationId])
   @@map("features")
 }
 

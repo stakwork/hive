@@ -20,6 +20,7 @@ import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
+  SEND_TO_FEATURE_PLANNER_TOOL,
 } from "@/lib/proposals/types";
 
 /**
@@ -107,7 +108,21 @@ const PLACEMENT_DESCRIPTION =
  * ownership against `orgId` so an agent invoked under org A can never
  * reassign or propose into org B even if it guesses a cuid.
  */
-export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
+export function buildInitiativeTools(
+  orgId: string,
+  userId: string,
+  /**
+   * Pre-validated `SharedConversation.id` for the canvas conversation
+   * driving this turn. When `send_to_feature_planner` runs and the
+   * targeted feature has no `parentCanvasConversationId` yet, the tool
+   * lazy-claims ownership using this id so future planner ASSISTANT
+   * messages fan out back to the same canvas conversation
+   * (`src/services/canvas-planner-fanout.ts`). Optional — when
+   * absent, the lazy-claim short-circuits and the feature stays
+   * unowned for fan-out purposes.
+   */
+  currentCanvasConversationId?: string,
+): ToolSet {
   return {
     read_initiative: tool({
       description:
@@ -560,7 +575,7 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
     // The prompt teaches the agent to lead with the reason it's
     // reaching out (e.g. *"We're aligning auth across three features
     // — please use `userId` as the canonical name."*).
-    send_to_feature_planner: tool({
+    [SEND_TO_FEATURE_PLANNER_TOOL]: tool({
       description:
         "Send a message to a feature's per-feature planning agent. " +
         "Use this when you need a sibling feature's planner to know " +
@@ -622,13 +637,24 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           // user (`userId` from `buildInitiativeTools`) is a member
           // or owner of the workspace — the org check here is an
           // extra defense against cross-org leakage.
+          // Pull the feature's display fields (title + workspace
+          // slug/name) alongside the auth fields. The chat UI uses
+          // them to render a `SubAgentRunCard` without re-fetching;
+          // mirroring how `propose_feature` returns enough metadata
+          // for `ProposalCard` to render off the tool output alone.
           const feature = await db.feature.findUnique({
             where: { id: featureId },
             select: {
+              title: true,
               workspaceId: true,
               workflowStatus: true,
+              parentCanvasConversationId: true,
               workspace: {
-                select: { sourceControlOrgId: true },
+                select: {
+                  slug: true,
+                  name: true,
+                  sourceControlOrgId: true,
+                },
               },
             },
           });
@@ -640,6 +666,13 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               error: "Feature does not belong to this organization",
             };
           }
+          // Captured once so both the success and the IN_PROGRESS
+          // error path can include them — the UI card needs the title
+          // even when the send was rejected, so the user can see
+          // *which* planner the agent tried to message.
+          const featureTitle = feature.title;
+          const workspaceSlug = feature.workspace.slug;
+          const workspaceName = feature.workspace.name;
           // Early-return the "already running" case with a clear
           // message so the agent can tell the user without retrying.
           // (The service throws the same error, but catching here lets
@@ -652,7 +685,45 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
                 "Use `<slug>__read_feature` to check `workflowStatus` " +
                 "and wait until it leaves `IN_PROGRESS` before sending.",
               workflowStatus: feature.workflowStatus,
+              featureId,
+              featureTitle,
+              workspaceSlug,
+              workspaceName,
             };
+          }
+
+          // Lazy-claim ownership: if this feature was created from a
+          // non-canvas surface (per-feature plan page, etc.) it has
+          // no parent canvas conversation yet. The first canvas
+          // conversation to message its planner claims ownership, so
+          // subsequent planner ASSISTANT messages fan out back here
+          // (`src/services/canvas-planner-fanout.ts`). Symmetric with
+          // the eager-claim that `handleApproval.approveFeature` does
+          // on first proposal-approval.
+          //
+          // Singular ownership (v1): if another canvas conversation
+          // already claimed this feature, we do NOT steal the claim.
+          // Planner replies will still fan out — to the original
+          // owner, not this conversation. See "Future seams" in the
+          // plan doc for the join-table promotion path.
+          //
+          // Non-fatal on failure: the message still goes through; the
+          // planner's reply just won't fan out to this conversation.
+          if (
+            !feature.parentCanvasConversationId &&
+            currentCanvasConversationId
+          ) {
+            try {
+              await db.feature.update({
+                where: { id: featureId },
+                data: { parentCanvasConversationId: currentCanvasConversationId },
+              });
+            } catch (e) {
+              console.error(
+                "[send_to_feature_planner] lazy-claim parentCanvasConversationId failed (non-fatal):",
+                e,
+              );
+            }
           }
 
           // Prefix attribution so the planner knows this came from
@@ -678,6 +749,9 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
           return {
             status: "sent",
             featureId,
+            featureTitle,
+            workspaceSlug,
+            workspaceName,
             messageId: result.chatMessage.id,
             awaitingReply: true,
             stakworkProjectId: result.stakworkData?.projectId ?? null,

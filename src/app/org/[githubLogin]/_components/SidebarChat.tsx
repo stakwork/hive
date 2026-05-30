@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Send, Share2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +9,10 @@ import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCall
 import { Button } from "@/components/ui/button";
 import { SidebarChatMessage } from "./SidebarChatMessage";
 import { ProposalCard, getProposalsFromMessage } from "./ProposalCard";
+import {
+  SubAgentRunCard,
+  getSubAgentRunsFromMessages,
+} from "./SubAgentRunCard";
 import { AttentionList } from "./AttentionList";
 import type { AttentionItem } from "@/services/attention/topItems";
 import {
@@ -136,6 +140,26 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 
   const hasMessages = messages.length > 0;
 
+  // Group all `send_to_feature_planner` calls in this conversation
+  // by featureId, then bucket the resulting runs by the message they
+  // should hang under (the most recent send for that feature). This
+  // lets one card render even when the agent has messaged the same
+  // planner multiple times — the card moves down with the latest
+  // exchange. See `SubAgentRunCard.tsx` for the design rationale.
+  const subAgentRunsByAnchor = useMemo(() => {
+    const runs = getSubAgentRunsFromMessages(messages);
+    const byAnchor = new Map<string, typeof runs>();
+    for (const run of runs) {
+      const existing = byAnchor.get(run.anchorMessageId);
+      if (existing) {
+        existing.push(run);
+      } else {
+        byAnchor.set(run.anchorMessageId, [run]);
+      }
+    }
+    return byAnchor;
+  }, [messages]);
+
   return (
     <div className="flex h-full flex-col min-h-0">
       <div className="flex items-center justify-between px-3 py-2 border-b">
@@ -186,7 +210,23 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               return null;
             }
 
+            // Fan-out messages from planners (and Phase 4's planner-
+            // form answers) render inside their `SubAgentRunCard`,
+            // not as top-level chat bubbles. They stay in the
+            // messages array so `getSubAgentRunsFromMessages` can
+            // walk them and so they round-trip through autosave /
+            // share. Same shape as the approval/rejection early-
+            // return above. See
+            // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
+            if (
+              message.source?.kind === "planner" ||
+              message.source?.kind === "user-answered-planner-form"
+            ) {
+              return null;
+            }
+
             const proposals = getProposalsFromMessage(message);
+            const subAgentRuns = subAgentRunsByAnchor.get(message.id);
 
             return (
               <div key={message.id} className="space-y-1.5">
@@ -203,6 +243,13 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                         messageId={message.id}
                         githubLogin={githubLogin}
                       />
+                    ))}
+                  </div>
+                )}
+                {subAgentRuns && subAgentRuns.length > 0 && (
+                  <div className="space-y-1.5">
+                    {subAgentRuns.map((run) => (
+                      <SubAgentRunCard key={run.featureId} run={run} />
                     ))}
                   </div>
                 )}
