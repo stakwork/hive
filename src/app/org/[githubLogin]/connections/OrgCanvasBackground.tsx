@@ -490,6 +490,17 @@ export function OrgCanvasBackground({
       }
       selectedNodeForClipboardRef.current = null;
       setSelectedNodeIdForPresence(null);
+      // Multi-select (lasso / shift-click on multiple nodes) — the
+      // library surfaces it as `kind: "multi"`, but the parent's
+      // `SelectionWithLabels` only models `node | edge | null` (no
+      // bulk-action sidebar UX exists yet). Treat as a deselect for
+      // the parent so the existing single-selection UI clears
+      // cleanly; the library still tracks the multi-selection
+      // internally for things like bulk-delete.
+      if (selection.kind === "multi") {
+        onSelectionChange?.(null);
+        return;
+      }
       // Edge — resolve human labels off the canvas the edge lives on.
       // The refs lag state by one commit, but the edge's endpoints
       // are already in the rendered canvas (it wouldn't have been
