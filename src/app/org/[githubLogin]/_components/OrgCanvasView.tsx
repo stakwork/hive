@@ -857,6 +857,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         currentCanvasRef,
         currentCanvasBreadcrumb,
         selectedNodeId: selectedNode?.id ?? null,
+        selectedNodeIds: selectedNodes.map((n) => n.id),
       },
       seedMessages,
       sharedChatId ?? undefined,
@@ -921,6 +922,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       currentCanvasRef,
       currentCanvasBreadcrumb,
       selectedNodeId: selectedNode?.id ?? null,
+      selectedNodeIds: selectedNodes.map((n) => n.id),
     });
   }, [
     conversationStarted,
@@ -931,6 +933,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     currentCanvasRef,
     currentCanvasBreadcrumb,
     selectedNode?.id,
+    selectedNodes,
   ]);
 
   // Mount auto-save (write-through to `chat_conversations`). Lives at
