@@ -711,9 +711,14 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
   });
 
   describe("Mode-Based Workflow Selection", () => {
-    test("should use default workflow ID when mode not specified", async () => {
+    test("should inherit the task's mode (defaulting to 'live') when mode not specified", async () => {
       MockSetup.setupSuccessfulWorkflow();
 
+      // sendMessageToStakwork is only used by the MCP send_message /
+      // send_to_task_agent tools, which target a live task agent. It
+      // inherits task.mode and falls back to "live" (not the "default"
+      // test-mode workflow). The mock task has no `mode`, so this
+      // exercises the "live" fallback → workflowIds[0].
       await sendMessageToStakwork({
         taskId: "test-task-id",
         message: "Test message",
@@ -722,7 +727,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
 
       const fetchCall = mockFetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1]?.body as string);
-      expect(payload.workflow_id).toBe(456); // Second ID in "123,456,789"
+      expect(payload.workflow_id).toBe(123); // First ID in "123,456,789" for live mode
     });
 
     test("should use workflow ID at index 0 for 'live' mode", async () => {
