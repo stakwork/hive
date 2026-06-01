@@ -172,116 +172,122 @@ describe("needsAttention flag derivation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// PR artifact status logic (mirrors mcpReadTask in mcpTools.ts)
+// PR artifact summary shaping (the real shapePullRequestSummary helper)
+//
+// shapePullRequestSummary is pure (no DB), so we import and test it directly.
+// "Latest PR artifact wins" is enforced by the DB `orderBy` in
+// fetchLatestPullRequestForMcp and is covered by integration tests.
 // ---------------------------------------------------------------------------
 
-interface PullRequestContent {
-  repo: string;
-  url: string;
-  status: string;
-}
+import { shapePullRequestSummary } from "@/lib/mcp/mcpTools";
 
-const PR_STATUS_LABEL: Record<string, string> = {
-  IN_PROGRESS: "open",
-  DONE: "merged",
-  CANCELLED: "closed",
-};
-
-function buildPullRequest(
-  artifacts: Array<{ id: string; content: PullRequestContent }> | undefined,
-) {
-  const prArtifact = artifacts?.[0] ?? null;
-  const prContent = prArtifact ? prArtifact.content : null;
-
-  return prContent
-    ? {
-        id: prArtifact!.id,
-        url: prContent.url,
-        repo: prContent.repo,
-        status: prContent.status,
-        statusLabel: PR_STATUS_LABEL[prContent.status] ?? prContent.status,
-      }
-    : null;
-}
-
-describe("mcpReadTask pullRequest field", () => {
-  test("returns null when no PULL_REQUEST artifact exists", () => {
-    expect(buildPullRequest([])).toBeNull();
-    expect(buildPullRequest(undefined)).toBeNull();
+describe("shapePullRequestSummary", () => {
+  test("returns null when no PR artifact exists", () => {
+    expect(shapePullRequestSummary(null)).toBeNull();
+    expect(shapePullRequestSummary({ id: "x", content: null })).toBeNull();
   });
 
   test("statusLabel is 'open' for IN_PROGRESS", () => {
-    const result = buildPullRequest([
-      {
-        id: "art-1",
-        content: {
-          repo: "owner/repo",
-          url: "https://github.com/owner/repo/pull/1",
-          status: "IN_PROGRESS",
-        },
+    const result = shapePullRequestSummary({
+      id: "art-1",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/1",
+        status: "IN_PROGRESS",
       },
-    ]);
+    });
     expect(result?.statusLabel).toBe("open");
     expect(result?.status).toBe("IN_PROGRESS");
   });
 
   test("statusLabel is 'merged' for DONE", () => {
-    const result = buildPullRequest([
-      {
-        id: "art-2",
-        content: {
-          repo: "owner/repo",
-          url: "https://github.com/owner/repo/pull/2",
-          status: "DONE",
-        },
+    const result = shapePullRequestSummary({
+      id: "art-2",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/2",
+        status: "DONE",
       },
-    ]);
+    });
     expect(result?.statusLabel).toBe("merged");
     expect(result?.status).toBe("DONE");
   });
 
   test("statusLabel is 'closed' for CANCELLED", () => {
-    const result = buildPullRequest([
-      {
-        id: "art-3",
-        content: {
-          repo: "owner/repo",
-          url: "https://github.com/owner/repo/pull/3",
-          status: "CANCELLED",
-        },
+    const result = shapePullRequestSummary({
+      id: "art-3",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/3",
+        status: "CANCELLED",
       },
-    ]);
+    });
     expect(result?.statusLabel).toBe("closed");
     expect(result?.status).toBe("CANCELLED");
   });
 
   test("url and repo are passed through correctly", () => {
-    const result = buildPullRequest([
-      {
-        id: "art-4",
-        content: {
-          repo: "myorg/myrepo",
-          url: "https://github.com/myorg/myrepo/pull/42",
-          status: "IN_PROGRESS",
-        },
+    const result = shapePullRequestSummary({
+      id: "art-4",
+      content: {
+        repo: "myorg/myrepo",
+        url: "https://github.com/myorg/myrepo/pull/42",
+        status: "IN_PROGRESS",
       },
-    ]);
+    });
     expect(result?.id).toBe("art-4");
     expect(result?.url).toBe("https://github.com/myorg/myrepo/pull/42");
     expect(result?.repo).toBe("myorg/myrepo");
   });
 
   test("unknown status falls back to raw status value", () => {
-    const result = buildPullRequest([
-      {
-        id: "art-5",
-        content: {
-          repo: "owner/repo",
-          url: "https://github.com/owner/repo/pull/5",
-          status: "UNKNOWN_STATE",
+    const result = shapePullRequestSummary({
+      id: "art-5",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/5",
+        status: "UNKNOWN_STATE",
+      },
+    });
+    expect(result?.statusLabel).toBe("UNKNOWN_STATE");
+  });
+
+  test("progress is null when the PR monitor has not populated it", () => {
+    const result = shapePullRequestSummary({
+      id: "art-6",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/6",
+        status: "IN_PROGRESS",
+      },
+    });
+    expect(result?.progress).toBeNull();
+  });
+
+  test("progress (CI failure / conflict health) is surfaced for the agent", () => {
+    const result = shapePullRequestSummary({
+      id: "art-7",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/7",
+        status: "IN_PROGRESS",
+        progress: {
+          state: "ci_failure",
+          lastCheckedAt: "2026-01-01T00:00:00Z",
+          mergeable: false,
+          ciStatus: "failure",
+          ciSummary: "3/5 passed",
+          problemDetails: "Build failed",
+          failedChecks: ["build", "lint"],
         },
       },
-    ]);
-    expect(result?.statusLabel).toBe("UNKNOWN_STATE");
+    });
+    expect(result?.progress).toMatchObject({
+      state: "ci_failure",
+      ciStatus: "failure",
+      ciSummary: "3/5 passed",
+      mergeable: false,
+      failedChecks: ["build", "lint"],
+    });
   });
 });
