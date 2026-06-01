@@ -8,6 +8,7 @@ import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getBaseUrl } from "@/lib/utils";
 import { WorkflowContent } from "@/lib/chat";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
+import { buildWorkflowEditorFeatureContext } from "@/services/workflow-editor";
 
 interface WorkflowContext {
   workflowId: string | number;
@@ -139,6 +140,14 @@ export async function executeWorkflowEditorRetry(
 
       tokenReference: getStakworkTokenReference(),
     };
+
+    // Enrich payload with feature context when this task is linked to a feature
+    if (task.featureId) {
+      const featureContext = await buildWorkflowEditorFeatureContext(task.featureId);
+      if (featureContext) {
+        (vars as Record<string, unknown>).featureContext = featureContext;
+      }
+    }
 
     const stakworkPayload = {
       name: `workflow_editor_retry - ${taskId}`,
