@@ -170,3 +170,118 @@ describe("needsAttention flag derivation", () => {
     expect(deriveNeedsAttention("HALTED")).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PR artifact status logic (mirrors mcpReadTask in mcpTools.ts)
+// ---------------------------------------------------------------------------
+
+interface PullRequestContent {
+  repo: string;
+  url: string;
+  status: string;
+}
+
+const PR_STATUS_LABEL: Record<string, string> = {
+  IN_PROGRESS: "open",
+  DONE: "merged",
+  CANCELLED: "closed",
+};
+
+function buildPullRequest(
+  artifacts: Array<{ id: string; content: PullRequestContent }> | undefined,
+) {
+  const prArtifact = artifacts?.[0] ?? null;
+  const prContent = prArtifact ? prArtifact.content : null;
+
+  return prContent
+    ? {
+        id: prArtifact!.id,
+        url: prContent.url,
+        repo: prContent.repo,
+        status: prContent.status,
+        statusLabel: PR_STATUS_LABEL[prContent.status] ?? prContent.status,
+      }
+    : null;
+}
+
+describe("mcpReadTask pullRequest field", () => {
+  test("returns null when no PULL_REQUEST artifact exists", () => {
+    expect(buildPullRequest([])).toBeNull();
+    expect(buildPullRequest(undefined)).toBeNull();
+  });
+
+  test("statusLabel is 'open' for IN_PROGRESS", () => {
+    const result = buildPullRequest([
+      {
+        id: "art-1",
+        content: {
+          repo: "owner/repo",
+          url: "https://github.com/owner/repo/pull/1",
+          status: "IN_PROGRESS",
+        },
+      },
+    ]);
+    expect(result?.statusLabel).toBe("open");
+    expect(result?.status).toBe("IN_PROGRESS");
+  });
+
+  test("statusLabel is 'merged' for DONE", () => {
+    const result = buildPullRequest([
+      {
+        id: "art-2",
+        content: {
+          repo: "owner/repo",
+          url: "https://github.com/owner/repo/pull/2",
+          status: "DONE",
+        },
+      },
+    ]);
+    expect(result?.statusLabel).toBe("merged");
+    expect(result?.status).toBe("DONE");
+  });
+
+  test("statusLabel is 'closed' for CANCELLED", () => {
+    const result = buildPullRequest([
+      {
+        id: "art-3",
+        content: {
+          repo: "owner/repo",
+          url: "https://github.com/owner/repo/pull/3",
+          status: "CANCELLED",
+        },
+      },
+    ]);
+    expect(result?.statusLabel).toBe("closed");
+    expect(result?.status).toBe("CANCELLED");
+  });
+
+  test("url and repo are passed through correctly", () => {
+    const result = buildPullRequest([
+      {
+        id: "art-4",
+        content: {
+          repo: "myorg/myrepo",
+          url: "https://github.com/myorg/myrepo/pull/42",
+          status: "IN_PROGRESS",
+        },
+      },
+    ]);
+    expect(result?.id).toBe("art-4");
+    expect(result?.url).toBe("https://github.com/myorg/myrepo/pull/42");
+    expect(result?.repo).toBe("myorg/myrepo");
+  });
+
+  test("unknown status falls back to raw status value", () => {
+    const result = buildPullRequest([
+      {
+        id: "art-5",
+        content: {
+          repo: "owner/repo",
+          url: "https://github.com/owner/repo/pull/5",
+          status: "UNKNOWN_STATE",
+        },
+      },
+    ]);
+    expect(result?.statusLabel).toBe("UNKNOWN_STATE");
+  });
+});

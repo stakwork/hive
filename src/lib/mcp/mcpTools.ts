@@ -4,6 +4,7 @@ import { createFeature } from "@/services/roadmap/features";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import { createTicket } from "@/services/roadmap/tickets";
 import { sendMessageToStakwork } from "@/services/task-workflow";
+import type { PullRequestContent } from "@/lib/chat";
 import {
   ArtifactType,
   Priority,
@@ -518,6 +519,14 @@ export async function mcpReadTask(
         workflowStatus: true,
         featureId: true,
         branch: true,
+        chatMessages: {
+          select: {
+            artifacts: {
+              where: { type: "PULL_REQUEST" },
+              select: { id: true, type: true, content: true },
+            },
+          },
+        },
       },
     });
 
@@ -525,6 +534,17 @@ export async function mcpReadTask(
     if (err) return err;
 
     const chatHistory = await fetchChatHistoryForMcp({ taskId });
+
+    const prArtifact = task!.chatMessages.flatMap((m) => m.artifacts)[0] ?? null;
+    const prContent = prArtifact
+      ? (prArtifact.content as unknown as PullRequestContent)
+      : null;
+
+    const PR_STATUS_LABEL: Record<string, string> = {
+      IN_PROGRESS: "open",
+      DONE: "merged",
+      CANCELLED: "closed",
+    };
 
     return mcpOk({
       id: task!.id,
@@ -537,6 +557,16 @@ export async function mcpReadTask(
       featureId: task!.featureId,
       branch: task!.branch,
       chatHistory,
+      pullRequest: prContent
+        ? {
+            id: prArtifact!.id,
+            url: prContent.url,
+            repo: prContent.repo,
+            status: prContent.status,
+            statusLabel:
+              PR_STATUS_LABEL[prContent.status] ?? prContent.status,
+          }
+        : null,
     });
   } catch (error) {
     console.error("Error reading task:", error);
