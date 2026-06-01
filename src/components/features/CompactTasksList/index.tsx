@@ -642,7 +642,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
 
           const isWorkflowTask = !!task.workflowTask;
 
-          if (isWorkflowTask && (task.status === "TODO" || task.status === "IN_PROGRESS")) {
+          if (task.status === "TODO" || task.status === "IN_PROGRESS") {
             actionMenuItems.splice(actionMenuItems.length - 1, 0, {
               label: "Mark Complete",
               icon: CheckCircle,

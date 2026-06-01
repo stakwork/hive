@@ -979,7 +979,7 @@ describe("CompactTasksList", () => {
       expect(screen.queryByTestId("action-mark-complete")).not.toBeInTheDocument();
     });
 
-    test("does NOT show 'Mark Complete' for non-workflow task", () => {
+    test("shows 'Mark Complete' for non-workflow task in TODO status", () => {
       const task = createMockTask({ id: "task-non-wf", status: "TODO", workflowTask: null });
       const feature = createMockFeature([task]);
 
@@ -992,7 +992,7 @@ describe("CompactTasksList", () => {
         />
       );
 
-      expect(screen.queryByTestId("action-mark-complete")).not.toBeInTheDocument();
+      expect(screen.getByTestId("action-mark-complete")).toBeInTheDocument();
     });
 
     test("calls PATCH /api/tasks/:id with { status: 'DONE' } on click", async () => {
