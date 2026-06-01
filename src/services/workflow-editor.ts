@@ -56,6 +56,77 @@ export async function fetchLatestWorkflowJson(workflowId: number | null): Promis
   }
 }
 
+/**
+ * Builds a FeatureContext payload for a workflow editor run, selecting
+ * all tasks across all phases (no phase filter). Best-effort: returns
+ * null if featureId is not found or any DB error occurs.
+ */
+export async function buildWorkflowEditorFeatureContext(
+  featureId: string
+): Promise<object | null> {
+  try {
+    const feature = await db.feature.findFirst({
+      where: { id: featureId },
+      select: {
+        id: true,
+        title: true,
+        brief: true,
+        requirements: true,
+        architecture: true,
+        userStories: {
+          orderBy: { order: "asc" },
+          select: { title: true },
+        },
+        workspace: {
+          select: {
+            repositories: {
+              select: { id: true, name: true, repositoryUrl: true, branch: true },
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        },
+        phases: {
+          select: {
+            tasks: {
+              where: { deleted: false },
+              orderBy: { order: "asc" },
+              select: { id: true, title: true, description: true, status: true, summary: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!feature) return null;
+
+    const allTickets = feature.phases.flatMap((p) => p.tasks);
+
+    return {
+      feature: {
+        id: feature.id,
+        title: feature.title,
+        brief: feature.brief,
+        userStories: feature.userStories.map((us) => us.title),
+        requirements: feature.requirements,
+        architecture: feature.architecture,
+      },
+      workspaceRepositories: (feature.workspace?.repositories ?? []).map((r) => ({
+        id: r.id,
+        name: r.name,
+        repositoryUrl: r.repositoryUrl,
+        branch: r.branch,
+      })),
+      currentPhase: {
+        name: "All Tasks",
+        description: null,
+        tickets: allTickets,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 interface WorkflowTaskContext {
   workflowId: number | null;
   workflowName?: string | null;
@@ -218,6 +289,10 @@ export async function triggerWorkflowEditorRun(params: {
 
   if (task.featureId) {
     vars.featureId = task.featureId;
+    const featureContext = await buildWorkflowEditorFeatureContext(task.featureId);
+    if (featureContext) {
+      vars.featureContext = featureContext;
+    }
   }
 
   if (workflowVersionId) {
