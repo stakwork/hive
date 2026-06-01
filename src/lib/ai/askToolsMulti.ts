@@ -5,7 +5,7 @@ import { WorkspaceConfig } from "./types";
 import { listConcepts, repoAgent } from "./askTools";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
-import { shouldTrimConceptsToIds } from "./conceptsTrim";
+import { shouldTrimConceptsToIds } from "./concepts";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import { getProviderTool } from "@/lib/ai/provider";

@@ -513,7 +513,21 @@ export async function runCanvasAgent(
       userId: ws.userId,
     });
 
-    const concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
+    // Best-effort: a swarm timeout/outage here must NOT kill the whole
+    // turn. Degrade to an empty concept list (the agent can still call
+    // list_concepts itself later, and the prompt just omits the
+    // pre-seeded features) instead of throwing a 500. Mirrors the
+    // multi-workspace path's `fetchConceptsForWorkspaces`, which
+    // already swallows per-workspace failures.
+    let concepts: Record<string, unknown> = {};
+    try {
+      concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
+    } catch (e) {
+      console.error(
+        `[runCanvasAgent] Failed to pre-fetch concepts for ${ws.slug}; continuing without them:`,
+        e,
+      );
+    }
     features = (concepts.features as Record<string, unknown>[]) || [];
 
     // Single-workspace + orgId: an org-scope caller (e.g. the org-MCP

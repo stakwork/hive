@@ -28,6 +28,7 @@ import {
   runCanvasAgent,
   extractConceptIdsFromStep,
 } from "@/lib/ai/runCanvasAgent";
+import { swarmFetch } from "@/lib/ai/concepts";
 
 /**
  * Provenance data types
@@ -57,7 +58,7 @@ interface ProvenanceData {
  * Fetch provenance data from stakgraph
  */
 async function fetchProvenance(swarmUrl: string, apiKey: string, conceptIds: string[]): Promise<ProvenanceData> {
-  const response = await fetch(`${swarmUrl}/gitree/provenance`, {
+  const response = await swarmFetch(`${swarmUrl}/gitree/provenance`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
