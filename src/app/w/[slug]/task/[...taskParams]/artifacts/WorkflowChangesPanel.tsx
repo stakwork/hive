@@ -157,14 +157,6 @@ export function WorkflowChangesPanel({ originalJson, updatedJson }: WorkflowChan
     );
   }
 
-  if (!originalJson) {
-    return (
-      <div className="flex items-center justify-center h-full p-8">
-        <div className="text-muted-foreground text-sm">No original workflow to compare against</div>
-      </div>
-    );
-  }
-
   if (!updatedJson) {
     return (
       <div className="flex items-center justify-center h-full p-8">
