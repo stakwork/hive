@@ -9,18 +9,18 @@
 
 -- AlterTable: SourceControlOrg
 ALTER TABLE "source_control_orgs"
-  ADD COLUMN "macaroon_org_id" TEXT,
-  ADD COLUMN "macaroon_org_pubkey" TEXT,
-  ADD COLUMN "macaroon_org_privkey" TEXT;
+  ADD COLUMN IF NOT EXISTS "macaroon_org_id" TEXT,
+  ADD COLUMN IF NOT EXISTS "macaroon_org_pubkey" TEXT,
+  ADD COLUMN IF NOT EXISTS "macaroon_org_privkey" TEXT;
 
 -- One macaroon_org_id per source-control org. Allows a future
 -- "look up SourceControlOrg by macaroon org_id" path without a
 -- table scan.
-CREATE UNIQUE INDEX "source_control_orgs_macaroon_org_id_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "source_control_orgs_macaroon_org_id_key"
   ON "source_control_orgs" ("macaroon_org_id");
 
 -- AlterTable: Swarm — trust reconcile cache
 ALTER TABLE "swarms"
-  ADD COLUMN "bifrost_trusted_org_id" TEXT,
-  ADD COLUMN "bifrost_trusted_pubkey" TEXT,
-  ADD COLUMN "bifrost_trust_synced_at" TIMESTAMP(3);
+  ADD COLUMN IF NOT EXISTS "bifrost_trusted_org_id" TEXT,
+  ADD COLUMN IF NOT EXISTS "bifrost_trusted_pubkey" TEXT,
+  ADD COLUMN IF NOT EXISTS "bifrost_trust_synced_at" TIMESTAMP(3);
