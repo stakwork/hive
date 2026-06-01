@@ -97,13 +97,14 @@ describe("FEATURE_COMPLETED notification", () => {
 
     await updateFeatureStatusFromTasks(feature.id);
 
-    // Poll for the fire-and-forget notification record (up to 5 seconds)
+    // Poll for the fire-and-forget notification record to reach a terminal status (up to 5 seconds)
     let record = null;
     for (let i = 0; i < 50; i++) {
       record = await db.notificationTrigger.findFirst({
         where: {
           notificationType: NotificationTriggerType.FEATURE_COMPLETED,
           featureId: feature.id,
+          status: { in: [NotificationTriggerStatus.SENT, NotificationTriggerStatus.FAILED, NotificationTriggerStatus.SKIPPED] },
         },
       });
       if (record) break;
