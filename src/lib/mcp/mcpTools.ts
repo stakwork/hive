@@ -4,6 +4,7 @@ import { createFeature } from "@/services/roadmap/features";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import { createTicket } from "@/services/roadmap/tickets";
 import { sendMessageToStakwork } from "@/services/task-workflow";
+import type { PullRequestContent } from "@/lib/chat";
 import {
   ArtifactType,
   Priority,
@@ -111,6 +112,67 @@ async function fetchChatHistoryForMcp(
       .filter((a) => !LAST_ONLY_ARTIFACT_TYPES.includes(a.type) || lastIndexOf[a.type] === idx)
       .map((a) => ({ type: a.type, content: a.content })),
   }));
+}
+
+/** Maps the PR artifact's lifecycle status to a familiar GitHub PR state. */
+const PR_STATUS_LABEL: Record<string, string> = {
+  IN_PROGRESS: "open",
+  DONE: "merged",
+  CANCELLED: "closed",
+};
+
+/**
+ * Shape a PULL_REQUEST artifact into a compact, structured summary the agent
+ * can act on. Pure (no DB) so it can be unit-tested directly.
+ *
+ * Includes `progress` (CI status, mergeability, conflicts) when the PR monitor
+ * has populated it, so the agent gets actionable PR health rather than just an
+ * open/merged/closed label.
+ */
+export function shapePullRequestSummary(
+  artifact: { id: string; content: unknown } | null,
+) {
+  if (!artifact?.content) return null;
+
+  const content = artifact.content as PullRequestContent;
+  const progress = content.progress;
+
+  return {
+    id: artifact.id,
+    url: content.url,
+    repo: content.repo,
+    status: content.status,
+    statusLabel: PR_STATUS_LABEL[content.status] ?? content.status,
+    progress: progress
+      ? {
+          state: progress.state,
+          mergeable: progress.mergeable,
+          ciStatus: progress.ciStatus,
+          ciSummary: progress.ciSummary,
+          problemDetails: progress.problemDetails,
+          conflictFiles: progress.conflictFiles,
+          failedChecks: progress.failedChecks,
+          lastCheckedAt: progress.lastCheckedAt,
+        }
+      : null,
+  };
+}
+
+/**
+ * Fetch the most recent PULL_REQUEST artifact for a task and shape it.
+ *
+ * Surfaced as a dedicated top-level field (rather than buried in chatHistory)
+ * so the agent reliably sees the PR. Orders by `createdAt desc` so re-runs that
+ * produce multiple PR artifacts always resolve to the latest one.
+ */
+async function fetchLatestPullRequestForMcp(taskId: string) {
+  const prArtifact = await db.artifact.findFirst({
+    where: { type: ArtifactType.PULL_REQUEST, message: { taskId } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, content: true },
+  });
+
+  return shapePullRequestSummary(prArtifact);
 }
 
 /**
@@ -524,7 +586,10 @@ export async function mcpReadTask(
     const err = verifyWorkspace(task, auth, "Task");
     if (err) return err;
 
-    const chatHistory = await fetchChatHistoryForMcp({ taskId });
+    const [chatHistory, pullRequest] = await Promise.all([
+      fetchChatHistoryForMcp({ taskId }),
+      fetchLatestPullRequestForMcp(taskId),
+    ]);
 
     return mcpOk({
       id: task!.id,
@@ -537,6 +602,7 @@ export async function mcpReadTask(
       featureId: task!.featureId,
       branch: task!.branch,
       chatHistory,
+      pullRequest,
     });
   } catch (error) {
     console.error("Error reading task:", error);
