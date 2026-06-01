@@ -124,6 +124,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [versionAContent, setVersionAContent] = useState<string | null>(null);
   const [versionBContent, setVersionBContent] = useState<string | null>(null);
   const [isLoadingDiff, setIsLoadingDiff] = useState(false);
+  const [previewVersionDescription, setPreviewVersionDescription] = useState<string | null>(null);
 
   // Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -265,6 +266,19 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       }
     } catch (err) {
       console.error("Error fetching version content:", err);
+      return null;
+    }
+  }, []);
+
+  const fetchVersionDetail = useCallback(async (promptId: number, versionId: number): Promise<{ value: string; description: string } | null> => {
+    try {
+      const response = await fetch(`/api/workflow/prompts/${promptId}/versions/${versionId}`);
+      if (!response.ok) throw new Error("Failed to fetch version detail");
+      const data = await response.json();
+      if (data.success) return { value: data.data.value as string, description: data.data.description as string };
+      return null;
+    } catch (err) {
+      console.error("Error fetching version detail:", err);
       return null;
     }
   }, []);
@@ -517,6 +531,22 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     setSelectedVersionBId(null);
     setVersionAContent(null);
     setVersionBContent(null);
+    setPreviewVersionDescription(null);
+  };
+
+  const handleEditFromVersion = () => {
+    if (!selectedVersionAId || versionAContent === null) return;
+    setFormValue(versionAContent);
+    setFormDescription(previewVersionDescription ?? selectedPrompt!.description);
+    // Reset all history state
+    setVersions([]);
+    setSelectedVersionAId(null);
+    setSelectedVersionBId(null);
+    setVersionAContent(null);
+    setVersionBContent(null);
+    setPreviewVersionDescription(null);
+    setViewMode("detail");
+    setIsEditing(true);
   };
 
   const handlePublishVersion = async (versionId: number) => {
@@ -568,39 +598,53 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   };
 
-  // Fetch version content when both A and B are selected
+  // Fetch version content when A (and optionally B) is selected
   useEffect(() => {
-    if (!selectedPrompt || !selectedVersionAId || !selectedVersionBId) {
+    if (!selectedPrompt || !selectedVersionAId) {
       setVersionAContent(null);
       setVersionBContent(null);
+      setPreviewVersionDescription(null);
       return;
     }
 
-    const fetchDiff = async () => {
+    const fetchContent = async () => {
       setIsLoadingDiff(true);
       try {
-        const resolveContent = (versionId: number): Promise<string | null> => {
-          if (versionId === CURRENT_VERSION_SENTINEL) {
-            return Promise.resolve(selectedPrompt.value);
-          }
-          return fetchVersionContent(selectedPrompt.id, versionId);
-        };
+        if (selectedVersionBId) {
+          // Both A and B selected: fetch for diff
+          const resolveA = selectedVersionAId === CURRENT_VERSION_SENTINEL
+            ? Promise.resolve({ value: selectedPrompt.value, description: selectedPrompt.description })
+            : fetchVersionDetail(selectedPrompt.id, selectedVersionAId);
 
-        const [contentA, contentB] = await Promise.all([
-          resolveContent(selectedVersionAId),
-          resolveContent(selectedVersionBId),
-        ]);
-        setVersionAContent(contentA);
-        setVersionBContent(contentB);
+          const resolveB = selectedVersionBId === CURRENT_VERSION_SENTINEL
+            ? Promise.resolve(selectedPrompt.value)
+            : fetchVersionContent(selectedPrompt.id, selectedVersionBId);
+
+          const [detailA, contentB] = await Promise.all([resolveA, resolveB]);
+          setVersionAContent(detailA ? detailA.value : null);
+          setPreviewVersionDescription(detailA ? detailA.description : null);
+          setVersionBContent(contentB);
+        } else {
+          // Only A selected: preview mode
+          if (selectedVersionAId === CURRENT_VERSION_SENTINEL) {
+            setVersionAContent(selectedPrompt.value);
+            setPreviewVersionDescription(selectedPrompt.description);
+          } else {
+            const detail = await fetchVersionDetail(selectedPrompt.id, selectedVersionAId);
+            setVersionAContent(detail ? detail.value : null);
+            setPreviewVersionDescription(detail ? detail.description : null);
+          }
+          setVersionBContent(null);
+        }
       } catch (err) {
-        console.error("Error fetching version content for diff:", err);
+        console.error("Error fetching version content:", err);
       } finally {
         setIsLoadingDiff(false);
       }
     };
 
-    fetchDiff();
-  }, [selectedPrompt, selectedVersionAId, selectedVersionBId, fetchVersionContent]);
+    fetchContent();
+  }, [selectedPrompt, selectedVersionAId, selectedVersionBId, fetchVersionContent, fetchVersionDetail]);
 
   const formatTimestamp = (timestamp: string) => {
     try {
@@ -1040,7 +1084,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             {/* Version List */}
             <div className="border-b bg-muted/30 p-3">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                Select two versions to compare
+                Click a version to preview · Select two to compare
               </div>
               <div className="space-y-1 max-h-[200px] overflow-y-auto">
                 {/* Current Version Button */}
@@ -1157,6 +1201,46 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 )}
               </div>
             </div>
+
+            {/* Preview Panel (single version selected) */}
+            {selectedVersionAId && !selectedVersionBId && (
+              <div className="flex-1 overflow-hidden flex flex-col">
+                {isLoadingDiff ? (
+                  <div className="flex items-center justify-center flex-1 p-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-muted-foreground text-sm">Loading preview...</span>
+                  </div>
+                ) : versionAContent !== null ? (
+                  <>
+                    <div className="flex items-center justify-between p-3 border-b bg-muted/30 flex-shrink-0">
+                      <span className="text-xs font-medium">
+                        {selectedVersionAId === CURRENT_VERSION_SENTINEL ? "Current" : (() => {
+                          const v = versions.find(v => v.id === selectedVersionAId);
+                          return v ? `v${v.version_number}` : "Version";
+                        })()}
+                      </span>
+                      {selectedVersionAId !== CURRENT_VERSION_SENTINEL && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleEditFromVersion}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" />
+                          Edit from this version
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex-1 overflow-auto p-3">
+                      <pre className="text-xs font-mono whitespace-pre-wrap break-words">{versionAContent}</pre>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center flex-1 p-8">
+                    <div className="text-muted-foreground text-sm">Failed to load version content</div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Diff View */}
             {selectedVersionAId && selectedVersionBId && (
