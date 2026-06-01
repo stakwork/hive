@@ -244,7 +244,7 @@ export async function createTicket(
       dependsOnTaskIds: data.dependsOnTaskIds || [],
       runBuild: data.runBuild ?? true,
       runTestSuite: data.runTestSuite ?? true,
-      autoMerge: data.autoMerge ?? true,
+      autoMerge: data.autoMerge ?? false,
       createdById: userId,
       updatedById: userId,
     },
