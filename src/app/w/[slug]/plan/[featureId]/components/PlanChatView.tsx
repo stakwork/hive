@@ -684,6 +684,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     onControlledTabChange: handleTabChange,
     sectionHighlights,
     streamingLog: streamedLog,
+    isSuperAdmin,
   };
 
   if (!initialLoadDone) {
