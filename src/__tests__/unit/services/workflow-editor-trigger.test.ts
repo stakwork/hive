@@ -103,6 +103,14 @@ function mockFetchSuccessFalse() {
 describe("triggerWorkflowEditorRun", () => {
   let originalFetch: typeof global.fetch;
 
+  function makeFeatureContext() {
+    return {
+      feature: { id: "feature-1", title: "Test Feature", brief: "A brief", userStories: ["Story A"], requirements: "Reqs", architecture: "Arch" },
+      workspaceRepositories: [{ id: "repo-1", name: "hive", repositoryUrl: "https://github.com/org/hive", branch: "master" }],
+      currentPhase: { name: "All Tasks", description: null, tickets: [{ id: "task-1", title: "Task One", description: null, status: "TODO", summary: null }] },
+    };
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     originalFetch = global.fetch;
@@ -110,6 +118,7 @@ describe("triggerWorkflowEditorRun", () => {
     mockedDb.task.update = vi.fn().mockResolvedValue({}) as never;
     mockedDb.chatMessage.create = vi.fn().mockResolvedValue({ id: "msg-1" }) as never;
     mockedDb.stakworkRun = { create: vi.fn().mockResolvedValue({}) } as never;
+    mockedDb.feature = { findFirst: vi.fn().mockResolvedValue(null) } as never;
   });
 
   afterEach(() => {
@@ -299,5 +308,90 @@ describe("triggerWorkflowEditorRun", () => {
     });
 
     expect(mockedDb.stakworkRun.create).not.toHaveBeenCalled();
+  });
+
+  describe("featureContext in vars", () => {
+    test("includes featureContext in vars when task has featureId and feature is found", async () => {
+      mockedDb.feature = { findFirst: vi.fn().mockResolvedValue({
+        id: "feature-1",
+        title: "Test Feature",
+        brief: "A brief",
+        requirements: "Reqs",
+        architecture: "Arch",
+        userStories: [{ title: "Story A" }],
+        workspace: { repositories: [{ id: "repo-1", name: "hive", repositoryUrl: "https://github.com/org/hive", branch: "master" }] },
+        phases: [{ tasks: [{ id: "t1", title: "Task One", description: null, status: "TODO", summary: null }] }],
+      }) } as never;
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(vars.featureContext).toBeDefined();
+      expect(vars.featureContext.feature.id).toBe("feature-1");
+      expect(vars.featureContext.currentPhase.name).toBe("All Tasks");
+      expect(vars.featureContext.currentPhase.tickets).toHaveLength(1);
+      expect(vars.featureContext.workspaceRepositories).toHaveLength(1);
+    });
+
+    test("omits featureContext from vars when task has no featureId", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({ ...makeTask(), featureId: null }) as never;
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(Object.prototype.hasOwnProperty.call(vars, "featureContext")).toBe(false);
+    });
+
+    test("omits featureContext when feature lookup returns null (best-effort, non-blocking)", async () => {
+      mockedDb.feature = { findFirst: vi.fn().mockResolvedValue(null) } as never;
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(Object.prototype.hasOwnProperty.call(vars, "featureContext")).toBe(false);
+    });
+
+    test("omits featureContext when feature lookup throws (best-effort, non-blocking)", async () => {
+      mockedDb.feature = { findFirst: vi.fn().mockRejectedValue(new Error("DB error")) } as never;
+      mockFetchSuccess();
+
+      await expect(
+        triggerWorkflowEditorRun({
+          taskId: "task-1",
+          userId: "user-1",
+          message: "Edit the workflow",
+          workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+        }),
+      ).resolves.toBeUndefined();
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(Object.prototype.hasOwnProperty.call(vars, "featureContext")).toBe(false);
+    });
   });
 });

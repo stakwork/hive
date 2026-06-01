@@ -12,7 +12,7 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
-import { fetchLatestWorkflowJson } from "@/services/workflow-editor";
+import { fetchLatestWorkflowJson, buildWorkflowEditorFeatureContext } from "@/services/workflow-editor";
 
 
 export const runtime = "nodejs";
@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
       select: {
         workspaceId: true,
         workflowStatus: true,
+        featureId: true,
         workspace: {
           select: {
             slug: true,
@@ -210,6 +211,14 @@ export async function POST(request: NextRequest) {
       // Token reference
       tokenReference: getStakworkTokenReference(),
     };
+
+    // Enrich payload with feature context when this task is linked to a feature
+    if (task.featureId) {
+      const featureContext = await buildWorkflowEditorFeatureContext(task.featureId);
+      if (featureContext) {
+        (vars as Record<string, unknown>).featureContext = featureContext;
+      }
+    }
 
     // Build Stakwork payload
     const stakworkPayload = {
