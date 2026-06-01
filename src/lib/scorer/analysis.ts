@@ -29,7 +29,8 @@ interface RawInsight {
 
 export async function analyzeSingleSession(
   featureId: string,
-  workspaceId: string
+  workspaceId: string,
+  customPrompt?: string
 ): Promise<{ insightCount: number; error?: string }> {
   const workspace = await db.workspace.findUniqueOrThrow({
     where: { id: workspaceId },
@@ -39,7 +40,7 @@ export async function analyzeSingleSession(
   const session = await assembleFullSession(featureId);
   const sessionText = sessionToText(session);
 
-  const promptTemplate = resolvePrompt("single", workspace.scorerSinglePrompt);
+  const promptTemplate = customPrompt ?? resolvePrompt("single", workspace.scorerSinglePrompt);
   const prompt = promptTemplate.replace("{session}", sessionText);
 
   const apiKey = getApiKeyForProvider("anthropic");

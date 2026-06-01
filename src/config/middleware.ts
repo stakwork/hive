@@ -91,6 +91,10 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/features/*/attachments", strategy: "pattern", access: "public", methods: ["GET"] },
   { path: "/api/features/*/attachments/count", strategy: "pattern", access: "public", methods: ["GET"] },
 
+  // Scorer workspace-scoped routes (auth resolved inside handlers)
+  { path: "/api/scorer/insights/*", strategy: "pattern", access: "public", methods: ["GET"] },
+  { path: "/api/scorer/analyze/*", strategy: "pattern", access: "public", methods: ["POST"] },
+
   { path: "/api/phases/*", strategy: "pattern", access: "public", methods: ["GET"] },
   { path: "/api/tickets/*", strategy: "pattern", access: "public", methods: ["GET"] },
 
