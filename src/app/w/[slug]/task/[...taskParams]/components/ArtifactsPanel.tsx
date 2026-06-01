@@ -442,6 +442,8 @@ export function ArtifactsPanel({
                 logs={agentLogs}
                 lastUpdated={agentLogsLastUpdated}
                 streamingLog={streamingLog}
+                featureId={featureId}
+                isSuperAdmin={isSuperAdmin}
               />
             </div>
           )}
