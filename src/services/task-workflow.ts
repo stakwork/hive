@@ -233,6 +233,13 @@ export async function sendMessageToStakwork(params: {
     attachments,
     generateChatTitle,
     featureContext,
+    // This path only ever feeds the MCP `send_message` / `send_to_task_agent`
+    // tools (the function's sole callers). Inherit the target task's own mode
+    // so the workflow-selection ladder in callStakworkAPI routes to the right
+    // workflow — `live` → STAKWORK_TASK_WORKFLOW_ID, `workflow_editor` → the
+    // editor workflow, etc. Fall back to "live" (not the "default" test-mode
+    // workflow) when the task has no explicit mode.
+    mode: task.mode ?? "live",
   });
 }
 
