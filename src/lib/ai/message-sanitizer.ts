@@ -1,4 +1,5 @@
 import { ModelMessage } from "ai";
+import { swarmFetch } from "./concepts";
 
 /**
  * Intelligently sanitize messages to ensure every tool-call has a corresponding tool-result.
@@ -89,7 +90,7 @@ export async function sanitizeAndCompleteToolCalls(
         const conceptId = toolCall.input?.conceptId;
         if (conceptId) {
           console.log(`🔧 Executing missing tool call: learn_concept(${conceptId})`);
-          const res = await fetch(`${swarmUrl}/gitree/features/${encodeURIComponent(conceptId)}`, {
+          const res = await swarmFetch(`${swarmUrl}/gitree/features/${encodeURIComponent(conceptId)}`, {
             method: "GET",
             headers: {
               "Content-Type": "application/json",
@@ -107,7 +108,7 @@ export async function sanitizeAndCompleteToolCalls(
       } else if (toolCall.toolName === "list_concepts") {
         // Execute list_concepts
         console.log(`🔧 Executing missing tool call: list_concepts()`);
-        const res = await fetch(`${swarmUrl}/gitree/features`, {
+        const res = await swarmFetch(`${swarmUrl}/gitree/features`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",

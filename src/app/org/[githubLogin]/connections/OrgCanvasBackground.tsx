@@ -2971,27 +2971,7 @@ export function OrgCanvasBackground({
         return categoryAllowedOnScope(o.value, currentRef);
       }),
     };
-    return (
-      <div
-        style={{
-          position: "absolute",
-          bottom: 16,
-          right: 16,
-          zIndex: 30,
-          pointerEvents: "auto",
-        }}
-      >
-        {/*
-         * `AddNodeButton` itself is `position:absolute; bottom:16; right:16`,
-         * so wrapping it in a `position:relative` shim neutralizes the
-         * library's absolute coords and lets our outer wrapper control the
-         * final on-screen position.
-         */}
-        <div style={{ position: "relative" }}>
-          <AddNodeButton {...filtered} />
-        </div>
-      </div>
-    );
+    return <AddNodeButton {...filtered} />;
   };
 
   if (loadError) {
