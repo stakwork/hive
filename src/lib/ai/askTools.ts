@@ -15,9 +15,10 @@ import {
 } from "@/lib/mcp/mcpTools";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import { swarmFetch } from "./concepts";
 
 export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
-  const r = await fetch(`${swarmUrl}/gitree/features`, {
+  const r = await swarmFetch(`${swarmUrl}/gitree/features`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -191,7 +192,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
       }),
       execute: async ({ conceptId }: { conceptId: string }) => {
         try {
-          const res = await fetch(`${swarmUrl}/gitree/features/${encodeURIComponent(conceptId)}`, {
+          const res = await swarmFetch(`${swarmUrl}/gitree/features/${encodeURIComponent(conceptId)}`, {
             method: "GET",
             headers: {
               "Content-Type": "application/json",
@@ -461,7 +462,7 @@ interface Clue {
 
 
 export async function searchClues(swarmUrl: string, swarmApiKey: string, query: string, minScore: number = 0.73): Promise<ClueResult[]> {
-  const r = await fetch(`${swarmUrl}/gitree/search-clues`, {
+  const r = await swarmFetch(`${swarmUrl}/gitree/search-clues`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

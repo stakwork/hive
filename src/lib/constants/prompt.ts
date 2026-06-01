@@ -1,6 +1,6 @@
 import { ModelMessage } from "ai";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
-import { shouldTrimConceptsToIds } from "@/lib/ai/conceptsTrim";
+import { shouldTrimConceptsToIds } from "@/lib/ai/concepts";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
 
 /**
