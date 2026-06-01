@@ -42,9 +42,11 @@ describe("WorkflowChangesPanel", () => {
       expect(screen.getByText(/no workflow data available/i)).toBeInTheDocument();
     });
 
-    it("shows 'no original workflow' message when only updatedJson is provided", () => {
+    it("renders all-green additions when only updatedJson is provided (no original)", () => {
       render(<WorkflowChangesPanel originalJson={null} updatedJson={updatedJson} />);
-      expect(screen.getByText(/no original workflow/i)).toBeInTheDocument();
+      // No original → diffLines("", updated) → all lines added → green rows only
+      const greenRows = document.querySelectorAll("tr.bg-green-50");
+      expect(greenRows.length).toBeGreaterThan(0);
     });
 
     it("shows 'no updated workflow' message when only originalJson is provided", () => {

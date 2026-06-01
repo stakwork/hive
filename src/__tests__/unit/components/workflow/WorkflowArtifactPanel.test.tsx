@@ -292,8 +292,18 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
   });
 
   describe("grid-cols calculation", () => {
-    it("uses grid-cols-3 when neither Changes nor Children tabs are visible", () => {
-      // No originalWorkflowJson → no Changes; no loop steps → no Children
+    it("renders no tablist when no workflowJson (non-editor mode)", () => {
+      // No workflowJson → isEditorMode=false → non-editor code path, no tabs rendered
+      const artifact = makeArtifact({ workflowJson: undefined });
+      const { container } = render(
+        <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
+      );
+      const tabsList = container.querySelector('[role="tablist"]');
+      expect(tabsList).toBeNull();
+    });
+
+    it("uses grid-cols-4 when in editor mode (Changes tab visible) but no Children", () => {
+      // workflowJson present → showChangesTab=true; no loop steps → no Children
       const artifact = makeArtifact({
         workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
       });
@@ -301,10 +311,10 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
         <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
       );
       const tabsList = container.querySelector('[role="tablist"]');
-      expect(tabsList?.className).toContain("grid-cols-3");
+      expect(tabsList?.className).toContain("grid-cols-4");
     });
 
-    it("uses grid-cols-4 when only the Changes tab is visible", () => {
+    it("uses grid-cols-4 when in editor mode with originalWorkflowJson but no Children", () => {
       const artifact = makeArtifact({
         workflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
         originalWorkflowJson: makeWorkflowJson({ stepA: nonLoopTransition }),
@@ -316,7 +326,8 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
       expect(tabsList?.className).toContain("grid-cols-4");
     });
 
-    it("uses grid-cols-4 when only the Children tab is visible", () => {
+    it("uses grid-cols-5 when in editor mode with Children tab visible", () => {
+      // workflowJson with loop → showChangesTab=true + hasChildWorkflows=true
       const artifact = makeArtifact({
         workflowJson: makeWorkflowJson({ stepLoop: loopTransition }),
       });
@@ -324,7 +335,7 @@ describe("WorkflowArtifactPanel — Child Workflows tab", () => {
         <WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />,
       );
       const tabsList = container.querySelector('[role="tablist"]');
-      expect(tabsList?.className).toContain("grid-cols-4");
+      expect(tabsList?.className).toContain("grid-cols-5");
     });
 
     it("uses grid-cols-5 when both Changes and Children tabs are visible", () => {

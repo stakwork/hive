@@ -150,6 +150,8 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
   // Check if we have changes to show
   const hasChanges = !!(originalWorkflowJson && workflowJson);
+  // Always show Changes tab in editor mode (even without a prior version)
+  const showChangesTab = isEditorMode;
 
   // Compute changed step/connection IDs for orange graph highlights (editor tab only)
   const { changedStepIds, changedConnectionIds } = useMemo(() => {
@@ -201,12 +203,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     }
   };
 
-  // Tab fallback: if Changes tab is active but selected workflow has no diff, reset to editor
-  useEffect(() => {
-    if (activeDisplayTab === 'changes' && !originalWorkflowJson) {
-      setActiveDisplayTab('editor');
-    }
-  }, [selectedWorkflowId]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // Parse workflowJson if present (direct mode from graph)
   const parsedWorkflowData = useMemo(() => {
@@ -287,7 +284,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       "4": "grid-cols-4",
       "5": "grid-cols-5",
     };
-    const colCount = 3 + (hasChanges ? 1 : 0) + (hasChildWorkflows ? 1 : 0);
+    const colCount = 3 + (showChangesTab ? 1 : 0) + (hasChildWorkflows ? 1 : 0);
     const gridColsClass = TAB_GRID_COLS[String(colCount)] ?? "grid-cols-3";
 
     return (
@@ -343,7 +340,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
         >
           <TabsList className={`grid w-full flex-shrink-0 ${gridColsClass}`}>
             <TabsTrigger value="editor">Edit Steps</TabsTrigger>
-            {hasChanges && <TabsTrigger value="changes">Changes</TabsTrigger>}
+            {showChangesTab && <TabsTrigger value="changes">Changes</TabsTrigger>}
             <TabsTrigger value="prompts">Prompts</TabsTrigger>
             <TabsTrigger value="stakwork">Stak Run</TabsTrigger>
             {hasChildWorkflows && <TabsTrigger value="children">Child Workflows</TabsTrigger>}
@@ -376,7 +373,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
             />
           </TabsContent>
 
-          {hasChanges && (
+          {showChangesTab && (
             <TabsContent value="changes" className="flex-1 overflow-hidden mt-0">
               <WorkflowChangesPanel
                 originalJson={originalWorkflowJson || null}
