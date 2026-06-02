@@ -25,12 +25,18 @@ import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import { usePusherConnection, type TaskTitleUpdateEvent, type DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
 import type { FeatureDetail, PrArtifact } from "@/types/roadmap";
-import type { TaskStatus, WorkflowStatus } from "@prisma/client";
+import type { TaskStatus, WorkflowStatus, WorkflowTaskType } from "@prisma/client";
 import { toast } from "sonner";
 
 type TaskWithPrArtifact = FeatureDetail["phases"][0]["tasks"][0] & {
   prArtifact?: PrArtifact;
 };
+
+const WORKFLOW_TASK_TYPES = ["SKILL", "WORKFLOW", "SCRIPT", "PROMPT"] as const;
+
+function capitalize(str: string) {
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
 
 const STATUS_DOT: Record<string, string> = {
   TODO: "bg-zinc-400",
@@ -266,6 +272,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       workflowName?: string;
       workflowRefId?: string;
       isNewWorkflow?: boolean;
+      workflowTaskType?: WorkflowTaskType;
     }
   ) => {
     // Optimistically apply the update immediately
@@ -672,6 +679,11 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                     Queued
                   </span>
                 )}
+                {isWorkflowTask && task.workflowTask?.workflowTaskType && (
+                  <span className="inline-flex items-center rounded px-1 py-0 text-[9px] font-medium bg-muted text-muted-foreground uppercase tracking-wide shrink-0">
+                    {task.workflowTask.workflowTaskType}
+                  </span>
+                )}
                 {task.deploymentStatus && (
                   <DeploymentStatusBadge
                     environment={task.deploymentStatus as "staging" | "production"}
@@ -737,6 +749,32 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                       disabled={task.status !== "TODO"}
                       size="sm"
                     />
+                  </div>
+                )}
+                {isWorkflowTask && (
+                  <div onClick={(e) => e.stopPropagation()} data-testid="workflow-type-selector">
+                    <Select
+                      value={task.workflowTask?.workflowTaskType ?? ""}
+                      onValueChange={(type) =>
+                        handleUpdateTask(task.id, { workflowTaskType: type as WorkflowTaskType })
+                      }
+                      disabled={task.status !== "TODO"}
+                    >
+                      <SelectTrigger className="h-5 text-[10px] px-1.5 py-0 w-auto max-w-[100px] border-muted bg-muted/50 gap-1 [&>svg]:h-3 [&>svg]:w-3">
+                        <span className="truncate">
+                          {task.workflowTask?.workflowTaskType
+                            ? capitalize(task.workflowTask.workflowTaskType)
+                            : "Type"}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WORKFLOW_TASK_TYPES.map((t) => (
+                          <SelectItem key={t} value={t} className="text-xs">
+                            {capitalize(t)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
                 {!isWorkflowTask && (
