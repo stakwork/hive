@@ -161,6 +161,7 @@ export interface RunCanvasAgentOptions {
   publicViewer?: PublicViewerContext;
   /** Canvas page scope hints — only meaningful with `orgId`. */
   scope?: {
+    selectedNodeIds?: string[];
     currentCanvasRef?: string;
     currentCanvasBreadcrumb?: string;
     selectedNodeId?: string;
@@ -723,7 +724,7 @@ export { extractConceptIdsFromStep };
 // Private helpers
 // ---------------------------------------------------------------------------
 
-function buildScopeHint(
+export function buildScopeHint(
   scope: RunCanvasAgentOptions["scope"],
   linkedWorkspaces: Array<{ id: string; slug: string; name: string }>,
 ): CanvasScopeHint | undefined {
@@ -739,6 +740,11 @@ function buildScopeHint(
         : undefined,
     selectedNodeId:
       typeof scope?.selectedNodeId === "string" ? scope.selectedNodeId : undefined,
+    selectedNodeIds:
+      Array.isArray(scope?.selectedNodeIds) &&
+      scope.selectedNodeIds.every((s) => typeof s === "string")
+        ? scope.selectedNodeIds
+        : undefined,
     linkedWorkspaces:
       linkedWorkspaces.length > 0 ? linkedWorkspaces : undefined,
   };

@@ -235,6 +235,12 @@ async function fetchHiddenLive(
  * carry `text` directly, so consumers that need a label just call
  * `getNodeLabel(selection.node)` themselves.
  */
+export interface InternalEdge {
+  edge: CanvasEdge;
+  fromLabel: string;
+  toLabel: string;
+}
+
 export type SelectionWithLabels =
   | {
       kind: "node";
@@ -247,6 +253,12 @@ export type SelectionWithLabels =
       canvasRef: string | undefined;
       fromLabel: string;
       toLabel: string;
+    }
+  | {
+      kind: "multi";
+      nodes: CanvasNode[];
+      canvasRef: string | undefined;
+      internalEdges: InternalEdge[];
     }
   | null;
 
@@ -490,15 +502,36 @@ export function OrgCanvasBackground({
       }
       selectedNodeForClipboardRef.current = null;
       setSelectedNodeIdForPresence(null);
-      // Multi-select (lasso / shift-click on multiple nodes) — the
-      // library surfaces it as `kind: "multi"`, but the parent's
-      // `SelectionWithLabels` only models `node | edge | null` (no
-      // bulk-action sidebar UX exists yet). Treat as a deselect for
-      // the parent so the existing single-selection UI clears
-      // cleanly; the library still tracks the multi-selection
-      // internally for things like bulk-delete.
+      // Multi-select (lasso / shift-click on multiple nodes) — enrich
+      // with internal edges (edges where both endpoints are among the
+      // selected nodes) and forward to the parent for summary display.
       if (selection.kind === "multi") {
-        onSelectionChange?.(null);
+        const { canvasRef } = selection;
+        const sourceCanvas =
+          canvasRef === undefined
+            ? rootRef.current
+            : subCanvasesRef.current[canvasRef];
+        const selectedIds = new Set(selection.nodes.map((n) => n.id));
+        const allNodes = sourceCanvas?.nodes ?? [];
+        const internalEdges: InternalEdge[] = (sourceCanvas?.edges ?? [])
+          .filter(
+            (e) => selectedIds.has(e.fromNode) && selectedIds.has(e.toNode),
+          )
+          .map((e) => {
+            const fromNode = allNodes.find((n) => n.id === e.fromNode);
+            const toNode = allNodes.find((n) => n.id === e.toNode);
+            return {
+              edge: e,
+              fromLabel: fromNode ? getNodeLabel(fromNode) : e.fromNode,
+              toLabel: toNode ? getNodeLabel(toNode) : e.toNode,
+            };
+          });
+        onSelectionChange?.({
+          kind: "multi",
+          nodes: selection.nodes,
+          canvasRef: selection.canvasRef,
+          internalEdges,
+        });
         return;
       }
       // Edge — resolve human labels off the canvas the edge lives on.
