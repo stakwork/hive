@@ -2,8 +2,8 @@
  * Agent V2 Session Broker
  *
  * This endpoint acts as a session broker between the frontend and a remote agent server.
- * Instead of proxying the stream through Hive, the frontend connects directly to the
- * remote server for streaming, while Hive handles authentication and message persistence.
+ * Hive starts the remote stream and keeps draining it after the request returns, while
+ * the remote server persists messages through Hive's webhook.
  *
  * ## Architecture
  *
@@ -11,14 +11,16 @@
  * ┌──────────┐  1. POST /api/agent    ┌──────────┐  2. POST /session     ┌──────────────┐
  * │ Frontend │ ────────────────────>  │   Hive   │ ──────────────────>   │ Agent Server │
  * │          │ <────────────────────  │ Backend  │ <──────────────────   │              │
- * │          │  { streamUrl, token }  │          │   { token }           │              │
+ * │          │      { success }       │          │   { token }           │              │
  * │          │                        │          │                       │              │
- * │          │  3. POST /stream/:id   │          │                       │              │
- * │          │ ─────────────────────────────────────────────────────>    │              │
- * │          │ <═══════════════════════════════════════════════════════  │              │
- * │          │      (SSE stream)      │          │                       │              │
+ * │          │                        │          │  3. POST /stream/:id   │              │
+ * │          │                        │          │ ───────────────────>   │              │
+ * │          │                        │          │ <═══════════════════   │              │
+ * │          │                        │          │ (drained under after)  │              │
  * │          │                        │          │  4. POST /webhook     │              │
  * │          │                        │          │ <──────────────────   │              │
+ * │          │ <────────────────────  │          │                       │              │
+ * │          │    (Pusher updates)    │          │                       │              │
  * └──────────┘                        └──────────┘   (persist msgs)      └──────────────┘
  * ```
  *
@@ -30,14 +32,14 @@
  *    - Generates/retrieves webhook secret for the task
  *    - Creates JWT-signed webhook URL (10-min expiry)
  *    - Calls remote server to create/refresh session
- *    - Returns `{ streamUrl, streamToken, resume, podUrls? }` to frontend
+ *    - Starts and drains the remote stream after returning `{ success, podUrls? }`
  *
  * 2. **Hive → Agent Server** (`POST /session`):
  *    - Sends `{ sessionId, webhookUrl }` to create/refresh session
  *    - Receives `{ token }` for stream authentication
  *
- * 3. **Frontend → Agent Server** (`POST /stream/:sessionId`):
- *    - Direct SSE connection with `{ prompt, resume?: true }`
+ * 3. **Hive → Agent Server** (`POST /stream/:sessionId`):
+ *    - Server-owned SSE connection with `{ prompt, resume?: true }`
  *    - `resume: true` tells server to reload existing session context
  *
  * 4. **Agent Server → Hive** (`POST /api/agent/webhook`):
@@ -57,7 +59,7 @@
  * - `agentWebhookSecret`: Encrypted per-task secret for JWT signing
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
@@ -422,6 +424,26 @@ async function saveUserMessage(taskId: string, message: string, artifacts: Artif
   }
 }
 
+/**
+ * Drain the remote SSE body without buffering it. Webhooks remain the only
+ * persistence path; this keeps the remote request alive after navigation.
+ */
+async function drainAgentStream(response: Response, taskId: string): Promise<void> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    console.warn("[Agent] Remote stream response has no body for task:", taskId);
+    return;
+  }
+
+  try {
+    while (!(await reader.read()).done) {
+      // Intentionally discard SSE bytes. The webhook persists agent events.
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 // ============================================================================
 // Main Handler
 // ============================================================================
@@ -629,17 +651,42 @@ export async function POST(request: NextRequest) {
   }
   await saveUserMessage(taskId, message, allArtifacts);
 
-  // 9. Return connection info
+  // 9. Start the remote stream from Hive so navigation cannot cancel it.
   const streamUrl = agentCredentials.agentUrl.replace(/\/$/, "") + `/stream/${taskId}`;
   const isResume = messageCount > 0 && !chatHistoryForPrompt;
+  const prompt = chatHistoryForPrompt ? `${chatHistoryForPrompt}\n\n${message}` : message;
+  let streamResponse: Response;
+  try {
+    streamResponse = await fetch(`${streamUrl}?token=${encodeURIComponent(streamToken)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        ...(isResume ? { resume: true } : {}),
+      }),
+    });
+  } catch (error) {
+    console.error("[Agent] Error initiating remote stream:", error);
+    return NextResponse.json({ error: "Failed to initiate agent stream" }, { status: 502 });
+  }
+
+  if (!streamResponse.ok) {
+    const errorText = await streamResponse.text();
+    console.error("[Agent] Remote stream rejected:", streamResponse.status, errorText);
+    return NextResponse.json({ error: "Failed to initiate agent stream" }, { status: 502 });
+  }
+
+  after(async () => {
+    try {
+      await drainAgentStream(streamResponse, taskId);
+    } catch (error) {
+      console.error("[Agent] Error draining remote stream:", error);
+    }
+  });
 
   return NextResponse.json({
     success: true,
     sessionId: taskId,
-    streamToken,
-    streamUrl,
-    resume: isResume,
-    ...(chatHistoryForPrompt && { historyContext: chatHistoryForPrompt }),
     ...(podUrls && { podUrls }),
   });
 }
