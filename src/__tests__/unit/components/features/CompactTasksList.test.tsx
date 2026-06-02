@@ -93,9 +93,11 @@ vi.mock("@/components/ui/button", () => ({
 }));
 
 vi.mock("@/components/ui/select", () => ({
-  Select: ({ children, value, onValueChange }: any) => (
-    <div data-testid="select" data-value={value}>
-      {children}
+  Select: ({ children, value, onValueChange, disabled }: any) => (
+    <div data-testid="select" data-value={value} data-disabled={disabled}>
+      {React.Children.map(children, (child) =>
+        child ? React.cloneElement(child, { onValueChange }) : null
+      )}
     </div>
   ),
   SelectTrigger: ({ children, className }: any) => (
@@ -104,11 +106,19 @@ vi.mock("@/components/ui/select", () => ({
     </div>
   ),
   SelectValue: () => <span>Select</span>,
-  SelectContent: ({ children }: any) => <div>{children}</div>,
+  SelectContent: ({ children, onValueChange }: any) => (
+    <div>
+      {React.Children.map(children, (child) =>
+        child ? React.cloneElement(child, { onValueChange }) : null
+      )}
+    </div>
+  ),
   SelectGroup: ({ children }: any) => <div>{children}</div>,
   SelectLabel: ({ children }: any) => <div>{children}</div>,
-  SelectItem: ({ children, value }: any) => (
-    <div data-value={value}>{children}</div>
+  SelectItem: ({ children, value, onValueChange }: any) => (
+    <div data-testid="select-item" data-value={value} onClick={() => onValueChange?.(value)}>
+      {children}
+    </div>
   ),
   SelectSeparator: () => <hr />,
   SelectScrollUpButton: () => null,
@@ -2514,6 +2524,137 @@ describe("CompactTasksList", () => {
       expect(capturedBodies[0].workflowId).toBeUndefined();
       expect(capturedBodies[0].workflowName).toBeUndefined();
       expect(capturedBodies[0].workflowRefId).toBeUndefined();
+    });
+  });
+
+  describe("workflowTaskType selector and badge", () => {
+    const workflowTask = {
+      id: "wt-1",
+      workflowId: 99,
+      workflowName: "My Workflow",
+      workflowRefId: "ref-abc",
+      workflowVersionId: null,
+      workflowTaskType: null as null | string,
+    };
+
+    test("workflow task row renders the type selector", () => {
+      const task = createMockTask({
+        id: "task-wf-type",
+        status: "TODO",
+        workflowTask: { ...workflowTask },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("workflow-type-selector")).toBeInTheDocument();
+    });
+
+    test("non-workflow task row does not render the type selector", () => {
+      const task = createMockTask({
+        id: "task-no-wf-type",
+        status: "TODO",
+        workflowTask: null,
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("workflow-type-selector")).not.toBeInTheDocument();
+    });
+
+    test("selecting a type calls handleUpdateTask with the correct workflowTaskType", async () => {
+      mockRoadmapUpdateTicket.mockResolvedValueOnce({ id: "task-wf-type-sel" });
+
+      const task = createMockTask({
+        id: "task-wf-type-sel",
+        status: "TODO",
+        workflowTask: { ...workflowTask },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Click the "Skill" SelectItem inside the type selector
+      const typeSelector = screen.getByTestId("workflow-type-selector");
+      const skillItem = within(typeSelector).getByText("Skill");
+      await userEvent.click(skillItem);
+
+      await waitFor(() => {
+        expect(mockRoadmapUpdateTicket).toHaveBeenCalledWith(
+          expect.objectContaining({
+            taskId: "task-wf-type-sel",
+            updates: expect.objectContaining({ workflowTaskType: "SKILL" }),
+          })
+        );
+      });
+    });
+
+    test("type badge is displayed when workflowTaskType is set", () => {
+      const task = createMockTask({
+        id: "task-wf-badge",
+        status: "TODO",
+        workflowTask: { ...workflowTask, workflowTaskType: "SCRIPT" },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const badge = screen.getByText("SCRIPT");
+      expect(badge).toBeInTheDocument();
+      expect(badge.className).toContain("uppercase");
+    });
+
+    test("type badge is not displayed when workflowTaskType is null", () => {
+      const task = createMockTask({
+        id: "task-wf-no-badge",
+        status: "TODO",
+        workflowTask: { ...workflowTask, workflowTaskType: null },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Should not render any of the type values as badges
+      expect(screen.queryByText("SKILL")).not.toBeInTheDocument();
+      expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
+      expect(screen.queryByText("SCRIPT")).not.toBeInTheDocument();
+      expect(screen.queryByText("PROMPT")).not.toBeInTheDocument();
     });
   });
 });

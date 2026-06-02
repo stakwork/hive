@@ -266,6 +266,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
                 workflowName: true;
                 workflowRefId: true;
                 workflowVersionId: true;
+                workflowTaskType: true;
               };
             };
             phase: {
