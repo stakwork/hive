@@ -34,8 +34,8 @@ import WorkflowEdit from "./channels/WorkflowEdit";
 import EdgeButtons from "./EdgeButtons";
 
 let manualNavigation = false;
-let windowWidth = window.innerWidth;
-let windowHeight = window.innerHeight * 0.8;
+let windowWidth = typeof window !== "undefined" ? window.innerWidth : 1024;
+let windowHeight = typeof window !== "undefined" ? window.innerHeight * 0.8 : 800;
 
 const edgeTypes = {
   "custom-edge": EdgeButtons,
