@@ -153,6 +153,7 @@ export interface ConversationContext {
   currentCanvasRef: string;
   currentCanvasBreadcrumb: string;
   selectedNodeId: string | null;
+  selectedNodeIds: string[];
 }
 
 // ─── Reserved slots for canvas-bound features (filled in later PRs) ─────────

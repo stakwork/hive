@@ -538,6 +538,13 @@ export interface CanvasScopeHint {
    */
   selectedNodeId?: string;
   /**
+   * Live ids of the canvas nodes the user has currently selected via
+   * multi-select (Shift-click, Cmd+A, or marquee/lasso). Populated
+   * only when more than one node is selected; mutually exclusive with
+   * `selectedNodeId` (single-node selection).
+   */
+  selectedNodeIds?: string[];
+  /**
    * Workspaces the user has visually linked to the current scope on
    * the **root canvas** via a `ws:<x> ↔ initiative:<y>` (or, in the
    * future, `ws:<x> ↔ <other>`) edge. Resolved server-side at request
@@ -647,7 +654,7 @@ function getCanvasScopeHint(scope?: CanvasScopeHint): string {
   const ref = scope.currentCanvasRef ?? "";
   const selected = scope.selectedNodeId;
   const breadcrumb = scope.currentCanvasBreadcrumb?.trim();
-  if (!refProvided && !selected) return "";
+  if (!refProvided && !selected && !(scope.selectedNodeIds?.length)) return "";
 
   // Compose the human-friendly description. The breadcrumb (when
   // available) is the agent's preferred way to *talk about* the scope
@@ -678,6 +685,15 @@ function getCanvasScopeHint(scope?: CanvasScopeHint): string {
     lines.push(
       "",
       `They have selected node \`${selected}\` on the canvas. Treat "this node", "this initiative/workspace/milestone", or "it" as referring to that node when context is otherwise ambiguous.`,
+    );
+  }
+
+  const multiIds = scope.selectedNodeIds;
+  if (!selected && multiIds && multiIds.length > 0) {
+    const idList = multiIds.map((id) => `\`${id}\``).join(", ");
+    lines.push(
+      "",
+      `They have selected ${multiIds.length} nodes: ${idList}. Treat "these nodes", "this group", or "all of these" as referring to this set when context is otherwise ambiguous.`,
     );
   }
 

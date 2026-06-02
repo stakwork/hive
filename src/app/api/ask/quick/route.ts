@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
       currentCanvasRef,
       currentCanvasBreadcrumb,
       selectedNodeId,
+      selectedNodeIds,
       // When true, skip the post-stream `after()` enrichment block
       // (follow-up questions + provenance). Surfaces that don't render
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
@@ -330,6 +331,11 @@ export async function POST(request: NextRequest) {
                 : undefined,
             selectedNodeId:
               typeof selectedNodeId === "string" ? selectedNodeId : undefined,
+            selectedNodeIds: Array.isArray(selectedNodeIds)
+              ? (selectedNodeIds as unknown[]).filter(
+                  (x): x is string => typeof x === "string",
+                )
+              : undefined,
           },
           messages: convertedMessages,
           // The validated SharedConversation.id (or null when the
