@@ -80,6 +80,7 @@ interface UsePusherConnectionOptions {
   onFeatureUpdated?: () => void;
   onFeatureTitleUpdate?: (update: FeatureTitleUpdateEvent) => void;
   onAgentLogUpdate?: (event: AgentLogUpdateEvent) => void;
+  onAgentStreamFinished?: () => void;
   connectionReadyDelay?: number; // Configurable delay for connection readiness
 }
 
@@ -108,6 +109,7 @@ export function usePusherConnection({
   onFeatureUpdated,
   onFeatureTitleUpdate,
   onAgentLogUpdate,
+  onAgentStreamFinished,
   connectionReadyDelay = 100, // Default 100ms delay to prevent race conditions
 }: UsePusherConnectionOptions): UsePusherConnectionReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -126,6 +128,7 @@ export function usePusherConnection({
   const onFeatureUpdatedRef = useRef(onFeatureUpdated);
   const onFeatureTitleUpdateRef = useRef(onFeatureTitleUpdate);
   const onAgentLogUpdateRef = useRef(onAgentLogUpdate);
+  const onAgentStreamFinishedRef = useRef(onAgentStreamFinished);
   const currentChannelIdRef = useRef<string | null>(null);
   const currentChannelTypeRef = useRef<"task" | "feature" | "workspace" | null>(null);
 
@@ -139,6 +142,7 @@ export function usePusherConnection({
   onFeatureUpdatedRef.current = onFeatureUpdated;
   onFeatureTitleUpdateRef.current = onFeatureTitleUpdate;
   onAgentLogUpdateRef.current = onAgentLogUpdate;
+  onAgentStreamFinishedRef.current = onAgentStreamFinished;
 
   // Stable disconnect function
   const disconnect = useCallback(() => {
@@ -327,6 +331,10 @@ export function usePusherConnection({
           // Agent log upserted for a feature — live Logs tab updates
           channel.bind(PUSHER_EVENTS.AGENT_LOG_UPDATED, (event: AgentLogUpdateEvent) => {
             if (onAgentLogUpdateRef.current) onAgentLogUpdateRef.current(event);
+          });
+
+          channel.bind(PUSHER_EVENTS.AGENT_STREAM_FINISHED, () => {
+            if (onAgentStreamFinishedRef.current) onAgentStreamFinishedRef.current();
           });
         }
 

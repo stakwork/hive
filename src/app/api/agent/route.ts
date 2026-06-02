@@ -69,6 +69,7 @@ import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt"
 import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodById } from "@/lib/pods";
+import { getTaskChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
@@ -681,6 +682,12 @@ export async function POST(request: NextRequest) {
       await drainAgentStream(streamResponse, taskId);
     } catch (error) {
       console.error("[Agent] Error draining remote stream:", error);
+    } finally {
+      try {
+        await pusherServer.trigger(getTaskChannelName(taskId), PUSHER_EVENTS.AGENT_STREAM_FINISHED, {});
+      } catch (error) {
+        console.error("[Agent] Error broadcasting remote stream completion:", error);
+      }
     }
   });
 

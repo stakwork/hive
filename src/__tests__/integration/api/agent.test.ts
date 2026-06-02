@@ -12,6 +12,33 @@ import { createTestTask } from "@/__tests__/support/factories/task.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 import { db } from "@/lib/db";
 
+const { mockAfter, mockPusherTrigger } = vi.hoisted(() => {
+  return {
+    mockAfter: vi.fn((callback: () => Promise<void>) => {
+      void callback();
+    }),
+    mockPusherTrigger: vi.fn(),
+  };
+});
+
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: mockAfter,
+  };
+});
+
+vi.mock("@/lib/pusher", () => ({
+  pusherServer: {
+    trigger: mockPusherTrigger,
+  },
+  getTaskChannelName: vi.fn((taskId: string) => `task-${taskId}`),
+  PUSHER_EVENTS: {
+    AGENT_STREAM_FINISHED: "agent-stream-finished",
+  },
+}));
+
 // Mock the gooseWeb provider
 const mockStreamText = vi.fn();
 vi.mock("ai-sdk-provider-goose-web", () => ({
@@ -101,6 +128,9 @@ describe("POST /api/agent Integration Tests", () => {
             json: () => Promise.resolve({ token: "mock-stream-token" }),
           });
         }
+        if (url.includes("/stream/")) {
+          return Promise.resolve(new Response("data: done\n\n"));
+        }
         return Promise.resolve({
           ok: false,
           text: () => Promise.resolve("Not found"),
@@ -139,6 +169,10 @@ describe("POST /api/agent Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
+      expect(data).not.toHaveProperty("streamToken");
+      expect(data).not.toHaveProperty("streamUrl");
+      expect(data).not.toHaveProperty("resume");
+      expect(data).not.toHaveProperty("historyContext");
 
       const sessionCall = mockFetch.mock.calls.find(([url]: [string]) =>
         url.includes("/session"),
@@ -148,6 +182,14 @@ describe("POST /api/agent Integration Tests", () => {
       const sessionBody = JSON.parse(sessionCall[1].body);
       expect(sessionBody.agent_name).toBeUndefined();
       expect(sessionBody.model).toBe("sonnet");
+      expect(mockAfter).toHaveBeenCalledOnce();
+      await vi.waitFor(() => {
+        expect(mockPusherTrigger).toHaveBeenCalledWith(
+          `task-${task.id}`,
+          "agent-stream-finished",
+          {},
+        );
+      });
     });
   });
 

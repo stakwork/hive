@@ -316,6 +316,10 @@ export default function TaskChatPage() {
     );
   }, []);
 
+  const handleAgentStreamFinished = useCallback(() => {
+    setIsLoading(false);
+  }, []);
+
   // Use the Pusher connection hook
   const { isConnected, error: connectionError } = usePusherConnection({
     taskId: currentTaskId,
@@ -324,6 +328,7 @@ export default function TaskChatPage() {
     onTaskTitleUpdate: handleTaskTitleUpdate,
     onPRStatusChange: handlePRStatusChange,
     onBountyStatusChange: handleBountyStatusChange,
+    onAgentStreamFinished: handleAgentStreamFinished,
   });
 
   // Show connection errors as toasts

@@ -82,4 +82,6 @@ export const PUSHER_EVENTS = {
   CANVAS_SELECTION_UPDATE: "canvas-selection-update",
   // Agent log upserted for a feature — triggers live Logs tab updates in plan view
   AGENT_LOG_UPDATED: "agent-log-updated",
+  // Server-owned agent stream closed — clears transient task-page loading state.
+  AGENT_STREAM_FINISHED: "agent-stream-finished",
 } as const;
