@@ -18,6 +18,7 @@ import { processScreenshotUpload, processRecordingUpload } from "@/lib/screensho
 import { parsePlanXml } from "@/lib/utils/plan-xml";
 import { createAndSendNotification } from "@/services/notifications";
 import { fanOutPlannerMessageToCanvas } from "@/services/canvas-planner-fanout";
+import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
 
 export const fetchCache = "force-no-store";
 
@@ -204,8 +205,7 @@ export async function POST(request: NextRequest) {
                 JSON.stringify(workflowResult).substring(0, 500),
               );
               const workflowVersionNode = workflowResult.nodes?.[0] || workflowResult.data?.[0];
-              const updatedWorkflowJson =
-                workflowVersionNode?.properties?.workflow_json || workflowVersionNode?.workflow_json;
+              const updatedWorkflowJson = getWorkflowJsonFromNode(workflowVersionNode);
 
               console.log(
                 "[chat/response] Found workflowVersionNode:",
@@ -215,8 +215,7 @@ export async function POST(request: NextRequest) {
               );
 
               if (updatedWorkflowJson) {
-                const formattedUpdatedJson =
-                  typeof updatedWorkflowJson === "string" ? updatedWorkflowJson : JSON.stringify(updatedWorkflowJson);
+                const formattedUpdatedJson = updatedWorkflowJson;
 
                 // Update the artifact: set workflowJson to updated, preserve originalWorkflowJson if in workflow_editor mode
                 const updatedContent: WorkflowContent = {
