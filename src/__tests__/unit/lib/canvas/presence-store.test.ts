@@ -55,6 +55,25 @@ describe("canvas presence-store", () => {
       const entry = getActivePresence(roomKey)[0];
       expect(entry.name).toBe("Alice");
     });
+
+    it("stores image on first heartbeat", () => {
+      recordHeartbeat(roomKey, { userId, name: "Alice", image: "https://example.com/alice.jpg" });
+      const entry = getActivePresence(roomKey)[0];
+      expect(entry.image).toBe("https://example.com/alice.jpg");
+    });
+
+    it("preserves original image when subsequent heartbeat passes null", () => {
+      recordHeartbeat(roomKey, { userId, name: "Alice", image: "https://example.com/alice.jpg" });
+      recordHeartbeat(roomKey, { userId, name: "Alice", image: null });
+      const entry = getActivePresence(roomKey)[0];
+      expect(entry.image).toBe("https://example.com/alice.jpg");
+    });
+
+    it("stores null image when no image is provided", () => {
+      recordHeartbeat(roomKey, { userId, name: "Alice" });
+      const entry = getActivePresence(roomKey)[0];
+      expect(entry.image).toBeNull();
+    });
   });
 
   describe("recordLeave", () => {
@@ -102,6 +121,17 @@ describe("canvas presence-store", () => {
 
     it("returns empty array for unknown room", () => {
       expect(getActivePresence("nonexistent:room")).toEqual([]);
+    });
+
+    it("returns entries with image field", () => {
+      recordHeartbeat(roomKey, { userId, name: "Alice", image: "https://example.com/alice.jpg" });
+      recordHeartbeat(roomKey, { userId: userId2, name: "Bob", image: null });
+      const entries = getActivePresence(roomKey);
+      expect(entries).toHaveLength(2);
+      const alice = entries.find((e) => e.userId === userId);
+      const bob = entries.find((e) => e.userId === userId2);
+      expect(alice?.image).toBe("https://example.com/alice.jpg");
+      expect(bob?.image).toBeNull();
     });
 
     it("handles multiple rooms independently", () => {
