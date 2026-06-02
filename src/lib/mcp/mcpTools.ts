@@ -803,6 +803,7 @@ export async function mcpCreateWorkflowTask(
     workflowId?: number;
     workflowName?: string;
     workflowRefId?: string;
+    workflowTaskType?: import("@prisma/client").WorkflowTaskType;
   },
 ): Promise<McpToolResult> {
   try {
@@ -825,6 +826,7 @@ export async function mcpCreateWorkflowTask(
       title: base.title,
       description: base.description,
       priority: taskPriority,
+      workflowTaskType: workflow.workflowTaskType,
       ...(hasExistingWorkflow
         ? {
             workflowId: workflow.workflowId,

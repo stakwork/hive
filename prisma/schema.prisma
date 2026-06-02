@@ -636,17 +636,25 @@ model Attachment {
 }
 
 model WorkflowTask {
-  id                String   @id @default(cuid())
-  taskId            String   @unique @map("task_id")
-  workflowId        Int?     @map("workflow_id")
-  workflowName      String?  @map("workflow_name")
-  workflowRefId     String?  @map("workflow_ref_id")
-  workflowVersionId String?  @map("workflow_version_id")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  task              Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  id                String            @id @default(cuid())
+  taskId            String            @unique @map("task_id")
+  workflowId        Int?              @map("workflow_id")
+  workflowName      String?           @map("workflow_name")
+  workflowRefId     String?           @map("workflow_ref_id")
+  workflowVersionId String?           @map("workflow_version_id")
+  workflowTaskType  WorkflowTaskType? @map("workflow_task_type")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  task              Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@map("workflow_tasks")
+}
+
+enum WorkflowTaskType {
+  SKILL
+  WORKFLOW
+  SCRIPT
+  PROMPT
 }
 
 model JanitorConfig {

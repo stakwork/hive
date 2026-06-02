@@ -693,6 +693,7 @@ export interface CreateRoadmapTaskRequest {
   workflowRefId?: string;
   /** true = workflow_editor task targeting a brand-new workflow; mutually exclusive with workflowId */
   isNewWorkflow?: boolean;
+  workflowTaskType?: import("@prisma/client").WorkflowTaskType;
 }
 
 export interface UpdateRoadmapTaskRequest {
@@ -716,6 +717,7 @@ export interface UpdateRoadmapTaskRequest {
   workflowRefId?: string;
   /** true = workflow_editor task targeting a brand-new workflow; mutually exclusive with workflowId */
   isNewWorkflow?: boolean;
+  workflowTaskType?: import("@prisma/client").WorkflowTaskType;
 }
 
 export interface ReorderRoadmapTasksRequest {
@@ -748,6 +750,7 @@ export interface GeneratedTask {
   workflowId?: number;
   workflowName?: string;
   workflowRefId?: string;
+  workflowTaskType?: import("@prisma/client").WorkflowTaskType;
 }
 
 export interface GeneratedPhase {
