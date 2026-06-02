@@ -13,6 +13,7 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
+import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
 
 /**
  * Fetch the latest workflow JSON from the graph API for a given workflow ID.
@@ -48,9 +49,9 @@ export async function fetchLatestWorkflowJson(workflowId: number | null): Promis
     nodes.sort(
       (a, b) => (b.properties?.workflow_version_id ?? 0) - (a.properties?.workflow_version_id ?? 0)
     );
-    const latestJson = nodes[0]?.properties?.workflow_json;
+    const latestJson = getWorkflowJsonFromNode(nodes[0]);
     if (!latestJson) return null;
-    return typeof latestJson === "string" ? latestJson : JSON.stringify(latestJson);
+    return latestJson;
   } catch {
     return null;
   }

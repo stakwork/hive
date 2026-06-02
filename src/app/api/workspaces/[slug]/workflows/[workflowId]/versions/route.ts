@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
 
 export const runtime = "nodejs";
 
@@ -161,11 +162,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Map nodes to WorkflowVersion structure
     const versions: WorkflowVersion[] = nodes
-      .filter((node: any) => node.properties?.workflow_version_id && node.properties?.workflow_json)
+      .filter((node: any) => node.properties?.workflow_version_id && getWorkflowJsonFromNode(node))
       .map((node: any) => ({
         workflow_version_id: node.properties.workflow_version_id,
         workflow_id: node.properties.workflow_id,
-        workflow_json: node.properties.workflow_json,
+        workflow_json: getWorkflowJsonFromNode(node),
         workflow_name: node.properties.workflow_name,
         date_added_to_graph: node.properties.date_added_to_graph || node.date_added_to_graph,
         published: node.properties.published,
