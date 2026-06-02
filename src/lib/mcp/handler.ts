@@ -569,6 +569,12 @@ function createServer(
           .describe(
             "Stakwork workflow ref id (only meaningful when `workflowId` is also set).",
           ),
+        workflowTaskType: z
+          .enum(["SKILL", "WORKFLOW", "SCRIPT", "PROMPT"])
+          .optional()
+          .describe(
+            "The Stakwork execution type for this workflow task: SKILL (routed work unit), WORKFLOW (sub-workflow runner), SCRIPT (Python Lambda), or PROMPT (reusable text template). Omit if unknown.",
+          ),
         creator: z
           .string()
           .optional()
@@ -586,6 +592,7 @@ function createServer(
         workflowId,
         workflowName,
         workflowRefId,
+        workflowTaskType,
         creator,
       }: {
         featureId: string;
@@ -595,6 +602,7 @@ function createServer(
         workflowId?: number;
         workflowName?: string;
         workflowRefId?: string;
+        workflowTaskType?: "SKILL" | "WORKFLOW" | "SCRIPT" | "PROMPT";
         creator?: string;
       },
       extra,
@@ -610,7 +618,7 @@ function createServer(
         result.auth!,
         featureId,
         { title, description, priority },
-        { workflowId, workflowName, workflowRefId },
+        { workflowId, workflowName, workflowRefId, workflowTaskType },
       );
     },
   );

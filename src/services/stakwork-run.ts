@@ -1467,6 +1467,7 @@ async function applyAcceptResult(
               workflowId: task.workflowId ?? null,
               workflowName: task.workflowName ?? null,
               workflowRefId: task.workflowRefId ?? null,
+              workflowTaskType: task.workflowTaskType ?? null,
             },
           });
           await saveWorkflowArtifact(createdTask.id, {

@@ -20,7 +20,7 @@ export async function POST(
 
     const { taskId } = await params;
     const body = await request.json();
-    const { workflowId, workflowName, workflowRefId, workflowVersionId } = body;
+    const { workflowId, workflowName, workflowRefId, workflowVersionId, workflowTaskType } = body;
 
     // workflowId may be null (workflow not yet assigned) or a number — reject any other type
     if (workflowId !== null && workflowId !== undefined && typeof workflowId !== "number") {
@@ -62,12 +62,14 @@ export async function POST(
         workflowName: workflowName ?? null,
         workflowRefId: workflowRefId ?? null,
         workflowVersionId: workflowVersionId ?? null,
+        workflowTaskType: workflowTaskType ?? null,
       },
       update: {
         workflowId: workflowId ?? null,
         workflowName: workflowName ?? null,
         workflowRefId: workflowRefId ?? null,
         workflowVersionId: workflowVersionId ?? null,
+        workflowTaskType: workflowTaskType ?? undefined,
       },
     });
 

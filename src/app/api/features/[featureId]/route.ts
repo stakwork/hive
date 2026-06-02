@@ -44,6 +44,7 @@ const TASK_SELECT = {
       workflowName: true,
       workflowRefId: true,
       workflowVersionId: true,
+      workflowTaskType: true,
     },
   },
   assignee: {
