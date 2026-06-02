@@ -15,6 +15,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   OrgCanvasBackground,
   type SelectionWithLabels,
+  type InternalEdge,
 } from "../connections/OrgCanvasBackground";
 import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
 import type { ConnectionData } from "../connections/types";
@@ -150,6 +151,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [loadingConnections, setLoadingConnections] = useState(true);
   const [activeConnection, setActiveConnection] = useState<ConnectionData | null>(null);
   const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(null);
+  const [selectedNodes, setSelectedNodes] = useState<CanvasNode[]>([]);
+  const [selectedNodesInternalEdges, setSelectedNodesInternalEdges] = useState<InternalEdge[]>([]);
   /**
    * Set of connection ids referenced by at least one edge across the
    * canvases the user has visited this session. Surfaced from
@@ -634,11 +637,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         if (selectedEdge && activeConnection) handleBack();
         setSelectedEdge(null);
         setSelectedNode(null);
+        setSelectedNodes([]);
+        setSelectedNodesInternalEdges([]);
         if (searchParams.get("r")) setUrlResearchSlug(null);
         return;
       }
       if (selection.kind === "node") {
         setSelectedNode(selection.node);
+        setSelectedNodes([]);
+        setSelectedNodesInternalEdges([]);
         // Node selection clears any edge selection — and any
         // edge-owned open viewer.
         if (selectedEdge && activeConnection) handleBack();
@@ -654,7 +661,18 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         }
         return;
       }
+      if (selection.kind === "multi") {
+        setSelectedNode(null);
+        setSelectedEdge(null);
+        setSelectedNodes(selection.nodes);
+        setSelectedNodesInternalEdges(selection.internalEdges);
+        // Close any edge-owned connection viewer.
+        if (selectedEdge && activeConnection) handleBack();
+        return;
+      }
       // Edge selection.
+      setSelectedNodes([]);
+      setSelectedNodesInternalEdges([]);
       setSelectedNode(null);
       setSelectedEdge(selection);
       const linkedId = readEdgeConnectionId(selection.edge);
@@ -984,6 +1002,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
             <OrgRightPanel
               githubLogin={githubLogin}
               selectedNode={selectedNode}
+              selectedNodes={selectedNodes}
+              selectedNodesInternalEdges={selectedNodesInternalEdges}
               chatReady={chatReady && conversationStarted}
               connections={connections}
               activeConnection={activeConnection}

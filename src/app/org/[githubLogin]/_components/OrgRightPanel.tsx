@@ -6,10 +6,12 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { MousePointerClick } from "lucide-react";
 import { NodeDetail } from "./NodeDetail";
+import { MultiNodeDetail } from "./MultiNodeDetail";
 import { ConnectionsListBody } from "./ConnectionsListBody";
 import { SidebarChat } from "./SidebarChat";
 import { ConnectionViewer } from "../connections/ConnectionViewer";
 import type { ConnectionData } from "../connections/types";
+import type { InternalEdge } from "../connections/OrgCanvasBackground";
 
 type Tab = "chat" | "details" | "connections";
 
@@ -77,6 +79,8 @@ interface OrgRightPanelProps {
    * linked-edge color highlight.
    */
   linkedConnectionIds: Set<string>;
+  selectedNodes: CanvasNode[];
+  selectedNodesInternalEdges: InternalEdge[];
 }
 
 /**
@@ -99,6 +103,8 @@ interface OrgRightPanelProps {
 export function OrgRightPanel({
   githubLogin,
   selectedNode,
+  selectedNodes,
+  selectedNodesInternalEdges,
   chatReady,
   connections,
   activeConnection,
@@ -125,6 +131,9 @@ export function OrgRightPanel({
     if (selectedNode) setTab("details");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id]);
+  useEffect(() => {
+    if (selectedNodes.length >= 2) setTab("details");
+  }, [selectedNodes.length]);
   useEffect(() => {
     if (activeConnection) setTab("connections");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,7 +167,7 @@ export function OrgRightPanel({
           label="Details"
           isActive={tab === "details"}
           onClick={() => setTab("details")}
-          disabled={!selectedNode}
+          disabled={!selectedNode && selectedNodes.length < 2}
         />
         <TabButton
           label="Connections"
@@ -187,6 +196,8 @@ export function OrgRightPanel({
         <TabBody hidden={tab !== "details"}>
           {selectedNode ? (
             <NodeDetail node={selectedNode} githubLogin={githubLogin} />
+          ) : selectedNodes.length >= 2 ? (
+            <MultiNodeDetail nodes={selectedNodes} internalEdges={selectedNodesInternalEdges} />
           ) : (
             <EmptyDetailsHint />
           )}
