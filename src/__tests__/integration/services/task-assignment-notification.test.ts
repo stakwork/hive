@@ -110,6 +110,7 @@ describe("TASK_ASSIGNED notification", () => {
       targetUserId: assignee.id,
       notificationType: NotificationTriggerType.TASK_ASSIGNED,
       taskId: task.id,
+      sendAfter: { not: null },
     });
 
     expect(record.targetUserId).toBe(assignee.id);

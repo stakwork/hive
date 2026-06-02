@@ -46,6 +46,7 @@ import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
 import type { ModelName } from "@/lib/ai/models";
+import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -660,7 +661,7 @@ export default function TaskChatPage() {
     try {
       // Use workflow_name directly from properties
       const workflowName = workflowData.properties.workflow_name;
-      let workflowJson = workflowData.properties.workflow_json;
+      let workflowJson = getWorkflowJsonFromNode(workflowData);
       let versionRefId = workflowData.ref_id;
 
       // If a version ID is provided, fetch the specific version
@@ -689,7 +690,7 @@ export default function TaskChatPage() {
             const versionData = await versionResponse.json();
             if (versionData.success && versionData.data.length > 0) {
               const versionNode = versionData.data[0];
-              workflowJson = versionNode.properties.workflow_json;
+              workflowJson = getWorkflowJsonFromNode(versionNode);
               versionRefId = versionNode.ref_id;
             }
           }
@@ -782,7 +783,7 @@ export default function TaskChatPage() {
                 messageId: "",
                 type: ArtifactType.WORKFLOW,
                 content: {
-                  workflowJson: workflowData.properties.workflow_json,
+                  workflowJson: getWorkflowJsonFromNode(workflowData),
                   workflowId: workflowId,
                   workflowName: workflowName,
                   workflowRefId: workflowData.ref_id,

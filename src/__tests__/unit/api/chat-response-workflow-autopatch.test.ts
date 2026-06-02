@@ -237,6 +237,84 @@ describe("POST /api/chat/response — WorkflowTask auto-patch", () => {
     expect(mockedDb.workflowTask.upsert).not.toHaveBeenCalled();
   });
 
+  test("populates artifact workflowJson from graph node using properties.body", async () => {
+    const taskId = "task-wfe-body";
+
+    process.env.STAKWORK_JARVIS_URL = "http://jarvis.test";
+    process.env.STAKWORK_GRAPH_API_KEY = "test-graph-key";
+
+    mockedDb.task.findFirst = vi.fn().mockResolvedValue({
+      id: taskId,
+      workspaceId: "ws-1",
+      mode: "workflow_editor",
+      assigneeId: null,
+      createdById: "user-1",
+      title: "WFE Body Task",
+    }) as never;
+
+    const workflowBody = '{"transitions":[{"id":"t1"}]}';
+    const artifact = makeWorkflowArtifact({ workflowVersionId: "ver-001" });
+
+    mockedDb.chatMessage.create = vi.fn().mockResolvedValue({
+      id: "msg-body",
+      taskId,
+      artifacts: [artifact],
+      attachments: [],
+      task: { id: taskId, title: "WFE Body Task" },
+    }) as never;
+
+    mockedDb.workflowTask = {
+      upsert: vi.fn().mockResolvedValue({}),
+    } as never;
+
+    mockedDb.artifact.findMany = vi.fn().mockResolvedValue([]) as never;
+    mockedDb.artifact.update = vi.fn().mockResolvedValue({}) as never;
+
+    // Graph API returns node with properties.body instead of properties.workflow_json
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        nodes: [
+          {
+            ref_id: "ref-ver-001",
+            properties: {
+              workflow_version_id: "ver-001",
+              body: workflowBody,
+            },
+          },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    const req = makeRequest({
+      taskId,
+      message: "Workflow updated",
+      artifacts: [
+        {
+          type: ArtifactType.WORKFLOW,
+          content: {
+            workflowId: 42,
+            workflowName: "My Workflow",
+            workflowRefId: "ref-42",
+            workflowVersionId: "ver-001",
+          },
+        },
+      ],
+    });
+
+    await POST(req);
+
+    expect(mockedDb.artifact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            workflowJson: workflowBody,
+          }),
+        }),
+      }),
+    );
+  });
+
   test("returns 401 when API token is missing", async () => {
     const req = new NextRequest("http://localhost/api/chat/response", {
       method: "POST",
