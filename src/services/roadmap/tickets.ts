@@ -297,6 +297,7 @@ export async function createTicket(
         workflowId: data.workflowId,
         workflowName: data.workflowName ?? null,
         workflowRefId: data.workflowRefId ?? null,
+        workflowTaskType: data.workflowTaskType ?? null,
       },
     });
 
@@ -314,6 +315,7 @@ export async function createTicket(
         workflowId: null,
         workflowName: null,
         workflowRefId: null,
+        workflowTaskType: data.workflowTaskType ?? null,
       },
     });
   }
@@ -598,11 +600,13 @@ export async function updateTicket(
           workflowId: data.workflowId,
           workflowName: data.workflowName ?? null,
           workflowRefId: data.workflowRefId ?? null,
+          workflowTaskType: data.workflowTaskType ?? null,
         },
         update: {
           workflowId: data.workflowId,
           workflowName: data.workflowName ?? null,
           workflowRefId: data.workflowRefId ?? null,
+          workflowTaskType: data.workflowTaskType ?? undefined,
         },
       });
     }
@@ -612,8 +616,14 @@ export async function updateTicket(
     updateData.repositoryId = null;
     await db.workflowTask.upsert({
       where: { taskId },
-      create: { taskId, workflowId: null, workflowName: null, workflowRefId: null },
-      update: { workflowId: null, workflowName: null, workflowRefId: null },
+      create: { taskId, workflowId: null, workflowName: null, workflowRefId: null, workflowTaskType: data.workflowTaskType ?? null },
+      update: { workflowId: null, workflowName: null, workflowRefId: null, workflowTaskType: data.workflowTaskType ?? undefined },
+    });
+  } else if (data.workflowTaskType !== undefined) {
+    // Standalone workflowTaskType-only update — no workflow ID change
+    await db.workflowTask.updateMany({
+      where: { taskId },
+      data: { workflowTaskType: data.workflowTaskType },
     });
   } else if (data.repositoryId !== undefined && data.repositoryId !== null) {
     // Switching back to a repo — remove WorkflowTask if one exists

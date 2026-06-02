@@ -2713,6 +2713,7 @@ describe("Stakwork Run Service", () => {
           workflowId: 42,
           workflowName: "test-workflow",
           workflowRefId: "ref-001",
+          workflowTaskType: null,
         },
       });
 
@@ -2722,6 +2723,68 @@ describe("Stakwork Run Service", () => {
         workflowId: 42,
         workflowName: "test-workflow",
         workflowRefId: "ref-001",
+      });
+    });
+
+    test("should write workflowTaskType from AI payload to WorkflowTask row", async () => {
+      const mockRun = {
+        id: "run-wf-type-1",
+        type: StakworkRunType.TASK_GENERATION,
+        featureId: "feature-wf-type",
+        workspaceId: "ws-1",
+        status: WorkflowStatus.IN_PROGRESS,
+        autoAccept: true,
+        workspace: { slug: "test-workspace", ownerId: "workspace-owner-id" },
+        feature: { createdById: "feature-creator-id" },
+      };
+      const mockFeature = {
+        id: "feature-wf-type",
+        title: "Workflow Type Feature",
+        phases: [{ id: "phase-1", name: "Phase 1", order: 0 }],
+        workspace: { id: "ws-1" },
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        status: WorkflowStatus.COMPLETED,
+        decision: StakworkRunDecision.ACCEPTED,
+      });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-skill-1" });
+      mockedDb.workflowTask = { create: vi.fn().mockResolvedValue({ id: "wt-skill-1" }) } as any;
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+      vi.mocked(saveWorkflowArtifact).mockClear();
+
+      const taskGenerationResult = {
+        phases: [
+          {
+            tasks: [
+              {
+                tempId: "t-skill",
+                title: "Skill Workflow Task",
+                description: "A skill",
+                priority: "HIGH",
+                workflowId: 77,
+                workflowName: "my-skill",
+                workflowRefId: "ref-skill",
+                workflowTaskType: "SKILL",
+                mode: "workflow_editor",
+              },
+            ],
+          },
+        ],
+      };
+
+      await processStakworkRunWebhook(
+        { project_status: "completed", result: taskGenerationResult },
+        { type: "TASK_GENERATION", workspace_id: "ws-1", feature_id: "feature-wf-type" }
+      );
+
+      expect(mockedDb.workflowTask.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ workflowTaskType: "SKILL" }),
       });
     });
 
