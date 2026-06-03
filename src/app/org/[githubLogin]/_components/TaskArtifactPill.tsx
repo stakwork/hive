@@ -13,6 +13,9 @@ import {
   Megaphone,
   Coins,
   ExternalLink,
+  FileCode2,
+  MessageSquare,
+  Zap,
 } from "lucide-react";
 import { type Artifact, type ArtifactType } from "@/lib/chat";
 import {
@@ -33,6 +36,9 @@ import { DiffArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts
 import { LongformArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/longform";
 import { BountyArtifact } from "@/app/w/[slug]/task/[...taskParams]/artifacts/bounty";
 import { PublishWorkflowArtifact } from "@/app/w/[slug]/task/[...taskParams]/artifacts/publish-workflow";
+import { PublishScriptArtifact } from "@/app/w/[slug]/task/[...taskParams]/artifacts/publish-script";
+import { PublishPromptArtifact } from "@/app/w/[slug]/task/[...taskParams]/artifacts/publish-prompt";
+import { PublishSkillArtifact } from "@/app/w/[slug]/task/[...taskParams]/artifacts/publish-skill";
 
 /**
  * Compact pill-as-button for a non-FORM, non-PULL_REQUEST artifact in
@@ -88,6 +94,9 @@ const KIND_META: Partial<Record<ArtifactType | string, PillKind>> = {
   LONGFORM: { Icon: FileText, label: "Report", iconClass: "text-violet-500", mode: "inModal" },
   BOUNTY: { Icon: Coins, label: "Bounty", iconClass: "text-amber-500", mode: "inModal" },
   PUBLISH_WORKFLOW: { Icon: Megaphone, label: "Publish workflow", iconClass: "text-fuchsia-500", mode: "inModal" },
+  PUBLISH_SCRIPT: { Icon: FileCode2, label: "Publish script", iconClass: "text-blue-500", mode: "inModal" },
+  PUBLISH_PROMPT: { Icon: MessageSquare, label: "Publish prompt", iconClass: "text-violet-500", mode: "inModal" },
+  PUBLISH_SKILL: { Icon: Zap, label: "Publish skill", iconClass: "text-amber-500", mode: "inModal" },
   BROWSER: { Icon: Globe, label: "Browser session", iconClass: "text-sky-500", mode: "external" },
   IDE: { Icon: Code, label: "IDE session", iconClass: "text-sky-500", mode: "external" },
   MEDIA: { Icon: ImageIcon, label: "Media", iconClass: "text-pink-500", mode: "external" },
@@ -200,6 +209,12 @@ function renderModalBody(artifact: Artifact, workflowUrl?: string | null) {
       return <BountyArtifact artifact={artifact} />;
     case "PUBLISH_WORKFLOW":
       return <PublishWorkflowArtifact artifact={artifact} />;
+    case "PUBLISH_SCRIPT":
+      return <PublishScriptArtifact artifact={artifact} />;
+    case "PUBLISH_PROMPT":
+      return <PublishPromptArtifact artifact={artifact} />;
+    case "PUBLISH_SKILL":
+      return <PublishSkillArtifact artifact={artifact} />;
     default:
       return (
         <div className="text-sm text-muted-foreground italic">
