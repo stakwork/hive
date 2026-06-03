@@ -34,7 +34,8 @@ const makeArtifact = (overrides: Record<string, unknown> = {}) => ({
   id: "artifact-1",
   type: ArtifactType.PUBLISH_SCRIPT,
   content: {
-    scriptVersionId: "script-v1",
+    scriptId: 1,
+    scriptVersionId: 1,
     scriptName: "My Script",
     published: false,
     ...overrides,
@@ -69,7 +70,7 @@ describe("PublishScriptArtifact", () => {
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        "/api/workflow/scripts/versions/script-v1/publish",
+        "/api/workflow/scripts/versions/1/publish",
         { method: "POST" }
       );
     });
