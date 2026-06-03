@@ -939,7 +939,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // Mount auto-save (write-through to `chat_conversations`). Lives at
   // the page level, not inside `SidebarChat`, so tab switches and
   // chat unmounts don't lose pending saves.
-  useCanvasChatAutoSave({ workspaceSlug });
+  useCanvasChatAutoSave({ githubLogin });
 
   return (
     <div ref={containerRef} className="relative flex h-full w-full overflow-hidden">
