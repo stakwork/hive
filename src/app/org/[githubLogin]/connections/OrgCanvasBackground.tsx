@@ -2099,6 +2099,7 @@ export function OrgCanvasBackground({
     canvasRef: currentRef,
     userId: session?.user?.id ?? "",
     userName: session?.user?.name ?? "",
+    userImage: session?.user?.image ?? null,
     viewportRef: currentViewportRef,
     containerRef: canvasContainerRef,
     selectedNodeId: selectedNodeIdForPresence,
@@ -3045,8 +3046,6 @@ export function OrgCanvasBackground({
           onViewportChange={(vp) => {
             currentViewportRef.current = vp;
           }}
-          // @ts-expect-error collaborators prop will be available once system-canvas-react
-          // is updated with the CollaboratorsOverlay changes from Phase 1.
           collaborators={collaborators}
         />
         {/*
