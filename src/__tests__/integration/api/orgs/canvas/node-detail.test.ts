@@ -157,6 +157,9 @@ describe("GET /api/orgs/[githubLogin]/canvas/node/[liveId]", () => {
     const org = await createOrg(githubLogin);
     createdOrgIds.push(org.id);
 
+    const ws = await createWorkspaceInOrg(user.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+
     const init = await db.initiative.create({
       data: {
         orgId: org.id,
@@ -215,6 +218,9 @@ describe("GET /api/orgs/[githubLogin]/canvas/node/[liveId]", () => {
     const githubLogin = `org-${generateUniqueId()}`;
     const org = await createOrg(githubLogin);
     createdOrgIds.push(org.id);
+
+    const ws = await createWorkspaceInOrg(user.id, org.id);
+    createdWorkspaceIds.push(ws.id);
 
     const init = await db.initiative.create({
       data: { orgId: org.id, name: "Init", status: "ACTIVE" },

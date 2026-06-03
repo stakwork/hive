@@ -50,17 +50,19 @@ export async function GET(
   }
   const [, kind, id] = match;
 
-  const isMember = await validateUserBelongsToOrg(githubLogin, userOrResponse.id);
-  if (!isMember) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const org = await db.sourceControlOrg.findUnique({
     where: { githubLogin },
     select: { id: true },
   });
   if (!org) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  const isMember = await validateUserBelongsToOrg(githubLogin, userOrResponse.id);
+  if (!isMember) {
+    // Return 404 rather than 403 to avoid leaking existence of org content
+    // to non-members — consistent with the cross-org guard in loadNodeDetail.
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   try {
