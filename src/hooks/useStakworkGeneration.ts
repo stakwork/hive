@@ -38,6 +38,7 @@ export function useStakworkGeneration({
   const { workspace } = useWorkspace();
 
   const queryLatestRunRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const hasFiredPollRef = useRef(false);
 
   const queryLatestRun = useCallback(async () => {
     if (!enabled || !workspace?.id) return;
@@ -84,15 +85,30 @@ export function useStakworkGeneration({
   useEffect(() => {
     if (!latestRun || (latestRun.status !== "IN_PROGRESS" && latestRun.status !== "PENDING")) {
       setIsStale(false);
+      hasFiredPollRef.current = false; // reset for next run
       return;
     }
+
     const elapsed = Date.now() - new Date(latestRun.createdAt).getTime();
     const remaining = STALE_RUN_TIMEOUT_MS - elapsed;
+
     if (remaining <= 0) {
+      if (!hasFiredPollRef.current) {
+        // First time hitting threshold — poll backend before marking stale
+        hasFiredPollRef.current = true;
+        queryLatestRunRef.current?.(); // updates latestRun → effect re-runs
+        return; // don't set isStale yet
+      }
+      // Poll already fired; run is genuinely stuck
       setIsStale(true);
       return;
     }
-    const timer = setTimeout(() => setIsStale(true), remaining);
+
+    hasFiredPollRef.current = false;
+    const timer = setTimeout(() => {
+      hasFiredPollRef.current = true;
+      queryLatestRunRef.current?.(); // poll instead of immediately marking stale
+    }, remaining);
     return () => clearTimeout(timer);
   }, [latestRun]);
 
