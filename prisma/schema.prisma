@@ -1154,6 +1154,9 @@ enum ArtifactType {
   TASKS
   VERIFY
   LOGS
+  PUBLISH_SCRIPT
+  PUBLISH_PROMPT
+  PUBLISH_SKILL
 }
 
 enum UserRole {
