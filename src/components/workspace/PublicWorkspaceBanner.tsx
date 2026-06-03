@@ -10,9 +10,9 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 
 export function PublicWorkspaceBanner() {
   const { status } = useSession();
-  const { loading } = useWorkspace();
+  const { loading, isPublicViewer, workspace } = useWorkspace();
 
-  if (status === "loading" || loading || status !== "unauthenticated") return null;
+  if (status === "loading" || loading || !isPublicViewer || !workspace?.isPublicViewable) return null;
 
   return (
     <Alert className="rounded-none border-x-0 border-t-0 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
