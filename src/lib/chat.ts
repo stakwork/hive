@@ -104,6 +104,24 @@ export interface PublishWorkflowContent {
   workflowVersionId?: number; // Version ID returned from publish API
 }
 
+export interface PublishScriptContent {
+  scriptVersionId: string; // Script version ID to publish
+  scriptName?: string; // Script name for display
+  published?: boolean; // Whether the script has been published
+}
+
+export interface PublishPromptContent {
+  promptId: number; // Prompt ID to publish
+  promptVersionId: number; // Prompt version ID to publish
+  promptName?: string; // Prompt name for display
+  published?: boolean; // Whether the prompt has been published
+}
+
+export interface PublishSkillContent {
+  skillName?: string; // Skill name for display
+  published?: boolean; // Whether the skill has been published
+}
+
 // PR monitoring resolution tracking
 export interface PullRequestResolution {
   status: "notified" | "in_progress" | "resolved" | "gave_up";
@@ -207,6 +225,9 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | DiffContent
     | MediaContent
     | PublishWorkflowContent
+    | PublishScriptContent
+    | PublishPromptContent
+    | PublishSkillContent
     | BountyContent
     | StreamContent;
 }
@@ -292,6 +313,9 @@ export function createArtifact(data: {
     | DiffContent
     | MediaContent
     | PublishWorkflowContent
+    | PublishScriptContent
+    | PublishPromptContent
+    | PublishSkillContent
     | BountyContent
     | StreamContent;
   icon?: ArtifactIcon;
