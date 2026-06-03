@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { ChevronDown, ChevronRight, ExternalLink, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
-import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, BountyArtifact } from "../artifacts";
+import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, PublishScriptArtifact, PublishPromptArtifact, PublishSkillArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
@@ -321,6 +321,39 @@ export const ChatMessage = memo(function ChatMessage({
             <div className="max-w-md w-full">
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                 <PublishWorkflowArtifact artifact={artifact} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
+      {message.artifacts
+        ?.filter((a) => a.type === "PUBLISH_SCRIPT")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <PublishScriptArtifact artifact={artifact} taskId={message.taskId ?? undefined} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
+      {message.artifacts
+        ?.filter((a) => a.type === "PUBLISH_PROMPT")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <PublishPromptArtifact artifact={artifact} taskId={message.taskId ?? undefined} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
+      {message.artifacts
+        ?.filter((a) => a.type === "PUBLISH_SKILL")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <PublishSkillArtifact artifact={artifact} taskId={message.taskId ?? undefined} />
               </motion.div>
             </div>
           </div>
