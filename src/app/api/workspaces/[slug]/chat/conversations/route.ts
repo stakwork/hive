@@ -7,78 +7,11 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 import { deriveAnonymousId } from "@/lib/ai/publicChatBudget";
-
-// Helper to generate title from first user message
-function generateTitle(messages: any[]): string {
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return "Untitled Conversation";
-  }
-
-  // Find first user message
-  const firstUserMessage = messages.find((msg: any) => msg.role === "user");
-  if (!firstUserMessage) {
-    return "Untitled Conversation";
-  }
-
-  // Extract text content from message
-  let text = "";
-  if (typeof firstUserMessage.content === "string") {
-    text = firstUserMessage.content;
-  } else if (Array.isArray(firstUserMessage.content)) {
-    // Handle multi-part messages
-    const textPart = firstUserMessage.content.find((part: any) => part.type === "text");
-    text = textPart?.text || "";
-  }
-
-  // Take first 50 chars and add ellipsis if needed
-  const trimmed = text.trim();
-  if (trimmed.length === 0) {
-    return "Untitled Conversation";
-  }
-  
-  return trimmed.length > 50 ? trimmed.substring(0, 50) + "..." : trimmed;
-}
-
-// Helper to get message preview
-function getMessagePreview(messages: any[]): string | null {
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return null;
-  }
-
-  // Find first user message
-  const firstUserMessage = messages.find((msg: any) => msg.role === "user");
-  if (!firstUserMessage) {
-    return null;
-  }
-
-  // Extract text content from message
-  let text = "";
-  if (typeof firstUserMessage.content === "string") {
-    text = firstUserMessage.content;
-  } else if (Array.isArray(firstUserMessage.content)) {
-    // Handle multi-part messages
-    const textPart = firstUserMessage.content.find((part: any) => part.type === "text");
-    text = textPart?.text || "";
-  }
-
-  return text.trim() || null;
-}
-
-// Helper to get last message timestamp
-function getLastMessageTimestamp(messages: any[]): Date {
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return new Date();
-  }
-
-  // Get timestamp from last message if available
-  const lastMessage = messages[messages.length - 1];
-  if (lastMessage.createdAt) {
-    return new Date(lastMessage.createdAt);
-  }
-
-  // Fallback to current time
-  return new Date();
-}
+import {
+  generateTitle,
+  getMessagePreview,
+  getLastMessageTimestamp,
+} from "@/lib/ai/conversationHelpers";
 
 // GET /api/workspaces/[slug]/chat/conversations
 // List all conversations for the user in this workspace
