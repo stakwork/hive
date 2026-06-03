@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,6 +9,9 @@ const mockPush = vi.fn();
 const mockSlug = "test-workspace";
 const mockWorkspace = { id: "ws-1" };
 const mockUserId = "user-test-1";
+
+// Hoist processStream so it can be referenced inside vi.mock factories
+const mockProcessStreamFn = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
@@ -22,7 +26,7 @@ vi.mock("next-auth/react", () => ({
 }));
 
 vi.mock("@/lib/streaming", () => ({
-  useStreamProcessor: () => ({ processStream: vi.fn() }),
+  useStreamProcessor: () => ({ processStream: mockProcessStreamFn }),
 }));
 
 vi.mock("@/lib/pusher", () => ({
@@ -77,6 +81,35 @@ vi.mock(
 );
 
 vi.mock(
+  "@/components/dashboard/DashboardChat/StreamScrollIndicator",
+  () => ({
+    StreamScrollIndicator: ({
+      isStreaming,
+      userScrolledUp,
+      showBackButton,
+      onStreamingClick,
+      onLatestClick,
+      onBackClick,
+    }: {
+      isStreaming: boolean;
+      userScrolledUp: boolean;
+      showBackButton: boolean;
+      onStreamingClick: () => void;
+      onLatestClick: () => void;
+      onBackClick: () => void;
+    }) => {
+      const show = userScrolledUp || showBackButton;
+      if (!show) return null;
+      if (showBackButton)
+        return <button data-testid="back-btn" onClick={onBackClick}>Back</button>;
+      if (isStreaming)
+        return <button data-testid="streaming-btn" onClick={onStreamingClick}>Streaming…</button>;
+      return <button data-testid="latest-btn" onClick={onLatestClick}>Latest response…</button>;
+    },
+  })
+);
+
+vi.mock(
   "@/components/dashboard/DashboardChat/CreateFeatureModal",
   () => ({
     CreateFeatureModal: ({
@@ -113,21 +146,23 @@ function mockFetch(...responses: Array<{ ok: boolean; body: unknown }>) {
   });
 }
 
-// ── tests ────────────────────────────────────────────────────────────────────
 const mockWindowOpen = vi.fn();
 
+// ── handleLaunchPlan tests ────────────────────────────────────────────────────
 describe("DashboardChat — handleLaunchPlan", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("open", mockWindowOpen);
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    mockProcessStreamFn.mockResolvedValue(undefined);
   });
 
   test("reads feature.data.id from POST /api/features response and navigates correctly", async () => {
     const featureId = "feat-123";
 
     global.fetch = mockFetch(
-      { ok: true, body: { success: true, data: { id: featureId, title: "My Feature" } } }, // POST /api/features
-      { ok: true, body: {} } // POST /api/features/:id/chat
+      { ok: true, body: { success: true, data: { id: featureId, title: "My Feature" } } },
+      { ok: true, body: {} }
     );
 
     render(<DashboardChat />);
@@ -135,11 +170,14 @@ describe("DashboardChat — handleLaunchPlan", () => {
     await userEvent.click(screen.getByTestId("launch-plan"));
 
     await waitFor(() => {
-      // Second fetch should use the correct feature id in the URL
       const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
       expect(calls).toHaveLength(2);
       expect(calls[1][0]).toBe(`/api/features/${featureId}/chat`);
-      expect(mockWindowOpen).toHaveBeenCalledWith(`/w/${mockSlug}/plan/${featureId}`, "_blank", "noopener,noreferrer");
+      expect(mockWindowOpen).toHaveBeenCalledWith(
+        `/w/${mockSlug}/plan/${featureId}`,
+        "_blank",
+        "noopener,noreferrer"
+      );
     });
   });
 
@@ -159,17 +197,20 @@ describe("DashboardChat — handleLaunchPlan", () => {
   });
 });
 
+// ── handleLaunchTask tests ────────────────────────────────────────────────────
 describe("DashboardChat — handleLaunchTask", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    mockProcessStreamFn.mockResolvedValue(undefined);
   });
 
   test("reads task.data.id from POST /api/tasks response and navigates correctly", async () => {
     const taskId = "task-456";
 
     global.fetch = mockFetch(
-      { ok: true, body: { success: true, data: { id: taskId, title: "My Task" } } }, // POST /api/tasks
-      { ok: true, body: {} } // POST /api/chat/message
+      { ok: true, body: { success: true, data: { id: taskId, title: "My Task" } } },
+      { ok: true, body: {} }
     );
 
     render(<DashboardChat />);
@@ -179,10 +220,11 @@ describe("DashboardChat — handleLaunchTask", () => {
     await waitFor(() => {
       const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
       expect(calls).toHaveLength(2);
-      // Second call body should contain the correct taskId
       const body = JSON.parse(calls[1][1].body);
       expect(body.taskId).toBe(taskId);
-      expect(mockPush).toHaveBeenCalledWith(expect.stringContaining(`/w/${mockSlug}/task/${taskId}`));
+      expect(mockPush).toHaveBeenCalledWith(
+        expect.stringContaining(`/w/${mockSlug}/task/${taskId}`)
+      );
     });
   });
 
@@ -206,12 +248,11 @@ describe("DashboardChat — handleLaunchTask", () => {
 describe("DashboardChat — auto-save", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // jsdom doesn't implement scrollIntoView
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    mockProcessStreamFn.mockResolvedValue(undefined);
   });
 
   test("fires POST to /chat/conversations on first user message", async () => {
-    // fetch: auto-save POST returns id, ask/quick returns a failed response (streaming not tested here)
     global.fetch = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/chat/conversations") && !url.match(/conversations\/[^/]+$/)) {
         return Promise.resolve({
@@ -219,11 +260,7 @@ describe("DashboardChat — auto-save", () => {
           json: () => Promise.resolve({ id: "new-conv-id" }),
         });
       }
-      // ask/quick — fail fast so we don't need to handle streaming
-      return Promise.resolve({
-        ok: false,
-        json: () => Promise.resolve({}),
-      });
+      return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
     });
 
     render(<DashboardChat />);
@@ -252,7 +289,6 @@ describe("DashboardChat — auto-save", () => {
 
     render(<DashboardChat />);
 
-    // Send to create a conversation
     await userEvent.click(screen.getByTestId("send-button"));
 
     await waitFor(() => {
@@ -260,13 +296,11 @@ describe("DashboardChat — auto-save", () => {
       expect(calls.some((c: any[]) => c[0].includes("/chat/conversations"))).toBe(true);
     });
 
-    // Clear — should appear once messages exist
     const clearButton = screen.queryByText("Clear");
     if (clearButton) {
       await userEvent.click(clearButton);
     }
 
-    // After clear, isReadOnly badge should not be visible
     expect(screen.queryByText("View only")).not.toBeInTheDocument();
   });
 
@@ -278,8 +312,6 @@ describe("DashboardChat — auto-save", () => {
 
     render(<DashboardChat />);
 
-    // The send button is disabled when DashboardChat passes disabled={isLoading || isReadOnly}
-    // When isReadOnly=false (default), button is enabled
     const sendButton = screen.getByTestId("send-button");
     expect(sendButton).not.toBeDisabled();
   });
@@ -297,14 +329,112 @@ describe("DashboardChat — auto-save", () => {
 
     render(<DashboardChat />);
 
-    // Before any messages, popup not shown
     expect(screen.queryByTestId("recent-chats-popup")).not.toBeInTheDocument();
-
-    // Send a message to trigger message state update via processStream mock
-    // We can't easily simulate stream completion but we can verify the component
-    // renders the stub after the test setup acknowledges messages
-    // The stub is rendered when hasMessages=true — this is implicitly tested
-    // by confirming the mock is in place
     expect(screen.queryByText("View only")).not.toBeInTheDocument();
+  });
+});
+
+// ── Scroll indicator integration tests ───────────────────────────────────────
+describe("DashboardChat — scroll indicator", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    mockProcessStreamFn.mockResolvedValue(undefined);
+  });
+
+  /** Trigger a scroll event with the given scroll geometry */
+  function fireScrollEvent(
+    el: Element,
+    opts: { scrollTop: number; clientHeight: number; scrollHeight: number }
+  ) {
+    Object.defineProperty(el, "scrollTop", { configurable: true, writable: true, value: opts.scrollTop });
+    Object.defineProperty(el, "clientHeight", { configurable: true, value: opts.clientHeight });
+    Object.defineProperty(el, "scrollHeight", { configurable: true, value: opts.scrollHeight });
+    // In jsdom scrollIntoView is a no-op, so the component's isProgrammaticScrollRef
+    // may still be true (set by the auto-scroll useEffect after messages arrive).
+    // The first dispatch consumes/clears the flag; the second actually updates state.
+    el.dispatchEvent(new Event("scroll", { bubbles: true }));
+    el.dispatchEvent(new Event("scroll", { bubbles: true }));
+  }
+
+  /** Render DashboardChat with messages in state via processStream callback */
+  async function renderWithMessages() {
+    mockProcessStreamFn.mockImplementation(
+      async (_res: unknown, msgId: string, cb: (msg: unknown) => void) => {
+        cb({
+          id: msgId,
+          role: "assistant",
+          content: "Hello",
+          timestamp: new Date(),
+          timeline: [{ type: "text", data: { content: "Hello" } }],
+        });
+      }
+    );
+
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/chat/conversations")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: "conv-x" }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+
+    const result = render(<DashboardChat />);
+    await userEvent.click(screen.getByTestId("send-button"));
+    await waitFor(() => expect(mockProcessStreamFn).toHaveBeenCalled());
+    return result;
+  }
+
+  test("userScrolledUp becomes true when scrolled > 50px above bottom", async () => {
+    const { container } = await renderWithMessages();
+
+    const scrollEl = container.querySelector(".overflow-y-auto");
+    expect(scrollEl).not.toBeNull();
+
+    // scrollTop(100) + clientHeight(400) = 500 < scrollHeight(1000) - 50 → not at bottom
+    fireScrollEvent(scrollEl!, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
+
+    await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
+  });
+
+  test("userScrolledUp becomes false when scrolled back to bottom", async () => {
+    const { container } = await renderWithMessages();
+    const scrollEl = container.querySelector(".overflow-y-auto")!;
+
+    // Scroll up → indicator appears
+    fireScrollEvent(scrollEl, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
+    await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
+
+    // Scroll to bottom: 600 + 400 = 1000 >= 950 → atBottom
+    fireScrollEvent(scrollEl, { scrollTop: 600, clientHeight: 400, scrollHeight: 1000 });
+    await waitFor(() => expect(screen.queryByTestId("latest-btn")).not.toBeInTheDocument());
+  });
+
+  test("clicking 'Latest response…' pill sets showBackButton → back-btn appears", async () => {
+    const { container } = await renderWithMessages();
+    const scrollEl = container.querySelector(".overflow-y-auto")!;
+
+    fireScrollEvent(scrollEl, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
+    await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByTestId("latest-btn"));
+
+    // handleScrollToNewResponse → setShowBackButton(true), setUserScrolledUp(false)
+    await waitFor(() => expect(screen.getByTestId("back-btn")).toBeInTheDocument());
+  });
+
+  test("clicking 'Back' pill restores userScrolledUp → latest-btn reappears", async () => {
+    const { container } = await renderWithMessages();
+    const scrollEl = container.querySelector(".overflow-y-auto")!;
+
+    fireScrollEvent(scrollEl, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
+    await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
+
+    // Jump to latest → shows back btn
+    await userEvent.click(screen.getByTestId("latest-btn"));
+    await waitFor(() => expect(screen.getByTestId("back-btn")).toBeInTheDocument());
+
+    // Go back → userScrolledUp=true, showBackButton=false → latest-btn
+    await userEvent.click(screen.getByTestId("back-btn"));
+    await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
   });
 });
