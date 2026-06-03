@@ -45,7 +45,7 @@ describe("MultiNodeDetail", () => {
       makeNode({ id: "n2", text: "Beta", category: "workspace" }),
       makeNode({ id: "n3", text: "Gamma", category: "note" }),
     ];
-    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} />);
+    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} githubLogin="testorg" />);
 
     expect(screen.getByText("3 nodes selected")).toBeInTheDocument();
   });
@@ -56,7 +56,7 @@ describe("MultiNodeDetail", () => {
       makeNode({ id: "n2", text: "Beta", category: "workspace" }),
       makeNode({ id: "n3", text: "Gamma", category: "note" }),
     ];
-    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} />);
+    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} githubLogin="testorg" />);
 
     // 2 notes + 1 workspace
     const breakdown = screen.getByText(/2 notes/);
@@ -69,7 +69,7 @@ describe("MultiNodeDetail", () => {
       makeNode({ id: "n1", text: "Alpha Node", category: "note" }),
       makeNode({ id: "n2", text: "My Workspace", category: "workspace" }),
     ];
-    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} />);
+    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} githubLogin="testorg" />);
 
     expect(screen.getByText("Alpha Node")).toBeInTheDocument();
     expect(screen.getByText("My Workspace")).toBeInTheDocument();
@@ -80,7 +80,7 @@ describe("MultiNodeDetail", () => {
 
   it("falls back to node.id when text is empty", () => {
     const nodes = [makeNode({ id: "node-xyz", text: "", category: "note" })];
-    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} />);
+    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} githubLogin="testorg" />);
 
     expect(screen.getByText("node-xyz")).toBeInTheDocument();
   });
@@ -90,7 +90,7 @@ describe("MultiNodeDetail", () => {
       makeNode({ id: "n1", text: "Alpha", category: "note" }),
       makeNode({ id: "n2", text: "Beta", category: "note" }),
     ];
-    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} />);
+    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} githubLogin="testorg" />);
 
     expect(screen.queryByText("INTERNAL CONNECTIONS")).not.toBeInTheDocument();
   });
@@ -107,7 +107,7 @@ describe("MultiNodeDetail", () => {
         toLabel: "Beta",
       },
     ];
-    render(<MultiNodeDetail nodes={nodes} internalEdges={internalEdges} />);
+    render(<MultiNodeDetail nodes={nodes} internalEdges={internalEdges} githubLogin="testorg" />);
 
     expect(screen.getByText("INTERNAL CONNECTIONS")).toBeInTheDocument();
     expect(screen.getByText("Alpha")).toBeInTheDocument();
@@ -126,7 +126,7 @@ describe("MultiNodeDetail", () => {
         toLabel: "Beta",
       },
     ];
-    render(<MultiNodeDetail nodes={nodes} internalEdges={internalEdges} />);
+    render(<MultiNodeDetail nodes={nodes} internalEdges={internalEdges} githubLogin="testorg" />);
 
     expect(screen.getByText("depends on")).toBeInTheDocument();
   });
@@ -144,7 +144,7 @@ describe("MultiNodeDetail", () => {
       },
     ];
     const { container } = render(
-      <MultiNodeDetail nodes={nodes} internalEdges={internalEdges} />,
+      <MultiNodeDetail nodes={nodes} internalEdges={internalEdges} githubLogin="testorg" />,
     );
     // There should be no element with the edge-label class that is non-empty
     const labelEls = container.querySelectorAll(
@@ -158,7 +158,7 @@ describe("MultiNodeDetail", () => {
       makeNode({ id: "n1", text: "A", category: "note" }),
       makeNode({ id: "n2", text: "B", category: "note" }),
     ];
-    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} />);
+    render(<MultiNodeDetail nodes={nodes} internalEdges={[]} githubLogin="testorg" />);
 
     expect(screen.getByText("MULTI-SELECT")).toBeInTheDocument();
   });
@@ -181,7 +181,7 @@ describe("MultiNodeDetail", () => {
         toLabel: "C",
       },
     ];
-    render(<MultiNodeDetail nodes={nodes} internalEdges={internalEdges} />);
+    render(<MultiNodeDetail nodes={nodes} internalEdges={internalEdges} githubLogin="testorg" />);
 
     const arrows = screen.getAllByText("→");
     expect(arrows).toHaveLength(2);

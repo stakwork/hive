@@ -197,7 +197,7 @@ export function OrgRightPanel({
           {selectedNode ? (
             <NodeDetail node={selectedNode} githubLogin={githubLogin} />
           ) : selectedNodes.length >= 2 ? (
-            <MultiNodeDetail nodes={selectedNodes} internalEdges={selectedNodesInternalEdges} />
+            <MultiNodeDetail nodes={selectedNodes} internalEdges={selectedNodesInternalEdges} githubLogin={githubLogin} />
           ) : (
             <EmptyDetailsHint />
           )}

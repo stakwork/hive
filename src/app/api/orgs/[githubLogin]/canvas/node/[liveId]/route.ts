@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { loadNodeDetail } from "@/services/orgs/nodeDetail";
+import { validateUserBelongsToOrg } from "@/services/workspace";
 
 /**
  * Detail endpoint for a single live canvas node.
@@ -48,6 +49,11 @@ export async function GET(
     return NextResponse.json({ error: "Invalid live id" }, { status: 400 });
   }
   const [, kind, id] = match;
+
+  const isMember = await validateUserBelongsToOrg(githubLogin, userOrResponse.id);
+  if (!isMember) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const org = await db.sourceControlOrg.findUnique({
     where: { githubLogin },
