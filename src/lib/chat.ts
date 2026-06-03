@@ -105,7 +105,8 @@ export interface PublishWorkflowContent {
 }
 
 export interface PublishScriptContent {
-  scriptVersionId: string; // Script version ID to publish
+  scriptId: number; // Script ID
+  scriptVersionId: number; // Script version ID to publish
   scriptName?: string; // Script name for display
   published?: boolean; // Whether the script has been published
 }
