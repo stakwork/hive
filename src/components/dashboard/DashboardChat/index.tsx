@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
+import { StreamScrollIndicator } from "./StreamScrollIndicator";
 import { CreateFeatureModal } from "./CreateFeatureModal";
 import { ProvenanceTree, type ProvenanceData } from "./ProvenanceTree";
 import { toast } from "sonner";
@@ -95,10 +96,22 @@ export function DashboardChat({
   const assistantMsgsRef = useRef<Message[]>([]);
   const { processStream } = useStreamProcessor();
 
-  // Auto-scroll to bottom when messages change
+  // Scroll state & refs
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [showBackButton, setShowBackButton] = useState(false);
+  const streamingMsgIdRef = useRef<string | null>(null);
+  const savedScrollTopRef = useRef<number>(0);
+  const isProgrammaticScrollRef = useRef(false);
+
+  // Auto-scroll to bottom when messages change (suppressed when user scrolled up)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, activeToolCalls]);
+    if (!userScrolledUp) {
+      isProgrammaticScrollRef.current = true;
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, activeToolCalls, userScrolledUp]);
 
   // Subscribe to Pusher for follow-up questions and provenance data
   useEffect(() => {
@@ -178,9 +191,53 @@ export function DashboardChat({
     }).catch(() => {});
   };
 
+  const handleScroll = () => {
+    if (isProgrammaticScrollRef.current) {
+      isProgrammaticScrollRef.current = false;
+      return;
+    }
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 50;
+    setUserScrolledUp(!atBottom);
+    if (atBottom) setShowBackButton(false);
+  };
+
+  const handleScrollToLatestLive = () => {
+    isProgrammaticScrollRef.current = true;
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setUserScrolledUp(false);
+    setShowBackButton(false);
+  };
+
+  const handleScrollToNewResponse = () => {
+    const el = scrollContainerRef.current;
+    if (!el || !streamingMsgIdRef.current) return;
+    savedScrollTopRef.current = el.scrollTop;
+    const target = el.querySelector(`[data-message-id^="${streamingMsgIdRef.current}-"]`);
+    if (target) {
+      isProgrammaticScrollRef.current = true;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    setShowBackButton(true);
+    setUserScrolledUp(false);
+  };
+
+  const handleBack = () => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    isProgrammaticScrollRef.current = true;
+    el.scrollTop = savedScrollTopRef.current;
+    setShowBackButton(false);
+    setUserScrolledUp(true);
+  };
+
   const handleSend = async (content: string, clearInput: () => void) => {
     if (!content.trim()) return;
     if (isReadOnly) return;
+
+    setIsStreaming(true);
+    streamingMsgIdRef.current = (Date.now() + 1).toString();
 
     // Clear follow-up questions and provenance when user sends a message
     setFollowUpQuestions([]);
@@ -486,6 +543,7 @@ export function DashboardChat({
       setActiveToolCalls([]); // Clear tool calls on error
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
       // Auto-save: append assistant messages after stream completes
       if (conversationIdRef.current) {
         const assistantMsgs = assistantMsgsRef.current;
@@ -810,13 +868,21 @@ export function DashboardChat({
         <div className="flex flex-col min-h-0">
           <div className="flex gap-4 flex-1 min-h-0">
             {/* Message history */}
-            <div className="flex-1 max-h-[85vh] overflow-y-auto pb-2">
+            <div
+              ref={scrollContainerRef}
+              onScroll={handleScroll}
+              className="relative flex-1 max-h-[85vh] overflow-y-auto pb-2"
+            >
               <div className="space-y-2 px-4">
                 {messages.map((message, index) => {
                   // Only the last message is streaming
                   const isLastMessage = index === messages.length - 1;
                   const isMessageStreaming = isLastMessage && isLoading;
-                  return <ChatMessage key={message.id} message={message} isStreaming={isMessageStreaming} />;
+                  return (
+                    <div key={message.id} data-message-id={message.id}>
+                      <ChatMessage message={message} isStreaming={isMessageStreaming} />
+                    </div>
+                  );
                 })}
                 {/* Show tool call indicator when tools are active */}
                 {activeToolCalls.length > 0 && <ToolCallIndicator toolCalls={activeToolCalls} />}
@@ -839,6 +905,14 @@ export function DashboardChat({
                 {/* Scroll anchor */}
                 <div ref={messagesEndRef} />
               </div>
+              <StreamScrollIndicator
+                isStreaming={isStreaming}
+                userScrolledUp={userScrolledUp}
+                showBackButton={showBackButton}
+                onStreamingClick={handleScrollToLatestLive}
+                onLatestClick={handleScrollToNewResponse}
+                onBackClick={handleBack}
+              />
             </div>
 
             {/* Provenance sidebar - only shows when toggled AND data available */}
