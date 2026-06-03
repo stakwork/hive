@@ -1,12 +1,15 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { CanvasNode } from "system-canvas";
 import type { InternalEdge } from "../connections/OrgCanvasBackground";
+import { LIVE_PREFIX_RE, LiveNodeBody, AuthoredNodeBody } from "./NodeDetail";
 
 interface MultiNodeDetailProps {
   nodes: CanvasNode[];
   internalEdges: InternalEdge[];
+  githubLogin: string;
 }
 
 /**
@@ -15,12 +18,17 @@ interface MultiNodeDetailProps {
  * list, and an optional internal-connections section for edges that
  * run between the selected nodes on the same canvas.
  *
+ * Each row in the SELECTED list is an accordion: clicking it expands
+ * an inline detail view (same content as the single-node Details
+ * panel). Only one row can be open at a time.
+ *
  * Mirrors `NodeDetail`'s layout exactly:
  *   – header: `px-4 pt-4 pb-3 border-b`
  *   – body: `flex-1 overflow-y-auto p-4`
  */
-export function MultiNodeDetail({ nodes, internalEdges }: MultiNodeDetailProps) {
+export function MultiNodeDetail({ nodes, internalEdges, githubLogin }: MultiNodeDetailProps) {
   const categoryBreakdown = buildCategoryBreakdown(nodes);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -46,17 +54,42 @@ export function MultiNodeDetail({ nodes, internalEdges }: MultiNodeDetailProps) 
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
             SELECTED
           </div>
-          <ul className="space-y-1.5">
-            {nodes.map((node) => (
-              <li key={node.id} className="flex items-baseline gap-2 min-w-0">
-                <span className="w-16 shrink-0 truncate text-[10px] uppercase text-muted-foreground">
-                  {node.category ?? "node"}
-                </span>
-                <span className="truncate text-sm">
-                  {node.text || node.id}
-                </span>
-              </li>
-            ))}
+          <ul className="space-y-1">
+            {nodes.map((node) => {
+              const isExpanded = expandedId === node.id;
+              const isLive = LIVE_PREFIX_RE.test(node.id);
+              return (
+                <li key={node.id} className="rounded-md border border-transparent hover:border-border/50 overflow-hidden">
+                  <button
+                    type="button"
+                    aria-expanded={isExpanded}
+                    onClick={() => setExpandedId((prev) => prev === node.id ? null : node.id)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-muted/30 rounded-md transition-colors"
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="w-16 shrink-0 truncate text-[10px] uppercase text-muted-foreground">
+                      {node.category ?? "node"}
+                    </span>
+                    <span className="truncate text-sm">
+                      {node.text || node.id}
+                    </span>
+                  </button>
+                  {isExpanded && (
+                    <div className="border-t px-3 pb-3 pt-2">
+                      {isLive ? (
+                        <LiveNodeBody nodeId={node.id} githubLogin={githubLogin} />
+                      ) : (
+                        <AuthoredNodeBody node={node} />
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
 

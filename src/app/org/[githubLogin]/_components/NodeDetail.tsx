@@ -26,9 +26,9 @@ import { ResearchViewer } from "./ResearchViewer";
  * rather than leaking cross-org content.
  */
 
-const LIVE_PREFIX_RE = /^([a-z]+):.+$/;
+export const LIVE_PREFIX_RE = /^([a-z]+):.+$/;
 
-interface NodeDetail {
+export interface NodeDetail {
   kind: string;
   id: string;
   name: string;
@@ -76,7 +76,7 @@ export function NodeDetail({ node, githubLogin }: NodeDetailProps) {
 }
 
 /** Renders body for `note` / `decision` and any other client-only node. */
-function AuthoredNodeBody({ node }: { node: CanvasNode }) {
+export function AuthoredNodeBody({ node }: { node: CanvasNode }) {
   const text = node.text?.trim();
   if (!text) {
     return (
@@ -92,7 +92,7 @@ function AuthoredNodeBody({ node }: { node: CanvasNode }) {
   );
 }
 
-function LiveNodeBody({
+export function LiveNodeBody({
   nodeId,
   githubLogin,
 }: {
