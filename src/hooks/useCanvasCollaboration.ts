@@ -10,10 +10,12 @@ export interface CanvasCollaboratorInfo {
   name: string;
   color: string;
   cursor: { x: number; y: number } | null;
-  selectedNodeId?: string | null;
+  selectedNodeId?: string;
+  image?: string | null;
 }
 
-interface CollaboratorState extends CanvasCollaboratorInfo {
+interface CollaboratorState extends Omit<CanvasCollaboratorInfo, "selectedNodeId"> {
+  selectedNodeId?: string | null;
   lastSeenAt: number;
 }
 
@@ -23,6 +25,8 @@ interface UseCanvasCollaborationOptions {
   canvasRef: string;
   userId: string;
   userName: string;
+  /** Avatar image URL for the current user. */
+  userImage?: string | null;
   /**
    * A ref to the current viewport state so cursor events can be
    * converted from screen to canvas space.
@@ -97,6 +101,7 @@ export function useCanvasCollaboration({
   canvasRef,
   userId,
   userName,
+  userImage,
   viewportRef,
   containerRef,
   selectedNodeId,
@@ -118,6 +123,8 @@ export function useCanvasCollaboration({
   userIdRef.current = userId;
   const userNameRef = useRef(userName);
   userNameRef.current = userName;
+  const userImageRef = useRef(userImage ?? null);
+  userImageRef.current = userImage ?? null;
   const githubLoginRef = useRef(githubLogin);
   githubLoginRef.current = githubLogin;
   const canvasRefRef = useRef(canvasRef);
@@ -134,6 +141,7 @@ export function useCanvasCollaboration({
           color: teamAvatarColor(id),
           cursor: null,
           selectedNodeId: null,
+          image: null,
           lastSeenAt: Date.now(),
         };
         next.set(id, { ...existing, ...patch, lastSeenAt: Date.now() });
@@ -158,12 +166,13 @@ export function useCanvasCollaboration({
     if (!channel) return;
 
     const onJoin = (data: {
-      user: { id: string; name: string; color: string };
+      user: { id: string; name: string; color: string; image?: string | null };
     }) => {
       if (data.user.id === userIdRef.current) return;
       upsertCollaborator(data.user.id, {
         name: data.user.name,
         color: data.user.color,
+        image: data.user.image ?? null,
         cursor: null,
       });
     };
@@ -219,8 +228,37 @@ export function useCanvasCollaboration({
     postCollabEvent(login, {
       type: "join",
       canvasRef: ref,
-      user: { id: userId, name, color },
+      user: { id: userId, name, color, image: userImageRef.current ?? null },
     });
+
+    // Seed pre-existing collaborators — fire-and-forget
+    fetch(
+      `/api/orgs/${login}/canvas/collaboration?canvasRef=${encodeURIComponent(ref)}`,
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (body: {
+          collaborators: Array<{
+            userId: string;
+            name: string;
+            color: string;
+            image: string | null;
+          }>;
+        } | null) => {
+          const initial = body?.collaborators ?? [];
+          for (const c of initial) {
+            if (c.userId === userIdRef.current) continue;
+            upsertCollaborator(c.userId, {
+              name: c.name,
+              color: c.color,
+              image: c.image,
+            });
+          }
+        },
+      )
+      .catch(() => {
+        // Fire-and-forget; failures degrade gracefully (no initial snapshot)
+      });
 
     const leavePayload = JSON.stringify({
       type: "leave",
@@ -243,7 +281,7 @@ export function useCanvasCollaboration({
       // Clear collaborators for this canvas on cleanup
       setCollaboratorMap(new Map());
     };
-  }, [githubLogin, canvasRef, userId, enabled]);
+  }, [githubLogin, canvasRef, userId, enabled, upsertCollaborator]);
 
   // Broadcast cursor via pointermove (throttled ~20fps)
   useEffect(() => {
@@ -329,7 +367,10 @@ export function useCanvasCollaboration({
     collaboratorMap.values(),
   )
     .filter((c) => c.id !== userId)
-    .map(({ lastSeenAt: _last, ...rest }) => rest);
+    .map(({ lastSeenAt: _last, selectedNodeId, ...rest }) => ({
+      ...rest,
+      selectedNodeId: selectedNodeId ?? undefined,
+    }));
 
   return { collaborators };
 }

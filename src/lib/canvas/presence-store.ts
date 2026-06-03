@@ -17,6 +17,7 @@ export interface CanvasPresenceEntry {
   userId: string;
   name: string | null;
   color?: string;
+  image: string | null;
   joinedAt: number;
   lastSeenAt: number;
 }
@@ -45,8 +46,9 @@ function pruneRoom(room: Map<string, CanvasPresenceEntry>, now: number) {
 /** Record or refresh a user's presence in a canvas room. */
 export function recordHeartbeat(
   roomKey: string,
-  entry: Omit<CanvasPresenceEntry, "lastSeenAt" | "joinedAt"> & {
+  entry: Omit<CanvasPresenceEntry, "lastSeenAt" | "joinedAt" | "image"> & {
     joinedAt?: number;
+    image?: string | null;
   },
 ): void {
   const room = getRoom(roomKey);
@@ -56,6 +58,7 @@ export function recordHeartbeat(
     userId: entry.userId,
     name: entry.name ?? existing?.name ?? null,
     color: entry.color ?? existing?.color,
+    image: entry.image ?? existing?.image ?? null,
     joinedAt: existing?.joinedAt ?? entry.joinedAt ?? now,
     lastSeenAt: now,
   });

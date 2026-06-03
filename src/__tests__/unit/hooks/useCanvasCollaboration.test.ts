@@ -341,6 +341,155 @@ describe("useCanvasCollaboration", () => {
   });
 
   // -------------------------------------------------------------------------
+  // GET presence seed on mount
+  // -------------------------------------------------------------------------
+  describe("GET presence seed on mount", () => {
+    it("fires a GET fetch after join POST to seed pre-existing collaborators", async () => {
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        } as Response) // join POST
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            collaborators: [
+              { userId: "user-charlie", name: "Charlie", color: "#0000ff", image: null },
+            ],
+          }),
+        } as Response); // GET seed
+
+      const { viewportRef, containerRef } = makeRefs();
+      const { result } = renderHook(() =>
+        useCanvasCollaboration({ ...BASE_OPTS, viewportRef, containerRef }),
+      );
+
+      // Allow promises to flush
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const getCalls = vi.mocked(global.fetch).mock.calls.filter((c) =>
+        typeof c[0] === "string" && c[0].includes("canvasRef="),
+      );
+      expect(getCalls.length).toBeGreaterThan(0);
+      expect(getCalls[0][0]).toContain("/api/orgs/acme-org/canvas/collaboration?canvasRef=");
+
+      expect(result.current.collaborators.find((c) => c.id === "user-charlie")).toBeTruthy();
+    });
+
+    it("seeds image from GET response into collaborator entry", async () => {
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            collaborators: [
+              {
+                userId: "user-dave",
+                name: "Dave",
+                color: "#ff00ff",
+                image: "https://example.com/dave.jpg",
+              },
+            ],
+          }),
+        } as Response);
+
+      const { viewportRef, containerRef } = makeRefs();
+      const { result } = renderHook(() =>
+        useCanvasCollaboration({ ...BASE_OPTS, viewportRef, containerRef }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const dave = result.current.collaborators.find((c) => c.id === "user-dave");
+      expect(dave?.image).toBe("https://example.com/dave.jpg");
+    });
+
+    it("excludes self from GET seed results", async () => {
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            collaborators: [
+              { userId: "user-abc", name: "Alice", color: "#ff0000", image: null }, // self
+              { userId: "user-eve", name: "Eve", color: "#00ff00", image: null },
+            ],
+          }),
+        } as Response);
+
+      const { viewportRef, containerRef } = makeRefs();
+      const { result } = renderHook(() =>
+        useCanvasCollaboration({ ...BASE_OPTS, viewportRef, containerRef }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.collaborators.find((c) => c.id === "user-abc")).toBeFalsy();
+      expect(result.current.collaborators.find((c) => c.id === "user-eve")).toBeTruthy();
+    });
+
+    it("does not throw or affect state when GET fails", async () => {
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        } as Response)
+        .mockRejectedValueOnce(new Error("Network error")); // GET fails
+
+      const { viewportRef, containerRef } = makeRefs();
+      const { result } = renderHook(() =>
+        useCanvasCollaboration({ ...BASE_OPTS, viewportRef, containerRef }),
+      );
+
+      // Should not throw
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.collaborators).toHaveLength(0);
+    });
+
+    it("includes userImage in the join POST payload", () => {
+      const { viewportRef, containerRef } = makeRefs();
+      renderHook(() =>
+        useCanvasCollaboration({
+          ...BASE_OPTS,
+          userImage: "https://example.com/alice.jpg",
+          viewportRef,
+          containerRef,
+        }),
+      );
+
+      const joinCall = vi.mocked(global.fetch).mock.calls.find((c) => {
+        try {
+          return JSON.parse(c[1]?.body as string)?.type === "join";
+        } catch {
+          return false;
+        }
+      });
+      expect(joinCall).toBeDefined();
+      const body = JSON.parse(joinCall![1]?.body as string);
+      expect(body.user.image).toBe("https://example.com/alice.jpg");
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Disabled mode
   // -------------------------------------------------------------------------
   describe("disabled mode", () => {
