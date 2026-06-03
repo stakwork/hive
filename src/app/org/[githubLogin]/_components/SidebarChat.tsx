@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Send, Share2, X } from "lucide-react";
+import { CanvasHistoryPopover } from "./CanvasHistoryPopover";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
@@ -174,6 +175,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           >
             <Share2 className="w-4 h-4" />
           </button>
+          <CanvasHistoryPopover githubLogin={githubLogin} />
           <button
             type="button"
             onClick={handleClear}

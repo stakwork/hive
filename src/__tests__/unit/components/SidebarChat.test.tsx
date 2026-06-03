@@ -23,6 +23,14 @@ vi.mock("lucide-react", () => ({
   Send: () => <svg data-testid="send-icon" />,
   Share2: () => <svg data-testid="share-icon" />,
   X: () => <svg data-testid="x-icon" />,
+  History: () => <svg data-testid="history-icon" />,
+  PlusCircle: () => <svg data-testid="plus-icon" />,
+}));
+
+vi.mock("@/app/org/[githubLogin]/_components/CanvasHistoryPopover", () => ({
+  CanvasHistoryPopover: ({ githubLogin }: { githubLogin: string }) => (
+    <div data-testid="canvas-history-popover" data-login={githubLogin} />
+  ),
 }));
 
 vi.mock("@/components/ui/button", () => ({

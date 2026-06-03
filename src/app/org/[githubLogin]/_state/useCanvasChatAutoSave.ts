@@ -2,9 +2,8 @@
  * Auto-save side effect for the canvas chat.
  *
  * Subscribes to the active conversation's `messages` and `isLoading`
- * and persists deltas to `/api/workspaces/[slug]/chat/conversations`
- * — the same endpoint `DashboardChat` uses, with `source:
- * "org-canvas"` so we can distinguish forks-from-canvas later.
+ * and persists deltas to `/api/orgs/[githubLogin]/chat/conversations`
+ * with `source: "org-canvas"` so we can distinguish canvas sessions.
  *
  * Why a subscription, not inline in the store action: persistence is
  * a side effect, not state. The store stays a pure data layer; the
@@ -35,11 +34,11 @@ import { useEffect, useRef } from "react";
 import { useCanvasChatStore } from "./canvasChatStore";
 
 interface AutoSaveArgs {
-  /** The current workspace slug — endpoint scope. */
-  workspaceSlug: string | null;
+  /** The GitHub login (org slug) — endpoint scope. */
+  githubLogin: string | null;
 }
 
-export function useCanvasChatAutoSave({ workspaceSlug }: AutoSaveArgs) {
+export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
   // Track the last-saved message count per conversation so we know
   // exactly which messages are new to send on PUT.
   const savedCountRef = useRef<Map<string, number>>(new Map());
@@ -47,7 +46,7 @@ export function useCanvasChatAutoSave({ workspaceSlug }: AutoSaveArgs) {
   const inFlightRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!workspaceSlug) return;
+    if (!githubLogin) return;
 
     const flush = (conversationId: string) => {
       if (inFlightRef.current.has(conversationId)) return;
@@ -86,7 +85,7 @@ export function useCanvasChatAutoSave({ workspaceSlug }: AutoSaveArgs) {
       // messages never persist — the seed is `[0..seedSkip)` and we
       // start from `saved` which is `max(savedRaw, seedSkip)`.
       if (conv.serverConversationId == null) {
-        fetch(`/api/workspaces/${workspaceSlug}/chat/conversations`, {
+        fetch(`/api/orgs/${githubLogin}/chat/conversations`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -109,7 +108,7 @@ export function useCanvasChatAutoSave({ workspaceSlug }: AutoSaveArgs) {
       } else {
         const serverId = conv.serverConversationId;
         fetch(
-          `/api/workspaces/${workspaceSlug}/chat/conversations/${serverId}`,
+          `/api/orgs/${githubLogin}/chat/conversations/${serverId}`,
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -157,5 +156,5 @@ export function useCanvasChatAutoSave({ workspaceSlug }: AutoSaveArgs) {
     });
 
     return () => unsub();
-  }, [workspaceSlug]);
+  }, [githubLogin]);
 }
