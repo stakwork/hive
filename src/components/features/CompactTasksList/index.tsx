@@ -562,7 +562,6 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                 }
               }}
               className={isMobile ? "h-[280px]" : "h-[380px]"}
-              open={graphOpen}
             />
           </CollapsibleContent>
         </Collapsible>

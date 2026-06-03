@@ -11,6 +11,7 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  useStore,
   BackgroundVariant,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -25,20 +26,27 @@ const DEFAULT_NODE_WIDTH = 300;
 const DEFAULT_NODE_HEIGHT = 100;
 
 /**
- * Fires fitView whenever `open` transitions to true (i.e. the collapsible
- * finishes its open animation and the container has real dimensions).
- * A small delay lets the CSS transition complete before we measure.
+ * Watches React Flow's internal container dimensions and fires fitView exactly
+ * once each time the container transitions from hidden (0×0) to visible (non-zero).
+ * This correctly handles the case where the graph is mounted inside a hidden
+ * Radix UI tab (display: none → 0×0) and only becomes visible later.
  */
-function FitViewOnOpen({ open }: { open: boolean }) {
+function FitWhenVisible() {
   const { fitView } = useReactFlow();
+  const width = useStore((s) => s.width);
+  const height = useStore((s) => s.height);
+  const wasHidden = useRef(true);
+
   useEffect(() => {
-    if (!open) return;
-    // Fire twice: once at 200ms (catches fast renders) and once at 500ms
-    // (catches slow collapsible animations where the container was still height:0 at first fire)
-    const id1 = setTimeout(() => fitView({ padding: 0.3, duration: 200 }), 200);
-    const id2 = setTimeout(() => fitView({ padding: 0.3, duration: 200 }), 500);
-    return () => { clearTimeout(id1); clearTimeout(id2); };
-  }, [open, fitView]);
+    const isVisible = width > 0 && height > 0;
+    if (isVisible && wasHidden.current) {
+      wasHidden.current = false;
+      setTimeout(() => fitView({ padding: 0.1, duration: 200 }), 50);
+    } else if (!isVisible) {
+      wasHidden.current = true; // reset so re-opening re-fits
+    }
+  }, [width, height, fitView]);
+
   return null;
 }
 
@@ -57,10 +65,9 @@ function GraphInner<T extends GraphEntity>({
   renderNode,
   onNodeClick,
   direction = "LR",
-  open = true,
 }: Pick<
   DependencyGraphProps<T>,
-  "entities" | "getDependencies" | "renderNode" | "onNodeClick" | "direction" | "open"
+  "entities" | "getDependencies" | "renderNode" | "onNodeClick" | "direction"
 >) {
   // Keep the latest renderNode in a ref so the node component (defined below)
   // always calls the current version without ever needing to be recreated.
@@ -158,10 +165,8 @@ function GraphInner<T extends GraphEntity>({
         },
       }}
       proOptions={{ hideAttribution: true }}
-      fitView
-      fitViewOptions={{ padding: 0.3 }}
     >
-      <FitViewOnOpen open={open} />
+      <FitWhenVisible />
       <Background
         variant={BackgroundVariant.Dots}
         gap={20}
@@ -189,7 +194,6 @@ export function DependencyGraph<T extends GraphEntity>({
     description: "Add dependencies to see them visualized here.",
   },
   className,
-  open = true,
 }: DependencyGraphProps<T>) {
   if (entities.length === 0) {
     return (
@@ -225,7 +229,6 @@ export function DependencyGraph<T extends GraphEntity>({
           renderNode={renderNode}
           onNodeClick={onNodeClick}
           direction={direction}
-          open={open}
         />
       </div>
     </ReactFlowProvider>
