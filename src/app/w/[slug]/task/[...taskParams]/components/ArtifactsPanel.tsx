@@ -11,13 +11,16 @@ import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowAr
 import { PlanArtifactPanel, PlanData, SectionHighlights } from "@/app/w/[slug]/plan/[featureId]/components/PlanArtifact";
 import { CompactTasksList } from "@/components/features/CompactTasksList";
 import { VerifyPanel } from "@/app/w/[slug]/plan/[featureId]/components/VerifyPanel";
+import { LogsArtifactPanel } from "@/components/agent-logs/LogsArtifactPanel";
+import type { ConversationMessage } from "@/hooks/useStreamedAgentLog";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
+import { useAgentLogs } from "@/hooks/useAgentLogs";
 import type { FeatureDetail } from "@/types/roadmap";
 
-const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS"];
+const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS", "LOGS"];
 
 // Tabs that should auto-switch when they first become available,
 // overriding whatever tab is currently active (e.g. ephemeral WORKFLOW).
@@ -42,6 +45,7 @@ interface ArtifactsPanelProps {
   sectionHighlights?: SectionHighlights | null;
   browserRefreshTrigger?: number;
   isSuperAdmin?: boolean;
+  streamingLog?: { agent: string; conversation: ConversationMessage[] } | null;
 }
 
 export function ArtifactsPanel({
@@ -63,6 +67,7 @@ export function ArtifactsPanel({
   sectionHighlights,
   browserRefreshTrigger,
   isSuperAdmin = false,
+  streamingLog,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
@@ -156,6 +161,12 @@ export function ArtifactsPanel({
   const hasFeature = !!feature && !!featureId && !!onFeatureUpdate;
   const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
   const hasArchitecture = !!feature?.architecture;
+
+  // Live agent logs for the current feature (plan mode only)
+  const { agentLogs, lastUpdated: agentLogsLastUpdated } = useAgentLogs(
+    hasFeature ? featureId : null,
+    hasFeature ? workspaceId : null,
+  );
 
   // Fetch attachment count once when tasks first exist — drives Verify tab enabled state
   useEffect(() => {
@@ -305,6 +316,7 @@ export function ArtifactsPanel({
     if (planData) tabs.push("PLAN");
     if (hasFeature && showTasksTab) tabs.push("TASKS");
     if (hasFeature && showVerifyTab) tabs.push("VERIFY");
+    if (hasFeature && (agentLogs.length > 0 || !!streamingLog)) tabs.push("LOGS");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
@@ -312,7 +324,7 @@ export function ArtifactsPanel({
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [planData, hasFeature, showTasksTab, showVerifyTab, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [planData, hasFeature, showTasksTab, showVerifyTab, agentLogs.length, !!streamingLog, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab, or fall back when active tab is removed
   // Guard: don't reset during active generation to prevent TASKS tab from disappearing
@@ -424,6 +436,17 @@ export function ArtifactsPanel({
               </div>
             </div>
           )}
+          {hasFeature && (agentLogs.length > 0 || !!streamingLog) && (
+            <div className="h-full" hidden={activeTab !== "LOGS"}>
+              <LogsArtifactPanel
+                logs={agentLogs}
+                lastUpdated={agentLogsLastUpdated}
+                streamingLog={streamingLog}
+                featureId={featureId}
+                isSuperAdmin={isSuperAdmin}
+              />
+            </div>
+          )}
           {codeArtifacts.length > 0 && (
             <div className="h-full" hidden={activeTab !== "CODE"}>
               <CodeArtifactPanel artifacts={codeArtifacts} />
@@ -470,6 +493,7 @@ export function ArtifactsPanel({
                 onStepSelect={onStepSelect}
                 onVersionChange={onVersionChange}
                 isSuperAdmin={isSuperAdmin}
+                taskId={taskId}
               />
             </div>
           )}

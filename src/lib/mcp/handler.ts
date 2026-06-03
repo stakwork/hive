@@ -15,6 +15,10 @@ import {
   mcpListTasks,
   mcpReadTask,
   mcpCreateTask,
+  mcpCreateFeatureTask,
+  mcpCreateWorkflowTask,
+  mcpUpdateTask,
+  mcpSendToTaskAgent,
   mcpSendMessage,
   mcpCheckStatus,
   findWorkspaceUser,
@@ -23,6 +27,14 @@ import {
   type WorkspaceAuth,
   type McpToolResult,
 } from "@/lib/mcp/mcpTools";
+import {
+  registerOrgTools,
+  type OrgMcpAuthExtra,
+} from "@/lib/mcp/orgMcpTools";
+import {
+  isOrgPermission,
+  type OrgPermission,
+} from "@/lib/mcp/orgPermissions";
 
 // Available tools registry
 const AVAILABLE_TOOLS = [
@@ -34,6 +46,10 @@ const AVAILABLE_TOOLS = [
   "list_tasks",
   "read_task",
   "create_task",
+  "create_feature_task",
+  "create_workflow_task",
+  "update_task",
+  "send_to_task_agent",
   "check_status",
   "send_message",
 ] as const;
@@ -143,12 +159,41 @@ async function getWorkspaceAuth(
   };
 }
 
-// Create a fresh McpServer with tools registered
-function createServer(): McpServer {
+// Create a fresh McpServer with tools registered.
+//
+// `scope` selects which tool family is exposed:
+//   - "workspace" (default): all the existing workspace-scoped tools
+//     keyed off a single workspace + swarm. Used by long-lived
+//     hive_* API keys and the legacy workspace JWTs minted by
+//     /api/livekit-token.
+//   - "org": exposes only `org_agent`, the single callback tool that
+//     wraps `runCanvasAgent`. Used by org-JWTs minted from
+//     /api/mcp/org-token for plan-mode swarm callbacks and (future)
+//     voice agents.
+//
+// `options.orgName` is consumed only on the org branch; it's the
+// display label interpolated into `org_agent`'s title and description
+// so the calling agent sees something like "Ask the Stakwork org
+// agent…" instead of the generic "Ask the Hive org agent…". Resolved
+// upstream in `handleMcpRequest` from the org JWT's `orgId`.
+//
+// Mutually exclusive on purpose — an org-scope token does not get
+// the workspace tool surface, and a workspace-scope token does not
+// get `org_agent`. Crossing the scopes would silently widen the
+// authorization granted at mint time.
+function createServer(
+  scope: "workspace" | "org" = "workspace",
+  options: { orgName?: string } = {},
+): McpServer {
   const server = new McpServer(
     { name: "hive", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
+
+  if (scope === "org") {
+    registerOrgTools(server, { orgName: options.orgName });
+    return server;
+  }
 
   server.registerTool(
     "list_concepts",
@@ -268,14 +313,21 @@ function createServer(): McpServer {
     {
       title: "List Tasks",
       description:
-        "List tasks in the workspace, ordered by last updated. Returns task titles, IDs, statuses, priorities, and last-updated timestamps. Maximum 40 results.",
-      inputSchema: {},
+        "List tasks in the workspace, ordered by last updated. Returns task titles, IDs, statuses, priorities, featureIds, and last-updated timestamps. Maximum 40 results. When `featureId` is provided, scopes results to tasks belonging to that feature.",
+      inputSchema: {
+        featureId: z
+          .string()
+          .optional()
+          .describe(
+            "Optional feature ID. When provided, lists only tasks belonging to this feature.",
+          ),
+      },
     },
-    async (_args, extra) => {
+    async ({ featureId }: { featureId?: string }, extra) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "list_tasks");
       if (result.error) return result.error;
-      return mcpListTasks(result.auth!);
+      return mcpListTasks(result.auth!, featureId);
     },
   );
 
@@ -304,7 +356,7 @@ function createServer(): McpServer {
     {
       title: "Create Task",
       description:
-        "Create a new task in the workspace with a title and optional description and priority.",
+        "Create a new task in the workspace with a title and optional description, priority, and feature.",
       inputSchema: {
         title: z.string().describe("The title of the task"),
         description: z
@@ -315,6 +367,12 @@ function createServer(): McpServer {
           .enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"])
           .optional()
           .describe("Priority level (LOW, MEDIUM, HIGH, CRITICAL). Defaults to MEDIUM."),
+        featureId: z
+          .string()
+          .optional()
+          .describe(
+            "Optional feature ID to attach this task to. The feature must belong to this workspace.",
+          ),
         creator: z
           .string()
           .optional()
@@ -328,14 +386,335 @@ function createServer(): McpServer {
         title,
         description,
         priority,
+        featureId,
         creator,
-      }: { title: string; description?: string; priority?: string; creator?: string },
+      }: {
+        title: string;
+        description?: string;
+        priority?: string;
+        featureId?: string;
+        creator?: string;
+      },
       extra,
     ) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "create_task", creator);
       if (result.error) return result.error;
-      return mcpCreateTask(result.auth!, title, description, priority);
+      return mcpCreateTask(result.auth!, title, description, priority, featureId);
+    },
+  );
+
+  server.registerTool(
+    "create_feature_task",
+    {
+      title: "Create Feature Coding Task",
+      description: [
+        "Create a CODING task anchored to a feature in this workspace. Use this when the work requires changes to a code repository (bug fix, new feature, refactor, mock/seed data) — anything a developer or coding agent executes against a repo.",
+        "",
+        "Do NOT use this for workflow editor / Stakwork workflow work — use `create_workflow_task` for those.",
+        "",
+        "**When to call.** Don't batch-create a full task list on the first message of a plan; let the plan firm up first. Call this tool when the user explicitly asks for a new coding task, or when a plan revision introduces coding work no existing task covers. Before creating, call `list_tasks` with the same `featureId` to check for duplicates.",
+        "",
+        "**Granularity (CRITICAL — match the bar of the standalone task-generator).** Combine, don't fragment. A bug fix is ONE task. A small feature is one task. A medium feature is 1-2 tasks. A large feature is at most 3 tasks per repository. Do NOT create separate 'investigate', 'research', 'validate', 'test', or 'document' tasks — investigation and unit/integration testing are part of the implementation task. Documentation is not a deliverable.",
+        "",
+        "**Title** — actionable verb + what to build (e.g. 'Add JWT auth middleware', 'Fix nodes loading in test workspace'). NOT 'investigate X', NOT 'write tests for Y'.",
+        "",
+        "**Description** — markdown. Include what to implement, acceptance criteria, and how to verify. Include unit/integration tests (NO E2E). When the work touches authorization, add an IDOR reminder: confirm the authenticated caller is authorized to that specific resource BEFORE any DB write, secret access, or third-party call.",
+        "",
+        "**Mock data / seed.** If the architecture introduces new mock data or mock endpoints, instruct the agent to check existing seed scripts / DB before generating new ones.",
+        "",
+        "**Priority** — CRITICAL (blockers), HIGH (core), MEDIUM (standard, default), LOW (nice-to-have).",
+        "",
+        "**Repository.** Required: pass either `repositoryId` (cuid from `featureContext.workspaceRepositories`) or `repositoryUrl` (string match against the workspace's repos). The workspace's repos are exposed on `featureContext.workspaceRepositories` — pick the one that owns the change. Work spanning multiple repos = multiple tasks (one per repo).",
+      ].join("\n"),
+      inputSchema: {
+        featureId: z
+          .string()
+          .describe(
+            "Feature ID to attach this task to. Get this from `featureContext.feature.id`. The feature must belong to this workspace.",
+          ),
+        title: z
+          .string()
+          .describe(
+            "Actionable title: verb + what to build. Examples: 'Add JWT auth middleware', 'Fix nodes loading in test workspace'.",
+          ),
+        description: z
+          .string()
+          .optional()
+          .describe(
+            "Markdown description with what to implement, acceptance criteria, and how to verify. Include unit/integration tests (NO E2E). Add an IDOR reminder when handling auth/resource access.",
+          ),
+        priority: z
+          .enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+          .optional()
+          .describe("CRITICAL | HIGH | MEDIUM (default) | LOW."),
+        repositoryId: z
+          .string()
+          .optional()
+          .describe(
+            "Repository cuid. Prefer this over repositoryUrl when you have it. Available on each entry of `featureContext.workspaceRepositories`.",
+          ),
+        repositoryUrl: z
+          .string()
+          .optional()
+          .describe(
+            "Repository URL (matched against the workspace's repos). Use when you only have the URL, not the cuid. Exactly one of repositoryId/repositoryUrl must be provided.",
+          ),
+        creator: z
+          .string()
+          .optional()
+          .describe(
+            "Name of the creator (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
+    },
+    async (
+      {
+        featureId,
+        title,
+        description,
+        priority,
+        repositoryId,
+        repositoryUrl,
+        creator,
+      }: {
+        featureId: string;
+        title: string;
+        description?: string;
+        priority?: string;
+        repositoryId?: string;
+        repositoryUrl?: string;
+        creator?: string;
+      },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(
+        authExtra,
+        "create_feature_task",
+        creator,
+      );
+      if (result.error) return result.error;
+      return mcpCreateFeatureTask(
+        result.auth!,
+        featureId,
+        { title, description, priority },
+        { repositoryId, repositoryUrl },
+      );
+    },
+  );
+
+  server.registerTool(
+    "create_workflow_task",
+    {
+      title: "Create Feature Workflow Task",
+      description: [
+        "Create a WORKFLOW task anchored to a feature in this workspace. Use this when the work is executed by running, building, or configuring a Stakwork **workflow** — a Lambda-based, DAG-style automation pipeline. Do NOT use this for code changes; use `create_feature_task` for those.",
+        "",
+        "Workflow tasks split into two kinds, both handled by this tool:",
+        "- **Existing workflow** — running, triggering, or reconfiguring a workflow that already exists. Pass `workflowId` (integer).",
+        "- **New workflow** — building a brand-new workflow in the editor. Omit `workflowId` entirely (never set it to null).",
+        "",
+        "**Decide which type a task is.** Ask: does completing this ticket require changing source code in a repository? → `create_feature_task`. Does it mean triggering, running, or building/editing a Stakwork workflow? → `create_workflow_task`. Mixed work = split into separate tasks linked by `dependsOnTaskIds` (set those via subsequent `update_task` calls or a future tool).",
+        "",
+        "If the feature context does not reference any workflow execution or workflow editor work, you probably do not need this tool at all — most features are code-only.",
+        "",
+        "**One task per workflowId.** Only generate different workflow tasks if they target a different workflow. For new workflows (no `workflowId`), generate only one task per distinct new workflow being built.",
+        "",
+        "**workflowId rules (CRITICAL).** Do NOT invent workflow IDs. Only set `workflowId` when the feature context (architecture, requirements, brief) explicitly references a Stakwork workflow by ID or unambiguously names one. For new workflows, OMIT `workflowId` — never set it to null, never pass 0, never guess. The system records the new-workflow intent internally.",
+        "",
+        "**Title** — actionable verb + what to run/build (e.g. 'Run nightly transcription workflow to backfill missing media', 'Build new data-ingestion pipeline in workflow editor').",
+        "",
+        "**Description** — markdown. Include the input parameters the workflow expects (the `set_var` keys), the expected outputs / success criteria, and how to verify it ran correctly. Same combine-don't-fragment philosophy as coding tasks: testing is part of the task, not a separate ticket.",
+        "",
+        "**Priority** — CRITICAL (blockers), HIGH (core), MEDIUM (standard, default), LOW (nice-to-have).",
+      ].join("\n"),
+      inputSchema: {
+        featureId: z
+          .string()
+          .describe(
+            "Feature ID to attach this task to. Get this from `featureContext.feature.id`. The feature must belong to this workspace.",
+          ),
+        title: z
+          .string()
+          .describe(
+            "Actionable title: verb + what to run/build. Examples: 'Run nightly transcription workflow', 'Build new data-ingestion pipeline in workflow editor'.",
+          ),
+        description: z
+          .string()
+          .optional()
+          .describe(
+            "Markdown description with input parameters (set_var keys), expected outputs, success criteria, and how to verify.",
+          ),
+        priority: z
+          .enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+          .optional()
+          .describe("CRITICAL | HIGH | MEDIUM (default) | LOW."),
+        workflowId: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            "Integer ID of an EXISTING Stakwork workflow. Omit entirely (NOT null) when the task targets a brand-new workflow to be built in the editor. Never invent a value — only set when the feature context explicitly references a workflow by ID.",
+          ),
+        workflowName: z
+          .string()
+          .optional()
+          .describe(
+            "Human-readable workflow name (only meaningful when `workflowId` is also set). Helps display the task in the UI before the workflow is opened.",
+          ),
+        workflowRefId: z
+          .string()
+          .optional()
+          .describe(
+            "Stakwork workflow ref id (only meaningful when `workflowId` is also set).",
+          ),
+        workflowTaskType: z
+          .enum(["SKILL", "WORKFLOW", "SCRIPT", "PROMPT"])
+          .optional()
+          .describe(
+            "The Stakwork execution type for this workflow task: SKILL (routed work unit), WORKFLOW (sub-workflow runner), SCRIPT (Python Lambda), or PROMPT (reusable text template). Omit if unknown.",
+          ),
+        creator: z
+          .string()
+          .optional()
+          .describe(
+            "Name of the creator (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
+    },
+    async (
+      {
+        featureId,
+        title,
+        description,
+        priority,
+        workflowId,
+        workflowName,
+        workflowRefId,
+        workflowTaskType,
+        creator,
+      }: {
+        featureId: string;
+        title: string;
+        description?: string;
+        priority?: string;
+        workflowId?: number;
+        workflowName?: string;
+        workflowRefId?: string;
+        workflowTaskType?: "SKILL" | "WORKFLOW" | "SCRIPT" | "PROMPT";
+        creator?: string;
+      },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(
+        authExtra,
+        "create_workflow_task",
+        creator,
+      );
+      if (result.error) return result.error;
+      return mcpCreateWorkflowTask(
+        result.auth!,
+        featureId,
+        { title, description, priority },
+        { workflowId, workflowName, workflowRefId, workflowTaskType },
+      );
+    },
+  );
+
+  server.registerTool(
+    "update_task",
+    {
+      title: "Update Task",
+      description:
+        "Update an existing task's title, description, and/or priority. Only these three fields are updatable — status, workflow status, and feature attachment are intentionally excluded. Pass only the fields you want to change.",
+      inputSchema: {
+        taskId: z.string().describe("The ID of the task to update"),
+        title: z
+          .string()
+          .optional()
+          .describe("New title for the task"),
+        description: z
+          .string()
+          .optional()
+          .describe(
+            "New description for the task. Pass an empty string to clear the description.",
+          ),
+        priority: z
+          .enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+          .optional()
+          .describe("New priority (LOW, MEDIUM, HIGH, CRITICAL)."),
+        editor: z
+          .string()
+          .optional()
+          .describe(
+            "Name of the user making the edit (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
+    },
+    async (
+      {
+        taskId,
+        title,
+        description,
+        priority,
+        editor,
+      }: {
+        taskId: string;
+        title?: string;
+        description?: string;
+        priority?: string;
+        editor?: string;
+      },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(authExtra, "update_task", editor);
+      if (result.error) return result.error;
+      return mcpUpdateTask(result.auth!, taskId, { title, description, priority });
+    },
+  );
+
+  server.registerTool(
+    "send_to_task_agent",
+    {
+      title: "Send Message to Task Agent",
+      description:
+        "Send a message to a task's agent chat. Use this from the plan agent (or other orchestrating agent) to coordinate with a task — push context, ask a question, or propagate a decision made at the plan level. This is delegation, not editing: the task agent owns its own work; you're sending a chat message and it replies asynchronously. Fire-and-forget — returns once the message is delivered, NOT once the agent replies. Fails if the task agent is currently running (workflowStatus === 'IN_PROGRESS'); use read_task to check and wait until it leaves IN_PROGRESS before sending. The message is automatically prefixed with `[via plan agent]` so the task agent can recognize cross-context coordination signals; lead your message with a one-line reason for context.",
+      inputSchema: {
+        taskId: z
+          .string()
+          .describe("The ID of the task whose agent to message"),
+        message: z
+          .string()
+          .describe(
+            "The message to send. Lead with a short framing of WHY you're reaching out so the task agent has context.",
+          ),
+        sender: z
+          .string()
+          .optional()
+          .describe(
+            "Name of the sender (matched against name or alias). Falls back to workspace owner if not found.",
+          ),
+      },
+    },
+    async (
+      {
+        taskId,
+        message,
+        sender,
+      }: { taskId: string; message: string; sender?: string },
+      extra,
+    ) => {
+      const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
+      const result = await getWorkspaceAuth(
+        authExtra,
+        "send_to_task_agent",
+        sender,
+      );
+      if (result.error) return result.error;
+      return mcpSendToTaskAgent(result.auth!, taskId, message);
     },
   );
 
@@ -408,7 +787,15 @@ function createServer(): McpServer {
   return server;
 }
 
-// Verify a short-lived JWT (signed by generate-link) and resolve workspace
+// Verify a short-lived JWT and resolve into an AuthInfo. Dispatches
+// on the `scope` claim:
+//   - "org"        → org-scope tokens minted by /api/mcp/org-token,
+//                    verified by `verifyOrgJwt`. Carries org-wide
+//                    permissions + org membership re-check.
+//   - "workspace"  → legacy workspace tokens minted by /api/livekit-
+//     or absent       token. Carries a workspace slug + per-tool
+//                    swarm credentials. Default for any token without
+//                    a `scope` claim (back-compat).
 async function verifyJwt(
   token: string,
   url: URL,
@@ -416,37 +803,48 @@ async function verifyJwt(
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret) return undefined;
 
+  let payload: Record<string, unknown>;
   try {
-    const payload = jwt.verify(token, jwtSecret) as {
-      slug?: string;
-      userId?: string;
-    };
-    if (!payload.slug) return undefined;
+    payload = jwt.verify(token, jwtSecret) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
 
+  // Org-scope branch — no workspace lookup, no swarm resolution.
+  if (payload.scope === "org") {
+    return verifyOrgJwt(token, payload);
+  }
+
+  // Workspace-scope branch (default). The legacy token shape carries
+  // `slug` + `userId`; tokens without `slug` are rejected.
+  const wsPayload = payload as { slug?: string; userId?: string };
+  if (!wsPayload.slug) return undefined;
+
+  try {
     const workspace = await db.workspace.findFirst({
-      where: { slug: payload.slug, deleted: false },
+      where: { slug: wsPayload.slug, deleted: false },
       select: { id: true, slug: true, name: true, ownerId: true },
     });
     if (!workspace) {
-      console.log("[MCP] JWT workspace not found:", payload.slug);
+      console.log("[MCP] JWT workspace not found:", wsPayload.slug);
       return undefined;
     }
 
     // IDOR hardening: if the JWT carries a userId (minted by
     // /api/livekit-token), re-validate that the user is still a member of
     // the workspace at use time. Legacy JWTs without userId are rejected.
-    if (!payload.userId) {
+    if (!wsPayload.userId) {
       console.log("[MCP] JWT missing userId claim — rejecting legacy token");
       return undefined;
     }
 
-    const isOwner = workspace.ownerId === payload.userId;
+    const isOwner = workspace.ownerId === wsPayload.userId;
     if (!isOwner) {
       const membership = await db.workspaceMember.findUnique({
         where: {
           workspaceId_userId: {
             workspaceId: workspace.id,
-            userId: payload.userId,
+            userId: wsPayload.userId,
           },
         },
         select: { role: true },
@@ -491,8 +889,107 @@ async function verifyJwt(
       } as McpAuthExtra,
     };
   } catch {
+    // Preserves the original function's behavior: any DB error here
+    // falls through to a 401. Refactoring to surface a 500 would be a
+    // policy change worth its own discussion.
     return undefined;
   }
+}
+
+// Verify a short-lived org-scope JWT (signed by /api/mcp/org-token).
+//
+// Shape (see also `orgMcpTools.ts`):
+//   {
+//     scope: "org",
+//     orgId: string,
+//     userId: string,
+//     permissions: ("read" | "write")[],
+//     purpose: string,
+//     iat, exp, jti
+//   }
+//
+// Re-validates org membership at use time (mirrors workspace-JWT IDOR
+// hardening): a user removed from every workspace in the org after
+// the token was minted should not be able to drive the org agent.
+async function verifyOrgJwt(
+  token: string,
+  payload: Record<string, unknown>,
+): Promise<AuthInfo | undefined> {
+  const orgId = typeof payload.orgId === "string" ? payload.orgId : undefined;
+  const userId =
+    typeof payload.userId === "string" ? payload.userId : undefined;
+  const purpose =
+    typeof payload.purpose === "string" ? payload.purpose : "unknown";
+  const jti = typeof payload.jti === "string" ? payload.jti : undefined;
+  const rawPermissions = Array.isArray(payload.permissions)
+    ? payload.permissions
+    : [];
+
+  if (!orgId || !userId) {
+    console.log("[MCP] Org JWT missing orgId or userId");
+    return undefined;
+  }
+
+  // Normalize + filter to known permissions. Unknown values are
+  // silently dropped rather than failing the token outright, so
+  // additive future permissions don't break older verifiers in
+  // mixed-version deployments.
+  const permissions: OrgPermission[] = rawPermissions.filter(isOrgPermission);
+  if (!permissions.includes("read")) {
+    console.log("[MCP] Org JWT missing required 'read' permission");
+    return undefined;
+  }
+
+  // Re-validate org membership: user must own or be an active member
+  // of at least one workspace under this org. Same predicate as
+  // `resolveAuthorizedOrgId` but inlined to keep the org-id known
+  // (we don't need to re-resolve it from a githubLogin).
+  //
+  // DB errors fall through to 401 (return undefined) to match the
+  // workspace-JWT branch's behavior — verification is best-effort and
+  // a transient DB blip should not get distinguished from "not a
+  // member" to the client.
+  let membership: { id: string } | null;
+  try {
+    membership = await db.workspace.findFirst({
+      where: {
+        sourceControlOrgId: orgId,
+        deleted: false,
+        OR: [
+          { ownerId: userId },
+          { members: { some: { userId, leftAt: null } } },
+        ],
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    console.error("[MCP] Org JWT membership check failed:", err);
+    return undefined;
+  }
+  if (!membership) {
+    console.log(
+      `[MCP] Org JWT user ${userId} no longer has membership in org ${orgId}`,
+    );
+    return undefined;
+  }
+
+  console.log(
+    `[MCP] Org JWT verified: org=${orgId} user=${userId} perms=${permissions.join(",")} purpose=${purpose}`,
+  );
+
+  return {
+    token,
+    clientId: orgId,
+    scopes: [],
+    extra: {
+      scope: "org" as const,
+      orgId,
+      userId,
+      permissions,
+      purpose,
+      jti,
+    } satisfies OrgMcpAuthExtra,
+  };
 }
 
 async function verifyToken(req: Request): Promise<AuthInfo | undefined> {
@@ -573,8 +1070,38 @@ export async function handleMcpRequest(req: Request): Promise<Response> {
   const authInfo = await verifyToken(req);
   if (!authInfo) return UNAUTHORIZED();
 
+  // Pick the tool family based on the token's scope. Org-scope tokens
+  // get a server with just `org_agent`; workspace-scope tokens get the
+  // full existing tool surface. The auth context is mutually
+  // exclusive — see `createServer` for the rationale.
+  const scope =
+    (authInfo.extra as { scope?: string } | undefined)?.scope === "org"
+      ? "org"
+      : "workspace";
+
+  // For org-scope, resolve the org's display name once per request so
+  // the `org_agent` tool description can name the org concretely
+  // (e.g. "Stakwork") instead of the generic "this organization".
+  // Best-effort: a DB hiccup or a row with neither `name` nor
+  // `githubLogin` falls back to the generic description rather than
+  // failing the request — the tool still works, the agent just sees
+  // less context.
+  let orgName: string | undefined;
+  if (scope === "org") {
+    const orgId = (authInfo.extra as OrgMcpAuthExtra).orgId;
+    try {
+      const org = await db.sourceControlOrg.findUnique({
+        where: { id: orgId },
+        select: { name: true, githubLogin: true },
+      });
+      orgName = org?.name ?? org?.githubLogin ?? undefined;
+    } catch (err) {
+      console.warn("[MCP] org name lookup failed:", err);
+    }
+  }
+
   // Fresh server + stateless transport per request
-  const server = createServer();
+  const server = createServer(scope, { orgName });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // stateless
   });

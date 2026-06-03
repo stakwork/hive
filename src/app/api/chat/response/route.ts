@@ -17,6 +17,8 @@ import { EncryptionService } from "@/lib/encryption";
 import { processScreenshotUpload, processRecordingUpload } from "@/lib/screenshot-upload";
 import { parsePlanXml } from "@/lib/utils/plan-xml";
 import { createAndSendNotification } from "@/services/notifications";
+import { fanOutPlannerMessageToCanvas } from "@/services/canvas-planner-fanout";
+import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
 
 export const fetchCache = "force-no-store";
 
@@ -203,8 +205,7 @@ export async function POST(request: NextRequest) {
                 JSON.stringify(workflowResult).substring(0, 500),
               );
               const workflowVersionNode = workflowResult.nodes?.[0] || workflowResult.data?.[0];
-              const updatedWorkflowJson =
-                workflowVersionNode?.properties?.workflow_json || workflowVersionNode?.workflow_json;
+              const updatedWorkflowJson = getWorkflowJsonFromNode(workflowVersionNode);
 
               console.log(
                 "[chat/response] Found workflowVersionNode:",
@@ -214,8 +215,7 @@ export async function POST(request: NextRequest) {
               );
 
               if (updatedWorkflowJson) {
-                const formattedUpdatedJson =
-                  typeof updatedWorkflowJson === "string" ? updatedWorkflowJson : JSON.stringify(updatedWorkflowJson);
+                const formattedUpdatedJson = updatedWorkflowJson;
 
                 // Update the artifact: set workflowJson to updated, preserve originalWorkflowJson if in workflow_editor mode
                 const updatedContent: WorkflowContent = {
@@ -244,6 +244,40 @@ export async function POST(request: NextRequest) {
             }
           } catch (fetchError) {
             console.error("Error fetching workflow spec:", fetchError);
+          }
+        }
+      }
+    }
+
+    // Auto-patch WorkflowTask row when a WORKFLOW artifact arrives with a real workflowId
+    // This handles the case where a task was created with workflowId: null (new workflow)
+    // and the agent has now assigned a real workflowId.
+    if (taskId && taskMode === "workflow_editor") {
+      for (const dbArtifact of chatMessage.artifacts) {
+        if (dbArtifact.type === ArtifactType.WORKFLOW) {
+          const content = dbArtifact.content as WorkflowContent | null;
+          if (content && typeof content.workflowId === "number") {
+            try {
+              await db.workflowTask.upsert({
+                where: { taskId },
+                create: {
+                  taskId,
+                  workflowId: content.workflowId,
+                  workflowName: content.workflowName ?? null,
+                  workflowRefId: content.workflowRefId ?? null,
+                },
+                update: {
+                  workflowId: content.workflowId,
+                  workflowName: content.workflowName ?? null,
+                  workflowRefId: content.workflowRefId ?? null,
+                },
+              });
+              console.log(
+                `[chat/response] Auto-patched WorkflowTask ${taskId} with workflowId ${content.workflowId}`,
+              );
+            } catch (upsertError) {
+              console.error("[chat/response] Failed to auto-patch WorkflowTask:", upsertError);
+            }
           }
         }
       }
@@ -498,6 +532,33 @@ export async function POST(request: NextRequest) {
         await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
       } catch (error) {
         console.error("Error broadcasting feature update to Pusher:", error);
+      }
+
+      // Fan out the planner's ASSISTANT message to the canvas
+      // conversation that owns this feature (if any). The fan-out
+      // worker is failure-tolerant — it logs and swallows errors so
+      // a fan-out hiccup never blocks the webhook response. See
+      // `src/services/canvas-planner-fanout.ts` for the lock /
+      // idempotency model. Phase 3 will add the autonomous-canvas-
+      // agent invocation inside the worker, gated by
+      // `CANVAS_AUTONOMOUS_TURNS_ENABLED`.
+      try {
+        const fanOutFeature = await db.feature.findUnique({
+          where: { id: featureId },
+          select: {
+            id: true,
+            parentCanvasConversationId: true,
+            workspaceId: true,
+          },
+        });
+        if (fanOutFeature) {
+          await fanOutPlannerMessageToCanvas(fanOutFeature, chatMessage);
+        }
+      } catch (e) {
+        console.error(
+          "[chat/response] canvas fan-out failed (non-fatal):",
+          e,
+        );
       }
 
       // Fire plan-page notifications based on artifact types (fire-and-forget)

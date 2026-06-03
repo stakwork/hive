@@ -285,20 +285,24 @@ export const CATEGORY_REGISTRY: CategorySpec[] = [
   {
     id: "service",
     agentDescription:
-      "a sky-cyan container card for a piece of running infrastructure or a third-party platform tied to a workspace — e.g. an EC2 host, a Vercel project, a GitHub App installation, a Kubernetes sandbox manager",
+      "a sky-cyan container card for a piece of running infrastructure or a third-party platform — e.g. an EC2 host, a Vercel project, a GitHub App installation, a Kubernetes sandbox manager. Lives on workspace sub-canvases (as the workspace's ops surface) and initiative sub-canvases (as a 'this initiative depends on this service' annotation).",
     // `service` is a free-form authored node — no DB row, no
-    // projection. Lives only on the workspace sub-canvas (see
-    // `categoryAllowedOnScope`) so it composes with the projected
-    // workspace + repo cards as "the actual ops surface running
-    // beneath this workspace." Forward-compat: a future v2 will let
-    // a click on a service card pull logs from the underlying
-    // platform via `customData.kind` + `customData.endpoint`. Those
-    // fields are reserved here so authored data persisted today
-    // round-trips intact when the log viewer ships.
+    // projection. Lives on workspace sub-canvases (where it composes
+    // with the projected workspace + repo cards as "the actual ops
+    // surface running beneath this workspace") and on initiative
+    // sub-canvases (where it annotates "this initiative depends on
+    // this piece of infra"). Cards on different canvases are
+    // independent — there's no shared registry, so renaming a
+    // Stripe card on initiative A doesn't touch a Stripe card on
+    // workspace B. See `categoryAllowedOnScope`. Forward-compat: a
+    // future v2 will let a click on a service card pull logs from
+    // the underlying platform via `customData.kind` + `customData.endpoint`.
+    // Those fields are reserved here so authored data persisted
+    // today round-trips intact when the log viewer ships.
     agentWritable: false,
     userCreatable: true,
     promptGuidance:
-      "Authored container card for ops infrastructure (an EC2 box, a Vercel project, a GitHub App, a Kubernetes manager, etc.). Lives only on a workspace sub-canvas. Free-form: the user creates, names, resizes, and edges these cards themselves; the agent must NEVER author one. Annotation-only — draw edges from a `repository` or `service` to another `service` to show 'this code deploys here' / 'this service calls that one,' or attach a `note` to flag operational context.",
+      "Authored container card for ops infrastructure (an EC2 box, a Vercel project, a GitHub App, a Kubernetes manager, etc.). Lives on workspace and initiative sub-canvases — on a workspace canvas as the ops surface alongside repos and pinned features, on an initiative canvas as a 'this initiative depends on these services' annotation. Cards on different canvases are independent (no shared registry). Free-form: the user creates, names, resizes, and edges these cards themselves; the agent must NEVER author one. Annotation-only — draw edges from a `repository` or `service` to another `service` to show 'this code deploys here' / 'this service calls that one,' or attach a `note` to flag operational context.",
     customDataKeys: [
       {
         key: "kind",
@@ -457,14 +461,19 @@ export function categoryAllowedOnScope(
   if (categoryId === "research") {
     return ref === "" || ref.startsWith("initiative:");
   }
-  // `service` is the workspace's ops surface — only meaningful as a
-  // child of a workspace. The DB-projected workspace card lives on
-  // root and drills into a `ws:<id>` sub-canvas; that's where repos,
-  // loose features, and now services co-locate. Hosting services on
-  // root would conflate org-level strategy with per-workspace ops;
-  // hosting them on initiative timelines would conflate strategy
-  // with delivery infra. Keep the scope tight.
-  if (categoryId === "service") return ref.startsWith("ws:");
+  // `service` is an ops-infra annotation card. It lives on a
+  // workspace sub-canvas (`ws:<id>`) — the workspace's ops surface,
+  // alongside the projected repo cards and pinned features — and on
+  // an initiative sub-canvas (`initiative:<id>`) as a "this
+  // initiative depends on these services" annotation. Service cards
+  // are pure authored (no DB row, no shared registry), so a Stripe
+  // card on initiative A and a Stripe card on a workspace canvas are
+  // independent nodes; renaming one doesn't touch the other. Not
+  // allowed on root (would conflate org-level strategy with infra)
+  // or on milestone canvases (milestones have no sub-canvas).
+  if (categoryId === "service") {
+    return ref.startsWith("ws:") || ref.startsWith("initiative:");
+  }
 
   // `feature` falls through to the default branch — allowed on every
   // scope. The dialog handles per-scope field locking (workspace

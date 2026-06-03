@@ -769,6 +769,7 @@ export const milestoneTimelineProjector: Projector = {
         status: true,
         workflowStatus: true,
         milestoneId: true,
+        dependsOnFeatureIds: true,
         tasks: {
           where: { deleted: false, archived: false },
           select: { status: true },
@@ -776,6 +777,13 @@ export const milestoneTimelineProjector: Projector = {
       },
     });
     const edges: CanvasEdge[] = [];
+    // We only emit `synthetic:feature-blocks:` edges between features
+    // BOTH anchored to this initiative — cross-initiative deps live in
+    // the data column but render on neither canvas in v1 (see plan's
+    // "Future seams"). This set is the projection cap; a blocker that
+    // exists in the DB but isn't anchored here (or got truncated by
+    // `LOOSE_FEATURE_LIMIT`) silently doesn't get an edge.
+    const projectedFeatureIds = new Set(features.map((f) => f.id));
     features.forEach((f, index) => {
       nodes.push(
         buildFeatureNode(f, defaultLooseFeatureInitiativePosition(index)),
@@ -795,9 +803,25 @@ export const milestoneTimelineProjector: Projector = {
           toNode: `milestone:${f.milestoneId}`,
         } as CanvasEdge);
       }
+      // Synthetic dependency edge: blocker → blocked. Same
+      // `synthetic:` posture as the milestone edge — filtered out of
+      // the authored blob on write, recomputed every read. Direction:
+      // arrow points from blocker (the one that must finish) at the
+      // blocked. `customData.kind: "blocks"` lets `canvas-theme.ts`
+      // pick a distinct visual (dashed, etc.). The `?? []` guards
+      // against test mocks that don't carry the column.
+      for (const blockerId of f.dependsOnFeatureIds ?? []) {
+        if (!projectedFeatureIds.has(blockerId)) continue;
+        edges.push({
+          id: `synthetic:feature-blocks:${blockerId}:${f.id}`,
+          fromNode: `feature:${blockerId}`,
+          toNode: `feature:${f.id}`,
+          customData: { kind: "blocks" },
+        } as CanvasEdge);
+      }
     });
 
-    return { nodes, edges, columns: buildTimelineColumns(new Date()) };
+    return { nodes, edges };
   },
 };
 

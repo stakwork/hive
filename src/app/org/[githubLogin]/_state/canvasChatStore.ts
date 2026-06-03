@@ -75,6 +75,27 @@ export interface ToolCall {
   errorText?: string;
 }
 
+/**
+ * Marks a `CanvasChatMessage` row whose origin is NOT the canvas
+ * conversation itself. The fan-out worker
+ * (`src/services/canvas-planner-fanout.ts`) writes inbound rows
+ * carrying `kind: "planner"`; Phase 4's planner-form answer endpoint
+ * writes outbound rows carrying `kind: "user-answered-planner-form"`.
+ *
+ * Render-side filters key on `source.kind` directly — see
+ * `SidebarChat.tsx` (early-return) and `SubAgentRunCard.tsx`
+ * (inbound thread entries). Round-trips through
+ * `SharedConversation.messages` JSON for free.
+ *
+ * Discriminated union (rather than a flat marker) so Phase 4 can
+ * land its variant without breaking Phase 2 consumers.
+ */
+export type CanvasMessageSource =
+  | { kind: "planner"; featureId: string; plannerMessageId: string }
+  // Added in Phase 4 — kept in the union now to make exhaustive
+  // checks in switch statements complete from Phase 2 onward.
+  | { kind: "user-answered-planner-form"; featureId: string; plannerMessageId: string };
+
 export interface CanvasChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -103,6 +124,12 @@ export interface CanvasChatMessage {
    * the new entity id and the canvas ref it landed on.
    */
   approvalResult?: ApprovalResult;
+  /**
+   * Provenance marker for rows that didn't originate in the canvas
+   * conversation (planner fan-out, planner-form answers).
+   * See `CanvasMessageSource`.
+   */
+  source?: CanvasMessageSource;
 }
 
 export interface CanvasConversation {
@@ -126,6 +153,7 @@ export interface ConversationContext {
   currentCanvasRef: string;
   currentCanvasBreadcrumb: string;
   selectedNodeId: string | null;
+  selectedNodeIds: string[];
 }
 
 // ─── Reserved slots for canvas-bound features (filled in later PRs) ─────────

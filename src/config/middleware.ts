@@ -91,6 +91,10 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/features/*/attachments", strategy: "pattern", access: "public", methods: ["GET"] },
   { path: "/api/features/*/attachments/count", strategy: "pattern", access: "public", methods: ["GET"] },
 
+  // Scorer workspace-scoped routes (auth resolved inside handlers)
+  { path: "/api/scorer/insights/*", strategy: "pattern", access: "public", methods: ["GET"] },
+  { path: "/api/scorer/analyze/*", strategy: "pattern", access: "public", methods: ["POST"] },
+
   { path: "/api/phases/*", strategy: "pattern", access: "public", methods: ["GET"] },
   { path: "/api/tickets/*", strategy: "pattern", access: "public", methods: ["GET"] },
 
@@ -179,6 +183,8 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/members", strategy: "prefix", access: "webhook" },
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
   { path: "/api/features/*/title", strategy: "pattern", access: "webhook" },
+  // Has own auth — supports session cookies and Bearer tokens.
+  { path: "/api/features/*/suggestions", strategy: "pattern", access: "webhook" },
   { path: "/api/pool-manager/claim-pod/*", strategy: "pattern", access: "webhook" },
   { path: "/mcp", strategy: "prefix", access: "webhook" },
 ] as const;

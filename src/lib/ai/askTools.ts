@@ -13,9 +13,12 @@ import {
   findWorkspaceUser,
   type WorkspaceAuth,
 } from "@/lib/mcp/mcpTools";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import { swarmFetch } from "./concepts";
 
 export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
-  const r = await fetch(`${swarmUrl}/gitree/features`, {
+  const r = await swarmFetch(`${swarmUrl}/gitree/features`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -51,15 +54,55 @@ export async function repoAgent(
     model?: string;
     skills?: Record<string, boolean>;
     subAgents?: SubAgent[];
-  }
+  },
+  /**
+   * Optional Bifrost routing. When provided, the swarm-side `repo/agent`
+   * uses `bifrost.apiKey` as the LLM bearer token, `bifrost.baseUrl`
+   * as the LLM base URL, and forwards `bifrost.headers` (today: the
+   * `x-macaroon` minted by the orchestrator for cost-per-agent
+   * observability) onto the outbound LLM call. Plumbed via
+   * `params.apiKey` / `params.baseUrl` / `params.headers` on the body
+   * per the stakgraph protocol.
+   *
+   * `baseUrl` is already the fully-formed per-provider URL — the
+   * reconciler resolves it for you (see `getBifrostForLLM` in
+   * `@/services/bifrost`). Pass it through verbatim; no
+   * normalization here.
+   *
+   * `headers` can be an empty map when the orchestrator's macaroon
+   * mint failed; that's an accepted degraded state (shadow mode —
+   * no `x-macaroon`, no dim on `logs.db`, but the LLM call still
+   * runs). Passed through to the swarm verbatim either way.
+   *
+   * The accepted shape is a structural subset of `BifrostInvocation`
+   * from `@/services/bifrost/orchestrator` so callers can pass the
+   * orchestrator return value verbatim. The shape is duck-typed
+   * (`{ apiKey, baseUrl, headers? }`) so legacy callers that hand-
+   * roll a `{ apiKey, baseUrl }` object still type-check.
+   */
+  bifrost?: {
+    apiKey: string;
+    baseUrl: string;
+    headers?: Record<string, string>;
+  },
 ): Promise<Record<string, string>> {
+  const body: Record<string, unknown> = { ...params };
+  if (bifrost) {
+    body.apiKey = bifrost.apiKey;
+    body.baseUrl = bifrost.baseUrl;
+    // Forwarded as a plain object alongside apiKey/baseUrl; the
+    // swarm-side `/repo/agent` handler reads `body.headers` and
+    // attaches each entry to the outbound LLM HTTP call.
+    body.headers = bifrost.headers ?? {};
+  }
+
   const initiateResponse = await fetch(`${swarmUrl}/repo/agent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-api-token": swarmApiKey,
     },
-    body: JSON.stringify(params),
+    body: JSON.stringify(body),
   });
 
   if (!initiateResponse.ok) {
@@ -149,7 +192,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
       }),
       execute: async ({ conceptId }: { conceptId: string }) => {
         try {
-          const res = await fetch(`${swarmUrl}/gitree/features/${encodeURIComponent(conceptId)}`, {
+          const res = await swarmFetch(`${swarmUrl}/gitree/features/${encodeURIComponent(conceptId)}`, {
             method: "GET",
             headers: {
               "Content-Type": "application/json",
@@ -221,12 +264,29 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
       execute: async ({ prompt }: { prompt: string }) => {
         const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE! DO NOT DO A THOROUGH SEARCH OF THE REPO. TRY TO FINISH THE EXPLORATION VERY QUICKLY!`;
         try {
-          // Pass comma-separated repo URLs for multi-repo support
-          const rr = await repoAgent(swarmUrl, swarmApiKey, {
-            repo_url: repoUrls.join(","),
-            prompt: prompt2,
-            pat,
+          // Master Bifrost reconciler — see `services/bifrost/orchestrator.ts`.
+          // Routes LLM calls through this workspace's Bifrost when we
+          // have a `(workspaceId, userId)` pair and the rollout flag
+          // is on; otherwise returns undefined and we fall back to
+          // the swarm's default LLM key.
+          //
+          // `agentName: "repo-agent"` is what shows up as the
+          // `agent-name` dim on the gateway's `logs.db`, driving the
+          // cost-per-agent rollups operators care about.
+          const bifrost = await getBifrostForLLM(workspaceAuth, {
+            agentName: "repo-agent",
           });
+          // Pass comma-separated repo URLs for multi-repo support
+          const rr = await repoAgent(
+            swarmUrl,
+            swarmApiKey,
+            {
+              repo_url: repoUrls.join(","),
+              prompt: prompt2,
+              pat,
+            },
+            bifrost,
+          );
           return rr.content;
         } catch (e) {
           console.error("Error executing repo agent:", e);
@@ -402,7 +462,7 @@ interface Clue {
 
 
 export async function searchClues(swarmUrl: string, swarmApiKey: string, query: string, minScore: number = 0.73): Promise<ClueResult[]> {
-  const r = await fetch(`${swarmUrl}/gitree/search-clues`, {
+  const r = await swarmFetch(`${swarmUrl}/gitree/search-clues`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

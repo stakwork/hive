@@ -10,12 +10,14 @@ import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Upload, Loader2, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
 import { PromptsPanel } from "@/components/prompts";
 import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
 import { ProjectInfoCard } from "@/components/ProjectInfoCard";
 import { StakworkRunDropdown } from "@/components/StakworkRunDropdown";
 import { computeWorkflowDiff } from "@/lib/utils/workflow-diff";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
@@ -23,13 +25,16 @@ interface WorkflowArtifactPanelProps {
   onStepSelect?: (step: WorkflowTransition) => void;
   onVersionChange?: (versionId: string) => void;
   isSuperAdmin?: boolean;
+  taskId?: string;
 }
 
-export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange, isSuperAdmin = false }: WorkflowArtifactPanelProps) {
+export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange, isSuperAdmin = false, taskId }: WorkflowArtifactPanelProps) {
   const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork" | "children">("editor");
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isPublished, setIsPublished] = useState(false);
 
   const handleStepClick = useCallback((step: WorkflowTransition) => {
     setClickedStep(step);
@@ -46,6 +51,42 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     }
     setIsModalOpen(false);
   }, [clickedStep, onStepSelect]);
+
+  // Group artifacts by workflowId for multi-workflow support
+  const workflowGroups = useMemo(() => {
+    const map = new Map<string, { workflowId: number | string; workflowName: string; artifacts: Artifact[] }>();
+    for (const artifact of artifacts) {
+      const content = artifact.content as WorkflowContent;
+      if (!content?.workflowId) continue;
+      const key = String(content.workflowId);
+      if (!map.has(key)) {
+        map.set(key, {
+          workflowId: content.workflowId,
+          workflowName: content.workflowName || `Workflow ${key}`,
+          artifacts: [],
+        });
+      }
+      map.get(key)!.artifacts.push(artifact);
+    }
+    return Array.from(map.values());
+  }, [artifacts]);
+
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(
+    () => String(workflowGroups[0]?.workflowId ?? '')
+  );
+
+  // Reset to first group when workflowGroups changes (new artifacts arrive)
+  useEffect(() => {
+    if (workflowGroups.length > 0) {
+      setSelectedWorkflowId(String(workflowGroups[0].workflowId));
+    }
+  }, [workflowGroups]);
+
+  // Scope artifacts to the selected workflow group
+  const activeArtifacts = useMemo(() => {
+    if (workflowGroups.length <= 1) return artifacts; // backward compat
+    return workflowGroups.find(g => String(g.workflowId) === selectedWorkflowId)?.artifacts ?? artifacts;
+  }, [workflowGroups, selectedWorkflowId, artifacts]);
 
   if (artifacts.length === 0) {
     return (
@@ -73,7 +114,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     let workflowVersionId: string | number | undefined;
 
     // Iterate oldest to newest - later values override earlier ones
-    for (const artifact of artifacts) {
+    for (const artifact of activeArtifacts) {
       const content = artifact.content as WorkflowContent;
       if (content?.workflowJson) workflowJson = content.workflowJson;
       if (content?.originalWorkflowJson) originalWorkflowJson = content.originalWorkflowJson;
@@ -97,7 +138,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       debuggerProjectId,
       workflowVersionId,
     };
-  }, [artifacts]);
+  }, [activeArtifacts]);
 
   const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
 
@@ -109,6 +150,8 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
   // Check if we have changes to show
   const hasChanges = !!(originalWorkflowJson && workflowJson);
+  // Always show Changes tab in editor mode (even without a prior version)
+  const showChangesTab = isEditorMode;
 
   // Compute changed step/connection IDs for orange graph highlights (editor tab only)
   const { changedStepIds, changedConnectionIds } = useMemo(() => {
@@ -117,6 +160,50 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     }
     return computeWorkflowDiff(originalWorkflowJson ?? null, workflowJson ?? null);
   }, [hasChanges, originalWorkflowJson, workflowJson]);
+
+  const latestArtifactId = activeArtifacts[activeArtifacts.length - 1]?.id;
+
+  const handlePublish = async () => {
+    if (!mergedContent.workflowId) {
+      toast.error("Missing workflow ID");
+      return;
+    }
+    setIsPublishing(true);
+    try {
+      const res = await fetch('/api/workflow/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflowId: mergedContent.workflowId,
+          workflowRefId: mergedContent.workflowRefId,
+          artifactId: latestArtifactId,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to publish workflow');
+      }
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to publish workflow');
+      setIsPublished(true);
+      toast.success('Workflow published successfully');
+      if (taskId) {
+        await fetch(`/api/tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'DONE' }),
+        });
+      }
+    } catch (err) {
+      toast.error('Failed to publish workflow', {
+        description: err instanceof Error ? err.message : 'Unknown error',
+      });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+
 
   // Parse workflowJson if present (direct mode from graph)
   const parsedWorkflowData = useMemo(() => {
@@ -197,7 +284,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
       "4": "grid-cols-4",
       "5": "grid-cols-5",
     };
-    const colCount = 3 + (hasChanges ? 1 : 0) + (hasChildWorkflows ? 1 : 0);
+    const colCount = 3 + (showChangesTab ? 1 : 0) + (hasChildWorkflows ? 1 : 0);
     const gridColsClass = TAB_GRID_COLS[String(colCount)] ?? "grid-cols-3";
 
     return (
@@ -212,6 +299,40 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
             />
           </div>
         )}
+        {workflowGroups.length > 1 && (
+          <div className="px-2 pt-2 pb-1 flex-shrink-0">
+            <Select value={selectedWorkflowId} onValueChange={setSelectedWorkflowId}>
+              <SelectTrigger className="w-full h-8 text-sm">
+                <SelectValue placeholder="Select workflow" />
+              </SelectTrigger>
+              <SelectContent>
+                {workflowGroups.map((g) => (
+                  <SelectItem key={String(g.workflowId)} value={String(g.workflowId)}>
+                    {g.workflowName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {hasChanges && (
+          <div className="flex justify-end px-2 pb-1 flex-shrink-0">
+            <Button
+              size="sm"
+              onClick={handlePublish}
+              disabled={isPublishing || isPublished}
+              className={isPublished ? 'gap-2 bg-green-600 hover:bg-green-600 text-white' : 'gap-2'}
+            >
+              {isPublished ? (
+                <><CheckCircle2 className="w-4 h-4" />Published</>
+              ) : isPublishing ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Publishing...</>
+              ) : (
+                <><Upload className="w-4 h-4" />Publish</>
+              )}
+            </Button>
+          </div>
+        )}
         <Tabs
           value={activeDisplayTab}
           onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork" | "children")}
@@ -219,7 +340,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
         >
           <TabsList className={`grid w-full flex-shrink-0 ${gridColsClass}`}>
             <TabsTrigger value="editor">Edit Steps</TabsTrigger>
-            {hasChanges && <TabsTrigger value="changes">Changes</TabsTrigger>}
+            {showChangesTab && <TabsTrigger value="changes">Changes</TabsTrigger>}
             <TabsTrigger value="prompts">Prompts</TabsTrigger>
             <TabsTrigger value="stakwork">Stak Run</TabsTrigger>
             {hasChildWorkflows && <TabsTrigger value="children">Child Workflows</TabsTrigger>}
@@ -252,7 +373,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
             />
           </TabsContent>
 
-          {hasChanges && (
+          {showChangesTab && (
             <TabsContent value="changes" className="flex-1 overflow-hidden mt-0">
               <WorkflowChangesPanel
                 originalJson={originalWorkflowJson || null}

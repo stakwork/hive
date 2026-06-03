@@ -1,0 +1,228 @@
+/**
+ * Integration tests for POST /api/webhook/agent-logs
+ *
+ * Verifies that after a successful upsert with a feature_id present, the
+ * route broadcasts AGENT_LOG_UPDATED on the feature's Pusher channel with
+ * the correct payload.
+ */
+
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+import { db } from "@/lib/db";
+import { generateUniqueId, generateUniqueSlug, generateUniqueEmail } from "@/__tests__/support/helpers";
+
+// ── Pusher mock ───────────────────────────────────────────────────────────────
+const { mockPusherTrigger } = vi.hoisted(() => ({
+  mockPusherTrigger: vi.fn(),
+}));
+
+vi.mock("@/lib/pusher", async () => {
+  const actual = await vi.importActual("@/lib/pusher");
+  return {
+    ...actual,
+    pusherServer: {
+      trigger: mockPusherTrigger,
+    },
+  };
+});
+
+// Blob mock — avoids real network calls
+vi.mock("@vercel/blob", () => ({
+  put: vi.fn().mockResolvedValue({ url: "https://blob.example.com/agent-log.json" }),
+}));
+
+// Import route handler after mocks are in place
+import { POST } from "@/app/api/webhook/agent-logs/route";
+import { NextRequest } from "next/server";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function buildRequest(body: Record<string, unknown>): NextRequest {
+  return new NextRequest("http://localhost/api/webhook/agent-logs", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-token": process.env.API_TOKEN ?? "test-token",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function createTestSetup() {
+  return db.$transaction(async (tx) => {
+    const owner = await tx.user.create({
+      data: {
+        id: generateUniqueId("user"),
+        email: generateUniqueEmail("agent-log-webhook"),
+        name: "Test Owner",
+      },
+    });
+
+    const workspace = await tx.workspace.create({
+      data: {
+        id: generateUniqueId("workspace"),
+        name: "Test Workspace",
+        slug: generateUniqueSlug("agent-log-ws"),
+        ownerId: owner.id,
+      },
+    });
+
+    const feature = await tx.feature.create({
+      data: {
+        id: generateUniqueId("feature"),
+        title: "Test Feature",
+        brief: "Brief",
+        workspaceId: workspace.id,
+        createdById: owner.id,
+        updatedById: owner.id,
+      },
+    });
+
+    return { owner, workspace, feature };
+  });
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe("POST /api/webhook/agent-logs — Pusher broadcast", () => {
+  let testData: Awaited<ReturnType<typeof createTestSetup>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    // Ensure API_TOKEN is set for auth check
+    process.env.API_TOKEN = "test-token";
+    testData = await createTestSetup();
+  });
+
+  afterEach(async () => {
+    // Cleanup in reverse order
+    await db.agentLog.deleteMany({ where: { workspaceId: testData.workspace.id } });
+    await db.feature.deleteMany({ where: { workspaceId: testData.workspace.id } });
+    await db.workspace.deleteMany({ where: { id: testData.workspace.id } });
+    await db.user.deleteMany({ where: { id: testData.owner.id } });
+  });
+
+  test("broadcasts AGENT_LOG_UPDATED on the feature channel after successful create", async () => {
+    const { workspace, feature } = testData;
+
+    const request = buildRequest({
+      agent: "plan-agent-abc",
+      workspace_id: workspace.id,
+      feature_id: feature.id,
+      logs: [{ role: "assistant", content: "Hello" }],
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    expect(mockPusherTrigger).toHaveBeenCalledOnce();
+    const [channelName, eventName, payload] = mockPusherTrigger.mock.calls[0];
+
+    expect(channelName).toBe(`feature-${feature.id}`);
+    expect(eventName).toBe("agent-log-updated");
+    expect(payload).toMatchObject({
+      agent: "plan-agent-abc",
+      isNew: true,
+    });
+    expect(typeof payload.id).toBe("string");
+    expect(payload.id).toBeTruthy();
+    expect(typeof payload.createdAt).toBe("object"); // Date object from Prisma
+  });
+
+  test("broadcasts AGENT_LOG_UPDATED with isNew=false on upsert (update)", async () => {
+    const { workspace, feature } = testData;
+
+    // First request — creates the record
+    await POST(
+      buildRequest({
+        agent: "plan-agent-abc",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        logs: [{ role: "assistant", content: "First" }],
+      })
+    );
+
+    mockPusherTrigger.mockClear();
+
+    // Second request — updates the same agent/feature combo
+    const response = await POST(
+      buildRequest({
+        agent: "plan-agent-abc",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        logs: [{ role: "assistant", content: "Updated" }],
+      })
+    );
+
+    expect(response.status).toBe(201);
+    expect(mockPusherTrigger).toHaveBeenCalledOnce();
+
+    const [, , payload] = mockPusherTrigger.mock.calls[0];
+    expect(payload.isNew).toBe(false);
+  });
+
+  test("does NOT broadcast when feature_id is absent", async () => {
+    const { workspace, feature } = testData;
+
+    // Create a task to satisfy the "at least one association" requirement
+    const task = await db.task.create({
+      data: {
+        id: generateUniqueId("task"),
+        title: "Test Task",
+        workspaceId: workspace.id,
+        createdById: testData.owner.id,
+        updatedById: testData.owner.id,
+      },
+    });
+
+    try {
+      const request = buildRequest({
+        agent: "coder-agent-xyz",
+        workspace_id: workspace.id,
+        task_id: task.id,
+        logs: [{ role: "assistant", content: "No feature" }],
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(201);
+
+      // Pusher should NOT be called when there's no feature_id
+      expect(mockPusherTrigger).not.toHaveBeenCalled();
+    } finally {
+      await db.agentLog.deleteMany({ where: { taskId: task.id } });
+      await db.task.deleteMany({ where: { id: task.id } });
+    }
+  });
+
+  test("returns 201 even when Pusher broadcast throws", async () => {
+    const { workspace, feature } = testData;
+
+    // Simulate Pusher failure
+    mockPusherTrigger.mockRejectedValueOnce(new Error("Pusher unavailable"));
+
+    const request = buildRequest({
+      agent: "plan-agent-failing",
+      workspace_id: workspace.id,
+      feature_id: feature.id,
+      logs: [{ role: "assistant", content: "Log content" }],
+    });
+
+    const response = await POST(request);
+    // Webhook must succeed even when Pusher fails
+    expect(response.status).toBe(201);
+
+    const body = await response.json();
+    expect(body.success).toBe(true);
+  });
+
+  test("returns 401 when API token is missing", async () => {
+    const request = new NextRequest("http://localhost/api/webhook/agent-logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agent: "x", workspace_id: "y", feature_id: "z", logs: [] }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(401);
+    expect(mockPusherTrigger).not.toHaveBeenCalled();
+  });
+});

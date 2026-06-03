@@ -2,9 +2,10 @@
 
 import React, { memo, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, User, X, Image as ImageIcon, FileIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
-import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, BountyArtifact } from "../artifacts";
+import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, PublishScriptArtifact, PublishPromptArtifact, PublishSkillArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
@@ -17,6 +18,7 @@ import { isClarifyingQuestions } from "@/types/stakwork";
 import type { ClarifyingQuestionsResponse } from "@/types/stakwork";
 import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
 import { AnsweredClarifyingQuestions } from "@/components/features/ClarifyingQuestionsPreview/AnsweredClarifyingQuestions";
+import { SuggestionChips } from "@/components/plan/SuggestionChips";
 
 /**
  * Parse message content to extract <logs> sections
@@ -39,6 +41,11 @@ interface ChatMessageProps {
   message: ChatMessageType;
   replyMessage?: ChatMessageType;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
+  // Suggestion chips docked to the bottom of this message's bubble.
+  // Passed only to the most recent assistant message in plan-mode chat.
+  suggestions?: string[];
+  onSuggestionSelect?: (s: string) => void;
+  isSuperAdmin?: boolean;
 }
 
 // Custom comparison function for React.memo
@@ -49,15 +56,29 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
     prevProps.message.updatedAt === nextProps.message.updatedAt &&
     prevProps.message.artifacts === nextProps.message.artifacts &&
     prevProps.message.workflowUrl === nextProps.message.workflowUrl &&
+    prevProps.message.stakworkProjectId === nextProps.message.stakworkProjectId &&
     prevProps.message.createdBy?.id === nextProps.message.createdBy?.id;
 
   // Compare replyMessage if present
   const replyMessageEqual = prevProps.replyMessage?.id === nextProps.replyMessage?.id;
 
-  return messageEqual && replyMessageEqual;
+  // Suggestions array reference changes when PlanChatView resets state, so a
+  // simple identity compare is enough to keep the docked chips in sync.
+  const suggestionsEqual = prevProps.suggestions === nextProps.suggestions;
+
+  const superAdminEqual = prevProps.isSuperAdmin === nextProps.isSuperAdmin;
+
+  return messageEqual && replyMessageEqual && suggestionsEqual && superAdminEqual;
 }
 
-export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({
+  message,
+  replyMessage,
+  onArtifactAction,
+  suggestions,
+  onSuggestionSelect,
+  isSuperAdmin = false,
+}: ChatMessageProps) {
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
@@ -82,13 +103,35 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
     >
       <div className={`flex items-end gap-2 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
         {message.message && (
-          <div
-            className={`group px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm relative ${
-              message.role === "USER"
-                ? "bg-primary text-primary-foreground rounded-br-md"
-                : "bg-background text-foreground rounded-bl-md border"
-            }`}
-          >
+          <div className="group relative min-w-0 max-w-full">
+            {/* Stakwork run link — sibling of bubble, not clipped by overflow-hidden */}
+            {isSuperAdmin && message.role === "USER" && message.stakworkProjectId && (
+              <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(
+                      `https://jobs.stakwork.com/admin/projects/${message.stakworkProjectId}`,
+                      "_blank",
+                      "noopener,noreferrer"
+                    );
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 hover:bg-background/80 border border-border/50 shadow-sm bg-background"
+                  aria-label="View run on Stakwork"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+            <div
+              className={`px-4 py-1 rounded-md max-w-full min-w-0 overflow-hidden break-words shadow-sm ${
+                message.role === "USER"
+                  ? "bg-primary text-primary-foreground rounded-br-md"
+                  : "bg-background text-foreground rounded-bl-md border"
+              }`}
+            >
             <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
               {messageContent}
             </MarkdownRenderer>
@@ -117,6 +160,15 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             {message.workflowUrl && (
               <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100" />
             )}
+
+            {/* Suggestion chips — docked inside the bubble for the latest
+                assistant turn. Renders only when chips are provided. */}
+            {message.role !== "USER" && suggestions && suggestions.length > 0 && onSuggestionSelect && (
+              <div className="mt-2.5 pt-2.5 border-t border-border/60">
+                <SuggestionChips suggestions={suggestions} onSelect={onSuggestionSelect} />
+              </div>
+            )}
+            </div>
           </div>
         )}
 
@@ -269,6 +321,39 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             <div className="max-w-md w-full">
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                 <PublishWorkflowArtifact artifact={artifact} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
+      {message.artifacts
+        ?.filter((a) => a.type === "PUBLISH_SCRIPT")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <PublishScriptArtifact artifact={artifact} taskId={message.taskId ?? undefined} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
+      {message.artifacts
+        ?.filter((a) => a.type === "PUBLISH_PROMPT")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <PublishPromptArtifact artifact={artifact} taskId={message.taskId ?? undefined} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
+      {message.artifacts
+        ?.filter((a) => a.type === "PUBLISH_SKILL")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <PublishSkillArtifact artifact={artifact} taskId={message.taskId ?? undefined} />
               </motion.div>
             </div>
           </div>

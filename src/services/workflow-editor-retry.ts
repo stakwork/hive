@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { WorkflowStatus, ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
+import { WorkflowStatus, ChatRole, ChatStatus, ArtifactType, StakworkRunType } from "@prisma/client";
 import { config } from "@/config/env";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -8,6 +8,7 @@ import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getBaseUrl } from "@/lib/utils";
 import { WorkflowContent } from "@/lib/chat";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
+import { buildWorkflowEditorFeatureContext } from "@/services/workflow-editor";
 
 interface WorkflowContext {
   workflowId: string | number;
@@ -40,6 +41,7 @@ export async function executeWorkflowEditorRetry(
       id: true,
       createdById: true,
       workspaceId: true,
+      featureId: true,
       workspace: {
         select: {
           slug: true,
@@ -139,6 +141,14 @@ export async function executeWorkflowEditorRetry(
       tokenReference: getStakworkTokenReference(),
     };
 
+    // Enrich payload with feature context when this task is linked to a feature
+    if (task.featureId) {
+      const featureContext = await buildWorkflowEditorFeatureContext(task.featureId);
+      if (featureContext) {
+        (vars as Record<string, unknown>).featureContext = featureContext;
+      }
+    }
+
     const stakworkPayload = {
       name: `workflow_editor_retry - ${taskId}`,
       workflow_id: parseInt(config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID!),
@@ -178,6 +188,32 @@ export async function executeWorkflowEditorRetry(
         ...(result.data?.project_id && { stakworkProjectId: result.data.project_id }),
       },
     });
+
+    if (result.data?.project_id) {
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.WORKFLOW_EDITOR,
+          taskId,
+          featureId: task.featureId ?? null,
+          workspaceId: task.workspaceId,
+          projectId: result.data.project_id,
+          status: WorkflowStatus.IN_PROGRESS,
+          webhookUrl: workflowWebhookUrl,
+        },
+      });
+
+      // Find the last USER message by id to update stakworkProjectId
+      const lastUserMsg = await db.chatMessage.findFirst({
+        where: { taskId, role: ChatRole.USER },
+        orderBy: { createdAt: "desc" },
+      });
+      if (lastUserMsg) {
+        await db.chatMessage.update({
+          where: { id: lastUserMsg.id },
+          data: { stakworkProjectId: String(result.data.project_id) },
+        });
+      }
+    }
 
     // Create an assistant WORKFLOW artifact message so the frontend can resume polling
     const newMessage = await db.chatMessage.create({

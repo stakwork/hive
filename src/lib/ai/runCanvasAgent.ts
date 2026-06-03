@@ -63,6 +63,9 @@ import {
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
+import { getProviderOptions } from "aieo";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 
 // ---------------------------------------------------------------------------
@@ -210,12 +213,25 @@ export interface RunCanvasAgentOptions {
   publicViewer?: PublicViewerContext;
   /** Canvas page scope hints — only meaningful with `orgId`. */
   scope?: {
+    selectedNodeIds?: string[];
     currentCanvasRef?: string;
     currentCanvasBreadcrumb?: string;
     selectedNodeId?: string;
   };
   /** User-visible chat messages, in AI SDK ModelMessage[] form. */
   messages: ModelMessage[];
+  /**
+   * Pre-validated `SharedConversation.id` for the active canvas
+   * conversation. Forwarded to `buildInitiativeTools` so
+   * `send_to_feature_planner` can lazy-claim ownership
+   * (`Feature.parentCanvasConversationId`) for features messaged from
+   * this conversation. Optional — when absent, the lazy-claim
+   * short-circuits and the feature stays unowned for fan-out
+   * purposes. The caller MUST validate the id; see
+   * `resolveTokenAttributionRowId` in `/api/ask/quick/route.ts` for
+   * the precedent.
+   */
+  currentCanvasConversationId?: string;
   /**
    * When `true`, strip all write tools before invoking `streamText`.
    * Use this for read-only callers (e.g. plan-mode org context scout)
@@ -267,6 +283,16 @@ export interface RunCanvasAgentResult {
   features: Record<string, unknown>[];
   /** The primary slug — useful for Pusher channel naming in `after()`. */
   primarySlug: string;
+  /**
+   * Resolved primary-workspace identity. Surfaced so post-stream
+   * `after()` work (e.g. the follow-up-questions `generateObject`)
+   * can route its own LLM call through Bifrost via `getBifrostForLLM`
+   * without re-resolving the workspace config or re-issuing a DB
+   * lookup. `primaryUserId` is `PUBLIC_VIEWER_USER_ID` for
+   * public-viewer requests — the orchestrator handles that case.
+   */
+  primaryWorkspaceId: string;
+  primaryUserId: string;
   /**
    * Whether the agent had any write tools available. False when
    * `readonly` was passed; useful for logging / metrics.
@@ -430,6 +456,7 @@ export async function runCanvasAgent(
     silentPusher = false,
     stripCodeResearchTools = false,
     hooks,
+    currentCanvasConversationId,
   } = opts;
 
   if (!Array.isArray(workspaceSlugs) || workspaceSlugs.length === 0) {
@@ -444,10 +471,13 @@ export async function runCanvasAgent(
   const isPublicViewer = publicViewer !== undefined;
 
   // Anthropic-only today; model resolution flows through `aieo` (default
-  // `claude-sonnet-4-5`) or the mock model when `USE_MOCKS=true`.
+  // `claude-sonnet-4-5`) or the mock model when `USE_MOCKS=true`. The
+  // `getModel` call is deferred until after workspace resolution so we
+  // can thread Bifrost overrides (baseUrl + `x-macaroon` headers) when
+  // the rollout flag is on for the primary workspace — see the
+  // `getBifrostForLLM` call below.
   const provider: Provider = "anthropic";
   const apiKey = getApiKeyForProvider(provider);
-  const model = getModel(provider, apiKey, primarySlug);
 
   // ------------------------------------------------------------------
   // Assemble tools + prefix per branch
@@ -457,6 +487,20 @@ export async function runCanvasAgent(
   let features: Record<string, unknown>[];
   let primarySwarmUrl: string;
   let primarySwarmApiKey: string;
+  // Workspace + user identity for the **primary** slug (slugs[0]).
+  // Used to:
+  //   1. Mint a Bifrost VK / macaroon for this LLM call, when the
+  //      `BIFROST_ENABLED` rollout flag covers this primary slug.
+  //   2. Stay `undefined` for public-viewer requests (no real user) —
+  //      the orchestrator returns `undefined` for those anyway, but
+  //      we elide the lookup entirely.
+  //
+  // Multi-workspace nuance: the agent loop touches N workspaces, but
+  // there's only one LLM call. We attribute that call to the primary
+  // workspace's Bifrost — mirrors the `primarySwarmUrl` convention
+  // and the rollout flag's per-slug allow-list semantics.
+  let primaryWorkspaceId: string | undefined;
+  let primaryUserId: string | undefined;
   // Per-call web_search capture, used by `update_research`'s execute
   // closure to linkify Anthropic `<cite index="N-M">` tags. Empty
   // (and unused) when no org-tool branch is built.
@@ -479,11 +523,13 @@ export async function runCanvasAgent(
     if (orgId) {
       // Merge org-scoped tool families. The caller is responsible for
       // having already validated org membership before calling us.
+      // Mirrored in the single-workspace branch below — keep these
+      // two sites in sync.
       tools = {
         ...tools,
         ...buildConnectionTools(orgId, userId),
         ...buildCanvasTools(orgId),
-        ...buildInitiativeTools(orgId, userId),
+        ...buildInitiativeTools(orgId, userId, currentCanvasConversationId),
         ...buildResearchTools(orgId, userId, capturedWebSearchResults),
       };
     }
@@ -519,6 +565,8 @@ export async function runCanvasAgent(
     );
     primarySwarmUrl = workspaceConfigs[0].swarmUrl;
     primarySwarmApiKey = workspaceConfigs[0].swarmApiKey;
+    primaryWorkspaceId = workspaceConfigs[0].workspaceId;
+    primaryUserId = workspaceConfigs[0].userId;
   } else {
     // Single-workspace mode. Public-viewer requests use the workspace
     // owner's PAT via `buildPublicWorkspaceConfig`; members get the
@@ -533,8 +581,43 @@ export async function runCanvasAgent(
       userId: ws.userId,
     });
 
-    const concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
+    // Best-effort: a swarm timeout/outage here must NOT kill the whole
+    // turn. Degrade to an empty concept list (the agent can still call
+    // list_concepts itself later, and the prompt just omits the
+    // pre-seeded features) instead of throwing a 500. Mirrors the
+    // multi-workspace path's `fetchConceptsForWorkspaces`, which
+    // already swallows per-workspace failures.
+    let concepts: Record<string, unknown> = {};
+    try {
+      concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
+    } catch (e) {
+      console.error(
+        `[runCanvasAgent] Failed to pre-fetch concepts for ${ws.slug}; continuing without them:`,
+        e,
+      );
+    }
     features = (concepts.features as Record<string, unknown>[]) || [];
+
+    // Single-workspace + orgId: an org-scope caller (e.g. the org-MCP
+    // `org_agent` tool, or the org SidebarChat for an org that
+    // happens to have just one workspace) gets the canvas/initiative/
+    // research/connection tool overlay on top of the per-workspace
+    // tools. The org-aware prompt suffixes get appended by
+    // `getQuickAskPrefixMessages` below so the agent knows the tools
+    // exist and how to use them.
+    //
+    // Public-viewer requests never carry orgId (the caller in
+    // `quick/route.ts` rejects that combination), so this branch is
+    // member-auth only and `userId` is non-null.
+    if (orgId && userId) {
+      tools = {
+        ...tools,
+        ...buildConnectionTools(orgId, userId),
+        ...buildCanvasTools(orgId),
+        ...buildInitiativeTools(orgId, userId, currentCanvasConversationId),
+        ...buildResearchTools(orgId, userId, capturedWebSearchResults),
+      };
+    }
 
     prefixMessages = getQuickAskPrefixMessages(
       features,
@@ -542,9 +625,17 @@ export async function runCanvasAgent(
       [],
       ws.description,
       ws.members,
+      orgId
+        ? { orgId, scope: buildScopeHint(scope, []) }
+        : undefined,
     );
     primarySwarmUrl = ws.swarmUrl;
     primarySwarmApiKey = ws.swarmApiKey;
+    primaryWorkspaceId = ws.workspaceId;
+    // `ws.userId` is `PUBLIC_VIEWER_USER_ID` for public-viewer
+    // requests; getBifrostForLLM short-circuits that case to
+    // `undefined`. Member requests carry the real NextAuth user id.
+    primaryUserId = ws.userId;
   }
 
   if (readonly) {
@@ -564,6 +655,68 @@ export async function runCanvasAgent(
     primarySwarmApiKey,
   );
 
+  // ------------------------------------------------------------------
+  // Bifrost routing for the in-process LLM call.
+  //
+  // When `BIFROST_ENABLED` covers the primary slug and we have a real
+  // (workspaceId, userId) pair, the orchestrator returns `{ apiKey,
+  // baseUrl, headers }`. We thread those into `getModel` so the
+  // streamText call lands on this workspace's Bifrost VK with the
+  // minted `x-macaroon` attached for cost-per-agent observability on
+  // `logs.db`. When the flag is off / public viewer / mint fails, the
+  // orchestrator returns `undefined` and `getModel` falls back to the
+  // default key path (behavior unchanged from pre-Bifrost).
+  //
+  // `agentName` splits on `orgId` so operators can attribute spend to
+  // the user-facing surface:
+  //   - `"canvas-agent"` — org canvas SidebarChat (orgId present;
+  //     canvas / initiative / research / connection tools merged in;
+  //     proposal flows; typically deeper agentic loops).
+  //   - `"chat-agent"` — workspace dashboard chat (no orgId; per-
+  //     workspace ask tools only; typically read-only Q&A).
+  // Same loop, same prompt assembly, but different cost profiles —
+  // mirrors the `repo-agent` vs `diagram-agent` convention of naming
+  // by user-facing purpose, not by underlying function.
+  const agentName = orgId ? "canvas-agent" : "chat-agent";
+  const bifrost =
+    primaryWorkspaceId && primaryUserId
+      ? await getBifrostForLLM(
+          {
+            workspaceId: primaryWorkspaceId,
+            workspaceSlug: primarySlug,
+            userId: primaryUserId,
+          },
+          { agentName },
+        )
+      : undefined;
+
+  const model = getModel(
+    provider,
+    bifrost?.apiKey ?? apiKey,
+    primarySlug,
+    undefined,
+    bifrost
+      ? { baseUrl: bifrost.baseUrl, headers: bifrost.headers }
+      : undefined,
+  );
+
+  // ------------------------------------------------------------------
+  // Provider options — enables Anthropic auto prompt caching
+  // (top-level `cache_control` field, supported by @ai-sdk/anthropic
+  // 3.0.75+ as bundled by aieo). Also threads `thinking` config.
+  // The aieo SDK copy resolves under `node_modules/aieo/node_modules/
+  // @ai-sdk/anthropic`, which is the one that actually serializes
+  // these options into the API request — confirmed in the SDK source
+  // (dist/index.js ~line 3246: `cache_control: anthropicOptions.cacheControl`).
+  // ------------------------------------------------------------------
+  // Cast: aieo bundles its own `@ai-sdk/provider` type copy, so the
+  // returned union doesn't structurally match the `SharedV3ProviderOptions`
+  // shape from hive's top-level `ai` package. The runtime payload is
+  // identical — aieo created the model with the SDK that consumes it.
+  const providerOptions = getProviderOptions(
+    provider,
+  ) as unknown as Parameters<typeof streamText>[0]["providerOptions"];
+
   console.log("[runCanvasAgent] streamText:", {
     model: (model as { modelId?: string })?.modelId,
     toolsCount: Object.keys(tools).length,
@@ -573,6 +726,11 @@ export async function runCanvasAgent(
     readonly,
     stripCodeResearchTools,
     silentPusher,
+    bifrost: bifrost
+      ? { runId: bifrost.runId, agentName: bifrost.agentName }
+      : null,
+    cacheControl: (providerOptions as { anthropic?: { cacheControl?: unknown } })
+      ?.anthropic?.cacheControl ?? null,
   });
 
   // ------------------------------------------------------------------
@@ -582,6 +740,7 @@ export async function runCanvasAgent(
     model,
     tools,
     messages: modelMessages,
+    providerOptions,
     stopWhen: createHasEndMarkerCondition(),
     stopSequences: ["[END_OF_ANSWER]"],
     onStepFinish: async (sf) => {
@@ -617,6 +776,10 @@ export async function runCanvasAgent(
     primarySwarmApiKey,
     features,
     primarySlug,
+    // Both branches above always assign these — the non-null assertion
+    // reflects the invariant rather than a runtime check.
+    primaryWorkspaceId: primaryWorkspaceId!,
+    primaryUserId: primaryUserId!,
     readonly,
   };
 }
@@ -632,7 +795,7 @@ export { extractConceptIdsFromStep };
 // Private helpers
 // ---------------------------------------------------------------------------
 
-function buildScopeHint(
+export function buildScopeHint(
   scope: RunCanvasAgentOptions["scope"],
   linkedWorkspaces: Array<{ id: string; slug: string; name: string }>,
 ): CanvasScopeHint | undefined {
@@ -648,6 +811,11 @@ function buildScopeHint(
         : undefined,
     selectedNodeId:
       typeof scope?.selectedNodeId === "string" ? scope.selectedNodeId : undefined,
+    selectedNodeIds:
+      Array.isArray(scope?.selectedNodeIds) &&
+      scope.selectedNodeIds.every((s) => typeof s === "string")
+        ? scope.selectedNodeIds
+        : undefined,
     linkedWorkspaces:
       linkedWorkspaces.length > 0 ? linkedWorkspaces : undefined,
   };

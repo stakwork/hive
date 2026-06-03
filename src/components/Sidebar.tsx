@@ -13,6 +13,7 @@ import {
   CheckSquare,
   ChevronDown,
   ChevronRight,
+  ClipboardCheck,
   FileText,
   Map,
   Menu,
@@ -126,6 +127,7 @@ const baseNavigationItems: NavigationItem[] = [
       { icon: BarChart3, label: "Recommendations", href: "/recommendations" },
       { icon: TestTube2, label: "Testing", href: "/testing" },
       { icon: Bot, label: "Janitors", href: "/janitors" },
+      { icon: ClipboardCheck, label: "Evals", href: "/evals" },
     ],
   },
   {

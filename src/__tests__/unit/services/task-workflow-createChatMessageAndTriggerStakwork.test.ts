@@ -18,6 +18,7 @@ vi.mock("@/lib/db", () => ({
       create: vi.fn(),
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
     user: {
       findUnique: vi.fn(),
@@ -55,6 +56,11 @@ vi.mock("@/config/env", () => ({
     GEMINI_API_BASE_URL: "https://generativelanguage.googleapis.com",
     API_TIMEOUT: 20000,
   },
+  // Bifrost rollout flag — disabled so the orchestrator short-circuits.
+  isBifrostEnabledForWorkspace: () => false,
+  // Default-open agent gate (mirrors prod). Workspace gate above
+  // short-circuits first, but stub here for symmetry.
+  isBifrostEnabledForAgent: () => true,
 }));
 vi.mock("@/lib/utils", () => ({
   getBaseUrl: vi.fn(() => "http://localhost:3000"),

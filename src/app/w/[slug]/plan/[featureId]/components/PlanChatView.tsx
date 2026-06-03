@@ -18,6 +18,7 @@ import {
   WorkflowStatus,
 } from "@/lib/chat";
 import { useStreamContext } from "@/hooks/useStreamContext";
+import { useStreamedAgentLog } from "@/hooks/useStreamedAgentLog";
 import { getPusherClient } from "@/lib/pusher";
 import type { FeatureDetail } from "@/types/roadmap";
 import { diffWords } from "diff";
@@ -26,13 +27,14 @@ import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getModelValue } from "@/lib/ai/models";
+import { isClarifyingQuestions } from "@/types/stakwork";
 import { DiffToken, PlanData, PlanSection, SectionHighlights } from "./PlanArtifact";
 
 function generateUniqueId(): string {
   return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
-const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS", "VERIFY"];
+const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS", "VERIFY", "LOGS"];
 
 const PLAN_SECTION_KEYS = ["brief", "requirements", "architecture", "user-stories"] as const;
 
@@ -93,6 +95,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const { data: session } = useSession();
   const { isSuperAdmin } = useWorkspace();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
@@ -106,6 +110,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [llmModels, setLlmModels] = useState<{ id: string; name: string; provider: string; providerLabel: string | null; isPlanDefault: boolean; isTaskDefault: boolean }[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
+  const streamedLog = useStreamedAgentLog(streamContext);
 
   // Project log WebSocket for live thinking logs
   const { logs, lastLogLine, clearLogs } = useProjectLogWebSocket(projectId, featureId, false);
@@ -295,6 +300,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     fetchLlmModels();
   }, []);
 
+  // Keep messagesRef in sync for use in handleSSEMessage without stale closures
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   // Resolve selectedModel once both feature and models are loaded.
   // Prefer the persisted feature.model; only fall back to the plan default
   // when the feature has no model set. Runs once on initial load.
@@ -326,6 +336,26 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     };
   }, [refetchFeature, loadMessages]);
 
+  const fetchSuggestions = useCallback(async (msgs: ChatMessage[]) => {
+    try {
+      const res = await fetch(`/api/features/${featureId}/suggestions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: msgs.slice(-5).map((m) => ({ role: m.role, message: m.message })),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          setSuggestions(data.suggestions);
+        }
+      }
+    } catch {
+      // Fail silently
+    }
+  }, [featureId]);
+
   const handleSSEMessage = useCallback((message: ChatMessage) => {
     setMessages((msgs) => {
       const exists = msgs.some((m) => m.id === message.id);
@@ -339,6 +369,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
       setWorkflowStatus(update.workflowStatus);
+      if (update.workflowStatus === WorkflowStatus.IN_PROGRESS) {
+        setSuggestions([]);
+      }
       if (
         update.workflowStatus === WorkflowStatus.COMPLETED ||
         update.workflowStatus === WorkflowStatus.FAILED ||
@@ -352,6 +385,55 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     },
     [onStreamStatusUpdate],
   );
+
+  // Fire suggestion fetch when the workflow FRESHLY transitions to COMPLETED
+  // and the last message is an assistant turn. Two design constraints:
+  //
+  // 1. Page-load skip: don't fetch when the feature is hydrated with an already-
+  //    completed workflow. Otherwise every user who opens an old feature would
+  //    trigger a Haiku call. We only want to fetch when the user is actively
+  //    in-session and the workflow has just finished.
+  //
+  // 2. Pusher race: WORKFLOW_STATUS_UPDATE and NEW_MESSAGE for the brief can
+  //    arrive in either order. We track a 'pending' flag set on the live
+  //    transition, and fire whenever the assistant message becomes the last
+  //    one — regardless of arrival order.
+  const prevWorkflowStatusRef = useRef<WorkflowStatus | null>(null);
+  const pendingSuggestionFetchRef = useRef(false);
+  const lastFetchedSuggestionKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const prev = prevWorkflowStatusRef.current;
+    prevWorkflowStatusRef.current = workflowStatus;
+
+    // A real transition requires a known prior state that wasn't already
+    // COMPLETED — this excludes the initial null → COMPLETED hydration jump.
+    const justCompleted =
+      prev !== null &&
+      prev !== WorkflowStatus.COMPLETED &&
+      workflowStatus === WorkflowStatus.COMPLETED;
+    if (justCompleted) pendingSuggestionFetchRef.current = true;
+
+    // If the workflow leaves COMPLETED (e.g. user sent another message),
+    // drop any stale pending intent.
+    if (workflowStatus !== WorkflowStatus.COMPLETED) {
+      pendingSuggestionFetchRef.current = false;
+    }
+
+    if (!pendingSuggestionFetchRef.current) return;
+
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== ChatRole.ASSISTANT) return;
+    if (lastFetchedSuggestionKeyRef.current === last.id) return;
+    const hasClarifyingQuestions = last.artifacts?.some(
+      (a) => a.type === "PLAN" && isClarifyingQuestions(a.content),
+    );
+    if (hasClarifyingQuestions) return;
+
+    lastFetchedSuggestionKeyRef.current = last.id;
+    pendingSuggestionFetchRef.current = false;
+    fetchSuggestions(messages);
+  }, [workflowStatus, messages, fetchSuggestions]);
 
   const handleFeatureTitleUpdate = useCallback(
     (update: FeatureTitleUpdateEvent) => {
@@ -370,6 +452,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   const sendMessage = useCallback(
     async (messageText: string, attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>) => {
+      setSuggestions([]);
       const newMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
@@ -583,7 +666,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     llmModels,
     hasMessages,
     typingUsers,
-    onTypingStart: () => sendTyping(true),
+    suggestions,
+    onSuggestionSelect: (s: string) => sendMessage(s),
+    onTypingStart: () => { setSuggestions([]); sendTyping(true); },
     onTypingStop: () => sendTyping(false),
   };
 
@@ -598,6 +683,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     controlledTab: activeTab,
     onControlledTabChange: handleTabChange,
     sectionHighlights,
+    streamingLog: streamedLog,
+    isSuperAdmin,
   };
 
   if (!initialLoadDone) {
@@ -610,7 +697,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   if (isMobile) {
     return (
-      <div className="flex flex-col h-dvh">
+      <div className="flex flex-col h-full">
         {showPreview ? (
           <ArtifactsPanel
             {...artifactsPanelProps}
@@ -632,7 +719,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   }
 
   return (
-    <div className="flex flex-col h-dvh">
+    <div className="flex flex-col h-full">
       <ResizablePanelGroup direction="horizontal" className="flex flex-1 min-w-0 min-h-0 gap-2">
         <ResizablePanel defaultSize={40} minSize={30}>
           <div className="h-full min-h-0 min-w-0">

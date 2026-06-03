@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { startTaskWorkflow } from "@/services/task-workflow";
 import { executeWorkflowEditorRetry } from "@/services/workflow-editor-retry";
+import { triggerWorkflowEditorRun } from "@/services/workflow-editor";
 import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
 import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
@@ -29,6 +30,7 @@ export async function PATCH(
         deleted: false,
       },
       include: {
+        workflowTask: true,
         workspace: {
           select: {
             id: true,
@@ -64,11 +66,22 @@ export async function PATCH(
 
     // Start workflow if requested
     if (startWorkflow) {
-      const workflowResult = await startTaskWorkflow({
-        taskId,
-        userId: userOrResponse.id,
-        mode: mode || "live",
-      });
+      if (task.workflowTask) {
+        // Workflow task: route through workflow-editor flow (not pod-based Stakwork)
+        await triggerWorkflowEditorRun({
+          taskId,
+          workflowTask: task.workflowTask,
+          message: task.description ?? task.title,
+          userId: userOrResponse.id,
+        });
+      } else {
+        // Repo/coding task: standard Stakwork workflow
+        await startTaskWorkflow({
+          taskId,
+          userId: userOrResponse.id,
+          mode: mode || "live",
+        });
+      }
 
       // Fetch updated task with workflow status
       const updatedTask = await db.task.findUnique({
@@ -89,7 +102,6 @@ export async function PATCH(
         {
           success: true,
           task: updatedTask,
-          workflow: workflowResult?.stakworkData,
         },
         { status: 200 }
       );

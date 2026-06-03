@@ -281,7 +281,12 @@ export function AgentChatArea({
         isMobile && taskTitle && "pt-16"
       )}>
         {messages.map((msg) => (
-          <AgentChatMessage key={msg.id} message={msg} />
+          <AgentChatMessage
+            key={msg.id}
+            message={msg}
+            stakworkProjectId={msg.stakworkProjectId ?? undefined}
+            isSuperAdmin={isSuperAdmin}
+          />
         ))}
 
         {/* Show thinking indicator when loading but no assistant message streaming yet */}

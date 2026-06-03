@@ -1329,6 +1329,76 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
       });
     }
 
+    // Add PUBLISH_SCRIPT artifact (for task index 1)
+    if (tasks.indexOf(task) === 1) {
+      const publishScriptMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "The script version is ready to publish:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: publishScriptMsg.id,
+          type: ArtifactType.PUBLISH_SCRIPT,
+          content: {
+            scriptId: 1,
+            scriptVersionId: 1,
+            scriptName: "Mock Script",
+            published: false,
+          },
+        },
+      });
+    }
+
+    // Add PUBLISH_PROMPT artifact (for task index 2)
+    if (tasks.indexOf(task) === 2) {
+      const publishPromptMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "The prompt version is ready to publish:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: publishPromptMsg.id,
+          type: ArtifactType.PUBLISH_PROMPT,
+          content: {
+            promptId: 1,
+            promptVersionId: 3,
+            promptName: "Mock Prompt",
+            published: false,
+          },
+        },
+      });
+    }
+
+    // Add PUBLISH_SKILL artifact (for task index 3)
+    if (tasks.indexOf(task) === 3) {
+      const publishSkillMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "The skill is ready to publish:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: publishSkillMsg.id,
+          type: ArtifactType.PUBLISH_SKILL,
+          content: {
+            skillName: "Mock Skill",
+            published: false,
+          },
+        },
+      });
+    }
+
     // If task is done, add completion message
     if (task.status === TaskStatus.DONE) {
       await db.chatMessage.create({

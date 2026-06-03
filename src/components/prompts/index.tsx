@@ -18,7 +18,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock, Trash2, Zap, Upload } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { estimateTokens, formatTokenCount } from "@/lib/utils/token-estimate";
 import { useDebounce } from "@/hooks/useDebounce";
 import { diffLines } from "diff";
 
@@ -31,11 +33,13 @@ interface PromptUsage {
   step_id: string;
 }
 
+// Prompt list item (from API list endpoint)
 interface Prompt {
   id: number;
   name: string;
   description: string;
   usage_notation: string;
+  value?: string;
   usages?: PromptUsage[];
 }
 
@@ -46,6 +50,7 @@ interface PromptDetail {
   description: string;
   usage_notation: string;
   current_version_id: number | null;
+  published_version_id: number | null;
   version_count: number;
 }
 
@@ -119,6 +124,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [versionAContent, setVersionAContent] = useState<string | null>(null);
   const [versionBContent, setVersionBContent] = useState<string | null>(null);
   const [isLoadingDiff, setIsLoadingDiff] = useState(false);
+  const [previewVersionDescription, setPreviewVersionDescription] = useState<string | null>(null);
 
   // Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -127,6 +133,10 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [formName, setFormName] = useState("");
   const [formValue, setFormValue] = useState("");
   const [formDescription, setFormDescription] = useState("");
+
+  // Debounced form value for live token count
+  const debouncedFormValue = useDebounce(formValue, 300);
+  const liveTokenCount = estimateTokens(debouncedFormValue);
 
   const isFullpage = variant === "fullpage";
 
@@ -256,6 +266,19 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       }
     } catch (err) {
       console.error("Error fetching version content:", err);
+      return null;
+    }
+  }, []);
+
+  const fetchVersionDetail = useCallback(async (promptId: number, versionId: number): Promise<{ value: string; description: string } | null> => {
+    try {
+      const response = await fetch(`/api/workflow/prompts/${promptId}/versions/${versionId}`);
+      if (!response.ok) throw new Error("Failed to fetch version detail");
+      const data = await response.json();
+      if (data.success) return { value: data.data.value as string, description: data.data.description as string };
+      return null;
+    } catch (err) {
+      console.error("Error fetching version detail:", err);
       return null;
     }
   }, []);
@@ -434,49 +457,6 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   };
 
-  const handlePublishFromEdit = async () => {
-    if (!selectedPrompt || !formValue.trim()) return;
-    setIsPublishing(true);
-    setError(null);
-    try {
-      // Step 1: Save changes
-      const saveResponse = await fetch(`/api/workflow/prompts/${selectedPrompt.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: formValue.trim(), description: formDescription.trim() }),
-      });
-      if (!saveResponse.ok) throw new Error('Failed to save prompt');
-      const saveData = await saveResponse.json();
-      if (!saveData.success) throw new Error('Failed to save prompt');
-
-      // Step 2: Fetch updated prompt to get new current_version_id
-      const detailResponse = await fetch(`/api/workflow/prompts/${selectedPrompt.id}`);
-      if (!detailResponse.ok) throw new Error('Failed to fetch updated prompt');
-      const detailData = await detailResponse.json();
-      if (!detailData.success || !detailData.data.current_version_id) throw new Error('Could not determine new version ID');
-
-      const newVersionId = detailData.data.current_version_id;
-
-      // Step 3: Publish the new version
-      const publishResponse = await fetch(
-        `/api/workflow/prompts/${selectedPrompt.id}/versions/${newVersionId}/publish`,
-        { method: 'POST' }
-      );
-      if (!publishResponse.ok) throw new Error('Failed to publish version');
-      const publishData = await publishResponse.json();
-      if (!publishData.success) throw new Error('Failed to publish version');
-
-      // Step 4: Refresh and return to detail view
-      await fetchPromptDetail(selectedPrompt.id);
-      setIsEditing(false);
-      setViewMode('detail');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save and publish');
-    } finally {
-      setIsPublishing(false);
-    }
-  };
-
   const handleDeletePrompt = async () => {
     if (!selectedPrompt) {
       return;
@@ -551,6 +531,22 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     setSelectedVersionBId(null);
     setVersionAContent(null);
     setVersionBContent(null);
+    setPreviewVersionDescription(null);
+  };
+
+  const handleEditFromVersion = () => {
+    if (!selectedVersionAId || versionAContent === null) return;
+    setFormValue(versionAContent);
+    setFormDescription(previewVersionDescription ?? selectedPrompt!.description);
+    // Reset all history state
+    setVersions([]);
+    setSelectedVersionAId(null);
+    setSelectedVersionBId(null);
+    setVersionAContent(null);
+    setVersionBContent(null);
+    setPreviewVersionDescription(null);
+    setViewMode("detail");
+    setIsEditing(true);
   };
 
   const handlePublishVersion = async (versionId: number) => {
@@ -602,39 +598,53 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   };
 
-  // Fetch version content when both A and B are selected
+  // Fetch version content when A (and optionally B) is selected
   useEffect(() => {
-    if (!selectedPrompt || !selectedVersionAId || !selectedVersionBId) {
+    if (!selectedPrompt || !selectedVersionAId) {
       setVersionAContent(null);
       setVersionBContent(null);
+      setPreviewVersionDescription(null);
       return;
     }
 
-    const fetchDiff = async () => {
+    const fetchContent = async () => {
       setIsLoadingDiff(true);
       try {
-        const resolveContent = (versionId: number): Promise<string | null> => {
-          if (versionId === CURRENT_VERSION_SENTINEL) {
-            return Promise.resolve(selectedPrompt.value);
-          }
-          return fetchVersionContent(selectedPrompt.id, versionId);
-        };
+        if (selectedVersionBId) {
+          // Both A and B selected: fetch for diff
+          const resolveA = selectedVersionAId === CURRENT_VERSION_SENTINEL
+            ? Promise.resolve({ value: selectedPrompt.value, description: selectedPrompt.description })
+            : fetchVersionDetail(selectedPrompt.id, selectedVersionAId);
 
-        const [contentA, contentB] = await Promise.all([
-          resolveContent(selectedVersionAId),
-          resolveContent(selectedVersionBId),
-        ]);
-        setVersionAContent(contentA);
-        setVersionBContent(contentB);
+          const resolveB = selectedVersionBId === CURRENT_VERSION_SENTINEL
+            ? Promise.resolve(selectedPrompt.value)
+            : fetchVersionContent(selectedPrompt.id, selectedVersionBId);
+
+          const [detailA, contentB] = await Promise.all([resolveA, resolveB]);
+          setVersionAContent(detailA ? detailA.value : null);
+          setPreviewVersionDescription(detailA ? detailA.description : null);
+          setVersionBContent(contentB);
+        } else {
+          // Only A selected: preview mode
+          if (selectedVersionAId === CURRENT_VERSION_SENTINEL) {
+            setVersionAContent(selectedPrompt.value);
+            setPreviewVersionDescription(selectedPrompt.description);
+          } else {
+            const detail = await fetchVersionDetail(selectedPrompt.id, selectedVersionAId);
+            setVersionAContent(detail ? detail.value : null);
+            setPreviewVersionDescription(detail ? detail.description : null);
+          }
+          setVersionBContent(null);
+        }
       } catch (err) {
-        console.error("Error fetching version content for diff:", err);
+        console.error("Error fetching version content:", err);
       } finally {
         setIsLoadingDiff(false);
       }
     };
 
-    fetchDiff();
-  }, [selectedPrompt, selectedVersionAId, selectedVersionBId, fetchVersionContent]);
+    fetchContent();
+  }, [selectedPrompt, selectedVersionAId, selectedVersionBId, fetchVersionContent, fetchVersionDetail]);
 
   const formatTimestamp = (timestamp: string) => {
     try {
@@ -723,6 +733,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 onChange={(e) => setFormValue(e.target.value)}
                 disabled={isSaving}
               />
+              <p className="text-xs text-muted-foreground text-right mt-1">{formatTokenCount(liveTokenCount)}</p>
             </div>
 
           </div>
@@ -755,6 +766,9 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
   // Show prompt detail view
   if (viewMode === "detail" && selectedPrompt) {
+    const isPublished = selectedPrompt.current_version_id !== null &&
+      selectedPrompt.current_version_id === selectedPrompt.published_version_id;
+
     const content = (
       <div className={cn("flex flex-col", isFullpage ? "h-full" : "h-full overflow-hidden")}>
         <div className="flex items-center gap-2 p-3 border-b flex-shrink-0">
@@ -764,7 +778,51 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
           </Button>
           <span className="text-sm font-medium truncate flex-1">{selectedPrompt.name}</span>
           {!isEditing && (
+            isPublished ? (
+              <Badge variant="default" className="bg-green-600 text-white text-xs flex-shrink-0">Published</Badge>
+            ) : (
+              <Badge variant="outline" className="text-amber-600 border-amber-600 text-xs flex-shrink-0">Unpublished</Badge>
+            )
+          )}
+          {!isEditing && (
             <>
+              {!isPublished && selectedPrompt.current_version_id && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isPublishing}
+                    >
+                      {isPublishing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Publishing...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-1" />
+                          Publish
+                        </>
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Publish Changes?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will make the current version the live prompt used by all workflows. This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => handlePublishVersion(selectedPrompt.current_version_id!)}>
+                        Publish
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -880,16 +938,24 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Prompt Value
-                </label>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Prompt Value
+                  </label>
+                  <span className="text-xs text-muted-foreground">
+                    {formatTokenCount(estimateTokens(isEditing ? debouncedFormValue : selectedPrompt.value))}
+                  </span>
+                </div>
                 {isEditing ? (
-                  <Textarea
-                    className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[500px]" : "min-h-[200px]")}
-                    value={formValue}
-                    onChange={(e) => setFormValue(e.target.value)}
-                    disabled={isSaving}
-                  />
+                  <>
+                    <Textarea
+                      className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[500px]" : "min-h-[200px]")}
+                      value={formValue}
+                      onChange={(e) => setFormValue(e.target.value)}
+                      disabled={isSaving}
+                    />
+                    <p className="text-xs text-muted-foreground text-right mt-1">{formatTokenCount(liveTokenCount)}</p>
+                  </>
                 ) : (
                   <pre className={cn(
                     "mt-1 text-sm bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap font-mono",
@@ -944,13 +1010,13 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         )}
         {isEditing && (
           <div className="flex justify-end gap-2 p-3 border-t flex-shrink-0">
-            <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving || isPublishing}>
+            <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>
               <X className="h-4 w-4 mr-1" />
               Cancel
             </Button>
             <Button
               onClick={handleUpdatePrompt}
-              disabled={isSaving || isPublishing || !formValue.trim()}
+              disabled={isSaving || !formValue.trim()}
             >
               {isSaving ? (
                 <>
@@ -964,40 +1030,6 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 </>
               )}
             </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="default"
-                  disabled={isPublishing || isSaving || !formValue.trim()}
-                >
-                  {isPublishing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Publishing...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Publish
-                    </>
-                  )}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Publish Changes?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will save your edits and make them the live version used by all workflows.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handlePublishFromEdit}>
-                    Publish
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
           </div>
         )}
       </div>
@@ -1017,7 +1049,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     let stats = { additions: 0, deletions: 0 };
 
     if (versionAContent && versionBContent) {
-      diffChanges = diffLines(versionAContent, versionBContent);
+      diffChanges = diffLines(versionBContent, versionAContent);
       stats = diffChanges.reduce(
         (acc, part) => {
           const lines = part.value.split('\n').filter(line => line !== '');
@@ -1052,7 +1084,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             {/* Version List */}
             <div className="border-b bg-muted/30 p-3">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                Select two versions to compare
+                Click a version to preview · Select two to compare
               </div>
               <div className="space-y-1 max-h-[200px] overflow-y-auto">
                 {/* Current Version Button */}
@@ -1067,8 +1099,8 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                       className={cn(
                         "w-full text-left px-3 py-2 rounded transition-colors text-sm",
                         "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
-                        isCurrentA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
-                        isCurrentB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                        isCurrentA && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                        isCurrentB && "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500",
                         !isCurrentSelected && "bg-muted/50"
                       )}
                     >
@@ -1076,10 +1108,18 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                         <div className="flex items-center gap-2">
                           <Zap className="w-3 h-3" />
                           <span className="font-mono font-medium">Current</span>
-                          {isCurrentA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
-                          {isCurrentB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                          {isCurrentA && <span className="text-xs text-green-600 dark:text-green-400 font-medium">A</span>}
+                          {isCurrentB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
                         </div>
-                        <span className="text-xs text-muted-foreground">Live</span>
+                        <div className="flex items-center gap-2">
+                          {selectedPrompt.published_version_id !== null &&
+                            selectedPrompt.current_version_id === selectedPrompt.published_version_id && (
+                              <Badge variant="default" className="text-xs flex-shrink-0 bg-green-600 text-white">
+                                Published
+                              </Badge>
+                            )}
+                          <span className="text-xs text-muted-foreground">Latest</span>
+                        </div>
                       </div>
                     </button>
                   );
@@ -1091,7 +1131,8 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                     const isSelectedA = selectedVersionAId === version.id;
                     const isSelectedB = selectedVersionBId === version.id;
                     const isSelected = isSelectedA || isSelectedB;
-                    const isLive = version.id === selectedPrompt.current_version_id;
+                    const isLive = version.id === selectedPrompt.published_version_id &&
+                                  version.id !== selectedPrompt.current_version_id;
 
                     return (
                       <div key={version.id} className="relative flex items-center gap-2">
@@ -1100,16 +1141,16 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                           className={cn(
                             "flex-1 text-left px-3 py-2 rounded transition-colors text-sm",
                             "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
-                            isSelectedA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
-                            isSelectedB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                            isSelectedA && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                            isSelectedB && "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500",
                             !isSelected && "bg-muted/50"
                           )}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <span className="font-mono font-medium">v{version.version_number}</span>
-                              {isSelectedA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
-                              {isSelectedB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                              {isSelectedA && <span className="text-xs text-green-600 dark:text-green-400 font-medium">A</span>}
+                              {isSelectedB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
                             </div>
                             <span className="text-xs text-muted-foreground">
                               {formatTimestamp(version.created_at)}
@@ -1118,7 +1159,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                         </button>
 
                         {isLive ? (
-                          <div className="flex-shrink-0 h-7 w-7" />
+                          <Badge variant="default" className="text-xs flex-shrink-0 bg-green-600 text-white">Published</Badge>
                         ) : publishingVersionId === version.id ? (
                           <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
                         ) : (
@@ -1160,6 +1201,46 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 )}
               </div>
             </div>
+
+            {/* Preview Panel (single version selected) */}
+            {selectedVersionAId && !selectedVersionBId && (
+              <div className="flex-1 overflow-hidden flex flex-col">
+                {isLoadingDiff ? (
+                  <div className="flex items-center justify-center flex-1 p-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-muted-foreground text-sm">Loading preview...</span>
+                  </div>
+                ) : versionAContent !== null ? (
+                  <>
+                    <div className="flex items-center justify-between p-3 border-b bg-muted/30 flex-shrink-0">
+                      <span className="text-xs font-medium">
+                        {selectedVersionAId === CURRENT_VERSION_SENTINEL ? "Current" : (() => {
+                          const v = versions.find(v => v.id === selectedVersionAId);
+                          return v ? `v${v.version_number}` : "Version";
+                        })()}
+                      </span>
+                      {selectedVersionAId !== CURRENT_VERSION_SENTINEL && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleEditFromVersion}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" />
+                          Edit from this version
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex-1 overflow-auto p-3">
+                      <pre className="text-xs font-mono whitespace-pre-wrap break-words">{versionAContent}</pre>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center flex-1 p-8">
+                    <div className="text-muted-foreground text-sm">Failed to load version content</div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Diff View */}
             {selectedVersionAId && selectedVersionBId && (
@@ -1292,6 +1373,11 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
               >
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium truncate flex-1">{prompt.name}</span>
+                  {prompt.value != null && (
+                    <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded flex-shrink-0">
+                      {formatTokenCount(estimateTokens(prompt.value))}
+                    </span>
+                  )}
                   {prompt.usages && prompt.usages.length > 0 && (
                     <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded flex-shrink-0">
                       {prompt.usages.length} {prompt.usages.length === 1 ? "usage" : "usages"}

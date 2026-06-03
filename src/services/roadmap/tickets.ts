@@ -18,6 +18,7 @@ import { saveWorkflowArtifact } from "@/services/workflow-editor";
 import { parsePRUrl, getOctokitForWorkspace, checkRepoAllowsAutoMerge } from "@/lib/github";
 import { AutoMergeNotAllowedError, AutoMergeCheckFailedError } from "@/lib/github/errors";
 import { logger } from "@/lib/logger";
+import { releaseTaskPod } from "@/lib/pods/utils";
 
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater).
@@ -223,7 +224,7 @@ export async function createTicket(
   const bountyCode = await ensureUniqueBountyCode();
 
   // Workflow tasks get mode: workflow_editor and no repositoryId
-  const isWorkflowTask = !!data.workflowId;
+  const isWorkflowTask = !!data.workflowId || data.isNewWorkflow === true;
 
   const task = await db.task.create({
     data: {
@@ -243,7 +244,7 @@ export async function createTicket(
       dependsOnTaskIds: data.dependsOnTaskIds || [],
       runBuild: data.runBuild ?? true,
       runTestSuite: data.runTestSuite ?? true,
-      autoMerge: data.autoMerge ?? true,
+      autoMerge: data.autoMerge ?? false,
       createdById: userId,
       updatedById: userId,
     },
@@ -296,6 +297,7 @@ export async function createTicket(
         workflowId: data.workflowId,
         workflowName: data.workflowName ?? null,
         workflowRefId: data.workflowRefId ?? null,
+        workflowTaskType: data.workflowTaskType ?? null,
       },
     });
 
@@ -304,6 +306,17 @@ export async function createTicket(
       workflowId: data.workflowId,
       workflowName: data.workflowName,
       workflowRefId: data.workflowRefId,
+    });
+  } else if (data.isNewWorkflow) {
+    // New-workflow task: create a WorkflowTask with null IDs (no artifact to seed yet)
+    await db.workflowTask.create({
+      data: {
+        taskId: task.id,
+        workflowId: null,
+        workflowName: null,
+        workflowRefId: null,
+        workflowTaskType: data.workflowTaskType ?? null,
+      },
     });
   }
 
@@ -587,14 +600,31 @@ export async function updateTicket(
           workflowId: data.workflowId,
           workflowName: data.workflowName ?? null,
           workflowRefId: data.workflowRefId ?? null,
+          workflowTaskType: data.workflowTaskType ?? null,
         },
         update: {
           workflowId: data.workflowId,
           workflowName: data.workflowName ?? null,
           workflowRefId: data.workflowRefId ?? null,
+          workflowTaskType: data.workflowTaskType ?? undefined,
         },
       });
     }
+  } else if (data.isNewWorkflow === true) {
+    // Switch to new-workflow mode (null workflowId)
+    updateData.mode = "workflow_editor";
+    updateData.repositoryId = null;
+    await db.workflowTask.upsert({
+      where: { taskId },
+      create: { taskId, workflowId: null, workflowName: null, workflowRefId: null, workflowTaskType: data.workflowTaskType ?? null },
+      update: { workflowId: null, workflowName: null, workflowRefId: null, workflowTaskType: data.workflowTaskType ?? undefined },
+    });
+  } else if (data.workflowTaskType !== undefined) {
+    // Standalone workflowTaskType-only update — no workflow ID change
+    await db.workflowTask.updateMany({
+      where: { taskId },
+      data: { workflowTaskType: data.workflowTaskType },
+    });
   } else if (data.repositoryId !== undefined && data.repositoryId !== null) {
     // Switching back to a repo — remove WorkflowTask if one exists
     await db.workflowTask.deleteMany({ where: { taskId } });
@@ -741,6 +771,27 @@ export async function deleteTicket(
         },
       },
     });
+  }
+
+  // Release any active pod before soft-delete to avoid orphaned pods
+  const podInfo = await db.task.findUnique({
+    where: { id: taskId },
+    select: { podId: true, workspaceId: true },
+  });
+
+  if (podInfo?.podId) {
+    try {
+      await releaseTaskPod({
+        taskId,
+        podId: podInfo.podId,
+        workspaceId: podInfo.workspaceId,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
+    } catch (err) {
+      console.error("[deleteTicket] Failed to release pod:", err);
+    }
   }
 
   // Perform soft-delete

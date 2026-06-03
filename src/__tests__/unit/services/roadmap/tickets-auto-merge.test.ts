@@ -16,6 +16,7 @@ const {
   mockDbTask: {
     findUnique: vi.fn(),
     update: vi.fn(),
+    create: vi.fn(),
   },
   mockDbRepository: {
     findFirst: vi.fn(),
@@ -94,14 +95,18 @@ vi.mock("@/services/roadmap/utils", () => ({
   calculateNextOrder: vi.fn().mockResolvedValue(1),
 }));
 
+vi.mock("@/lib/pods/utils", () => ({
+  releaseTaskPod: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/services/roadmap/feature-status-sync", () => ({
   updateFeatureStatusFromTasks: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-import { validateRoadmapTaskAccess } from "@/services/roadmap/utils";
-import { updateTicket } from "@/services/roadmap/tickets";
+import { validateRoadmapTaskAccess, validateFeatureAccess } from "@/services/roadmap/utils";
+import { updateTicket, createTicket } from "@/services/roadmap/tickets";
 
 const TASK_ID = "task-abc";
 const USER_ID = "user-xyz";
@@ -263,6 +268,112 @@ describe("updateTicket — auto-merge gate", () => {
     expect(mockCheckRepoAllowsAutoMerge).not.toHaveBeenCalled();
     expect(mockDbTask.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ autoMerge: false }) })
+    );
+  });
+});
+
+// ── createTicket — autoMerge default ──────────────────────────────────────
+
+const FEATURE_ID = "feature-1";
+
+function makeFeature() {
+  return {
+    id: FEATURE_ID,
+    workspaceId: "ws-1",
+    deleted: false,
+    workspace: {
+      id: "ws-1",
+      ownerId: USER_ID,
+      deleted: false,
+      members: [],
+    },
+  };
+}
+
+function makeCreatedTask(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "task-new",
+    title: "New Task",
+    description: null,
+    status: "TODO",
+    priority: "MEDIUM",
+    order: 1,
+    featureId: FEATURE_ID,
+    phaseId: null,
+    workspaceId: "ws-1",
+    bountyCode: "BC-0001",
+    dependsOnTaskIds: [],
+    runBuild: true,
+    runTestSuite: true,
+    autoMerge: false,
+    deploymentStatus: null,
+    deployedToStagingAt: null,
+    deployedToProductionAt: null,
+    workflowStatus: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    systemAssigneeType: null,
+    assignee: null,
+    repository: null,
+    phase: null,
+    workspace: { slug: "test-ws" },
+    feature: { id: FEATURE_ID, title: "Feature", phases: [] },
+    ...overrides,
+  };
+}
+
+describe("createTicket — autoMerge default", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(validateFeatureAccess).mockResolvedValue(makeFeature() as never);
+    mockDbPhase.findFirst.mockResolvedValue(null);
+    mockDbUser.findUnique.mockResolvedValue({ id: USER_ID, name: "Test User" });
+    mockDbTask.create.mockResolvedValue(makeCreatedTask());
+  });
+
+  it("defaults autoMerge to false when not provided", async () => {
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "New Task",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+    });
+
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: false }),
+      })
+    );
+  });
+
+  it("sets autoMerge to true when explicitly passed true", async () => {
+    mockDbTask.create.mockResolvedValue(makeCreatedTask({ autoMerge: true }));
+
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "New Task",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      autoMerge: true,
+    });
+
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: true }),
+      })
+    );
+  });
+
+  it("sets autoMerge to false when explicitly passed false", async () => {
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "New Task",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      autoMerge: false,
+    });
+
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: false }),
+      })
     );
   });
 });

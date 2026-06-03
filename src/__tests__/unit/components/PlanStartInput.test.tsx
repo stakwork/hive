@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import React from "react";
-import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // Hoist mocks so they are available before module resolution
@@ -116,6 +117,12 @@ vi.mock("framer-motion", () => ({
   },
 }));
 
+// Mock URL.createObjectURL and URL.revokeObjectURL for file previews
+const mockCreateObjectURL = vi.fn(() => "blob:mock-url");
+const mockRevokeObjectURL = vi.fn();
+Object.defineProperty(URL, "createObjectURL", { value: mockCreateObjectURL, writable: true });
+Object.defineProperty(URL, "revokeObjectURL", { value: mockRevokeObjectURL, writable: true });
+
 // jsdom does not implement scrollIntoView; cmdk calls it internally
 if (typeof window !== "undefined") {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -128,6 +135,13 @@ const mentionWorkspaces = [
   { slug: "test-ws", name: "Test WS" },
   { slug: "other-ws", name: "Other WS" },
 ];
+
+/** Create a mock File with given type and size */
+function makeMockFile(name: string, type: string, size: number): File {
+  const file = new File(["x".repeat(Math.min(size, 100))], name, { type });
+  Object.defineProperty(file, "size", { value: size });
+  return file;
+}
 
 describe("PlanStartInput", () => {
   const onSubmit = vi.fn();
@@ -145,6 +159,11 @@ describe("PlanStartInput", () => {
       workspace: { repositories: [], slug: "current-ws" },
       workspaces: [],
     });
+  });
+
+  afterEach(() => {
+    mockCreateObjectURL.mockClear();
+    mockRevokeObjectURL.mockClear();
   });
 
   test("send button is not inside an absolutely-positioned container", () => {
@@ -260,12 +279,11 @@ describe("PlanStartInput", () => {
 
   describe("submit behaviour", () => {
     test("onSubmit is called immediately when submit button is clicked with text", async () => {
-      const { waitFor: localWaitFor } = await import("@testing-library/react");
       render(<PlanStartInput onSubmit={onSubmit} />);
       const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
 
       // Wait for llm-models to load so selectedModel is set
-      await localWaitFor(() => {
+      await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith("/api/llm-models");
       });
 
@@ -280,16 +298,16 @@ describe("PlanStartInput", () => {
         model: "anthropic/claude-sonnet-4",
         selectedRepoId: null,
         selectedWorkflow: null,
+        attachmentFile: undefined,
       });
     });
 
     test("onSubmit is called immediately when Enter is pressed with text", async () => {
-      const { waitFor: localWaitFor } = await import("@testing-library/react");
       render(<PlanStartInput onSubmit={onSubmit} />);
       const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
 
       // Wait for llm-models to load
-      await localWaitFor(() => {
+      await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith("/api/llm-models");
       });
 
@@ -303,6 +321,7 @@ describe("PlanStartInput", () => {
         model: "anthropic/claude-sonnet-4",
         selectedRepoId: null,
         selectedWorkflow: null,
+        attachmentFile: undefined,
       });
     });
 
@@ -366,7 +385,6 @@ describe("PlanStartInput", () => {
 
   describe("localStorage model preference", () => {
     test("defaults to stored preference when present and valid", async () => {
-      const { waitFor } = await import("@testing-library/react");
       localStorage.setItem(PLAN_MODEL_PREFERENCE_KEY, "openai/gpt-4o");
 
       render(<PlanStartInput onSubmit={onSubmit} />);
@@ -378,7 +396,6 @@ describe("PlanStartInput", () => {
     });
 
     test("falls back to isPlanDefault when stored key is absent", async () => {
-      const { waitFor } = await import("@testing-library/react");
       const fetchWithDefault = vi.fn((url: string) => {
         if (url === "/api/llm-models") {
           return Promise.resolve({
@@ -404,7 +421,6 @@ describe("PlanStartInput", () => {
     });
 
     test("falls back to isPlanDefault when stored value is not in the fetched models list", async () => {
-      const { waitFor } = await import("@testing-library/react");
       localStorage.setItem(PLAN_MODEL_PREFERENCE_KEY, "other/removed-model");
 
       const fetchWithDefault = vi.fn((url: string) => {
@@ -432,8 +448,6 @@ describe("PlanStartInput", () => {
     });
 
     test("persists model to localStorage on form submit", async () => {
-      const { waitFor } = await import("@testing-library/react");
-
       render(<PlanStartInput onSubmit={onSubmit} />);
       const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
 
@@ -447,6 +461,231 @@ describe("PlanStartInput", () => {
 
       expect(localStorage.getItem(PLAN_MODEL_PREFERENCE_KEY)).not.toBeNull();
       expect(localStorage.getItem(PLAN_MODEL_PREFERENCE_KEY)).toBe("anthropic/claude-sonnet-4");
+    });
+  });
+
+  describe("file attachment", () => {
+    test("attach image button is rendered in the bottom row", () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      expect(screen.getByTestId("attach-image-button")).toBeInTheDocument();
+    });
+
+    test("attach image button is to the left of the submit button", () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const attachBtn = screen.getByTestId("attach-image-button");
+      const submitBtn = screen.getByTestId("plan-start-submit");
+
+      // Both should be in the bottom row
+      const bottomRow = screen.getByTestId("bottom-row");
+      expect(bottomRow).toContainElement(attachBtn);
+      expect(bottomRow).toContainElement(submitBtn);
+
+      // The attach button should appear before the submit button in the DOM
+      const position = attachBtn.compareDocumentPosition(submitBtn);
+      expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    test("drop zone is shown initially (no file selected)", () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
+      expect(screen.queryByTestId("file-preview")).not.toBeInTheDocument();
+    });
+
+    test("selecting a valid PNG file shows the preview thumbnail", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const fileInput = screen.getByTestId("file-input") as HTMLInputElement;
+
+      const file = makeMockFile("screenshot.png", "image/png", 1024 * 1024);
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("file-preview")).toBeInTheDocument();
+        expect(screen.getByTestId("preview-image")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId("drop-zone")).not.toBeInTheDocument();
+      expect(screen.getByText("screenshot.png")).toBeInTheDocument();
+      expect(mockCreateObjectURL).toHaveBeenCalledWith(file);
+    });
+
+    test("clicking remove button clears the attached file", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const fileInput = screen.getByTestId("file-input") as HTMLInputElement;
+
+      const file = makeMockFile("screenshot.png", "image/png", 1024 * 1024);
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("file-preview")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId("remove-file-button"));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("file-preview")).not.toBeInTheDocument();
+        expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
+      });
+
+      expect(mockRevokeObjectURL).toHaveBeenCalled();
+    });
+
+    test("selecting an invalid file type (PDF) shows a toast error and no preview", async () => {
+      const { toast } = await import("sonner");
+      const toastErrorSpy = vi.spyOn(toast, "error");
+
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const fileInput = screen.getByTestId("file-input") as HTMLInputElement;
+
+      const file = makeMockFile("document.pdf", "application/pdf", 1024);
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      expect(toastErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid file type"),
+      );
+      expect(screen.queryByTestId("file-preview")).not.toBeInTheDocument();
+    });
+
+    test("selecting a file larger than 10MB shows a toast error", async () => {
+      const { toast } = await import("sonner");
+      const toastErrorSpy = vi.spyOn(toast, "error");
+
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const fileInput = screen.getByTestId("file-input") as HTMLInputElement;
+
+      const file = makeMockFile("huge.png", "image/png", 11 * 1024 * 1024);
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      expect(toastErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("10MB"),
+      );
+      expect(screen.queryByTestId("file-preview")).not.toBeInTheDocument();
+    });
+
+    test("pasting an image from clipboard attaches the file", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const textarea = screen.getByTestId("plan-start-input");
+
+      const file = makeMockFile("pasted.png", "image/png", 512);
+      const clipboardItem = {
+        type: "image/png",
+        getAsFile: () => file,
+      };
+      const pasteEvent = new Event("paste", { bubbles: true }) as any;
+      pasteEvent.clipboardData = {
+        items: [clipboardItem],
+      };
+      pasteEvent.preventDefault = vi.fn();
+
+      fireEvent(textarea, pasteEvent);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("file-preview")).toBeInTheDocument();
+      });
+
+      expect(mockCreateObjectURL).toHaveBeenCalledWith(file);
+    });
+
+    test("submit with a file passes attachmentFile in options", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith("/api/llm-models");
+      });
+
+      const fileInput = screen.getByTestId("file-input") as HTMLInputElement;
+      const file = makeMockFile("shot.png", "image/png", 2048);
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("file-preview")).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+      await userEvent.type(textarea, "My plan with image");
+
+      fireEvent.click(screen.getByTestId("plan-start-submit"));
+
+      expect(onSubmit).toHaveBeenCalledWith("My plan with image", expect.objectContaining({
+        attachmentFile: file,
+      }));
+    });
+
+    test("submit without file passes attachmentFile: undefined in options", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith("/api/llm-models");
+      });
+
+      const textarea = screen.getByTestId("plan-start-input") as HTMLTextAreaElement;
+      await userEvent.type(textarea, "My plan without image");
+
+      fireEvent.click(screen.getByTestId("plan-start-submit"));
+
+      expect(onSubmit).toHaveBeenCalledWith("My plan without image", expect.objectContaining({
+        attachmentFile: undefined,
+      }));
+    });
+
+    test("text is still required even with a file attached — submit button disabled", async () => {
+      render(<PlanStartInput onSubmit={onSubmit} />);
+      const fileInput = screen.getByTestId("file-input") as HTMLInputElement;
+
+      const file = makeMockFile("screenshot.png", "image/png", 1024);
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("file-preview")).toBeInTheDocument();
+      });
+
+      const submitBtn = screen.getByTestId("plan-start-submit");
+      expect(submitBtn).toBeDisabled();
+
+      fireEvent.click(submitBtn);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    test("loadingStatus is displayed when isLoading is true", () => {
+      render(
+        <PlanStartInput
+          onSubmit={onSubmit}
+          isLoading={true}
+          loadingStatus="Uploading image…"
+        />,
+      );
+
+      expect(screen.getByTestId("loading-status")).toBeInTheDocument();
+      expect(screen.getByTestId("loading-status").textContent).toBe("Uploading image…");
+    });
+
+    test("loadingStatus is not displayed when isLoading is false", () => {
+      render(
+        <PlanStartInput
+          onSubmit={onSubmit}
+          isLoading={false}
+          loadingStatus="Uploading image…"
+        />,
+      );
+
+      expect(screen.queryByTestId("loading-status")).not.toBeInTheDocument();
+    });
+
+    test("loadingStatus is not displayed when loadingStatus is empty string", () => {
+      render(
+        <PlanStartInput
+          onSubmit={onSubmit}
+          isLoading={true}
+          loadingStatus=""
+        />,
+      );
+
+      expect(screen.queryByTestId("loading-status")).not.toBeInTheDocument();
+    });
+
+    test("attach image button is disabled when isLoading is true", () => {
+      render(<PlanStartInput onSubmit={onSubmit} isLoading={true} />);
+      const attachBtn = screen.getByTestId("attach-image-button");
+      expect(attachBtn).toBeDisabled();
     });
   });
 });

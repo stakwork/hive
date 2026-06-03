@@ -27,6 +27,13 @@ vi.mock("@/config/env", () => ({
     POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
     API_TIMEOUT: 10000,
   },
+  // Bifrost gates — `getBifrostForLLM` (called from createStakworkRun
+  // for TASK_GENERATION) reads these directly. Returning `false` makes
+  // the orchestrator short-circuit to `undefined`, leaving the Stakwork
+  // payload byte-identical to the pre-Bifrost behavior these tests
+  // assert.
+  isBifrostEnabledForWorkspace: vi.fn().mockReturnValue(false),
+  isBifrostEnabledForAgent: vi.fn().mockReturnValue(false),
 }));
 
 // Mock Stakwork so no real HTTP calls are made

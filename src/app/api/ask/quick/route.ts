@@ -3,6 +3,8 @@ import { validationError, serverError, forbiddenError, isApiError } from "@/type
 import { validateUserBelongsToOrg } from "@/services/workspace";
 import { ModelMessage, generateObject } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { z } from "zod";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { getMiddlewareContext } from "@/lib/middleware/utils";
@@ -26,6 +28,7 @@ import {
   runCanvasAgent,
   extractConceptIdsFromStep,
 } from "@/lib/ai/runCanvasAgent";
+import { swarmFetch } from "@/lib/ai/concepts";
 
 /**
  * Provenance data types
@@ -55,7 +58,7 @@ interface ProvenanceData {
  * Fetch provenance data from stakgraph
  */
 async function fetchProvenance(swarmUrl: string, apiKey: string, conceptIds: string[]): Promise<ProvenanceData> {
-  const response = await fetch(`${swarmUrl}/gitree/provenance`, {
+  const response = await swarmFetch(`${swarmUrl}/gitree/provenance`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -92,6 +95,7 @@ export async function POST(request: NextRequest) {
       currentCanvasRef,
       currentCanvasBreadcrumb,
       selectedNodeId,
+      selectedNodeIds,
       // When true, skip the post-stream `after()` enrichment block
       // (follow-up questions + provenance). Surfaces that don't render
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
@@ -225,12 +229,24 @@ export async function POST(request: NextRequest) {
       const transcript: MessageLike[] = Array.isArray(canvasChatMessages)
         ? canvasChatMessages
         : [];
+      // Validate the `conversationId` against this caller before
+      // forwarding it to `handleApproval` — otherwise a malicious
+      // body could stamp `parentCanvasConversationId` onto a feature
+      // pointing at someone else's conversation. Same validation
+      // path as the token-attribution case below.
+      const approvalConversationId = await resolveTokenAttributionRowId({
+        conversationId,
+        userId,
+        workspaceSlug: slugs[0],
+        anonymousId: publicAnonymousId,
+      });
       return await runProposalIntent({
         orgId,
         userId,
         transcript,
         approvalIntent,
         rejectionIntent,
+        ...(approvalConversationId ? { conversationId: approvalConversationId } : {}),
       });
     }
 
@@ -293,8 +309,13 @@ export async function POST(request: NextRequest) {
       // finishes. Populated via the onStepFinish hook below.
       const learnedConceptIds = new Set<string>();
 
-      const { result, primarySwarmUrl, primarySwarmApiKey } =
-        await runCanvasAgent({
+      const {
+        result,
+        primarySwarmUrl,
+        primarySwarmApiKey,
+        primaryWorkspaceId,
+        primaryUserId,
+      } = await runCanvasAgent({
           userId,
           orgId: orgId && isMultiWorkspace ? orgId : undefined,
           workspaceSlugs: slugs,
@@ -310,8 +331,23 @@ export async function POST(request: NextRequest) {
                 : undefined,
             selectedNodeId:
               typeof selectedNodeId === "string" ? selectedNodeId : undefined,
+            selectedNodeIds: Array.isArray(selectedNodeIds)
+              ? (selectedNodeIds as unknown[]).filter(
+                  (x): x is string => typeof x === "string",
+                )
+              : undefined,
           },
           messages: convertedMessages,
+          // The validated SharedConversation.id (or null when the
+          // body's `conversationId` failed validation). Forwarded to
+          // `buildInitiativeTools` so `send_to_feature_planner` can
+          // lazy-claim `Feature.parentCanvasConversationId` for
+          // fan-out. Using the validated id (not the raw body field)
+          // prevents a malicious caller from laundering ownership
+          // claims into someone else's conversation.
+          ...(tokenAttributionRowId
+            ? { currentCanvasConversationId: tokenAttributionRowId }
+            : {}),
           // The HTTP chat is a live UI surface; emit HIGHLIGHT_NODES so
           // open clients animate the researched node.
           silentPusher: false,
@@ -372,7 +408,38 @@ export async function POST(request: NextRequest) {
             .join("\n\n");
 
           const followUpApiKey = getApiKeyForProvider("anthropic");
-          const followUpModel = getModel("anthropic", followUpApiKey, primarySlug);
+          // Route the follow-up `generateObject` through Bifrost under
+          // the SAME `agentName` as the main stream. Follow-ups are
+          // part of the same user-facing turn — splitting them into a
+          // separate dim would fragment the per-surface rollups
+          // operators actually want. So: orgId present → "canvas-agent",
+          // absent → "chat-agent", matching `runCanvasAgent`. Returns
+          // `undefined` and falls back to the default key when
+          // BIFROST_ENABLED doesn't cover the primary slug, or for
+          // public-viewer requests.
+          const followUpBifrost = await getBifrostForLLM(
+            {
+              workspaceId: primaryWorkspaceId,
+              workspaceSlug: primarySlug,
+              userId: primaryUserId,
+            },
+            {
+              agentName:
+                orgId && isMultiWorkspace ? "canvas-agent" : "chat-agent",
+            },
+          );
+          const followUpModel = getModel(
+            "anthropic",
+            followUpBifrost?.apiKey ?? followUpApiKey,
+            primarySlug,
+            undefined,
+            followUpBifrost
+              ? {
+                  baseUrl: followUpBifrost.baseUrl,
+                  headers: followUpBifrost.headers,
+                }
+              : undefined,
+          );
 
           const followUpResult = await generateObject({
             model: followUpModel,
@@ -496,8 +563,23 @@ async function runProposalIntent(args: {
   transcript: MessageLike[];
   approvalIntent?: ApprovalIntent;
   rejectionIntent?: RejectionIntent;
+  /**
+   * Pre-validated `SharedConversation.id` (validated via
+   * `resolveTokenAttributionRowId` in the caller). Forwarded into
+   * `handleApproval` so feature approvals can stamp
+   * `Feature.parentCanvasConversationId` for fan-out. Never
+   * un-validated — the caller is the trust boundary.
+   */
+  conversationId?: string;
 }): Promise<Response> {
-  const { orgId, userId, transcript, approvalIntent, rejectionIntent } = args;
+  const {
+    orgId,
+    userId,
+    transcript,
+    approvalIntent,
+    rejectionIntent,
+    conversationId,
+  } = args;
 
   let summaryText: string;
   let approvalResultHeader: string | null = null;
@@ -509,6 +591,7 @@ async function runProposalIntent(args: {
       userId,
       messages: transcript,
       intent: approvalIntent,
+      ...(conversationId ? { conversationId } : {}),
     });
     if (!outcome.ok) {
       // Surface validation errors as the assistant text. The card UI

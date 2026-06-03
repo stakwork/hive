@@ -94,6 +94,7 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
   const [versionAContent, setVersionAContent] = useState<string | null>(null);
   const [versionBContent, setVersionBContent] = useState<string | null>(null);
   const [isLoadingDiff, setIsLoadingDiff] = useState(false);
+  const [previewVersionDescription, setPreviewVersionDescription] = useState<string | null>(null);
 
   // Form state for create/edit
   const [formName, setFormName] = useState("");
@@ -184,6 +185,19 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
       }
     } catch (err) {
       console.error("Error fetching version content:", err);
+      return null;
+    }
+  }, []);
+
+  const fetchVersionDetail = useCallback(async (promptId: number, versionId: number): Promise<{ value: string; description: string } | null> => {
+    try {
+      const response = await fetch(`/api/workflow/prompts/${promptId}/versions/${versionId}`);
+      if (!response.ok) throw new Error("Failed to fetch version detail");
+      const data = await response.json();
+      if (data.success) return { value: data.data.value as string, description: data.data.description as string };
+      return null;
+    } catch (err) {
+      console.error("Error fetching version detail:", err);
       return null;
     }
   }, []);
@@ -342,6 +356,22 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
     setSelectedVersionBId(null);
     setVersionAContent(null);
     setVersionBContent(null);
+    setPreviewVersionDescription(null);
+  };
+
+  const handleEditFromVersion = () => {
+    if (!selectedVersionAId || versionAContent === null) return;
+    setFormValue(versionAContent);
+    setFormDescription(previewVersionDescription ?? selectedPrompt!.description);
+    // Reset all history state
+    setVersions([]);
+    setSelectedVersionAId(null);
+    setSelectedVersionBId(null);
+    setVersionAContent(null);
+    setVersionBContent(null);
+    setPreviewVersionDescription(null);
+    setViewMode("detail");
+    setIsEditing(true);
   };
 
   const handleVersionClick = (versionId: number) => {
@@ -370,39 +400,53 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
     }
   };
 
-  // Fetch version content when both A and B are selected
+  // Fetch version content when A (and optionally B) is selected
   useEffect(() => {
-    if (!selectedPrompt || !selectedVersionAId || !selectedVersionBId) {
+    if (!selectedPrompt || !selectedVersionAId) {
       setVersionAContent(null);
       setVersionBContent(null);
+      setPreviewVersionDescription(null);
       return;
     }
 
-    const fetchDiff = async () => {
+    const fetchContent = async () => {
       setIsLoadingDiff(true);
       try {
-        const resolveContent = (versionId: number): Promise<string | null> => {
-          if (versionId === CURRENT_VERSION_SENTINEL) {
-            return Promise.resolve(selectedPrompt.value);
-          }
-          return fetchVersionContent(selectedPrompt.id, versionId);
-        };
+        if (selectedVersionBId) {
+          // Both A and B selected: fetch for diff
+          const resolveA = selectedVersionAId === CURRENT_VERSION_SENTINEL
+            ? Promise.resolve({ value: selectedPrompt.value, description: selectedPrompt.description })
+            : fetchVersionDetail(selectedPrompt.id, selectedVersionAId);
 
-        const [contentA, contentB] = await Promise.all([
-          resolveContent(selectedVersionAId),
-          resolveContent(selectedVersionBId),
-        ]);
-        setVersionAContent(contentA);
-        setVersionBContent(contentB);
+          const resolveB = selectedVersionBId === CURRENT_VERSION_SENTINEL
+            ? Promise.resolve(selectedPrompt.value)
+            : fetchVersionContent(selectedPrompt.id, selectedVersionBId);
+
+          const [detailA, contentB] = await Promise.all([resolveA, resolveB]);
+          setVersionAContent(detailA ? detailA.value : null);
+          setPreviewVersionDescription(detailA ? detailA.description : null);
+          setVersionBContent(contentB);
+        } else {
+          // Only A selected: preview mode
+          if (selectedVersionAId === CURRENT_VERSION_SENTINEL) {
+            setVersionAContent(selectedPrompt.value);
+            setPreviewVersionDescription(selectedPrompt.description);
+          } else {
+            const detail = await fetchVersionDetail(selectedPrompt.id, selectedVersionAId);
+            setVersionAContent(detail ? detail.value : null);
+            setPreviewVersionDescription(detail ? detail.description : null);
+          }
+          setVersionBContent(null);
+        }
       } catch (err) {
-        console.error("Error fetching version content for diff:", err);
+        console.error("Error fetching version content:", err);
       } finally {
         setIsLoadingDiff(false);
       }
     };
 
-    fetchDiff();
-  }, [selectedPrompt, selectedVersionAId, selectedVersionBId, fetchVersionContent]);
+    fetchContent();
+  }, [selectedPrompt, selectedVersionAId, selectedVersionBId, fetchVersionContent, fetchVersionDetail]);
 
   const formatTimestamp = (timestamp: string) => {
     try {
@@ -695,7 +739,7 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
     let stats = { additions: 0, deletions: 0 };
 
     if (versionAContent && versionBContent) {
-      diffChanges = diffLines(versionAContent, versionBContent);
+      diffChanges = diffLines(versionBContent, versionAContent);
       stats = diffChanges.reduce(
         (acc, part) => {
           const lines = part.value.split('\n').filter(line => line !== '');
@@ -730,7 +774,7 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
             {/* Version List */}
             <div className="border-b bg-muted/30 p-3">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                Select two versions to compare
+                Click a version to preview · Select two to compare
               </div>
               <div className="space-y-1 max-h-[200px] overflow-y-auto">
                 {/* Current Version Button */}
@@ -745,8 +789,8 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
                       className={cn(
                         "w-full text-left px-3 py-2 rounded transition-colors text-sm",
                         "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
-                        isCurrentA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
-                        isCurrentB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                        isCurrentA && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                        isCurrentB && "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500",
                         !isCurrentSelected && "bg-muted/50"
                       )}
                     >
@@ -754,8 +798,8 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
                         <div className="flex items-center gap-2">
                           <Zap className="w-3 h-3" />
                           <span className="font-mono font-medium">Current</span>
-                          {isCurrentA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
-                          {isCurrentB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                          {isCurrentA && <span className="text-xs text-green-600 dark:text-green-400 font-medium">A</span>}
+                          {isCurrentB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
                         </div>
                         <span className="text-xs text-muted-foreground">Live</span>
                       </div>
@@ -777,16 +821,16 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
                         className={cn(
                           "w-full text-left px-3 py-2 rounded transition-colors text-sm",
                           "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
-                          isSelectedA && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
-                          isSelectedB && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                          isSelectedA && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                          isSelectedB && "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500",
                           !isSelected && "bg-muted/50"
                         )}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="font-mono font-medium">v{version.version_number}</span>
-                            {isSelectedA && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">A</span>}
-                            {isSelectedB && <span className="text-xs text-green-600 dark:text-green-400 font-medium">B</span>}
+                            {isSelectedA && <span className="text-xs text-green-600 dark:text-green-400 font-medium">A</span>}
+                            {isSelectedB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
                           </div>
                           <span className="text-xs text-muted-foreground">
                             {formatTimestamp(version.created_at)}
@@ -802,6 +846,46 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
                 )}
               </div>
             </div>
+
+            {/* Preview Panel (single version selected) */}
+            {selectedVersionAId && !selectedVersionBId && (
+              <div className="flex-1 overflow-hidden flex flex-col">
+                {isLoadingDiff ? (
+                  <div className="flex items-center justify-center flex-1 p-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-muted-foreground text-sm">Loading preview...</span>
+                  </div>
+                ) : versionAContent !== null ? (
+                  <>
+                    <div className="flex items-center justify-between p-3 border-b bg-muted/30 flex-shrink-0">
+                      <span className="text-xs font-medium">
+                        {selectedVersionAId === CURRENT_VERSION_SENTINEL ? "Current" : (() => {
+                          const v = versions.find(v => v.id === selectedVersionAId);
+                          return v ? `v${v.version_number}` : "Version";
+                        })()}
+                      </span>
+                      {selectedVersionAId !== CURRENT_VERSION_SENTINEL && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleEditFromVersion}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" />
+                          Edit from this version
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex-1 overflow-auto p-3">
+                      <pre className="text-xs font-mono whitespace-pre-wrap break-words">{versionAContent}</pre>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center flex-1 p-8">
+                    <div className="text-muted-foreground text-sm">Failed to load version content</div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Diff View */}
             {selectedVersionAId && selectedVersionBId && (

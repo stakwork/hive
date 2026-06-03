@@ -170,3 +170,124 @@ describe("needsAttention flag derivation", () => {
     expect(deriveNeedsAttention("HALTED")).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PR artifact summary shaping (the real shapePullRequestSummary helper)
+//
+// shapePullRequestSummary is pure (no DB), so we import and test it directly.
+// "Latest PR artifact wins" is enforced by the DB `orderBy` in
+// fetchLatestPullRequestForMcp and is covered by integration tests.
+// ---------------------------------------------------------------------------
+
+import { shapePullRequestSummary } from "@/lib/mcp/mcpTools";
+
+describe("shapePullRequestSummary", () => {
+  test("returns null when no PR artifact exists", () => {
+    expect(shapePullRequestSummary(null)).toBeNull();
+    expect(shapePullRequestSummary({ id: "x", content: null })).toBeNull();
+  });
+
+  test("statusLabel is 'open' for IN_PROGRESS", () => {
+    const result = shapePullRequestSummary({
+      id: "art-1",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/1",
+        status: "IN_PROGRESS",
+      },
+    });
+    expect(result?.statusLabel).toBe("open");
+    expect(result?.status).toBe("IN_PROGRESS");
+  });
+
+  test("statusLabel is 'merged' for DONE", () => {
+    const result = shapePullRequestSummary({
+      id: "art-2",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/2",
+        status: "DONE",
+      },
+    });
+    expect(result?.statusLabel).toBe("merged");
+    expect(result?.status).toBe("DONE");
+  });
+
+  test("statusLabel is 'closed' for CANCELLED", () => {
+    const result = shapePullRequestSummary({
+      id: "art-3",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/3",
+        status: "CANCELLED",
+      },
+    });
+    expect(result?.statusLabel).toBe("closed");
+    expect(result?.status).toBe("CANCELLED");
+  });
+
+  test("url and repo are passed through correctly", () => {
+    const result = shapePullRequestSummary({
+      id: "art-4",
+      content: {
+        repo: "myorg/myrepo",
+        url: "https://github.com/myorg/myrepo/pull/42",
+        status: "IN_PROGRESS",
+      },
+    });
+    expect(result?.id).toBe("art-4");
+    expect(result?.url).toBe("https://github.com/myorg/myrepo/pull/42");
+    expect(result?.repo).toBe("myorg/myrepo");
+  });
+
+  test("unknown status falls back to raw status value", () => {
+    const result = shapePullRequestSummary({
+      id: "art-5",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/5",
+        status: "UNKNOWN_STATE",
+      },
+    });
+    expect(result?.statusLabel).toBe("UNKNOWN_STATE");
+  });
+
+  test("progress is null when the PR monitor has not populated it", () => {
+    const result = shapePullRequestSummary({
+      id: "art-6",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/6",
+        status: "IN_PROGRESS",
+      },
+    });
+    expect(result?.progress).toBeNull();
+  });
+
+  test("progress (CI failure / conflict health) is surfaced for the agent", () => {
+    const result = shapePullRequestSummary({
+      id: "art-7",
+      content: {
+        repo: "owner/repo",
+        url: "https://github.com/owner/repo/pull/7",
+        status: "IN_PROGRESS",
+        progress: {
+          state: "ci_failure",
+          lastCheckedAt: "2026-01-01T00:00:00Z",
+          mergeable: false,
+          ciStatus: "failure",
+          ciSummary: "3/5 passed",
+          problemDetails: "Build failed",
+          failedChecks: ["build", "lint"],
+        },
+      },
+    });
+    expect(result?.progress).toMatchObject({
+      state: "ci_failure",
+      ciStatus: "failure",
+      ciSummary: "3/5 passed",
+      mergeable: false,
+      failedChecks: ["build", "lint"],
+    });
+  });
+});

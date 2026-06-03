@@ -46,6 +46,7 @@ import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
 import type { ModelName } from "@/lib/ai/models";
+import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -187,13 +188,22 @@ export default function TaskChatPage() {
     // Update workflowRefId from incoming WORKFLOW artifact (workflow_editor mode only)
     if (taskMode === "workflow_editor") {
       const workflowArtifact = message.artifacts?.find(
-        (a) => a.type === "WORKFLOW" && (a.content as WorkflowContent)?.workflowRefId
+        (a) => a.type === "WORKFLOW" && (a.content as WorkflowContent)?.workflowId
       );
       if (workflowArtifact) {
-        const incomingRefId = (workflowArtifact.content as WorkflowContent).workflowRefId!;
-        setCurrentWorkflowContext((prev) =>
-          prev ? { ...prev, workflowRefId: incomingRefId } : prev
-        );
+        const content = workflowArtifact.content as WorkflowContent;
+        setCurrentWorkflowContext((prev) => {
+          if (prev) {
+            return content.workflowRefId ? { ...prev, workflowRefId: content.workflowRefId } : prev;
+          }
+          // Reconstruct from scratch if context was null
+          return {
+            workflowId: content.workflowId!,
+            workflowName: content.workflowName || `Workflow ${content.workflowId}`,
+            workflowRefId: content.workflowRefId || "",
+            ...(content.workflowVersionId && { workflowVersionId: String(content.workflowVersionId) }),
+          };
+        });
       }
     }
 
@@ -651,7 +661,7 @@ export default function TaskChatPage() {
     try {
       // Use workflow_name directly from properties
       const workflowName = workflowData.properties.workflow_name;
-      let workflowJson = workflowData.properties.workflow_json;
+      let workflowJson = getWorkflowJsonFromNode(workflowData);
       let versionRefId = workflowData.ref_id;
 
       // If a version ID is provided, fetch the specific version
@@ -680,7 +690,7 @@ export default function TaskChatPage() {
             const versionData = await versionResponse.json();
             if (versionData.success && versionData.data.length > 0) {
               const versionNode = versionData.data[0];
-              workflowJson = versionNode.properties.workflow_json;
+              workflowJson = getWorkflowJsonFromNode(versionNode);
               versionRefId = versionNode.ref_id;
             }
           }
@@ -773,7 +783,7 @@ export default function TaskChatPage() {
                 messageId: "",
                 type: ArtifactType.WORKFLOW,
                 content: {
-                  workflowJson: workflowData.properties.workflow_json,
+                  workflowJson: getWorkflowJsonFromNode(workflowData),
                   workflowId: workflowId,
                   workflowName: workflowName,
                   workflowRefId: workflowData.ref_id,
@@ -1040,11 +1050,14 @@ export default function TaskChatPage() {
     if (!message.trim() && !attachments?.length && !pendingDebugAttachment && !selectedStep) return;
     if (isLoading) return; // Prevent duplicate sends
 
+    // Handle workflow_editor mode - block send if context is missing
+    if (taskMode === "workflow_editor" && !currentWorkflowContext) {
+      toast.error("Workflow context is missing — please reload the page.");
+      return;
+    }
+
     // Handle workflow_editor mode - always use workflow editor endpoint
     if (taskMode === "workflow_editor" && currentWorkflowContext && currentTaskId) {
-      if (!currentWorkflowContext.workflowRefId) {
-        return;
-      }
       const messageText = message.trim() || (selectedStep ? "Modify this step" : "");
       if (!messageText) return; // Need a message if no step selected
 
@@ -1115,9 +1128,19 @@ export default function TaskChatPage() {
           setProjectId(result.workflow.project_id.toString());
         }
 
-        // Update message status
+        // Update message status and patch stakworkProjectId for the run link
         setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
+          msgs.map((msg) =>
+            msg.id === newMessage.id
+              ? {
+                  ...msg,
+                  status: ChatStatus.SENT,
+                  ...(result.workflow?.project_id && {
+                    stakworkProjectId: result.workflow.project_id.toString(),
+                  }),
+                }
+              : msg,
+          ),
         );
 
         setSelectedStep(null); // Clear step after sending

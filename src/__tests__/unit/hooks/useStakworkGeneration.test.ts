@@ -151,10 +151,16 @@ describe("useStakworkGeneration", () => {
       vi.useFakeTimers();
 
       const freshRun = makeRun("IN_PROGRESS", 0);
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({ runs: [freshRun] }),
-      } as Response);
+      // First fetch: fresh IN_PROGRESS run; second fetch (poll): still IN_PROGRESS
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [freshRun] }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [makeRun("IN_PROGRESS", STALE_RUN_TIMEOUT_MS + 1000)] }),
+        } as Response);
 
       const { result } = renderHook(() =>
         useStakworkGeneration({ featureId, type: "TASK_GENERATION", enabled: true })
@@ -166,9 +172,15 @@ describe("useStakworkGeneration", () => {
 
       expect(result.current.isStale).toBe(false);
 
-      // Advance past the timeout
-      act(() => {
+      // Advance past the timeout — timer fires and triggers poll
+      await act(async () => {
         vi.advanceTimersByTime(STALE_RUN_TIMEOUT_MS + 1000);
+        await Promise.resolve();
+      });
+
+      // After poll returns still-IN_PROGRESS, second pass marks stale
+      await act(async () => {
+        await Promise.resolve();
       });
 
       expect(result.current.isStale).toBe(true);
@@ -178,10 +190,16 @@ describe("useStakworkGeneration", () => {
       vi.useFakeTimers();
 
       const pendingRun = makeRun("PENDING", 0);
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({ runs: [pendingRun] }),
-      } as Response);
+      // First fetch: fresh PENDING run; second fetch (poll): still PENDING
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [pendingRun] }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [makeRun("PENDING", STALE_RUN_TIMEOUT_MS + 1000)] }),
+        } as Response);
 
       const { result } = renderHook(() =>
         useStakworkGeneration({ featureId, type: "TASK_GENERATION", enabled: true })
@@ -193,8 +211,15 @@ describe("useStakworkGeneration", () => {
 
       expect(result.current.isStale).toBe(false);
 
-      act(() => {
+      // Advance past the timeout — timer fires and triggers poll
+      await act(async () => {
         vi.advanceTimersByTime(STALE_RUN_TIMEOUT_MS + 1000);
+        await Promise.resolve();
+      });
+
+      // After poll returns still-PENDING, second pass marks stale
+      await act(async () => {
+        await Promise.resolve();
       });
 
       expect(result.current.isStale).toBe(true);
@@ -202,27 +227,49 @@ describe("useStakworkGeneration", () => {
 
     it("isStale is immediately true for an already-old IN_PROGRESS run", async () => {
       const oldRun = makeRun("IN_PROGRESS", STALE_RUN_TIMEOUT_MS + 5000); // already past timeout
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({ runs: [oldRun] }),
-      } as Response);
+      // First fetch: old IN_PROGRESS run; second fetch (poll): still IN_PROGRESS
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [oldRun] }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [makeRun("IN_PROGRESS", STALE_RUN_TIMEOUT_MS + 5000)] }),
+        } as Response);
 
       const { result } = renderHook(() =>
         useStakworkGeneration({ featureId, type: "TASK_GENERATION", enabled: true })
       );
 
-      await waitFor(() => expect(result.current.querying).toBe(false));
-      expect(result.current.isStale).toBe(true);
+      // Wait for initial fetch, then poll, then second-pass evaluation
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(result.current.isStale).toBe(true));
     });
 
     it("isStale resets to false when latestRun transitions out of IN_PROGRESS", async () => {
       vi.useFakeTimers();
 
       const inProgressRun = makeRun("IN_PROGRESS", 0);
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({ runs: [inProgressRun] }),
-      } as Response);
+      // First fetch: fresh IN_PROGRESS; second fetch (poll): still IN_PROGRESS; third fetch (refetch): resolved
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [inProgressRun] }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [makeRun("IN_PROGRESS", STALE_RUN_TIMEOUT_MS + 1000)] }),
+        } as Response)
+        .mockResolvedValue({
+          ok: true,
+          json: async () => ({ runs: [] }),
+        } as Response);
 
       const { result } = renderHook(() =>
         useStakworkGeneration({ featureId, type: "TASK_GENERATION", enabled: true })
@@ -232,23 +279,118 @@ describe("useStakworkGeneration", () => {
         await Promise.resolve();
       });
 
-      // Advance past timeout → isStale = true
-      act(() => {
+      // Advance past timeout — timer fires and triggers poll
+      await act(async () => {
         vi.advanceTimersByTime(STALE_RUN_TIMEOUT_MS + 1000);
+        await Promise.resolve();
       });
+
+      // After poll returns still-IN_PROGRESS, second pass marks stale
+      await act(async () => {
+        await Promise.resolve();
+      });
+
       expect(result.current.isStale).toBe(true);
 
       // Now simulate the run being resolved (decision set → latestRun becomes null)
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({ runs: [] }),
-      } as Response);
-
       await act(async () => {
         await result.current.refetch();
       });
 
       expect(result.current.latestRun).toBeNull();
+      expect(result.current.isStale).toBe(false);
+    });
+
+    it("timer fires → backend returns COMPLETED → isStale stays false", async () => {
+      vi.useFakeTimers();
+
+      const freshRun = makeRun("IN_PROGRESS", 0);
+      // First fetch: fresh IN_PROGRESS run; second fetch (poll): COMPLETED (no decision, so filtered — returns empty)
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [freshRun] }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [] }), // completed run has decision, filtered to null
+        } as Response);
+
+      const { result } = renderHook(() =>
+        useStakworkGeneration({ featureId, type: "TASK_GENERATION", enabled: true })
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.isStale).toBe(false);
+
+      // Advance past the timeout — timer fires and triggers poll
+      await act(async () => {
+        vi.advanceTimersByTime(STALE_RUN_TIMEOUT_MS + 1000);
+        await Promise.resolve();
+      });
+
+      // Poll returns empty (completed) → latestRun becomes null → isStale resets to false
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.isStale).toBe(false);
+    });
+
+    it("run already old on mount → backend returns COMPLETED on poll → isStale stays false", async () => {
+      const oldRun = makeRun("IN_PROGRESS", STALE_RUN_TIMEOUT_MS + 5000);
+      // First fetch: old IN_PROGRESS run; second fetch (poll): empty (completed/decided)
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [oldRun] }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [] }),
+        } as Response);
+
+      const { result } = renderHook(() =>
+        useStakworkGeneration({ featureId, type: "TASK_GENERATION", enabled: true })
+      );
+
+      // Wait for initial fetch + poll + second-pass evaluation
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(result.current.querying).toBe(false));
+      expect(result.current.isStale).toBe(false);
+    });
+
+    it("poll fetch throws → isStale stays false (silent degradation)", async () => {
+      const oldRun = makeRun("IN_PROGRESS", STALE_RUN_TIMEOUT_MS + 5000);
+      // First fetch: old IN_PROGRESS run; second fetch (poll): network error
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ runs: [oldRun] }),
+        } as Response)
+        .mockRejectedValueOnce(new Error("Network error"));
+
+      const { result } = renderHook(() =>
+        useStakworkGeneration({ featureId, type: "TASK_GENERATION", enabled: true })
+      );
+
+      // Wait for initial fetch + failed poll (silently caught)
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(result.current.querying).toBe(false));
+      // Poll failed silently — latestRun unchanged, effect doesn't re-run → isStale stays false
       expect(result.current.isStale).toBe(false);
     });
   });

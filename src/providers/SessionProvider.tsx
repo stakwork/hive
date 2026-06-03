@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { SessionProvider as NextAuthSessionProvider } from "next-auth/react";
 import { ReactNode } from "react";
 
@@ -10,9 +11,8 @@ interface SessionProviderProps {
 export default function SessionProvider({ children }: SessionProviderProps) {
   return (
     <NextAuthSessionProvider
-    // Disable automatic session refetch on window focus to prevent network errors
-    // Reduce refetch interval to prevent excessive requests
-
+      refetchOnWindowFocus={false}
+      refetchWhenOffline={false}
     >
       {children}
     </NextAuthSessionProvider>

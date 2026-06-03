@@ -2,7 +2,9 @@ import { listConcepts } from "@/lib/ai/askTools";
 import { db } from "@/lib/db";
 import { createFeature } from "@/services/roadmap/features";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
+import { createTicket } from "@/services/roadmap/tickets";
 import { sendMessageToStakwork } from "@/services/task-workflow";
+import type { PullRequestContent } from "@/lib/chat";
 import {
   ArtifactType,
   Priority,
@@ -42,10 +44,27 @@ function mcpOk(data: unknown): McpToolResult {
 // ---------------------------------------------------------------------------
 
 /** Artifact types we include in chat history responses. */
-const CHAT_ARTIFACT_TYPES = [ArtifactType.LONGFORM, ArtifactType.BROWSER, ArtifactType.PLAN];
+const CHAT_ARTIFACT_TYPES = [
+  ArtifactType.LONGFORM,
+  ArtifactType.BROWSER,
+  ArtifactType.PLAN,
+  ArtifactType.FORM,
+];
 
-/** Artifact types where only the *last* occurrence is kept (to reduce payload). */
-const LAST_ONLY_ARTIFACT_TYPES: ArtifactType[] = [ArtifactType.BROWSER, ArtifactType.PLAN];
+/**
+ * Artifact types where only the *last* occurrence is kept (to reduce payload).
+ *
+ * FORM is included here so the canvas/manager agent sees the planner's most
+ * recent clarifying question (the structured options the user would see on
+ * the feature plan page) without dragging along every stale form across a
+ * long chat history. PLAN and BROWSER follow the same "latest snapshot only"
+ * convention for the same reason.
+ */
+const LAST_ONLY_ARTIFACT_TYPES: ArtifactType[] = [
+  ArtifactType.BROWSER,
+  ArtifactType.PLAN,
+  ArtifactType.FORM,
+];
 
 type RawMessage = {
   role: string;
@@ -93,6 +112,67 @@ async function fetchChatHistoryForMcp(
       .filter((a) => !LAST_ONLY_ARTIFACT_TYPES.includes(a.type) || lastIndexOf[a.type] === idx)
       .map((a) => ({ type: a.type, content: a.content })),
   }));
+}
+
+/** Maps the PR artifact's lifecycle status to a familiar GitHub PR state. */
+const PR_STATUS_LABEL: Record<string, string> = {
+  IN_PROGRESS: "open",
+  DONE: "merged",
+  CANCELLED: "closed",
+};
+
+/**
+ * Shape a PULL_REQUEST artifact into a compact, structured summary the agent
+ * can act on. Pure (no DB) so it can be unit-tested directly.
+ *
+ * Includes `progress` (CI status, mergeability, conflicts) when the PR monitor
+ * has populated it, so the agent gets actionable PR health rather than just an
+ * open/merged/closed label.
+ */
+export function shapePullRequestSummary(
+  artifact: { id: string; content: unknown } | null,
+) {
+  if (!artifact?.content) return null;
+
+  const content = artifact.content as PullRequestContent;
+  const progress = content.progress;
+
+  return {
+    id: artifact.id,
+    url: content.url,
+    repo: content.repo,
+    status: content.status,
+    statusLabel: PR_STATUS_LABEL[content.status] ?? content.status,
+    progress: progress
+      ? {
+          state: progress.state,
+          mergeable: progress.mergeable,
+          ciStatus: progress.ciStatus,
+          ciSummary: progress.ciSummary,
+          problemDetails: progress.problemDetails,
+          conflictFiles: progress.conflictFiles,
+          failedChecks: progress.failedChecks,
+          lastCheckedAt: progress.lastCheckedAt,
+        }
+      : null,
+  };
+}
+
+/**
+ * Fetch the most recent PULL_REQUEST artifact for a task and shape it.
+ *
+ * Surfaced as a dedicated top-level field (rather than buried in chatHistory)
+ * so the agent reliably sees the PR. Orders by `createdAt desc` so re-runs that
+ * produce multiple PR artifacts always resolve to the latest one.
+ */
+async function fetchLatestPullRequestForMcp(taskId: string) {
+  const prArtifact = await db.artifact.findFirst({
+    where: { type: ArtifactType.PULL_REQUEST, message: { taskId } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, content: true },
+  });
+
+  return shapePullRequestSummary(prArtifact);
 }
 
 /**
@@ -429,15 +509,28 @@ export async function mcpSendMessage(
 
 /**
  * List tasks for a workspace, ordered by last updated, max 40.
+ * When `featureId` is provided, scopes to tasks belonging to that feature
+ * (and verifies the feature belongs to the workspace first).
  */
 export async function mcpListTasks(
   auth: WorkspaceAuth,
+  featureId?: string,
 ): Promise<McpToolResult> {
   try {
+    if (featureId) {
+      const feature = await db.feature.findUnique({
+        where: { id: featureId },
+        select: { workspaceId: true },
+      });
+      const err = verifyWorkspace(feature, auth, "Feature");
+      if (err) return err;
+    }
+
     const tasks = await db.task.findMany({
       where: {
         workspaceId: auth.workspaceId,
         deleted: false,
+        ...(featureId ? { featureId } : {}),
       },
       select: {
         id: true,
@@ -445,6 +538,7 @@ export async function mcpListTasks(
         status: true,
         priority: true,
         updatedAt: true,
+        featureId: true,
       },
       orderBy: { updatedAt: "desc" },
       take: 40,
@@ -456,6 +550,7 @@ export async function mcpListTasks(
         title: t.title,
         status: t.status,
         priority: t.priority,
+        featureId: t.featureId,
         updatedAt: t.updatedAt.toISOString(),
       })),
     );
@@ -491,7 +586,10 @@ export async function mcpReadTask(
     const err = verifyWorkspace(task, auth, "Task");
     if (err) return err;
 
-    const chatHistory = await fetchChatHistoryForMcp({ taskId });
+    const [chatHistory, pullRequest] = await Promise.all([
+      fetchChatHistoryForMcp({ taskId }),
+      fetchLatestPullRequestForMcp(taskId),
+    ]);
 
     return mcpOk({
       id: task!.id,
@@ -504,6 +602,7 @@ export async function mcpReadTask(
       featureId: task!.featureId,
       branch: task!.branch,
       chatHistory,
+      pullRequest,
     });
   } catch (error) {
     console.error("Error reading task:", error);
@@ -513,14 +612,26 @@ export async function mcpReadTask(
 
 /**
  * Create a new task in the workspace.
+ * When `featureId` is provided, the task is attached to that feature
+ * (after verifying the feature belongs to this workspace).
  */
 export async function mcpCreateTask(
   auth: WorkspaceAuth,
   title: string,
   description?: string,
   priority?: string,
+  featureId?: string,
 ): Promise<McpToolResult> {
   try {
+    if (featureId) {
+      const feature = await db.feature.findUnique({
+        where: { id: featureId },
+        select: { workspaceId: true },
+      });
+      const err = verifyWorkspace(feature, auth, "Feature");
+      if (err) return err;
+    }
+
     const taskPriority =
       priority && Object.values(Priority).includes(priority as Priority)
         ? (priority as Priority)
@@ -534,6 +645,7 @@ export async function mcpCreateTask(
         priority: taskPriority,
         createdById: auth.userId,
         updatedById: auth.userId,
+        ...(featureId ? { featureId } : {}),
       },
     });
 
@@ -542,11 +654,353 @@ export async function mcpCreateTask(
       title: task.title,
       status: task.status,
       priority: task.priority,
+      featureId: task.featureId,
     });
   } catch (error) {
     console.error("Error creating task:", error);
     const msg =
       error instanceof Error ? error.message : "Could not create task";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Roadmap task creation (feature-aware, via createTicket service)
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared input for the two roadmap-aware create helpers below.
+ * Pulled into a separate type to keep `mcpCreateFeatureTask` and
+ * `mcpCreateWorkflowTask` honest about their narrow contracts —
+ * neither accepts `status`, `assigneeId`, or `phaseId`; both default
+ * to the feature's first phase and TaskStatus.TODO via `createTicket`.
+ */
+interface McpRoadmapTaskBase {
+  title: string;
+  description?: string;
+  priority?: string;
+}
+
+/**
+ * Resolve a repository identifier against a workspace. Accepts either
+ * a `repositoryId` (cuid) or a `repositoryUrl` (string match against
+ * `Repository.repositoryUrl`). When both are provided, `repositoryId`
+ * wins. Returns the resolved cuid or an error.
+ */
+async function resolveWorkspaceRepository(
+  workspaceId: string,
+  args: { repositoryId?: string; repositoryUrl?: string },
+): Promise<{ repositoryId: string } | { error: string }> {
+  if (args.repositoryId) {
+    const repo = await db.repository.findFirst({
+      where: { id: args.repositoryId, workspaceId },
+      select: { id: true },
+    });
+    if (!repo) {
+      return { error: "Repository not found in this workspace" };
+    }
+    return { repositoryId: repo.id };
+  }
+
+  if (args.repositoryUrl) {
+    const repo = await db.repository.findFirst({
+      where: { workspaceId, repositoryUrl: args.repositoryUrl },
+      select: { id: true },
+    });
+    if (!repo) {
+      return {
+        error: `No repository in this workspace matches repositoryUrl=${args.repositoryUrl}`,
+      };
+    }
+    return { repositoryId: repo.id };
+  }
+
+  return { error: "Either repositoryId or repositoryUrl must be provided" };
+}
+
+/**
+ * Create a feature-anchored CODING task.
+ *
+ * Wraps `createTicket` (the same path the UI uses) so the new row gets
+ * the full validation, phase defaulting, bounty code, Pusher
+ * broadcast, etc. — the MCP surface only adds the repository-resolver
+ * convenience (accepting `repositoryUrl` in addition to
+ * `repositoryId`) and the MCP error/JSON shape.
+ *
+ * Why a separate tool from the generic `mcpCreateTask`? The generic
+ * version is feature-agnostic and used by other agents (voice, etc.)
+ * that don't need to set `featureId` / `repositoryId`. The plan
+ * agent needs the feature-anchored variant with task-quality
+ * guardrails baked into the tool description (see handler.ts).
+ */
+export async function mcpCreateFeatureTask(
+  auth: WorkspaceAuth,
+  featureId: string,
+  base: McpRoadmapTaskBase,
+  repo: { repositoryId?: string; repositoryUrl?: string },
+): Promise<McpToolResult> {
+  try {
+    const feature = await db.feature.findUnique({
+      where: { id: featureId },
+      select: { workspaceId: true },
+    });
+    const err = verifyWorkspace(feature, auth, "Feature");
+    if (err) return err;
+
+    const resolved = await resolveWorkspaceRepository(auth.workspaceId, repo);
+    if ("error" in resolved) {
+      return mcpError(`Error: ${resolved.error}`);
+    }
+
+    const taskPriority =
+      base.priority &&
+      Object.values(Priority).includes(base.priority as Priority)
+        ? (base.priority as Priority)
+        : Priority.MEDIUM;
+
+    const task = await createTicket(featureId, auth.userId, {
+      title: base.title,
+      description: base.description,
+      priority: taskPriority,
+      repositoryId: resolved.repositoryId,
+    });
+
+    return mcpOk({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      featureId: task.featureId,
+      phaseId: task.phaseId,
+      repository: task.repository,
+    });
+  } catch (error) {
+    console.error("Error creating feature coding task:", error);
+    const msg =
+      error instanceof Error
+        ? error.message
+        : "Could not create feature coding task";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+/**
+ * Create a feature-anchored WORKFLOW task (Stakwork workflow editor).
+ *
+ * Sets `mode: "workflow_editor"` internally via `createTicket` (which
+ * derives mode from `workflowId` / `isNewWorkflow`). When
+ * `workflowId` is provided → existing workflow. When omitted → new
+ * workflow (we pass `isNewWorkflow: true`).
+ *
+ * `repositoryId` is intentionally null on workflow tasks — `createTicket`
+ * enforces the workflow-vs-repo mutual exclusion.
+ */
+export async function mcpCreateWorkflowTask(
+  auth: WorkspaceAuth,
+  featureId: string,
+  base: McpRoadmapTaskBase,
+  workflow: {
+    workflowId?: number;
+    workflowName?: string;
+    workflowRefId?: string;
+    workflowTaskType?: import("@prisma/client").WorkflowTaskType;
+  },
+): Promise<McpToolResult> {
+  try {
+    const feature = await db.feature.findUnique({
+      where: { id: featureId },
+      select: { workspaceId: true },
+    });
+    const err = verifyWorkspace(feature, auth, "Feature");
+    if (err) return err;
+
+    const taskPriority =
+      base.priority &&
+      Object.values(Priority).includes(base.priority as Priority)
+        ? (base.priority as Priority)
+        : Priority.MEDIUM;
+
+    const hasExistingWorkflow = typeof workflow.workflowId === "number";
+
+    const task = await createTicket(featureId, auth.userId, {
+      title: base.title,
+      description: base.description,
+      priority: taskPriority,
+      workflowTaskType: workflow.workflowTaskType,
+      ...(hasExistingWorkflow
+        ? {
+            workflowId: workflow.workflowId,
+            workflowName: workflow.workflowName,
+            workflowRefId: workflow.workflowRefId,
+          }
+        : { isNewWorkflow: true }),
+    });
+
+    return mcpOk({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      featureId: task.featureId,
+      phaseId: task.phaseId,
+      workflowId: hasExistingWorkflow ? workflow.workflowId : null,
+      isNewWorkflow: !hasExistingWorkflow,
+    });
+  } catch (error) {
+    console.error("Error creating feature workflow task:", error);
+    const msg =
+      error instanceof Error
+        ? error.message
+        : "Could not create feature workflow task";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+/**
+ * Update a task's editable fields. Only `title`, `description`, and
+ * `priority` are updatable here — status / workflowStatus / featureId
+ * changes are intentionally excluded (those are higher-impact and flow
+ * through other paths).
+ *
+ * All three fields are optional; pass only what you want to change.
+ * Empty-string `description` clears the description (set to null);
+ * undefined leaves it untouched.
+ */
+export async function mcpUpdateTask(
+  auth: WorkspaceAuth,
+  taskId: string,
+  updates: {
+    title?: string;
+    description?: string;
+    priority?: string;
+  },
+): Promise<McpToolResult> {
+  try {
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: { workspaceId: true },
+    });
+    const err = verifyWorkspace(task, auth, "Task");
+    if (err) return err;
+
+    const data: {
+      title?: string;
+      description?: string | null;
+      priority?: Priority;
+      updatedById: string;
+    } = { updatedById: auth.userId };
+
+    if (updates.title !== undefined) {
+      const trimmed = updates.title.trim();
+      if (!trimmed) {
+        return mcpError("Error: title cannot be empty");
+      }
+      data.title = trimmed;
+    }
+
+    if (updates.description !== undefined) {
+      const trimmed = updates.description.trim();
+      data.description = trimmed.length ? trimmed : null;
+    }
+
+    if (updates.priority !== undefined) {
+      if (!Object.values(Priority).includes(updates.priority as Priority)) {
+        return mcpError(
+          `Error: invalid priority. Must be one of: ${Object.values(Priority).join(", ")}`,
+        );
+      }
+      data.priority = updates.priority as Priority;
+    }
+
+    // Nothing actually changed beyond updatedById — short-circuit.
+    if (Object.keys(data).length === 1) {
+      return mcpError(
+        "Error: no updatable fields provided (title, description, priority)",
+      );
+    }
+
+    const updated = await db.task.update({
+      where: { id: taskId },
+      data,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        priority: true,
+        featureId: true,
+        updatedAt: true,
+      },
+    });
+
+    return mcpOk({
+      id: updated.id,
+      title: updated.title,
+      description: updated.description,
+      status: updated.status,
+      priority: updated.priority,
+      featureId: updated.featureId,
+      updatedAt: updated.updatedAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("Error updating task:", error);
+    const msg =
+      error instanceof Error ? error.message : "Could not update task";
+    return mcpError(`Error: ${msg}`);
+  }
+}
+
+/**
+ * Send a message from the feature planner (or any orchestrating agent)
+ * to a task's agent chat. Mirrors `send_to_feature_planner` in
+ * `initiativeTools.ts` — fire-and-forget delegation, async reply,
+ * fails when the task agent is currently running.
+ *
+ * The message is prefixed with `[via plan agent]` so the task agent
+ * can recognize the upstream coordination signal.
+ */
+export async function mcpSendToTaskAgent(
+  auth: WorkspaceAuth,
+  taskId: string,
+  message: string,
+): Promise<McpToolResult> {
+  try {
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: { workspaceId: true, workflowStatus: true },
+    });
+    const err = verifyWorkspace(task, auth, "Task");
+    if (err) return err;
+
+    // Same guard as send_to_feature_planner: don't try to send while a
+    // run is already in flight. The downstream service would throw;
+    // returning a structured error here is friendlier to the caller.
+    if (task!.workflowStatus === "IN_PROGRESS") {
+      return mcpError(
+        "Error: The task agent is currently running. Use read_task to check workflowStatus and wait until it leaves IN_PROGRESS before sending.",
+      );
+    }
+
+    const prefixedMessage = `[via plan agent] ${message}`;
+
+    await sendMessageToStakwork({
+      taskId,
+      message: prefixedMessage,
+      userId: auth.userId,
+    });
+
+    return mcpOk({
+      status: "sent",
+      taskId,
+      awaitingReply: true,
+      note: "Message delivered. The task agent replies asynchronously. Call read_task afterward to see the reply and updated state.",
+    });
+  } catch (error) {
+    console.error("Error sending message to task agent:", error);
+    const msg =
+      error instanceof Error
+        ? error.message
+        : "Could not send message to task agent";
     return mcpError(`Error: ${msg}`);
   }
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, Copy, Sparkles } from "lucide-react";
+import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, Copy, Sparkles, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
@@ -25,12 +25,18 @@ import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import { usePusherConnection, type TaskTitleUpdateEvent, type DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
 import type { FeatureDetail, PrArtifact } from "@/types/roadmap";
-import type { TaskStatus, WorkflowStatus } from "@prisma/client";
+import type { TaskStatus, WorkflowStatus, WorkflowTaskType } from "@prisma/client";
 import { toast } from "sonner";
 
 type TaskWithPrArtifact = FeatureDetail["phases"][0]["tasks"][0] & {
   prArtifact?: PrArtifact;
 };
+
+const WORKFLOW_TASK_TYPES = ["SKILL", "WORKFLOW", "SCRIPT", "PROMPT"] as const;
+
+function capitalize(str: string) {
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
 
 const STATUS_DOT: Record<string, string> = {
   TODO: "bg-zinc-400",
@@ -124,6 +130,14 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   }, [defaultPhase?.tasks]);
 
   const [graphOpen, setGraphOpen] = useState(tasks.length > 1);
+
+  const prevTasksLengthRef = useRef(tasks.length);
+  useEffect(() => {
+    if (prevTasksLengthRef.current === 0 && tasks.length > 0) {
+      setGraphOpen(true);
+    }
+    prevTasksLengthRef.current = tasks.length;
+  }, [tasks.length]);
 
   const hasDependencies = useMemo(
     () => tasks.some((t) => (t.dependsOnTaskIds ?? []).length > 0),
@@ -257,6 +271,8 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       workflowId?: number;
       workflowName?: string;
       workflowRefId?: string;
+      isNewWorkflow?: boolean;
+      workflowTaskType?: WorkflowTaskType;
     }
   ) => {
     // Optimistically apply the update immediately
@@ -309,6 +325,21 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
     }
   };
 
+  const handleMarkComplete = async (taskId: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "DONE" }),
+      });
+      if (!response.ok) throw new Error("Failed to mark complete");
+      // Pusher real-time + updateFeatureStatusFromTasks handle visual update
+    } catch (error) {
+      console.error("Failed to mark complete:", error);
+      toast.error("Failed to mark task as complete");
+    }
+  };
+
   const handleStartTask = async (taskId: string) => {
     if (startingTaskId) return;
     setStartingTaskId(taskId);
@@ -344,6 +375,14 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
           status: "TODO",
           autoMerge: false,
           dependsOnTaskIds: task.dependsOnTaskIds ?? [],
+          // Carry forward workflow identity for workflow_editor tasks
+          ...(task.workflowTask && task.workflowTask.workflowId == null
+            ? { isNewWorkflow: true }
+            : {
+                workflowId: task.workflowTask?.workflowId ?? undefined,
+                workflowName: task.workflowTask?.workflowName ?? undefined,
+                workflowRefId: task.workflowTask?.workflowRefId ?? undefined,
+              }),
         }),
       });
       if (!response.ok) throw new Error("Failed to duplicate task");
@@ -523,7 +562,6 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                 }
               }}
               className={isMobile ? "h-[280px]" : "h-[380px]"}
-              open={graphOpen}
             />
           </CollapsibleContent>
         </Collapsible>
@@ -608,6 +646,17 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
             });
           }
 
+          const isWorkflowTask = !!task.workflowTask;
+
+          if (task.status === "TODO" || task.status === "IN_PROGRESS") {
+            actionMenuItems.splice(actionMenuItems.length - 1, 0, {
+              label: "Mark Complete",
+              icon: CheckCircle,
+              variant: "default" as const,
+              onClick: () => handleMarkComplete(task.id),
+            });
+          }
+
           const isTerminalWorkflow = ['ERROR', 'FAILED', 'HALTED'].includes(task.workflowStatus ?? '');
           const isRetrying = retryingTaskId === task.id;
 
@@ -627,6 +676,11 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                 {isQueued && (
                   <span className="text-xs text-blue-500 font-medium shrink-0">
                     Queued
+                  </span>
+                )}
+                {isWorkflowTask && task.workflowTask?.workflowTaskType && (
+                  <span className="inline-flex items-center rounded px-1 py-0 text-[9px] font-medium bg-muted text-muted-foreground uppercase tracking-wide shrink-0">
+                    {task.workflowTask.workflowTaskType}
                   </span>
                 )}
                 {task.deploymentStatus && (
@@ -667,17 +721,21 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   <div onClick={(e) => e.stopPropagation()}>
                     <TargetSelector
                       value={
-                        task.workflowTask
+                        task.workflowTask && task.workflowTask.workflowId != null
                           ? encodeTargetValue({ type: "workflow", workflowId: task.workflowTask.workflowId, workflowName: task.workflowTask.workflowName ?? "", workflowRefId: task.workflowTask.workflowRefId ?? "" })
-                          : task.repository?.id
-                            ? encodeTargetValue({ type: "repo", repositoryId: task.repository.id })
-                            : workspaceRepos[0]?.id
-                              ? encodeTargetValue({ type: "repo", repositoryId: workspaceRepos[0].id })
-                              : undefined
+                          : isWorkflowTask && task.workflowTask?.workflowId == null
+                            ? encodeTargetValue({ type: "new-workflow" })
+                            : !isWorkflowTask && task.repository?.id
+                              ? encodeTargetValue({ type: "repo", repositoryId: task.repository.id })
+                              : !isWorkflowTask && workspaceRepos[0]?.id
+                                ? encodeTargetValue({ type: "repo", repositoryId: workspaceRepos[0].id })
+                                : undefined
                       }
                       onChange={(selection: TargetSelection) => {
                         if (selection.type === "repo") {
                           handleUpdateTask(task.id, { repositoryId: selection.repositoryId });
+                        } else if (selection.type === "new-workflow") {
+                          handleUpdateTask(task.id, { isNewWorkflow: true });
                         } else {
                           handleUpdateTask(task.id, {
                             workflowId: selection.workflowId,
@@ -692,39 +750,71 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                     />
                   </div>
                 )}
-                <div
-                  className="flex items-center gap-1.5"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MiniToggle
-                    checked={displayTask.autoMerge ?? false}
-                    onChange={(autoMerge) => handleUpdateTask(task.id, { autoMerge })}
-                    disabled={task.status !== "TODO"}
-                  />
-                  <span>auto-merge</span>
-                </div>
-                <div
-                  className="flex items-center gap-1.5"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MiniToggle
-                    checked={displayTask.runBuild ?? true}
-                    onChange={(runBuild) => handleUpdateTask(task.id, { runBuild })}
-                    disabled={task.status !== "TODO"}
-                  />
-                  <span>run build</span>
-                </div>
-                <div
-                  className="flex items-center gap-1.5"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MiniToggle
-                    checked={displayTask.runTestSuite ?? true}
-                    onChange={(runTestSuite) => handleUpdateTask(task.id, { runTestSuite })}
-                    disabled={task.status !== "TODO"}
-                  />
-                  <span>run tests</span>
-                </div>
+                {isWorkflowTask && (
+                  <div onClick={(e) => e.stopPropagation()} data-testid="workflow-type-selector">
+                    <Select
+                      value={task.workflowTask?.workflowTaskType ?? ""}
+                      onValueChange={(type) =>
+                        handleUpdateTask(task.id, { workflowTaskType: type as WorkflowTaskType })
+                      }
+                      disabled={task.status !== "TODO"}
+                    >
+                      <SelectTrigger className="h-5 text-[10px] px-1.5 py-0 w-auto max-w-[100px] border-muted bg-muted/50 gap-1 [&>svg]:h-3 [&>svg]:w-3">
+                        <span className="truncate">
+                          {task.workflowTask?.workflowTaskType
+                            ? capitalize(task.workflowTask.workflowTaskType)
+                            : "Type"}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WORKFLOW_TASK_TYPES.map((t) => (
+                          <SelectItem key={t} value={t} className="text-xs">
+                            {capitalize(t)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {!isWorkflowTask && (
+                  <div
+                    className="flex items-center gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MiniToggle
+                      checked={displayTask.autoMerge ?? false}
+                      onChange={(autoMerge) => handleUpdateTask(task.id, { autoMerge })}
+                      disabled={task.status !== "TODO"}
+                    />
+                    <span>auto-merge</span>
+                  </div>
+                )}
+                {!isWorkflowTask && (
+                  <div
+                    className="flex items-center gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MiniToggle
+                      checked={displayTask.runBuild ?? true}
+                      onChange={(runBuild) => handleUpdateTask(task.id, { runBuild })}
+                      disabled={task.status !== "TODO"}
+                    />
+                    <span>run build</span>
+                  </div>
+                )}
+                {!isWorkflowTask && (
+                  <div
+                    className="flex items-center gap-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MiniToggle
+                      checked={displayTask.runTestSuite ?? true}
+                      onChange={(runTestSuite) => handleUpdateTask(task.id, { runTestSuite })}
+                      disabled={task.status !== "TODO"}
+                    />
+                    <span>run tests</span>
+                  </div>
+                )}
                 {llmModels.length > 0 && (
                   <div onClick={(e) => e.stopPropagation()}>
                     <Select

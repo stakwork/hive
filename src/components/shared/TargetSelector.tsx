@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { FolderOpen, GitBranch } from "lucide-react";
+import { FolderOpen, GitBranch, Plus } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -17,7 +17,8 @@ import { isDevelopmentMode } from "@/lib/runtime";
 
 export type TargetSelection =
   | { type: "repo"; repositoryId: string }
-  | { type: "workflow"; workflowId: number; workflowName: string; workflowRefId: string };
+  | { type: "workflow"; workflowId: number; workflowName: string; workflowRefId: string }
+  | { type: "new-workflow" };
 
 interface Repository {
   id: string;
@@ -40,6 +41,7 @@ export interface TargetSelectorProps {
 /** Encode a selection as a Select value string */
 export function encodeTargetValue(selection: TargetSelection): string {
   if (selection.type === "repo") return `repo:${selection.repositoryId}`;
+  if (selection.type === "new-workflow") return "workflow:new";
   return `workflow:${selection.workflowId}`;
 }
 
@@ -51,6 +53,9 @@ export function decodeTargetValue(
   if (value.startsWith("repo:")) {
     const repositoryId = value.slice(5);
     return { type: "repo", repositoryId };
+  }
+  if (value === "workflow:new") {
+    return { type: "new-workflow" };
   }
   if (value.startsWith("workflow:")) {
     const workflowId = parseInt(value.slice(9), 10);
@@ -99,6 +104,8 @@ export function TargetSelector({
     if (raw.startsWith("repo:")) {
       const repositoryId = raw.slice(5);
       onChange({ type: "repo", repositoryId });
+    } else if (raw === "workflow:new") {
+      onChange({ type: "new-workflow" });
     } else if (raw.startsWith("workflow:")) {
       const workflowId = parseInt(raw.slice(9), 10);
       if (!isNaN(workflowId)) {
@@ -118,8 +125,9 @@ export function TargetSelector({
       ? "h-5 text-[10px] px-1.5 py-0 w-auto max-w-[140px] border-muted bg-muted/50 gap-1 [&>svg]:h-3 [&>svg]:w-3"
       : "w-[200px] h-8 text-xs rounded-lg shadow-sm";
 
+  const isNewWorkflow = value === "workflow:new";
   const selectedWorkflow =
-    value?.startsWith("workflow:")
+    !isNewWorkflow && value?.startsWith("workflow:")
       ? workflows.find((w) => w.id === parseInt(value.slice(9), 10))
       : null;
   const selectedRepo =
@@ -129,17 +137,19 @@ export function TargetSelector({
     <Select value={value ?? undefined} onValueChange={handleValueChange} disabled={disabled}>
       <SelectTrigger className={[triggerClass, className].filter(Boolean).join(" ")}>
         <div className="flex items-center gap-1.5 overflow-hidden min-w-0">
-          {selectedWorkflow ? (
+          {isNewWorkflow || selectedWorkflow ? (
             <GitBranch className={size === "sm" ? "h-3 w-3 shrink-0" : "h-4 w-4 shrink-0"} />
           ) : (
             <FolderOpen className={size === "sm" ? "h-3 w-3 shrink-0" : "h-4 w-4 shrink-0"} />
           )}
           <span className="truncate min-w-0 block">
-            {selectedWorkflow
-              ? selectedWorkflow.name
-              : selectedRepo
-                ? selectedRepo.name
-                : placeholder ?? "Select target"}
+            {isNewWorkflow
+              ? "New Workflow"
+              : selectedWorkflow
+                ? selectedWorkflow.name
+                : selectedRepo
+                  ? selectedRepo.name
+                  : placeholder ?? "Select target"}
           </span>
         </div>
       </SelectTrigger>
@@ -164,31 +174,41 @@ export function TargetSelector({
           </SelectGroup>
         )}
 
-        {showWorkflows && !isLoadingWorkflows && workflows.length > 0 && (
+        {showWorkflows && (
           <SelectGroup>
             <SelectLabel className="text-xs">Stak Workflows</SelectLabel>
-            {workflows.map((wf) => (
-              <SelectItem
-                key={wf.id}
-                value={`workflow:${wf.id}`}
-                className={size === "sm" ? "text-xs" : "text-sm"}
-                data-testid={`target-workflow-${wf.id}`}
-              >
-                <div className="flex items-center gap-2">
-                  <GitBranch className="h-3.5 w-3.5 shrink-0" />
-                  <span>{wf.name}</span>
-                  <span className="text-muted-foreground font-mono text-xs">#{wf.id}</span>
-                </div>
-              </SelectItem>
-            ))}
+            <SelectItem
+              value="workflow:new"
+              className={size === "sm" ? "text-xs" : "text-sm"}
+              data-testid="target-workflow-new"
+            >
+              <div className="flex items-center gap-2">
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                <span>New Workflow</span>
+              </div>
+            </SelectItem>
+            {isLoadingWorkflows ? (
+              <div className="px-2 py-1 text-xs text-muted-foreground">Loading workflows…</div>
+            ) : (
+              workflows.map((wf) => (
+                <SelectItem
+                  key={wf.id}
+                  value={`workflow:${wf.id}`}
+                  className={size === "sm" ? "text-xs" : "text-sm"}
+                  data-testid={`target-workflow-${wf.id}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <GitBranch className="h-3.5 w-3.5 shrink-0" />
+                    <span>{wf.name}</span>
+                    <span className="text-muted-foreground font-mono text-xs">#{wf.id}</span>
+                  </div>
+                </SelectItem>
+              ))
+            )}
           </SelectGroup>
         )}
 
-        {showWorkflows && isLoadingWorkflows && (
-          <div className="px-2 py-1 text-xs text-muted-foreground">Loading workflows…</div>
-        )}
-
-        {repos.length === 0 && (!showWorkflows || workflows.length === 0) && (
+        {repos.length === 0 && !showWorkflows && (
           <div className="px-2 py-1 text-xs text-muted-foreground">No targets available</div>
         )}
       </SelectContent>

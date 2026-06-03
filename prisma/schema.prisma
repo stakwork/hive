@@ -42,55 +42,66 @@ model Session {
 }
 
 model User {
-  id                       String                  @id @default(cuid())
+  id                       String                   @id @default(cuid())
   name                     String?
-  email                    String?                 @unique
-  emailVerified            DateTime?               @map("email_verified")
+  email                    String?                  @unique
+  emailVerified            DateTime?                @map("email_verified")
   image                    String?
-  role                     UserRole                @default(USER)
-  timezone                 String?                 @default("UTC")
-  locale                   String?                 @default("en")
-  createdAt                DateTime                @default(now()) @map("created_at")
-  updatedAt                DateTime                @updatedAt @map("updated_at")
-  deleted                  Boolean                 @default(false)
-  deletedAt                DateTime?               @map("deleted_at")
-  lastLoginAt              DateTime?               @map("last_login_at")
-  poolApiKey               String?                 @map("pool_api_key")
-  lightningPubkey          String?                 @unique @map("lightning_pubkey")
-  sphinxAlias              String?                 @map("sphinx_alias")
-  voiceSignatureKey        String?                 @map("voice_signature_key")
-  sphinxRouteHint          String?                 @map("sphinx_route_hint")
-  iosDeviceToken           String?                 @map("ios_device_token")
+  role                     UserRole                 @default(USER)
+  timezone                 String?                  @default("UTC")
+  locale                   String?                  @default("en")
+  createdAt                DateTime                 @default(now()) @map("created_at")
+  updatedAt                DateTime                 @updatedAt @map("updated_at")
+  deleted                  Boolean                  @default(false)
+  deletedAt                DateTime?                @map("deleted_at")
+  lastLoginAt              DateTime?                @map("last_login_at")
+  poolApiKey               String?                  @map("pool_api_key")
+  lightningPubkey          String?                  @unique @map("lightning_pubkey")
+  sphinxAlias              String?                  @map("sphinx_alias")
+  voiceSignatureKey        String?                  @map("voice_signature_key")
+  sphinxRouteHint          String?                  @map("sphinx_route_hint")
+  iosDeviceToken           String?                  @map("ios_device_token")
+  // Phase-4 macaroon user identity. Each user owns one ed25519
+  // keypair that signs every invocation macaroon they (or Hive on
+  // their behalf, in custodial phase 1) mint. Same user across all
+  // workspaces of every org → same pubkey, so this lives on `User`
+  // and not on `WorkspaceMember`. Pubkey is embedded in the macaroon's
+  // `user_authorization` layer; the org's macaroon signing key then
+  // signs that envelope. Phase 2+ moves the privkey off the platform
+  // (Yubikey / Passkey / Sphinx app) and `macaroonUserPrivkey` goes
+  // null while pubkey stays.
+  macaroonUserPubkey       String?                  @map("macaroon_user_pubkey") // hex ed25519 (32 bytes / 64 hex chars)
+  macaroonUserPrivkey      String?                  @map("macaroon_user_privkey") // encrypted; custodial in phase 1
   accounts                 Account[]
-  chatMessages             ChatMessage[]           @relation("ChatMessageSender")
-  assignedFeatures         Feature[]               @relation("FeatureAssignee")
-  createdFeatures          Feature[]               @relation("FeatureCreator")
-  updatedFeatures          Feature[]               @relation("FeatureUpdater")
+  chatMessages             ChatMessage[]            @relation("ChatMessageSender")
+  assignedFeatures         Feature[]                @relation("FeatureAssignee")
+  createdFeatures          Feature[]                @relation("FeatureCreator")
+  updatedFeatures          Feature[]                @relation("FeatureUpdater")
   githubAuth               GitHubAuth?
-  acceptedRecommendations  JanitorRecommendation[] @relation("RecommendationAcceptor")
-  dismissedRecommendations JanitorRecommendation[] @relation("RecommendationDismissor")
-  originatedNotifications  NotificationTrigger[]   @relation("NotificationOrigin")
-  receivedNotifications    NotificationTrigger[]   @relation("NotificationTarget")
+  acceptedRecommendations  JanitorRecommendation[]  @relation("RecommendationAcceptor")
+  dismissedRecommendations JanitorRecommendation[]  @relation("RecommendationDismissor")
+  originatedNotifications  NotificationTrigger[]    @relation("NotificationOrigin")
+  receivedNotifications    NotificationTrigger[]    @relation("NotificationTarget")
   sessions                 Session[]
   sharedConversations      SharedConversation[]
   sourceControlTokens      SourceControlToken[]
-  assignedTasks            Task[]                  @relation("TaskAssignee")
-  createdTasks             Task[]                  @relation("TaskCreator")
-  updatedTasks             Task[]                  @relation("TaskUpdater")
-  createdUserStories       UserStory[]             @relation("UserStoryCreator")
-  updatedUserStories       UserStory[]             @relation("UserStoryUpdater")
+  assignedTasks            Task[]                   @relation("TaskAssignee")
+  createdTasks             Task[]                   @relation("TaskCreator")
+  updatedTasks             Task[]                   @relation("TaskUpdater")
+  createdUserStories       UserStory[]              @relation("UserStoryCreator")
+  updatedUserStories       UserStory[]              @relation("UserStoryUpdater")
   whiteboardMessages       WhiteboardMessage[]
-  createdWhiteboards       Whiteboard[]            @relation("WhiteboardCreator")
-  createdApiKeys           WorkspaceApiKey[]       @relation("ApiKeyCreator")
-  revokedApiKeys           WorkspaceApiKey[]       @relation("ApiKeyRevoker")
+  createdWhiteboards       Whiteboard[]             @relation("WhiteboardCreator")
+  createdApiKeys           WorkspaceApiKey[]        @relation("ApiKeyCreator")
+  revokedApiKeys           WorkspaceApiKey[]        @relation("ApiKeyRevoker")
   workspaceMembers         WorkspaceMember[]
-  ownedWorkspaces          Workspace[]             @relation("WorkspaceOwner")
+  ownedWorkspaces          Workspace[]              @relation("WorkspaceOwner")
   fiatPayments             FiatPayment[]
   lightningPayments        LightningPayment[]
   workspaceAccessRequests  WorkspaceAccessRequest[]
   resolvedAccessRequests   WorkspaceAccessRequest[] @relation("AccessRequestResolver")
-  initiativeAssignments    Initiative[]            @relation("InitiativeAssignee")
-  milestoneAssignments     Milestone[]             @relation("MilestoneAssignee")
+  initiativeAssignments    Initiative[]             @relation("InitiativeAssignee")
+  milestoneAssignments     Milestone[]              @relation("MilestoneAssignee")
 
   @@index([createdAt])
   @@index([deleted])
@@ -154,6 +165,16 @@ model SourceControlOrg {
   schematic            String?              @map("schematic")
   createdAt            DateTime             @default(now()) @map("created_at")
   updatedAt            DateTime             @updatedAt @map("updated_at")
+  // Phase-5 macaroon identity. Each source-control org becomes a
+  // macaroon-signing org in the LLM governance stack. Keys are
+  // auto-generated on first LLM use (custodial, phase 1 of
+  // `gateway/plans/cryptographic-identity.md`); the private key
+  // moves off the platform in phase 2+. macaroonOrgId derives
+  // from githubLogin (`gh_<login>`) and is captured here so a
+  // later GitHub rename doesn't change the org's macaroon identity.
+  macaroonOrgId        String?              @unique @map("macaroon_org_id")
+  macaroonOrgPubkey    String?              @map("macaroon_org_pubkey") // hex compressed secp256k1 (33 bytes / 66 hex chars)
+  macaroonOrgPrivkey   String?              @map("macaroon_org_privkey") // encrypted; custodial in phase 1
   tokens               SourceControlToken[]
   workspaces           Workspace[]
   sharedConversations  SharedConversation[]
@@ -187,60 +208,60 @@ model SourceControlToken {
 }
 
 model Workspace {
-  id                     String                  @id @default(cuid())
-  name                   String
-  description            String?
-  slug                   String                  @unique
-  deleted                Boolean                 @default(false)
-  deletedAt              DateTime?               @map("deleted_at")
-  createdAt              DateTime                @default(now()) @map("created_at")
-  updatedAt              DateTime                @updatedAt @map("updated_at")
-  ownerId                String                  @map("owner_id")
-  stakworkApiKey         String?                 @map("stakwork_api_key")
-  originalSlug           String?                 @map("original_slug")
-  sourceControlOrgId     String?                 @map("source_control_org_id")
-  mission                String?
-  repositoryDraft        String?                 @map("repository_draft")
-  logoKey                String?                 @map("logo_key")
-  logoUrl                String?                 @map("logo_url")
-  nodeTypeOrder          Json                    @default("[{\"type\": \"Function\", \"value\": 20}, {\"type\": \"Feature\", \"value\": 20}, {\"type\": \"File\", \"value\": 20}, {\"type\": \"Endpoint\", \"value\": 20}, {\"type\": \"Person\", \"value\": 20}, {\"type\": \"Episode\", \"value\": 20}, {\"type\": \"Call\", \"value\": 20}, {\"type\": \"Message\", \"value\": 20}]") @map("node_type_order")
-  vercelApiToken         String?                 @map("vercel_api_token")
-  vercelTeamId           String?                 @map("vercel_team_id")
-  vercelProjectId        String?                 @map("vercel_project_id")
-  vercelWebhookSecret    String?                 @map("vercel_webhook_secret")
-  sphinxBotId            String?                 @map("sphinx_bot_id")
-  sphinxBotSecret        String?                 @map("sphinx_bot_secret")
-  sphinxChatPubkey       String?                 @map("sphinx_chat_pubkey")
-  sphinxEnabled          Boolean                 @default(false) @map("sphinx_enabled")
-  paymentStatus          PaymentStatus           @default(PENDING) @map("payment_status")
-  workspaceKind          String?                 @map("workspace_kind")
-  isPublicViewable       Boolean                 @default(false) @map("is_public_viewable")
-  scorerEnabled          Boolean                 @default(false) @map("scorer_enabled")
-  scorerPatternPrompt    String?                 @map("scorer_pattern_prompt")
-  scorerSinglePrompt     String?                 @map("scorer_single_prompt")
-  scorerAggregateCache   Json?                   @map("scorer_aggregate_cache")
-  agentLogs              AgentLog[]
-  diagrams               DiagramWorkspace[]
-  features               Feature[]
-  janitorConfig          JanitorConfig?
-  janitorRecommendations JanitorRecommendation[]
-  repositories           Repository[]
-  screenshots            Screenshot[]
-  scorerDigests          ScorerDigest[]
-  scorerInsights         ScorerInsight[]
-  sharedConversations    SharedConversation[]
-  stakworkRuns           StakworkRun[]
-  swarm                  Swarm?
-  fiatPayments           FiatPayment[]
-  lightningPayments      LightningPayment[]
-  workspaceTransactions  WorkspaceTransaction[]
-  tasks                  Task[]
-  whiteboards            Whiteboard[]
-  apiKeys                WorkspaceApiKey[]
-  members                WorkspaceMember[]
+  id                      String                   @id @default(cuid())
+  name                    String
+  description             String?
+  slug                    String                   @unique
+  deleted                 Boolean                  @default(false)
+  deletedAt               DateTime?                @map("deleted_at")
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  updatedAt               DateTime                 @updatedAt @map("updated_at")
+  ownerId                 String                   @map("owner_id")
+  stakworkApiKey          String?                  @map("stakwork_api_key")
+  originalSlug            String?                  @map("original_slug")
+  sourceControlOrgId      String?                  @map("source_control_org_id")
+  mission                 String?
+  repositoryDraft         String?                  @map("repository_draft")
+  logoKey                 String?                  @map("logo_key")
+  logoUrl                 String?                  @map("logo_url")
+  nodeTypeOrder           Json                     @default("[{\"type\": \"Function\", \"value\": 20}, {\"type\": \"Feature\", \"value\": 20}, {\"type\": \"File\", \"value\": 20}, {\"type\": \"Endpoint\", \"value\": 20}, {\"type\": \"Person\", \"value\": 20}, {\"type\": \"Episode\", \"value\": 20}, {\"type\": \"Call\", \"value\": 20}, {\"type\": \"Message\", \"value\": 20}]") @map("node_type_order")
+  vercelApiToken          String?                  @map("vercel_api_token")
+  vercelTeamId            String?                  @map("vercel_team_id")
+  vercelProjectId         String?                  @map("vercel_project_id")
+  vercelWebhookSecret     String?                  @map("vercel_webhook_secret")
+  sphinxBotId             String?                  @map("sphinx_bot_id")
+  sphinxBotSecret         String?                  @map("sphinx_bot_secret")
+  sphinxChatPubkey        String?                  @map("sphinx_chat_pubkey")
+  sphinxEnabled           Boolean                  @default(false) @map("sphinx_enabled")
+  paymentStatus           PaymentStatus            @default(PENDING) @map("payment_status")
+  workspaceKind           String?                  @map("workspace_kind")
+  isPublicViewable        Boolean                  @default(false) @map("is_public_viewable")
+  scorerEnabled           Boolean                  @default(false) @map("scorer_enabled")
+  scorerPatternPrompt     String?                  @map("scorer_pattern_prompt")
+  scorerSinglePrompt      String?                  @map("scorer_single_prompt")
+  scorerAggregateCache    Json?                    @map("scorer_aggregate_cache")
+  agentLogs               AgentLog[]
+  diagrams                DiagramWorkspace[]
+  features                Feature[]
+  janitorConfig           JanitorConfig?
+  janitorRecommendations  JanitorRecommendation[]
+  repositories            Repository[]
+  screenshots             Screenshot[]
+  scorerDigests           ScorerDigest[]
+  scorerInsights          ScorerInsight[]
+  sharedConversations     SharedConversation[]
+  stakworkRuns            StakworkRun[]
+  swarm                   Swarm?
+  fiatPayments            FiatPayment[]
+  lightningPayments       LightningPayment[]
+  workspaceTransactions   WorkspaceTransaction[]
+  tasks                   Task[]
+  whiteboards             Whiteboard[]
+  apiKeys                 WorkspaceApiKey[]
+  members                 WorkspaceMember[]
   workspaceAccessRequests WorkspaceAccessRequest[]
-  owner                  User                    @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  sourceControlOrg       SourceControlOrg?       @relation(fields: [sourceControlOrgId], references: [id])
+  owner                   User                     @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  sourceControlOrg        SourceControlOrg?        @relation(fields: [sourceControlOrgId], references: [id])
 
   @@index([ownerId])
   @@index([deleted])
@@ -249,16 +270,20 @@ model Workspace {
 }
 
 model WorkspaceMember {
-  id             String        @id @default(cuid())
-  workspaceId    String        @map("workspace_id")
-  userId         String        @map("user_id")
-  role           WorkspaceRole @default(VIEWER)
-  joinedAt       DateTime      @default(now()) @map("joined_at")
-  leftAt         DateTime?     @map("left_at")
-  lastAccessedAt DateTime?     @map("last_accessed_at")
-  description    String?       @map("description")
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id                String        @id @default(cuid())
+  workspaceId       String        @map("workspace_id")
+  userId            String        @map("user_id")
+  role              WorkspaceRole @default(VIEWER)
+  joinedAt          DateTime      @default(now()) @map("joined_at")
+  leftAt            DateTime?     @map("left_at")
+  lastAccessedAt    DateTime?     @map("last_accessed_at")
+  description       String?       @map("description")
+  bifrostVkValue    String?       @map("bifrost_vk_value")
+  bifrostVkId       String?       @map("bifrost_vk_id")
+  bifrostCustomerId String?       @map("bifrost_customer_id")
+  bifrostSyncedAt   DateTime?     @map("bifrost_synced_at")
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
   @@index([workspaceId])
@@ -343,6 +368,17 @@ model Swarm {
   podCompletedAt          DateTime?             @map("pod_completed_at")
   repairAgentDisabled     Boolean               @default(false) @map("repair_agent_disabled")
   description             String?
+  bifrostAdminUser        String?               @map("bifrost_admin_user")
+  bifrostAdminPassword    String?               @map("bifrost_admin_password")
+  // Phase-5 trust-registry reconcile cache. Content-addressed by
+  // (orgId, pubkey) — when either of these differs from the
+  // workspace's SourceControlOrg.{macaroonOrgId, macaroonOrgPubkey},
+  // the next LLM call re-syncs against the plugin's
+  // `/_plugin/trust` admin API. See
+  // `gateway/plans/phases/phase-5-trust-registry.md`.
+  bifrostTrustedOrgId     String?               @map("bifrost_trusted_org_id")
+  bifrostTrustedPubkey    String?               @map("bifrost_trusted_pubkey")
+  bifrostTrustSyncedAt    DateTime?             @map("bifrost_trust_synced_at")
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
   workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -468,6 +504,7 @@ model Task {
   deployments            Deployment[]
   notifications          NotificationTrigger[]
   screenshots            Screenshot[]
+  stakworkRuns           StakworkRun[]
   workflowTask           WorkflowTask?
   assignee               User?                 @relation("TaskAssignee", fields: [assigneeId], references: [id])
   createdBy              User                  @relation("TaskCreator", fields: [createdById], references: [id])
@@ -554,6 +591,7 @@ model ChatMessage {
   workflowUrl       String?      @map("workflow_url")
   userId            String?      @map("user_id")
   featureId         String?      @map("feature_id")
+  stakworkProjectId String?      @map("stakwork_project_id")
   artifacts         Artifact[]
   attachments       Attachment[]
   feature           Feature?     @relation(fields: [featureId], references: [id], onDelete: Cascade)
@@ -598,17 +636,25 @@ model Attachment {
 }
 
 model WorkflowTask {
-  id                String   @id @default(cuid())
-  taskId            String   @unique @map("task_id")
-  workflowId        Int      @map("workflow_id")
-  workflowName      String?  @map("workflow_name")
-  workflowRefId     String?  @map("workflow_ref_id")
-  workflowVersionId String?  @map("workflow_version_id")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  task              Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  id                String            @id @default(cuid())
+  taskId            String            @unique @map("task_id")
+  workflowId        Int?              @map("workflow_id")
+  workflowName      String?           @map("workflow_name")
+  workflowRefId     String?           @map("workflow_ref_id")
+  workflowVersionId String?           @map("workflow_version_id")
+  workflowTaskType  WorkflowTaskType? @map("workflow_task_type")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  task              Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@map("workflow_tasks")
+}
+
+enum WorkflowTaskType {
+  SKILL
+  WORKFLOW
+  SCRIPT
+  PROMPT
 }
 
 model JanitorConfig {
@@ -750,6 +796,37 @@ model Feature {
   model               String?
   milestoneId         String?               @map("milestone_id")
   initiativeId        String?               @map("initiative_id")
+  // Cuids of features that must reach completion before this feature
+  // can start. Mirror of `Task.dependsOnTaskIds` — same flat-array
+  // posture, same cross-workspace freedom (no per-workspace constraint
+  // on the blocker). Cleanup-on-delete and cycle-check live in the
+  // feature service. The org canvas projector emits a synthetic
+  // `synthetic:feature-blocks:<blockerId>:<blockedId>` edge between
+  // pairs where BOTH endpoints are anchored to the same initiative.
+  dependsOnFeatureIds String[]              @default([]) @map("depends_on_feature_ids")
+  /**
+   * The canvas conversation (`SharedConversation.id`) that "owns" this
+   * feature — typically the one where the user approved the
+   * `propose_feature` proposal that created the row. Populated by
+   * `handleApproval.approveFeature` at create time; also populated
+   * lazily by `send_to_feature_planner` if a canvas conversation
+   * messages a planner for a feature that wasn't proposed there.
+   *
+   * Fan-out: when this feature's planner writes an ASSISTANT
+   * message (Stakwork webhook at `/api/chat/response`), the worker
+   * appends a `CanvasChatMessage`-shaped row to the owning
+   * conversation's `messages` JSON via
+   * `fanOutPlannerMessageToCanvas`.
+   *
+   * Singular in v1 (one canvas conversation owns the feature). See
+   * "Future seams" in `docs/plans/canvas-agent-manages-planners.md`
+   * for the join-table promotion path.
+   *
+   * No FK to `SharedConversation` — conversations can be deleted
+   * (user clears chat); the fan-out worker treats a missing target
+   * as a no-op.
+   */
+  parentCanvasConversationId String?         @map("parent_canvas_conversation_id")
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
   assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])
@@ -774,6 +851,7 @@ model Feature {
   @@index([deleted])
   @@index([milestoneId])
   @@index([initiativeId])
+  @@index([parentCanvasConversationId])
   @@map("features")
 }
 
@@ -824,6 +902,7 @@ model StakworkRun {
   type        StakworkRunType
   featureId   String?              @map("feature_id")
   workspaceId String               @map("workspace_id")
+  taskId      String?              @map("task_id")
   status      WorkflowStatus       @default(PENDING)
   result      String?
   dataType    String               @default("string") @map("data_type")
@@ -834,10 +913,12 @@ model StakworkRun {
   autoAccept  Boolean              @default(false) @map("auto_accept")
   agentLogs   AgentLog[]
   feature     Feature?             @relation(fields: [featureId], references: [id])
+  task        Task?                @relation(fields: [taskId], references: [id])
   workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([featureId])
+  @@index([taskId])
   @@index([type])
   @@index([status])
   @@index([projectId])
@@ -960,21 +1041,21 @@ model Ec2Alert {
 }
 
 model AgentLog {
-  id              String       @id @default(cuid())
-  blobUrl         String       @map("blob_url")
-  agent           String
-  stakworkRunId   String?      @map("stakwork_run_id")
-  taskId          String?      @map("task_id")
-  workspaceId     String       @map("workspace_id")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  featureId       String?      @map("feature_id")
-  startedAt       DateTime?    @map("started_at")
-  completedAt     DateTime?    @map("completed_at")
-  stats           Json?        // cached parsed blob stats: { totalMessages, estimatedTokens, durationSeconds, totalToolCalls, toolFrequency, bashFrequency, developerShellFrequency, conversationPreview }
-  feature         Feature?     @relation(fields: [featureId], references: [id])
-  stakworkRun     StakworkRun? @relation(fields: [stakworkRunId], references: [id])
-  task            Task?        @relation(fields: [taskId], references: [id])
-  workspace       Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id            String       @id @default(cuid())
+  blobUrl       String       @map("blob_url")
+  agent         String
+  stakworkRunId String?      @map("stakwork_run_id")
+  taskId        String?      @map("task_id")
+  workspaceId   String       @map("workspace_id")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  featureId     String?      @map("feature_id")
+  startedAt     DateTime?    @map("started_at")
+  completedAt   DateTime?    @map("completed_at")
+  stats         Json? // cached parsed blob stats: { totalMessages, estimatedTokens, durationSeconds, totalToolCalls, toolFrequency, bashFrequency, developerShellFrequency, conversationPreview }
+  feature       Feature?     @relation(fields: [featureId], references: [id])
+  stakworkRun   StakworkRun? @relation(fields: [stakworkRunId], references: [id])
+  task          Task?        @relation(fields: [taskId], references: [id])
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([stakworkRunId])
   @@index([taskId])
@@ -1072,6 +1153,10 @@ enum ArtifactType {
   PLAN
   TASKS
   VERIFY
+  LOGS
+  PUBLISH_SCRIPT
+  PUBLISH_PROMPT
+  PUBLISH_SKILL
 }
 
 enum UserRole {
@@ -1301,6 +1386,8 @@ enum StakworkRunType {
   DIAGRAM_GENERATION
   LEARNING
   REPO_AGENT
+  PLAN_CHAT
+  WORKFLOW_EDITOR
 }
 
 enum StakworkRunDecision {
@@ -1349,23 +1436,23 @@ enum FiatPaymentStatus {
 }
 
 model FiatPayment {
-  id                    String            @id @default(cuid())
-  workspaceId           String?           @map("workspace_id")
-  workspaceName         String?           @map("workspace_name")
-  workspaceSlug         String?           @map("workspace_slug")
-  stripeSessionId       String            @unique @map("stripe_session_id")
-  stripePaymentIntentId String?           @map("stripe_payment_intent_id")
-  status                FiatPaymentStatus @default(PENDING)
+  id                    String                @id @default(cuid())
+  workspaceId           String?               @map("workspace_id")
+  workspaceName         String?               @map("workspace_name")
+  workspaceSlug         String?               @map("workspace_slug")
+  stripeSessionId       String                @unique @map("stripe_session_id")
+  stripePaymentIntentId String?               @map("stripe_payment_intent_id")
+  status                FiatPaymentStatus     @default(PENDING)
   amount                Int?
   currency              String?
-  failureCode           String?           @map("failure_code")
-  failureMessage        String?           @map("failure_message")
-  password              String?           @map("password")
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
-  userId                String?           @map("user_id")
-  workspace             Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user                  User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  failureCode           String?               @map("failure_code")
+  failureMessage        String?               @map("failure_message")
+  password              String?               @map("password")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  userId                String?               @map("user_id")
+  workspace             Workspace?            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                  User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceTransaction  WorkspaceTransaction?
 
   @@index([workspaceId])
@@ -1384,21 +1471,21 @@ enum LlmProvider {
 }
 
 model LlmModel {
-  id               String      @id @default(cuid())
-  name             String
-  provider         LlmProvider
-  providerLabel    String?     @map("provider_label")
+  id                   String      @id @default(cuid())
+  name                 String
+  provider             LlmProvider
+  providerLabel        String?     @map("provider_label")
   inputPricePer1M      Float       @map("input_price_per_1m")
   outputPricePer1M     Float       @map("output_price_per_1m")
   cacheReadPer1MToken  Float?      @map("cache_read_per_1m_token")
   cacheWritePer1MToken Float?      @map("cache_write_per_1m_token")
-  dateStart        DateTime?   @map("date_start")
-  dateEnd          DateTime?   @map("date_end")
-  isPlanDefault    Boolean     @default(false) @map("is_plan_default")
-  isTaskDefault    Boolean     @default(false) @map("is_task_default")
-  isPublic         Boolean     @default(false) @map("is_public")
-  createdAt        DateTime    @default(now()) @map("created_at")
-  updatedAt        DateTime    @updatedAt @map("updated_at")
+  dateStart            DateTime?   @map("date_start")
+  dateEnd              DateTime?   @map("date_end")
+  isPlanDefault        Boolean     @default(false) @map("is_plan_default")
+  isTaskDefault        Boolean     @default(false) @map("is_task_default")
+  isPublic             Boolean     @default(false) @map("is_public")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
 
   @@index([provider])
   @@map("llm_models")
@@ -1411,19 +1498,19 @@ enum LightningPaymentStatus {
 }
 
 model LightningPayment {
-  id             String                 @id @default(cuid())
-  workspaceId    String?                @map("workspace_id")
-  workspaceName  String?                @map("workspace_name")
-  workspaceSlug  String?                @map("workspace_slug")
-  paymentHash    String                 @unique @map("payment_hash")
-  invoice        String
-  amount         Int
-  status         LightningPaymentStatus @default(UNPAID)
-  createdAt      DateTime               @default(now()) @map("created_at")
-  updatedAt      DateTime               @updatedAt @map("updated_at")
-  userId         String?                @map("user_id")
-  workspace      Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user           User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id                   String                 @id @default(cuid())
+  workspaceId          String?                @map("workspace_id")
+  workspaceName        String?                @map("workspace_name")
+  workspaceSlug        String?                @map("workspace_slug")
+  paymentHash          String                 @unique @map("payment_hash")
+  invoice              String
+  amount               Int
+  status               LightningPaymentStatus @default(UNPAID)
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
+  userId               String?                @map("user_id")
+  workspace            Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                 User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceTransaction WorkspaceTransaction?
 
   @@index([workspaceId])

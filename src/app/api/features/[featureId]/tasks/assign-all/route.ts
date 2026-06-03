@@ -6,8 +6,7 @@ import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
 import { db } from "@/lib/db";
 import { SystemAssigneeType } from "@prisma/client";
 import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
-import { processTicketSweep } from "@/services/task-coordinator-cron";
-import { triggerWorkflowEditorRun } from "@/services/workflow-editor";
+import { processTicketSweep, processWorkflowTaskSweep } from "@/services/task-coordinator-cron";
 
 interface AssignAllResponse {
   success: boolean;
@@ -77,9 +76,9 @@ export async function POST(
       );
     }
 
-    // Step 5: Query all unassigned TODO tasks in first phase (include workflowTask relation)
+    // Step 5: Count all unassigned TODO tasks in first phase
     // Only assign tasks that are in TODO status (not IN_PROGRESS or DONE)
-    const unassignedTasks = await db.task.findMany({
+    const unassignedTaskIds = await db.task.findMany({
       where: {
         phaseId: firstPhase.id,
         assigneeId: null,
@@ -87,15 +86,11 @@ export async function POST(
         deleted: false,
         status: "TODO",
       },
-      select: {
-        id: true,
-        description: true,
-        workflowTask: true,
-      },
+      select: { id: true },
     });
 
     // Step 6: If no unassigned tasks, return early
-    if (unassignedTasks.length === 0) {
+    if (unassignedTaskIds.length === 0) {
       return NextResponse.json<AssignAllResponse>(
         {
           success: true,
@@ -105,56 +100,35 @@ export async function POST(
       );
     }
 
-    // Partition into repo tasks and workflow tasks
-    const repoTasks = unassignedTasks.filter((t) => t.workflowTask === null);
-    const workflowTasks = unassignedTasks.filter((t) => t.workflowTask !== null);
+    // Step 7: Bulk assign ALL unassigned TODO tasks (repo + workflow) to Task Coordinator
+    const updateResult = await db.task.updateMany({
+      where: {
+        id: { in: unassignedTaskIds.map((t) => t.id) },
+      },
+      data: {
+        assigneeId: null,
+        systemAssigneeType: SystemAssigneeType.TASK_COORDINATOR,
+      },
+    });
+    const assignedCount = updateResult.count;
 
-    // Step 7a: Bulk update repo tasks to assign to Task Coordinator (unchanged behaviour)
-    let assignedCount = 0;
-    if (repoTasks.length > 0) {
-      const result = await db.task.updateMany({
-        where: {
-          id: { in: repoTasks.map((task) => task.id) },
-        },
-        data: {
-          assigneeId: null, // Clear regular assignee
-          systemAssigneeType: SystemAssigneeType.TASK_COORDINATOR,
-        },
-      });
-      assignedCount += result.count;
-    }
-
-    // Step 7b: Immediately trigger workflow-editor runs for workflow tasks (bypass Task Coordinator)
-    for (const task of workflowTasks) {
-      const wt = task.workflowTask!;
-      console.log(
-        `[assign-all] Bypassing Task Coordinator for workflow task ${task.id} targeting workflow ${wt.workflowId}`
-      );
-      try {
-        await triggerWorkflowEditorRun({
-          taskId: task.id,
-          workflowTask: wt,
-          message: task.description || "Start working on this workflow task.",
-          userId: userOrResponse.id,
-        });
-        assignedCount += 1;
-      } catch (err) {
-        console.error(`[assign-all] Failed to trigger workflow-editor run for task ${task.id}:`, err);
-      }
-    }
-
-    // Step 8: Eagerly start the highest-priority eligible repo task if a machine is available
+    // Step 8: Eagerly trigger sweeps
     const ws = feature.workspace;
     const swarm = ws?.swarm;
-    if (ws && swarm?.id && repoTasks.length > 0) {
-      try {
-        const poolStatus = await getPoolStatusFromPods(swarm.id, ws.id);
+    if (ws) {
+      // Workflow sweep always runs unconditionally (no pod needed)
+      processWorkflowTaskSweep(ws.id, ws.slug).catch(() => {});
 
-        if (poolStatus.unusedVms > 1) {
-          processTicketSweep(ws.id, ws.slug, poolStatus.unusedVms - 1).catch(() => {});
+      // Pod-gated repo sweep only when machines are available
+      if (swarm?.id) {
+        try {
+          const poolStatus = await getPoolStatusFromPods(swarm.id, ws.id);
+          if (poolStatus.unusedVms > 1) {
+            processTicketSweep(ws.id, ws.slug, poolStatus.unusedVms - 1).catch(() => {});
+          }
+        } catch {
+          // Pool query failed — skip eager start
         }
-      } catch {
-        // Pool query failed — skip eager start
       }
     }
 

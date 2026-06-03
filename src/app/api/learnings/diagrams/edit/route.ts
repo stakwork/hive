@@ -7,6 +7,8 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
 import { extractMermaidBody } from "@/lib/diagrams/mermaid-parser";
 import { resolveExtraSwarms } from "@/services/roadmap/feature-chat";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const MERMAID_INSTRUCTION =
   "\n\nReturn a mermaid diagram surrounded by backticks like ```mermaid ... ```. Only return the mermaid block, no other commentary.";
@@ -62,15 +64,33 @@ export async function POST(request: NextRequest) {
       `<current-diagram>\n${existingDiagram.body}\n</current-diagram>\n<user-prompt>\n${prompt}\n</user-prompt>` +
       MERMAID_INSTRUCTION;
 
-    const agentResult = await repoAgent(baseSwarmUrl, decryptedSwarmApiKey, {
-      repo_url: joinRepoUrls(allRepos)!,
-      prompt: augmentedPrompt,
-      pat: token,
-      skills: { mermaid: true },
-      toolsConfig: { learn_concepts: true },
-      model: "opus",
-      subAgents,
-    });
+    // Route through this workspace's Bifrost (when enabled) so the
+    // call lands on `logs.db` with `agent-name=diagram-agent`.
+    // Matches the create-diagram route's agent name so cost
+    // rollups aggregate across both flows.
+    const bifrost = await getBifrostForLLM(
+      {
+        workspaceId: ok.workspaceId,
+        workspaceSlug: workspace,
+        userId: ok.userId,
+      },
+      { agentName: "diagram-agent" },
+    );
+
+    const agentResult = await repoAgent(
+      baseSwarmUrl,
+      decryptedSwarmApiKey,
+      {
+        repo_url: joinRepoUrls(allRepos)!,
+        prompt: augmentedPrompt,
+        pat: token,
+        skills: { mermaid: true },
+        toolsConfig: { learn_concepts: true },
+        model: "opus",
+        subAgents,
+      },
+      bifrost,
+    );
 
     const responseContent = agentResult?.content ?? JSON.stringify(agentResult);
     const extractedBody = extractMermaidBody(responseContent);

@@ -266,6 +266,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
                 workflowName: true;
                 workflowRefId: true;
                 workflowVersionId: true;
+                workflowTaskType: true;
               };
             };
             phase: {
@@ -691,6 +692,9 @@ export interface CreateRoadmapTaskRequest {
   workflowId?: number;
   workflowName?: string;
   workflowRefId?: string;
+  /** true = workflow_editor task targeting a brand-new workflow; mutually exclusive with workflowId */
+  isNewWorkflow?: boolean;
+  workflowTaskType?: import("@prisma/client").WorkflowTaskType;
 }
 
 export interface UpdateRoadmapTaskRequest {
@@ -712,6 +716,9 @@ export interface UpdateRoadmapTaskRequest {
   workflowId?: number;
   workflowName?: string;
   workflowRefId?: string;
+  /** true = workflow_editor task targeting a brand-new workflow; mutually exclusive with workflowId */
+  isNewWorkflow?: boolean;
+  workflowTaskType?: import("@prisma/client").WorkflowTaskType;
 }
 
 export interface ReorderRoadmapTasksRequest {
@@ -744,6 +751,7 @@ export interface GeneratedTask {
   workflowId?: number;
   workflowName?: string;
   workflowRefId?: string;
+  workflowTaskType?: import("@prisma/client").WorkflowTaskType;
 }
 
 export interface GeneratedPhase {

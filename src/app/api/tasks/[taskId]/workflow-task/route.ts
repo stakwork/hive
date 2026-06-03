@@ -20,10 +20,11 @@ export async function POST(
 
     const { taskId } = await params;
     const body = await request.json();
-    const { workflowId, workflowName, workflowRefId, workflowVersionId } = body;
+    const { workflowId, workflowName, workflowRefId, workflowVersionId, workflowTaskType } = body;
 
-    if (!workflowId || typeof workflowId !== "number") {
-      return NextResponse.json({ error: "workflowId (number) is required" }, { status: 400 });
+    // workflowId may be null (workflow not yet assigned) or a number — reject any other type
+    if (workflowId !== null && workflowId !== undefined && typeof workflowId !== "number") {
+      return NextResponse.json({ error: "workflowId must be a number or null" }, { status: 400 });
     }
 
     // Verify task exists and user has access
@@ -57,16 +58,18 @@ export async function POST(
       where: { taskId },
       create: {
         taskId,
-        workflowId,
+        workflowId: workflowId ?? null,
         workflowName: workflowName ?? null,
         workflowRefId: workflowRefId ?? null,
         workflowVersionId: workflowVersionId ?? null,
+        workflowTaskType: workflowTaskType ?? null,
       },
       update: {
-        workflowId,
+        workflowId: workflowId ?? null,
         workflowName: workflowName ?? null,
         workflowRefId: workflowRefId ?? null,
         workflowVersionId: workflowVersionId ?? null,
+        workflowTaskType: workflowTaskType ?? undefined,
       },
     });
 

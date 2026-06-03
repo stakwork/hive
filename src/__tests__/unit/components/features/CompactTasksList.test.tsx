@@ -93,9 +93,11 @@ vi.mock("@/components/ui/button", () => ({
 }));
 
 vi.mock("@/components/ui/select", () => ({
-  Select: ({ children, value, onValueChange }: any) => (
-    <div data-testid="select" data-value={value}>
-      {children}
+  Select: ({ children, value, onValueChange, disabled }: any) => (
+    <div data-testid="select" data-value={value} data-disabled={disabled}>
+      {React.Children.map(children, (child) =>
+        child ? React.cloneElement(child, { onValueChange }) : null
+      )}
     </div>
   ),
   SelectTrigger: ({ children, className }: any) => (
@@ -104,11 +106,19 @@ vi.mock("@/components/ui/select", () => ({
     </div>
   ),
   SelectValue: () => <span>Select</span>,
-  SelectContent: ({ children }: any) => <div>{children}</div>,
+  SelectContent: ({ children, onValueChange }: any) => (
+    <div>
+      {React.Children.map(children, (child) =>
+        child ? React.cloneElement(child, { onValueChange }) : null
+      )}
+    </div>
+  ),
   SelectGroup: ({ children }: any) => <div>{children}</div>,
   SelectLabel: ({ children }: any) => <div>{children}</div>,
-  SelectItem: ({ children, value }: any) => (
-    <div data-value={value}>{children}</div>
+  SelectItem: ({ children, value, onValueChange }: any) => (
+    <div data-testid="select-item" data-value={value} onClick={() => onValueChange?.(value)}>
+      {children}
+    </div>
   ),
   SelectSeparator: () => <hr />,
   SelectScrollUpButton: () => null,
@@ -928,6 +938,108 @@ describe("CompactTasksList", () => {
     });
   });
 
+  describe("Mark Complete action menu item", () => {
+    const workflowTask = { id: "wt-1", taskId: "task-wf", workflowId: "wf-1", workflowName: "My Workflow", workflowRefId: "ref-1" };
+
+    test("shows 'Mark Complete' for workflow task with status TODO", () => {
+      const task = createMockTask({ id: "task-wf-todo", status: "TODO", workflowTask });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("action-mark-complete")).toBeInTheDocument();
+    });
+
+    test("shows 'Mark Complete' for workflow task with status IN_PROGRESS", () => {
+      const task = createMockTask({ id: "task-wf-ip", status: "IN_PROGRESS", workflowTask });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("action-mark-complete")).toBeInTheDocument();
+    });
+
+    test("does NOT show 'Mark Complete' for workflow task with status DONE", () => {
+      const task = createMockTask({ id: "task-wf-done", status: "DONE", workflowTask });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("action-mark-complete")).not.toBeInTheDocument();
+    });
+
+    test("shows 'Mark Complete' for non-workflow task in TODO status", () => {
+      const task = createMockTask({ id: "task-non-wf", status: "TODO", workflowTask: null });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("action-mark-complete")).toBeInTheDocument();
+    });
+
+    test("calls PATCH /api/tasks/:id with { status: 'DONE' } on click", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
+        if (typeof url === "string" && url.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+      });
+      const task = createMockTask({ id: "task-wf-click", status: "TODO", workflowTask });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      screen.getByTestId("action-mark-complete").click();
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/tasks/task-wf-click",
+          expect.objectContaining({
+            method: "PATCH",
+            body: JSON.stringify({ status: "DONE" }),
+          })
+        );
+      });
+
+      fetchSpy.mockRestore();
+    });
+  });
+
   describe("Repo SelectTrigger truncation", () => {
     test("SelectTrigger inner div has overflow-hidden to prevent long repo names wrapping", () => {
       const task = createMockTask({
@@ -1132,6 +1244,74 @@ describe("CompactTasksList", () => {
 
       const graph = screen.getByTestId("dependency-graph");
       expect(graph.className).toContain("h-[380px]");
+    });
+
+    test("auto-opens graph when tasks transition from 0 to N (post-generation)", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      const feature = createMockFeature([]);
+
+      const { rerender } = render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Initially no tasks → hasDependencies = false → collapsible not rendered
+      expect(screen.queryByTestId("collapsible")).not.toBeInTheDocument();
+
+      // Tasks arrive via Pusher / generation
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const updatedFeature = createMockFeature([task1, task2]);
+
+      rerender(
+        <CompactTasksList
+          feature={updatedFeature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("collapsible")).toHaveAttribute("data-open", "true");
+    });
+
+    test("does not auto-open graph when adding a task to an already-populated list (N → N+1)", () => {
+      (useIsMobile as any).mockReturnValue(false);
+      // Start with 1 task — graphOpen initialises to false
+      const task1 = createMockTask({ id: "t1", dependsOnTaskIds: [] });
+      const feature = createMockFeature([task1]);
+
+      const { rerender } = render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Initially no dependencies on the 1 task → hasDependencies = false → collapsible not rendered
+      expect(screen.queryByTestId("collapsible")).not.toBeInTheDocument();
+
+      // A second task is added (1 → 2, not 0 → N)
+      const task2 = createMockTask({ id: "t2", dependsOnTaskIds: ["t1"] });
+      const updatedFeature = createMockFeature([task1, task2]);
+
+      rerender(
+        <CompactTasksList
+          feature={updatedFeature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Graph should remain closed — effect only fires on 0 → N transition
+      expect(screen.getByTestId("collapsible")).toHaveAttribute("data-open", "false");
     });
   });
 
@@ -1378,8 +1558,138 @@ describe("CompactTasksList", () => {
       expect(toggles[1]).not.toBeDisabled(); // runBuild
       expect(toggles[2]).not.toBeDisabled(); // runTestSuite
     });
+
+    test("hides auto-merge, run build, and run tests toggles for workflow tasks", () => {
+      const task = createMockTask({
+        id: "task-workflow",
+        workflowTask: {
+          id: "wt-1",
+          workflowId: 123,
+          workflowName: "My Workflow",
+          workflowRefId: "ref-123",
+          workflowVersionId: null,
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByText("auto-merge")).not.toBeInTheDocument();
+      expect(screen.queryByText("run build")).not.toBeInTheDocument();
+      expect(screen.queryByText("run tests")).not.toBeInTheDocument();
+    });
+
+    test("shows all three toggles for repo-targeted tasks (workflowTask is null)", () => {
+      const task = createMockTask({
+        id: "task-repo",
+        workflowTask: null,
+        runBuild: true,
+        runTestSuite: true,
+        autoMerge: false,
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText("auto-merge")).toBeInTheDocument();
+      expect(screen.getByText("run build")).toBeInTheDocument();
+      expect(screen.getByText("run tests")).toBeInTheDocument();
+    });
   });
 
+  describe("TargetSelector placeholder — workflow tasks with no workflowId", () => {
+    test("shows 'New workflow' placeholder for workflow_editor task with null workflowId", () => {
+      const task = createMockTask({
+        id: "task-null-wf",
+        status: "TODO",
+        workflowTask: {
+          id: "wt-null",
+          taskId: "task-null-wf",
+          workflowId: null,
+          workflowName: null,
+          workflowRefId: null,
+          workflowVersionId: null,
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText("Needs workflow")).not.toBeInTheDocument();
+      expect(screen.getByText("New Workflow")).toBeInTheDocument();
+    });
+
+    test("does NOT show 'New workflow' placeholder when workflowTask has a real workflowId", () => {
+      const task = createMockTask({
+        id: "task-real-wf",
+        status: "TODO",
+        workflowTask: {
+          id: "wt-real",
+          taskId: "task-real-wf",
+          workflowId: 42,
+          workflowName: "Real Workflow",
+          workflowRefId: "ref-42",
+          workflowVersionId: null,
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText("New Workflow")).not.toBeInTheDocument();
+    });
+
+    test("does NOT show 'New workflow' placeholder for non-workflow tasks (workflowTask is null)", () => {
+      const task = createMockTask({
+        id: "task-no-wf",
+        status: "TODO",
+        workflowTask: null,
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("needs-workflow-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText("New Workflow")).not.toBeInTheDocument();
+    });
+  });
   describe("Optimistic updates", () => {
     beforeEach(() => {
       mockRoadmapUpdateTicket.mockClear();
@@ -2136,6 +2446,215 @@ describe("CompactTasksList", () => {
         ([url, init]: any) => typeof url === "string" && url.includes("/api/tickets/") && init?.method === "PATCH"
       );
       expect(patchCalls).toHaveLength(0);
+    });
+
+    test("7. workflow_editor task — POST body includes workflowId, workflowName, workflowRefId", async () => {
+      const user = userEvent.setup();
+      const task = createMockTask({
+        id: "task-wf-dup",
+        dependsOnTaskIds: [],
+        workflowTask: {
+          id: "wt-dup",
+          taskId: "task-wf-dup",
+          workflowId: 99,
+          workflowName: "My Workflow",
+          workflowRefId: "ref-abc",
+        },
+      });
+      const feature = createMockFeature([task]);
+      const capturedBodies: any[] = [];
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          capturedBodies.push(JSON.parse(init.body));
+          return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "new-wf-task-id", title: task.title, dependsOnTaskIds: [] } }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      const duplicateBtn = await screen.findByTestId("action-duplicate");
+      await user.click(duplicateBtn);
+
+      await waitFor(() => {
+        expect(capturedBodies).toHaveLength(1);
+      });
+
+      expect(capturedBodies[0].workflowId).toBe(99);
+      expect(capturedBodies[0].workflowName).toBe("My Workflow");
+      expect(capturedBodies[0].workflowRefId).toBe("ref-abc");
+    });
+
+    test("8. regular (non-workflow) task — POST body omits workflowId, workflowName, workflowRefId", async () => {
+      const user = userEvent.setup();
+      const task = createMockTask({ id: "task-regular-dup", dependsOnTaskIds: [], workflowTask: null });
+      const feature = createMockFeature([task]);
+      const capturedBodies: any[] = [];
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          capturedBodies.push(JSON.parse(init.body));
+          return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "new-regular-task-id", title: task.title, dependsOnTaskIds: [] } }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      const duplicateBtn = await screen.findByTestId("action-duplicate");
+      await user.click(duplicateBtn);
+
+      await waitFor(() => {
+        expect(capturedBodies).toHaveLength(1);
+      });
+
+      expect(capturedBodies[0].workflowId).toBeUndefined();
+      expect(capturedBodies[0].workflowName).toBeUndefined();
+      expect(capturedBodies[0].workflowRefId).toBeUndefined();
+    });
+  });
+
+  describe("workflowTaskType selector and badge", () => {
+    const workflowTask = {
+      id: "wt-1",
+      workflowId: 99,
+      workflowName: "My Workflow",
+      workflowRefId: "ref-abc",
+      workflowVersionId: null,
+      workflowTaskType: null as null | string,
+    };
+
+    test("workflow task row renders the type selector", () => {
+      const task = createMockTask({
+        id: "task-wf-type",
+        status: "TODO",
+        workflowTask: { ...workflowTask },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("workflow-type-selector")).toBeInTheDocument();
+    });
+
+    test("non-workflow task row does not render the type selector", () => {
+      const task = createMockTask({
+        id: "task-no-wf-type",
+        status: "TODO",
+        workflowTask: null,
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("workflow-type-selector")).not.toBeInTheDocument();
+    });
+
+    test("selecting a type calls handleUpdateTask with the correct workflowTaskType", async () => {
+      mockRoadmapUpdateTicket.mockResolvedValueOnce({ id: "task-wf-type-sel" });
+
+      const task = createMockTask({
+        id: "task-wf-type-sel",
+        status: "TODO",
+        workflowTask: { ...workflowTask },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Click the "Skill" SelectItem inside the type selector
+      const typeSelector = screen.getByTestId("workflow-type-selector");
+      const skillItem = within(typeSelector).getByText("Skill");
+      await userEvent.click(skillItem);
+
+      await waitFor(() => {
+        expect(mockRoadmapUpdateTicket).toHaveBeenCalledWith(
+          expect.objectContaining({
+            taskId: "task-wf-type-sel",
+            updates: expect.objectContaining({ workflowTaskType: "SKILL" }),
+          })
+        );
+      });
+    });
+
+    test("type badge is displayed when workflowTaskType is set", () => {
+      const task = createMockTask({
+        id: "task-wf-badge",
+        status: "TODO",
+        workflowTask: { ...workflowTask, workflowTaskType: "SCRIPT" },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const badge = screen.getByText("SCRIPT");
+      expect(badge).toBeInTheDocument();
+      expect(badge.className).toContain("uppercase");
+    });
+
+    test("type badge is not displayed when workflowTaskType is null", () => {
+      const task = createMockTask({
+        id: "task-wf-no-badge",
+        status: "TODO",
+        workflowTask: { ...workflowTask, workflowTaskType: null },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      // Should not render any of the type values as badges
+      expect(screen.queryByText("SKILL")).not.toBeInTheDocument();
+      expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
+      expect(screen.queryByText("SCRIPT")).not.toBeInTheDocument();
+      expect(screen.queryByText("PROMPT")).not.toBeInTheDocument();
     });
   });
 });

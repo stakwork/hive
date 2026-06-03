@@ -295,7 +295,12 @@ describe("pusher.ts", () => {
         FEATURE_UPDATED: "feature-updated",
         CONNECTION_UPDATED: "connection-updated",
         CANVAS_UPDATED: "canvas-updated",
+        CANVAS_CURSOR_UPDATE: "canvas-cursor-update",
+        CANVAS_USER_JOIN: "canvas-user-join",
+        CANVAS_USER_LEAVE: "canvas-user-leave",
+        CANVAS_SELECTION_UPDATE: "canvas-selection-update",
         RESEARCH_UPDATED: "research-updated",
+        AGENT_LOG_UPDATED: "agent-log-updated",
       });
     });
 

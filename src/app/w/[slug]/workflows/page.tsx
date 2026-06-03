@@ -14,6 +14,7 @@ import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
 import { useRecentWorkflows } from "@/hooks/useRecentWorkflows";
 import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSelector";
 import { ArtifactType } from "@prisma/client";
+import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
 
 const formatDate = (dateString: string) => {
   try {
@@ -140,7 +141,7 @@ export default function WorkflowsPage() {
         throw new Error("Selected version not found");
       }
 
-      const workflowJson = selectedVersion.workflow_json || matchedWorkflow?.properties.workflow_json;
+      const workflowJson = selectedVersion.workflow_json || getWorkflowJsonFromNode(matchedWorkflow);
       const workflowRefId = selectedVersion.ref_id;
       const taskTitle = `${workflowName}${selectedVersionId ? ` v${String(selectedVersionId).substring(0, 8)}` : ''}`;
 

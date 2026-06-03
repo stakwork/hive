@@ -52,6 +52,8 @@ import { categoryAllowedOnScope } from "./canvas-categories";
 import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import useCanvasClipboard from "./useCanvasClipboard";
+import { useSession } from "next-auth/react";
+import { useCanvasCollaboration } from "@/hooks/useCanvasCollaboration";
 
 /**
  * Live-id detection mirrors `src/lib/canvas/scope.ts`'s `isLiveId`.
@@ -233,6 +235,12 @@ async function fetchHiddenLive(
  * carry `text` directly, so consumers that need a label just call
  * `getNodeLabel(selection.node)` themselves.
  */
+export interface InternalEdge {
+  edge: CanvasEdge;
+  fromLabel: string;
+  toLabel: string;
+}
+
 export type SelectionWithLabels =
   | {
       kind: "node";
@@ -245,6 +253,12 @@ export type SelectionWithLabels =
       canvasRef: string | undefined;
       fromLabel: string;
       toLabel: string;
+    }
+  | {
+      kind: "multi";
+      nodes: CanvasNode[];
+      canvasRef: string | undefined;
+      internalEdges: InternalEdge[];
     }
   | null;
 
@@ -345,6 +359,7 @@ export function OrgCanvasBackground({
   onCanvasBreadcrumbChange,
   onLinkedConnectionIdsChange,
 }: OrgCanvasBackgroundProps) {
+  const { data: session } = useSession();
   const [root, setRoot] = useState<CanvasData | null>(null);
   const [subCanvases, setSubCanvases] = useState<Record<string, CanvasData>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -471,11 +486,13 @@ export function OrgCanvasBackground({
     (selection: CanvasSelection) => {
       if (!selection) {
         selectedNodeForClipboardRef.current = null;
+        setSelectedNodeIdForPresence(null);
         onSelectionChange?.(null);
         return;
       }
       if (selection.kind === "node") {
         selectedNodeForClipboardRef.current = selection.node;
+        setSelectedNodeIdForPresence(selection.node.id);
         onSelectionChange?.({
           kind: "node",
           node: selection.node,
@@ -484,6 +501,39 @@ export function OrgCanvasBackground({
         return;
       }
       selectedNodeForClipboardRef.current = null;
+      setSelectedNodeIdForPresence(null);
+      // Multi-select (lasso / shift-click on multiple nodes) — enrich
+      // with internal edges (edges where both endpoints are among the
+      // selected nodes) and forward to the parent for summary display.
+      if (selection.kind === "multi") {
+        const { canvasRef } = selection;
+        const sourceCanvas =
+          canvasRef === undefined
+            ? rootRef.current
+            : subCanvasesRef.current[canvasRef];
+        const selectedIds = new Set(selection.nodes.map((n) => n.id));
+        const allNodes = sourceCanvas?.nodes ?? [];
+        const internalEdges: InternalEdge[] = (sourceCanvas?.edges ?? [])
+          .filter(
+            (e) => selectedIds.has(e.fromNode) && selectedIds.has(e.toNode),
+          )
+          .map((e) => {
+            const fromNode = allNodes.find((n) => n.id === e.fromNode);
+            const toNode = allNodes.find((n) => n.id === e.toNode);
+            return {
+              edge: e,
+              fromLabel: fromNode ? getNodeLabel(fromNode) : e.fromNode,
+              toLabel: toNode ? getNodeLabel(toNode) : e.toNode,
+            };
+          });
+        onSelectionChange?.({
+          kind: "multi",
+          nodes: selection.nodes,
+          canvasRef: selection.canvasRef,
+          internalEdges,
+        });
+        return;
+      }
       // Edge — resolve human labels off the canvas the edge lives on.
       // The refs lag state by one commit, but the edge's endpoints
       // are already in the rendered canvas (it wouldn't have been
@@ -565,6 +615,9 @@ export function OrgCanvasBackground({
 
   // Selected node ref for clipboard — updated inside handleSelectionChange.
   const selectedNodeForClipboardRef = useRef<CanvasNode | null>(null);
+
+  // Selected node id for presence broadcasting.
+  const [selectedNodeIdForPresence, setSelectedNodeIdForPresence] = useState<string | null>(null);
 
   // -------------------------------------------------------------------
   // Single source of truth for canvas scope: the library's breadcrumb
@@ -2040,6 +2093,20 @@ export function OrgCanvasBackground({
     canvasContainerRef,
   });
 
+  // Real-time canvas presence — cursors, selection halos, conflict flash
+  const { collaborators } = useCanvasCollaboration({
+    githubLogin,
+    canvasRef: currentRef,
+    userId: session?.user?.id ?? "",
+    userName: session?.user?.name ?? "",
+    userImage: session?.user?.image ?? null,
+    getViewport: () => canvasHandleRef.current?.getViewport() ?? { x: 0, y: 0, zoom: 1 },
+    getSvgElement: () => canvasHandleRef.current?.getSvgElement() ?? null,
+    containerRef: canvasContainerRef,
+    selectedNodeId: selectedNodeIdForPresence,
+    enabled: !!(session?.user?.id),
+  });
+
   /**
    * Detect a user-drawn edge whose endpoints are a feature card and a
    * milestone card on the initiative canvas. Either direction is
@@ -2104,6 +2171,95 @@ export function OrgCanvasBackground({
     [],
   );
 
+  /**
+   * Detect a user-drawn edge whose endpoints are two feature cards on
+   * the initiative canvas. The direction matters: the source is the
+   * BLOCKER (the dependency, the thing that must finish first), the
+   * target is the BLOCKED (the dependent feature whose
+   * `dependsOnFeatureIds` array will gain the blocker's id). Returns
+   * `null` for any other shape — milestone↔feature edges are caught
+   * by `detectFeatureMilestoneEdge` above; the milestone check runs
+   * first in `handleEdgeAdd`.
+   */
+  const detectFeatureBlocksEdge = useCallback(
+    (
+      edge: CanvasEdge,
+    ): { blockerId: string; blockedId: string } | null => {
+      const a = edge.fromNode;
+      const b = edge.toNode;
+      if (a.startsWith("feature:") && b.startsWith("feature:")) {
+        return {
+          blockerId: a.slice("feature:".length),
+          blockedId: b.slice("feature:".length),
+        };
+      }
+      return null;
+    },
+    [],
+  );
+
+  /**
+   * Fire-and-forget PATCH that adds or removes a blocker on a
+   * feature's `dependsOnFeatureIds` array. Read-modify-write because
+   * the column is a flat string array; the service-layer
+   * `updateFeature` runs validation + the cycle check before writing.
+   * Pass `mode: "add"` to append (no-op if already present) or
+   * `"remove"` to filter out. The Pusher fan-out (reused
+   * `notifyFeatureContentRefresh`) handles the canvas refresh.
+   */
+  const patchFeatureBlocks = useCallback(
+    async (
+      blockedId: string,
+      blockerId: string,
+      mode: "add" | "remove",
+    ) => {
+      try {
+        // Read current array first — `dependsOnFeatureIds` is a flat
+        // column and the API expects the full replacement set.
+        const readRes = await fetch(`/api/features/${blockedId}`);
+        if (!readRes.ok) {
+          console.error(
+            "[OrgCanvasBackground] patchFeatureBlocks read failed",
+            readRes.status,
+          );
+          return;
+        }
+        const readBody = await readRes.json();
+        const current: string[] =
+          (readBody?.data?.dependsOnFeatureIds as string[] | undefined) ?? [];
+        const next =
+          mode === "add"
+            ? Array.from(new Set([...current, blockerId]))
+            : current.filter((id) => id !== blockerId);
+        // Skip no-op writes — saves a round trip and avoids
+        // emitting CANVAS_UPDATED for a write that didn't change
+        // anything.
+        if (
+          next.length === current.length &&
+          next.every((id, i) => id === current[i])
+        ) {
+          return;
+        }
+        const res = await fetch(`/api/features/${blockedId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dependsOnFeatureIds: next }),
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          console.error(
+            "[OrgCanvasBackground] patchFeatureBlocks failed",
+            res.status,
+            detail,
+          );
+        }
+      } catch (err) {
+        console.error("[OrgCanvasBackground] patchFeatureBlocks threw", err);
+      }
+    },
+    [],
+  );
+
   const handleEdgeAdd = useCallback(
     (edge: CanvasEdge, canvasRef: string | undefined) => {
       // Intercept feature↔milestone edges as DB membership writes
@@ -2160,9 +2316,48 @@ export function OrgCanvasBackground({
         void patchFeatureMilestone(link.featureId, link.milestoneId);
         return;
       }
+
+      // Feature→feature dependency edge (the "blocks" relation). Same
+      // pattern as the milestone interception: swap the user-drawn
+      // edge's id for the predicted synthetic id, PATCH the DB, let
+      // the Pusher-driven refetch confirm via the projector. The
+      // server-side cycle check in `updateFeature` rejects the write
+      // if it would create a cycle — the optimistic edge then sits
+      // briefly until the next refetch removes it (the projector
+      // won't re-emit a non-persisted dependency).
+      const blocksLink = detectFeatureBlocksEdge(edge);
+      if (blocksLink && blocksLink.blockerId !== blocksLink.blockedId) {
+        const syntheticId =
+          `synthetic:feature-blocks:${blocksLink.blockerId}:${blocksLink.blockedId}`;
+        applyMutation(canvasRef, (c) => {
+          const withoutTemp = removeEdge(c, edge.id);
+          if (withoutTemp.edges?.some((e) => e.id === syntheticId)) {
+            return withoutTemp;
+          }
+          return addEdge(withoutTemp, {
+            id: syntheticId,
+            fromNode: `feature:${blocksLink.blockerId}`,
+            toNode: `feature:${blocksLink.blockedId}`,
+            customData: { kind: "blocks" },
+          } as CanvasEdge);
+        });
+        void patchFeatureBlocks(
+          blocksLink.blockedId,
+          blocksLink.blockerId,
+          "add",
+        );
+        return;
+      }
+
       applyMutation(canvasRef, (c) => addEdge(c, edge));
     },
-    [applyMutation, detectFeatureMilestoneEdge, patchFeatureMilestone],
+    [
+      applyMutation,
+      detectFeatureMilestoneEdge,
+      patchFeatureMilestone,
+      detectFeatureBlocksEdge,
+      patchFeatureBlocks,
+    ],
   );
   const handleEdgeUpdate = useCallback(
     (id: string, patch: EdgeUpdate, canvasRef: string | undefined) => {
@@ -2195,9 +2390,23 @@ export function OrgCanvasBackground({
         void patchFeatureMilestone(featureId, null);
         return;
       }
+      // Deleting a synthetic dependency edge means "this feature no
+      // longer depends on that one." Same posture as the milestone
+      // case: optimistic local remove, then PATCH the
+      // `dependsOnFeatureIds` array minus the blocker. Id format:
+      // `synthetic:feature-blocks:<blockerId>:<blockedId>`.
+      if (id.startsWith("synthetic:feature-blocks:")) {
+        const ids = id.slice("synthetic:feature-blocks:".length).split(":");
+        if (ids.length === 2) {
+          const [blockerId, blockedId] = ids;
+          applyMutation(canvasRef, (c) => removeEdge(c, id));
+          void patchFeatureBlocks(blockedId, blockerId, "remove");
+          return;
+        }
+      }
       applyMutation(canvasRef, (c) => removeEdge(c, id));
     },
-    [applyMutation, patchFeatureMilestone],
+    [applyMutation, patchFeatureMilestone, patchFeatureBlocks],
   );
 
   // Expose the edge-patch path through the parent-supplied ref so
@@ -2796,27 +3005,7 @@ export function OrgCanvasBackground({
         return categoryAllowedOnScope(o.value, currentRef);
       }),
     };
-    return (
-      <div
-        style={{
-          position: "absolute",
-          bottom: 16,
-          right: 16,
-          zIndex: 30,
-          pointerEvents: "auto",
-        }}
-      >
-        {/*
-         * `AddNodeButton` itself is `position:absolute; bottom:16; right:16`,
-         * so wrapping it in a `position:relative` shim neutralizes the
-         * library's absolute coords and lets our outer wrapper control the
-         * final on-screen position.
-         */}
-        <div style={{ position: "relative" }}>
-          <AddNodeButton {...filtered} />
-        </div>
-      </div>
-    );
+    return <AddNodeButton {...filtered} />;
   };
 
   if (loadError) {
@@ -2858,6 +3047,7 @@ export function OrgCanvasBackground({
           onViewportChange={(vp) => {
             currentViewportRef.current = vp;
           }}
+          collaborators={collaborators}
         />
         {/*
          * Restore pill — top-right of the canvas area. Shown on any

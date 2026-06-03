@@ -36,6 +36,7 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
 import { saveWorkflowArtifact } from "@/services/workflow-editor";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -336,8 +337,48 @@ export async function createStakworkRun(
       vars.workflowPlanningEnabled = true;
     }
 
+    // ──────────────────────────────────────────────────────────────────
+    // Bifrost routing for the Stakwork-side LLM calls (TASK_GENERATION
+    // only). Mirrors the wiring in `task-workflow.ts` for `plan-agent`:
+    // when the rollout flag covers this workspace and agent, mint a
+    // per-workflow Bifrost VK + macaroon and overlay `vars.apiKey` /
+    // `vars.baseUrl` / `vars.headers`. The workflow worker reads those
+    // three keys and threads them onto every LLM HTTP call it makes.
+    //
+    // Gated on TASK_GENERATION because the four run types that share
+    // `STAKWORK_AI_GENERATION_WORKFLOW_ID` (ARCHITECTURE, USER_STORIES,
+    // REQUIREMENTS, TASK_GENERATION) are deliberately rolled out one at
+    // a time so the per-agent dim on `logs.db` stays meaningful and
+    // each rollout can be observed independently. `task-generation` is
+    // registered in `BIFROST_AGENT_NAMES`; the others are not.
+    //
+    // When the flag is off or the orchestrator returns `undefined`,
+    // leave the existing payload untouched (no `vars.apiKey` is set
+    // here, so Stakwork falls back to the swarm-default key — the same
+    // byte-for-byte behavior this function has always had).
+    if (input.type === StakworkRunType.TASK_GENERATION) {
+      const bifrost = await getBifrostForLLM(
+        {
+          workspaceId: input.workspaceId,
+          workspaceSlug: workspace.slug,
+          userId,
+        },
+        { agentName: "task-generation", runId: run.id },
+      );
+      if (bifrost) {
+        vars.apiKey = bifrost.apiKey;
+        vars.baseUrl = bifrost.baseUrl;
+        if (Object.keys(bifrost.headers).length > 0) {
+          // Empty headers map = mint failed (shadow-mode degraded).
+          // Don't ship an empty `headers` key so workflow versions
+          // that don't read it stay byte-identical.
+          vars.headers = bifrost.headers;
+        }
+      }
+    }
+
     const stakworkPayload = {
-      name: `ai-gen-${input.type.toLowerCase()}-${Date.now()}`,
+      name: `ai-gen-${input.type.toLowerCase()}-${input.featureId ?? Date.now()}`,
       workflow_id: parseInt(workflowId),
       webhook_url: workflowWebhookUrl,
       workflow_params: {
@@ -1395,7 +1436,7 @@ async function applyAcceptResult(
         // Resolve repositoryId from repoUrl if provided by AI, fallback to first repo
         const repositoryId = (task.repoUrl && repoUrlToId.get(task.repoUrl)) || firstRepoId;
 
-        const isWorkflowTask = !!task.workflowId;
+        const isWorkflowTask = task.mode === "workflow_editor";
 
         const createdTask = await db.task.create({
           data: {
@@ -1423,13 +1464,14 @@ async function applyAcceptResult(
           await db.workflowTask.create({
             data: {
               taskId: createdTask.id,
-              workflowId: task.workflowId,
+              workflowId: task.workflowId ?? null,
               workflowName: task.workflowName ?? null,
               workflowRefId: task.workflowRefId ?? null,
+              workflowTaskType: task.workflowTaskType ?? null,
             },
           });
           await saveWorkflowArtifact(createdTask.id, {
-            workflowId: task.workflowId,
+            workflowId: task.workflowId ?? null,
             workflowName: task.workflowName,
             workflowRefId: task.workflowRefId,
           });

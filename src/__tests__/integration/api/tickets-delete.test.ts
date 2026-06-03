@@ -5,9 +5,17 @@ import {
   createTestUser,
   createTestWorkspace,
   createTestTask,
+  createTestSwarm,
+  createTestPod,
   updateTestTask,
   findTestTask,
 } from '@/__tests__/support/fixtures';
+import { releaseTaskPod } from '@/lib/pods/utils';
+
+vi.mock('@/lib/pods/utils', async () => {
+  const actual = await vi.importActual('@/lib/pods/utils');
+  return { ...actual, releaseTaskPod: vi.fn() };
+});
 import {
   createDeleteRequest,
   createAuthenticatedDeleteRequest,
@@ -704,6 +712,7 @@ describe('DELETE /api/tickets/[ticketId]', () => {
     });
 
     test('handles deletion across different workspaces correctly', async () => {
+
       // Create second workspace
       const workspace2 = await createTestWorkspace({
         name: 'Workspace 2',
@@ -751,6 +760,112 @@ describe('DELETE /api/tickets/[ticketId]', () => {
 
       const task2After = await findTestTask(task2.id);
       expect(task2After?.deleted).toBe(false);
+    });
+  });
+
+  describe('Pod Cleanup on Delete', () => {
+    test('releases pod before soft-deleting a task with an active pod', async () => {
+      const releaseTaskPodMock = vi.mocked(releaseTaskPod);
+      releaseTaskPodMock.mockResolvedValue(undefined as any);
+
+      const swarm = await createTestSwarm({ workspaceId: workspace.id });
+      const pod = await createTestPod({ swarmId: swarm.id });
+
+      const taskWithPod = await db.task.create({
+        data: {
+          title: 'Task with pod',
+          description: 'Has an active pod',
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          createdById: owner.id,
+          updatedById: owner.id,
+          podId: pod.podId,
+        },
+      });
+
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskWithPod.id}`,
+        owner
+      );
+
+      const response = await DELETE(request, {
+        params: { ticketId: taskWithPod.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      expect(releaseTaskPodMock).toHaveBeenCalledTimes(1);
+      expect(releaseTaskPodMock).toHaveBeenCalledWith({
+        taskId: taskWithPod.id,
+        podId: pod.podId,
+        workspaceId: workspace.id,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
+
+      const taskAfter = await findTestTask(taskWithPod.id);
+      expect(taskAfter?.deleted).toBe(true);
+    });
+
+    test('pod release failure does not block task soft-delete', async () => {
+      const releaseTaskPodMock = vi.mocked(releaseTaskPod);
+      releaseTaskPodMock.mockRejectedValue(new Error('release failed'));
+
+      const swarm = await createTestSwarm({ workspaceId: workspace.id });
+      const pod = await createTestPod({ swarmId: swarm.id });
+
+      const taskWithPod = await db.task.create({
+        data: {
+          title: 'Task with pod (release fails)',
+          workspaceId: workspace.id,
+          featureId: feature.id,
+          createdById: owner.id,
+          updatedById: owner.id,
+          podId: pod.podId,
+        },
+      });
+
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskWithPod.id}`,
+        owner
+      );
+
+      const response = await DELETE(request, {
+        params: { ticketId: taskWithPod.id },
+      });
+
+      expect(response.status).toBe(200);
+
+      const taskAfter = await findTestTask(taskWithPod.id);
+      expect(taskAfter?.deleted).toBe(true);
+    });
+
+    test('does not call releaseTaskPod when task has no pod', async () => {
+      const releaseTaskPodMock = vi.mocked(releaseTaskPod);
+
+      const taskWithoutPod = await createTestTask({
+        title: 'Task without pod',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskWithoutPod.id}`,
+        owner
+      );
+
+      const response = await DELETE(request, {
+        params: { ticketId: taskWithoutPod.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      expect(releaseTaskPodMock).not.toHaveBeenCalled();
+
+      const taskAfter = await findTestTask(taskWithoutPod.id);
+      expect(taskAfter?.deleted).toBe(true);
     });
   });
 });

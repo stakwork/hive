@@ -104,6 +104,25 @@ export interface PublishWorkflowContent {
   workflowVersionId?: number; // Version ID returned from publish API
 }
 
+export interface PublishScriptContent {
+  scriptId: number; // Script ID
+  scriptVersionId: number; // Script version ID to publish
+  scriptName?: string; // Script name for display
+  published?: boolean; // Whether the script has been published
+}
+
+export interface PublishPromptContent {
+  promptId: number; // Prompt ID to publish
+  promptVersionId: number; // Prompt version ID to publish
+  promptName?: string; // Prompt name for display
+  published?: boolean; // Whether the prompt has been published
+}
+
+export interface PublishSkillContent {
+  skillName?: string; // Skill name for display
+  published?: boolean; // Whether the skill has been published
+}
+
 // PR monitoring resolution tracking
 export interface PullRequestResolution {
   status: "notified" | "in_progress" | "resolved" | "gave_up";
@@ -166,6 +185,7 @@ export interface MediaContent {
 }
 
 export interface StreamContent {
+  agent?: string; // e.g. "plan-agent-abced" — optional for backwards compat
   requestId: string;
   eventsToken: string;
   baseUrl: string;
@@ -206,6 +226,9 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | DiffContent
     | MediaContent
     | PublishWorkflowContent
+    | PublishScriptContent
+    | PublishPromptContent
+    | PublishSkillContent
     | BountyContent
     | StreamContent;
 }
@@ -268,6 +291,7 @@ export function createChatMessage(data: {
     attachments: data.attachments || [],
     createdBy: data.createdBy,
     userId: data.createdBy?.id || null,
+    stakworkProjectId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -290,6 +314,9 @@ export function createArtifact(data: {
     | DiffContent
     | MediaContent
     | PublishWorkflowContent
+    | PublishScriptContent
+    | PublishPromptContent
+    | PublishSkillContent
     | BountyContent
     | StreamContent;
   icon?: ArtifactIcon;

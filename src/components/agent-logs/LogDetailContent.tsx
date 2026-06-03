@@ -3,9 +3,11 @@
 import React, { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, User, Bot, Wrench, Code2 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
+import { buildToolCallIndex, getConsumedResultIds } from "@/lib/utils/agent-log-pairing";
 import type {
   ParsedMessage,
   ToolCallContent,
@@ -21,6 +23,9 @@ export interface LogDetailContentProps {
   error: string | null;
   variant?: "modal" | "page";
 }
+
+/** Characters before assistant text is truncated with a "Show more" button */
+const LONG_TEXT_THRESHOLD = 1500;
 
 export function unescapeLogString(str: string): string {
   return str
@@ -84,40 +89,166 @@ export function getToolResultValue(output: ToolResultContent["output"]): string 
   }
 }
 
-export function ToolCallItem({
-  tc,
-}: {
-  tc: { id?: string; name: string; args: string | null };
-}) {
-  const [open, setOpen] = useState(false);
-  const truncated =
-    tc.args && tc.args.length > 2000 ? tc.args.slice(0, 2000) + "\n... (truncated)" : tc.args;
+// ---------------------------------------------------------------------------
+// CopyButton — icon-only, swaps to Check for 1.5 s after click
+// ---------------------------------------------------------------------------
+
+export function CopyButton({ value, className }: { value: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
 
   return (
-    <div className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 font-mono break-words">
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={handleClick}
+          className={cn(
+            "shrink-0 text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded",
+            className,
+          )}
+          aria-label="Copy"
+        >
+          {copied ? (
+            <Check className="w-3 h-3 text-green-500" />
+          ) : (
+            <Copy className="w-3 h-3" />
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <p className="text-xs">{copied ? "Copied!" : "Copy"}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SystemMessageBubble — collapsed by default, distinct muted styling
+// ---------------------------------------------------------------------------
+
+export function SystemMessageBubble({ message }: { message: ParsedMessage }) {
+  const [expanded, setExpanded] = useState(false);
+  const textContent = extractTextContent(message) ?? "";
+  const charCount = textContent.length;
+
+  return (
+    <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2">
       <button
-        onClick={() => truncated && setOpen((s) => !s)}
-        className={cn(
-          "text-left w-full",
-          truncated ? "hover:text-foreground transition-colors cursor-pointer" : "cursor-default",
-        )}
+        onClick={() => setExpanded((s) => !s)}
+        className="flex w-full items-center gap-2 text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
-        Called <span className="font-semibold">{tc.name}</span>
-        {truncated && (
-          <span className="ml-1 text-muted-foreground/70">{open ? "(hide)" : "(show)"}</span>
+        {expanded ? (
+          <ChevronDown className="w-3 h-3 shrink-0" />
+        ) : (
+          <ChevronRight className="w-3 h-3 shrink-0" />
         )}
+        <span className="font-medium">System prompt</span>
+        <Badge variant="secondary" className="text-xs px-1.5 py-0 ml-1">
+          {charCount.toLocaleString()} chars
+        </Badge>
       </button>
-      {open && truncated && (
-        <pre className="mt-1 text-xs font-mono bg-muted/70 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
-          {unescapeLogString(truncated)}
-        </pre>
+      {expanded && (
+        <div className="mt-2">
+          <MarkdownRenderer variant="assistant" size="compact">
+            {textContent}
+          </MarkdownRenderer>
+        </div>
       )}
     </div>
   );
 }
 
-export function MessageBubble({ message }: { message: ParsedMessage }) {
+// ---------------------------------------------------------------------------
+// ToolCallItem — expanded by default; optionally renders paired result inline
+// ---------------------------------------------------------------------------
+
+export function ToolCallItem({
+  tc,
+  pairedResult,
+}: {
+  tc: { id?: string; name: string; args: string | null };
+  pairedResult?: ToolResultContent;
+}) {
+  const [open, setOpen] = useState(true);
+  const [resultOpen, setResultOpen] = useState(false);
+
+  const truncated =
+    tc.args && tc.args.length > 2000 ? tc.args.slice(0, 2000) + "\n... (truncated)" : tc.args;
+  const unescapedArgs = truncated ? unescapeLogString(truncated) : null;
+
+  return (
+    <div className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 font-mono break-words">
+      {/* Header row */}
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => truncated && setOpen((s) => !s)}
+          className={cn(
+            "text-left flex-1",
+            truncated ? "hover:text-foreground transition-colors cursor-pointer" : "cursor-default",
+          )}
+        >
+          Called <span className="font-semibold">{tc.name}</span>
+          {truncated && (
+            <span className="ml-1 text-muted-foreground/70">{open ? "(hide)" : "(show)"}</span>
+          )}
+        </button>
+        {unescapedArgs && (
+          <CopyButton value={unescapedArgs} />
+        )}
+      </div>
+
+      {/* Args body */}
+      {open && truncated && (
+        <pre className="mt-1 text-xs font-mono bg-muted/70 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
+          {unescapedArgs}
+        </pre>
+      )}
+
+      {/* Inline paired result */}
+      {pairedResult && (
+        <div className="mt-1.5 border-l-2 border-primary/30 pl-2">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setResultOpen((s) => !s)}
+              className="text-left flex-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              Result {resultOpen ? "(hide)" : "(show)"}
+            </button>
+            <CopyButton value={getToolResultValue(pairedResult.output)} />
+          </div>
+          {resultOpen && (
+            <pre className="mt-1 text-xs font-mono bg-muted/50 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
+              {getToolResultValue(pairedResult.output)}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MessageBubble
+// ---------------------------------------------------------------------------
+
+export function MessageBubble({
+  message,
+  toolCallIndex,
+  consumedResultIds,
+}: {
+  message: ParsedMessage;
+  toolCallIndex?: Map<string, ToolResultContent>;
+  consumedResultIds?: Set<string>;
+}) {
   const [showToolDetails, setShowToolDetails] = useState(false);
+  const [showMore, setShowMore] = useState(false);
 
   if (!message || typeof message !== "object" || typeof message.role !== "string") {
     return null;
@@ -132,6 +263,11 @@ export function MessageBubble({ message }: { message: ParsedMessage }) {
   const isUser = role === "user";
   const isTool = role === "tool";
   const isAssistant = role === "assistant";
+
+  // --- System message ---
+  if (role === "system") {
+    return <SystemMessageBubble message={message} />;
+  }
 
   const allToolCallNames = [
     ...toolCalls.map((tc) => ({
@@ -157,7 +293,11 @@ export function MessageBubble({ message }: { message: ParsedMessage }) {
         </div>
         <div className="min-w-0 flex-1 space-y-1">
           {allToolCallNames.map((tc, i) => (
-            <ToolCallItem key={tc.id || i} tc={tc} />
+            <ToolCallItem
+              key={tc.id || i}
+              tc={tc}
+              pairedResult={tc.id ? toolCallIndex?.get(tc.id) : undefined}
+            />
           ))}
         </div>
       </div>
@@ -166,6 +306,13 @@ export function MessageBubble({ message }: { message: ParsedMessage }) {
 
   // Tool result messages (Vercel AI SDK style)
   if (isTool && toolResults.length > 0) {
+    // Filter out results that are paired with a call (already rendered inline)
+    const unpairedResults = toolResults.filter(
+      (tr) => !tr.toolCallId || !consumedResultIds?.has(tr.toolCallId),
+    );
+
+    if (unpairedResults.length === 0) return null;
+
     return (
       <div className="flex gap-2 items-start">
         <div className="shrink-0 mt-0.5 w-6 h-6 rounded-full bg-muted flex items-center justify-center">
@@ -176,18 +323,20 @@ export function MessageBubble({ message }: { message: ParsedMessage }) {
             onClick={() => setShowToolDetails(!showToolDetails)}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           >
-            {toolResults.length} tool result{toolResults.length > 1 ? "s" : ""}{" "}
+            {unpairedResults.length} tool result{unpairedResults.length > 1 ? "s" : ""}{" "}
             {showToolDetails ? "(hide)" : "(show)"}
           </button>
           {showToolDetails && (
             <div className="mt-1 space-y-1">
-              {toolResults.map((tr, i) => (
-                <pre
-                  key={tr.toolCallId || i}
-                  className="text-xs font-mono bg-muted/50 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all"
-                >
-                  {getToolResultValue(tr.output)}
-                </pre>
+              {unpairedResults.map((tr, i) => (
+                <div key={tr.toolCallId || i} className="relative">
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <CopyButton value={getToolResultValue(tr.output)} />
+                  </div>
+                  <pre className="text-xs font-mono bg-muted/50 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
+                    {getToolResultValue(tr.output)}
+                  </pre>
+                </div>
               ))}
             </div>
           )}
@@ -198,6 +347,9 @@ export function MessageBubble({ message }: { message: ParsedMessage }) {
 
   // Tool result messages (OpenAI style: role=tool with tool_call_id + string content)
   if (isTool && message.tool_call_id && typeof content === "string") {
+    // Skip if this result is paired with a call (rendered inline)
+    if (consumedResultIds?.has(message.tool_call_id)) return null;
+
     const truncated =
       content.length > 2000 ? content.slice(0, 2000) + "\n... (truncated)" : content;
     return (
@@ -213,9 +365,14 @@ export function MessageBubble({ message }: { message: ParsedMessage }) {
             1 tool result {showToolDetails ? "(hide)" : "(show)"}
           </button>
           {showToolDetails && (
-            <pre className="mt-1 text-xs font-mono bg-muted/50 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
-              {truncated}
-            </pre>
+            <div className="mt-1">
+              <div className="flex items-center gap-1 mb-0.5">
+                <CopyButton value={truncated} />
+              </div>
+              <pre className="text-xs font-mono bg-muted/50 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
+                {truncated}
+              </pre>
+            </div>
           )}
         </div>
       </div>
@@ -224,6 +381,11 @@ export function MessageBubble({ message }: { message: ParsedMessage }) {
 
   // Skip messages with no displayable content
   if (!textContent) return null;
+
+  // Long-text truncation for assistant and user messages
+  const isLong = (isAssistant || isUser) && textContent.length > LONG_TEXT_THRESHOLD;
+  const displayedText =
+    isLong && !showMore ? textContent.slice(0, LONG_TEXT_THRESHOLD) : textContent;
 
   return (
     <div className={cn("flex gap-2 items-start", isUser && "flex-row-reverse")}>
@@ -246,17 +408,43 @@ export function MessageBubble({ message }: { message: ParsedMessage }) {
         )}
       >
         {isUser ? (
-          <p className="text-sm whitespace-pre-wrap break-words">{unescapeLogString(textContent)}</p>
+          <>
+            <p className="text-sm whitespace-pre-wrap break-words">
+              {unescapeLogString(displayedText)}
+            </p>
+            {isLong && (
+              <button
+                onClick={() => setShowMore((s) => !s)}
+                className="mt-1 text-xs text-primary-foreground/70 hover:underline"
+              >
+                {showMore ? "Show less" : "Show more"}
+              </button>
+            )}
+          </>
         ) : (
-          <MarkdownRenderer variant="assistant" size="compact">
-            {textContent}
-          </MarkdownRenderer>
+          <>
+            <MarkdownRenderer variant="assistant" size="compact">
+              {displayedText}
+            </MarkdownRenderer>
+            {isLong && (
+              <button
+                onClick={() => setShowMore((s) => !s)}
+                className="mt-1 text-xs text-primary hover:underline"
+              >
+                {showMore ? "Show less" : "Show more"}
+              </button>
+            )}
+          </>
         )}
         {/* Inline tool calls in assistant messages with text */}
         {isAssistant && allToolCallNames.length > 0 && (
           <div className="mt-2 space-y-1 border-t border-border/50 pt-2">
             {allToolCallNames.map((tc, i) => (
-              <ToolCallItem key={tc.id || i} tc={tc} />
+              <ToolCallItem
+                key={tc.id || i}
+                tc={tc}
+                pairedResult={tc.id ? toolCallIndex?.get(tc.id) : undefined}
+              />
             ))}
           </div>
         )}
@@ -361,6 +549,9 @@ export function LogDetailContent({
   const scrollHeight = variant === "page" ? "h-[calc(100vh-12rem)]" : "h-[400px]";
   const hasContent = conversation !== null || rawContent !== "";
 
+  const toolCallIndex = conversation ? buildToolCallIndex(conversation) : new Map();
+  const consumedResultIds = conversation ? getConsumedResultIds(conversation) : new Set<string>();
+
   return (
     <div className="py-2 min-h-0 overflow-hidden">
       {loading && (
@@ -387,7 +578,12 @@ export function LogDetailContent({
             {conversation ? (
               <div className="p-4 space-y-3">
                 {conversation.map((msg, i) => (
-                  <MessageBubble key={i} message={msg} />
+                  <MessageBubble
+                    key={i}
+                    message={msg}
+                    toolCallIndex={toolCallIndex}
+                    consumedResultIds={consumedResultIds}
+                  />
                 ))}
               </div>
             ) : (

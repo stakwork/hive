@@ -19,8 +19,9 @@ export function useAgentEvents(
   requestId: string | null,
   token: string | null,
   baseUrl: string | null,
-): { latestEvent: AgentEvent | null; status: AgentEventsStatus } {
+): { latestEvent: AgentEvent | null; events: AgentEvent[]; status: AgentEventsStatus } {
   const [latestEvent, setLatestEvent] = useState<AgentEvent | null>(null);
+  const [events, setEvents] = useState<AgentEvent[]>([]);
   const [status, setStatus] = useState<AgentEventsStatus>("idle");
   const esRef = useRef<EventSource | null>(null);
 
@@ -35,6 +36,7 @@ export function useAgentEvents(
     console.log("[useAgentEvents] opening EventSource", url);
     setStatus("streaming");
     setLatestEvent(null);
+    setEvents([]);
 
     const es = new EventSource(url);
     esRef.current = es;
@@ -43,9 +45,13 @@ export function useAgentEvents(
       try {
         const data = JSON.parse(event.data);
         if (data.type === "text") {
-          setLatestEvent({ type: "text", text: data.text ?? "" });
+          const e: AgentEvent = { type: "text", text: data.text ?? "" };
+          setLatestEvent(e);
+          setEvents((prev) => [...prev, e]);
         } else if (data.type === "tool_call") {
-          setLatestEvent({ type: "tool_call", toolName: data.toolName ?? data.tool_name ?? "", input: data.input ?? null });
+          const e: AgentEvent = { type: "tool_call", toolName: data.toolName ?? data.tool_name ?? "", input: data.input ?? null };
+          setLatestEvent(e);
+          setEvents((prev) => [...prev, e]);
         } else if (data.type === "done") {
           setStatus("done");
           es.close();
@@ -72,5 +78,5 @@ export function useAgentEvents(
     };
   }, [requestId, token, baseUrl]);
 
-  return { latestEvent, status };
+  return { latestEvent, events, status };
 }

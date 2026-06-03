@@ -1,9 +1,15 @@
+// @vitest-environment jsdom
 import React from "react";
-import { describe, test, expect, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { describe, test, expect, vi, beforeEach } from "vitest";
+import { render, act } from "@testing-library/react";
 
 const mockSetNodes = vi.fn();
 const mockSetEdges = vi.fn();
+const mockFitView = vi.fn();
+
+// Mutable store dimensions so tests can change them
+let mockWidth = 0;
+let mockHeight = 0;
 
 // Mock @xyflow/react — avoid JSX inside mock factories (no React auto-import)
 vi.mock("@xyflow/react", () => ({
@@ -13,7 +19,8 @@ vi.mock("@xyflow/react", () => ({
     React.createElement(React.Fragment, null, children),
   useNodesState: (initial: any) => [initial, mockSetNodes, vi.fn()],
   useEdgesState: (initial: any) => [initial, mockSetEdges, vi.fn()],
-  useReactFlow: () => ({ fitView: vi.fn() }),
+  useReactFlow: () => ({ fitView: mockFitView }),
+  useStore: (selector: any) => selector({ width: mockWidth, height: mockHeight }),
   Controls: () => React.createElement("div", { "data-testid": "controls" }),
   Background: () => React.createElement("div", { "data-testid": "background" }),
   BackgroundVariant: { Dots: "dots" },
@@ -34,6 +41,14 @@ vi.mock("@/components/ui/empty", () => ({
 import { DependencyGraph } from "@/components/features/DependencyGraph";
 
 const makeEntity = (id: string, deps: string[] = []) => ({ id, title: id, deps });
+
+beforeEach(() => {
+  mockSetNodes.mockClear();
+  mockSetEdges.mockClear();
+  mockFitView.mockClear();
+  mockWidth = 0;
+  mockHeight = 0;
+});
 
 describe("DependencyGraph", () => {
   test("applies className prop to the outer wrapper div", () => {
@@ -169,5 +184,125 @@ describe("DependencyGraph — node/edge re-sync on entity changes", () => {
     const task1Node = lastCall.find((n: any) => n.id === "task-1");
     expect(task1Node).toBeDefined();
     expect(task1Node.data.status).toBe("IN_PROGRESS");
+  });
+});
+
+describe("FitWhenVisible — fitView fires on hidden→visible transition", () => {
+  const entities = [makeEntity("a"), makeEntity("b", ["a"])];
+  const defaultProps = {
+    entities,
+    getDependencies: (e: any) => e.deps,
+    renderNode: (e: any) => React.createElement("span", null, e.title),
+  };
+
+  test("does NOT call fitView when container dimensions are 0×0", () => {
+    mockWidth = 0;
+    mockHeight = 0;
+
+    render(React.createElement(DependencyGraph, defaultProps));
+
+    expect(mockFitView).not.toHaveBeenCalled();
+  });
+
+  test("calls fitView when container transitions from 0×0 to non-zero dimensions", async () => {
+    vi.useFakeTimers();
+    mockWidth = 0;
+    mockHeight = 0;
+
+    const { rerender } = render(React.createElement(DependencyGraph, defaultProps));
+    expect(mockFitView).not.toHaveBeenCalled();
+
+    // Simulate container becoming visible
+    mockWidth = 800;
+    mockHeight = 600;
+
+    rerender(React.createElement(DependencyGraph, defaultProps));
+
+    // Advance past the 50ms setTimeout inside FitWhenVisible
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(mockFitView).toHaveBeenCalledTimes(1);
+    expect(mockFitView).toHaveBeenCalledWith({ padding: 0.1, duration: 200 });
+
+    vi.useRealTimers();
+  });
+
+  test("does NOT call fitView again on a second non-zero resize", async () => {
+    vi.useFakeTimers();
+    mockWidth = 0;
+    mockHeight = 0;
+
+    const { rerender } = render(React.createElement(DependencyGraph, defaultProps));
+
+    // First: hidden → visible
+    mockWidth = 800;
+    mockHeight = 600;
+    rerender(React.createElement(DependencyGraph, defaultProps));
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(mockFitView).toHaveBeenCalledTimes(1);
+    mockFitView.mockClear();
+
+    // Second: resize while still visible — should NOT trigger fitView again
+    mockWidth = 1200;
+    mockHeight = 800;
+    rerender(React.createElement(DependencyGraph, defaultProps));
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(mockFitView).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  test("re-fits when container hides and becomes visible again", async () => {
+    vi.useFakeTimers();
+    mockWidth = 0;
+    mockHeight = 0;
+
+    const { rerender } = render(React.createElement(DependencyGraph, defaultProps));
+
+    // First open
+    mockWidth = 800;
+    mockHeight = 600;
+    rerender(React.createElement(DependencyGraph, defaultProps));
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(mockFitView).toHaveBeenCalledTimes(1);
+    mockFitView.mockClear();
+
+    // Close (hidden again)
+    mockWidth = 0;
+    mockHeight = 0;
+    rerender(React.createElement(DependencyGraph, defaultProps));
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(mockFitView).not.toHaveBeenCalled();
+
+    // Re-open
+    mockWidth = 800;
+    mockHeight = 600;
+    rerender(React.createElement(DependencyGraph, defaultProps));
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(mockFitView).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
   });
 });

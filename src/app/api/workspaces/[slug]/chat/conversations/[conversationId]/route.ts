@@ -198,10 +198,6 @@ export async function PUT(
       );
     }
 
-    // Append new messages to existing messages
-    const existingMessages = existing.messages as any[];
-    const updatedMessages = [...existingMessages, ...body.messages];
-
     // Calculate new lastMessageAt from appended messages
     const newLastMessageAt = body.messages.length > 0
       ? (() => {
@@ -210,39 +206,65 @@ export async function PUT(
         })()
       : existing.lastMessageAt;
 
-    // Update conversation
-    const updated = await db.sharedConversation.update({
-      where: {
-        id: conversationId,
-      },
-      data: {
-        messages: updatedMessages as any,
-        lastMessageAt: newLastMessageAt,
-        ...(body.title && { title: body.title }),
-        ...(body.source && { source: body.source }),
-        ...(body.settings !== undefined && { settings: body.settings as any }),
-      },
-      select: {
-        id: true,
-        title: true,
-        messages: true,
-        provenanceData: true,
-        followUpQuestions: true,
-        settings: true,
-        isShared: true,
-        lastMessageAt: true,
-        source: true,
-        createdAt: true,
-        updatedAt: true,
-        userId: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+    // Append + write under a row-level lock. Two writers can race
+    // for this row:
+    //   1. This PUT (client autosave, e.g. user typed a message)
+    //   2. `fanOutPlannerMessageToCanvas` (server-side, planner
+    //      ASSISTANT message landed via the Stakwork webhook)
+    // Both are append-only. Without `SELECT ... FOR UPDATE`, the
+    // later read-modify-write can stomp the earlier one because each
+    // reads `messages` before the other has written. Locking the row
+    // serializes the two transactions; both appends land in arrival
+    // order with no 409s or client retries. Net cost: a few ms of
+    // hold-time per write. The alternative (losing planner messages)
+    // is unacceptable. See `src/services/canvas-planner-fanout.ts`
+    // for the matched wrap on the fan-out side. Precedent:
+    // `src/app/api/w/[slug]/pool/workspaces/[workspaceId]/route.ts`.
+    const updated = await db.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ messages: unknown }[]>`
+        SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+      `;
+      if (locked.length === 0) {
+        // Row was deleted between the ownership check above and the
+        // lock. Surface as a 404 via the catch path.
+        throw new Error("Conversation disappeared mid-transaction");
+      }
+      const existingMessages = (locked[0].messages as any[]) ?? [];
+      const updatedMessages = [...existingMessages, ...body.messages];
+
+      return tx.sharedConversation.update({
+        where: {
+          id: conversationId,
+        },
+        data: {
+          messages: updatedMessages as any,
+          lastMessageAt: newLastMessageAt,
+          ...(body.title && { title: body.title }),
+          ...(body.source && { source: body.source }),
+          ...(body.settings !== undefined && { settings: body.settings as any }),
+        },
+        select: {
+          id: true,
+          title: true,
+          messages: true,
+          provenanceData: true,
+          followUpQuestions: true,
+          settings: true,
+          isShared: true,
+          lastMessageAt: true,
+          source: true,
+          createdAt: true,
+          updatedAt: true,
+          userId: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
           },
         },
-      },
+      });
     });
 
     const response: ConversationDetail = {

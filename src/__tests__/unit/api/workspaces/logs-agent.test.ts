@@ -44,6 +44,9 @@ vi.mock("@/lib/helpers/swarm-access", () => ({
 vi.mock("@/lib/logger", () => ({
   logger: {
     error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
@@ -424,7 +427,6 @@ describe("POST /api/workspaces/[slug]/logs-agent", () => {
         prompt: "test prompt",
         swarmName: "swarm38",
         sessionId: "session-abc",
-        model: "haiku",
         sessionConfig: {
           truncateToolResults: false,
           maxToolResultLines: 200,

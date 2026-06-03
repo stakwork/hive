@@ -2,17 +2,21 @@
 
 import React from "react";
 import { motion } from "framer-motion";
+import { ExternalLink } from "lucide-react";
 import type { AgentStreamingMessage } from "@/types/agent";
 import type { ChatMessage } from "@/lib/chat";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { StreamingMessage, StreamErrorBoundary } from "@/components/streaming";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
+import { Button } from "@/components/ui/button";
 import { PullRequestArtifact } from "../artifacts/pull-request";
 import { BountyArtifact } from "../artifacts/bounty";
 import { FINAL_ANSWER_ID } from "../lib/streaming-config";
 
 interface AgentChatMessageProps {
   message: ChatMessage | AgentStreamingMessage;
+  stakworkProjectId?: string;
+  isSuperAdmin?: boolean;
 }
 
 // Type guard to check if message is AgentStreamingMessage
@@ -20,7 +24,7 @@ function isAgentStreamingMessage(msg: ChatMessage | AgentStreamingMessage): msg 
   return 'content' in msg && ('textParts' in msg || 'toolCalls' in msg || 'isStreaming' in msg);
 }
 
-export function AgentChatMessage({ message }: AgentChatMessageProps) {
+export function AgentChatMessage({ message, stakworkProjectId, isSuperAdmin = false }: AgentChatMessageProps) {
   const isUser = message.role === "USER" || message.role === "user";
 
   // Get the text content - use 'content' for streaming messages, 'message' for ChatMessage
@@ -53,12 +57,34 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
         <div
           className={`px-4 py-1 rounded-md max-w-full shadow-sm relative ${
             isUser
-              ? "bg-primary text-primary-foreground rounded-br-md"
+              ? "group bg-primary text-primary-foreground rounded-br-md"
               : "bg-background text-foreground rounded-bl-md border"
           }`}
         >
           {isUser ? (
-            <MarkdownRenderer variant="user">{textContent}</MarkdownRenderer>
+            <>
+              <MarkdownRenderer variant="user">{textContent}</MarkdownRenderer>
+              {isSuperAdmin && stakworkProjectId && (
+                <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                  <Button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(
+                        `https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`,
+                        '_blank',
+                        'noopener,noreferrer'
+                      );
+                    }}
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 hover:bg-background/80 border border-border/50 shadow-sm bg-background"
+                    aria-label="View run on Stakwork"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+            </>
           ) : showThinking ? (
             <ThinkingIndicator />
           ) : isStreamingMessage ? (

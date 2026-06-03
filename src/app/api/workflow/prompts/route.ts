@@ -13,6 +13,7 @@ interface StakworkPrompt {
   name: string;
   description: string;
   usage_notation: string;
+  value?: string;
 }
 
 interface StakworkPromptsResponse {

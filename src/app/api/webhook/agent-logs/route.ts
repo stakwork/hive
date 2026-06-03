@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { db } from "@/lib/db";
+import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export const fetchCache = "force-no-store";
 
@@ -166,6 +167,20 @@ export async function POST(request: NextRequest) {
             workspaceId: workspace_id,
           },
         });
+
+    // Broadcast real-time update to feature plan viewers
+    if (feature_id) {
+      try {
+        await pusherServer.trigger(
+          getFeatureChannelName(feature_id),
+          PUSHER_EVENTS.AGENT_LOG_UPDATED,
+          { id: agentLog.id, agent: agentLog.agent, createdAt: agentLog.createdAt, isNew: !existing }
+        );
+        console.info("[agent-logs] pusher broadcast", { agent: agentLog.agent, featureId: feature_id, isNew: !existing });
+      } catch (err) {
+        console.error("[agent-logs] pusher broadcast failed", err);
+      }
+    }
 
     return NextResponse.json(
       {

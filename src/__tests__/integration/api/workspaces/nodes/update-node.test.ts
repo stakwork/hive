@@ -46,7 +46,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-123";
         const updateData = {
-          properties: {
+          node_type: "TestNode",
+          node_data: {
             name: "Updated Node",
             description: "Updated description",
           },
@@ -81,7 +82,8 @@ describe("Node Update API - Integration Tests", () => {
           }),
           expect.objectContaining({
             ref_id: nodeId,
-            properties: updateData.properties,
+            node_type: updateData.node_type,
+            node_data: updateData.node_data,
           })
         );
       });
@@ -99,7 +101,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-456";
         const updateData = {
-          properties: {
+          node_type: "TestNode",
+          node_data: {
             status: "active",
             metadata: { version: "2.0" },
           },
@@ -137,7 +140,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-789";
         const updateData = {
-          properties: {
+          node_type: "TestNode",
+          node_data: {
             name: "Complete Node",
             type: "service",
             config: {
@@ -179,7 +183,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-dev-123";
         const updateData = {
-          properties: { name: "Developer Update" },
+          node_type: "TestNode",
+          node_data: { name: "Developer Update" },
         };
 
         vi.mocked(nodesService.updateNode).mockResolvedValue({ success: true });
@@ -211,7 +216,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-viewer-123";
         const updateData = {
-          properties: { name: "Viewer Update" },
+          node_type: "TestNode",
+          node_data: { name: "Viewer Update" },
         };
 
         vi.mocked(nodesService.updateNode).mockResolvedValue({ success: true });
@@ -243,7 +249,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-pm-123";
         const updateData = {
-          properties: { name: "PM Update" },
+          node_type: "TestNode",
+          node_data: { name: "PM Update" },
         };
 
         vi.mocked(nodesService.updateNode).mockResolvedValue({ success: true });
@@ -270,7 +277,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-non-member-123";
         const updateData = {
-          properties: { name: "Unauthorized Update" },
+          node_type: "TestNode",
+          node_data: { name: "Unauthorized Update" },
         };
 
         const request = createAuthenticatedPutRequest(
@@ -291,7 +299,8 @@ describe("Node Update API - Integration Tests", () => {
         const user = await createTestUser();
         const nodeId = "node-404";
         const updateData = {
-          properties: { name: "Update" },
+          node_type: "TestNode",
+          node_data: { name: "Update" },
         };
 
         const request = createAuthenticatedPutRequest(
@@ -328,7 +337,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-deleted-ws";
         const updateData = {
-          properties: { name: "Update" },
+          node_type: "TestNode",
+          node_data: { name: "Update" },
         };
 
         const request = createAuthenticatedPutRequest(
@@ -359,7 +369,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-left-member";
         const updateData = {
-          properties: { name: "Update" },
+          node_type: "TestNode",
+          node_data: { name: "Update" },
         };
 
         const request = createAuthenticatedPutRequest(
@@ -381,7 +392,8 @@ describe("Node Update API - Integration Tests", () => {
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         const nodeId = "node-unauth";
         const updateData = {
-          properties: { name: "Update" },
+          node_type: "TestNode",
+          node_data: { name: "Update" },
         };
 
         const request = createPutRequest(
@@ -399,7 +411,7 @@ describe("Node Update API - Integration Tests", () => {
     });
 
     describe("Validation Failures", () => {
-      test("rejects request with missing properties field", async () => {
+      test("rejects request with missing node_type field", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({
@@ -410,7 +422,7 @@ describe("Node Update API - Integration Tests", () => {
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-api-key" });
 
         const nodeId = "node-no-props";
-        const updateData = {}; // Missing properties
+        const updateData = { node_data: { name: "Update" } }; // Missing node_type
 
         const request = createAuthenticatedPutRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/nodes/${nodeId}`,
@@ -422,11 +434,11 @@ describe("Node Update API - Integration Tests", () => {
           params: Promise.resolve({ slug: workspace.slug, nodeId }),
         });
 
-        await expectError(response, "properties object is required", 400);
+        await expectError(response, "node_type string is required", 400);
         expect(nodesService.updateNode).not.toHaveBeenCalled();
       });
 
-      test("rejects request with properties field as non-object", async () => {
+      test("rejects request with missing node_data field", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({
@@ -438,7 +450,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-invalid-props-type";
         const updateData = {
-          properties: "invalid-string" as any, // Should be object
+          node_type: "TestNode",
+          // Missing node_data
         };
 
         const request = createAuthenticatedPutRequest(
@@ -451,11 +464,11 @@ describe("Node Update API - Integration Tests", () => {
           params: Promise.resolve({ slug: workspace.slug, nodeId }),
         });
 
-        await expectError(response, "properties object is required", 400);
+        await expectError(response, "node_data object is required", 400);
         expect(nodesService.updateNode).not.toHaveBeenCalled();
       });
 
-      test("allows array as properties (typeof array === 'object')", async () => {
+      test("allows array as node_data (typeof array === 'object')", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({
@@ -467,7 +480,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-array-props";
         const updateData = {
-          properties: ["item1", "item2"] as any, // Arrays pass typeof check
+          node_type: "TestNode",
+          node_data: ["item1", "item2"] as any, // Arrays pass typeof check
         };
 
         vi.mocked(nodesService.updateNode).mockResolvedValue({ success: true });
@@ -501,7 +515,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-no-swarm";
         const updateData = {
-          properties: { name: "Update" },
+          node_type: "TestNode",
+          node_data: { name: "Update" },
         };
 
         const request = createAuthenticatedPutRequest(
@@ -532,7 +547,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-error";
         const updateData = {
-          properties: { name: "Update" },
+          node_type: "TestNode",
+          node_data: { name: "Update" },
         };
 
         // Mock Jarvis API error - updateNode returns error via result object
@@ -568,7 +584,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-exception";
         const updateData = {
-          properties: { name: "Update" },
+          node_type: "TestNode",
+          node_data: { name: "Update" },
         };
 
         // Mock unexpected exception
@@ -605,10 +622,12 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-concurrent";
         const updateData1 = {
-          properties: { name: "Update 1" },
+          node_type: "TestNode",
+          node_data: { name: "Update 1" },
         };
         const updateData2 = {
-          properties: { name: "Update 2" },
+          node_type: "TestNode",
+          node_data: { name: "Update 2" },
         };
 
         vi.mocked(nodesService.updateNode)
@@ -653,7 +672,8 @@ describe("Node Update API - Integration Tests", () => {
         const nodeId = "node-large-props";
         const largeString = "x".repeat(10000);
         const updateData = {
-          properties: {
+          node_type: "TestNode",
+          node_data: {
             name: "Large Node",
             config: largeString,
           },
@@ -686,7 +706,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-special-chars";
         const updateData = {
-          properties: {
+          node_type: "TestNode",
+          node_data: {
             "property-with-dashes": "value",
             "property.with.dots": "value",
             "property:with:colons": "value",
@@ -723,7 +744,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-null-values";
         const updateData = {
-          properties: {
+          node_type: "TestNode",
+          node_data: {
             name: "Node with nulls",
             optionalField: null,
             nestedObject: {
@@ -760,7 +782,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-nested";
         const updateData = {
-          properties: {
+          node_type: "TestNode",
+          node_data: {
             name: "Nested Node",
             config: {
               level1: {
@@ -806,7 +829,8 @@ describe("Node Update API - Integration Tests", () => {
 
         const nodeId = "node-preserve-ws";
         const updateData = {
-          properties: { name: "Update" },
+          node_type: "TestNode",
+          node_data: { name: "Update" },
         };
 
         vi.mocked(nodesService.updateNode).mockResolvedValue({ success: true });

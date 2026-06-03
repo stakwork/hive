@@ -102,7 +102,7 @@ export const useWebhookHighlights = () => {
       const channel = pusher.subscribe(channelName)
 
       const handleHighlightEvent = async (data: HighlightEvent) => {
-        console.log('Received highlight event:', data)
+        // console.log('Received highlight event:', data)
 
         if (data.workspaceId !== workspace.slug) return
 
@@ -145,7 +145,7 @@ export const useWebhookHighlights = () => {
 
         // Create highlight chunk
         if (finalNodeIds.length > 0) {
-          console.log('Creating highlight chunk with nodes:', finalNodeIds)
+          // console.log('Creating highlight chunk with nodes:', finalNodeIds)
           const calloutNodeRefId = data.sourceNodeRefId || finalNodeIds[0]
           if (calloutNodeRefId) {
             const expiresInMs = data.expiresIn ? data.expiresIn * 1000 : undefined

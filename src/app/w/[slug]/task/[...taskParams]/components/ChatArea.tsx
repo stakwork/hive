@@ -66,6 +66,8 @@ interface ChatAreaProps {
   typingUsers?: string[];
   onTypingStart?: () => void;
   onTypingStop?: () => void;
+  suggestions?: string[];
+  onSuggestionSelect?: (s: string) => void;
 }
 
 export function ChatArea({
@@ -113,6 +115,8 @@ export function ChatArea({
   typingUsers,
   onTypingStart,
   onTypingStop,
+  suggestions,
+  onSuggestionSelect,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -371,21 +375,35 @@ export function ChatArea({
         ref={messagesContainerRef}
         className={cn("flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40", isMobile && "pb-28", isMobile && taskTitle && "pt-16")}
       >
-        {messages
-          .filter((msg) => !msg.replyId) // Hide messages that are replies
-          .map((msg) => {
-            // Find if this message has been replied to
-            const replyMessage = messages.find((m) => m.replyId === msg.id);
+        {(() => {
+          const visibleMessages = messages.filter((msg) => !msg.replyId);
+          // The plan-mode chip suggestions dock inside the bubble of the
+          // most recent assistant message in the visible list.
+          const lastAssistantIdx = (() => {
+            for (let i = visibleMessages.length - 1; i >= 0; i--) {
+              if (visibleMessages[i].role !== "USER") return i;
+            }
+            return -1;
+          })();
+          const showChips =
+            isPlanChat && !isLoading && !!suggestions?.length && !!onSuggestionSelect;
 
+          return visibleMessages.map((msg, i) => {
+            const replyMessage = messages.find((m) => m.replyId === msg.id);
+            const dockChipsHere = showChips && i === lastAssistantIdx;
             return (
               <ChatMessage
                 key={msg.id}
                 message={msg}
                 replyMessage={replyMessage}
                 onArtifactAction={onArtifactAction}
+                suggestions={dockChipsHere ? suggestions : undefined}
+                onSuggestionSelect={dockChipsHere ? onSuggestionSelect : undefined}
+                isSuperAdmin={isSuperAdmin}
               />
             );
-          })}
+          });
+        })()}
 
         <div ref={messagesEndRef} />
       </div>

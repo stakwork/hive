@@ -104,6 +104,15 @@ vi.mock("@/config/env", () => ({
     POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
     API_TIMEOUT: 10000,
   },
+  // Bifrost gates — the orchestrator imports these directly (see
+  // src/services/bifrost/orchestrator.ts). `createStakworkRun` calls
+  // `getBifrostForLLM` for TASK_GENERATION runs, which would otherwise
+  // hit the real env-var reader and throw under this fully-replaced
+  // mock. Returning `false` from the workspace gate makes the
+  // orchestrator short-circuit to `undefined`, leaving the payload
+  // byte-identical to the pre-Bifrost behavior these tests assert.
+  isBifrostEnabledForWorkspace: vi.fn().mockReturnValue(false),
+  isBifrostEnabledForAgent: vi.fn().mockReturnValue(false),
 }));
 
 const mockedDb = vi.mocked(db);
@@ -1154,6 +1163,127 @@ describe("Stakwork Run Service", () => {
               },
             },
           },
+        })
+      );
+    });
+
+    test("should use featureId in project name when featureId is present", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue({
+        id: "feature-abc",
+        title: "Test Feature",
+        brief: null,
+        architecture: null,
+        userStories: [],
+        workspace: { description: null },
+        phases: [],
+      });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: "feature-abc",
+        },
+        "user-1"
+      );
+
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          name: "ai-gen-architecture-feature-abc",
+        })
+      );
+    });
+
+    test("should fall back to Date.now() in project name when featureId is null", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: null,
+        },
+        "user-1"
+      );
+
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          name: expect.stringMatching(/^ai-gen-architecture-\d+$/),
         })
       );
     });
@@ -2528,6 +2658,7 @@ describe("Stakwork Run Service", () => {
                 workflowId: 42,
                 workflowName: "test-workflow",
                 workflowRefId: "ref-001",
+                mode: "workflow_editor",
               },
               {
                 tempId: "t-plain",
@@ -2582,6 +2713,7 @@ describe("Stakwork Run Service", () => {
           workflowId: 42,
           workflowName: "test-workflow",
           workflowRefId: "ref-001",
+          workflowTaskType: null,
         },
       });
 
@@ -2592,6 +2724,218 @@ describe("Stakwork Run Service", () => {
         workflowName: "test-workflow",
         workflowRefId: "ref-001",
       });
+    });
+
+    test("should write workflowTaskType from AI payload to WorkflowTask row", async () => {
+      const mockRun = {
+        id: "run-wf-type-1",
+        type: StakworkRunType.TASK_GENERATION,
+        featureId: "feature-wf-type",
+        workspaceId: "ws-1",
+        status: WorkflowStatus.IN_PROGRESS,
+        autoAccept: true,
+        workspace: { slug: "test-workspace", ownerId: "workspace-owner-id" },
+        feature: { createdById: "feature-creator-id" },
+      };
+      const mockFeature = {
+        id: "feature-wf-type",
+        title: "Workflow Type Feature",
+        phases: [{ id: "phase-1", name: "Phase 1", order: 0 }],
+        workspace: { id: "ws-1" },
+      };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        status: WorkflowStatus.COMPLETED,
+        decision: StakworkRunDecision.ACCEPTED,
+      });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([]);
+      mockedDb.task.create = vi.fn().mockResolvedValue({ id: "task-skill-1" });
+      mockedDb.workflowTask = { create: vi.fn().mockResolvedValue({ id: "wt-skill-1" }) } as any;
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+      vi.mocked(saveWorkflowArtifact).mockClear();
+
+      const taskGenerationResult = {
+        phases: [
+          {
+            tasks: [
+              {
+                tempId: "t-skill",
+                title: "Skill Workflow Task",
+                description: "A skill",
+                priority: "HIGH",
+                workflowId: 77,
+                workflowName: "my-skill",
+                workflowRefId: "ref-skill",
+                workflowTaskType: "SKILL",
+                mode: "workflow_editor",
+              },
+            ],
+          },
+        ],
+      };
+
+      await processStakworkRunWebhook(
+        { project_status: "completed", result: taskGenerationResult },
+        { type: "TASK_GENERATION", workspace_id: "ws-1", feature_id: "feature-wf-type" }
+      );
+
+      expect(mockedDb.workflowTask.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ workflowTaskType: "SKILL" }),
+      });
+    });
+
+    test("should treat task with mode='live' and workflowId as a coding task (not workflow)", async () => {
+      const mockRun = {
+        id: "run-live-1",
+        type: StakworkRunType.TASK_GENERATION,
+        featureId: "feature-live",
+        workspaceId: "ws-1",
+        status: WorkflowStatus.IN_PROGRESS,
+        autoAccept: true,
+        workspace: { slug: "test-workspace", ownerId: "workspace-owner-id" },
+        feature: { createdById: "feature-creator-id" },
+      };
+
+      const mockFeature = {
+        id: "feature-live",
+        title: "Live Feature",
+        phases: [{ id: "phase-live", name: "Phase 1", order: 0 }],
+        workspace: { id: "ws-1" },
+      };
+
+      const mockCreatedTask = { id: "created-live-task" };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        status: WorkflowStatus.COMPLETED,
+        decision: StakworkRunDecision.ACCEPTED,
+      });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/org/repo" }]);
+      mockedDb.task.create = vi.fn().mockResolvedValueOnce(mockCreatedTask);
+      mockedDb.workflowTask = { create: vi.fn().mockResolvedValue({ id: "wt-1" }) } as any;
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockedSaveWorkflowArtifact = vi.mocked(saveWorkflowArtifact);
+      mockedSaveWorkflowArtifact.mockClear();
+
+      const taskGenerationResult = {
+        phases: [
+          {
+            tasks: [
+              {
+                tempId: "t-live",
+                title: "Live Mode Task",
+                description: "Has workflowId but mode is live",
+                priority: "MEDIUM",
+                workflowId: 42,
+                workflowName: "test-workflow",
+                workflowRefId: "ref-001",
+                mode: "live",
+              },
+            ],
+          },
+        ],
+      };
+
+      await processStakworkRunWebhook(
+        { project_status: "completed", result: taskGenerationResult },
+        { type: "TASK_GENERATION", workspace_id: "ws-1", feature_id: "feature-live" }
+      );
+
+      // Should be created as a coding task: repositoryId populated, mode NOT workflow_editor
+      expect(mockedDb.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: "Live Mode Task",
+          repositoryId: "repo-1",
+        }),
+      });
+      const taskCall = (mockedDb.task.create as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(taskCall[0].data.mode).not.toBe("workflow_editor");
+
+      // No WorkflowTask row created
+      expect(mockedDb.workflowTask.create).not.toHaveBeenCalled();
+      // No workflow artifact saved
+      expect(mockedSaveWorkflowArtifact).not.toHaveBeenCalled();
+    });
+
+    test("should treat task with no mode field as a coding task (backwards compat)", async () => {
+      const mockRun = {
+        id: "run-nomode-1",
+        type: StakworkRunType.TASK_GENERATION,
+        featureId: "feature-nomode",
+        workspaceId: "ws-1",
+        status: WorkflowStatus.IN_PROGRESS,
+        autoAccept: true,
+        workspace: { slug: "test-workspace", ownerId: "workspace-owner-id" },
+        feature: { createdById: "feature-creator-id" },
+      };
+
+      const mockFeature = {
+        id: "feature-nomode",
+        title: "No Mode Feature",
+        phases: [{ id: "phase-nomode", name: "Phase 1", order: 0 }],
+        workspace: { id: "ws-1" },
+      };
+
+      const mockCreatedTask = { id: "created-nomode-task" };
+
+      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        status: WorkflowStatus.COMPLETED,
+        decision: StakworkRunDecision.ACCEPTED,
+      });
+      mockedDb.feature.findUnique = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.repository.findMany = vi.fn().mockResolvedValue([{ id: "repo-1", repositoryUrl: "https://github.com/org/repo" }]);
+      mockedDb.task.create = vi.fn().mockResolvedValueOnce(mockCreatedTask);
+      mockedDb.workflowTask = { create: vi.fn().mockResolvedValue({ id: "wt-1" }) } as any;
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockedSaveWorkflowArtifact = vi.mocked(saveWorkflowArtifact);
+      mockedSaveWorkflowArtifact.mockClear();
+
+      const taskGenerationResult = {
+        phases: [
+          {
+            tasks: [
+              {
+                tempId: "t-nomode",
+                title: "No Mode Task",
+                description: "No mode field at all",
+                priority: "MEDIUM",
+              },
+            ],
+          },
+        ],
+      };
+
+      await processStakworkRunWebhook(
+        { project_status: "completed", result: taskGenerationResult },
+        { type: "TASK_GENERATION", workspace_id: "ws-1", feature_id: "feature-nomode" }
+      );
+
+      // Should be created as a coding task: repositoryId populated
+      expect(mockedDb.task.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          title: "No Mode Task",
+          repositoryId: "repo-1",
+        }),
+      });
+      const taskCall = (mockedDb.task.create as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(taskCall[0].data.mode).toBeUndefined();
+
+      // No WorkflowTask row created
+      expect(mockedDb.workflowTask.create).not.toHaveBeenCalled();
+      // No workflow artifact saved
+      expect(mockedSaveWorkflowArtifact).not.toHaveBeenCalled();
     });
 
     test("should fallback to workspace owner when feature has no creator", async () => {

@@ -80,15 +80,34 @@ export async function POST(request: NextRequest) {
 
     const workflowVersionId = result.data?.workflow_version_id;
 
-    // Update the artifact to mark it as published
+    // Fetch artifact with task+workspace context before any writes
     if (artifactId) {
       try {
-        const artifact = await db.artifact.findUnique({
+        const artifactWithMessage = await db.artifact.findUnique({
           where: { id: artifactId },
+          include: {
+            message: {
+              include: {
+                task: {
+                  include: { workspace: true },
+                },
+              },
+            },
+          },
         });
 
-        if (artifact) {
-          const currentContent = (artifact.content as Record<string, unknown>) || {};
+        // Verify the artifact belongs to a task in a workspace the caller has access to
+        const artifactWorkspaceId = artifactWithMessage?.message?.task?.workspace?.id;
+        const callerHasAccess =
+          devMode ||
+          (stakworkWorkspace && artifactWorkspaceId === stakworkWorkspace.id);
+
+        if (!callerHasAccess) {
+          // Artifact is not in the caller's workspace — skip all writes silently
+          // (treat as not found to avoid leaking existence of other artifacts)
+        } else if (artifactWithMessage) {
+          // Update the artifact to mark it as published
+          const currentContent = (artifactWithMessage.content as Record<string, unknown>) || {};
           await db.artifact.update({
             where: { id: artifactId },
             data: {
@@ -110,17 +129,32 @@ export async function POST(request: NextRequest) {
     // Fetch updated workflow and create new artifact message
     if (artifactId) {
       try {
-        // Get the artifact with its message and task
+        // Get the artifact with its message and task (re-fetch with full context)
         const artifactWithMessage = await db.artifact.findUnique({
           where: { id: artifactId },
           include: {
             message: {
               include: {
-                task: true,
+                task: {
+                  include: { workspace: true },
+                },
               },
             },
           },
         });
+
+        // Re-verify workspace access before creating new messages
+        const artifactWorkspaceId = artifactWithMessage?.message?.task?.workspace?.id;
+        const callerHasAccess =
+          devMode ||
+          (stakworkWorkspace && artifactWorkspaceId === stakworkWorkspace.id);
+
+        if (!callerHasAccess) {
+          return NextResponse.json(
+            { success: true, data: { workflowId, workflowRefId, published: true, workflowVersionId, message: "Workflow published successfully" } },
+            { status: 200 },
+          );
+        }
 
         if (artifactWithMessage?.message?.task?.id && workflowVersionId) {
           const task = artifactWithMessage.message.task;

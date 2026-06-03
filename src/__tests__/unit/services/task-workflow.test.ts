@@ -16,6 +16,7 @@ vi.mock("@/lib/db", () => ({
     },
     chatMessage: {
       create: vi.fn(),
+      update: vi.fn(),
     },
   },
 }));
@@ -35,6 +36,13 @@ vi.mock("@/config/env", () => ({
     GEMINI_API_BASE_URL: "https://generativelanguage.googleapis.com",
     API_TIMEOUT: 20000,
   },
+  // Bifrost rollout flag — tests run with it disabled so the
+  // orchestrator short-circuits to `undefined` and behavior matches
+  // the pre-Bifrost code path. See `getBifrostForLLM` for the gate.
+  isBifrostEnabledForWorkspace: () => false,
+  // Default-open agent gate (mirrors prod). Workspace gate above
+  // short-circuits first, but stub here for symmetry.
+  isBifrostEnabledForAgent: () => true,
 }));
 
 vi.mock("@/lib/auth/nextauth", () => ({
@@ -703,9 +711,14 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
   });
 
   describe("Mode-Based Workflow Selection", () => {
-    test("should use default workflow ID when mode not specified", async () => {
+    test("should inherit the task's mode (defaulting to 'live') when mode not specified", async () => {
       MockSetup.setupSuccessfulWorkflow();
 
+      // sendMessageToStakwork is only used by the MCP send_message /
+      // send_to_task_agent tools, which target a live task agent. It
+      // inherits task.mode and falls back to "live" (not the "default"
+      // test-mode workflow). The mock task has no `mode`, so this
+      // exercises the "live" fallback → workflowIds[0].
       await sendMessageToStakwork({
         taskId: "test-task-id",
         message: "Test message",
@@ -714,7 +727,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
 
       const fetchCall = mockFetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1]?.body as string);
-      expect(payload.workflow_id).toBe(456); // Second ID in "123,456,789"
+      expect(payload.workflow_id).toBe(123); // First ID in "123,456,789" for live mode
     });
 
     test("should use workflow ID at index 0 for 'live' mode", async () => {
@@ -2897,6 +2910,51 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
 
       TestHelpers.expectCallStakworkAPIPayload({
         workflow_id: 456, // Second ID as fallback
+      });
+    });
+
+    test("should use STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID for 'workflow_editor' mode", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      // Set the workflow editor workflow ID on config
+      (mockConfig as Record<string, unknown>).STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID = "54419";
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "workflow_editor",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 54419,
+      });
+
+      // Cleanup
+      delete (mockConfig as Record<string, unknown>).STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID;
+    });
+
+    test("should fall through to default workflow ID when mode is 'workflow_editor' but STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID is not set", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      // Ensure the workflow editor config is NOT set
+      delete (mockConfig as Record<string, unknown>).STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID;
+
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "workflow_editor",
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      TestHelpers.expectCallStakworkAPIPayload({
+        workflow_id: 456, // falls to else: stakworkWorkflowIds[1]
       });
     });
   });

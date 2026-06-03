@@ -67,6 +67,8 @@ import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt"
 import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodById } from "@/lib/pods";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -318,7 +320,10 @@ async function getOrCreateWebhookSecret(taskId: string, existingSecret: string |
 }
 
 /**
- * Create a session on the remote agent server
+ * Create a session on the remote agent server (the hive4 / goose
+ * coder-agent). The agent reads `apiKey` / `baseUrl` / `headers` off
+ * the session body and threads them onto every outbound LLM HTTP
+ * call it makes during the session.
  */
 async function createAgentSession(
   agentUrl: string,
@@ -326,6 +331,7 @@ async function createAgentSession(
   taskId: string,
   webhookUrl: string,
   effectiveModel: ModelName | undefined,
+  bifrostAuth: { workspaceId: string; workspaceSlug: string; userId: string },
 ): Promise<string> {
   const sessionUrl = agentUrl.replace(/\/$/, "") + "/session";
 
@@ -339,12 +345,28 @@ async function createAgentSession(
   // Determine API key based on model
   const apiKey = effectiveModel ? getApiKeyForModel(effectiveModel) : process.env.ANTHROPIC_API_KEY;
 
+  // Bifrost routing for the goose-side LLM calls. When the rollout
+  // flag covers this workspace, mint a per-session VK + macaroon and
+  // override `apiKey` + inject `baseUrl` / `headers` on the session
+  // body. The agent forwards them onto every LLM call so the spend
+  // shows up on `logs.db` as `agent-name=coder-agent`. When the flag
+  // is off, falls back to the model-resolved key (unchanged).
+  const bifrost = await getBifrostForLLM(bifrostAuth, {
+    agentName: "coder-agent",
+  });
+
   const sessionPayload: Record<string, unknown> = {
     sessionId: taskId,
     webhookUrl,
-    apiKey,
+    apiKey: bifrost?.apiKey ?? apiKey,
     searchApiKey: process.env.EXA_API_KEY,
   };
+  if (bifrost) {
+    sessionPayload.baseUrl = bifrost.baseUrl;
+    if (Object.keys(bifrost.headers).length > 0) {
+      sessionPayload.headers = bifrost.headers;
+    }
+  }
 
   if (effectiveModel) {
     sessionPayload.model = effectiveModel;
@@ -446,6 +468,8 @@ export async function POST(request: NextRequest) {
         workspace: {
           select: {
             ownerId: true,
+            // Needed for the Bifrost rollout flag (keyed on slug).
+            slug: true,
             members: {
               where: { userId, leftAt: null },
               select: { userId: true },
@@ -581,6 +605,11 @@ export async function POST(request: NextRequest) {
       taskId,
       webhookUrl,
       effectiveModel,
+      {
+        workspaceId: task.workspaceId,
+        workspaceSlug: task.workspace.slug,
+        userId,
+      },
     );
   } catch (error) {
     console.error("[Agent] Error creating session:", error);

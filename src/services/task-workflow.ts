@@ -10,6 +10,14 @@ import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getApiKeyForModel, getDefaultModel } from "@/lib/ai/models";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { isDevelopmentMode } from "@/lib/runtime";
+import type { McpServerConfig } from "@/services/mcpServers";
+// Deep-import directly from the orchestrator (rather than the barrel
+// `@/services/bifrost`) so we don't transitively pull in the 17-
+// module surface — BifrostClient / macaroon-keys / trust-reconciler
+// etc. — at every test file's module graph. The integration suite
+// runs single-threaded in a vm and that bloat showed up as worker
+// OOM. Same approach used at every other LLM call site.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -225,6 +233,13 @@ export async function sendMessageToStakwork(params: {
     attachments,
     generateChatTitle,
     featureContext,
+    // This path only ever feeds the MCP `send_message` / `send_to_task_agent`
+    // tools (the function's sole callers). Inherit the target task's own mode
+    // so the workflow-selection ladder in callStakworkAPI routes to the right
+    // workflow — `live` → STAKWORK_TASK_WORKFLOW_ID, `workflow_editor` → the
+    // editor workflow, etc. Fall back to "live" (not the "default" test-mode
+    // workflow) when the task has no explicit mode.
+    mode: task.mode ?? "live",
   });
 }
 
@@ -526,6 +541,8 @@ export async function createChatMessageAndTriggerStakwork(params: {
       generateChatTitle,
       featureContext,
       workspaceId: task.workspace.id,
+      workspaceSlug: task.workspace.slug,
+      userId,
       runBuild: task.runBuild,
       runTestSuite: task.runTestSuite,
       repoUrl,
@@ -560,6 +577,10 @@ export async function createChatMessageAndTriggerStakwork(params: {
         workflowStartedAt: new Date(),
         additionalData,
       });
+      await db.chatMessage.update({
+        where: { id: chatMessage.id },
+        data: { stakworkProjectId: String(stakworkData.projectId) },
+      });
     }
     // All other cases (network error, non-2xx, body-level failure, missing project_id):
     // no-op — leave workflowStatus unchanged
@@ -590,6 +611,19 @@ export async function callStakworkAPI(params: {
   generateChatTitle?: boolean;
   featureContext?: object;
   workspaceId: string;
+  /**
+   * NextAuth user id of the caller. Required so the Stakwork workflow
+   * can mint its LLM creds against the right per-user Bifrost VK.
+   * Background paths without a real session (e.g. PR-monitor) should
+   * pass `task.createdById` / `task.workspace.ownerId`.
+   */
+  userId: string;
+  /**
+   * Workspace slug — needed only for the `BIFROST_ENABLED` rollout
+   * flag (which is keyed on slug, not id). Trivially available
+   * everywhere `workspaceId` is.
+   */
+  workspaceSlug: string;
   runBuild?: boolean;
   runTestSuite?: boolean;
   repoUrl?: string | null;
@@ -606,6 +640,17 @@ export async function callStakworkAPI(params: {
   isPrototype?: boolean;
   subAgents?: { name: string, url: string; apiKey: string; repoUrls: string }[];
   taskModel?: string;
+  /**
+   * MCP servers to expose to the swarm-side `repo/agent`. The agent
+   * receives these on its workflow vars and treats each as a tool
+   * source (per its `McpServer` interface).
+   *
+   * Plan-mode populates this with a single entry for Hive's
+   * org-scope MCP (`org_agent`), minted per-dispatch with a
+   * short-lived JWT. Future writers (voice, etc.) build their own
+   * entries the same way. Absent when no callback is configured.
+   */
+  mcpServers?: McpServerConfig[];
 }) {
   const {
     taskId,
@@ -623,6 +668,8 @@ export async function callStakworkAPI(params: {
     generateChatTitle,
     featureContext,
     workspaceId,
+    userId,
+    workspaceSlug,
     runBuild = true,
     runTestSuite = true,
     repoUrl = null,
@@ -639,6 +686,7 @@ export async function callStakworkAPI(params: {
     isPrototype,
     subAgents,
     taskModel,
+    mcpServers,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -715,6 +763,13 @@ export async function callStakworkAPI(params: {
   if (subAgents?.length) {
     vars.subAgents = subAgents;
   }
+  if (mcpServers?.length) {
+    // Forwarded verbatim to the stakwork workflow, which lands it on
+    // `vars.mcpServers` for repo/agent to consume. Shape matches
+    // repo/agent's `McpServer` interface exactly so the workflow
+    // does no reshaping in the middle.
+    vars.mcpServers = mcpServers;
+  }
   if (process.env.EXA_API_KEY) {
     vars.searchApiKey = process.env.EXA_API_KEY;
   }
@@ -744,6 +799,43 @@ export async function callStakworkAPI(params: {
     if (resolvedApiKey) vars.apiKey = resolvedApiKey;
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // Bifrost routing for the Stakwork-side LLM calls.
+  //
+  // When the rollout flag covers this workspace, mint a per-workflow
+  // Bifrost VK + macaroon and override the `vars.apiKey` we shipped
+  // above. The workflow worker reads `vars.apiKey` / `vars.baseUrl` /
+  // `vars.headers` and threads them onto every LLM HTTP call it makes
+  // — same protocol `repoAgent` already follows. When the flag is off
+  // or the orchestrator returns `undefined`, leave the existing
+  // `vars.apiKey` (resolved from `getApiKeyForModel` above) in place
+  // for byte-for-byte unchanged behavior.
+  //
+  // `agentName` splits on `mode`:
+  //   - `plan_mode` → "plan-agent"  (planning workflow, conversational)
+  //   - everything else (`live` / `unit` / `integration` / `default`)
+  //                  → "coder-agent" (hive4 / goose-style task workflow)
+  //
+  // Workflows can run for hours and burn through many LLM steps, but
+  // the orchestrator's defaults are tuned for chat turns — caller
+  // tuning of ttlSeconds / maxCostUsd / maxSteps is intentionally
+  // deferred to a follow-up so this initial wiring stays small.
+  const bifrost = await getBifrostForLLM(
+    { workspaceId, workspaceSlug, userId },
+    { agentName: mode === "plan_mode" ? "plan-agent" : "coder-agent" },
+  );
+  if (bifrost) {
+    vars.apiKey = bifrost.apiKey;
+    vars.baseUrl = bifrost.baseUrl;
+    if (Object.keys(bifrost.headers).length > 0) {
+      // Empty headers map = orchestrator's "macaroon mint failed,
+      // shadow-mode degraded" state. Don't ship an empty `headers`
+      // key in that case so older workflow versions that don't read
+      // it stay byte-identical.
+      vars.headers = bifrost.headers;
+    }
+  }
+
   // Get workflow ID (replicating workflow selection logic)
   const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
 
@@ -759,6 +851,9 @@ export async function callStakworkAPI(params: {
     workflowId = stakworkWorkflowIds[2];
   } else if (mode === "integration") {
     workflowId = stakworkWorkflowIds[2];
+  } else if (mode === "workflow_editor" && config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID) {
+    workflowId = config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID;
+    console.warn(`[callStakworkAPI] workflow_editor fell through for task ${taskId} — using fallback routing`);
   } else {
     workflowId = stakworkWorkflowIds[1] || stakworkWorkflowIds[0]; // default to test mode or first
   }

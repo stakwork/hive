@@ -6,16 +6,130 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
-import { WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus, TaskStatus, StakworkRunType } from "@prisma/client";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
+import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
+
+/**
+ * Fetch the latest workflow JSON from the graph API for a given workflow ID.
+ * Used to capture a baseline snapshot at run-start time so the Changes tab
+ * can compute a diff after the agent edits the workflow.
+ * Non-fatal: returns null if env vars are missing or the fetch fails.
+ */
+export async function fetchLatestWorkflowJson(workflowId: number | null): Promise<string | null> {
+  if (workflowId === null) return null;
+  const graphApiUrl = process.env.STAKWORK_JARVIS_URL;
+  const graphApiKey = process.env.STAKWORK_GRAPH_API_KEY;
+  if (!graphApiUrl || !graphApiKey) return null;
+  try {
+    const res = await fetch(`${graphApiUrl}/api/graph/search/attributes`, {
+      method: "POST",
+      headers: { "x-api-token": graphApiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        node_type: ["Workflow_version"],
+        include_properties: true,
+        limit: 50,
+        skip: 0,
+        skip_cache: true,
+        search_filters: [
+          { attribute: "workflow_id", value: workflowId, comparator: "=" },
+          { attribute: "published", value: true, comparator: "=" },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const nodes: any[] = data.nodes ?? data.data ?? [];
+    // Sort descending client-side — same pattern as versions route
+    nodes.sort(
+      (a, b) => (b.properties?.workflow_version_id ?? 0) - (a.properties?.workflow_version_id ?? 0)
+    );
+    const latestJson = getWorkflowJsonFromNode(nodes[0]);
+    if (!latestJson) return null;
+    return latestJson;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Builds a FeatureContext payload for a workflow editor run, selecting
+ * all tasks across all phases (no phase filter). Best-effort: returns
+ * null if featureId is not found or any DB error occurs.
+ */
+export async function buildWorkflowEditorFeatureContext(
+  featureId: string
+): Promise<object | null> {
+  try {
+    const feature = await db.feature.findFirst({
+      where: { id: featureId },
+      select: {
+        id: true,
+        title: true,
+        brief: true,
+        requirements: true,
+        architecture: true,
+        userStories: {
+          orderBy: { order: "asc" },
+          select: { title: true },
+        },
+        workspace: {
+          select: {
+            repositories: {
+              select: { id: true, name: true, repositoryUrl: true, branch: true },
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        },
+        phases: {
+          select: {
+            tasks: {
+              where: { deleted: false },
+              orderBy: { order: "asc" },
+              select: { id: true, title: true, description: true, status: true, summary: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!feature) return null;
+
+    const allTickets = feature.phases.flatMap((p) => p.tasks);
+
+    return {
+      feature: {
+        id: feature.id,
+        title: feature.title,
+        brief: feature.brief,
+        userStories: feature.userStories.map((us) => us.title),
+        requirements: feature.requirements,
+        architecture: feature.architecture,
+      },
+      workspaceRepositories: (feature.workspace?.repositories ?? []).map((r) => ({
+        id: r.id,
+        name: r.name,
+        repositoryUrl: r.repositoryUrl,
+        branch: r.branch,
+      })),
+      currentPhase: {
+        name: "All Tasks",
+        description: null,
+        tickets: allTickets,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
 
 interface WorkflowTaskContext {
-  workflowId: number;
+  workflowId: number | null;
   workflowName?: string | null;
   workflowRefId?: string | null;
   workflowVersionId?: string | null;
@@ -45,8 +159,8 @@ export async function saveWorkflowArtifact(
             {
               type: ArtifactType.WORKFLOW,
               content: {
-                workflowId: workflowId,
-                workflowName: workflowName || `Workflow ${workflowId}`,
+                workflowId: workflowId ?? null,
+                workflowName: workflowName || (workflowId ? `Workflow ${workflowId}` : "New Workflow"),
                 workflowRefId: workflowRefId || "",
                 originalWorkflowJson: "",
               },
@@ -89,6 +203,7 @@ export async function triggerWorkflowEditorRun(params: {
     where: { id: taskId, deleted: false },
     select: {
       workspaceId: true,
+      featureId: true,
       workspace: {
         select: {
           slug: true,
@@ -173,6 +288,14 @@ export async function triggerWorkflowEditorRun(params: {
     tokenReference: getStakworkTokenReference(),
   };
 
+  if (task.featureId) {
+    vars.featureId = task.featureId;
+    const featureContext = await buildWorkflowEditorFeatureContext(task.featureId);
+    if (featureContext) {
+      vars.featureContext = featureContext;
+    }
+  }
+
   if (workflowVersionId) {
     vars.workflow_version_id = workflowVersionId;
   }
@@ -214,11 +337,13 @@ export async function triggerWorkflowEditorRun(params: {
       workflowStatus: WorkflowStatus;
       workflowStartedAt: Date;
       haltRetryAttempted: boolean;
+      status: TaskStatus;
       stakworkProjectId?: number;
     } = {
       workflowStatus: WorkflowStatus.IN_PROGRESS,
       workflowStartedAt: new Date(),
       haltRetryAttempted: false,
+      status: TaskStatus.IN_PROGRESS,
     };
 
     if (result.data?.project_id) {
@@ -229,7 +354,22 @@ export async function triggerWorkflowEditorRun(params: {
 
     // Seed a WORKFLOW artifact so the task page can poll the project
     if (result.data?.project_id) {
+      await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.WORKFLOW_EDITOR,
+          taskId,
+          featureId: task.featureId ?? null,
+          workspaceId: task.workspaceId,
+          projectId: result.data.project_id,
+          status: WorkflowStatus.IN_PROGRESS,
+          webhookUrl: workflowWebhookUrl,
+        },
+      });
+
       try {
+        // Fetch live baseline at run-start time (agent hasn't touched workflow yet)
+        const baselineWorkflowJson = await fetchLatestWorkflowJson(workflowId);
+
         const newMessage = await db.chatMessage.create({
           data: {
             taskId,
@@ -243,10 +383,11 @@ export async function triggerWorkflowEditorRun(params: {
                   type: ArtifactType.WORKFLOW,
                   content: {
                     projectId: result.data.project_id.toString(),
-                    workflowId: workflowId,
-                    workflowName: workflowName || `Workflow ${workflowId}`,
+                    workflowId: workflowId ?? null,
+                    workflowName: workflowName || (workflowId ? `Workflow ${workflowId}` : "New Workflow"),
                     workflowRefId: workflowRefId || "",
                     originalWorkflowJson: "",
+                    ...(baselineWorkflowJson ? { workflowJson: baselineWorkflowJson } : {}),
                   },
                 },
               ],

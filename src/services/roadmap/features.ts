@@ -3,6 +3,7 @@ import { releaseTaskPod } from "@/lib/pods/utils";
 import { FeatureStatus, FeaturePriority, NotificationTriggerType, Prisma } from "@prisma/client";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { validateFeatureAccess } from "./utils";
+import { detectFeatureDependencyCycle } from "./feature-dependency";
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
@@ -273,6 +274,19 @@ export async function createFeature(
      */
     initiativeId?: string | null;
     milestoneId?: string | null;
+    /**
+     * Cuids of features that block this one. Mirror of
+     * `Task.dependsOnTaskIds`. The caller is responsible for
+     * validating that every id exists and belongs to the same org
+     * as `workspaceId`, and for running the cycle check — this
+     * service trusts the array on the way in. Defaults to `[]`.
+     *
+     * Today only `approveFeature` in the proposal flow exercises
+     * this path; the org-ownership and cycle checks live there.
+     * Direct callers must replicate both before passing a non-empty
+     * array.
+     */
+    dependsOnFeatureIds?: string[];
   }
 ) {
   const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
@@ -377,6 +391,7 @@ export async function createFeature(
       model: data.model ?? null,
       initiativeId: resolvedInitiativeId,
       milestoneId: resolvedMilestoneId,
+      dependsOnFeatureIds: data.dependsOnFeatureIds ?? [],
       createdById: userId,
       updatedById: userId,
       phases: {
@@ -456,6 +471,17 @@ export async function updateFeature(
      * move an unmilestoned feature between initiatives.
      */
     initiativeId?: string | null;
+    /**
+     * Replace the feature's dependency array. Each cuid must exist,
+     * belong to the same org as this feature's workspace, and not
+     * create a cycle when combined with the existing graph. Self-
+     * reference (`featureId` in the array) is rejected.
+     *
+     * Pass `[]` to clear all dependencies; pass `undefined` (or omit)
+     * to leave the array untouched. The canvas edge-add/delete
+     * intercepts on the initiative sub-canvas drive this path.
+     */
+    dependsOnFeatureIds?: string[];
   }
 ) {
   // Validates access and throws specific "Feature not found" or "Access denied" errors
@@ -604,6 +630,58 @@ export async function updateFeature(
     updateData.milestone = resolvedMilestoneId
       ? { connect: { id: resolvedMilestoneId } }
       : { disconnect: true };
+  }
+
+  // ─── Dependency-array update ───────────────────────────────────────
+  // Mirrors `Task.dependsOnTaskIds`'s update path but allows cross-
+  // workspace blockers (Tasks reject those; Features don't). The
+  // canvas edge-add intercept on the initiative sub-canvas is the
+  // primary caller — see `OrgCanvasBackground.handleEdgeAdd`.
+  if (data.dependsOnFeatureIds !== undefined) {
+    const next = Array.from(new Set(data.dependsOnFeatureIds));
+
+    if (next.includes(featureId)) {
+      throw new Error("A feature cannot depend on itself");
+    }
+
+    if (next.length > 0) {
+      const existingFeature = await db.feature.findUnique({
+        where: { id: featureId },
+        select: {
+          workspaceId: true,
+          workspace: { select: { sourceControlOrgId: true } },
+        },
+      });
+      if (!existingFeature) {
+        throw new Error("Feature not found");
+      }
+      const orgId = existingFeature.workspace.sourceControlOrgId;
+
+      const found = await db.feature.findMany({
+        where: {
+          id: { in: next },
+          deleted: false,
+          ...(orgId && { workspace: { sourceControlOrgId: orgId } }),
+        },
+        select: { id: true },
+      });
+      if (found.length !== next.length) {
+        const foundSet = new Set(found.map((f) => f.id));
+        const missing = next.filter((id) => !foundSet.has(id));
+        throw new Error(
+          `Dependency feature(s) not found in this org: ${missing.join(", ")}`,
+        );
+      }
+
+      const cycle = await detectFeatureDependencyCycle(featureId, next);
+      if (!cycle.ok) {
+        throw new Error(
+          `Dependency cycle: ${(cycle.cycle ?? []).join(" → ")}`,
+        );
+      }
+    }
+
+    updateData.dependsOnFeatureIds = { set: next };
   }
 
   // Stamp planUpdatedAt only when user explicitly edits plan content
@@ -812,4 +890,28 @@ export async function deleteFeature(
       deletedAt: new Date(),
     },
   });
+
+  // Strip the soft-deleted id from any other feature's
+  // `dependsOnFeatureIds` array so dependents don't carry a
+  // dangling reference. Inspired by the same cleanup pattern
+  // `Task.dependsOnTaskIds` uses on task delete.
+  const dependents = await db.feature.findMany({
+    where: {
+      deleted: false,
+      dependsOnFeatureIds: { has: featureId },
+    },
+    select: { id: true, dependsOnFeatureIds: true },
+  });
+  await Promise.all(
+    dependents.map((dep) =>
+      db.feature.update({
+        where: { id: dep.id },
+        data: {
+          dependsOnFeatureIds: {
+            set: dep.dependsOnFeatureIds.filter((id) => id !== featureId),
+          },
+        },
+      })
+    )
+  );
 }

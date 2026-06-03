@@ -15,6 +15,7 @@ interface StakworkPromptDetail {
   description: string;
   usage_notation: string;
   current_version_id: number | null;
+  published_version_id: number | null;
   version_count: number;
 }
 

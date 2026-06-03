@@ -40,19 +40,46 @@ export function getApiKeyForProvider(provider: Provider): string {
 }
 
 /**
- * Get model with mock support
+ * Optional per-call overrides that route the resulting model through
+ * an alternate endpoint (e.g. Bifrost). When `baseUrl` is set, the
+ * provider client uses it instead of the SDK default; when `headers`
+ * is set, every outbound request carries those extra headers (today:
+ * `x-macaroon` for cost-per-agent observability on `logs.db`).
+ *
+ * Both fields are produced by `getBifrostForLLM` in
+ * `@/services/bifrost`. Pass them through verbatim; this layer does
+ * no normalization.
+ *
+ * Mock mode wins: when `USE_MOCKS=true` and `USE_REAL_LLM` is unset,
+ * we still point at the local mock regardless of overrides, so test
+ * runs never accidentally hit a real endpoint.
+ */
+export interface GetModelOverrides {
+  baseUrl?: string;
+  headers?: Record<string, string>;
+}
+
+/**
+ * Get model with mock support.
  *
  * In mock mode, this configures the AI SDK to point to our mock endpoints.
  * The baseURL override makes all Anthropic API calls go to our local mock.
+ *
+ * In production, an optional `overrides` arg threads Bifrost routing
+ * (baseUrl + headers) through to the aieo provider. When omitted,
+ * behavior is identical to the pre-Bifrost path.
  */
 export function getModel(
   provider: Provider,
   apiKey: string,
   _workspaceSlug?: string,
-  modelType?: string
+  modelType?: string,
+  overrides?: GetModelOverrides,
 ): LanguageModel {
   // In mock mode for Anthropic, override baseURL (unless the real-LLM
-  // escape hatch is set — see USE_REAL_LLM at top of file).
+  // escape hatch is set — see USE_REAL_LLM at top of file). Bifrost
+  // overrides are intentionally ignored here: mocked runs must never
+  // reach a real gateway, even when the orchestrator returned creds.
   if (config.USE_MOCKS && !USE_REAL_LLM && provider === "anthropic") {
     // Dynamic import not needed for sync function; use require pattern
     const { createAnthropic } = require("@ai-sdk/anthropic");
@@ -71,8 +98,18 @@ export function getModel(
     return mockProvider(modelId) as LanguageModel;
   }
 
-  // Otherwise, use the real aieo implementation
-  return getModelAieo(provider, { apiKey, modelName: modelType });
+  // Otherwise, use the real aieo implementation. When Bifrost
+  // overrides are present, they replace the provider's default
+  // baseUrl and add per-request headers (e.g. `x-macaroon`). aieo
+  // 0.1.33+ accepts `headers` on GetModelOptions.
+  return getModelAieo(provider, {
+    apiKey,
+    modelName: modelType,
+    ...(overrides?.baseUrl ? { baseUrl: overrides.baseUrl } : {}),
+    ...(overrides?.headers && Object.keys(overrides.headers).length > 0
+      ? { headers: overrides.headers }
+      : {}),
+  });
 }
 
 /**

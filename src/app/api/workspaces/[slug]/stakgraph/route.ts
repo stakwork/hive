@@ -442,6 +442,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const settings = validationResult.data;
 
+    // Capture pre-mutation repo state for infrastructure change detection.
+    // Must be fetched BEFORE any DB writes so hasInfrastructureChange can compare
+    // the true existing state against the incoming repos (not the post-mutation state).
+    const reposBeforeUpdate = await db.repository.findMany({
+      where: { workspaceId: workspace.id },
+      select: { id: true, repositoryUrl: true, branch: true, name: true, codeIngestionEnabled: true },
+      orderBy: { createdAt: "asc" },
+    });
+
     // Track new repositories being created (needed for pending repair trigger)
     let reposToCreate: Array<{
       id?: string;
@@ -482,10 +491,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         });
       }
 
-      const reposToUpdate = incomingRepos.filter((r) => r.id);
+      const reposToUpdate = incomingRepos.filter(
+        (r) => r.id && existingRepoIds.includes(r.id),
+      );
       for (const repo of reposToUpdate) {
         await db.repository.update({
-          where: { id: repo.id },
+          where: { id: repo.id, workspaceId: workspace.id },
           data: {
             repositoryUrl: repo.repositoryUrl,
             branch: repo.branch,
@@ -628,7 +639,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       settings,
       existingForComparison,
       incomingRepos,
-      allRepos,
+      reposBeforeUpdate,
     );
 
     // Perform bidirectional sync for services/containerFiles

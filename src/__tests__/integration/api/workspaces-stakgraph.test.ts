@@ -1217,6 +1217,168 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
           expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
         });
       });
+
+      // ── Repository add/remove change detection (pre-mutation snapshot fix) ──
+
+      describe("Repository list changes trigger sync (pre-mutation snapshot)", () => {
+        let repoTestData: { workspace: any; user: any; swarm: any; repository: any };
+
+        beforeEach(async () => {
+          vi.mocked(syncPoolManagerSettings).mockClear();
+          vi.mocked(syncPoolManagerSettings).mockResolvedValue({ success: true });
+
+          const userId = generateUniqueId();
+          const workspaceSlug = generateUniqueSlug();
+
+          const user = await db.user.create({
+            data: {
+              id: userId,
+              email: `${userId}@example.com`,
+              name: "Test User",
+            },
+          });
+
+          const workspace = await db.workspace.create({
+            data: {
+              name: "Repo-Change Workspace",
+              slug: workspaceSlug,
+              ownerId: user.id,
+            },
+          });
+
+          await db.workspaceMember.create({
+            data: { userId: user.id, workspaceId: workspace.id, role: "OWNER" },
+          });
+
+          const repository = await db.repository.create({
+            data: {
+              workspaceId: workspace.id,
+              repositoryUrl: "https://github.com/org/repo1",
+              name: "repo1",
+              branch: "main",
+            },
+          });
+
+          const swarm = await db.swarm.create({
+            data: {
+              workspaceId: workspace.id,
+              name: "Repo-Change Swarm",
+              poolName: "repo-change-pool",
+              poolApiKey: JSON.stringify(
+                encryptionService.encryptField("poolApiKey", "test-api-key"),
+              ),
+              services: JSON.stringify(DEFAULT_SERVICES),
+              containerFiles: { "pm2.config.js": toBase64(DEFAULT_PM2_CONFIG) },
+              poolCpu: "2",
+              poolMemory: "4Gi",
+            },
+          });
+
+          repoTestData = { workspace, user, swarm, repository };
+          getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+        });
+
+        it("calls syncPoolManagerSettings when a repo is added", async () => {
+          // Workspace has 1 repo (repo1); incoming payload adds repo2
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${repoTestData.workspace.slug}/stakgraph`,
+            {
+              repositories: [
+                {
+                  id: repoTestData.repository.id,
+                  repositoryUrl: "https://github.com/org/repo1",
+                  branch: "main",
+                  name: "repo1",
+                },
+                {
+                  repositoryUrl: "https://github.com/org/repo2",
+                  branch: "main",
+                  name: "repo2",
+                },
+              ],
+            },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: repoTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
+        });
+
+        it("calls syncPoolManagerSettings when a repo is removed", async () => {
+          // Add a second repo so we can then remove it
+          await db.repository.create({
+            data: {
+              workspaceId: repoTestData.workspace.id,
+              repositoryUrl: "https://github.com/org/repo2",
+              name: "repo2",
+              branch: "main",
+            },
+          });
+
+          // Incoming payload only contains repo1 — repo2 gets deleted
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${repoTestData.workspace.slug}/stakgraph`,
+            {
+              repositories: [
+                {
+                  id: repoTestData.repository.id,
+                  repositoryUrl: "https://github.com/org/repo1",
+                  branch: "main",
+                  name: "repo1",
+                },
+              ],
+            },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: repoTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).toHaveBeenCalledTimes(1);
+        });
+
+        it("does NOT call syncPoolManagerSettings when repo list is unchanged", async () => {
+          // Payload contains the same single repo already in DB
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${repoTestData.workspace.slug}/stakgraph`,
+            {
+              repositories: [
+                {
+                  id: repoTestData.repository.id,
+                  repositoryUrl: "https://github.com/org/repo1",
+                  branch: "main",
+                  name: "repo1",
+                },
+              ],
+            },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: repoTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
+        });
+
+        it("does NOT call syncPoolManagerSettings when only description changes (metadata-only)", async () => {
+          const req = createPutRequest(
+            `http://localhost:3000/api/workspaces/${repoTestData.workspace.slug}/stakgraph`,
+            { description: "Updated description only" },
+          );
+
+          const res = await PUT_STAK(req, {
+            params: Promise.resolve({ slug: repoTestData.workspace.slug }),
+          });
+
+          await expectSuccess(res, 200);
+          expect(vi.mocked(syncPoolManagerSettings)).not.toHaveBeenCalled();
+        });
+      });
     });
   });
 });

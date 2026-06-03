@@ -29,9 +29,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { slug, nodeId } = await params;
 
     const body = await request.json();
-    if (!body.properties || typeof body.properties !== "object") {
+    if (!body.node_type || typeof body.node_type !== "string") {
       return NextResponse.json(
-        { error: "properties object is required" },
+        { error: "node_type string is required" },
+        { status: 400 },
+      );
+    }
+    if (!body.node_data || typeof body.node_data !== "object") {
+      return NextResponse.json(
+        { error: "node_data object is required" },
         { status: 400 },
       );
     }
@@ -46,7 +52,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     const result = await updateNode(
       { jarvisUrl, apiKey: swarmApiKey },
-      { ref_id: nodeId, properties: body.properties },
+      { ref_id: nodeId, node_type: body.node_type, node_data: body.node_data },
     );
 
     if (!result.success) {

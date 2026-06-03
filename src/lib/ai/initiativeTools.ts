@@ -2,6 +2,7 @@ import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { updateFeature } from "@/services/roadmap";
+import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import {
   assignFeatureOnCanvas,
   notifyFeatureAssignmentRefreshByOrg,
@@ -19,6 +20,7 @@ import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
+  SEND_TO_FEATURE_PLANNER_TOOL,
 } from "@/lib/proposals/types";
 
 /**
@@ -106,7 +108,21 @@ const PLACEMENT_DESCRIPTION =
  * ownership against `orgId` so an agent invoked under org A can never
  * reassign or propose into org B even if it guesses a cuid.
  */
-export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
+export function buildInitiativeTools(
+  orgId: string,
+  userId: string,
+  /**
+   * Pre-validated `SharedConversation.id` for the canvas conversation
+   * driving this turn. When `send_to_feature_planner` runs and the
+   * targeted feature has no `parentCanvasConversationId` yet, the tool
+   * lazy-claims ownership using this id so future planner ASSISTANT
+   * messages fan out back to the same canvas conversation
+   * (`src/services/canvas-planner-fanout.ts`). Optional — when
+   * absent, the lazy-claim short-circuits and the feature stays
+   * unowned for fan-out purposes.
+   */
+  currentCanvasConversationId?: string,
+): ToolSet {
   return {
     read_initiative: tool({
       description:
@@ -529,6 +545,235 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
       },
     }),
 
+    // ─── send_to_feature_planner ─────────────────────────────────────
+    // Send a message to a feature's per-feature planning agent (the
+    // "plan_mode" Stakwork workflow). This is the canvas agent's
+    // primary cross-feature coordination tool: instead of editing a
+    // sibling feature's plan text directly, the canvas agent delegates
+    // — *the planner writes the plan, the manager only sends messages
+    // and reads results.* Mirrors how a real manager works with a
+    // team of subordinates.
+    //
+    // **Fire-and-forget.** The plan agent's reply is asynchronous
+    // (Stakwork runs research + synthesis, typically 30–120s). This
+    // tool returns immediately once the message lands in the feature's
+    // chat history; the agent's reply arrives later as an ASSISTANT
+    // ChatMessage carrying a PLAN artifact. To see the reply, call
+    // `<slug>__read_feature` afterward — it returns the full plan
+    // (`brief`, `requirements`, `architecture`), the live
+    // `workflowStatus` / `isWorkflowRunning`, AND the chat history so
+    // the canvas agent can see exactly what was decided.
+    //
+    // **Cannot send while the planner is already running.** If
+    // `workflowStatus === "IN_PROGRESS"` the underlying service
+    // throws; the canvas agent should wait (call `read_feature`
+    // periodically) or message a different feature first.
+    //
+    // **Attribution.** The message lands in the feature's chat as
+    // sent by the canvas chat's user, prefixed with `[via canvas
+    // agent]` so the planner can recognize the cross-feature context.
+    // The prompt teaches the agent to lead with the reason it's
+    // reaching out (e.g. *"We're aligning auth across three features
+    // — please use `userId` as the canonical name."*).
+    [SEND_TO_FEATURE_PLANNER_TOOL]: tool({
+      description:
+        "Send a message to a feature's per-feature planning agent. " +
+        "Use this when you need a sibling feature's planner to know " +
+        "something or take a decision into account — e.g. *'the " +
+        "backend feature picked userId as the canonical name, please " +
+        "align the web plan to match'*, *'we decided session timeout " +
+        "is 30 minutes — please incorporate'*, or to ask the planner " +
+        "a question. **This is delegation, not editing.** You're " +
+        "sending a chat message; the planner replies asynchronously " +
+        "and updates its own plan. To see the reply and the resulting " +
+        "plan, call `<slug>__read_feature` afterward — its response " +
+        "includes the current `brief` / `requirements` / " +
+        "`architecture` PLUS the full chat history. " +
+        "**The tool returns once the message is delivered, NOT once " +
+        "the planner replies.** The reply is async. Plan workflows " +
+        "typically take 30–120 seconds; don't loop polling. Tell the " +
+        "user *'I've sent a message to the X planner; I'll check back " +
+        "in a moment'* and move on. " +
+        "**Fails if the planner is currently running** " +
+        "(`workflowStatus === 'IN_PROGRESS'`). Wait for the run to " +
+        "finish (use `<slug>__read_feature` to check) before sending. " +
+        "Prefix your message with a one-line reason for context — the " +
+        "planner sees this as the chat history's next user message " +
+        "and a short framing helps it understand cross-feature " +
+        "coordination.",
+      inputSchema: z.object({
+        featureId: z
+          .string()
+          .min(1)
+          .describe(
+            "The cuid of the feature whose planner to message. From a " +
+              "canvas live id of the form `feature:<cuid>`, pass just " +
+              "the `<cuid>` part.",
+          ),
+        message: z
+          .string()
+          .min(1)
+          .describe(
+            "The message to send to the planner. Lead with a short " +
+              "framing of WHY you're reaching out from the canvas " +
+              "(cross-feature alignment, propagating a decision, " +
+              "etc.) so the planner has context. The system " +
+              "automatically prefixes your message with `[via canvas " +
+              "agent]` so the planner can recognize this isn't a " +
+              "direct user reply.",
+          ),
+      }),
+      execute: async ({
+        featureId,
+        message,
+      }: {
+        featureId: string;
+        message: string;
+      }) => {
+        try {
+          // Validate the feature belongs to this org via the workspace
+          // → org chain. Same pattern as the other initiative tools.
+          // `sendFeatureChatMessage` will additionally verify the chat
+          // user (`userId` from `buildInitiativeTools`) is a member
+          // or owner of the workspace — the org check here is an
+          // extra defense against cross-org leakage.
+          // Pull the feature's display fields (title + workspace
+          // slug/name) alongside the auth fields. The chat UI uses
+          // them to render a `SubAgentRunCard` without re-fetching;
+          // mirroring how `propose_feature` returns enough metadata
+          // for `ProposalCard` to render off the tool output alone.
+          const feature = await db.feature.findUnique({
+            where: { id: featureId },
+            select: {
+              title: true,
+              workspaceId: true,
+              workflowStatus: true,
+              parentCanvasConversationId: true,
+              workspace: {
+                select: {
+                  slug: true,
+                  name: true,
+                  sourceControlOrgId: true,
+                },
+              },
+            },
+          });
+          if (!feature) {
+            return { error: "Feature not found" };
+          }
+          if (feature.workspace.sourceControlOrgId !== orgId) {
+            return {
+              error: "Feature does not belong to this organization",
+            };
+          }
+          // Captured once so both the success and the IN_PROGRESS
+          // error path can include them — the UI card needs the title
+          // even when the send was rejected, so the user can see
+          // *which* planner the agent tried to message.
+          const featureTitle = feature.title;
+          const workspaceSlug = feature.workspace.slug;
+          const workspaceName = feature.workspace.name;
+          // Early-return the "already running" case with a clear
+          // message so the agent can tell the user without retrying.
+          // (The service throws the same error, but catching here lets
+          // us return a structured payload instead of an opaque
+          // exception.)
+          if (feature.workflowStatus === "IN_PROGRESS") {
+            return {
+              error:
+                "The planner is currently running on this feature. " +
+                "Use `<slug>__read_feature` to check `workflowStatus` " +
+                "and wait until it leaves `IN_PROGRESS` before sending.",
+              workflowStatus: feature.workflowStatus,
+              featureId,
+              featureTitle,
+              workspaceSlug,
+              workspaceName,
+            };
+          }
+
+          // Lazy-claim ownership: if this feature was created from a
+          // non-canvas surface (per-feature plan page, etc.) it has
+          // no parent canvas conversation yet. The first canvas
+          // conversation to message its planner claims ownership, so
+          // subsequent planner ASSISTANT messages fan out back here
+          // (`src/services/canvas-planner-fanout.ts`). Symmetric with
+          // the eager-claim that `handleApproval.approveFeature` does
+          // on first proposal-approval.
+          //
+          // Singular ownership (v1): if another canvas conversation
+          // already claimed this feature, we do NOT steal the claim.
+          // Planner replies will still fan out — to the original
+          // owner, not this conversation. See "Future seams" in the
+          // plan doc for the join-table promotion path.
+          //
+          // Non-fatal on failure: the message still goes through; the
+          // planner's reply just won't fan out to this conversation.
+          if (
+            !feature.parentCanvasConversationId &&
+            currentCanvasConversationId
+          ) {
+            try {
+              await db.feature.update({
+                where: { id: featureId },
+                data: { parentCanvasConversationId: currentCanvasConversationId },
+              });
+            } catch (e) {
+              console.error(
+                "[send_to_feature_planner] lazy-claim parentCanvasConversationId failed (non-fatal):",
+                e,
+              );
+            }
+          }
+
+          // Prefix attribution so the planner knows this came from
+          // the canvas agent, not a direct user reply. The planner's
+          // prompt can be taught to weigh canvas-agent messages as
+          // cross-feature coordination signals.
+          const prefixedMessage = `[via canvas agent] ${message}`;
+
+          // `skipOrgContextScout: true` — the canvas agent already
+          // has org-wide context (that's why it's reaching out across
+          // features). Re-running the org-context scout from inside
+          // the per-feature planner would burn 5-60s of latency for
+          // information the canvas agent could have included verbatim
+          // in `message`. Mirrors the approval-flow's `initialMessage`
+          // path (see `handleApproval.ts`).
+          const result = await sendFeatureChatMessage({
+            featureId,
+            userId,
+            message: prefixedMessage,
+            skipOrgContextScout: true,
+          });
+
+          return {
+            status: "sent",
+            featureId,
+            featureTitle,
+            workspaceSlug,
+            workspaceName,
+            messageId: result.chatMessage.id,
+            awaitingReply: true,
+            stakworkProjectId: result.stakworkData?.projectId ?? null,
+            note:
+              "Message delivered. The planner replies asynchronously " +
+              "(typically 30–120s). Call `<slug>__read_feature` after " +
+              "to see the reply and the updated plan.",
+          };
+        } catch (e) {
+          console.error(
+            "[initiativeTools.send_to_feature_planner] error:",
+            e,
+          );
+          const message =
+            e instanceof Error
+              ? e.message
+              : "Failed to send message to feature planner";
+          return { error: message };
+        }
+      },
+    }),
+
     // ─── propose_initiative ──────────────────────────────────────────
     // Emit a structured Initiative proposal back to chat. No DB write.
     // Approval (and therefore creation) flows through `/api/ask/quick`'s
@@ -728,6 +973,40 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               "conversation. Approval-time resolves this to the new " +
               "initiative's id once the parent has been approved.",
           ),
+        dependsOnFeatureIds: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Cuids of features that ALREADY EXIST in the DB and must " +
+              "reach completion before this feature can start. " +
+              "Discover them via `read_canvas` (live ids are " +
+              "`feature:<cuid>` — pass just the `<cuid>` part) or " +
+              "`<slug>__list_features`. Validated at propose-time: " +
+              "every id must exist and belong to this org. " +
+              "**NEVER pass a `proposalId` here.** Sibling proposals " +
+              "from this same chat go in `dependsOnProposalIds` " +
+              "instead — they have no DB row yet and would fail " +
+              "this validation. At approval time, this array is " +
+              "unioned with the cuids resolved from " +
+              "`dependsOnProposalIds` and written to " +
+              "`Feature.dependsOnFeatureIds`.",
+          ),
+        dependsOnProposalIds: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "`proposalId`s of OTHER `propose_feature` calls in this " +
+              "same conversation (typically siblings under the same " +
+              "initiative). NOT cuids — these ids only exist in the " +
+              "chat transcript. At approval time the handler scans " +
+              "the conversation for each id's " +
+              "`approvalResult.createdEntityId` and unions the " +
+              "results with `dependsOnFeatureIds`. If a referenced " +
+              "proposal hasn't been approved yet, approval of THIS " +
+              "proposal fails with *'Approve the blocker first.'* " +
+              "**NEVER pass a cuid here.** Existing-DB features go " +
+              "in `dependsOnFeatureIds`.",
+          ),
         rationale: z.string().optional(),
         placement: placementSchema.describe(PLACEMENT_DESCRIPTION),
       }),
@@ -825,6 +1104,76 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
             };
           }
 
+          // ─── Dependency-field validation ────────────────────────
+          // `dependsOnFeatureIds` carries existing-DB cuids. Validate
+          // shape (looks-like-a-cuid) so the agent's most common
+          // confusion — passing a `proposalId` like `"f-backend"` —
+          // fails here with a clear message pointing at the right
+          // field, rather than silently failing at approval time.
+          //
+          // Then validate ownership: every id must exist and live in
+          // a workspace owned by this org. Same query pattern as the
+          // existing initiative/workspace org-ownership checks.
+          //
+          // `dependsOnProposalIds` we deliberately DON'T validate
+          // here — the conversation transcript isn't available to the
+          // tool, so we can't tell if a referenced proposalId is in
+          // this chat. Approval-time handles it.
+          const dedupedDependsOnFeatureIds =
+            input.dependsOnFeatureIds && input.dependsOnFeatureIds.length > 0
+              ? Array.from(new Set(input.dependsOnFeatureIds))
+              : [];
+          if (dedupedDependsOnFeatureIds.length > 0) {
+            // Cheap shape check: cuids start with `c` and are ~25 chars.
+            // Catches the proposalId-in-wrong-field case (`"f-backend"`
+            // doesn't match).
+            const looksWrong = dedupedDependsOnFeatureIds.filter(
+              (id) => !/^c[a-z0-9]{20,}$/.test(id),
+            );
+            if (looksWrong.length > 0) {
+              return {
+                error:
+                  "`dependsOnFeatureIds` expects DB cuids (e.g. " +
+                  "`cmpqr…`), but received: " +
+                  looksWrong.join(", ") +
+                  ". If these are sibling-proposal ids from this chat, " +
+                  "pass them in `dependsOnProposalIds` instead.",
+              };
+            }
+            const existing = await db.feature.findMany({
+              where: {
+                id: { in: dedupedDependsOnFeatureIds },
+                deleted: false,
+                workspace: { sourceControlOrgId: orgId },
+              },
+              select: { id: true },
+            });
+            if (existing.length !== dedupedDependsOnFeatureIds.length) {
+              const found = new Set(existing.map((f) => f.id));
+              const missing = dedupedDependsOnFeatureIds.filter(
+                (id) => !found.has(id),
+              );
+              return {
+                error:
+                  "Feature(s) not found in this organization: " +
+                  missing.join(", "),
+              };
+            }
+          }
+
+          const dedupedDependsOnProposalIds =
+            input.dependsOnProposalIds && input.dependsOnProposalIds.length > 0
+              ? Array.from(new Set(input.dependsOnProposalIds))
+              : [];
+          // Self-reference: a proposal pointing at itself via
+          // `dependsOnProposalIds` is always a cycle.
+          if (dedupedDependsOnProposalIds.includes(input.proposalId)) {
+            return {
+              error:
+                "A proposal cannot depend on itself (self-reference in `dependsOnProposalIds`).",
+            };
+          }
+
           const meta: FeatureProposalMeta = {
             workspaceName: workspace.name,
             workspaceSlug: workspace.slug,
@@ -849,6 +1198,12 @@ export function buildInitiativeTools(orgId: string, userId: string): ToolSet {
               ...(input.milestoneId && { milestoneId: input.milestoneId }),
               ...(input.parentProposalId && {
                 parentProposalId: input.parentProposalId,
+              }),
+              ...(dedupedDependsOnFeatureIds.length > 0 && {
+                dependsOnFeatureIds: dedupedDependsOnFeatureIds,
+              }),
+              ...(dedupedDependsOnProposalIds.length > 0 && {
+                dependsOnProposalIds: dedupedDependsOnProposalIds,
               }),
               ...(input.placement && {
                 placement: input.placement as Placement,

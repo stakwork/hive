@@ -36,7 +36,7 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
       >
         <div
           className={`rounded-2xl px-4 py-3 shadow-sm backdrop-blur-sm ${
-            isUser ? "bg-white/90 dark:bg-white/10 text-gray-900 dark:text-white inline-block" : "bg-muted/10"
+            isUser ? "bg-white/95 dark:bg-zinc-800/95 text-gray-900 dark:text-white inline-block" : "bg-muted/95"
           }`}
         >
           {isStreaming ? (

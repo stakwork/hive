@@ -11,6 +11,7 @@ export interface StreamContext {
   requestId: string;
   eventsToken: string;
   baseUrl: string;
+  agent?: string;
 }
 
 interface WorkflowStatusBadgeProps {

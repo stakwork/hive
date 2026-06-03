@@ -3,7 +3,9 @@ import { z } from "zod";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { WorkspaceConfig } from "./types";
 import { listConcepts, repoAgent } from "./askTools";
-import { shouldTrimConceptsToIds } from "./conceptsTrim";
+// Deep import — see comment in services/task-workflow.ts.
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import { shouldTrimConceptsToIds } from "./concepts";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import { getProviderTool } from "@/lib/ai/provider";
@@ -230,11 +232,29 @@ export function askToolsMulti(
       execute: async ({ prompt }: { prompt: string }) => {
         const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE!`;
         try {
-          const rr = await repoAgent(ws.swarmUrl, ws.swarmApiKey, {
-            repo_url: ws.repoUrls.join(","),
-            prompt: prompt2,
-            pat: ws.pat,
-          });
+          // Per-workspace Bifrost VK so each workspace's spend gets
+          // attributed to its own Customer/VK on its own Bifrost.
+          // `agentName: "repo-agent"` matches the single-workspace
+          // call site so cost-per-agent rollups aggregate across
+          // both flows.
+          const bifrost = await getBifrostForLLM(
+            {
+              workspaceId: ws.workspaceId,
+              workspaceSlug: ws.slug,
+              userId: ws.userId,
+            },
+            { agentName: "repo-agent" },
+          );
+          const rr = await repoAgent(
+            ws.swarmUrl,
+            ws.swarmApiKey,
+            {
+              repo_url: ws.repoUrls.join(","),
+              prompt: prompt2,
+              pat: ws.pat,
+            },
+            bifrost,
+          );
           return rr.content;
         } catch (e) {
           console.error(`Error executing repo agent for ${ws.slug}:`, e);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   Network,
+  Gauge,
   Target,
   LayoutGrid,
   Users,
@@ -29,6 +30,7 @@ interface RailItem {
 
 const ITEMS: RailItem[] = [
   { view: "canvas", label: "Canvas", icon: Network, path: "" },
+  { view: "gateway", label: "Gateway", icon: Gauge, path: "/gateway" },
   { view: "initiatives", label: "Initiatives", icon: Target, path: "/initiatives" },
   { view: "workspaces", label: "Workspaces", icon: LayoutGrid, path: "/workspaces" },
   { view: "members", label: "Members", icon: Users, path: "/members" },

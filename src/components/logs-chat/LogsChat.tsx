@@ -5,11 +5,17 @@ import { motion } from "framer-motion";
 import { ArrowLeft, ArrowUp, Share2, Terminal } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  MentionInput,
+  type Mention,
+  type MentionInputHandle,
+  type MentionSuggestion,
+} from "./MentionInput";
 
 interface LogsChatMessage {
   id: string;
@@ -22,9 +28,13 @@ interface LogsChatProps {
   workspaceSlug: string;
 }
 
+// Cap the suggestion list so the dropdown stays usable
+const MENTION_SUGGESTION_LIMIT = 8;
+
 export function LogsChat({ workspaceSlug }: LogsChatProps) {
   const [messages, setMessages] = useState<LogsChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [mentions, setMentions] = useState<Mention[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [sessionId] = useState(
@@ -34,9 +44,90 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<MentionInputHandle>(null);
   const router = useRouter();
   const isMobile = useIsMobile();
+  const { id: workspaceId } = useWorkspace();
+
+  // Mention suggestion fetcher. Queries features + tasks in parallel and
+  // interleaves the results. Both endpoints are in the public allowlist
+  // (`src/config/middleware.ts`) and support `workspaceId` + `search`.
+  const fetchSuggestions = useCallback(
+    async (query: string): Promise<MentionSuggestion[]> => {
+      if (!workspaceId) return [];
+      const params = new URLSearchParams({
+        workspaceId,
+        limit: String(MENTION_SUGGESTION_LIMIT),
+      });
+      if (query) params.set("search", query);
+
+      try {
+        const [featuresRes, tasksRes] = await Promise.all([
+          fetch(`/api/features?${params.toString()}`),
+          fetch(`/api/tasks?${params.toString()}`),
+        ]);
+
+        const features: MentionSuggestion[] = featuresRes.ok
+          ? ((await featuresRes.json()).data ?? []).map(
+              (f: { id: string; title: string }) => ({
+                id: f.id,
+                kind: "feature" as const,
+                title: f.title,
+              }),
+            )
+          : [];
+
+        const tasks: MentionSuggestion[] = tasksRes.ok
+          ? ((await tasksRes.json()).data ?? []).map(
+              (t: { id: string; title: string }) => ({
+                id: t.id,
+                kind: "task" as const,
+                title: t.title,
+              }),
+            )
+          : [];
+
+        // Features first — they're the bigger scope and the more common
+        // mental model for "what was I working on"
+        return [...features, ...tasks].slice(0, MENTION_SUGGESTION_LIMIT);
+      } catch {
+        return [];
+      }
+    },
+    [workspaceId],
+  );
+
+  // ID resolver for paste-by-id. Tries feature first (likelier), then task.
+  const resolveById = useCallback(
+    async (id: string): Promise<MentionSuggestion | null> => {
+      if (!workspaceId) return null;
+      try {
+        const featureRes = await fetch(`/api/features/${id}`);
+        if (featureRes.ok) {
+          const { data } = await featureRes.json();
+          if (data?.id && data?.title) {
+            return { id: data.id, kind: "feature", title: data.title };
+          }
+        }
+      } catch {
+        // fall through to task lookup
+      }
+      try {
+        const taskRes = await fetch(`/api/tasks/${id}`);
+        if (taskRes.ok) {
+          const json = await taskRes.json();
+          const t = json?.data ?? json;
+          if (t?.id && t?.title) {
+            return { id: t.id, kind: "task", title: t.title };
+          }
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    },
+    [workspaceId],
+  );
 
   // Handle scroll events to detect user scrolling
   useEffect(() => {
@@ -67,6 +158,17 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
     const prompt = input.trim();
     if (!prompt || isLoading) return;
 
+    // Build scope payload from active mentions. The server uses this to
+    // narrow the StakworkRun / AgentLog snapshot it forwards to the swarm.
+    const featureIds = mentions
+      .filter((m) => m.kind === "feature")
+      .map((m) => m.id);
+    const taskIds = mentions.filter((m) => m.kind === "task").map((m) => m.id);
+    const scope =
+      featureIds.length > 0 || taskIds.length > 0
+        ? { featureIds, taskIds }
+        : undefined;
+
     // Add user message
     const userMsg: LogsChatMessage = {
       id: `user-${Date.now()}`,
@@ -76,6 +178,7 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
+    setMentions([]);
     setIsLoading(true);
 
     try {
@@ -84,7 +187,7 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, sessionId }),
+          body: JSON.stringify({ prompt, sessionId, scope }),
         },
       );
 
@@ -118,7 +221,7 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, workspaceSlug, sessionId]);
+  }, [input, mentions, isLoading, workspaceSlug, sessionId]);
 
   const handleShare = async () => {
     if (!workspaceSlug || messages.length === 0) return;
@@ -156,13 +259,6 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
       });
     } finally {
       setIsSharing(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && !isMobile) {
-      e.preventDefault();
-      handleSend();
     }
   };
 
@@ -212,8 +308,12 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
               <Terminal className="w-8 h-8 mx-auto opacity-50" />
               <p>Ask about your logs</p>
               <p className="text-xs opacity-70">
-                e.g. &quot;Show me errors from the last hour&quot; or &quot;Why
-                is stakgraph failing?&quot;
+                e.g. &quot;Show me errors from the last hour&quot;
+              </p>
+              <p className="text-xs opacity-70">
+                Type{" "}
+                <span className="font-mono font-semibold">@</span> to scope to a
+                specific feature or task.
               </p>
             </div>
           </div>
@@ -298,17 +398,23 @@ export function LogsChat({ workspaceSlug }: LogsChatProps) {
             !isMobile && "sticky bottom-0 z-10",
           )}
         >
-          <Textarea
-            ref={textareaRef}
-            placeholder="Ask about your logs..."
+          <MentionInput
+            ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="flex-1 resize-none min-h-[56px] md:min-h-[40px]"
-            style={{ maxHeight: "8em", overflowY: "auto" }}
-            autoFocus
+            mentions={mentions}
+            onChange={(v, m) => {
+              setInput(v);
+              setMentions(m);
+            }}
+            onSubmit={isMobile ? undefined : handleSend}
+            fetchSuggestions={fetchSuggestions}
+            resolveById={resolveById}
+            placeholder="Ask about your logs… (type @ to mention a feature or task)"
             disabled={isLoading}
+            autoFocus
             rows={1}
+            className="flex-1"
+            textareaClassName="min-h-[56px] md:min-h-[40px] max-h-[8em] overflow-y-auto"
             data-testid="logs-chat-input"
           />
           <Button

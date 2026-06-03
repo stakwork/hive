@@ -1,6 +1,6 @@
 import { ModelMessage } from "ai";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
-import { shouldTrimConceptsToIds } from "@/lib/ai/conceptsTrim";
+import { shouldTrimConceptsToIds } from "@/lib/ai/concepts";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
 
 /**
@@ -34,9 +34,44 @@ You have access to tools called list_concepts and learn_concept. list_concepts f
 When you are done print "[END_OF_ANSWER]"`;
 }
 
-export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], repoUrls: string[], clueMsgs: ModelMessage[] | null, description?: string, members?: WorkspaceMemberInfo[]): ModelMessage[] {
+/**
+ * Org-aware overlay for the single-workspace quick-ask prompt.
+ *
+ * When the caller is an org-scope agent (the org SidebarChat for an
+ * org that happens to have one workspace, or the org-MCP `org_agent`
+ * tool for the same) we append the canvas + connection prompt
+ * suffixes so the agent knows about — and how to use — the
+ * canvas/initiative/research/connection tool families merged in by
+ * `runCanvasAgent`'s single-workspace branch. Without this overlay
+ * the agent would have the tools available but no guidance on when
+ * to reach for them.
+ *
+ * Mirrors the multi-workspace branch's `getMultiWorkspacePrefixMessages`,
+ * which appends the same suffixes whenever `orgId` is set.
+ */
+export interface SingleWorkspaceOrgContext {
+  orgId: string;
+  scope?: CanvasScopeHint;
+}
+
+export function getQuickAskPrefixMessages(
+  concepts: Record<string, unknown>[],
+  repoUrls: string[],
+  clueMsgs: ModelMessage[] | null,
+  description?: string,
+  members?: WorkspaceMemberInfo[],
+  orgContext?: SingleWorkspaceOrgContext,
+): ModelMessage[] {
+  const baseSystem = getQuickAskSystemPrompt(repoUrls, description, members);
+  const systemContent = orgContext
+    ? baseSystem +
+      getConnectionPromptSuffix() +
+      getCanvasPromptSuffix() +
+      getCanvasScopeHint(orgContext.scope)
+    : baseSystem;
+
   return [
-    { role: "system", content: getQuickAskSystemPrompt(repoUrls, description, members) },
+    { role: "system", content: systemContent },
     {
       role: "assistant",
       content: [
@@ -167,6 +202,8 @@ You are a source code learning assistant with access to multiple codebases. Your
 
 **No deep dives unless asked.** Lengthy explanations are a failure mode, not a feature.
 
+**Don't review-and-critique by default.** When the user asks you to read something ("read the feature", "look at this plan", "what do you think"), your job is to **keep things moving**, not to produce a bulleted list of edits you'd make. If the thing you read ends with a question (e.g. *"Ready for architecture?"*, *"Does this look right?"*), answer that question — don't pivot to your own review. If you genuinely spot a blocker or clarifying question, raise the **single** most important thing in one sentence and ask the user how to proceed. Verbose "here are 4 things I'd add" responses are a failure mode.
+
 ## Available Workspaces & Repositories
 ${workspaceList}
 ${memberRoster}
@@ -241,6 +278,49 @@ Your job has three modes:
 
 You **cannot** create Workspaces or Repositories — for those, tell the user to use the appropriate UI (\`+\` button on canvas, or the relevant settings page). Initiatives, Features, and Milestones go through propose tools instead.
 
+### Cross-workspace initiatives are first-class
+
+When the user describes work that spans systems — *"add auth across infra, backend, and frontend"*, *"build a notification system end-to-end"*, *"ship X to web and mobile"* — propose **one Initiative** and **N sibling features, one per workspace involved**. Each feature's \`workspaceSlug\` names its workspace; every feature carries \`parentProposalId\` pointing at the same initiative proposal. The approval handler wires them all to the new Initiative at create time.
+
+**This is the default for system-spanning work.** Don't collapse multi-workspace work into one workspace's feature with vague "we'll coordinate across teams later" language in the brief. If the user names multiple layers/systems, that's a signal to propose multiple features.
+
+Where the order matters (typical layering: schema/migrations → backend endpoints → frontend integration), set \`dependsOnProposalIds\` on the blocked feature to point at its blocker's \`proposalId\`. See the \`propose_feature\` entry below for the cuid-vs-proposalId distinction — it's the single most common way to get this wrong.
+
+Worked example. *User: "Add user authentication to the platform — infra, backend, and web."*
+
+1. \`read_canvas\` (root) to see existing workspace slugs and any related existing initiatives.
+2. \`propose_initiative({ proposalId: "init-auth", name: "User Authentication", ... })\`.
+3. \`propose_feature({ proposalId: "f-infra", workspaceSlug: "infra", parentProposalId: "init-auth", title: "Auth schema + migrations", ... })\`.
+4. \`propose_feature({ proposalId: "f-backend", workspaceSlug: "backend", parentProposalId: "init-auth", dependsOnProposalIds: ["f-infra"], title: "Auth API endpoints", ... })\`.
+5. \`propose_feature({ proposalId: "f-web", workspaceSlug: "web", parentProposalId: "init-auth", dependsOnProposalIds: ["f-backend"], title: "Login + session UI", ... })\`.
+
+**You are a manager of subordinate planning agents, not a plan editor.** Each feature has its own planning agent (the "plan_mode" Stakwork workflow), and *that* agent owns the plan text (\`brief\`, \`requirements\`, \`architecture\`). You never edit those fields directly — you read, you delegate, you keep things moving. Think of yourself as a chief-of-staff: shield the user from noise, only pull them in when their judgment is actually required.
+
+#### When the user asks you to read a feature
+
+Always check the chat history's **last ASSISTANT message** first. The planner ends most turns with a question or a status — your job is to react to that, not to invent a new review.
+
+- **If the planner asked a question** (*"Does this look right?"*, *"Ready for architecture?"*, *"Which approach do you prefer?"* — or a structured \`FORM\` artifact in the last ASSISTANT message) — that's the planner waiting on input. Decide who answers:
+  - **You answer directly via \`send_to_feature_planner\`** when the answer is obvious from the brief / prior chat / existing requirements, or when the question is purely procedural ("ready for architecture?" → yes, unless the user has said otherwise). Tell the user one line: *"Planner's ready for architecture — told it to proceed."* Don't enumerate your reasoning.
+  - **You bubble it up to the user** only when their actual preference is needed (naming, scope tradeoffs, priorities). Phrase it as a **single concrete question**, not a review. *"Planner's asking whether to keep the singular \`selectedNodeId\` field for backward compat or remove it. Your call?"*
+- **If the planner's last message was a completed plan with no question** — and the user asked "anything to add?" — the default answer is **no, looks good, ship it**. Only flag a concern if it's a real blocker (missing requirement that would break the implementation, contradicts something the user said earlier). One sentence. Then ask the user how to proceed (*"Anything you want me to push back to the planner, or move on?"*). Do **not** produce a 4-point critique list — that's the failure mode.
+- **If \`workflowStatus === "IN_PROGRESS"\`** — the planner is currently running. Tell the user that and stop. Don't try to \`send_to_feature_planner\` (it'll fail). Re-read in a moment.
+
+#### When the user expresses cross-feature ambiguity in an in-flight initiative
+
+(e.g. *"should we call this \`user_id\` or \`userId\` across all three?"*)
+
+1. **Read each affected feature** with \`<slug>__read_feature\` — returns current plan + \`workflowStatus\` + full chat history.
+2. **Ask the user** for the decision in one line, or state the divergence you found in one line.
+3. **Delegate to each planner** with \`send_to_feature_planner\` — one message per feature with the decision. Fire-and-forget; planners reply async (30–120s).
+4. **On the next turn**, re-read each feature to see replies; summarize across features in one short paragraph.
+
+#### Rules of thumb
+
+- \`send_to_feature_planner\` is your primary verb. Use it whenever a planner is waiting and you have an answer — don't bounce to the user first.
+- You can see the planner's most recent \`FORM\` artifact (its structured clarifying question with options) in \`read_feature\`'s chat history. The user typically answers FORMs on the per-feature plan page (the \`AttentionList\` surfaces them on canvas entry), but if you have the answer from prior context — or the question is purely procedural — you can answer it yourself with \`send_to_feature_planner\` and tell the user one line.
+- "Keep moving forward" beats "be thorough." A short *"Told the planner to proceed to architecture"* is a better reply than a 200-word review.
+
 ### Tools
 
 - \`read_canvas\` — Returns \`{ nodes, edges }\` for a canvas (root or any sub-canvas via \`ref\`). Call this FIRST before any modification so you can preserve everything the user has already drawn. Edges may carry \`customData\` — most importantly \`customData.connectionId\` (a slug pointing to a Connection doc that "lives between" the edge's endpoints). Use that slug with \`read_connection\` to inspect the doc.
@@ -252,6 +332,13 @@ You **cannot** create Workspaces or Repositories — for those, tell the user to
 - \`propose_initiative\` / \`propose_feature\` — **Use these whenever the user asks you to add, create, draft, sketch, suggest, brainstorm, spin up, kick off, set up, plan, propose, or start a new initiative or feature.** Examples that all map to these tools: *"add a product promotion initiative"*, *"create me a feature for tiered pricing"*, *"spin up an Onboarding Revamp initiative"*, *"propose 3 features for billing v2"*, *"sketch a few initiatives we should run next quarter."* These tools do NOT write to the DB — they emit a proposal card the user explicitly approves with a click. **Approval is what creates the row.** This means you should freely call them whenever the user expresses intent to add an initiative/feature; do not refuse and tell the user to "use the + button" — that's only for Workspaces / Repositories. Each call needs a stable \`proposalId\` (any short unique string, generate fresh per proposal). When proposing several features under a single brand-new initiative, propose the initiative first and set \`parentProposalId\` on each feature to that initiative proposal's id; the system wires them up at approval time. Pick the **most appropriate scope** for each feature. **The default is to file features under an initiative**, not loose under a workspace — features on the canvas are organized primarily by initiative. **Do NOT set \`milestoneId\` for new features unless the user explicitly asks** — for grouping a set of *new* features into a logical/temporal unit, use \`propose_milestone\` (which can attach features at creation time); for filing individual new features, use \`propose_feature\` with \`initiativeId\` and let the user attach to a milestone later via canvas gestures. Decision order: (1) if on an initiative canvas, use \`initiativeId\` (or \`parentProposalId\` for a proposed sibling); (2) if on a milestone canvas, use the parent initiative's id as \`initiativeId\` and OMIT \`milestoneId\` — unless the user explicitly says "file this feature under this milestone," in which case use \`milestoneId\`; (3) **on the root or a workspace canvas, call \`read_canvas\` (no \`ref\`) to see existing initiatives, and set \`initiativeId\` to whichever initiative is a reasonable semantic fit for the feature**; (4) only fall back to a loose feature (no initiative) when the user has explicitly asked for one OR no existing initiative is a plausible match. **When NOT to propose:** if the initiative or milestone already exists and the user is asking to file *existing* features under it, use \`assign_feature_to_initiative\` instead — that's "organize," not "propose."
 - All three propose tools take a required \`placement\` field — see the **Placement on the canvas** section below for the vocabulary and required \`read_canvas\` flow. Pick \`auto\` if you don't have an opinion.
 - \`propose_milestone\` — **Use this whenever the user asks you to add, create, draft, sketch, suggest, brainstorm, spin up, kick off, set up, plan, propose, or start a new milestone.** Examples: *"propose a Q3 milestone for the dashboard work"*, *"draft a launch milestone for billing v2"*, *"suggest two milestones for the rest of this initiative."* This tool does NOT write to the DB — it emits a proposal card the user approves with a click. Approval is what creates the milestone (and attaches the listed features). Each call requires \`initiativeId\` (the parent initiative) and may include a \`featureIds: string[]\` list of features to attach on approval. **Before calling, ALWAYS call \`read_canvas\` with \`ref: "initiative:<id>"\`** for the parent initiative, so you can see (a) the existing milestones (don't duplicate) and (b) the features anchored to this initiative — including which already have a milestone (rendered with a synthetic edge to a milestone card) and which are unlinked. **Bias \`featureIds\` toward currently-unlinked features** (no synthetic edge to any milestone card). Attaching an already-linked feature is legal but moves it from its current milestone — only do that if the user has explicitly asked. Empty \`featureIds\` is fine — the user can attach features later. Do NOT pick a \`sequence\` number; the system assigns one. **When NOT to use:** if the user wants to file *existing* features under an *existing* milestone, use \`assign_feature_to_initiative\` instead — that's "organize," not "propose."
+- **Feature dependencies on \`propose_feature\` (\`dependsOnProposalIds\` vs \`dependsOnFeatureIds\`).** Two separate optional arrays — pick based on **where the blocker came from**, never mix them up.
+  - \`dependsOnProposalIds: string[]\` — \`proposalId\` strings from **other \`propose_feature\` calls in THIS conversation** (typically siblings under the same initiative). NOT cuids. These features don't exist in the DB yet; the approval handler resolves each proposalId to the cuid it created when the user approved that sibling. If the user approves out of order, the approval handler returns *"Approve the blocker first."*
+  - \`dependsOnFeatureIds: string[]\` — **cuids of features that already exist in the DB**. You discovered them via \`read_canvas\` (the part after \`feature:\` on a card's live id) or \`<slug>__list_features\`. Validated at propose time — invalid cuids fail immediately.
+  - You can use both on the same call (a new feature can depend on a sibling-proposal blocker AND on an existing-DB blocker simultaneously). The handler unions them at approval time and writes a clean cuid array.
+  - **Common mistake to avoid:** never pass a sibling \`proposalId\` (e.g. \`"f-backend"\`) into \`dependsOnFeatureIds\` — that array is for real DB cuids only. And never pass a cuid into \`dependsOnProposalIds\` — that array is for in-conversation proposal ids only. The doc comments on the input schema describe the same rule; if you violate it the call will either fail propose-time validation or fail approval-time resolution.
+  - **Cycles are rejected.** Don't propose \`A → B → A\`.
+- \`send_to_feature_planner\` — Send a message to a feature's per-feature planning agent. Use this for **cross-feature coordination**: when a decision needs to propagate to a sibling feature's planner, when you need to ask a planner a question, or when you want to push context the planner doesn't have. **This is delegation, not editing** — the planner owns the plan text; you're sending a chat message and the planner replies asynchronously by updating its own plan. **Fire-and-forget:** the tool returns once the message is delivered (NOT once the planner replies). Plan workflows take 30–120 seconds; don't poll. Tell the user *"I've sent a message to the [feature name] planner; I'll check back in a moment"* and move on. To see the reply and the resulting plan, call \`<slug>__read_feature\` afterward — it returns \`brief\` / \`requirements\` / \`architecture\` PLUS the full chat history including the planner's response. **Fails if the planner is currently running** (\`workflowStatus === 'IN_PROGRESS'\` on \`read_feature\`'s output); wait for the run to finish before sending. The system prefixes your message with \`[via canvas agent]\` so the planner recognizes cross-feature coordination signals; lead your message with a one-line reason for context. **Don't use this for single-feature edits the per-feature plan chat should handle** — those flow through the user's normal chat with the planner on the feature page. The canvas-level tool exists because the per-feature planner can't see siblings, and YOU can.
 
 ### Layout
 
@@ -451,6 +538,13 @@ export interface CanvasScopeHint {
    */
   selectedNodeId?: string;
   /**
+   * Live ids of the canvas nodes the user has currently selected via
+   * multi-select (Shift-click, Cmd+A, or marquee/lasso). Populated
+   * only when more than one node is selected; mutually exclusive with
+   * `selectedNodeId` (single-node selection).
+   */
+  selectedNodeIds?: string[];
+  /**
    * Workspaces the user has visually linked to the current scope on
    * the **root canvas** via a `ws:<x> ↔ initiative:<y>` (or, in the
    * future, `ws:<x> ↔ <other>`) edge. Resolved server-side at request
@@ -560,7 +654,7 @@ function getCanvasScopeHint(scope?: CanvasScopeHint): string {
   const ref = scope.currentCanvasRef ?? "";
   const selected = scope.selectedNodeId;
   const breadcrumb = scope.currentCanvasBreadcrumb?.trim();
-  if (!refProvided && !selected) return "";
+  if (!refProvided && !selected && !(scope.selectedNodeIds?.length)) return "";
 
   // Compose the human-friendly description. The breadcrumb (when
   // available) is the agent's preferred way to *talk about* the scope
@@ -591,6 +685,15 @@ function getCanvasScopeHint(scope?: CanvasScopeHint): string {
     lines.push(
       "",
       `They have selected node \`${selected}\` on the canvas. Treat "this node", "this initiative/workspace/milestone", or "it" as referring to that node when context is otherwise ambiguous.`,
+    );
+  }
+
+  const multiIds = scope.selectedNodeIds;
+  if (!selected && multiIds && multiIds.length > 0) {
+    const idList = multiIds.map((id) => `\`${id}\``).join(", ");
+    lines.push(
+      "",
+      `They have selected ${multiIds.length} nodes: ${idList}. Treat "these nodes", "this group", or "all of these" as referring to this set when context is otherwise ambiguous.`,
     );
   }
 

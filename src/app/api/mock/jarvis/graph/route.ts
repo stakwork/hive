@@ -74,6 +74,22 @@ function generateMockNodes(): JarvisNode[] {
     });
   });
 
+  // AgentSession nodes for Evals feature
+  const agentSessions = [
+    { ref_id: "session-1", name: "Session: Fix auth bug", date: "2025-05-01" },
+    { ref_id: "session-2", name: "Session: Refactor payments", date: "2025-05-03" },
+    { ref_id: "session-3", name: "Session: Add notifications", date: "2025-05-07" },
+    { ref_id: "session-4", name: "Session: Debug eval runner", date: "2025-05-10" },
+  ];
+  agentSessions.forEach(({ ref_id, name, date }) => {
+    nodes.push({
+      ref_id,
+      node_type: "AgentSession",
+      date_added_to_graph: now,
+      properties: { name, date },
+    });
+  });
+
   return nodes;
 }
 

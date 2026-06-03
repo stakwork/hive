@@ -75,4 +75,11 @@ export const PUSHER_EVENTS = {
   RESEARCH_UPDATED: "research-updated",
   // Canvas events (system-canvas document on the org)
   CANVAS_UPDATED: "canvas-updated",
+  // Canvas presence events (ephemeral — not persisted)
+  CANVAS_CURSOR_UPDATE: "canvas-cursor-update",
+  CANVAS_USER_JOIN: "canvas-user-join",
+  CANVAS_USER_LEAVE: "canvas-user-leave",
+  CANVAS_SELECTION_UPDATE: "canvas-selection-update",
+  // Agent log upserted for a feature — triggers live Logs tab updates in plan view
+  AGENT_LOG_UPDATED: "agent-log-updated",
 } as const;
