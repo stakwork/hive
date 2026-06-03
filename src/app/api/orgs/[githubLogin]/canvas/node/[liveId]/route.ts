@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { loadNodeDetail } from "@/services/orgs/nodeDetail";
+import { validateUserBelongsToOrg } from "@/services/workspace";
 
 /**
  * Detail endpoint for a single live canvas node.
@@ -55,6 +56,13 @@ export async function GET(
   });
   if (!org) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  const isMember = await validateUserBelongsToOrg(githubLogin, userOrResponse.id);
+  if (!isMember) {
+    // Return 404 rather than 403 to avoid leaking existence of org content
+    // to non-members — consistent with the cross-org guard in loadNodeDetail.
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   try {
