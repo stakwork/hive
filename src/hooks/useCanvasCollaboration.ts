@@ -27,11 +27,10 @@ interface UseCanvasCollaborationOptions {
   userName: string;
   /** Avatar image URL for the current user. */
   userImage?: string | null;
-  /**
-   * A ref to the current viewport state so cursor events can be
-   * converted from screen to canvas space.
-   */
-  viewportRef: React.RefObject<{ x: number; y: number; zoom: number }>;
+  /** Returns the current viewport state synchronously from the canvas handle. */
+  getViewport: () => { x: number; y: number; zoom: number };
+  /** Returns the SVG element so cursor bounding rect aligns with d3's coordinate origin. */
+  getSvgElement: () => SVGSVGElement | null;
   /** The container DOM element to attach pointermove to. */
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** Currently selected node id, or null. */
@@ -102,7 +101,8 @@ export function useCanvasCollaboration({
   userId,
   userName,
   userImage,
-  viewportRef,
+  getViewport,
+  getSvgElement,
   containerRef,
   selectedNodeId,
   enabled = true,
@@ -295,10 +295,9 @@ export function useCanvasCollaboration({
       if (now - lastFired < CURSOR_THROTTLE_MS) return;
       lastFired = now;
 
-      const vp = viewportRef.current;
-      if (!vp) return;
-
-      const rect = el.getBoundingClientRect();
+      const vp = getViewport(); // synchronous — always current
+      const svgEl = getSvgElement();
+      const rect = (svgEl ?? el).getBoundingClientRect(); // align with d3 origin
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
 
@@ -317,7 +316,7 @@ export function useCanvasCollaboration({
 
     el.addEventListener("pointermove", onMove);
     return () => el.removeEventListener("pointermove", onMove);
-  }, [containerRef, viewportRef, userId, enabled]);
+  }, [containerRef, getViewport, getSvgElement, userId, enabled]);
 
   // Broadcast selection changes
   const prevSelectedNodeId = useRef<string | null | undefined>(undefined);
