@@ -46,6 +46,7 @@ interface ArtifactsPanelProps {
   browserRefreshTrigger?: number;
   isSuperAdmin?: boolean;
   streamingLog?: { agent: string; conversation: ConversationMessage[] } | null;
+  isAgentActive?: boolean;
 }
 
 export function ArtifactsPanel({
@@ -68,6 +69,7 @@ export function ArtifactsPanel({
   browserRefreshTrigger,
   isSuperAdmin = false,
   streamingLog,
+  isAgentActive = false,
 }: ArtifactsPanelProps) {
   const [internalTab, setInternalTab] = useState<ArtifactType | null>(null);
   
@@ -273,7 +275,7 @@ export function ArtifactsPanel({
     if (isGenerating) buttonLabel = "Generating...";
     else if (isRunFailed) buttonLabel = "Retry";
 
-    const isDisabled = (!hasArchitecture && !isRunFailed) || isGenerating;
+    const isDisabled = (!hasArchitecture && !isRunFailed) || isGenerating || isAgentActive;
     const needsTooltip = !hasArchitecture && !isRunFailed;
 
     const btn = (

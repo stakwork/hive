@@ -638,6 +638,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     sectionHighlights,
     streamingLog: streamedLog,
     isSuperAdmin,
+    isAgentActive: inputDisabled,
   };
 
   if (!initialLoadDone) {
