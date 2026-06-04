@@ -822,6 +822,7 @@ model Feature {
   // `synthetic:feature-blocks:<blockerId>:<blockedId>` edge between
   // pairs where BOTH endpoints are anchored to the same initiative.
   dependsOnFeatureIds String[]              @default([]) @map("depends_on_feature_ids")
+  selectedRepositoryIds String[]            @default([]) @map("selected_repository_ids")
   /**
    * The canvas conversation (`SharedConversation.id`) that "owns" this
    * feature — typically the one where the user approved the
