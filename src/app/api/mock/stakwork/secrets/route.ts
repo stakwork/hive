@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mockStakworkState } from "@/lib/mock/stakwork-state";
 
+export async function GET(request: NextRequest) {
+  const customerId = request.nextUrl.searchParams.get("customer_id") ?? undefined;
+  const secrets = mockStakworkState.listSecrets(customerId);
+  return NextResponse.json({ secrets });
+}
+
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 

@@ -47,6 +47,7 @@ describe("createWorkspace - Unit Tests", () => {
     repositoryDraft: null,
     sourceControlOrgId: null,
     stakworkApiKey: null,
+    stakworkCustomerId: null,
     logoUrl: null,
     logoKey: null,
     nodeTypeOrder: [
