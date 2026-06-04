@@ -123,7 +123,7 @@ export async function POST(
     const ws = feature.workspace;
     const swarm = ws?.swarm;
     if (ws) {
-      after(async () => {
+      const runEagerSweeps = async () => {
         // Workflow sweep always runs unconditionally (no pod needed)
         try {
           await processWorkflowTaskSweep(ws.id, ws.slug);
@@ -142,7 +142,15 @@ export async function POST(
             console.error("Eager ticket sweep failed:", error);
           }
         }
-      });
+      };
+
+      try {
+        after(runEagerSweeps);
+      } catch {
+        // `after()` throws only when there is no request scope — e.g. when the
+        // handler is invoked directly (tests). The 5-min coordinator cron is the
+        // backstop that will pick these tasks up, so skip the eager kick here.
+      }
     }
 
     // Step 9: Update feature status from tasks
