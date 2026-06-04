@@ -50,12 +50,21 @@ export async function POST(
       return NextResponse.json({ error: "Version ID is required" }, { status: 400 });
     }
 
+    const body = await request.json().catch(() => ({})) as { artifactId?: string };
+    const { artifactId } = body;
+
     // In dev mode, delegate to mock handler to avoid SSL issues
     if (devMode) {
       const { POST: mockPOST } = await import(
         "@/app/api/mock/stakwork/scripts/[scriptId]/versions/[versionId]/publish/route"
       );
-      return mockPOST(request, { params: Promise.resolve({ scriptId, versionId }) });
+      const mockResult = await mockPOST(request, { params: Promise.resolve({ scriptId, versionId }) });
+
+      if (artifactId) {
+        await updateArtifactPublished(artifactId, stakworkWorkspace?.id ?? null, devMode);
+      }
+
+      return mockResult;
     }
 
     // Publish the script version via Stakwork API
@@ -81,6 +90,10 @@ export async function POST(
       );
     }
 
+    if (artifactId) {
+      await updateArtifactPublished(artifactId, stakworkWorkspace?.id ?? null, devMode);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error publishing script version:", error);
@@ -88,5 +101,38 @@ export async function POST(
       { error: "Failed to publish script version" },
       { status: 500 }
     );
+  }
+}
+
+async function updateArtifactPublished(
+  artifactId: string,
+  workspaceId: string | null,
+  devMode: boolean,
+): Promise<void> {
+  try {
+    const artifact = await db.artifact.findUnique({
+      where: { id: artifactId },
+      include: {
+        message: {
+          include: {
+            task: { select: { workspaceId: true } },
+          },
+        },
+      },
+    });
+
+    if (!artifact) return;
+
+    const artifactWorkspaceId = artifact.message?.task?.workspaceId;
+    const callerHasAccess = devMode || (workspaceId && artifactWorkspaceId === workspaceId);
+    if (!callerHasAccess) return;
+
+    const current = (artifact.content as Record<string, unknown>) ?? {};
+    await db.artifact.update({
+      where: { id: artifactId },
+      data: { content: { ...current, published: true } },
+    });
+  } catch (err) {
+    console.error("Error updating artifact published state:", err);
   }
 }

@@ -71,7 +71,11 @@ describe("PublishScriptArtifact", () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/workflow/scripts/1/versions/1/publish",
-        { method: "POST" }
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ artifactId: "artifact-1" }),
+        }
       );
     });
   });
