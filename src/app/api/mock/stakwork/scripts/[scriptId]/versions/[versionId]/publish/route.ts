@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
   _request: NextRequest,
-  { params }: { params: Promise<{ versionId: string }> }
+  { params }: { params: Promise<{ scriptId: string; versionId: string }> }
 ) {
   // Consume params to satisfy Next.js dynamic route requirements
   await params;

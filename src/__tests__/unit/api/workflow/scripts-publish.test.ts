@@ -25,17 +25,11 @@ function createPostRequest(url: string): NextRequest {
   return new NextRequest(`http://localhost${url}`, { method: "POST" });
 }
 
-async function importRoute() {
-  // Re-import to get fresh module each time
-  const mod = await import("@/app/api/workflow/scripts/versions/[versionId]/publish/route");
-  return mod.POST;
-}
-
-const mockParams = (versionId: string) => ({
-  params: Promise.resolve({ versionId }),
+const mockParams = (scriptId: string, versionId: string) => ({
+  params: Promise.resolve({ scriptId, versionId }),
 });
 
-describe("POST /api/workflow/scripts/versions/[versionId]/publish", () => {
+describe("POST /api/workflow/scripts/[scriptId]/versions/[versionId]/publish", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(runtime.isDevelopmentMode).mockReturnValue(false);
@@ -45,10 +39,10 @@ describe("POST /api/workflow/scripts/versions/[versionId]/publish", () => {
     vi.mocked(nextAuth.getServerSession).mockResolvedValue(null);
 
     const { POST } = await import(
-      "@/app/api/workflow/scripts/versions/[versionId]/publish/route"
+      "@/app/api/workflow/scripts/[scriptId]/versions/[versionId]/publish/route"
     );
-    const request = createPostRequest("/api/workflow/scripts/versions/123/publish");
-    const response = await POST(request, mockParams("123"));
+    const request = createPostRequest("/api/workflow/scripts/405/versions/123/publish");
+    const response = await POST(request, mockParams("405", "123"));
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -62,10 +56,10 @@ describe("POST /api/workflow/scripts/versions/[versionId]/publish", () => {
     });
 
     const { POST } = await import(
-      "@/app/api/workflow/scripts/versions/[versionId]/publish/route"
+      "@/app/api/workflow/scripts/[scriptId]/versions/[versionId]/publish/route"
     );
-    const request = createPostRequest("/api/workflow/scripts/versions/123/publish");
-    const response = await POST(request, mockParams("123"));
+    const request = createPostRequest("/api/workflow/scripts/405/versions/123/publish");
+    const response = await POST(request, mockParams("405", "123"));
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -81,14 +75,36 @@ describe("POST /api/workflow/scripts/versions/[versionId]/publish", () => {
     vi.mocked(db.workspace.findFirst).mockResolvedValue(null);
 
     const { POST } = await import(
-      "@/app/api/workflow/scripts/versions/[versionId]/publish/route"
+      "@/app/api/workflow/scripts/[scriptId]/versions/[versionId]/publish/route"
     );
-    const request = createPostRequest("/api/workflow/scripts/versions/123/publish");
-    const response = await POST(request, mockParams("123"));
+    const request = createPostRequest("/api/workflow/scripts/405/versions/123/publish");
+    const response = await POST(request, mockParams("405", "123"));
     const data = await response.json();
 
     expect(response.status).toBe(403);
     expect(data.error).toContain("Access denied");
+  });
+
+  it("returns 400 when scriptId is missing", async () => {
+    vi.mocked(nextAuth.getServerSession).mockResolvedValue({
+      user: { id: "user-1", name: "test" },
+      expires: "2099-01-01",
+    });
+    vi.mocked(runtime.isDevelopmentMode).mockReturnValue(false);
+    vi.mocked(db.workspace.findFirst).mockResolvedValue({
+      id: "ws-1",
+      slug: "stakwork",
+    } as never);
+
+    const { POST } = await import(
+      "@/app/api/workflow/scripts/[scriptId]/versions/[versionId]/publish/route"
+    );
+    const request = createPostRequest("/api/workflow/scripts//versions/339/publish");
+    const response = await POST(request, mockParams("", "339"));
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe("Script ID is required");
   });
 
   it("returns { success: true } in dev mode by delegating to mock handler", async () => {
@@ -101,10 +117,10 @@ describe("POST /api/workflow/scripts/versions/[versionId]/publish", () => {
     vi.mocked(db.workspace.findFirst).mockResolvedValue(null);
 
     const { POST } = await import(
-      "@/app/api/workflow/scripts/versions/[versionId]/publish/route"
+      "@/app/api/workflow/scripts/[scriptId]/versions/[versionId]/publish/route"
     );
-    const request = createPostRequest("/api/workflow/scripts/versions/456/publish");
-    const response = await POST(request, mockParams("456"));
+    const request = createPostRequest("/api/workflow/scripts/405/versions/456/publish");
+    const response = await POST(request, mockParams("405", "456"));
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -129,10 +145,10 @@ describe("POST /api/workflow/scripts/versions/[versionId]/publish", () => {
     } as never);
 
     const { POST } = await import(
-      "@/app/api/workflow/scripts/versions/[versionId]/publish/route"
+      "@/app/api/workflow/scripts/[scriptId]/versions/[versionId]/publish/route"
     );
-    const request = createPostRequest("/api/workflow/scripts/versions/789/publish");
-    const response = await POST(request, mockParams("789"));
+    const request = createPostRequest("/api/workflow/scripts/405/versions/789/publish");
+    const response = await POST(request, mockParams("405", "789"));
     const data = await response.json();
 
     expect(response.status).toBe(422);
@@ -157,13 +173,17 @@ describe("POST /api/workflow/scripts/versions/[versionId]/publish", () => {
     } as never);
 
     const { POST } = await import(
-      "@/app/api/workflow/scripts/versions/[versionId]/publish/route"
+      "@/app/api/workflow/scripts/[scriptId]/versions/[versionId]/publish/route"
     );
-    const request = createPostRequest("/api/workflow/scripts/versions/789/publish");
-    const response = await POST(request, mockParams("789"));
+    const request = createPostRequest("/api/workflow/scripts/405/versions/339/publish");
+    const response = await POST(request, mockParams("405", "339"));
     const data = await response.json();
 
     expect(response.status).toBe(200);
     expect(data).toEqual({ success: true });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("scripts/405/versions/339/publish"),
+      expect.any(Object)
+    );
   });
 });
