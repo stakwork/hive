@@ -14,7 +14,7 @@ function isFullscreenPage(pathname: string): boolean {
 /** Mirrors the <main> className logic in DashboardLayout.tsx */
 function mainClassName(pathname: string): string {
   const fullscreen = isFullscreenPage(pathname);
-  return `flex-1 flex flex-col ${fullscreen ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`;
+  return `flex-1 flex flex-col min-h-0 ${fullscreen ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`;
 }
 
 describe("DashboardLayout — isFullscreenPage", () => {

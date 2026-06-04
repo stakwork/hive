@@ -86,7 +86,7 @@ export function ActionMenu({
           <Button
             variant={triggerVariant}
             size={triggerSize}
-            className={triggerClassName}
+            className={`relative ${triggerClassName}`}
             onClick={(e) => e.stopPropagation()}
           >
             <MoreVertical className="h-4 w-4" />
