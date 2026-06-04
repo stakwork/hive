@@ -298,6 +298,7 @@ export async function createTicket(
         workflowName: data.workflowName ?? null,
         workflowRefId: data.workflowRefId ?? null,
         workflowTaskType: data.workflowTaskType ?? null,
+        workflowVersionId: data.workflowVersionId ?? null,
       },
     });
 
@@ -316,6 +317,7 @@ export async function createTicket(
         workflowName: null,
         workflowRefId: null,
         workflowTaskType: data.workflowTaskType ?? null,
+        workflowVersionId: data.workflowVersionId ?? null,
       },
     });
   }

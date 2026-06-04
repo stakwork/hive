@@ -698,6 +698,7 @@ export interface CreateRoadmapTaskRequest {
   workflowId?: number;
   workflowName?: string;
   workflowRefId?: string;
+  workflowVersionId?: string;
   /** true = workflow_editor task targeting a brand-new workflow; mutually exclusive with workflowId */
   isNewWorkflow?: boolean;
   workflowTaskType?: import("@prisma/client").WorkflowTaskType;

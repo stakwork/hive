@@ -211,6 +211,67 @@ describe("createTicket — workflowTaskType", () => {
       data: expect.objectContaining({ workflowTaskType: "PROMPT" }),
     });
   });
+
+  it("persists workflowVersionId on WorkflowTask when workflowId is provided", async () => {
+    await createTicket("feature-1", "user-1", {
+      title: "Versioned Task",
+      workflowId: 10,
+      workflowName: "my-workflow",
+      workflowRefId: "ref-1",
+      workflowTaskType: "PROMPT",
+      workflowVersionId: "version-abc-123",
+    });
+
+    expect(mockDbWorkflowTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workflowTaskType: "PROMPT",
+        workflowVersionId: "version-abc-123",
+      }),
+    });
+  });
+
+  it("persists workflowVersionId on isNewWorkflow task", async () => {
+    await createTicket("feature-1", "user-1", {
+      title: "New Workflow Versioned",
+      isNewWorkflow: true,
+      workflowTaskType: "SCRIPT",
+      workflowVersionId: "version-xyz-456",
+    });
+
+    expect(mockDbWorkflowTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        taskId: "task-1",
+        workflowId: null,
+        workflowTaskType: "SCRIPT",
+        workflowVersionId: "version-xyz-456",
+      }),
+    });
+  });
+
+  it("persists null workflowVersionId when not provided (workflowId branch)", async () => {
+    await createTicket("feature-1", "user-1", {
+      title: "No Version Task",
+      workflowId: 99,
+      workflowName: "untyped",
+      workflowTaskType: "WORKFLOW",
+    });
+
+    expect(mockDbWorkflowTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ workflowVersionId: null }),
+    });
+  });
+
+  it("persists null workflowVersionId when not provided (isNewWorkflow branch)", async () => {
+    await createTicket("feature-1", "user-1", {
+      title: "No Version New Workflow",
+      isNewWorkflow: true,
+      workflowTaskType: "PROMPT",
+    });
+
+    expect(mockDbWorkflowTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ workflowVersionId: null }),
+    });
+  });
 });
 
 describe("updateTicket — workflowTaskType", () => {
