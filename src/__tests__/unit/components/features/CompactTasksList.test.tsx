@@ -2468,6 +2468,8 @@ describe("CompactTasksList", () => {
           workflowId: 99,
           workflowName: "My Workflow",
           workflowRefId: "ref-abc",
+          workflowTaskType: null,
+          workflowVersionId: null,
         },
       });
       const feature = createMockFeature([task]);
@@ -2533,6 +2535,147 @@ describe("CompactTasksList", () => {
       expect(capturedBodies[0].workflowId).toBeUndefined();
       expect(capturedBodies[0].workflowName).toBeUndefined();
       expect(capturedBodies[0].workflowRefId).toBeUndefined();
+    });
+
+    test("9. workflow_editor task — POST body includes workflowTaskType and workflowVersionId", async () => {
+      const user = userEvent.setup();
+      const task = createMockTask({
+        id: "task-wf-type-dup",
+        dependsOnTaskIds: [],
+        workflowTask: {
+          id: "wt-type-dup",
+          taskId: "task-wf-type-dup",
+          workflowId: 55,
+          workflowName: "Prompt Workflow",
+          workflowRefId: "ref-prompt",
+          workflowTaskType: "PROMPT",
+          workflowVersionId: "version-v1-abc",
+        },
+      });
+      const feature = createMockFeature([task]);
+      const capturedBodies: any[] = [];
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          capturedBodies.push(JSON.parse(init.body));
+          return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "new-prompt-task-id", title: task.title, dependsOnTaskIds: [] } }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      const duplicateBtn = await screen.findByTestId("action-duplicate");
+      await user.click(duplicateBtn);
+
+      await waitFor(() => {
+        expect(capturedBodies).toHaveLength(1);
+      });
+
+      expect(capturedBodies[0].workflowId).toBe(55);
+      expect(capturedBodies[0].workflowTaskType).toBe("PROMPT");
+      expect(capturedBodies[0].workflowVersionId).toBe("version-v1-abc");
+    });
+
+    test("10. isNewWorkflow task — POST body includes workflowTaskType, omits workflowVersionId", async () => {
+      const user = userEvent.setup();
+      const task = createMockTask({
+        id: "task-new-wf-dup",
+        dependsOnTaskIds: [],
+        workflowTask: {
+          id: "wt-new-dup",
+          taskId: "task-new-wf-dup",
+          workflowId: null,
+          workflowName: null,
+          workflowRefId: null,
+          workflowTaskType: "SCRIPT",
+          workflowVersionId: null,
+        },
+      });
+      const feature = createMockFeature([task]);
+      const capturedBodies: any[] = [];
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          capturedBodies.push(JSON.parse(init.body));
+          return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "new-script-task-id", title: task.title, dependsOnTaskIds: [] } }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      const duplicateBtn = await screen.findByTestId("action-duplicate");
+      await user.click(duplicateBtn);
+
+      await waitFor(() => {
+        expect(capturedBodies).toHaveLength(1);
+      });
+
+      expect(capturedBodies[0].isNewWorkflow).toBe(true);
+      expect(capturedBodies[0].workflowTaskType).toBe("SCRIPT");
+      expect(capturedBodies[0].workflowId).toBeUndefined();
+    });
+
+    test("11. workflow_editor task with null workflowTaskType/workflowVersionId — POST body omits both", async () => {
+      const user = userEvent.setup();
+      const task = createMockTask({
+        id: "task-null-fields-dup",
+        dependsOnTaskIds: [],
+        workflowTask: {
+          id: "wt-null-dup",
+          taskId: "task-null-fields-dup",
+          workflowId: 77,
+          workflowName: "Null Fields Workflow",
+          workflowRefId: "ref-null",
+          workflowTaskType: null,
+          workflowVersionId: null,
+        },
+      });
+      const feature = createMockFeature([task]);
+      const capturedBodies: any[] = [];
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((url: any, init: any) => {
+        const urlStr = typeof url === "string" ? url : String(url);
+        if (urlStr.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        if (urlStr.includes("/api/features/feature-1/tickets") && init?.method === "POST") {
+          capturedBodies.push(JSON.parse(init.body));
+          return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "new-null-task-id", title: task.title, dependsOnTaskIds: [] } }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true, data: { id: "feature-1", phases: [{ id: "phase-1", tasks: [] }] } }), { status: 200 }));
+      });
+
+      render(
+        <CompactTasksList feature={feature} featureId="feature-1" isGenerating={false} onUpdate={vi.fn()} />
+      );
+
+      const duplicateBtn = await screen.findByTestId("action-duplicate");
+      await user.click(duplicateBtn);
+
+      await waitFor(() => {
+        expect(capturedBodies).toHaveLength(1);
+      });
+
+      // null fields become undefined (not included in JSON serialization)
+      expect(capturedBodies[0].workflowTaskType).toBeUndefined();
+      expect(capturedBodies[0].workflowVersionId).toBeUndefined();
+      // Existing fields still present
+      expect(capturedBodies[0].workflowId).toBe(77);
+      expect(capturedBodies[0].workflowName).toBe("Null Fields Workflow");
     });
   });
 
