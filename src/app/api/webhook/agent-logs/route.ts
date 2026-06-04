@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { db } from "@/lib/db";
-import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getFeatureChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export const fetchCache = "force-no-store";
 
@@ -179,6 +179,20 @@ export async function POST(request: NextRequest) {
         console.info("[agent-logs] pusher broadcast", { agent: agentLog.agent, featureId: feature_id, isNew: !existing });
       } catch (err) {
         console.error("[agent-logs] pusher broadcast failed", err);
+      }
+    }
+
+    // Broadcast real-time update to task viewers
+    if (task_id) {
+      try {
+        await pusherServer.trigger(
+          getTaskChannelName(task_id),
+          PUSHER_EVENTS.AGENT_LOG_UPDATED,
+          { id: agentLog.id, agent: agentLog.agent, createdAt: agentLog.createdAt, isNew: !existing }
+        );
+        console.info("[agent-logs] pusher broadcast", { agent: agentLog.agent, taskId: task_id, isNew: !existing });
+      } catch (err) {
+        console.error("[agent-logs] pusher task broadcast failed", err);
       }
     }
 

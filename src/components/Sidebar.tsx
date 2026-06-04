@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   FileText,
+  KeyRound,
   Map,
   Menu,
   Mic,
@@ -456,6 +457,7 @@ export function Sidebar({ user }: SidebarProps) {
       children: [
         { icon: FileText, label: "Prompts", href: "/prompts" },
         { icon: Workflow, label: "Workflows", href: "/workflows" },
+        { icon: KeyRound, label: "Secrets", href: "/secrets" },
       ],
     },
   ] : [];

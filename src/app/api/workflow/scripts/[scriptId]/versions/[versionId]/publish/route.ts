@@ -10,7 +10,7 @@ export const fetchCache = "force-no-store";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ versionId: string }> }
+  { params }: { params: Promise<{ scriptId: string; versionId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -40,22 +40,35 @@ export async function POST(
       );
     }
 
-    const { versionId } = await params;
+    const { scriptId, versionId } = await params;
+
+    if (!scriptId) {
+      return NextResponse.json({ error: "Script ID is required" }, { status: 400 });
+    }
 
     if (!versionId) {
       return NextResponse.json({ error: "Version ID is required" }, { status: 400 });
     }
 
+    const body = await request.json().catch(() => ({})) as { artifactId?: string };
+    const { artifactId } = body;
+
     // In dev mode, delegate to mock handler to avoid SSL issues
     if (devMode) {
       const { POST: mockPOST } = await import(
-        "@/app/api/mock/stakwork/scripts/versions/[versionId]/publish/route"
+        "@/app/api/mock/stakwork/scripts/[scriptId]/versions/[versionId]/publish/route"
       );
-      return mockPOST(request, { params: Promise.resolve({ versionId }) });
+      const mockResult = await mockPOST(request, { params: Promise.resolve({ scriptId, versionId }) });
+
+      if (artifactId) {
+        await updateArtifactPublished(artifactId, stakworkWorkspace?.id ?? null, devMode);
+      }
+
+      return mockResult;
     }
 
     // Publish the script version via Stakwork API
-    const publishUrl = `${config.STAKWORK_BASE_URL}/scripts/versions/${versionId}/publish`;
+    const publishUrl = `${config.STAKWORK_BASE_URL}/scripts/${scriptId}/versions/${versionId}/publish`;
 
     const response = await fetch(publishUrl, {
       method: "POST",
@@ -67,11 +80,18 @@ export async function POST(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Failed to publish script version ${versionId}:`, errorText);
+      console.error(
+        `Failed to publish script ${scriptId} version ${versionId}:`,
+        errorText
+      );
       return NextResponse.json(
         { error: "Failed to publish script version", details: errorText },
         { status: response.status }
       );
+    }
+
+    if (artifactId) {
+      await updateArtifactPublished(artifactId, stakworkWorkspace?.id ?? null, devMode);
     }
 
     return NextResponse.json({ success: true });
@@ -81,5 +101,38 @@ export async function POST(
       { error: "Failed to publish script version" },
       { status: 500 }
     );
+  }
+}
+
+async function updateArtifactPublished(
+  artifactId: string,
+  workspaceId: string | null,
+  devMode: boolean,
+): Promise<void> {
+  try {
+    const artifact = await db.artifact.findUnique({
+      where: { id: artifactId },
+      include: {
+        message: {
+          include: {
+            task: { select: { workspaceId: true } },
+          },
+        },
+      },
+    });
+
+    if (!artifact) return;
+
+    const artifactWorkspaceId = artifact.message?.task?.workspaceId;
+    const callerHasAccess = devMode || (workspaceId && artifactWorkspaceId === workspaceId);
+    if (!callerHasAccess) return;
+
+    const current = (artifact.content as Record<string, unknown>) ?? {};
+    await db.artifact.update({
+      where: { id: artifactId },
+      data: { content: { ...current, published: true } },
+    });
+  } catch (err) {
+    console.error("Error updating artifact published state:", err);
   }
 }

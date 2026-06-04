@@ -71,7 +71,11 @@ describe("PublishPromptArtifact", () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/workflow/prompts/42/versions/7/publish",
-        { method: "POST" }
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ artifactId: "artifact-2" }),
+        }
       );
     });
   });

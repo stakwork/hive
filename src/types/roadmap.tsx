@@ -606,6 +606,12 @@ export type PrArtifact = {
   };
 } | null;
 
+export type PublishArtifact = {
+  id: string;
+  type: "PUBLISH_WORKFLOW" | "PUBLISH_SCRIPT" | "PUBLISH_PROMPT";
+  content: { published?: boolean; name?: string };
+} | null;
+
 export type RoadmapTaskListItem = Omit<RoadmapTaskListItemBase, 'assignee'> & {
   assignee: AssigneeWithIcon | null;
   prArtifact?: PrArtifact;
@@ -692,6 +698,7 @@ export interface CreateRoadmapTaskRequest {
   workflowId?: number;
   workflowName?: string;
   workflowRefId?: string;
+  workflowVersionId?: string;
   /** true = workflow_editor task targeting a brand-new workflow; mutually exclusive with workflowId */
   isNewWorkflow?: boolean;
   workflowTaskType?: import("@prisma/client").WorkflowTaskType;

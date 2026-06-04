@@ -152,7 +152,10 @@ export async function POST(request: NextRequest) {
     const encryptedToken = encryptionService.encryptField("stakworkApiKey", token);
     await db.workspace.update({
       where: { id: workspaceId },
-      data: { stakworkApiKey: JSON.stringify(encryptedToken) },
+      data: {
+        stakworkApiKey: JSON.stringify(encryptedToken),
+        stakworkCustomerId: customerId ?? null,
+      },
     });
     console.log(`[SWARM_CREATE] Stakwork customer created - customerId: ${customerId}, workflowId: ${workflowId}, token saved to workspace`);
 

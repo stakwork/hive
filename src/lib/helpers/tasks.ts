@@ -117,6 +117,55 @@ async function syncMergedTaskFallback(
   }
 }
 
+const PUBLISH_ARTIFACT_TYPES = ["PUBLISH_WORKFLOW", "PUBLISH_SCRIPT", "PUBLISH_PROMPT"] as const;
+type PublishArtifactType = (typeof PUBLISH_ARTIFACT_TYPES)[number];
+
+interface PublishArtifactContent {
+  published?: boolean;
+  name?: string;
+  workflowName?: string;
+  scriptName?: string;
+  promptName?: string;
+  [key: string]: Prisma.JsonValue | undefined;
+}
+
+/**
+ * Extract the last publish artifact (Workflow, Script, or Prompt) from task chat messages.
+ * PUBLISH_SKILL is explicitly excluded as it follows the PR flow.
+ *
+ * @param task - Task object with chatMessages array containing artifacts
+ * @returns The last publish artifact or null if none found
+ */
+export function extractPublishArtifact(
+  task: TaskPrContext,
+): { id: string; type: PublishArtifactType; content: { published?: boolean; name?: string } } | null {
+  if (!task.chatMessages || task.chatMessages.length === 0) {
+    return null;
+  }
+
+  let result: { id: string; type: PublishArtifactType; content: { published?: boolean; name?: string } } | null = null;
+
+  for (const message of task.chatMessages) {
+    if (!message.artifacts || message.artifacts.length === 0) continue;
+    for (const artifact of message.artifacts) {
+      if (PUBLISH_ARTIFACT_TYPES.includes(artifact.type as PublishArtifactType)) {
+        const raw = artifact.content as PublishArtifactContent | null;
+        const name = raw?.workflowName ?? raw?.scriptName ?? raw?.promptName ?? raw?.name;
+        result = {
+          id: artifact.id,
+          type: artifact.type as PublishArtifactType,
+          content: {
+            published: typeof raw?.published === "boolean" ? raw.published : undefined,
+            name: typeof name === "string" ? name : undefined,
+          },
+        };
+      }
+    }
+  }
+
+  return result;
+}
+
 /**
  * Extract PR artifact from task chat messages and update status from GitHub
  *

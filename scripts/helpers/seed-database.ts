@@ -1650,6 +1650,60 @@ async function seedWorkflowTask(workspaceSlug = "stakwork") {
   );
 }
 
+async function seedStakworkSecrets() {
+  // Ensure the stakwork workspace has a stakworkCustomerId and seed example secrets
+  const workspace = await prisma.workspace.findUnique({
+    where: { slug: "stakwork" },
+    select: { id: true, ownerId: true },
+  });
+
+  if (!workspace) {
+    console.warn("[seedStakworkSecrets] stakwork workspace not found — skipping");
+    return;
+  }
+
+  // Populate stakworkCustomerId if not already set
+  await prisma.workspace.update({
+    where: { id: workspace.id },
+    data: { stakworkCustomerId: "mock_customer_1" },
+  });
+
+  const secretsData = [
+    { name: "OPENAI_API_KEY", description: "OpenAI API key for workflow AI steps" },
+    { name: "ANTHROPIC_API_KEY", description: "Anthropic Claude API key" },
+    { name: "DATABASE_SECRET", description: "Database connection secret" },
+  ];
+
+  for (const s of secretsData) {
+    // Use a stable fake encrypted value for seeding (not real encryption — just a placeholder)
+    const fakeEncrypted = JSON.stringify({
+      data: Buffer.from(`mock-value-${s.name}`).toString("base64"),
+      iv: "0000000000000000",
+      tag: "0000000000000000",
+      keyId: "default",
+      version: "1",
+      encryptedAt: new Date().toISOString(),
+    });
+
+    const existing = await prisma.workspaceSecret.findFirst({
+      where: { workspaceId: workspace.id, name: s.name },
+    });
+
+    if (!existing) {
+      await prisma.workspaceSecret.create({
+        data: {
+          workspaceId: workspace.id,
+          name: s.name,
+          encryptedValue: fakeEncrypted,
+          description: s.description,
+          createdById: workspace.ownerId,
+        },
+      });
+      console.log(`[seedStakworkSecrets] Created secret: ${s.name}`);
+    }
+  }
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1665,6 +1719,7 @@ async function main() {
   await seedInitiativesAndMilestones(users);
   await seedMilestoneLinkFeatureData(users);
   await seedWorkflowTask();
+  await seedStakworkSecrets();
 
   console.log("Seed completed.");
 }

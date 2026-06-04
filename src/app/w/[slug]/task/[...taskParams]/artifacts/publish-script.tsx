@@ -19,8 +19,8 @@ export function PublishScriptArtifact({
   const [isPublished, setIsPublished] = useState(content.published === true);
 
   const handlePublish = async () => {
-    if (!content.scriptVersionId) {
-      toast.error("Missing script version ID");
+    if (!content.scriptId || !content.scriptVersionId) {
+      toast.error("Missing script ID or version ID");
       return;
     }
 
@@ -28,8 +28,12 @@ export function PublishScriptArtifact({
 
     try {
       const response = await fetch(
-        `/api/workflow/scripts/versions/${content.scriptVersionId}/publish`,
-        { method: "POST" }
+        `/api/workflow/scripts/${content.scriptId}/versions/${content.scriptVersionId}/publish`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ artifactId: artifact.id }),
+        }
       );
 
       if (!response.ok) {
