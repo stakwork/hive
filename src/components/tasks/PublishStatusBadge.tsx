@@ -8,15 +8,7 @@ interface PublishStatusBadgeProps {
   onClick: () => void;
 }
 
-const TYPE_LABELS: Record<PublishStatusBadgeProps["type"], string> = {
-  PUBLISH_WORKFLOW: "Workflow",
-  PUBLISH_SCRIPT: "Script",
-  PUBLISH_PROMPT: "Prompt",
-};
-
 export function PublishStatusBadge({ type, published, onClick }: PublishStatusBadgeProps) {
-  const label = TYPE_LABELS[type];
-
   return (
     <button
       className="inline-flex cursor-pointer"
@@ -32,12 +24,12 @@ export function PublishStatusBadge({ type, published, onClick }: PublishStatusBa
           style={{ backgroundColor: "#238636", color: "white" }}
         >
           <CheckCircle2 className="w-3 h-3" />
-          {label} · Published
+          Published
         </Badge>
       ) : (
         <Badge variant="secondary" className="gap-1 h-5">
           <Upload className="w-3 h-3" />
-          {label} · Unpublished
+          Unpublished
         </Badge>
       )}
     </button>

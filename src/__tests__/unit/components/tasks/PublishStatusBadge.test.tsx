@@ -37,25 +37,28 @@ describe("PublishStatusBadge", () => {
     expect(screen.getByRole("button").textContent).toContain("Unpublished");
   });
 
-  test('renders "Workflow" label for PUBLISH_WORKFLOW', () => {
+  test("shows no type prefix for PUBLISH_WORKFLOW", () => {
     render(
       <PublishStatusBadge type="PUBLISH_WORKFLOW" published={true} onClick={mockOnClick} />
     );
-    expect(screen.getByRole("button").textContent).toContain("Workflow");
+    expect(screen.getByRole("button").textContent).not.toContain("Workflow");
+    expect(screen.getByRole("button").textContent).toBe("Published");
   });
 
-  test('renders "Script" label for PUBLISH_SCRIPT', () => {
+  test("shows no type prefix for PUBLISH_SCRIPT", () => {
     render(
       <PublishStatusBadge type="PUBLISH_SCRIPT" published={false} onClick={mockOnClick} />
     );
-    expect(screen.getByRole("button").textContent).toContain("Script");
+    expect(screen.getByRole("button").textContent).not.toContain("Script");
+    expect(screen.getByRole("button").textContent).toBe("Unpublished");
   });
 
-  test('renders "Prompt" label for PUBLISH_PROMPT', () => {
+  test("shows no type prefix for PUBLISH_PROMPT", () => {
     render(
       <PublishStatusBadge type="PUBLISH_PROMPT" published={true} onClick={mockOnClick} />
     );
-    expect(screen.getByRole("button").textContent).toContain("Prompt");
+    expect(screen.getByRole("button").textContent).not.toContain("Prompt");
+    expect(screen.getByRole("button").textContent).toBe("Published");
   });
 
   test("calls onClick when button is clicked", async () => {
