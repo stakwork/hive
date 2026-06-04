@@ -174,7 +174,7 @@ export function DashboardLayout({ children, user, isPublicWorkspace = false }: D
       <div className={`flex-1 flex flex-col overflow-hidden ${isFullscreenPage ? "md:pl-0" : "md:pl-64"}`}>
         <ViewerAccessBanner />
         <PublicWorkspaceBanner />
-        <main className={`flex-1 flex flex-col overflow-auto ${isFullscreenPage ? "p-1 md:p-3" : "p-4 md:p-6"}`}>
+        <main className={`flex-1 flex flex-col ${isFullscreenPage ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`}>
           {children}
         </main>
       </div>
