@@ -379,11 +379,16 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
           dependsOnTaskIds: task.dependsOnTaskIds ?? [],
           // Carry forward workflow identity for workflow_editor tasks
           ...(task.workflowTask && task.workflowTask.workflowId == null
-            ? { isNewWorkflow: true }
+            ? {
+                isNewWorkflow: true,
+                workflowTaskType: task.workflowTask?.workflowTaskType ?? undefined,
+              }
             : {
                 workflowId: task.workflowTask?.workflowId ?? undefined,
                 workflowName: task.workflowTask?.workflowName ?? undefined,
                 workflowRefId: task.workflowTask?.workflowRefId ?? undefined,
+                workflowTaskType: task.workflowTask?.workflowTaskType ?? undefined,
+                workflowVersionId: task.workflowTask?.workflowVersionId ?? undefined,
               }),
         }),
       });
