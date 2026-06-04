@@ -8,14 +8,22 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
-import { ArrowUp, Mic, MicOff, Loader2, Sparkles, ImageIcon, Upload, X } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Loader2, Sparkles, ImageIcon, Upload, X, Code2 } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
-import { getModelValue, getStoredPlanModelPreference, setStoredPlanModelPreference, type LlmModelOption } from "@/lib/ai/models";
+import { getModelValue, getStoredPlanModelPreference, setStoredPlanModelPreference, getPlanRepoPreference, setPlanRepoPreference, type LlmModelOption } from "@/lib/ai/models";
 import { TargetSelector, encodeTargetValue, type TargetSelection } from "@/components/shared/TargetSelector";
 import { toast } from "sonner";
 
@@ -31,6 +39,7 @@ interface PlanStartInputProps {
       selectedWorkflow: { workflowId: number; workflowName: string; workflowRefId: string } | null;
       model: string;
       attachmentFile?: File;
+      selectedRepositoryIds?: string[];
     }
   ) => void;
   isLoading?: boolean;
@@ -49,6 +58,20 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus }: P
 
   const { workspace, workspaces } = useWorkspace();
   const repositories = workspace?.repositories ?? [];
+  const workspaceSlug = workspace?.slug ?? "";
+
+  // Repo context selector state — initialised from localStorage per workspace slug
+  const [selectedRepoIds, setSelectedRepoIds] = useState<string[]>(() => {
+    return getPlanRepoPreference(workspaceSlug) ?? repositories.map((r) => r.id);
+  });
+
+  // Keep in sync when repositories first load (SSR: repositories may be empty on first render)
+  useEffect(() => {
+    if (repositories.length > 0 && selectedRepoIds.length === 0) {
+      setSelectedRepoIds(getPlanRepoPreference(workspaceSlug) ?? repositories.map((r) => r.id));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repositories]);
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -247,6 +270,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus }: P
       }
       resetTranscript();
       setStoredPlanModelPreference(selectedModel);
+      setPlanRepoPreference(workspaceSlug, selectedRepoIds);
       onSubmit(value.trim(), {
         isPrototype,
         selectedRepoId: selectedTarget?.type === "repo" ? selectedTarget.repositoryId : null,
@@ -260,6 +284,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus }: P
             : null,
         model: selectedModel,
         attachmentFile: selectedFile ?? undefined,
+        selectedRepositoryIds: selectedRepoIds,
       });
     }
   };
@@ -484,6 +509,52 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus }: P
                   {loadingStatus}
                 </span>
               )}
+              {/* Repo context selector */}
+              <DropdownMenu>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          style={{ width: 32, height: 32 }}
+                          className="rounded-full shadow-lg"
+                          disabled={isLoading}
+                          data-testid="repo-selector-button"
+                        >
+                          <Code2
+                            className={cn(
+                              "w-4 h-4",
+                              selectedRepoIds.length !== repositories.length && "text-primary"
+                            )}
+                          />
+                        </Button>
+                      </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Select repositories</p></TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <DropdownMenuContent align="end" className="w-[220px]">
+                  <DropdownMenuLabel>Repositories</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {repositories.map((repo) => (
+                    <DropdownMenuCheckboxItem
+                      key={repo.id}
+                      checked={selectedRepoIds.includes(repo.id)}
+                      onCheckedChange={(checked) =>
+                        setSelectedRepoIds((prev) =>
+                          checked ? [...prev, repo.id] : prev.filter((id) => id !== repo.id)
+                        )
+                      }
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {repo.name}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
               {/* Attach image button */}
               <TooltipProvider>
                 <Tooltip>

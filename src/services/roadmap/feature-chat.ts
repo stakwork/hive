@@ -112,6 +112,7 @@ const FEATURE_SELECT_FOR_CHAT = {
   id: true,
   planUpdatedAt: true,
   workspaceId: true,
+  selectedRepositoryIds: true,
   phases: {
     where: { order: 0 },
     take: 1,
@@ -152,6 +153,7 @@ const FEATURE_SELECT_FOR_CHAT = {
       repositories: {
         orderBy: { createdAt: "asc" as const },
         select: {
+          id: true,
           name: true,
           repositoryUrl: true,
           branch: true,
@@ -237,6 +239,7 @@ export async function sendFeatureChatMessage({
   isPrototype,
   attachments,
   model,
+  selectedRepositoryIds,
   skipOrgContextScout = false,
 }: {
   featureId: string;
@@ -250,6 +253,7 @@ export async function sendFeatureChatMessage({
   isPrototype?: boolean;
   attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>;
   model?: string;
+  selectedRepositoryIds?: string[];
   /**
    * When `true`, skip the org-context scout entirely. Set this when
    * the caller is itself an agent that has already explored the org
@@ -369,10 +373,23 @@ export async function sendFeatureChatMessage({
     const swarmSecretAlias = swarm?.swarmSecretAlias || null;
     const poolName = swarm?.id || null;
     const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
-    const repos = feature.workspace.repositories ?? [];
-    const repoUrl = joinRepoUrls(repos);
-    const baseBranch = repos[0]?.branch || null;
-    const repoName = repos[0]?.name || null;
+    const allRepos = feature.workspace.repositories ?? [];
+
+    let resolvedRepos = allRepos;
+    if (selectedRepositoryIds && selectedRepositoryIds.length > 0) {
+      // First message with explicit selection: persist to Feature and filter
+      await db.feature.update({ where: { id: featureId }, data: { selectedRepositoryIds } });
+      const filtered = allRepos.filter((r) => selectedRepositoryIds.includes(r.id));
+      resolvedRepos = filtered.length > 0 ? filtered : allRepos;
+    } else if (feature.selectedRepositoryIds && feature.selectedRepositoryIds.length > 0) {
+      // Follow-up messages: use stored selection from Feature
+      const filtered = allRepos.filter((r) => feature.selectedRepositoryIds.includes(r.id));
+      resolvedRepos = filtered.length > 0 ? filtered : allRepos;
+    }
+
+    const repoUrl = joinRepoUrls(resolvedRepos);
+    const baseBranch = resolvedRepos[0]?.branch || null;
+    const repoName = resolvedRepos[0]?.name || null;
 
     const dbHistory = await fetchFeatureChatHistory(
       featureId,
