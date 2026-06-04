@@ -1072,3 +1072,95 @@ describe("extractPrArtifact", () => {
     });
   });
 });
+
+import { extractPublishArtifact } from "@/lib/helpers/tasks";
+
+describe("extractPublishArtifact", () => {
+  function makeTask(chatMessages: Array<{ artifacts?: Array<{ id: string; type: string; content: Record<string, unknown> }> }> = []) {
+    return { id: "task-1", status: TaskStatus.IN_PROGRESS, chatMessages };
+  }
+
+  test("returns null when task has no chatMessages", () => {
+    expect(extractPublishArtifact({ id: "t", status: TaskStatus.TODO, chatMessages: undefined })).toBeNull();
+  });
+
+  test("returns null when chatMessages is empty", () => {
+    expect(extractPublishArtifact(makeTask([]))).toBeNull();
+  });
+
+  test("returns null when no publish artifacts exist", () => {
+    const task = makeTask([{ artifacts: [{ id: "a1", type: "CODE", content: {} }] }]);
+    expect(extractPublishArtifact(task)).toBeNull();
+  });
+
+  test("returns null for PUBLISH_SKILL (explicitly excluded)", () => {
+    const task = makeTask([{ artifacts: [{ id: "a1", type: "PUBLISH_SKILL", content: { published: true } }] }]);
+    expect(extractPublishArtifact(task)).toBeNull();
+  });
+
+  test("returns artifact for PUBLISH_WORKFLOW", () => {
+    const task = makeTask([{ artifacts: [{ id: "a1", type: "PUBLISH_WORKFLOW", content: { published: true, workflowName: "My Flow" } }] }]);
+    const result = extractPublishArtifact(task);
+    expect(result).not.toBeNull();
+    expect(result?.type).toBe("PUBLISH_WORKFLOW");
+    expect(result?.content.published).toBe(true);
+    expect(result?.content.name).toBe("My Flow");
+  });
+
+  test("returns artifact for PUBLISH_SCRIPT", () => {
+    const task = makeTask([{ artifacts: [{ id: "a1", type: "PUBLISH_SCRIPT", content: { published: false, scriptName: "My Script" } }] }]);
+    const result = extractPublishArtifact(task);
+    expect(result?.type).toBe("PUBLISH_SCRIPT");
+    expect(result?.content.published).toBe(false);
+    expect(result?.content.name).toBe("My Script");
+  });
+
+  test("returns artifact for PUBLISH_PROMPT", () => {
+    const task = makeTask([{ artifacts: [{ id: "a1", type: "PUBLISH_PROMPT", content: { published: true, promptName: "My Prompt" } }] }]);
+    const result = extractPublishArtifact(task);
+    expect(result?.type).toBe("PUBLISH_PROMPT");
+    expect(result?.content.name).toBe("My Prompt");
+  });
+
+  test("returns the LAST publish artifact when multiple exist across messages", () => {
+    const task = makeTask([
+      { artifacts: [{ id: "a1", type: "PUBLISH_WORKFLOW", content: { published: false } }] },
+      { artifacts: [{ id: "a2", type: "PUBLISH_SCRIPT", content: { published: true } }] },
+    ]);
+    const result = extractPublishArtifact(task);
+    expect(result?.id).toBe("a2");
+    expect(result?.type).toBe("PUBLISH_SCRIPT");
+  });
+
+  test("returns the last artifact when multiple publish artifacts exist within a single message", () => {
+    const task = makeTask([{
+      artifacts: [
+        { id: "a1", type: "PUBLISH_WORKFLOW", content: { published: false } },
+        { id: "a2", type: "PUBLISH_PROMPT", content: { published: true } },
+      ],
+    }]);
+    const result = extractPublishArtifact(task);
+    expect(result?.id).toBe("a2");
+  });
+
+  test("returns correct published boolean (false)", () => {
+    const task = makeTask([{ artifacts: [{ id: "a1", type: "PUBLISH_WORKFLOW", content: { published: false } }] }]);
+    expect(extractPublishArtifact(task)?.content.published).toBe(false);
+  });
+
+  test("returns undefined name when no name fields are present", () => {
+    const task = makeTask([{ artifacts: [{ id: "a1", type: "PUBLISH_PROMPT", content: { published: true } }] }]);
+    expect(extractPublishArtifact(task)?.content.name).toBeUndefined();
+  });
+
+  test("ignores non-publish artifacts alongside publish artifacts and still returns the publish one", () => {
+    const task = makeTask([{
+      artifacts: [
+        { id: "a0", type: "PULL_REQUEST", content: { url: "http://x", status: "IN_PROGRESS" } },
+        { id: "a1", type: "PUBLISH_SCRIPT", content: { published: true, scriptName: "S" } },
+      ],
+    }]);
+    const result = extractPublishArtifact(task);
+    expect(result?.id).toBe("a1");
+  });
+});
