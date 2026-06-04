@@ -299,6 +299,7 @@ describe("PlanStartInput", () => {
         selectedRepoId: null,
         selectedWorkflow: null,
         attachmentFile: undefined,
+        selectedRepositoryIds: [],
       });
     });
 
@@ -322,6 +323,7 @@ describe("PlanStartInput", () => {
         selectedRepoId: null,
         selectedWorkflow: null,
         attachmentFile: undefined,
+        selectedRepositoryIds: [],
       });
     });
 
