@@ -82,10 +82,10 @@ vi.mock("@/hooks/useStakworkGeneration", () => ({
   }),
 }));
 
-// Mock useAgentLogs so ArtifactsPanel doesn't need Pusher or fetch
-const mockUseAgentLogs = vi.fn(() => ({ agentLogs: [], lastUpdated: {} }));
-vi.mock("@/hooks/useAgentLogs", () => ({
-  useAgentLogs: (...args: unknown[]) => mockUseAgentLogs(...args),
+// Mock useWorkflowLogs so ArtifactsPanel doesn't need Pusher or fetch
+const mockUseWorkflowLogs = vi.fn(() => ({ agentLogs: [], lastUpdated: {} }));
+vi.mock("@/hooks/useWorkflowLogs", () => ({
+  useWorkflowLogs: (...args: unknown[]) => mockUseWorkflowLogs(...args),
 }));
 
 vi.mock("@/app/w/[slug]/plan/[featureId]/components/PlanArtifact", () => ({
@@ -165,7 +165,7 @@ describe("ArtifactsPanel — LOGS tab", () => {
   });
 
   it("does not show LOGS tab when useAgentLogs returns empty list", async () => {
-    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
+    mockUseWorkflowLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
 
     const feature = makeFeature();
     render(
@@ -186,7 +186,7 @@ describe("ArtifactsPanel — LOGS tab", () => {
   });
 
   it("shows LOGS tab and renders LogsArtifactPanel when useAgentLogs returns logs", async () => {
-    mockUseAgentLogs.mockReturnValue({
+    mockUseWorkflowLogs.mockReturnValue({
       agentLogs: [
         { id: "log-abc", agent: "coding-agent-feat-1", createdAt: "2026-05-28T09:00:00Z" },
       ],
@@ -216,7 +216,7 @@ describe("ArtifactsPanel — LOGS tab", () => {
 
   it("passes lastUpdated from useAgentLogs to LogsArtifactPanel", async () => {
     const lastUpdated = { "log-abc": 1234567890 };
-    mockUseAgentLogs.mockReturnValue({
+    mockUseWorkflowLogs.mockReturnValue({
       agentLogs: [
         { id: "log-abc", agent: "coding-agent-feat-1", createdAt: "2026-05-28T09:00:00Z" },
       ],
@@ -244,14 +244,15 @@ describe("ArtifactsPanel — LOGS tab", () => {
     });
   });
 
-  it("calls useAgentLogs with featureId and workspaceId", async () => {
-    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
+  it("calls useWorkflowLogs with taskId, featureId, and workspaceId", async () => {
+    mockUseWorkflowLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
 
     const feature = makeFeature();
     render(
       React.createElement(ArtifactsPanel, {
         artifacts: [],
         workspaceId: "ws-42",
+        taskId: "task-99",
         featureId: "feat-99",
         feature,
         onFeatureUpdate: vi.fn(),
@@ -260,30 +261,54 @@ describe("ArtifactsPanel — LOGS tab", () => {
     );
 
     await waitFor(() => {
-      expect(mockUseAgentLogs).toHaveBeenCalledWith("feat-99", "ws-42");
+      expect(mockUseWorkflowLogs).toHaveBeenCalledWith("task-99", "feat-99", "ws-42");
     });
   });
 
-  it("passes null to useAgentLogs when there is no feature", async () => {
-    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
+  it("passes null taskId and featureId to useWorkflowLogs when none are provided", async () => {
+    mockUseWorkflowLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
 
-    // No feature / onFeatureUpdate props → hasFeature is false
     render(
       React.createElement(ArtifactsPanel, {
         artifacts: [],
         workspaceId: "ws-1",
-        featureId: "feat-1",
         planData,
       })
     );
 
     await waitFor(() => {
-      expect(mockUseAgentLogs).toHaveBeenCalledWith(null, null);
+      expect(mockUseWorkflowLogs).toHaveBeenCalledWith(null, null, "ws-1");
     });
   });
 
+  it("shows LOGS tab for a workflow task with no linked feature", async () => {
+    mockUseWorkflowLogs.mockReturnValue({
+      agentLogs: [
+        { id: "log-wf1", agent: "workflow-agent", createdAt: "2026-05-28T10:00:00Z" },
+      ],
+      lastUpdated: {},
+    });
+
+    // No feature / featureId / onFeatureUpdate — pure workflow task
+    render(
+      React.createElement(ArtifactsPanel, {
+        artifacts: [],
+        workspaceId: "ws-1",
+        taskId: "task-wf-1",
+        controlledTab: "LOGS" as const,
+        onControlledTabChange: vi.fn(),
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("logs-panel")).toBeDefined();
+    });
+
+    expect(screen.getByTestId("logs-panel").getAttribute("data-log-ids")).toBe("log-wf1");
+  });
+
   it("shows LOGS tab when streamingLog is set even with no canonical logs", async () => {
-    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
+    mockUseWorkflowLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
 
     const feature = makeFeature();
     render(
@@ -306,7 +331,7 @@ describe("ArtifactsPanel — LOGS tab", () => {
   });
 
   it("passes streamingLog to LogsArtifactPanel", async () => {
-    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
+    mockUseWorkflowLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
 
     const feature = makeFeature();
     const streamingLog = {
@@ -335,7 +360,7 @@ describe("ArtifactsPanel — LOGS tab", () => {
   });
 
   it("does not show LOGS tab when both agentLogs and streamingLog are empty/null", async () => {
-    mockUseAgentLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
+    mockUseWorkflowLogs.mockReturnValue({ agentLogs: [], lastUpdated: {} });
 
     const feature = makeFeature();
     render(
