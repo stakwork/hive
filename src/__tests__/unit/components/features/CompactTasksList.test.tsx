@@ -139,6 +139,14 @@ vi.mock("@/components/tasks/PRStatusBadge", () => ({
   ),
 }));
 
+vi.mock("@/components/tasks/PublishStatusBadge", () => ({
+  PublishStatusBadge: ({ type, published }: any) => (
+    <div data-testid="publish-badge" data-type={type} data-published={String(published)}>
+      Publish
+    </div>
+  ),
+}));
+
 vi.mock("@/components/ui/action-menu", () => ({
   ActionMenu: ({ actions }: any) => (
     <div data-testid="action-menu">
@@ -248,6 +256,7 @@ describe("CompactTasksList", () => {
     runBuild: true,
     runTestSuite: true,
     prArtifact: null,
+    publishArtifact: null,
     deploymentStatus: null,
     deployedToStagingAt: null,
     deployedToProductionAt: null,
@@ -2655,6 +2664,81 @@ describe("CompactTasksList", () => {
       expect(screen.queryByText("WORKFLOW")).not.toBeInTheDocument();
       expect(screen.queryByText("SCRIPT")).not.toBeInTheDocument();
       expect(screen.queryByText("PROMPT")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("PublishStatusBadge", () => {
+    test("renders PublishStatusBadge when task has a publishArtifact", () => {
+      const task = createMockTask({
+        id: "task-with-publish",
+        status: "TODO",
+        publishArtifact: {
+          id: "artifact-pub-1",
+          type: "PUBLISH_WORKFLOW" as const,
+          content: { published: true, name: "My Flow" },
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const badge = screen.getByTestId("publish-badge");
+      expect(badge).toBeInTheDocument();
+      expect(badge.getAttribute("data-type")).toBe("PUBLISH_WORKFLOW");
+      expect(badge.getAttribute("data-published")).toBe("true");
+    });
+
+    test("does not render PublishStatusBadge when task has no publishArtifact", () => {
+      const task = createMockTask({
+        id: "task-no-publish",
+        status: "TODO",
+        publishArtifact: null,
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("publish-badge")).not.toBeInTheDocument();
+    });
+
+    test("renders publish badge with unpublished state when published=false", () => {
+      const task = createMockTask({
+        id: "task-unpublished",
+        status: "TODO",
+        publishArtifact: {
+          id: "artifact-pub-2",
+          type: "PUBLISH_SCRIPT" as const,
+          content: { published: false, name: "My Script" },
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const badge = screen.getByTestId("publish-badge");
+      expect(badge.getAttribute("data-type")).toBe("PUBLISH_SCRIPT");
+      expect(badge.getAttribute("data-published")).toBe("false");
     });
   });
 });

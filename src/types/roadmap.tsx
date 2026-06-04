@@ -606,6 +606,12 @@ export type PrArtifact = {
   };
 } | null;
 
+export type PublishArtifact = {
+  id: string;
+  type: "PUBLISH_WORKFLOW" | "PUBLISH_SCRIPT" | "PUBLISH_PROMPT";
+  content: { published?: boolean; name?: string };
+} | null;
+
 export type RoadmapTaskListItem = Omit<RoadmapTaskListItemBase, 'assignee'> & {
   assignee: AssigneeWithIcon | null;
   prArtifact?: PrArtifact;

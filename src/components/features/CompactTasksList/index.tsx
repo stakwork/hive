@@ -18,18 +18,20 @@ import {
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
+import { PublishStatusBadge } from "@/components/tasks/PublishStatusBadge";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { TargetSelector, encodeTargetValue, type TargetSelection } from "@/components/shared/TargetSelector";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import { usePusherConnection, type TaskTitleUpdateEvent, type DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
-import type { FeatureDetail, PrArtifact } from "@/types/roadmap";
+import type { FeatureDetail, PrArtifact, PublishArtifact } from "@/types/roadmap";
 import type { TaskStatus, WorkflowStatus, WorkflowTaskType } from "@prisma/client";
 import { toast } from "sonner";
 
 type TaskWithPrArtifact = FeatureDetail["phases"][0]["tasks"][0] & {
   prArtifact?: PrArtifact;
+  publishArtifact?: PublishArtifact;
 };
 
 const WORKFLOW_TASK_TYPES = ["SKILL", "WORKFLOW", "SCRIPT", "PROMPT"] as const;
@@ -693,6 +695,13 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   <PRStatusBadge
                     url={prArtifact.content.url}
                     status={prArtifact.content.status}
+                  />
+                )}
+                {task.publishArtifact && (
+                  <PublishStatusBadge
+                    type={task.publishArtifact.type}
+                    published={task.publishArtifact.content.published ?? false}
+                    onClick={() => router.push(getTaskRoute(task))}
                   />
                 )}
                 {isTerminalWorkflow && (
