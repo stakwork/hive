@@ -160,8 +160,8 @@ describe("POST /api/webhook/agent-logs — Pusher broadcast", () => {
     expect(payload.isNew).toBe(false);
   });
 
-  test("does NOT broadcast when feature_id is absent", async () => {
-    const { workspace, feature } = testData;
+  test("broadcasts on the task channel when task_id is present but feature_id is absent", async () => {
+    const { workspace } = testData;
 
     // Create a task to satisfy the "at least one association" requirement
     const task = await db.task.create({
@@ -185,8 +185,13 @@ describe("POST /api/webhook/agent-logs — Pusher broadcast", () => {
       const response = await POST(request);
       expect(response.status).toBe(201);
 
-      // Pusher should NOT be called when there's no feature_id
-      expect(mockPusherTrigger).not.toHaveBeenCalled();
+      // Pusher should be called on the task channel, not the feature channel
+      expect(mockPusherTrigger).toHaveBeenCalledTimes(1);
+      const [channel, event, payload] = mockPusherTrigger.mock.calls[0];
+      expect(channel).toBe(`task-${task.id}`);
+      expect(event).toBe("agent-log-updated");
+      expect(payload.agent).toBe("coder-agent-xyz");
+      expect(payload.isNew).toBe(true);
     } finally {
       await db.agentLog.deleteMany({ where: { taskId: task.id } });
       await db.task.deleteMany({ where: { id: task.id } });
