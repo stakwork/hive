@@ -70,7 +70,7 @@ describe("PublishScriptArtifact", () => {
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        "/api/workflow/scripts/versions/1/publish",
+        "/api/workflow/scripts/1/versions/1/publish",
         { method: "POST" }
       );
     });
@@ -142,7 +142,7 @@ describe("PublishScriptArtifact", () => {
     fireEvent.click(screen.getByRole("button", { name: /publish/i }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Missing script version ID");
+      expect(toast.error).toHaveBeenCalledWith("Missing script ID or version ID");
     });
     expect(global.fetch).not.toHaveBeenCalled();
   });
