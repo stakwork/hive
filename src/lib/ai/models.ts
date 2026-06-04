@@ -96,6 +96,27 @@ export function setStoredPlanModelPreference(value: string): void {
   }
 }
 
+const PLAN_REPO_PREFERENCE_KEY = (slug: string) => `plan_repo_preference_${slug}`;
+
+export function getPlanRepoPreference(workspaceSlug: string): string[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(PLAN_REPO_PREFERENCE_KEY(workspaceSlug));
+    return raw ? (JSON.parse(raw) as string[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setPlanRepoPreference(workspaceSlug: string, ids: string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(PLAN_REPO_PREFERENCE_KEY(workspaceSlug), JSON.stringify(ids));
+  } catch {
+    /* silent */
+  }
+}
+
 export function getApiKeyForModel(model: ModelName | string): string | undefined {
   if (model.includes("/")) {
     const provider = model.split("/")[0].toUpperCase();

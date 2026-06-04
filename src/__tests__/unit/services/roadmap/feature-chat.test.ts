@@ -47,6 +47,7 @@ vi.mock("@/lib/encryption", () => ({ EncryptionService: { getInstance: vi.fn(() 
 import { db } from "@/lib/db";
 import { callStakworkAPI } from "@/services/task-workflow";
 import { fetchFeatureChatHistory, sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
+import { joinRepoUrls } from "@/lib/helpers/repository";
 
 const mockFindMany = db.chatMessage.findMany as ReturnType<typeof vi.fn>;
 const mockCallStakworkAPI = vi.mocked(callStakworkAPI);
@@ -274,16 +275,19 @@ describe("filteredHistory logic", () => {
 // Tests for sendFeatureChatMessage — model (taskModel) forwarding
 // ──────────────────────────────────────────────────────────────────────────────
 
-function makeFeature() {
+function makeFeature(overrides: Record<string, unknown> = {}) {
   return {
     id: "feature-123",
     workspaceId: "workspace-1",
     planUpdatedAt: null,
     workflowStatus: "PENDING",
+    selectedRepositoryIds: [],
     phases: [],
     workspace: {
       slug: "test-workspace",
       ownerId: "user-123",
+      sourceControlOrgId: null,
+      sourceControlOrg: null,
       swarm: {
         swarmUrl: "https://swarm.test.com/api",
         swarmSecretAlias: "alias",
@@ -294,6 +298,7 @@ function makeFeature() {
       members: [],
       repositories: [],
     },
+    ...overrides,
   };
 }
 
@@ -367,3 +372,168 @@ describe("sendFeatureChatMessage — taskModel forwarding", () => {
     }
   );
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests for sendFeatureChatMessage — selectedRepositoryIds filtering
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("sendFeatureChatMessage — selectedRepositoryIds filtering", () => {
+  const repo1 = { id: "repo-1", name: "alpha", repositoryUrl: "https://github.com/org/alpha", branch: "main" };
+  const repo2 = { id: "repo-2", name: "beta", repositoryUrl: "https://github.com/org/beta", branch: "main" };
+  const repo3 = { id: "repo-3", name: "gamma", repositoryUrl: "https://github.com/org/gamma", branch: "main" };
+
+  const mockJoinRepoUrls = vi.mocked(joinRepoUrls);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.chatMessage.create).mockResolvedValue(makeChatMsg() as any);
+    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+    vi.mocked(db.artifact.findFirst).mockResolvedValue(null);
+    vi.mocked(db.feature.update).mockResolvedValue({} as any);
+    mockCallStakworkAPI.mockResolvedValue(null);
+    mockJoinRepoUrls.mockImplementation((repos) =>
+      repos.map((r) => r.repositoryUrl).join(",")
+    );
+  });
+
+  test("selectedRepositoryIds param provided → DB updated with those IDs and filtered repos used", async () => {
+    vi.mocked(db.feature.findUnique).mockResolvedValue(
+      makeFeature({
+        selectedRepositoryIds: [],
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-123",
+          sourceControlOrgId: null,
+          sourceControlOrg: null,
+          swarm: { swarmUrl: "https://swarm.test.com/api", swarmSecretAlias: "alias", poolName: "pool-1", id: "swarm-id", swarmApiKey: null },
+          members: [],
+          repositories: [repo1, repo2, repo3],
+        },
+      }) as any,
+    );
+
+    await sendFeatureChatMessage({
+      featureId: "feature-123",
+      userId: "user-123",
+      message: "Hello",
+      selectedRepositoryIds: ["repo-1", "repo-2"],
+    });
+
+    // DB persisted the selection
+    expect(vi.mocked(db.feature.update)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "feature-123" },
+        data: { selectedRepositoryIds: ["repo-1", "repo-2"] },
+      }),
+    );
+
+    // joinRepoUrls received only the two selected repos
+    expect(mockJoinRepoUrls).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "repo-1" }),
+        expect.objectContaining({ id: "repo-2" }),
+      ]),
+    );
+    const passedRepos = mockJoinRepoUrls.mock.calls[0][0];
+    expect(passedRepos).toHaveLength(2);
+    expect(passedRepos.map((r: { id: string }) => r.id)).toEqual(
+      expect.arrayContaining(["repo-1", "repo-2"]),
+    );
+  });
+
+  test("empty selectedRepositoryIds param + stored IDs → stored selection applied", async () => {
+    vi.mocked(db.feature.findUnique).mockResolvedValue(
+      makeFeature({
+        selectedRepositoryIds: ["repo-3"],
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-123",
+          sourceControlOrgId: null,
+          sourceControlOrg: null,
+          swarm: { swarmUrl: "https://swarm.test.com/api", swarmSecretAlias: "alias", poolName: "pool-1", id: "swarm-id", swarmApiKey: null },
+          members: [],
+          repositories: [repo1, repo2, repo3],
+        },
+      }) as any,
+    );
+
+    await sendFeatureChatMessage({
+      featureId: "feature-123",
+      userId: "user-123",
+      message: "Hello",
+      // no selectedRepositoryIds provided
+    });
+
+    // No DB update for selectedRepositoryIds (follow-up mode)
+    expect(vi.mocked(db.feature.update)).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ selectedRepositoryIds: expect.anything() }) }),
+    );
+
+    // joinRepoUrls received only repo-3
+    const passedRepos = mockJoinRepoUrls.mock.calls[0][0];
+    expect(passedRepos).toHaveLength(1);
+    expect(passedRepos[0].id).toBe("repo-3");
+  });
+
+  test("both param and stored IDs empty → all repos fallback", async () => {
+    vi.mocked(db.feature.findUnique).mockResolvedValue(
+      makeFeature({
+        selectedRepositoryIds: [],
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-123",
+          sourceControlOrgId: null,
+          sourceControlOrg: null,
+          swarm: { swarmUrl: "https://swarm.test.com/api", swarmSecretAlias: "alias", poolName: "pool-1", id: "swarm-id", swarmApiKey: null },
+          members: [],
+          repositories: [repo1, repo2, repo3],
+        },
+      }) as any,
+    );
+
+    await sendFeatureChatMessage({
+      featureId: "feature-123",
+      userId: "user-123",
+      message: "Hello",
+    });
+
+    const passedRepos = mockJoinRepoUrls.mock.calls[0][0];
+    expect(passedRepos).toHaveLength(3);
+  });
+
+  test("filter produces no matches → falls back to all repos", async () => {
+    vi.mocked(db.feature.findUnique).mockResolvedValue(
+      makeFeature({
+        selectedRepositoryIds: [],
+        workspace: {
+          slug: "test-workspace",
+          ownerId: "user-123",
+          sourceControlOrgId: null,
+          sourceControlOrg: null,
+          swarm: { swarmUrl: "https://swarm.test.com/api", swarmSecretAlias: "alias", poolName: "pool-1", id: "swarm-id", swarmApiKey: null },
+          members: [],
+          repositories: [repo1, repo2],
+        },
+      }) as any,
+    );
+
+    await sendFeatureChatMessage({
+      featureId: "feature-123",
+      userId: "user-123",
+      message: "Hello",
+      selectedRepositoryIds: ["repo-999"], // non-existent ID
+    });
+
+    // DB was updated with the IDs (persist happened)
+    expect(vi.mocked(db.feature.update)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { selectedRepositoryIds: ["repo-999"] },
+      }),
+    );
+
+    // Fell back to all repos because filter matched nothing
+    const passedRepos = mockJoinRepoUrls.mock.calls[0][0];
+    expect(passedRepos).toHaveLength(2);
+  });
+});
+
