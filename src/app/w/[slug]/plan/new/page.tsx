@@ -21,6 +21,7 @@ export default function NewPlanPage() {
       selectedWorkflow?: { workflowId: number; workflowName: string; workflowRefId: string } | null;
       model?: string;
       attachmentFile?: File;
+      selectedRepositoryIds?: string[];
     },
   ) => {
     setIsLoading(true);
@@ -115,7 +116,7 @@ export default function NewPlanPage() {
       const chatRes = await fetch(`/api/features/${feature.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, model: options?.model, attachments }),
+        body: JSON.stringify({ message, model: options?.model, attachments, selectedRepositoryIds: options?.selectedRepositoryIds }),
       });
 
       if (!chatRes.ok) {

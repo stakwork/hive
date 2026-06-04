@@ -154,7 +154,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory, isPrototype, attachments = [] as AttachmentRequest[], model } = body;
+    const { message, contextTags = [], sourceWebsocketID, webhook, replyId, history: bodyHistory, isPrototype, attachments = [] as AttachmentRequest[], model, selectedRepositoryIds } = body;
 
     if (!message && attachments.length === 0) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -172,6 +172,7 @@ export async function POST(
       isPrototype,
       attachments,
       model,
+      selectedRepositoryIds,
     });
 
     const clientMessage = {
