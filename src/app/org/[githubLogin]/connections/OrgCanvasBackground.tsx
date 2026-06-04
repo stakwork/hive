@@ -3029,6 +3029,7 @@ export function OrgCanvasBackground({
           theme={connectionsTheme}
           editable
           zoomNavigation
+          showExportButton={true}
           onResolveCanvas={onResolveCanvas}
           onBreadcrumbsChange={handleBreadcrumbsChange}
           onSelectionChange={handleSelectionChange}
