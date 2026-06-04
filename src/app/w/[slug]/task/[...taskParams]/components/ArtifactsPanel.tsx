@@ -422,7 +422,7 @@ export function ArtifactsPanel({
           )}
           {hasFeature && showTasksTab && (
             <div className="h-full" hidden={activeTab !== "TASKS"}>
-              <div className="h-full overflow-auto p-4">
+              <div className="relative h-full overflow-auto p-4">
                 <CompactTasksList
                   featureId={featureId!}
                   feature={feature!}
