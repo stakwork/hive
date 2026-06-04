@@ -29,7 +29,11 @@ export function PublishPromptArtifact({
     try {
       const response = await fetch(
         `/api/workflow/prompts/${content.promptId}/versions/${content.promptVersionId}/publish`,
-        { method: "POST" }
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ artifactId: artifact.id }),
+        }
       );
 
       if (!response.ok) {

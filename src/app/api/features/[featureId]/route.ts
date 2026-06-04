@@ -7,11 +7,18 @@ import {
   notifyFeatureContentRefresh,
 } from "@/lib/canvas";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
-import { extractPrArtifact } from "@/lib/helpers/tasks";
-import { TaskStatus } from "@prisma/client";
+import { extractPrArtifact, extractPublishArtifact } from "@/lib/helpers/tasks";
+import { TaskStatus, ArtifactType } from "@prisma/client";
 import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
 import { toPublicUser } from "@/lib/auth/public-redact";
+
+const TASK_ARTIFACT_TYPES = [
+  ArtifactType.PULL_REQUEST,
+  ArtifactType.PUBLISH_WORKFLOW,
+  ArtifactType.PUBLISH_SCRIPT,
+  ArtifactType.PUBLISH_PROMPT,
+];
 
 const TASK_SELECT = {
   id: true,
@@ -65,14 +72,13 @@ const TASK_SELECT = {
   chatMessages: {
     select: {
       artifacts: {
-        where: { type: "PULL_REQUEST" as const },
+        where: { type: { in: TASK_ARTIFACT_TYPES } },
         select: {
           id: true,
           type: true,
           content: true,
         },
-        orderBy: { createdAt: "desc" as const },
-        take: 1,
+        orderBy: { createdAt: "asc" as const },
       },
     },
   },
@@ -237,12 +243,13 @@ export async function GET(
           if (prArtifact?.content?.status === "DONE") {
             task.status = TaskStatus.DONE;
           }
+          const publishArtifact = extractPublishArtifact(task);
           const { chatMessages: _, ...taskWithoutMessages } = task;
           const rawAssignee = task.systemAssigneeType && !task.assignee
             ? getSystemAssigneeUser(task.systemAssigneeType)
             : task.assignee;
           const assignee = redactForPublic ? toPublicUser(rawAssignee) : rawAssignee;
-          return { ...taskWithoutMessages, assignee, prArtifact };
+          return { ...taskWithoutMessages, assignee, prArtifact, publishArtifact };
         })
       );
     };
