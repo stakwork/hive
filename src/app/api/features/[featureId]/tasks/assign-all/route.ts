@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateFeatureAccess } from "@/services/roadmap/utils";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
@@ -112,24 +112,37 @@ export async function POST(
     });
     const assignedCount = updateResult.count;
 
-    // Step 8: Eagerly trigger sweeps
+    // Step 8: Eagerly trigger sweeps.
+    //
+    // Run these in `after()` rather than fire-and-forget. On Vercel the lambda
+    // is frozen once the HTTP response is sent, which can suspend a dispatch
+    // between its committed IN_PROGRESS claim and the compensating rollback —
+    // stranding the task in limbo (IN_PROGRESS with no stakworkProjectId) until
+    // the 24h stale sweep rescues it. `after()` keeps the function alive until
+    // the sweeps settle, so a failed dispatch rolls itself back to PENDING.
     const ws = feature.workspace;
     const swarm = ws?.swarm;
     if (ws) {
-      // Workflow sweep always runs unconditionally (no pod needed)
-      processWorkflowTaskSweep(ws.id, ws.slug).catch(() => {});
-
-      // Pod-gated repo sweep only when machines are available
-      if (swarm?.id) {
+      after(async () => {
+        // Workflow sweep always runs unconditionally (no pod needed)
         try {
-          const poolStatus = await getPoolStatusFromPods(swarm.id, ws.id);
-          if (poolStatus.unusedVms > 1) {
-            processTicketSweep(ws.id, ws.slug, poolStatus.unusedVms - 1).catch(() => {});
-          }
-        } catch {
-          // Pool query failed — skip eager start
+          await processWorkflowTaskSweep(ws.id, ws.slug);
+        } catch (error) {
+          console.error("Eager workflow task sweep failed:", error);
         }
-      }
+
+        // Pod-gated repo sweep only when machines are available
+        if (swarm?.id) {
+          try {
+            const poolStatus = await getPoolStatusFromPods(swarm.id, ws.id);
+            if (poolStatus.unusedVms > 1) {
+              await processTicketSweep(ws.id, ws.slug, poolStatus.unusedVms - 1);
+            }
+          } catch (error) {
+            console.error("Eager ticket sweep failed:", error);
+          }
+        }
+      });
     }
 
     // Step 9: Update feature status from tasks
