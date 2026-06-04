@@ -100,6 +100,7 @@ model User {
   lightningPayments        LightningPayment[]
   workspaceAccessRequests  WorkspaceAccessRequest[]
   resolvedAccessRequests   WorkspaceAccessRequest[] @relation("AccessRequestResolver")
+  createdSecrets           WorkspaceSecret[]        @relation("SecretCreator")
   initiativeAssignments    Initiative[]             @relation("InitiativeAssignee")
   milestoneAssignments     Milestone[]              @relation("MilestoneAssignee")
 
@@ -218,6 +219,7 @@ model Workspace {
   updatedAt               DateTime                 @updatedAt @map("updated_at")
   ownerId                 String                   @map("owner_id")
   stakworkApiKey          String?                  @map("stakwork_api_key")
+  stakworkCustomerId      String?                  @map("stakwork_customer_id")
   originalSlug            String?                  @map("original_slug")
   sourceControlOrgId      String?                  @map("source_control_org_id")
   mission                 String?
@@ -260,6 +262,7 @@ model Workspace {
   apiKeys                 WorkspaceApiKey[]
   members                 WorkspaceMember[]
   workspaceAccessRequests WorkspaceAccessRequest[]
+  workspaceSecrets        WorkspaceSecret[]
   owner                   User                     @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   sourceControlOrg        SourceControlOrg?        @relation(fields: [sourceControlOrgId], references: [id])
 
@@ -329,6 +332,21 @@ model WorkspaceApiKey {
   @@index([keyHash])
   @@index([createdById])
   @@map("workspace_api_keys")
+}
+
+model WorkspaceSecret {
+  id             String    @id @default(cuid())
+  workspaceId    String    @map("workspace_id")
+  name           String
+  encryptedValue String    @map("encrypted_value")
+  description    String?
+  createdById    String    @map("created_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy      User      @relation("SecretCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("workspace_secrets")
 }
 
 model Swarm {

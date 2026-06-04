@@ -162,6 +162,13 @@ class MockStakworkStateManager {
     return this.secrets.get(name)?.value;
   }
 
+  listSecrets(customerId?: string): MockStakworkSecret[] {
+    // Secrets are stored flat (not per-customer) in mock state — return all
+    // The customerId param is accepted for API compatibility but not used for filtering
+    void customerId;
+    return Array.from(this.secrets.values());
+  }
+
   reset(): void {
     this.projects.forEach((project) => {
       if (project.completionTimer) {
