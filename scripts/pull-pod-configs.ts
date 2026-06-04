@@ -54,7 +54,6 @@ async function main() {
         name: true,
         repositories: {
           select: { repositoryUrl: true },
-          take: 1,
         },
         swarm: {
           select: { name: true, containerFiles: true },
@@ -98,8 +97,12 @@ async function main() {
     }
 
     if (blocks.length > 0) {
-      const header = repoHeader(workspace.repositories[0]?.repositoryUrl, slug);
-      masterSections.push(`# ${header}\n\n${blocks.join("\n\n")}`);
+      const repos = workspace.repositories
+        .map((r) => repoHeader(r.repositoryUrl, ""))
+        .filter(Boolean)
+        .join("\n");
+      const repoList = repos ? `${repos}\n\n` : "";
+      masterSections.push(`# ${slug}\n\n${repoList}${blocks.join("\n\n")}`);
     }
   }
 
