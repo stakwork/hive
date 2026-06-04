@@ -21,6 +21,11 @@ import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const encryptionService = EncryptionService.getInstance();
 
+// Upper bound on the Stakwork dispatch call. Kept comfortably under the
+// platform function maxDuration so the request fails fast (and the claim is
+// rolled back) instead of being killed mid-flight and stranding the task.
+const STAKWORK_REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * Create a task and immediately trigger Stakwork workflow
  * This replicates the flow: POST /api/tasks -> POST /api/chat/message
@@ -884,6 +889,13 @@ export async function callStakworkAPI(params: {
         Authorization: `Token token=${config.STAKWORK_API_KEY}`,
         "Content-Type": "application/json",
       },
+      // Bound the call so a slow/hung Stakwork can't outlive the function's
+      // maxDuration. An unbounded fetch here strands tasks in limbo:
+      // startTaskWorkflow commits the IN_PROGRESS claim before this call, and
+      // its compensating rollback only runs if we return control to it. On
+      // timeout we throw → caught below → { error } → caller rolls the claim
+      // back to PENDING (see startTaskWorkflow).
+      signal: AbortSignal.timeout(STAKWORK_REQUEST_TIMEOUT_MS),
     });
 
     if (!response.ok) {
