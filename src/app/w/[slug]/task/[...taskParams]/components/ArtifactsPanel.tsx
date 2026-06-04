@@ -17,7 +17,7 @@ import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
-import { useAgentLogs } from "@/hooks/useAgentLogs";
+import { useWorkflowLogs } from "@/hooks/useWorkflowLogs";
 import type { FeatureDetail } from "@/types/roadmap";
 
 const VALID_PLAN_TABS: ArtifactType[] = ["PLAN", "TASKS", "LOGS"];
@@ -162,10 +162,11 @@ export function ArtifactsPanel({
   const hasTasks = !!(feature?.phases?.[0]?.tasks && feature.phases[0].tasks.length > 0);
   const hasArchitecture = !!feature?.architecture;
 
-  // Live agent logs for the current feature (plan mode only)
-  const { agentLogs, lastUpdated: agentLogsLastUpdated } = useAgentLogs(
-    hasFeature ? featureId : null,
-    hasFeature ? workspaceId : null,
+  // Live agent logs for the current task and/or feature
+  const { agentLogs, lastUpdated: agentLogsLastUpdated } = useWorkflowLogs(
+    taskId ?? null,
+    featureId ?? null,
+    workspaceId ?? null,
   );
 
   // Fetch attachment count once when tasks first exist — drives Verify tab enabled state
@@ -316,7 +317,7 @@ export function ArtifactsPanel({
     if (planData) tabs.push("PLAN");
     if (hasFeature && showTasksTab) tabs.push("TASKS");
     if (hasFeature && showVerifyTab) tabs.push("VERIFY");
-    if (hasFeature && (agentLogs.length > 0 || !!streamingLog)) tabs.push("LOGS");
+    if (agentLogs.length > 0 || !!streamingLog) tabs.push("LOGS");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
     if (graphArtifacts.length > 0) tabs.push("GRAPH");
@@ -324,7 +325,7 @@ export function ArtifactsPanel({
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [planData, hasFeature, showTasksTab, showVerifyTab, agentLogs.length, !!streamingLog, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [planData, hasFeature, showTasksTab, showVerifyTab, agentLogs.length, streamingLog, codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab, or fall back when active tab is removed
   // Guard: don't reset during active generation to prevent TASKS tab from disappearing
@@ -436,7 +437,7 @@ export function ArtifactsPanel({
               </div>
             </div>
           )}
-          {hasFeature && (agentLogs.length > 0 || !!streamingLog) && (
+          {(agentLogs.length > 0 || !!streamingLog) && (
             <div className="h-full" hidden={activeTab !== "LOGS"}>
               <LogsArtifactPanel
                 logs={agentLogs}
