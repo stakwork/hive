@@ -330,23 +330,7 @@ export function devcontainerJsonContent(repoName: string) {
 }
 
 export function dockerComposeContent() {
-  return `version: '3.8'
-networks:
-  app_network:
-    driver: bridge
-services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ../..:/workspaces:cached
-    command: sleep infinity
-    networks:
-      - app_network
-    extra_hosts:
-      - "localhost:172.17.0.1"
-      - "host.docker.internal:host-gateway"
+  return `services: {}
 `;
 }
 
