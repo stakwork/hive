@@ -848,6 +848,20 @@ export async function callStakworkAPI(params: {
     }
   }
 
+  // Diagnostic: surfaces how the model resolved to an LLM provider/key
+  // route for this dispatch. Look for "[callStakworkAPI] model routing"
+  // in Vercel logs (filter by /api/chat/message). `baseUrl` should carry
+  // the model's provider suffix (e.g. /genai/v1beta for google/* models).
+  console.log("[callStakworkAPI] model routing", {
+    taskId,
+    mode,
+    effectiveModel,
+    bifrostActive: Boolean(bifrost),
+    baseUrl: vars.baseUrl,
+    apiKeyPrefix: typeof vars.apiKey === "string" ? vars.apiKey.slice(0, 7) : null,
+    googleKeySet: Boolean(process.env.GOOGLE_API_KEY),
+  });
+
   // Get workflow ID (replicating workflow selection logic)
   const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
 
