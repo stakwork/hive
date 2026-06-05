@@ -360,6 +360,13 @@ jobs:
           npx prisma migrate resolve --rolled-back "20260411162658_add_connection_model" 2>&1 || true
           npx prisma migrate resolve --applied "20260411162658_add_connection_model" 2>&1 || true
 
+          # If 20260412042654_add_connection_architecture is stuck in a failed state
+          # (ALTER TABLE failed because "connections" table didn't exist yet from a prior
+          # partial run), roll it back so Prisma can re-run it. The migration SQL now
+          # uses an idempotent DO $$ block so re-running is safe.
+          echo "Resolving any previously-failed migration 20260412042654_add_connection_architecture..."
+          npx prisma migrate resolve --rolled-back "20260412042654_add_connection_architecture" 2>&1 || true
+
           # Retry prisma migrate deploy — Neon endpoint may sleep between steps
           for attempt in 1 2 3 4 5; do
             if npx prisma migrate deploy; then
@@ -376,6 +383,7 @@ jobs:
             npx prisma migrate resolve --rolled-back "20260517120000_add_macaroon_org_and_trust_fields" 2>&1 || true
             npx prisma migrate resolve --rolled-back "20260411162658_add_connection_model" 2>&1 || true
             npx prisma migrate resolve --applied "20260411162658_add_connection_model" 2>&1 || true
+            npx prisma migrate resolve --rolled-back "20260412042654_add_connection_architecture" 2>&1 || true
             sleep 15
           done
 
