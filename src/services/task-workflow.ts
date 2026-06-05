@@ -827,7 +827,14 @@ export async function callStakworkAPI(params: {
   // deferred to a follow-up so this initial wiring stays small.
   const bifrost = await getBifrostForLLM(
     { workspaceId, workspaceSlug, userId },
-    { agentName: mode === "plan_mode" ? "plan-agent" : "coder-agent" },
+    {
+      agentName: mode === "plan_mode" ? "plan-agent" : "coder-agent",
+      // Pass the selected model so the Bifrost VK reconciler resolves
+      // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
+      // for google/* models). Without this it defaults to anthropic
+      // and Google/OpenAI models get routed to the wrong provider.
+      model: effectiveModel ?? undefined,
+    },
   );
   if (bifrost) {
     vars.apiKey = bifrost.apiKey;
@@ -840,6 +847,20 @@ export async function callStakworkAPI(params: {
       vars.headers = bifrost.headers;
     }
   }
+
+  // Diagnostic: surfaces how the model resolved to an LLM provider/key
+  // route for this dispatch. Look for "[callStakworkAPI] model routing"
+  // in Vercel logs (filter by /api/chat/message). `baseUrl` should carry
+  // the model's provider suffix (e.g. /genai/v1beta for google/* models).
+  console.log("[callStakworkAPI] model routing", {
+    taskId,
+    mode,
+    effectiveModel,
+    bifrostActive: Boolean(bifrost),
+    baseUrl: vars.baseUrl,
+    apiKeyPrefix: typeof vars.apiKey === "string" ? vars.apiKey.slice(0, 7) : null,
+    googleKeySet: Boolean(process.env.GOOGLE_API_KEY),
+  });
 
   // Get workflow ID (replicating workflow selection logic)
   const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
