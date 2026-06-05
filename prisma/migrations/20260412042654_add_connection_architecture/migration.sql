@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE "connections" ADD COLUMN     "architecture" TEXT;
+ALTER TABLE IF EXISTS "connections" ADD COLUMN IF NOT EXISTS "architecture" TEXT;
