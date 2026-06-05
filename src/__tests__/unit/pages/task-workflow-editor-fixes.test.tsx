@@ -1375,4 +1375,152 @@ describe('WorkflowArtifactPanel — multi-workflow selector', () => {
       expect(!!(merged.originalWorkflowJson && merged.workflowJson)).toBe(true);
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // workflow_editor context restore — DB fallback (SCRIPT/SKILL/PROMPT tasks)
+  // ────────────────────────────────────────────────────────────────────────────
+  describe('workflow_editor context restore — DB fallback', () => {
+    /**
+     * Simulates the DB-fallback restore logic added to loadTaskMessages.
+     * When no WORKFLOW artifact is found in message history, context is seeded
+     * from the WorkflowTask DB record returned by the messages API.
+     */
+    function simulateLoadTaskMessages(
+      messages: Array<{
+        artifacts?: Array<{
+          type: string;
+          content?: {
+            workflowId?: number | string;
+            workflowName?: string;
+            workflowRefId?: string;
+            workflowVersionId?: string | number;
+          };
+        }>;
+      }>,
+      workflowTask: {
+        workflowId?: string | number | null;
+        workflowName?: string | null;
+        workflowRefId?: string | null;
+        workflowTaskType?: string | null;
+      } | null,
+    ) {
+      type RestoredContext = {
+        workflowId: number | string;
+        workflowName: string;
+        workflowRefId: string;
+        workflowVersionId?: string;
+      };
+
+      // Phase 1: scan WORKFLOW artifacts (oldest → newest)
+      const matchedContexts: RestoredContext[] = [];
+      for (const msg of messages) {
+        for (const a of msg.artifacts ?? []) {
+          if (a.type === "WORKFLOW" && a.content?.workflowId) {
+            const c = a.content;
+            const prevVersionId =
+              matchedContexts.length > 0
+                ? matchedContexts[matchedContexts.length - 1].workflowVersionId
+                : undefined;
+            matchedContexts.push({
+              workflowId: c.workflowId!,
+              workflowName: c.workflowName || `Workflow ${c.workflowId}`,
+              workflowRefId: c.workflowRefId || "",
+              workflowVersionId:
+                c.workflowVersionId != null
+                  ? String(c.workflowVersionId)
+                  : prevVersionId,
+            });
+          }
+        }
+      }
+
+      if (matchedContexts.length > 0) {
+        return matchedContexts[matchedContexts.length - 1];
+      }
+
+      // Phase 2: DB fallback when no artifact found
+      if (workflowTask) {
+        return {
+          workflowId: workflowTask.workflowId ?? "new",
+          workflowName: workflowTask.workflowName ?? "New Workflow",
+          workflowRefId: workflowTask.workflowRefId ?? "",
+        };
+      }
+
+      return null;
+    }
+
+    it('seeds context with workflowId "new" for SCRIPT task with null workflowId in DB', () => {
+      const ctx = simulateLoadTaskMessages(
+        [], // no messages / no WORKFLOW artifacts
+        {
+          workflowId: null,
+          workflowName: null,
+          workflowRefId: null,
+          workflowTaskType: "SCRIPT",
+        },
+      );
+
+      expect(ctx).not.toBeNull();
+      expect(ctx?.workflowId).toBe("new");
+      expect(ctx?.workflowName).toBe("New Workflow");
+      expect(ctx?.workflowRefId).toBe("");
+    });
+
+    it('seeds context with the real workflowId for a SCRIPT task that has one', () => {
+      const ctx = simulateLoadTaskMessages(
+        [], // no WORKFLOW artifacts in chat history
+        {
+          workflowId: 42,
+          workflowName: "My Script",
+          workflowRefId: "ref-xyz",
+          workflowTaskType: "SCRIPT",
+        },
+      );
+
+      expect(ctx).not.toBeNull();
+      expect(ctx?.workflowId).toBe(42);
+      expect(ctx?.workflowName).toBe("My Script");
+      expect(ctx?.workflowRefId).toBe("ref-xyz");
+    });
+
+    it('returns null (guard fires) for a workflow_editor task with no WorkflowTask record at all', () => {
+      const ctx = simulateLoadTaskMessages(
+        [], // no messages
+        null, // no WorkflowTask row in DB
+      );
+
+      expect(ctx).toBeNull();
+    });
+
+    it('prefers artifact context over DB fallback when a WORKFLOW artifact exists', () => {
+      const ctx = simulateLoadTaskMessages(
+        [
+          {
+            artifacts: [
+              {
+                type: "WORKFLOW",
+                content: {
+                  workflowId: 99,
+                  workflowName: "From Artifact",
+                  workflowRefId: "artifact-ref",
+                },
+              },
+            ],
+          },
+        ],
+        {
+          workflowId: 42,
+          workflowName: "From DB",
+          workflowRefId: "db-ref",
+          workflowTaskType: "SCRIPT",
+        },
+      );
+
+      // Artifact scan wins — DB fallback not used
+      expect(ctx?.workflowId).toBe(99);
+      expect(ctx?.workflowName).toBe("From Artifact");
+      expect(ctx?.workflowRefId).toBe("artifact-ref");
+    });
+  });
 });
