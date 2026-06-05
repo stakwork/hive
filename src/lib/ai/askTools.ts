@@ -16,8 +16,6 @@ import {
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { swarmFetch } from "./concepts";
-import { runLogsAgent } from "@/services/logs-agent";
-import { logger } from "@/lib/logger";
 
 export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
   const r = await swarmFetch(`${swarmUrl}/gitree/features`, {
@@ -468,15 +466,23 @@ function buildWorkspaceTools(
           taskIds: taskId ? [taskId] : undefined,
         };
 
-        logger.info("[LogsAgent] logs_agent tool invoked from dashboard chat", "LogsAgent", {
-          workspace: auth.workspaceSlug,
-          workspaceId: auth.workspaceId,
-          userId: auth.userId,
-          hasFeatureScope: !!featureId,
-          hasTaskScope: !!taskId,
-        });
-
         try {
+          // Lazy imports — these modules pull in heavy deps (Prisma, EncryptionService,
+          // swarm-access). Dynamic import keeps them out of every test worker that
+          // touches askTools, avoiding ERR_WORKER_OUT_OF_MEMORY in CI.
+          const [{ runLogsAgent }, { logger }] = await Promise.all([
+            import("@/services/logs-agent"),
+            import("@/lib/logger"),
+          ]);
+
+          logger.info("[LogsAgent] logs_agent tool invoked from dashboard chat", "LogsAgent", {
+            workspace: auth.workspaceSlug,
+            workspaceId: auth.workspaceId,
+            userId: auth.userId,
+            hasFeatureScope: !!featureId,
+            hasTaskScope: !!taskId,
+          });
+
           const result = await runLogsAgent({
             slug: auth.workspaceSlug,
             userId: auth.userId,
@@ -506,7 +512,7 @@ function buildWorkspaceTools(
           }
           return "The Logs Agent encountered an unexpected error. Please try again.";
         } catch (e) {
-          logger.error("[LogsAgent] logs_agent tool unexpected error", String(e));
+          console.error("[LogsAgent] logs_agent tool unexpected error", String(e));
           return "Could not invoke the Logs Agent. Please try again.";
         }
       },
