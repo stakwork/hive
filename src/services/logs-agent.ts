@@ -10,7 +10,7 @@ import { generateSignedUrl } from "@/lib/signed-urls";
 import { getBifrostForLLM } from "@/services/bifrost";
 
 const POLL_INTERVAL_MS = 1000;
-const MAX_POLL_ATTEMPTS = 120; // 2 minutes max
+const MAX_POLL_ATTEMPTS = 720; // 12 minutes max
 
 export interface LogsAgentScope {
   featureIds?: string[];
