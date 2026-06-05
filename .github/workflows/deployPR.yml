@@ -353,13 +353,6 @@ jobs:
           echo "Resolving any previously-failed migration 20260517120000_add_macaroon_org_and_trust_fields..."
           npx prisma migrate resolve --rolled-back "20260517120000_add_macaroon_org_and_trust_fields" 2>&1 || true
 
-          # If 20260411162658_add_connection_model is stuck in a failed state
-          # (relation "connections" already exists from a prior partial run), roll it
-          # back and re-mark it as applied so Prisma unblocks subsequent migrations.
-          echo "Resolving any previously-failed migration 20260411162658_add_connection_model..."
-          npx prisma migrate resolve --rolled-back "20260411162658_add_connection_model" 2>&1 || true
-          npx prisma migrate resolve --applied "20260411162658_add_connection_model" 2>&1 || true
-
           echo "Resolving any previously-failed migration 20260412042654_add_connection_architecture..."
           npx prisma migrate resolve --rolled-back "20260412042654_add_connection_architecture" 2>&1 || true
 
@@ -377,8 +370,6 @@ jobs:
             # Re-resolve before each retry in case the previous attempt re-failed it
             npx prisma migrate resolve --applied "20260401174012" 2>&1 || true
             npx prisma migrate resolve --rolled-back "20260517120000_add_macaroon_org_and_trust_fields" 2>&1 || true
-            npx prisma migrate resolve --rolled-back "20260411162658_add_connection_model" 2>&1 || true
-            npx prisma migrate resolve --applied "20260411162658_add_connection_model" 2>&1 || true
             npx prisma migrate resolve --rolled-back "20260412042654_add_connection_architecture" 2>&1 || true
             sleep 15
           done
