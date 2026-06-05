@@ -2,11 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { parseOwnerRepo } from "@/lib/ai/utils";
 
 // Use vi.hoisted to create mocks that can be accessed in vi.mock factories
-const { mockGetRecentCommitsWithFiles, mockGetContributorPRs, mockGetProviderTool, mockCreateMCPClient } = vi.hoisted(() => ({
+const {
+  mockGetRecentCommitsWithFiles,
+  mockGetContributorPRs,
+  mockGetProviderTool,
+  mockCreateMCPClient,
+  mockRunLogsAgent,
+} = vi.hoisted(() => ({
   mockGetRecentCommitsWithFiles: vi.fn(),
   mockGetContributorPRs: vi.fn(),
   mockGetProviderTool: vi.fn(),
   mockCreateMCPClient: vi.fn(),
+  mockRunLogsAgent: vi.fn(),
 }));
 
 // Mock external dependencies using the hoisted mock instances
@@ -23,6 +30,19 @@ vi.mock("@/lib/ai/provider", () => ({
 
 vi.mock("@ai-sdk/mcp", () => ({
   createMCPClient: mockCreateMCPClient,
+}));
+
+vi.mock("@/services/logs-agent", () => ({
+  runLogsAgent: mockRunLogsAgent,
+}));
+
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  },
 }));
 
 import { askTools } from "@/lib/ai/askTools";
@@ -57,7 +77,7 @@ describe("askTools", () => {
   });
 
   describe("factory function", () => {
-    it("returns object with all 7 tools", () => {
+    it("returns object with all 7 base tools (no workspaceAuth)", () => {
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
 
       expect(tools).toHaveProperty("list_concepts");
@@ -67,6 +87,22 @@ describe("askTools", () => {
       expect(tools).toHaveProperty("repo_agent");
       expect(tools).toHaveProperty("search_logs");
       expect(tools).toHaveProperty("web_search");
+      // logs_agent requires workspaceAuth — must NOT be present without it
+      expect(tools).not.toHaveProperty("logs_agent");
+    });
+
+    it("includes logs_agent when workspaceAuth is provided", () => {
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, {
+        workspaceId: "ws-id",
+        workspaceSlug: "my-workspace",
+        userId: "user-1",
+      });
+      expect(tools).toHaveProperty("logs_agent");
+    });
+
+    it("omits logs_agent when workspaceAuth is absent", () => {
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
+      expect(tools).not.toHaveProperty("logs_agent");
     });
 
     it("parses repository URL correctly", () => {
@@ -578,6 +614,153 @@ describe("askTools", () => {
     });
   });
 
+  describe("logs_agent tool", () => {
+    const mockWorkspaceAuth = {
+      workspaceId: "ws-id-123",
+      workspaceSlug: "my-workspace",
+      userId: "user-123",
+    };
+
+    beforeEach(() => {
+      mockRunLogsAgent.mockClear();
+    });
+
+    it("returns the answer on success", async () => {
+      mockRunLogsAgent.mockResolvedValue({
+        success: true,
+        data: { answer: "Run completed successfully.", sessionId: "sess-1" },
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      const result = await tools.logs_agent.execute({ prompt: "What happened in the last run?" });
+
+      expect(result).toBe("Run completed successfully.");
+    });
+
+    it("maps featureId to scope.featureIds", async () => {
+      mockRunLogsAgent.mockResolvedValue({
+        success: true,
+        data: { answer: "scoped answer", sessionId: "" },
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      await tools.logs_agent.execute({ prompt: "debug", featureId: "feat-abc" });
+
+      expect(mockRunLogsAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          slug: "my-workspace",
+          userId: "user-123",
+          prompt: "debug",
+          scope: { featureIds: ["feat-abc"], taskIds: undefined },
+        }),
+      );
+    });
+
+    it("maps taskId to scope.taskIds", async () => {
+      mockRunLogsAgent.mockResolvedValue({
+        success: true,
+        data: { answer: "task answer", sessionId: "" },
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      await tools.logs_agent.execute({ prompt: "debug task", taskId: "task-xyz" });
+
+      expect(mockRunLogsAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: { featureIds: undefined, taskIds: ["task-xyz"] },
+        }),
+      );
+    });
+
+    it("passes no scope ids when neither featureId nor taskId provided", async () => {
+      mockRunLogsAgent.mockResolvedValue({
+        success: true,
+        data: { answer: "unscoped answer", sessionId: "" },
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      await tools.logs_agent.execute({ prompt: "any question" });
+
+      expect(mockRunLogsAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: { featureIds: undefined, taskIds: undefined },
+        }),
+      );
+    });
+
+    it("returns graceful TIMEOUT message", async () => {
+      mockRunLogsAgent.mockResolvedValue({ success: false, error: { type: "TIMEOUT" } });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      const result = await tools.logs_agent.execute({ prompt: "slow query" });
+
+      expect(result).toContain("timed out");
+    });
+
+    it("returns graceful AGENT_FAILED message with error text", async () => {
+      mockRunLogsAgent.mockResolvedValue({
+        success: false,
+        error: { type: "AGENT_FAILED", message: "OOM in swarm" },
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      const result = await tools.logs_agent.execute({ prompt: "debug" });
+
+      expect(result).toContain("OOM in swarm");
+    });
+
+    it("returns graceful ACCESS_DENIED message", async () => {
+      mockRunLogsAgent.mockResolvedValue({ success: false, error: { type: "ACCESS_DENIED" } });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      const result = await tools.logs_agent.execute({ prompt: "debug" });
+
+      expect(result).toContain("Access denied");
+    });
+
+    it("returns graceful WORKSPACE_NOT_FOUND message", async () => {
+      mockRunLogsAgent.mockResolvedValue({
+        success: false,
+        error: { type: "WORKSPACE_NOT_FOUND" },
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      const result = await tools.logs_agent.execute({ prompt: "debug" });
+
+      expect(result).toContain("Workspace not found");
+    });
+
+    it("returns graceful swarm-not-active message", async () => {
+      mockRunLogsAgent.mockResolvedValue({ success: false, error: { type: "SWARM_NOT_ACTIVE" } });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      const result = await tools.logs_agent.execute({ prompt: "debug" });
+
+      expect(result).toContain("swarm is not active");
+    });
+
+    it("returns generic error message for unexpected failures", async () => {
+      mockRunLogsAgent.mockResolvedValue({
+        success: false,
+        error: { type: "UNEXPECTED", message: "something weird" },
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      const result = await tools.logs_agent.execute({ prompt: "debug" });
+
+      expect(result).toContain("unexpected error");
+    });
+
+    it("returns graceful message when service throws", async () => {
+      mockRunLogsAgent.mockRejectedValue(new Error("network failure"));
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, mockWorkspaceAuth);
+      const result = await tools.logs_agent.execute({ prompt: "debug" });
+
+      expect(result).toContain("Could not invoke");
+    });
+  });
+
   describe("error handling", () => {
     it("handles errors gracefully without throwing", async () => {
       mockFetch.mockRejectedValue(new Error("Critical failure"));
@@ -588,7 +771,7 @@ describe("askTools", () => {
       await expect(tools.list_concepts.execute({})).resolves.toBe("Could not retrieve features");
     });
 
-    it("all tools return error strings instead of throwing exceptions", async () => {
+    it("all base tools return error strings instead of throwing exceptions", async () => {
       // Setup all tools to fail
       mockFetch.mockRejectedValue(new Error("Fail"));
       mockGetRecentCommitsWithFiles.mockRejectedValue(new Error("Fail"));
