@@ -19,8 +19,17 @@ export const API_KEY_ENV_VARS: Record<ModelName, string> = {
   kimi: "OPENROUTER_API_KEY",
 };
 
-export function isValidModel(model: unknown): model is ModelName {
-  return typeof model === "string" && VALID_MODELS.includes(model as ModelName);
+export function isValidModel(model: unknown): model is string {
+  if (typeof model !== "string") return false;
+  // Short alias, e.g. "sonnet" | "gemini"
+  if (VALID_MODELS.includes(model as ModelName)) return true;
+  // DB-backed "provider/name" format, e.g. "google/gemini-3.1-pro-preview".
+  // Accept any known provider so getApiKeyForModel can resolve its key.
+  if (model.includes("/")) {
+    const provider = model.split("/")[0].toUpperCase();
+    return provider in PROVIDER_API_KEY_ENV_VARS;
+  }
+  return false;
 }
 
 // Map LlmProvider enum values to their API key environment variables

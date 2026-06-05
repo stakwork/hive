@@ -18,6 +18,17 @@ describe("models", () => {
       expect(isValidModel("unknown-model")).toBe(false);
     });
 
+    test("returns true for provider/name format with known provider", () => {
+      expect(isValidModel("google/gemini-3.1-pro-preview")).toBe(true);
+      expect(isValidModel("anthropic/claude-sonnet-4-6")).toBe(true);
+      expect(isValidModel("openai/gpt-4o")).toBe(true);
+      expect(isValidModel("other/custom-model")).toBe(true);
+    });
+
+    test("returns false for provider/name format with unknown provider", () => {
+      expect(isValidModel("unknown/some-model")).toBe(false);
+    });
+
     test("returns false for non-string values", () => {
       expect(isValidModel(null)).toBe(false);
       expect(isValidModel(undefined)).toBe(false);
