@@ -827,7 +827,14 @@ export async function callStakworkAPI(params: {
   // deferred to a follow-up so this initial wiring stays small.
   const bifrost = await getBifrostForLLM(
     { workspaceId, workspaceSlug, userId },
-    { agentName: mode === "plan_mode" ? "plan-agent" : "coder-agent" },
+    {
+      agentName: mode === "plan_mode" ? "plan-agent" : "coder-agent",
+      // Pass the selected model so the Bifrost VK reconciler resolves
+      // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
+      // for google/* models). Without this it defaults to anthropic
+      // and Google/OpenAI models get routed to the wrong provider.
+      model: effectiveModel ?? undefined,
+    },
   );
   if (bifrost) {
     vars.apiKey = bifrost.apiKey;
