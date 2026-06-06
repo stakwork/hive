@@ -2,49 +2,40 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
-import {
-  createTestWorkspace,
-  createTestMembership,
-} from "@/__tests__/support/factories/workspace.factory";
+import { createTestMembership } from "@/__tests__/support/factories/workspace.factory";
 import { createTestSwarmWithEncryptedApiKey } from "@/__tests__/support/factories/swarm.factory";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import { EncryptionService } from "@/lib/encryption";
 import { invokeRoute } from "@/__tests__/harness/route";
 
-// Suppress unused imports warning — createTestWorkspace used in some helpers
-void createTestWorkspace;
-
 /**
  * Integration tests for Discord integration API routes and worker.
- *
- * Coverage:
- * - GET/PUT /api/workspaces/[slug]/settings/discord-integration
- * - POST /api/workspaces/[slug]/settings/discord-integration/validate
- * - GET /api/workspaces/[slug]/settings/discord-integration/guilds
- * - GET+PUT /api/workspaces/[slug]/settings/discord-channels
- * - POST /api/workspaces/[slug]/settings/discord-integration/sync
- * - GET /api/cron/discord-sync (auth + dispatch count)
- * - POST /api/workers/discord-channel-sync (circuit breaker + atomic checkpoint)
  */
 
 // --------------------------------------------------------------------------
-// Make after() execute the callback synchronously so assertions see DB changes.
-// We capture the returned Promise so tests can await it before asserting DB state.
+// after() mock — use vi.hoisted() so the variable is available before
+// vi.mock() factories run (Vitest hoists mock calls above imports).
 // --------------------------------------------------------------------------
-let pendingAfterTask: Promise<void> = Promise.resolve();
+const afterState = vi.hoisted(() => ({ pending: Promise.resolve() as Promise<void> }));
 
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
   return {
     ...actual,
-    after: vi.fn((cb: () => void | Promise<void>) => {
-      pendingAfterTask = Promise.resolve(cb());
-    }),
+    after: (cb: () => void | Promise<void>) => {
+      afterState.pending = Promise.resolve(cb());
+    },
   };
 });
 
+/** Reset the captured promise and await any leftover task from a prior test. */
+async function flushAfter() {
+  await afterState.pending;
+  afterState.pending = Promise.resolve();
+}
+
 // --------------------------------------------------------------------------
-// Mock discord utility so we don't hit the real Discord API
+// Mock discord utility
 // --------------------------------------------------------------------------
 const mockValidateBotToken = vi.fn();
 const mockGetBotGuilds = vi.fn();
@@ -66,7 +57,7 @@ vi.mock("@/lib/discord", async (importOriginal) => {
 });
 
 // --------------------------------------------------------------------------
-// Capture and restore global fetch for Swarm graph calls
+// Capture / restore global.fetch for external calls
 // --------------------------------------------------------------------------
 const originalFetch = global.fetch;
 let mockSwarmFetch: ReturnType<typeof vi.fn>;
@@ -93,9 +84,6 @@ function session(userId: string, email: string | null | undefined, name?: string
   return { user: { id: userId, email: email ?? "test@example.com", name: name ?? "Test User" }, expires: "" };
 }
 
-// --------------------------------------------------------------------------
-// Shared seed / teardown helpers
-// --------------------------------------------------------------------------
 const PLAIN_TOKEN = "Bot.test.token12345";
 
 let ownerId: string;
@@ -136,6 +124,7 @@ async function cleanupDiscordWorkspace() {
 describe("GET /api/workspaces/[slug]/settings/discord-integration", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    
     await seedDiscordWorkspace();
   });
 
@@ -160,7 +149,7 @@ describe("GET /api/workspaces/[slug]/settings/discord-integration", () => {
     await createTestMembership({ workspaceId, userId: dev.id, role: "DEVELOPER" });
 
     const result = await invokeRoute(GET as never, {
-      session: session(dev.id, dev.email, dev.name ?? undefined),
+      session: session(dev.id, dev.email, dev.name),
       params: { slug: workspaceSlug },
     });
     expect(result.status).toBe(403);
@@ -195,6 +184,7 @@ describe("GET /api/workspaces/[slug]/settings/discord-integration", () => {
 describe("PUT /api/workspaces/[slug]/settings/discord-integration", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    
     await seedDiscordWorkspace();
   });
 
@@ -209,7 +199,7 @@ describe("PUT /api/workspaces/[slug]/settings/discord-integration", () => {
 
     const result = await invokeRoute(PUT as never, {
       method: "PUT",
-      session: session(viewer.id, viewer.email, viewer.name ?? undefined),
+      session: session(viewer.id, viewer.email, viewer.name),
       params: { slug: workspaceSlug },
       body: { discordEnabled: false },
     });
@@ -241,29 +231,24 @@ describe("PUT /api/workspaces/[slug]/settings/discord-integration", () => {
     expect(ws?.discordEnabled).toBe(false);
   });
 
-  it("encrypts new token and extracts clientId", async () => {
+  it("encrypts new token and stores it (not plaintext)", async () => {
     const { PUT } = await import(
       "@/app/api/workspaces/[slug]/settings/discord-integration/route"
     );
-    // Use a token where first segment decodes to a numeric string
-    // base64url("123456789") = "MTIzNDU2Nzg5"
-    const tokenWithId = "MTIzNDU2Nzg5.rest.ofsecret";
-
     const result = await invokeRoute(PUT as never, {
       method: "PUT",
       session: session(ownerId, "owner@test.com", "Owner"),
       params: { slug: workspaceSlug },
-      body: { discordEnabled: true, discordBotToken: tokenWithId },
+      body: { discordEnabled: true, discordBotToken: "MTIzNDU2Nzg5.rest.ofsecret" },
     });
 
     expect(result.status).toBe(200);
     const ws = await db.workspace.findUnique({
       where: { id: workspaceId },
-      select: { discordBotToken: true, discordClientId: true },
+      select: { discordBotToken: true },
     });
     expect(ws?.discordBotToken).not.toBeNull();
-    // Raw token should be encrypted (stored as JSON)
-    expect(ws?.discordBotToken).not.toBe(tokenWithId);
+    expect(ws?.discordBotToken).not.toBe("MTIzNDU2Nzg5.rest.ofsecret");
     const parsed = JSON.parse(ws!.discordBotToken!);
     expect(parsed).toHaveProperty("data");
     expect(parsed).toHaveProperty("iv");
@@ -276,6 +261,7 @@ describe("PUT /api/workspaces/[slug]/settings/discord-integration", () => {
 describe("POST /api/workspaces/[slug]/settings/discord-integration/validate", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    
     await seedDiscordWorkspace();
   });
 
@@ -333,7 +319,7 @@ describe("POST /api/workspaces/[slug]/settings/discord-integration/validate", ()
     expect(data).toMatchObject({ valid: false });
   });
 
-  it("uses stored (encrypted) token when none provided in body", async () => {
+  it("uses stored encrypted token when none provided in body", async () => {
     const { POST } = await import(
       "@/app/api/workspaces/[slug]/settings/discord-integration/validate/route"
     );
@@ -353,7 +339,6 @@ describe("POST /api/workspaces/[slug]/settings/discord-integration/validate", ()
     expect(result.status).toBe(200);
     const data = await result.json<Record<string, unknown>>();
     expect(data).toMatchObject({ valid: true, botUsername: "StoredBot" });
-    // Must have decrypted stored token and called validate with the plain value
     expect(mockValidateBotToken).toHaveBeenCalledWith(PLAIN_TOKEN);
   });
 });
@@ -364,6 +349,7 @@ describe("POST /api/workspaces/[slug]/settings/discord-integration/validate", ()
 describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    
     await seedDiscordWorkspace();
   });
 
@@ -388,7 +374,7 @@ describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
     await createTestMembership({ workspaceId, userId: dev.id, role: "DEVELOPER" });
 
     const result = await invokeRoute(GET as never, {
-      session: session(dev.id, dev.email, dev.name ?? undefined),
+      session: session(dev.id, dev.email, dev.name),
       params: { slug: workspaceSlug },
     });
     expect(result.status).toBe(403);
@@ -402,7 +388,6 @@ describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
       "@/app/api/workspaces/[slug]/settings/discord-channels/route"
     );
 
-    // Seed a pre-existing channel that should be removed
     await db.discordChannel.create({
       data: {
         workspaceId,
@@ -420,20 +405,8 @@ describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
       params: { slug: workspaceSlug },
       body: {
         channels: [
-          {
-            guildId: "111",
-            guildName: "Hive Dev Server",
-            channelId: "222",
-            channelName: "general",
-            channelType: 0,
-          },
-          {
-            guildId: "111",
-            guildName: "Hive Dev Server",
-            channelId: "333",
-            channelName: "engineering",
-            channelType: 0,
-          },
+          { guildId: "111", guildName: "Hive Dev Server", channelId: "222", channelName: "general", channelType: 0 },
+          { guildId: "111", guildName: "Hive Dev Server", channelId: "333", channelName: "engineering", channelType: 0 },
         ],
       },
     });
@@ -442,10 +415,7 @@ describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
     const data = await result.json<{ channels: unknown[] }>();
     expect(data.channels).toHaveLength(2);
 
-    // Old channel must be removed
-    const old = await db.discordChannel.findFirst({
-      where: { workspaceId, channelId: "old-channel" },
-    });
+    const old = await db.discordChannel.findFirst({ where: { workspaceId, channelId: "old-channel" } });
     expect(old).toBeNull();
 
     const remaining = await db.discordChannel.findMany({ where: { workspaceId } });
@@ -461,7 +431,7 @@ describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
 
     const result = await invokeRoute(PUT as never, {
       method: "PUT",
-      session: session(viewer.id, viewer.email, viewer.name ?? undefined),
+      session: session(viewer.id, viewer.email, viewer.name),
       params: { slug: workspaceSlug },
       body: { channels: [] },
     });
@@ -481,6 +451,7 @@ describe("GET /api/cron/discord-sync", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    
 
     const owner = await createTestUser({ idempotent: false });
     cronOwnerId = owner.id;
@@ -516,12 +487,12 @@ describe("GET /api/cron/discord-sync", () => {
     process.env.INTERNAL_WORKER_SECRET = "test-worker-secret";
     process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
 
-    // Intercept the fan-out fetch so no real HTTP is made
     mockSwarmFetch = vi.fn().mockResolvedValue(new Response("{}", { status: 202 }));
     global.fetch = mockSwarmFetch;
   });
 
   afterEach(async () => {
+    await flushAfter();
     global.fetch = originalFetch;
     delete process.env.DISCORD_SYNC_CRON_ENABLED;
     await db.discordChannel.deleteMany({ where: { workspaceId: cronWorkspaceId } });
@@ -567,6 +538,7 @@ describe("POST /api/workers/discord-channel-sync", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    
 
     const owner = await createTestUser({ idempotent: false });
     workerOwnerId = owner.id;
@@ -611,6 +583,7 @@ describe("POST /api/workers/discord-channel-sync", () => {
   });
 
   afterEach(async () => {
+    await flushAfter();
     global.fetch = originalFetch;
     await db.discordChannel.deleteMany({ where: { workspaceId: workerWorkspaceId } });
     await db.swarm.deleteMany({ where: { workspaceId: workerWorkspaceId } });
@@ -641,6 +614,8 @@ describe("POST /api/workers/discord-channel-sync", () => {
       "Bearer test-worker-secret"
     );
     const res = await POST(req);
+    await flushAfter();
+
     expect(res.status).toBe(202);
   });
 
@@ -655,7 +630,7 @@ describe("POST /api/workers/discord-channel-sync", () => {
       "Bearer test-worker-secret"
     );
     await POST(req);
-    await pendingAfterTask;
+    await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
     expect(updated?.status).toBe("DISABLED_BY_SYSTEM");
@@ -674,7 +649,7 @@ describe("POST /api/workers/discord-channel-sync", () => {
       "Bearer test-worker-secret"
     );
     await POST(req);
-    await pendingAfterTask;
+    await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
     expect(updated?.status).toBe("DISABLED_BY_SYSTEM");
@@ -697,7 +672,7 @@ describe("POST /api/workers/discord-channel-sync", () => {
       "Bearer test-worker-secret"
     );
     await POST(req);
-    await pendingAfterTask;
+    await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
     expect(updated?.status).toBe("DISABLED_BY_SYSTEM");
@@ -716,7 +691,7 @@ describe("POST /api/workers/discord-channel-sync", () => {
       "Bearer test-worker-secret"
     );
     await POST(req);
-    await pendingAfterTask;
+    await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
     expect(updated?.status).toBe("ERRORED");
@@ -726,22 +701,22 @@ describe("POST /api/workers/discord-channel-sync", () => {
 
   it("atomic checkpoint: failure on page 3 keeps lastMessageId at end of page 2", async () => {
     // Discord returns messages newest-first (descending ID order).
-    // makeMsgs(start, count) produces IDs [start+count-1, ..., start] (descending).
+    // makeMsgs(start, count) produces IDs [start+count-1 ... start] descending.
     const makeMsgs = (start: number, count = 100) =>
       Array.from({ length: count }, (_, i) => ({
-        id: String(start + count - 1 - i), // newest first: e.g. 100, 99, ..., 1
+        id: String(start + count - 1 - i), // newest-first: e.g. 100, 99, ..., 1
         content: `msg ${start + count - 1 - i}`,
         timestamp: new Date().toISOString(),
         author: { id: "u1", username: "User" },
       }));
 
-    const page1 = makeMsgs(1);    // IDs 100, 99, ..., 1 (newest-first)
+    const page1 = makeMsgs(1);    // IDs 100, 99, ..., 1  (newest-first)
     const page2 = makeMsgs(101);  // IDs 200, 199, ..., 101 (newest-first)
 
     mockGetChannelMessages
-      .mockResolvedValueOnce(page1)                       // page 1 OK
-      .mockResolvedValueOnce(page2)                       // page 2 OK
-      .mockRejectedValueOnce(new Error("timeout"));       // page 3 fails
+      .mockResolvedValueOnce(page1)
+      .mockResolvedValueOnce(page2)
+      .mockRejectedValueOnce(new Error("timeout"));
 
     const { POST } = await import("@/app/api/workers/discord-channel-sync/route");
     const req = makeRequest(
@@ -751,12 +726,12 @@ describe("POST /api/workers/discord-channel-sync", () => {
       "Bearer test-worker-secret"
     );
     await POST(req);
-    await pendingAfterTask;
+    await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
-    // Cursor must point to the last message of page 2 (chronological = highest ID)
+    // lastMessageId must be the last message of page 2 (highest ID in chronological order)
     expect(updated?.lastMessageId).toBe("200");
-    // Status: ERRORED (1 failure < 5, not 403/404)
+    // Status ERRORED (1 failure < 5, not a 403/404)
     expect(updated?.status).toBe("ERRORED");
     expect(updated?.lastSyncedAt).not.toBeNull();
   });
@@ -775,9 +750,8 @@ describe("POST /api/workers/discord-channel-sync", () => {
         author: { id: "u1", username: "User" },
       },
     ];
-    mockGetChannelMessages
-      .mockResolvedValueOnce(msgs) // first batch (<100 msgs, loop exits)
-      .mockResolvedValueOnce([]); // safety fallback
+    // Single batch < 100 messages → loop exits after first fetch
+    mockGetChannelMessages.mockResolvedValueOnce(msgs);
 
     const { POST } = await import("@/app/api/workers/discord-channel-sync/route");
     const req = makeRequest(
@@ -787,7 +761,7 @@ describe("POST /api/workers/discord-channel-sync", () => {
       "Bearer test-worker-secret"
     );
     await POST(req);
-    await pendingAfterTask;
+    await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
     expect(updated?.status).toBe("ACTIVE");
