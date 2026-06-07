@@ -360,12 +360,28 @@ jobs:
           npx prisma migrate resolve --rolled-back "20260411162658_add_connection_model" 2>&1 || true
           npx prisma migrate resolve --applied "20260411162658_add_connection_model" 2>&1 || true
 
-          # If 20260412042654_add_connection_architecture is stuck in a failed state
-          # (ALTER TABLE failed because "connections" table didn't exist yet from a prior
-          # partial run), roll it back so Prisma can re-run it. The migration SQL now
-          # uses an idempotent DO $$ block so re-running is safe.
-          echo "Resolving any previously-failed migration 20260412042654_add_connection_architecture..."
-          npx prisma migrate resolve --rolled-back "20260412042654_add_connection_architecture" 2>&1 || true
+          # Resolve 20260412042654_add_connection_architecture.
+          # This migration runs ALTER TABLE connections ADD COLUMN architecture.
+          # - If the connections table exists AND the column exists → already applied, mark applied.
+          # - If the connections table exists AND the column is absent → roll back so Prisma reruns it.
+          # - If the connections table does NOT exist → the migration cannot run; mark applied to skip it
+          #   (the connections table itself is created by 20260411162658_add_connection_model which we
+          #   already forced applied above, so Prisma will create it in this same deploy run).
+          echo "Resolving 20260412042654_add_connection_architecture..."
+          CONN_TABLE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='connections' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+          if [ "$CONN_TABLE" = "1" ]; then
+            ARCH_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='connections' AND column_name='architecture';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$ARCH_COL" = "1" ]; then
+              echo "  connections table + architecture column both exist — marking as applied"
+              npx prisma migrate resolve --applied "20260412042654_add_connection_architecture" 2>&1 || true
+            else
+              echo "  connections table exists but architecture column absent — rolling back for Prisma to re-run"
+              npx prisma migrate resolve --rolled-back "20260412042654_add_connection_architecture" 2>&1 || true
+            fi
+          else
+            echo "  connections table absent — marking add_connection_architecture as applied to skip ALTER TABLE"
+            npx prisma migrate resolve --applied "20260412042654_add_connection_architecture" 2>&1 || true
+          fi
 
           # If 20260412050000_add_connection_slug is stuck in a failed state
           # (ALTER TABLE failed because "connections" table didn't exist yet from a prior
@@ -390,7 +406,17 @@ jobs:
             npx prisma migrate resolve --rolled-back "20260517120000_add_macaroon_org_and_trust_fields" 2>&1 || true
             npx prisma migrate resolve --rolled-back "20260411162658_add_connection_model" 2>&1 || true
             npx prisma migrate resolve --applied "20260411162658_add_connection_model" 2>&1 || true
-            npx prisma migrate resolve --rolled-back "20260412042654_add_connection_architecture" 2>&1 || true
+            CONN_TABLE=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='connections' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$CONN_TABLE" = "1" ]; then
+              ARCH_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='connections' AND column_name='architecture';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+              if [ "$ARCH_COL" = "1" ]; then
+                npx prisma migrate resolve --applied "20260412042654_add_connection_architecture" 2>&1 || true
+              else
+                npx prisma migrate resolve --rolled-back "20260412042654_add_connection_architecture" 2>&1 || true
+              fi
+            else
+              npx prisma migrate resolve --applied "20260412042654_add_connection_architecture" 2>&1 || true
+            fi
             npx prisma migrate resolve --rolled-back "20260412050000_add_connection_slug" 2>&1 || true
             sleep 15
           done

@@ -181,6 +181,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/lightning/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/vercel/log-drain", strategy: "prefix", access: "webhook" },
   { path: "/api/members", strategy: "prefix", access: "webhook" },
+  { path: "/api/workers", strategy: "prefix", access: "webhook" }, // machine-to-machine; each worker validates INTERNAL_WORKER_SECRET
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
   { path: "/api/features/*/title", strategy: "pattern", access: "webhook" },
   { path: "/api/pool-manager/claim-pod/*", strategy: "pattern", access: "webhook" },
