@@ -7,6 +7,18 @@ import { createTestSwarmWithEncryptedApiKey } from "@/__tests__/support/factorie
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import { EncryptionService } from "@/lib/encryption";
 import { invokeRoute } from "@/__tests__/harness/route";
+import {
+  GET as discordIntegrationGET,
+  PUT as discordIntegrationPUT,
+} from "@/app/api/workspaces/[slug]/settings/discord-integration/route";
+import { POST as discordValidatePOST } from "@/app/api/workspaces/[slug]/settings/discord-integration/validate/route";
+
+import {
+  GET as discordChannelsGET,
+  PUT as discordChannelsPUT,
+} from "@/app/api/workspaces/[slug]/settings/discord-channels/route";
+import { GET as discordCronGET } from "@/app/api/cron/discord-sync/route";
+import { POST as discordWorkerPOST } from "@/app/api/workers/discord-channel-sync/route";
 
 /**
  * Integration tests for Discord integration API routes and worker.
@@ -35,12 +47,21 @@ async function flushAfter() {
 }
 
 // --------------------------------------------------------------------------
-// Mock discord utility
+// Mock discord utility — use vi.hoisted() so these fns are available when the
+// vi.mock factory runs (static imports cause factories to execute before
+// module-level const declarations are initialised).
 // --------------------------------------------------------------------------
-const mockValidateBotToken = vi.fn();
-const mockGetBotGuilds = vi.fn();
-const mockGetGuildChannels = vi.fn();
-const mockGetChannelMessages = vi.fn();
+const {
+  mockValidateBotToken,
+  mockGetBotGuilds,
+  mockGetGuildChannels,
+  mockGetChannelMessages,
+} = vi.hoisted(() => ({
+  mockValidateBotToken: vi.fn(),
+  mockGetBotGuilds: vi.fn(),
+  mockGetGuildChannels: vi.fn(),
+  mockGetChannelMessages: vi.fn(),
+}));
 
 vi.mock("@/lib/discord", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/discord")>();
@@ -131,10 +152,7 @@ describe("GET /api/workspaces/[slug]/settings/discord-integration", () => {
   afterEach(cleanupDiscordWorkspace);
 
   it("returns 401 for unauthenticated requests", async () => {
-    const { GET } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-integration/route"
-    );
-    const result = await invokeRoute(GET as never, {
+        const result = await invokeRoute(discordIntegrationGET as never, {
       session: null,
       params: { slug: workspaceSlug },
     });
@@ -142,13 +160,10 @@ describe("GET /api/workspaces/[slug]/settings/discord-integration", () => {
   });
 
   it("returns 403 for non-admin member", async () => {
-    const { GET } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-integration/route"
-    );
-    const dev = await createTestUser({ idempotent: false });
+        const dev = await createTestUser({ idempotent: false });
     await createTestMembership({ workspaceId, userId: dev.id, role: "DEVELOPER" });
 
-    const result = await invokeRoute(GET as never, {
+    const result = await invokeRoute(discordIntegrationGET as never, {
       session: session(dev.id, dev.email, dev.name),
       params: { slug: workspaceSlug },
     });
@@ -159,10 +174,7 @@ describe("GET /api/workspaces/[slug]/settings/discord-integration", () => {
   });
 
   it("returns discord settings without raw token for admin/owner", async () => {
-    const { GET } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-integration/route"
-    );
-    const result = await invokeRoute(GET as never, {
+        const result = await invokeRoute(discordIntegrationGET as never, {
       session: session(ownerId, "owner@test.com", "Owner"),
       params: { slug: workspaceSlug },
     });
@@ -179,7 +191,7 @@ describe("GET /api/workspaces/[slug]/settings/discord-integration", () => {
 });
 
 // ==========================================================================
-// PUT /api/workspaces/[slug]/settings/discord-integration
+// discordIntegrationPUT /api/workspaces/[slug]/settings/discord-integration
 // ==========================================================================
 describe("PUT /api/workspaces/[slug]/settings/discord-integration", () => {
   beforeEach(async () => {
@@ -191,13 +203,10 @@ describe("PUT /api/workspaces/[slug]/settings/discord-integration", () => {
   afterEach(cleanupDiscordWorkspace);
 
   it("returns 403 for non-admin", async () => {
-    const { PUT } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-integration/route"
-    );
-    const viewer = await createTestUser({ idempotent: false });
+        const viewer = await createTestUser({ idempotent: false });
     await createTestMembership({ workspaceId, userId: viewer.id, role: "VIEWER" });
 
-    const result = await invokeRoute(PUT as never, {
+    const result = await invokeRoute(discordIntegrationPUT as never, {
       method: "PUT",
       session: session(viewer.id, viewer.email, viewer.name),
       params: { slug: workspaceSlug },
@@ -210,10 +219,7 @@ describe("PUT /api/workspaces/[slug]/settings/discord-integration", () => {
   });
 
   it("updates discordEnabled for admin", async () => {
-    const { PUT } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-integration/route"
-    );
-    const result = await invokeRoute(PUT as never, {
+        const result = await invokeRoute(discordIntegrationPUT as never, {
       method: "PUT",
       session: session(ownerId, "owner@test.com", "Owner"),
       params: { slug: workspaceSlug },
@@ -232,10 +238,7 @@ describe("PUT /api/workspaces/[slug]/settings/discord-integration", () => {
   });
 
   it("encrypts new token and stores it (not plaintext)", async () => {
-    const { PUT } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-integration/route"
-    );
-    const result = await invokeRoute(PUT as never, {
+        const result = await invokeRoute(discordIntegrationPUT as never, {
       method: "PUT",
       session: session(ownerId, "owner@test.com", "Owner"),
       params: { slug: workspaceSlug },
@@ -268,10 +271,7 @@ describe("POST /api/workspaces/[slug]/settings/discord-integration/validate", ()
   afterEach(cleanupDiscordWorkspace);
 
   it("returns 401 for unauthenticated", async () => {
-    const { POST } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-integration/validate/route"
-    );
-    const result = await invokeRoute(POST as never, {
+        const result = await invokeRoute(discordValidatePOST as never, {
       method: "POST",
       session: null,
       params: { slug: workspaceSlug },
@@ -280,16 +280,13 @@ describe("POST /api/workspaces/[slug]/settings/discord-integration/validate", ()
   });
 
   it("returns valid=true with bot username on success", async () => {
-    const { POST } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-integration/validate/route"
-    );
-    mockValidateBotToken.mockResolvedValueOnce({
+        mockValidateBotToken.mockResolvedValueOnce({
       id: "123",
       username: "HiveBot",
       discriminator: "0000",
     });
 
-    const result = await invokeRoute(POST as never, {
+    const result = await invokeRoute(discordValidatePOST as never, {
       method: "POST",
       session: session(ownerId, "owner@test.com", "Owner"),
       params: { slug: workspaceSlug },
@@ -302,12 +299,9 @@ describe("POST /api/workspaces/[slug]/settings/discord-integration/validate", ()
   });
 
   it("returns valid=false on Discord API error", async () => {
-    const { POST } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-integration/validate/route"
-    );
-    mockValidateBotToken.mockRejectedValueOnce(new Error("401 Unauthorized"));
+        mockValidateBotToken.mockRejectedValueOnce(new Error("401 Unauthorized"));
 
-    const result = await invokeRoute(POST as never, {
+    const result = await invokeRoute(discordValidatePOST as never, {
       method: "POST",
       session: session(ownerId, "owner@test.com", "Owner"),
       params: { slug: workspaceSlug },
@@ -320,16 +314,13 @@ describe("POST /api/workspaces/[slug]/settings/discord-integration/validate", ()
   });
 
   it("uses stored encrypted token when none provided in body", async () => {
-    const { POST } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-integration/validate/route"
-    );
-    mockValidateBotToken.mockResolvedValueOnce({
+        mockValidateBotToken.mockResolvedValueOnce({
       id: "123",
       username: "StoredBot",
       discriminator: "0000",
     });
 
-    const result = await invokeRoute(POST as never, {
+    const result = await invokeRoute(discordValidatePOST as never, {
       method: "POST",
       session: session(ownerId, "owner@test.com", "Owner"),
       params: { slug: workspaceSlug },
@@ -344,7 +335,7 @@ describe("POST /api/workspaces/[slug]/settings/discord-integration/validate", ()
 });
 
 // ==========================================================================
-// GET + PUT /api/workspaces/[slug]/settings/discord-channels
+// discordIntegrationGET + discordIntegrationPUT /api/workspaces/[slug]/settings/discord-channels
 // ==========================================================================
 describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
   beforeEach(async () => {
@@ -355,25 +346,19 @@ describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
 
   afterEach(cleanupDiscordWorkspace);
 
-  it("GET returns 401 for unauthenticated", async () => {
-    const { GET } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-channels/route"
-    );
-    const result = await invokeRoute(GET as never, {
+  it("discordChannelsGET returns 401 for unauthenticated", async () => {
+        const result = await invokeRoute(discordChannelsGET as never, {
       session: null,
       params: { slug: workspaceSlug },
     });
     expect(result.status).toBe(401);
   });
 
-  it("GET returns 403 for non-admin", async () => {
-    const { GET } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-channels/route"
-    );
-    const dev = await createTestUser({ idempotent: false });
+  it("discordChannelsGET returns 403 for non-admin", async () => {
+        const dev = await createTestUser({ idempotent: false });
     await createTestMembership({ workspaceId, userId: dev.id, role: "DEVELOPER" });
 
-    const result = await invokeRoute(GET as never, {
+    const result = await invokeRoute(discordChannelsGET as never, {
       session: session(dev.id, dev.email, dev.name),
       params: { slug: workspaceSlug },
     });
@@ -383,12 +368,8 @@ describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
     await db.user.delete({ where: { id: dev.id } });
   });
 
-  it("PUT upserts channels and removes deselected ones", async () => {
-    const { PUT } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-channels/route"
-    );
-
-    await db.discordChannel.create({
+  it("discordChannelsPUT upserts channels and removes deselected ones", async () => {
+        await db.discordChannel.create({
       data: {
         workspaceId,
         guildId: "111",
@@ -399,7 +380,7 @@ describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
       },
     });
 
-    const result = await invokeRoute(PUT as never, {
+    const result = await invokeRoute(discordChannelsPUT as never, {
       method: "PUT",
       session: session(ownerId, "owner@test.com", "Owner"),
       params: { slug: workspaceSlug },
@@ -422,14 +403,11 @@ describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
     expect(remaining.map((c) => c.channelId).sort()).toEqual(["222", "333"]);
   });
 
-  it("PUT returns 403 for non-admin", async () => {
-    const { PUT } = await import(
-      "@/app/api/workspaces/[slug]/settings/discord-channels/route"
-    );
-    const viewer = await createTestUser({ idempotent: false });
+  it("discordChannelsPUT returns 403 for non-admin", async () => {
+        const viewer = await createTestUser({ idempotent: false });
     await createTestMembership({ workspaceId, userId: viewer.id, role: "VIEWER" });
 
-    const result = await invokeRoute(PUT as never, {
+    const result = await invokeRoute(discordChannelsPUT as never, {
       method: "PUT",
       session: session(viewer.id, viewer.email, viewer.name),
       params: { slug: workspaceSlug },
@@ -443,7 +421,7 @@ describe("GET + PUT /api/workspaces/[slug]/settings/discord-channels", () => {
 });
 
 // ==========================================================================
-// GET /api/cron/discord-sync — auth + dispatch count
+// discordChannelsGET /api/cron/discord-sync — auth + dispatch count
 // ==========================================================================
 describe("GET /api/cron/discord-sync", () => {
   let cronOwnerId: string;
@@ -501,26 +479,23 @@ describe("GET /api/cron/discord-sync", () => {
   });
 
   it("returns 401 without valid CRON_SECRET", async () => {
-    const { GET } = await import("@/app/api/cron/discord-sync/route");
-    const req = makeRequest("GET", "http://localhost/api/cron/discord-sync", undefined, "Bearer wrong-secret");
-    const res = await GET(req);
+        const req = makeRequest("GET", "http://localhost/api/cron/discord-sync", undefined, "Bearer wrong-secret");
+    const res = await discordCronGET(req);
     expect(res.status).toBe(401);
   });
 
   it("returns disabled message when DISCORD_SYNC_CRON_ENABLED is not true", async () => {
     process.env.DISCORD_SYNC_CRON_ENABLED = "false";
-    const { GET } = await import("@/app/api/cron/discord-sync/route");
-    const req = makeRequest("GET", "http://localhost/api/cron/discord-sync", undefined, "Bearer test-cron-secret");
-    const res = await GET(req);
+        const req = makeRequest("GET", "http://localhost/api/cron/discord-sync", undefined, "Bearer test-cron-secret");
+    const res = await discordCronGET(req);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toMatchObject({ message: "Discord sync cron disabled" });
   });
 
   it("returns dispatched count ≥ 1 with correct secret and enabled flag", async () => {
-    const { GET } = await import("@/app/api/cron/discord-sync/route");
-    const req = makeRequest("GET", "http://localhost/api/cron/discord-sync", undefined, "Bearer test-cron-secret");
-    const res = await GET(req);
+        const req = makeRequest("GET", "http://localhost/api/cron/discord-sync", undefined, "Bearer test-cron-secret");
+    const res = await discordCronGET(req);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(typeof data.dispatched).toBe("number");
@@ -592,28 +567,26 @@ describe("POST /api/workers/discord-channel-sync", () => {
   });
 
   it("returns 401 with wrong worker secret", async () => {
-    const { POST } = await import("@/app/api/workers/discord-channel-sync/route");
-    const req = makeRequest(
+        const req = makeRequest(
       "POST",
       "http://localhost/api/workers/discord-channel-sync",
       { channelId: workerChannelId },
       "Bearer wrong-secret"
     );
-    const res = await POST(req);
+    const res = await discordWorkerPOST(req);
     expect(res.status).toBe(401);
   });
 
   it("returns 202 with correct secret", async () => {
     mockGetChannelMessages.mockResolvedValueOnce([]);
 
-    const { POST } = await import("@/app/api/workers/discord-channel-sync/route");
-    const req = makeRequest(
+        const req = makeRequest(
       "POST",
       "http://localhost/api/workers/discord-channel-sync",
       { channelId: workerChannelId },
       "Bearer test-worker-secret"
     );
-    const res = await POST(req);
+    const res = await discordWorkerPOST(req);
     await flushAfter();
 
     expect(res.status).toBe(202);
@@ -622,14 +595,13 @@ describe("POST /api/workers/discord-channel-sync", () => {
   it("circuit breaker: 403 from Discord disables channel immediately", async () => {
     mockGetChannelMessages.mockRejectedValueOnce({ status: 403, message: "Missing Access" });
 
-    const { POST } = await import("@/app/api/workers/discord-channel-sync/route");
-    const req = makeRequest(
+        const req = makeRequest(
       "POST",
       "http://localhost/api/workers/discord-channel-sync",
       { channelId: workerChannelId },
       "Bearer test-worker-secret"
     );
-    await POST(req);
+    await discordWorkerPOST(req);
     await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
@@ -641,14 +613,13 @@ describe("POST /api/workers/discord-channel-sync", () => {
   it("circuit breaker: 404 from Discord disables channel immediately", async () => {
     mockGetChannelMessages.mockRejectedValueOnce({ status: 404, message: "Unknown Channel" });
 
-    const { POST } = await import("@/app/api/workers/discord-channel-sync/route");
-    const req = makeRequest(
+        const req = makeRequest(
       "POST",
       "http://localhost/api/workers/discord-channel-sync",
       { channelId: workerChannelId },
       "Bearer test-worker-secret"
     );
-    await POST(req);
+    await discordWorkerPOST(req);
     await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
@@ -664,14 +635,13 @@ describe("POST /api/workers/discord-channel-sync", () => {
 
     mockGetChannelMessages.mockRejectedValueOnce(new Error("timeout"));
 
-    const { POST } = await import("@/app/api/workers/discord-channel-sync/route");
-    const req = makeRequest(
+        const req = makeRequest(
       "POST",
       "http://localhost/api/workers/discord-channel-sync",
       { channelId: workerChannelId },
       "Bearer test-worker-secret"
     );
-    await POST(req);
+    await discordWorkerPOST(req);
     await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
@@ -683,14 +653,13 @@ describe("POST /api/workers/discord-channel-sync", () => {
   it("non-fatal error increments failures and sets ERRORED (not disabled)", async () => {
     mockGetChannelMessages.mockRejectedValueOnce(new Error("network error"));
 
-    const { POST } = await import("@/app/api/workers/discord-channel-sync/route");
-    const req = makeRequest(
+        const req = makeRequest(
       "POST",
       "http://localhost/api/workers/discord-channel-sync",
       { channelId: workerChannelId },
       "Bearer test-worker-secret"
     );
-    await POST(req);
+    await discordWorkerPOST(req);
     await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
@@ -718,14 +687,13 @@ describe("POST /api/workers/discord-channel-sync", () => {
       .mockResolvedValueOnce(page2)
       .mockRejectedValueOnce(new Error("timeout"));
 
-    const { POST } = await import("@/app/api/workers/discord-channel-sync/route");
-    const req = makeRequest(
+        const req = makeRequest(
       "POST",
       "http://localhost/api/workers/discord-channel-sync",
       { channelId: workerChannelId },
       "Bearer test-worker-secret"
     );
-    await POST(req);
+    await discordWorkerPOST(req);
     await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
@@ -753,14 +721,13 @@ describe("POST /api/workers/discord-channel-sync", () => {
     // Single batch < 100 messages → loop exits after first fetch
     mockGetChannelMessages.mockResolvedValueOnce(msgs);
 
-    const { POST } = await import("@/app/api/workers/discord-channel-sync/route");
-    const req = makeRequest(
+        const req = makeRequest(
       "POST",
       "http://localhost/api/workers/discord-channel-sync",
       { channelId: workerChannelId },
       "Bearer test-worker-secret"
     );
-    await POST(req);
+    await discordWorkerPOST(req);
     await flushAfter();
 
     const updated = await db.discordChannel.findUnique({ where: { id: workerChannelId } });
