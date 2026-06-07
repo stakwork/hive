@@ -17,24 +17,42 @@ jobs:
       matrix:
         shard: [1, 2, 3]
 
-    services:
-      postgres:
-        image: postgres:latest
-        env:
-          POSTGRES_USER: hive_user
-          POSTGRES_PASSWORD: hive_password
-          POSTGRES_DB: hive_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Start PostgreSQL
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if docker pull postgres:16; then
+              echo "Docker pull succeeded on attempt $attempt"
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "Docker pull failed after 5 attempts"
+              exit 1
+            fi
+            echo "Docker pull failed (attempt $attempt), retrying in 15s..."
+            sleep 15
+          done
+          docker run -d \
+            --name postgres \
+            -e POSTGRES_USER=hive_user \
+            -e POSTGRES_PASSWORD=hive_password \
+            -e POSTGRES_DB=hive_db \
+            -p 5432:5432 \
+            postgres:16
+          for i in $(seq 1 30); do
+            if docker exec postgres pg_isready -U hive_user; then
+              echo "PostgreSQL is ready"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "PostgreSQL never became ready"
+              exit 1
+            fi
+            sleep 2
+          done
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
