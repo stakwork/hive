@@ -31,6 +31,7 @@ export default defineConfig({
     poolOptions: testSuite === "integration" ? {
       vmThreads: {
         singleThread: true,
+        execArgv: ["--max-old-space-size=6144"],
       },
     } : undefined,
     include:
