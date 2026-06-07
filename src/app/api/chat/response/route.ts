@@ -658,7 +658,11 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     console.error("Error creating chat response:", error);
-    return NextResponse.json({ error: "Failed to create chat response" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create chat response", detail },
+      { status: 500 },
+    );
   }
 }
