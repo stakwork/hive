@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE "connections" ADD COLUMN "slug" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "connections" ADD COLUMN IF NOT EXISTS "slug" TEXT NOT NULL DEFAULT '';
 
 -- Update existing rows to use a generated slug
 UPDATE "connections" SET "slug" = "id" WHERE "slug" = '';
@@ -8,4 +8,4 @@ UPDATE "connections" SET "slug" = "id" WHERE "slug" = '';
 ALTER TABLE "connections" ALTER COLUMN "slug" DROP DEFAULT;
 
 -- CreateIndex
-CREATE UNIQUE INDEX "connections_org_id_slug_key" ON "connections"("org_id", "slug");
+CREATE UNIQUE INDEX IF NOT EXISTS "connections_org_id_slug_key" ON "connections"("org_id", "slug");
