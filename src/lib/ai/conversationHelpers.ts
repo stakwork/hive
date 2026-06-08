@@ -3,14 +3,17 @@
  * workspace-scoped and org-scoped conversation API routes.
  */
 
+/** Placeholder title for a conversation with no usable first user message. */
+export const UNTITLED_CONVERSATION = "Untitled Conversation";
+
 /** Generate a title from the first user message (max 50 chars). */
 export function generateTitle(messages: unknown[]): string {
   if (!Array.isArray(messages) || messages.length === 0) {
-    return "Untitled Conversation";
+    return UNTITLED_CONVERSATION;
   }
 
   const firstUserMessage = messages.find((msg: any) => msg.role === "user");
-  if (!firstUserMessage) return "Untitled Conversation";
+  if (!firstUserMessage) return UNTITLED_CONVERSATION;
 
   let text = "";
   const m = firstUserMessage as any;
@@ -22,7 +25,7 @@ export function generateTitle(messages: unknown[]): string {
   }
 
   const trimmed = text.trim();
-  if (!trimmed) return "Untitled Conversation";
+  if (!trimmed) return UNTITLED_CONVERSATION;
   return trimmed.length > 50 ? trimmed.substring(0, 50) + "..." : trimmed;
 }
 
