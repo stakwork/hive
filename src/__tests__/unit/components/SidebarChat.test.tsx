@@ -19,19 +19,30 @@ vi.mock("framer-motion", () => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("zustand/react/shallow", () => ({ useShallow: (fn: unknown) => fn }));
-// Return a stub for ANY icon name. SidebarChat's transitive imports
-// (SubAgentRunCard, PlannerFormSlot → ClarifyingQuestionsPreview, …)
-// reference many icons; a Proxy keeps the mock complete without
-// enumerating every one.
-// Use the real lucide-react. SidebarChat's transitive imports
-// (SubAgentRunCard, PlannerFormSlot → ClarifyingQuestionsPreview, …)
-// reference many icons; spreading the actual module keeps the mock
-// complete without enumerating every one. No assertion depends on
-// icon stubs, so the real SVGs are harmless.
-vi.mock("lucide-react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("lucide-react")>();
-  return actual;
-});
+// Only the icons SidebarChat itself imports. The card/slot children
+// (which reference many more icons, and pull in ClarifyingQuestionsPreview
+// → the full lucide-react barrel) are mocked out below, so we must NOT
+// load real lucide-react here — that bloats the test worker's heap.
+vi.mock("lucide-react", () => ({
+  Send: () => <svg data-testid="send-icon" />,
+  Share2: () => <svg data-testid="share-icon" />,
+  X: () => <svg data-testid="x-icon" />,
+}));
+
+// Mock the planner-card subtree so SidebarChat's own render logic is
+// tested in isolation and the heavy lucide / ClarifyingQuestionsPreview
+// import chain never loads. `getSubAgentRunsFromMessages` returns no
+// runs, so the cards/slots never render in these tests anyway.
+vi.mock("@/app/org/[githubLogin]/_components/SubAgentRunCard", () => ({
+  SubAgentRunCard: () => null,
+  getSubAgentRunsFromMessages: () => [],
+}));
+vi.mock("@/app/org/[githubLogin]/_components/PlannerFormSlot", () => ({
+  PlannerFormSlot: () => null,
+}));
+vi.mock("@/app/org/[githubLogin]/_components/StartTasksSlot", () => ({
+  StartTasksSlot: () => null,
+}));
 
 vi.mock("@/app/org/[githubLogin]/_components/CanvasHistoryPopover", () => ({
   CanvasHistoryPopover: ({ githubLogin }: { githubLogin: string }) => (
