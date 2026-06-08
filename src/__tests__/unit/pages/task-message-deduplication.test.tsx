@@ -14,6 +14,64 @@ import { ChatRole, ChatStatus } from "@prisma/client";
  */
 
 describe("Task Message Deduplication", () => {
+  describe("Initial fetch response parsing (canvas TaskChat)", () => {
+    // Simulates the extraction logic fixed in TaskChat's useEffect:
+    //   const data = (body?.data?.messages ?? body?.data ?? body ?? []) as ChatMessage[];
+    //   setMessages(Array.isArray(data) ? data : []);
+
+    function extractMessages(body: unknown): ChatMessage[] {
+      const data = (
+        (body as Record<string, unknown>)?.data as Record<string, unknown>
+      )?.messages ??
+        (body as Record<string, unknown>)?.data ??
+        body ??
+        [];
+      return Array.isArray(data) ? (data as ChatMessage[]) : [];
+    }
+
+    it("should extract messages from nested { data: { task, messages, count } } shape", () => {
+      const messages: ChatMessage[] = [
+        { id: "msg-1", message: "Hi", role: ChatRole.USER, status: ChatStatus.SENT, createdAt: new Date() },
+        { id: "msg-2", message: "Hello", role: ChatRole.ASSISTANT, status: ChatStatus.SENT, createdAt: new Date() },
+      ];
+
+      const body = {
+        success: true,
+        data: {
+          task: { id: "task-abc", title: "My task" },
+          messages,
+          count: 2,
+        },
+      };
+
+      const result = extractMessages(body);
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe("msg-1");
+      expect(result[1].id).toBe("msg-2");
+    });
+
+    it("should return empty array when body.data is a non-array object without messages key", () => {
+      const body = { success: true, data: { task: {}, count: 0 } };
+      const result = extractMessages(body);
+      expect(result).toEqual([]);
+    });
+
+    it("should fall back to body.data if body.data is already an array", () => {
+      const messages: ChatMessage[] = [
+        { id: "msg-3", message: "Fallback", role: ChatRole.USER, status: ChatStatus.SENT, createdAt: new Date() },
+      ];
+      const body = { success: true, data: messages };
+      const result = extractMessages(body);
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("msg-3");
+    });
+
+    it("should return empty array when body is null/undefined", () => {
+      expect(extractMessages(null)).toEqual([]);
+      expect(extractMessages(undefined)).toEqual([]);
+    });
+  });
+
   describe("handleSSEMessage deduplication guard", () => {
     it("should not append a message if it already exists in state", () => {
       const { result } = renderHook(() => {
@@ -338,6 +396,95 @@ describe("Task Message Deduplication", () => {
       // Should still have only one message (no duplicate)
       expect(result.current.messages).toHaveLength(1);
       expect(result.current.messages[0].id).toBe("msg-real-456");
+    });
+
+    it("should filter optimistic placeholder when Pusher delivers real id before POST response (canvas TaskChat race)", () => {
+      // Simulates the race condition fixed in TaskChat.sendInternal:
+      // 1. Optimistic (temp) message added to state.
+      // 2. Pusher delivers real-DB-id message BEFORE the POST response returns.
+      // 3. POST response arrives — instead of mapping temp→real (which would duplicate),
+      //    the fix detects the real id already exists and removes the optimistic entry.
+      const { result } = renderHook(() => {
+        const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+        const addOptimisticMessage = useCallback((message: ChatMessage) => {
+          setMessages((msgs) => [...msgs, message]);
+        }, []);
+
+        // Simulates handleSSEMessage (Pusher) — adds if not already present
+        const handleSSEMessage = useCallback((message: ChatMessage) => {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === message.id)) return prev;
+            return [...prev, message];
+          });
+        }, []);
+
+        // Simulates the FIXED sendInternal id-swap logic from TaskChat
+        const handlePostResponse = useCallback(
+          (optimisticId: string, realMessage: ChatMessage) => {
+            setMessages((m) => {
+              if (m.some((x) => x.id === realMessage.id)) {
+                // Real id already present (Pusher won the race) — drop the optimistic
+                return m.filter((x) => x.id !== optimisticId);
+              }
+              return m.map((x) =>
+                x.id === optimisticId
+                  ? { ...realMessage, status: ChatStatus.SENT }
+                  : x,
+              );
+            });
+          },
+          [],
+        );
+
+        return { messages, addOptimisticMessage, handleSSEMessage, handlePostResponse };
+      });
+
+      const optimisticId = "temp_race_001";
+      const realId = "msg-db-999";
+
+      // 1. Optimistic message added immediately on send
+      act(() => {
+        result.current.addOptimisticMessage({
+          id: optimisticId,
+          message: "Racing message",
+          role: ChatRole.USER,
+          status: ChatStatus.SENDING,
+          createdAt: new Date(),
+        });
+      });
+
+      expect(result.current.messages).toHaveLength(1);
+      expect(result.current.messages[0].id).toBe(optimisticId);
+
+      // 2. Pusher wins the race — real-DB-id message delivered BEFORE POST returns
+      act(() => {
+        result.current.handleSSEMessage({
+          id: realId,
+          message: "Racing message",
+          role: ChatRole.USER,
+          status: ChatStatus.SENT,
+          createdAt: new Date(),
+        });
+      });
+
+      // Now state has both: temp + real
+      expect(result.current.messages).toHaveLength(2);
+
+      // 3. POST response arrives — should remove optimistic, NOT add a third entry
+      act(() => {
+        result.current.handlePostResponse(optimisticId, {
+          id: realId,
+          message: "Racing message",
+          role: ChatRole.USER,
+          status: ChatStatus.SENT,
+          createdAt: new Date(),
+        });
+      });
+
+      // Exactly one message with the real DB id — no duplicates
+      expect(result.current.messages).toHaveLength(1);
+      expect(result.current.messages[0].id).toBe(realId);
     });
 
     it("should allow other users' messages through after sender's message is deduplicated", () => {
