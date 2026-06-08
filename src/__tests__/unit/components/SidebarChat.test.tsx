@@ -19,12 +19,29 @@ vi.mock("framer-motion", () => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("zustand/react/shallow", () => ({ useShallow: (fn: unknown) => fn }));
+// Only the icons SidebarChat itself imports. The card/slot children
+// (which reference many more icons, and pull in ClarifyingQuestionsPreview
+// → the full lucide-react barrel) are mocked out below, so we must NOT
+// load real lucide-react here — that bloats the test worker's heap.
 vi.mock("lucide-react", () => ({
   Send: () => <svg data-testid="send-icon" />,
   Share2: () => <svg data-testid="share-icon" />,
   X: () => <svg data-testid="x-icon" />,
-  History: () => <svg data-testid="history-icon" />,
-  PlusCircle: () => <svg data-testid="plus-icon" />,
+}));
+
+// Mock the planner-card subtree so SidebarChat's own render logic is
+// tested in isolation and the heavy lucide / ClarifyingQuestionsPreview
+// import chain never loads. `getSubAgentRunsFromMessages` returns no
+// runs, so the cards/slots never render in these tests anyway.
+vi.mock("@/app/org/[githubLogin]/_components/SubAgentRunCard", () => ({
+  SubAgentRunCard: () => null,
+  getSubAgentRunsFromMessages: () => [],
+}));
+vi.mock("@/app/org/[githubLogin]/_components/PlannerFormSlot", () => ({
+  PlannerFormSlot: () => null,
+}));
+vi.mock("@/app/org/[githubLogin]/_components/StartTasksSlot", () => ({
+  StartTasksSlot: () => null,
 }));
 
 vi.mock("@/app/org/[githubLogin]/_components/CanvasHistoryPopover", () => ({

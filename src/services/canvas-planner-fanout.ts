@@ -37,7 +37,55 @@
  */
 
 import { db } from "@/lib/db";
+import { WorkflowStatus } from "@prisma/client";
 import type { Artifact, ChatMessage } from "@prisma/client";
+import { isClarifyingQuestions } from "@/types/stakwork";
+import type { ClarifyingQuestion } from "@/types/stakwork";
+// Type-only import — the runtime `invokeCanvasAgentOnPlannerMessage` is
+// loaded lazily (dynamic `import()` below) so this webhook-path module
+// doesn't statically pull in `runCanvasAgent`'s heavy module graph
+// (bifrost, pods, encryption, …). The auto-turn machinery is gated off
+// by default and only needed on actionable messages.
+import type { AutoTurnWakeReason } from "@/services/canvas-agent-autoturn";
+
+/**
+ * Extract the planner's clarifying-question list from a message, if it
+ * carries one.
+ *
+ * **Important representation note.** A feature planner asks the user a
+ * structured question via a `PLAN`-typed artifact whose JSON content
+ * passes `isClarifyingQuestions` (`tool_use === "ask_clarifying_questions"`,
+ * `content: ClarifyingQuestion[]`) — the exact shape
+ * `ClarifyingQuestionsPreview` renders and `FeaturePlanChat` /
+ * `FeaturePlanChatMessage` detect. This is NOT an `ArtifactType.FORM`
+ * (that's the *task* chat's form representation). Returns the questions
+ * array (≥1) or `null` when the message has no clarifying-questions
+ * artifact.
+ */
+export function extractClarifyingQuestions(
+  plannerMessage: { artifacts: Artifact[] },
+): ClarifyingQuestion[] | null {
+  for (const a of plannerMessage.artifacts) {
+    if (a.type === "PLAN" && isClarifyingQuestions(a.content)) {
+      const questions = a.content.content;
+      if (Array.isArray(questions) && questions.length > 0) return questions;
+    }
+  }
+  return null;
+}
+
+/**
+ * Did this planner message carry a `TASKS` artifact — i.e. the planner
+ * just generated a task breakdown? Surfaced as `source.hasTasks` so the
+ * card can offer a **Start Tasks** button (which fetches the live
+ * ready-count and POSTs to `…/tasks/assign-all`). Like the other
+ * signals, a snapshot: the actual count is read live by the card.
+ */
+export function plannerMessageHasTasks(
+  plannerMessage: { artifacts: Artifact[] },
+): boolean {
+  return plannerMessage.artifacts.some((a) => a.type === "TASKS");
+}
 
 /** Subset of `Feature` the fan-out needs. */
 export interface FanOutFeatureRef {
@@ -45,6 +93,13 @@ export interface FanOutFeatureRef {
   parentCanvasConversationId: string | null;
   /** Carried for future use (e.g. workspace-scoped logging). Not read in v1. */
   workspaceId: string;
+  /**
+   * The feature's live workflow status, used by the Phase 3 "actionable"
+   * check to decide whether a planner message warrants an autonomous
+   * canvas-agent turn. Optional for backwards-compat with existing
+   * callers/tests; absent → workflow-transition wakeups don't fire.
+   */
+  workflowStatus?: WorkflowStatus | null;
 }
 
 /** Subset of `ChatMessage` the fan-out needs. Artifacts are eagerly loaded. */
@@ -68,6 +123,32 @@ type CanvasMessageRow = {
     kind: "planner";
     featureId: string;
     plannerMessageId: string;
+    /**
+     * Feature `workflowStatus` at fan-out time (Phase 3). Drives the
+     * `SubAgentRunCard` status pill. Stringified enum value; omitted
+     * when the caller didn't supply it.
+     */
+    workflowStatus?: string;
+    /**
+     * `true` when the planner message carried a clarifying-questions
+     * artifact (`PLAN` + `ask_clarifying_questions`) — Phase 3. Drives
+     * the `Waiting for you` pill.
+     */
+    hasForm?: boolean;
+    /**
+     * The clarifying-question list (Phase 4), embedded so the canvas
+     * conversation is self-contained — `PlannerFormSlot` renders this
+     * verbatim via `ClarifyingQuestionsPreview` with no extra fetch,
+     * and it round-trips through share / fork / iOS like every other
+     * message field. Present iff `hasForm` is `true`.
+     */
+    formQuestions?: ClarifyingQuestion[];
+    /**
+     * `true` when the planner message carried a `TASKS` artifact — it
+     * just generated a task breakdown. Gates the card's **Start Tasks**
+     * button (which reads the live ready-count itself).
+     */
+    hasTasks?: boolean;
   };
   /** Empty for v1; Phase 3 may populate when surfacing artifacts. */
   artifactIds?: string[];
@@ -104,6 +185,10 @@ export async function fanOutPlannerMessageToCanvas(
   const conversationId = feature.parentCanvasConversationId;
 
   try {
+    // Tracks whether THIS call actually appended a row (vs. an
+    // idempotent no-op). Only a fresh append should wake the agent —
+    // re-deliveries must not re-trigger an auto-turn.
+    let didAppend = false;
     await db.$transaction(async (tx) => {
       // Row-level lock against concurrent autosave PUTs. See the
       // matching wrap in
@@ -136,6 +221,9 @@ export async function fanOutPlannerMessageToCanvas(
         return;
       }
 
+      const formQuestions = extractClarifyingQuestions(plannerMessage);
+      const hasTasks = plannerMessageHasTasks(plannerMessage);
+
       const newRow: CanvasMessageRow = {
         // The canvas chat treats messages as identified by their own
         // ids. Prefix to distinguish from canvas-agent assistant
@@ -148,6 +236,16 @@ export async function fanOutPlannerMessageToCanvas(
           kind: "planner",
           featureId: feature.id,
           plannerMessageId: plannerMessage.id,
+          // Phase 3/4 status-pill + inline-FORM signal. All optional —
+          // only set when present, so the card distinguishes "unknown"
+          // (legacy/absent) from a real state.
+          ...(feature.workflowStatus
+            ? { workflowStatus: feature.workflowStatus }
+            : {}),
+          ...(formQuestions
+            ? { hasForm: true, formQuestions }
+            : {}),
+          ...(hasTasks ? { hasTasks: true } : {}),
         },
       };
 
@@ -160,7 +258,31 @@ export async function fanOutPlannerMessageToCanvas(
           lastMessageAt: plannerMessage.timestamp,
         },
       });
+      didAppend = true;
     });
+
+    // Phase 3: if the freshly-appended planner message is "actionable",
+    // wake the canvas agent to triage it. `invokeCanvasAgentOnPlannerMessage`
+    // is itself gated behind `CANVAS_AUTONOMOUS_TURNS_ENABLED` (off by
+    // default), so in production this is a logged no-op until flipped
+    // on. Runs AFTER the append commits so the agent reads a
+    // conversation that already includes this message. Awaited so the
+    // worker's failure-tolerance (the outer try/catch) covers it too;
+    // the agent turn is itself failure-tolerant and won't throw.
+    if (didAppend) {
+      const wakeReason = actionableWakeReason(feature, plannerMessage);
+      if (wakeReason) {
+        const { invokeCanvasAgentOnPlannerMessage } = await import(
+          "@/services/canvas-agent-autoturn"
+        );
+        await invokeCanvasAgentOnPlannerMessage({
+          conversationId,
+          featureId: feature.id,
+          plannerMessageId: plannerMessage.id,
+          wakeReason,
+        });
+      }
+    }
   } catch (e) {
     // Non-fatal: the planner's own write succeeded; the canvas
     // conversation is just incomplete for this one message. The user
@@ -175,4 +297,50 @@ export async function fanOutPlannerMessageToCanvas(
       },
     );
   }
+}
+
+/**
+ * Decide whether a planner message is "actionable" — i.e. worth waking
+ * the canvas agent for — and, if so, classify *why*. Returns `null`
+ * for pure-prose status updates (which fan out but don't trigger a
+ * turn). Mirrors the precise definition in
+ * `docs/plans/canvas-agent-manages-planners.md` Phase 3:
+ *
+ *   1. A clarifying-questions artifact — `PLAN` + `ask_clarifying_questions`
+ *      (planner's explicit "a human must pick"). → `"form"`.
+ *      Deterministic. (NOT `ArtifactType.FORM`, which is the task
+ *      chat's representation — feature planners use the PLAN variant.)
+ *   2. The feature's `workflowStatus` is terminal
+ *      (`COMPLETED` / `FAILED` / `HALTED` / `ERROR`). → mapped reason.
+ *      Deterministic.
+ *   3. The message text ends with `?` (heuristic for "asked a question
+ *      without a FORM"). → `"question"`. Fragile-but-cheap; a false
+ *      positive costs one extra turn the agent can `stay_silent` on.
+ *
+ * FORM takes precedence over the others (it's the strongest signal).
+ */
+export function actionableWakeReason(
+  feature: FanOutFeatureRef,
+  plannerMessage: FanOutPlannerMessage,
+): AutoTurnWakeReason | null {
+  // 1. Clarifying-questions artifact (PLAN + ask_clarifying_questions).
+  if (extractClarifyingQuestions(plannerMessage)) return "form";
+
+  // 2. Terminal workflow status.
+  switch (feature.workflowStatus) {
+    case WorkflowStatus.COMPLETED:
+      return "completed";
+    case WorkflowStatus.HALTED:
+      return "halted";
+    case WorkflowStatus.FAILED:
+    case WorkflowStatus.ERROR:
+      return "failed";
+    default:
+      break;
+  }
+
+  // 3. Trailing-`?` question heuristic.
+  if (plannerMessage.message.trim().endsWith("?")) return "question";
+
+  return null;
 }

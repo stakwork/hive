@@ -61,6 +61,7 @@ import type {
   ApprovalResult,
   RejectionIntent,
 } from "@/lib/proposals/types";
+import type { ClarifyingQuestion } from "@/types/stakwork";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -91,7 +92,39 @@ export interface ToolCall {
  * land its variant without breaking Phase 2 consumers.
  */
 export type CanvasMessageSource =
-  | { kind: "planner"; featureId: string; plannerMessageId: string }
+  | {
+      kind: "planner";
+      featureId: string;
+      plannerMessageId: string;
+      /**
+       * The feature's `workflowStatus` at the moment the planner posted
+       * (Phase 3). Lets `SubAgentRunCard` show a meaningful status pill
+       * — `Running` (IN_PROGRESS), `Plan ready` (COMPLETED), `Failed`
+       * (FAILED/ERROR/HALTED) — without a re-read. Optional: rows
+       * written before Phase 3 (and any non-planner source) won't carry
+       * it, and the card falls back to its direction-based headline.
+       */
+      workflowStatus?: string;
+      /**
+       * `true` when the planner message carried a clarifying-questions
+       * artifact (`PLAN` + `ask_clarifying_questions`) — its explicit
+       * "a human must pick" signal (Phase 3). Drives the `Waiting for
+       * you` pill and surfaces the FORM via `PlannerFormSlot`.
+       */
+      hasForm?: boolean;
+      /**
+       * The planner's clarifying-question list (Phase 4), embedded so
+       * `PlannerFormSlot` can render `ClarifyingQuestionsPreview`
+       * verbatim with no extra fetch. Present iff `hasForm` is `true`.
+       */
+      formQuestions?: ClarifyingQuestion[];
+      /**
+       * `true` when the planner just generated a task breakdown (a
+       * `TASKS` artifact). Gates the card's **Start Tasks** button,
+       * which reads the live ready-count from the feature itself.
+       */
+      hasTasks?: boolean;
+    }
   // Added in Phase 4 — kept in the union now to make exhaustive
   // checks in switch statements complete from Phase 2 onward.
   | { kind: "user-answered-planner-form"; featureId: string; plannerMessageId: string };
