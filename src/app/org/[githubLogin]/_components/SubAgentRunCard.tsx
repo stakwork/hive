@@ -13,6 +13,7 @@ import {
 import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 import type { ClarifyingQuestion } from "@/types/stakwork";
+import { FeaturePlanDialog } from "./FeaturePlanDialog";
 
 /**
  * SubAgentRunCard — a "conversation thread" card showing the canvas
@@ -665,6 +666,18 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
           )}
         </div>
       </button>
+
+      {/*
+        "View plan" lives OUTSIDE the header <button> (no nested buttons)
+        and only when expanded — `FeaturePlanDialog` lazily fetches the
+        feature on mount and self-hides until a plan part exists.
+      */}
+      {!collapsed && (
+        <FeaturePlanDialog
+          featureId={run.featureId}
+          featureTitle={run.featureTitle}
+        />
+      )}
     </div>
   );
 }

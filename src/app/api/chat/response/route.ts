@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { Prisma, PodUsageStatus, WorkflowStatus, NotificationTriggerType } from "@prisma/client";
 import {
@@ -537,11 +537,11 @@ export async function POST(request: NextRequest) {
       // Fan out the planner's ASSISTANT message to the canvas
       // conversation that owns this feature (if any). The fan-out
       // worker is failure-tolerant — it logs and swallows errors so
-      // a fan-out hiccup never blocks the webhook response. See
+      // a fan-out hiccup never blocks the webhook response. It appends
+      // the message, pushes a live Pusher nudge, and RETURNS the
+      // auto-turn wake reason (or null). See
       // `src/services/canvas-planner-fanout.ts` for the lock /
-      // idempotency model. Phase 3 will add the autonomous-canvas-
-      // agent invocation inside the worker, gated by
-      // `CANVAS_AUTONOMOUS_TURNS_ENABLED`.
+      // idempotency model.
       try {
         const fanOutFeature = await db.feature.findUnique({
           where: { id: featureId },
@@ -555,7 +555,36 @@ export async function POST(request: NextRequest) {
           },
         });
         if (fanOutFeature) {
-          await fanOutPlannerMessageToCanvas(fanOutFeature, chatMessage);
+          const wakeReason = await fanOutPlannerMessageToCanvas(
+            fanOutFeature,
+            chatMessage,
+          );
+          // Schedule the autonomous canvas-agent turn AFTER the webhook
+          // responds (Next.js `after()`), so the LLM turn (10–30s) never
+          // blocks the ack back to Stakwork or holds the request open.
+          // The turn itself is gated behind `CANVAS_AUTONOMOUS_TURNS_ENABLED`
+          // (off by default) and is failure-tolerant.
+          const conversationId = fanOutFeature.parentCanvasConversationId;
+          if (wakeReason && conversationId) {
+            after(async () => {
+              try {
+                const { invokeCanvasAgentOnPlannerMessage } = await import(
+                  "@/services/canvas-agent-autoturn"
+                );
+                await invokeCanvasAgentOnPlannerMessage({
+                  conversationId,
+                  featureId: fanOutFeature.id,
+                  plannerMessageId: chatMessage.id,
+                  wakeReason,
+                });
+              } catch (e) {
+                console.error(
+                  "[chat/response] canvas auto-turn (after) failed (non-fatal):",
+                  e,
+                );
+              }
+            });
+          }
         }
       } catch (e) {
         console.error(
