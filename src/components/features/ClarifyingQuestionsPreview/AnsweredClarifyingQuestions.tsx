@@ -28,7 +28,7 @@ export function parseQAPairs(text: string): { question: string; answer: string }
       const answer = lines[1]?.replace(/^A:\s*/, "") ?? "";
       return { question, answer };
     })
-    .filter((pair) => pair.question.length > 0);
+    .filter((pair) => pair.question.length > 0 && pair.answer.length > 0);
 }
 
 interface AnsweredClarifyingQuestionsProps {
@@ -53,19 +53,30 @@ export function AnsweredClarifyingQuestions({
   const pairs = parseQAPairs(replyMessage.message);
   const count = questions.length;
 
+  const hasPairs = pairs.length > 0;
+
   return (
     <div className="rounded-md border border-border bg-muted/50 p-4">
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
-      >
-        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        <HelpCircle className="h-3 w-3" />
-        <span>
-          {count} {count === 1 ? "question" : "questions"} answered
-        </span>
-      </button>
-      {expanded && (
+      {hasPairs ? (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+        >
+          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          <HelpCircle className="h-3 w-3" />
+          <span>
+            {count} {count === 1 ? "question" : "questions"} answered
+          </span>
+        </button>
+      ) : (
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <HelpCircle className="h-3 w-3" />
+          <span>
+            {count} {count === 1 ? "question" : "questions"} answered
+          </span>
+        </div>
+      )}
+      {expanded && hasPairs && (
         <div className="mt-3 space-y-3">
           {pairs.map((pair, i) => (
             <div key={i}>
