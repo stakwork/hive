@@ -23,14 +23,19 @@ export default defineConfig({
           ],
     globals: true,
     // Run integration tests sequentially to avoid database conflicts.
-    // vmThreads (vs forks) keeps everything in one Node process, which means
+    // threads (vs forks) keeps everything in one Node process, which means
     // the Prisma library engine (.so.node native addon) is initialised once and
     // shared — avoiding the "Engine is not yet connected" race that occurs when
     // Prisma 6's library engine is re-initialised inside a forked child process.
-    pool: testSuite === "integration" ? "vmThreads" : "threads",
+    // vmThreads was previously used here but does not propagate NODE_OPTIONS to
+    // the worker thread, so the worker hits the default ~1.5 GB V8 heap limit
+    // even when the parent process has a higher limit. threads supports execArgv,
+    // which lets us explicitly raise the heap ceiling for the worker.
+    pool: "threads",
     poolOptions: testSuite === "integration" ? {
-      vmThreads: {
+      threads: {
         singleThread: true,
+        execArgv: ["--max-old-space-size=4096"],
       },
     } : undefined,
     include:
