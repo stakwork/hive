@@ -232,13 +232,15 @@ export async function POST(request: NextRequest) {
       // Validate the `conversationId` against this caller before
       // forwarding it to `handleApproval` — otherwise a malicious
       // body could stamp `parentCanvasConversationId` onto a feature
-      // pointing at someone else's conversation. Same validation
-      // path as the token-attribution case below.
-      const approvalConversationId = await resolveTokenAttributionRowId({
+      // pointing at someone else's conversation. Org-canvas
+      // conversations are org-scoped (no workspace), so we use the
+      // org-aware validator rather than the workspace-keyed
+      // token-attribution one (which would never match and silently
+      // drop the id, leaving the new feature un-fanned-out).
+      const approvalConversationId = await resolveOrgConversationRowId({
         conversationId,
         userId,
-        workspaceSlug: slugs[0],
-        anonymousId: publicAnonymousId,
+        orgId,
       });
       return await runProposalIntent({
         orgId,
@@ -540,6 +542,42 @@ async function resolveTokenAttributionRowId(args: {
         : anonymousId
           ? { anonymousId, userId: null }
           : { id: "__never__" }),
+    },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
+
+/**
+ * Org-canvas sibling of `resolveTokenAttributionRowId`. Org-canvas
+ * conversations are NOT workspace-scoped (`workspaceId: null`,
+ * `sourceControlOrgId` set), so the workspace-keyed validator above
+ * never matches them and would silently drop the id. The approval flow
+ * needs a validated id to stamp `Feature.parentCanvasConversationId`,
+ * which is what lets `fanOutPlannerMessageToCanvas` post the planner's
+ * `source.kind === "planner"` message back into this conversation (and
+ * render the `<SubAgentRunCard>`).
+ *
+ * Validates the row belongs to this org and either to this caller or
+ * is an explicitly shared room (mirrors the GET/PUT ownership rule in
+ * the org-canvas conversations route). Returns the id when safe, else
+ * null. IDOR-safe: a mismatched id is indistinguishable from missing.
+ */
+async function resolveOrgConversationRowId(args: {
+  conversationId: unknown;
+  userId: string;
+  orgId: string;
+}): Promise<string | null> {
+  const { conversationId, userId, orgId } = args;
+  if (typeof conversationId !== "string" || conversationId.length === 0) {
+    return null;
+  }
+
+  const row = await db.sharedConversation.findFirst({
+    where: {
+      id: conversationId,
+      sourceControlOrgId: orgId,
+      OR: [{ userId }, { isShared: true }],
     },
     select: { id: true },
   });

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateUserBelongsToOrg } from "@/services/workspace";
 import { db } from "@/lib/db";
-import { getLastMessageTimestamp } from "@/lib/ai/conversationHelpers";
+import {
+  getLastMessageTimestamp,
+  generateTitle,
+  UNTITLED_CONVERSATION,
+} from "@/lib/ai/conversationHelpers";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 import type { ConversationDetail, UpdateConversationRequest } from "@/types/shared-conversation";
 
@@ -166,8 +170,8 @@ export async function PUT(
 
     // SELECT FOR UPDATE serializes concurrent appends (same pattern as workspace route)
     const updated = await db.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ messages: unknown }[]>`
-        SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+      const locked = await tx.$queryRaw<{ messages: unknown; title: string | null }[]>`
+        SELECT messages, title FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
       `;
       if (locked.length === 0) {
         throw new Error("Conversation disappeared mid-transaction");
@@ -175,6 +179,21 @@ export async function PUT(
 
       const existingMessages = (locked[0].messages as any[]) ?? [];
       const updatedMessages = [...existingMessages, ...body.messages];
+
+      // Self-heal placeholder titles. The title is generated once at
+      // create time from the first user message; if the creating POST's
+      // delta happened to lead with a non-user message (or was empty),
+      // the row is stuck as `UNTITLED_CONVERSATION`. Recompute from the
+      // full message list the moment a user message becomes available —
+      // an explicit `body.title` still wins.
+      const storedTitle = locked[0].title;
+      const needsTitleHeal =
+        !body.title &&
+        hasNewMessages &&
+        (!storedTitle || storedTitle === UNTITLED_CONVERSATION);
+      const healedTitle = needsTitleHeal
+        ? generateTitle(updatedMessages)
+        : null;
 
       return tx.sharedConversation.update({
         where: { id: conversationId },
@@ -185,6 +204,9 @@ export async function PUT(
           // with an empty `messages` array) shouldn't reorder history.
           ...(hasNewMessages && { lastMessageAt: getLastMessageTimestamp(body.messages) }),
           ...(body.title && { title: body.title }),
+          ...(healedTitle && healedTitle !== UNTITLED_CONVERSATION
+            ? { title: healedTitle }
+            : {}),
           ...(body.source && { source: body.source }),
           ...(body.settings !== undefined && { settings: body.settings as any }),
           // Only the owner can change the shared-room flag (typically the

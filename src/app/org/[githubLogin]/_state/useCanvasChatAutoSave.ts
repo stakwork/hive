@@ -1,7 +1,8 @@
 /**
  * Auto-save + live-sync side effect for the canvas chat.
  *
- * Two responsibilities, sharing one source of truth (`savedCountRef`):
+ * Two responsibilities, sharing one source of truth (`persistedIdsRef`,
+ * a per-conversation set of message ids already on the server):
  *
  * 1. **Auto-save** — persists message deltas to
  *    `/api/orgs/[githubLogin]/chat/conversations` with
@@ -10,22 +11,21 @@
  * 2. **Live-sync** — subscribes to the active conversation's Pusher
  *    channel (`canvas-conversation-<id>`) and, on a
  *    `CANVAS_CONVERSATION_UPDATED` nudge, refetches the conversation and
- *    replaces the local message list with the server's authoritative
- *    copy. This is how a user *sitting on the page* sees planner
- *    messages and the canvas agent's autonomous responses appear
- *    immediately — the server appends them (planner fan-out, auto-turn,
- *    planner-form answer) and broadcasts a nudge.
+ *    **merges** server-appended rows into the local message list (by id,
+ *    never a wholesale replace). This is how a user *sitting on the page*
+ *    sees planner messages and the canvas agent's autonomous responses
+ *    appear immediately — the server appends them (planner fan-out,
+ *    auto-turn, planner-form answer) and broadcasts a nudge.
  *
- * Why these live together: the auto-save tracks "how many messages are
- * already persisted" as a count (`savedCountRef`). The live-sync brings
- * in server-appended rows; if it didn't coordinate that count, the next
- * auto-save would re-PUT those rows as duplicates. By replacing the
- * local list with the server copy and setting `savedCount = length`, the
- * two stay consistent. The replace only runs when the conversation is
- * **idle** (no unsaved local messages, not streaming, no save in
- * flight) — so the server copy is always a strict superset and nothing
- * local is dropped. A nudge that arrives mid-turn is deferred and
- * retried after the next successful save.
+ * Why these live together: the auto-save tracks which message *ids* are
+ * already persisted (`persistedIdsRef`). The live-sync brings in
+ * server-appended rows; it marks their ids persisted so the next
+ * auto-save doesn't re-PUT them as duplicates. Both operate on message
+ * identity, so a mid-turn nudge can never drop a local message: merge
+ * only adds, and the delta only sends ids not yet on the server. The
+ * merge runs only when the conversation is **idle** (no unsaved local
+ * messages, not streaming, no save in flight); a nudge that arrives
+ * mid-turn is deferred and retried after the next successful save.
  *
  * Persistence rules (mirrored from `DashboardChat`):
  *   - First message: POST creates the row, server returns id.
@@ -42,6 +42,11 @@ import {
   useCanvasChatStore,
   type CanvasChatMessage,
 } from "./canvasChatStore";
+import {
+  seedPersistedIds,
+  computeUnsaved,
+  mergeServerMessages,
+} from "./canvasChatPersistence";
 import {
   getPusherClient,
   getCanvasConversationChannelName,
@@ -83,9 +88,15 @@ function hydrateServerMessages(raw: unknown[]): CanvasChatMessage[] {
 }
 
 export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
-  // Track the last-saved message count per conversation so we know
-  // exactly which messages are new to send on PUT.
-  const savedCountRef = useRef<Map<string, number>>(new Map());
+  // Track which message *ids* are already persisted (on the server) per
+  // conversation. Identity-based — NOT a count. A count plus a seed-skip
+  // offset is fragile: any one-off desync (a Pusher nudge interleaving
+  // with a PUT, an ephemeral seed miscount) shifts the save window by
+  // one and silently drops the lead message — historically the user's
+  // first question. Keying by id makes "already saved?" unambiguous and
+  // makes message loss structurally impossible: a message is sent iff
+  // its id isn't in this set.
+  const persistedIdsRef = useRef<Map<string, Set<string>>>(new Map());
   // Avoid double-saving while a save is in flight for the same convo.
   const inFlightRef = useRef<Set<string>>(new Set());
   // Conversations that got a live-sync nudge while busy — synced after
@@ -102,23 +113,51 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
   useEffect(() => {
     if (!githubLogin) return;
 
+    // ─── Persisted-id bookkeeping ────────────────────────────────────
+    // Lazily initialize the persisted-id set for a conversation. Leading
+    // ephemeral seed messages (the AttentionList intro, or the messages
+    // a joined/share conversation already has on the server) are seeded
+    // in as "already persisted" so they're never POSTed/PUT again. The
+    // seeds are always the leading `ephemeralSeedCount` messages, so we
+    // snapshot their ids on first touch.
+    const getPersistedIds = (
+      conversationId: string,
+      conv: { messages: CanvasChatMessage[] },
+    ): Set<string> => {
+      let set = persistedIdsRef.current.get(conversationId);
+      if (!set) {
+        const seedSkip =
+          useCanvasChatStore.getState().ephemeralSeedCounts[conversationId] ??
+          0;
+        set = seedPersistedIds(conv.messages, seedSkip);
+        persistedIdsRef.current.set(conversationId, set);
+      }
+      return set;
+    };
+
+    // The local messages not yet on the server, in order. The lead of
+    // this list is always a genuinely-unsaved message — never an
+    // already-saved one — so a creating POST always carries the real
+    // first user message (never a placeholder-titled assistant lead).
+    const unsavedMessages = (
+      conversationId: string,
+      conv: { messages: CanvasChatMessage[] },
+    ): CanvasChatMessage[] => {
+      const persisted = getPersistedIds(conversationId, conv);
+      return computeUnsaved(conv.messages, persisted);
+    };
+
     // ─── Idle check ──────────────────────────────────────────────────
-    // A conversation is safe to replace from the server only when it has
+    // A conversation is safe to merge server rows into only when it has
     // no unsaved local messages, isn't streaming, and has no save in
     // flight.
     const isIdle = (
-      conv: { messages: unknown[]; isStreaming: boolean },
+      conv: { messages: CanvasChatMessage[]; isStreaming: boolean },
       conversationId: string,
     ): boolean => {
       if (conv.isStreaming) return false;
       if (inFlightRef.current.has(conversationId)) return false;
-      const seedSkip =
-        useCanvasChatStore.getState().ephemeralSeedCounts[conversationId] ?? 0;
-      const saved = Math.max(
-        savedCountRef.current.get(conversationId) ?? 0,
-        seedSkip,
-      );
-      return conv.messages.length <= saved;
+      return unsavedMessages(conversationId, conv).length === 0;
     };
 
     // ─── Live-sync ───────────────────────────────────────────────────
@@ -139,7 +178,6 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
         return;
       }
 
-      const lenBefore = conv.messages.length;
       syncInFlightRef.current.add(conversationId);
       pendingSyncRef.current.delete(conversationId);
       try {
@@ -152,29 +190,37 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
           Array.isArray(body.messages) ? body.messages : [],
         );
 
-        // State may have changed during the await. Only replace if still
-        // idle, still the same conversation, and the local list didn't
-        // grow (user didn't just type). Otherwise re-defer.
+        // State may have changed during the await. Re-read and re-check
+        // idleness against the *current* conversation.
         const now =
           useCanvasChatStore.getState().conversations[conversationId];
         if (!now || now.serverConversationId !== serverId) return;
-        if (
-          !isIdle(now, conversationId) ||
-          now.messages.length !== lenBefore ||
-          mapped.length < now.messages.length // safety: never shrink
-        ) {
+        if (!isIdle(now, conversationId)) {
           pendingSyncRef.current.add(conversationId);
           return;
         }
 
-        // Bump the saved counter BEFORE replacing the messages. The
-        // store's `set` fires subscribers synchronously, which re-runs
-        // `flush`; if `savedCount` weren't already `mapped.length`, that
-        // flush would re-PUT the just-synced rows as a bogus delta.
-        savedCountRef.current.set(conversationId, mapped.length);
+        // Merge by id, never replace. We keep every local message (so
+        // ephemeral seeds and any not-yet-saved local rows survive) and
+        // append the server messages we don't already have. Server-
+        // appended rows (planner fan-out → `source.kind === "planner"`,
+        // autonomous canvas-agent turns, planner-form answers) are always
+        // the newest, so appending them in server order is chronological.
+        // This is what surfaces the `<SubAgentRunCard>` after an approved
+        // feature's planner posts its plan back into the conversation.
+        const merged = mergeServerMessages(now.messages, mapped);
+
+        // Mark every server id as persisted BEFORE writing messages. The
+        // store's `set` fires subscribers synchronously, re-running
+        // `flush`; if these weren't already marked, that flush would
+        // re-POST the just-synced rows as a bogus delta.
+        const persisted = getPersistedIds(conversationId, now);
+        for (const id of merged.serverIds) persisted.add(id);
+
+        if (merged.added.length === 0) return; // in sync, nothing to do
         useCanvasChatStore
           .getState()
-          .setConversationMessages(conversationId, mapped);
+          .setConversationMessages(conversationId, merged.messages);
       } catch {
         // Network hiccup — a later nudge (or the next planner message)
         // will resync.
@@ -204,14 +250,10 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
       // Only save once the stream has fully settled (see store comment).
       if (conv.isStreaming) return;
 
-      const totalMsgs = conv.messages.length;
-      if (totalMsgs === 0) return;
+      if (conv.messages.length === 0) return;
 
-      const seedSkip =
-        useCanvasChatStore.getState().ephemeralSeedCounts[conversationId] ?? 0;
-      const savedRaw = savedCountRef.current.get(conversationId) ?? 0;
-      const saved = Math.max(savedRaw, seedSkip);
-      if (totalMsgs <= saved) {
+      const delta = unsavedMessages(conversationId, conv);
+      if (delta.length === 0) {
         // Nothing to save. If a sync was deferred (e.g. we just settled
         // from a stream), run it now.
         if (
@@ -223,11 +265,15 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
         return;
       }
 
-      const delta = conv.messages.slice(saved);
+      // Snapshot the ids we're about to persist so `afterSave` marks
+      // exactly what was sent — independent of any messages appended
+      // while the request is in flight (those get the next flush).
+      const deltaIds = delta.map((m) => m.id);
       inFlightRef.current.add(conversationId);
 
       const afterSave = (serverId: string) => {
-        savedCountRef.current.set(conversationId, totalMsgs);
+        const persisted = getPersistedIds(conversationId, conv);
+        for (const id of deltaIds) persisted.add(id);
         // A live-sync nudge that arrived while we were busy can run now.
         if (pendingSyncRef.current.has(conversationId)) {
           syncFromServer(conversationId, serverId);
@@ -312,13 +358,14 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
 
     // Imperative subscription — fine-grained reaction without re-render.
     const unsub = useCanvasChatStore.subscribe((state, prev) => {
-      // Reset the saved counter when a conversation is dropped or its
-      // server row is recycled (clear button).
+      // Reset the persisted-id set when a conversation is dropped or its
+      // server row is recycled (clear button) — a recycled row will get
+      // a fresh server id, so the old persisted ids no longer apply.
       for (const id of Object.keys(prev.conversations)) {
         const before = prev.conversations[id];
         const after = state.conversations[id];
         if (!after) {
-          savedCountRef.current.delete(id);
+          persistedIdsRef.current.delete(id);
           pendingSyncRef.current.delete(id);
           continue;
         }
@@ -326,7 +373,7 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
           before.serverConversationId !== null &&
           after.serverConversationId === null
         ) {
-          savedCountRef.current.delete(id);
+          persistedIdsRef.current.delete(id);
         }
       }
 
