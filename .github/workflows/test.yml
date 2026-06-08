@@ -105,4 +105,4 @@ jobs:
           STAKWORK_CUSTOMERS_PASSWORD: ${{ secrets.STAKWORK_CUSTOMERS_PASSWORD}}
           SWARM_SUPER_ADMIN_URL: placeholder
           LIVEKIT_CALL_BASE_URL: "https://call-link"
-        run: NODE_OPTIONS="--max-old-space-size=4096" npm run test:integration
+        run: NODE_OPTIONS="--max-old-space-size=6144" npm run test:integration
