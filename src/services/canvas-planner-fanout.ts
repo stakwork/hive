@@ -37,7 +37,14 @@
  */
 
 import { db } from "@/lib/db";
+import { ArtifactType, WorkflowStatus } from "@prisma/client";
 import type { Artifact, ChatMessage } from "@prisma/client";
+// Type-only import — the runtime `invokeCanvasAgentOnPlannerMessage` is
+// loaded lazily (dynamic `import()` below) so this webhook-path module
+// doesn't statically pull in `runCanvasAgent`'s heavy module graph
+// (bifrost, pods, encryption, …). The auto-turn machinery is gated off
+// by default and only needed on actionable messages.
+import type { AutoTurnWakeReason } from "@/services/canvas-agent-autoturn";
 
 /** Subset of `Feature` the fan-out needs. */
 export interface FanOutFeatureRef {
@@ -45,6 +52,13 @@ export interface FanOutFeatureRef {
   parentCanvasConversationId: string | null;
   /** Carried for future use (e.g. workspace-scoped logging). Not read in v1. */
   workspaceId: string;
+  /**
+   * The feature's live workflow status, used by the Phase 3 "actionable"
+   * check to decide whether a planner message warrants an autonomous
+   * canvas-agent turn. Optional for backwards-compat with existing
+   * callers/tests; absent → workflow-transition wakeups don't fire.
+   */
+  workflowStatus?: WorkflowStatus | null;
 }
 
 /** Subset of `ChatMessage` the fan-out needs. Artifacts are eagerly loaded. */
@@ -104,6 +118,10 @@ export async function fanOutPlannerMessageToCanvas(
   const conversationId = feature.parentCanvasConversationId;
 
   try {
+    // Tracks whether THIS call actually appended a row (vs. an
+    // idempotent no-op). Only a fresh append should wake the agent —
+    // re-deliveries must not re-trigger an auto-turn.
+    let didAppend = false;
     await db.$transaction(async (tx) => {
       // Row-level lock against concurrent autosave PUTs. See the
       // matching wrap in
@@ -160,7 +178,31 @@ export async function fanOutPlannerMessageToCanvas(
           lastMessageAt: plannerMessage.timestamp,
         },
       });
+      didAppend = true;
     });
+
+    // Phase 3: if the freshly-appended planner message is "actionable",
+    // wake the canvas agent to triage it. `invokeCanvasAgentOnPlannerMessage`
+    // is itself gated behind `CANVAS_AUTONOMOUS_TURNS_ENABLED` (off by
+    // default), so in production this is a logged no-op until flipped
+    // on. Runs AFTER the append commits so the agent reads a
+    // conversation that already includes this message. Awaited so the
+    // worker's failure-tolerance (the outer try/catch) covers it too;
+    // the agent turn is itself failure-tolerant and won't throw.
+    if (didAppend) {
+      const wakeReason = actionableWakeReason(feature, plannerMessage);
+      if (wakeReason) {
+        const { invokeCanvasAgentOnPlannerMessage } = await import(
+          "@/services/canvas-agent-autoturn"
+        );
+        await invokeCanvasAgentOnPlannerMessage({
+          conversationId,
+          featureId: feature.id,
+          plannerMessageId: plannerMessage.id,
+          wakeReason,
+        });
+      }
+    }
   } catch (e) {
     // Non-fatal: the planner's own write succeeded; the canvas
     // conversation is just incomplete for this one message. The user
@@ -175,4 +217,51 @@ export async function fanOutPlannerMessageToCanvas(
       },
     );
   }
+}
+
+/**
+ * Decide whether a planner message is "actionable" — i.e. worth waking
+ * the canvas agent for — and, if so, classify *why*. Returns `null`
+ * for pure-prose status updates (which fan out but don't trigger a
+ * turn). Mirrors the precise definition in
+ * `docs/plans/canvas-agent-manages-planners.md` Phase 3:
+ *
+ *   1. A `FORM` artifact (planner's explicit "a human must pick"). →
+ *      `"form"`. Deterministic.
+ *   2. The feature's `workflowStatus` is terminal
+ *      (`COMPLETED` / `FAILED` / `HALTED` / `ERROR`). → mapped reason.
+ *      Deterministic.
+ *   3. The message text ends with `?` (heuristic for "asked a question
+ *      without a FORM"). → `"question"`. Fragile-but-cheap; a false
+ *      positive costs one extra turn the agent can `stay_silent` on.
+ *
+ * FORM takes precedence over the others (it's the strongest signal).
+ */
+export function actionableWakeReason(
+  feature: FanOutFeatureRef,
+  plannerMessage: FanOutPlannerMessage,
+): AutoTurnWakeReason | null {
+  // 1. FORM artifact.
+  const hasForm = plannerMessage.artifacts.some(
+    (a) => a.type === ArtifactType.FORM,
+  );
+  if (hasForm) return "form";
+
+  // 2. Terminal workflow status.
+  switch (feature.workflowStatus) {
+    case WorkflowStatus.COMPLETED:
+      return "completed";
+    case WorkflowStatus.HALTED:
+      return "halted";
+    case WorkflowStatus.FAILED:
+    case WorkflowStatus.ERROR:
+      return "failed";
+    default:
+      break;
+  }
+
+  // 3. Trailing-`?` question heuristic.
+  if (plannerMessage.message.trim().endsWith("?")) return "question";
+
+  return null;
 }
