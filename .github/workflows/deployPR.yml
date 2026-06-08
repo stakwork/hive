@@ -268,7 +268,7 @@ jobs:
         with:
           node-version: "22"
 
-      - run: npm install --global vercel@latest
+      - run: npm install --global vercel@53.4.0
       - run: vercel pull --yes --environment=preview --git-branch=${{ steps.slot.outputs.preview_branch }} --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################
