@@ -159,6 +159,49 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
     return byAnchor;
   }, [messages]);
 
+  // Render the SubAgentRunCard(s) anchored to a message. Extracted so it
+  // can render under BOTH a normal message AND a suppressed fan-out
+  // message (an inbound planner reply / form-answer — whose bubble is
+  // hidden but which is the anchor for an inbound-only run, e.g. the
+  // approval flow where the agent never made an outbound
+  // `send_to_feature_planner` call).
+  const renderSubAgentRuns = (runs: ReturnType<typeof getSubAgentRunsFromMessages>) => (
+    <div className="space-y-1.5">
+      {runs.map((run) => (
+        <div key={run.featureId} className="space-y-1.5">
+          <SubAgentRunCard run={run} />
+          {/*
+            Phase 4: an unanswered planner FORM surfaces OUTSIDE the
+            collapsed card so the user can answer it inline without
+            expanding or leaving canvas chat. Only the run with a
+            `pendingForm` renders a slot.
+          */}
+          {run.pendingForm && (
+            <PlannerFormSlot
+              githubLogin={githubLogin}
+              featureId={run.featureId}
+              featureTitle={run.featureTitle}
+              plannerMessageId={run.pendingForm.plannerMessageId}
+              questions={run.pendingForm.questions}
+            />
+          )}
+          {/*
+            Once the planner has generated tasks, offer a Start Tasks
+            button (it reads the live ready-count itself and hides when
+            none remain). Suppressed while a FORM is pending — answer the
+            planner first.
+          */}
+          {run.hasGeneratedTasks && !run.pendingForm && (
+            <StartTasksSlot
+              featureId={run.featureId}
+              featureTitle={run.featureTitle}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="flex h-full flex-col min-h-0">
       <div className="flex items-center justify-between px-3 py-2 border-b">
@@ -211,23 +254,33 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               return null;
             }
 
+            const subAgentRuns = subAgentRunsByAnchor.get(message.id);
+
             // Fan-out messages from planners (and Phase 4's planner-
-            // form answers) render inside their `SubAgentRunCard`,
-            // not as top-level chat bubbles. They stay in the
-            // messages array so `getSubAgentRunsFromMessages` can
-            // walk them and so they round-trip through autosave /
-            // share. Same shape as the approval/rejection early-
-            // return above. See
+            // form answers) don't render as top-level chat bubbles —
+            // BUT they're the anchor for inbound-only runs (the approval
+            // flow: the agent never made an outbound
+            // `send_to_feature_planner` call, so the planner's reply is
+            // the only activity and thus the anchor). Suppress the
+            // bubble, but still render any SubAgentRunCard anchored
+            // here, otherwise the card disappears the moment the planner
+            // replies. They stay in the messages array so
+            // `getSubAgentRunsFromMessages` can walk them and so they
+            // round-trip through autosave / share. See
             // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
             if (
               message.source?.kind === "planner" ||
               message.source?.kind === "user-answered-planner-form"
             ) {
-              return null;
+              if (!subAgentRuns || subAgentRuns.length === 0) return null;
+              return (
+                <div key={message.id} className="space-y-1.5">
+                  {renderSubAgentRuns(subAgentRuns)}
+                </div>
+              );
             }
 
             const proposals = getProposalsFromMessage(message);
-            const subAgentRuns = subAgentRunsByAnchor.get(message.id);
 
             return (
               <div key={message.id} className="space-y-1.5">
@@ -247,44 +300,9 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                     ))}
                   </div>
                 )}
-                {subAgentRuns && subAgentRuns.length > 0 && (
-                  <div className="space-y-1.5">
-                    {subAgentRuns.map((run) => (
-                      <div key={run.featureId} className="space-y-1.5">
-                        <SubAgentRunCard run={run} />
-                        {/*
-                          Phase 4: an unanswered planner FORM surfaces
-                          OUTSIDE the collapsed card so the user can
-                          answer it inline without expanding or leaving
-                          canvas chat. Only the run with a `pendingForm`
-                          renders a slot.
-                        */}
-                        {run.pendingForm && (
-                          <PlannerFormSlot
-                            githubLogin={githubLogin}
-                            featureId={run.featureId}
-                            featureTitle={run.featureTitle}
-                            plannerMessageId={run.pendingForm.plannerMessageId}
-                            questions={run.pendingForm.questions}
-                          />
-                        )}
-                        {/*
-                          Once the planner has generated tasks, offer a
-                          Start Tasks button (it reads the live ready-
-                          count itself and hides when none remain).
-                          Suppressed while a FORM is pending — answer the
-                          planner first.
-                        */}
-                        {run.hasGeneratedTasks && !run.pendingForm && (
-                          <StartTasksSlot
-                            featureId={run.featureId}
-                            featureTitle={run.featureTitle}
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {subAgentRuns &&
+                  subAgentRuns.length > 0 &&
+                  renderSubAgentRuns(subAgentRuns)}
                 <MessageArtifacts artifactIds={message.artifactIds} />
               </div>
             );
