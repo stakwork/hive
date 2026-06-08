@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
-import { ArrowUp, Mic, MicOff, Loader2, Sparkles, ImageIcon, Upload, X, Code2 } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Loader2, Sparkles, ImageIcon, X, Code2 } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -366,29 +366,37 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus }: P
                   </Command>
                 </div>
               )}
-              <Textarea
-                ref={textareaRef}
-                placeholder={isListening ? "Listening..." : "Describe a feature or problem"}
-                value={value}
-                onChange={(e) => {
-                  setValue(e.target.value);
-                  const cursor = e.target.selectionStart ?? e.target.value.length;
-                  const before = e.target.value.slice(0, cursor);
-                  const match = before.match(/\B@([\w-]*)$/);
-                  if (match) {
-                    setMentionQuery(match[1]);
-                    setMentionIndex(0);
-                  } else {
-                    setMentionQuery(null);
-                  }
-                }}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                disabled={isLoading}
-                className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
-                autoFocus
-                data-testid="plan-start-input"
-              />
+              <div
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleImageDrop}
+              >
+                <Textarea
+                  ref={textareaRef}
+                  placeholder={isListening ? "Listening..." : "Describe a feature or problem"}
+                  value={value}
+                  onChange={(e) => {
+                    setValue(e.target.value);
+                    const cursor = e.target.selectionStart ?? e.target.value.length;
+                    const before = e.target.value.slice(0, cursor);
+                    const match = before.match(/\B@([\w-]*)$/);
+                    if (match) {
+                      setMentionQuery(match[1]);
+                      setMentionIndex(0);
+                    } else {
+                      setMentionQuery(null);
+                    }
+                  }}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  disabled={isLoading}
+                  isDragging={isDragging}
+                  className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
+                  autoFocus
+                  data-testid="plan-start-input"
+                />
+              </div>
             </div>
           </motion.div>
 
@@ -402,31 +410,8 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus }: P
             className="hidden"
             data-testid="file-input"
           />
-          <div className="mx-8 mb-4">
-            {!selectedFile ? (
-              <div
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleImageDrop}
-              >
-                <label htmlFor={fileInputId} className="cursor-pointer">
-                  <div
-                    className={cn(
-                      "border-2 border-dashed rounded-md p-4 text-center transition-colors",
-                      isDragging
-                        ? "border-primary bg-primary/10"
-                        : "border-muted-foreground/25 hover:border-muted-foreground/50",
-                    )}
-                    data-testid="drop-zone"
-                  >
-                    <Upload className="w-6 h-6 mx-auto mb-1 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Click to upload or drag and drop</p>
-                    <p className="text-xs text-muted-foreground mt-1">JPEG, PNG, GIF, WebP (max 10MB)</p>
-                  </div>
-                </label>
-              </div>
-            ) : (
+          {selectedFile && (
+            <div className="mx-8 mb-4">
               <div className="relative border rounded-md p-2" data-testid="file-preview">
                 <div className="flex items-start gap-2">
                   {previewUrl && (
@@ -454,8 +439,8 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus }: P
                   </Button>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Prototype toggle row */}
           <div className="px-8 pb-6 flex items-center gap-4 flex-wrap" data-testid="bottom-row">
