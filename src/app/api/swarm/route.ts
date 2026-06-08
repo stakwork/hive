@@ -364,11 +364,13 @@ export async function POST(request: NextRequest) {
       "status" in error &&
       typeof (error as { status: number }).status === "number"
     ) {
-      const status = (error as { status: number }).status;
-      const errorMessage = "message" in error ? error.message : "Failed to create swarm";
+      const rawStatus = (error as { status: number }).status;
+      const status = rawStatus >= 200 && rawStatus <= 599 ? rawStatus : 500;
+      const errorMessage = "message" in error ? (error as { message?: unknown }).message : undefined;
+      const message = typeof errorMessage === "string" && errorMessage ? errorMessage : "Failed to create swarm";
 
-      console.log(`[SWARM_CREATE] Returning structured error - status: ${status}, message: ${errorMessage}`);
-      return NextResponse.json({ success: false, message: errorMessage }, { status });
+      console.log(`[SWARM_CREATE] Returning structured error - status: ${status}, message: ${message}`);
+      return NextResponse.json({ success: false, message }, { status });
     }
 
     console.log(`[SWARM_CREATE] Returning generic error for workspace ${workspaceId}`);
