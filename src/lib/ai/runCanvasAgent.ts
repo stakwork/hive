@@ -195,6 +195,16 @@ export interface RunCanvasAgentOptions {
    * (no live UI subscriber) should set it `true`.
    */
   silentPusher?: boolean;
+  /**
+   * Extra tools merged into the assembled toolset, AFTER the
+   * `readonly` strip runs — so anything here is always available to
+   * the agent regardless of `readonly`. Used by the canvas-agent
+   * auto-turn path (`src/services/canvas-agent-autoturn.ts`) to inject
+   * `stay_silent`, a terminal no-op the agent calls when a machine-
+   * driven wakeup warrants no visible response. Names here win on
+   * collision with the built-in toolset (last spread wins).
+   */
+  additionalTools?: ToolSet;
   /** Caller-owned side effects. */
   hooks?: CanvasAgentHooks;
 }
@@ -390,6 +400,7 @@ export async function runCanvasAgent(
     silentPusher = false,
     hooks,
     currentCanvasConversationId,
+    additionalTools,
   } = opts;
 
   if (!Array.isArray(workspaceSlugs) || workspaceSlugs.length === 0) {
@@ -573,6 +584,13 @@ export async function runCanvasAgent(
 
   if (readonly) {
     tools = filterReadonly(tools);
+  }
+
+  // Merge caller-supplied extra tools AFTER the readonly strip so they
+  // survive it (e.g. `stay_silent` on auto-turns). Last spread wins on
+  // name collision.
+  if (additionalTools) {
+    tools = { ...tools, ...additionalTools };
   }
 
   // ------------------------------------------------------------------
