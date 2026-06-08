@@ -35,11 +35,12 @@ function getMermaidCode(artifact: QuestionArtifact): string | null {
   if (
     typeof artifact.data === "object" &&
     artifact.data !== null &&
-    !Array.isArray(artifact.data) &&
-    typeof (artifact.data as Record<string, unknown>).code === "string" &&
-    ((artifact.data as Record<string, unknown>).code as string).trim().length > 0
+    !Array.isArray(artifact.data)
   ) {
-    return (artifact.data as Record<string, unknown>).code as string;
+    const firstString = Object.values(artifact.data as Record<string, unknown>).find(
+      (v) => typeof v === "string" && (v as string).trim().length > 0
+    );
+    if (firstString) return firstString as string;
   }
   return null;
 }
