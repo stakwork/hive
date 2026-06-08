@@ -91,10 +91,10 @@ export function TaskChat({
       .then((r) => (r.ok ? r.json() : { data: [] }))
       .then((body) => {
         if (cancelled) return;
-        // The task messages route returns `{ success, data }` like
-        // the feature route does; fall back to `body` if a future
-        // change drops the wrapper.
-        const data = (body?.data ?? body ?? []) as ChatMessage[];
+        // The task messages route returns `{ success, data: { task, messages, count } }`.
+        // Drill into data.messages first; fall back for older shapes or if
+        // a future change drops the wrapper.
+        const data = (body?.data?.messages ?? body?.data ?? body ?? []) as ChatMessage[];
         setMessages(Array.isArray(data) ? data : []);
       })
       .catch(() => {
@@ -216,13 +216,19 @@ export function TaskChat({
         // swap the optimistic placeholder with the persisted record
         // so future Pusher echoes dedupe on the real id.
         if (data?.message) {
-          setMessages((m) =>
-            m.map((x) =>
+          setMessages((m) => {
+            // Pusher may have already delivered the real message before the POST
+            // response arrived. If so, just drop the optimistic placeholder
+            // instead of inserting a second copy with the same DB id.
+            if (m.some((x) => x.id === data.message.id)) {
+              return m.filter((x) => x.id !== optimistic.id);
+            }
+            return m.map((x) =>
               x.id === optimistic.id
                 ? { ...data.message, status: ChatStatus.SENT }
                 : x,
-            ),
-          );
+            );
+          });
         } else {
           setMessages((m) =>
             m.map((x) =>

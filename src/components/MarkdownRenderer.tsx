@@ -353,6 +353,7 @@ const createComponents = (
       <SyntaxHighlighter
         PreTag="pre"
         wrapLines={true}
+        wrapLongLines={true}
         language={match[1]}
         style={tomorrow}
       >

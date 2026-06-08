@@ -8,6 +8,31 @@ vi.mock('@/hooks/use-theme', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
+// Mock SyntaxHighlighter to capture props
+vi.mock('react-syntax-highlighter', () => ({
+  Prism: (props: Record<string, unknown>) => {
+    return React.createElement('pre', { 'data-wrap-long-lines': String(props.wrapLongLines) }, props.children as React.ReactNode);
+  },
+}));
+vi.mock('react-syntax-highlighter/dist/cjs/styles/prism', () => ({
+  tomorrow: {},
+}));
+
+describe('MarkdownRenderer — code block wrapLongLines', () => {
+  it('passes wrapLongLines={true} to SyntaxHighlighter for fenced code blocks', async () => {
+    const longLine = 'a'.repeat(300);
+    const markdown = `\`\`\`js\n${longLine}\n\`\`\``;
+    const { container } = render(
+      <MarkdownRenderer>{markdown}</MarkdownRenderer>
+    );
+    await waitFor(() => {
+      const pre = container.querySelector('pre[data-wrap-long-lines]');
+      expect(pre).not.toBeNull();
+      expect(pre?.getAttribute('data-wrap-long-lines')).toBe('true');
+    });
+  });
+});
+
 describe('MarkdownRenderer — feature image URL resolution', () => {
   beforeEach(() => {
     vi.resetAllMocks();
