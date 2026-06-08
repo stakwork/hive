@@ -119,16 +119,28 @@ export function notifyCanvasConversationUpdated(
   conversationId: string,
   reason: CanvasConversationUpdateReason,
 ): void {
-  void pusherServer
-    .trigger(
-      getCanvasConversationChannelName(conversationId),
-      PUSHER_EVENTS.CANVAS_CONVERSATION_UPDATED,
-      { conversationId, reason, at: Date.now() },
-    )
-    .catch((err) => {
-      console.error(
-        "[pusher] notifyCanvasConversationUpdated failed (non-fatal):",
-        err,
-      );
-    });
+  // Wrapped in try/catch because `pusherServer.trigger` can throw
+  // *synchronously* (not just reject) — e.g. when the PUSHER_* env vars are
+  // unset the HMAC signing throws before a promise is ever returned (the case
+  // on CI, where leaking that throw would 500 the underlying write). The
+  // `.catch` only covers async rejections, so we need both.
+  try {
+    void pusherServer
+      .trigger(
+        getCanvasConversationChannelName(conversationId),
+        PUSHER_EVENTS.CANVAS_CONVERSATION_UPDATED,
+        { conversationId, reason, at: Date.now() },
+      )
+      .catch((err) => {
+        console.error(
+          "[pusher] notifyCanvasConversationUpdated failed (non-fatal):",
+          err,
+        );
+      });
+  } catch (err) {
+    console.error(
+      "[pusher] notifyCanvasConversationUpdated threw (non-fatal):",
+      err,
+    );
+  }
 }
