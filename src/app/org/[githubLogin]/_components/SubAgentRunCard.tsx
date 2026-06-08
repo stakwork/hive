@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
+import type { ClarifyingQuestion } from "@/types/stakwork";
 
 /**
  * SubAgentRunCard — a "conversation thread" card showing the canvas
@@ -59,12 +60,19 @@ interface RunMessage {
   /**
    * Direction of the entry from the canvas agent's POV:
    *   - `"out"`: canvas agent → planner (a `send_to_feature_planner`
-   *     tool call).
+   *     tool call) OR the user answering a planner FORM in canvas chat
+   *     (a `user-answered-planner-form` row — `formAnswer: true`).
    *   - `"in"`: planner → canvas (a fan-out row carrying
    *     `source: { kind: "planner", ... }`, written by
    *     `fanOutPlannerMessageToCanvas`).
    */
   direction: "out" | "in";
+  /**
+   * `true` for the third entry class (Phase 4): the user answered a
+   * planner FORM directly in canvas chat. Rendered with a `✓` instead
+   * of `→` to distinguish it from a canvas-agent send.
+   */
+  formAnswer?: boolean;
   /**
    * For `"out"`: the message body the canvas agent passed via
    * `message` input.
@@ -88,10 +96,22 @@ interface RunMessage {
   workflowStatus?: string;
   /**
    * Inbound only (Phase 3): `true` when the planner message carried a
-   * `FORM` artifact (an explicit "a human must pick"). Highest-priority
-   * signal for the status pill.
+   * clarifying-questions artifact (an explicit "a human must pick").
+   * Highest-priority signal for the status pill.
    */
   hasForm?: boolean;
+  /**
+   * Inbound only (Phase 4): the planner message id that asked the
+   * question, used to pair an inbound FORM with its
+   * `user-answered-planner-form` reply (matched on `plannerMessageId`).
+   */
+  plannerMessageId?: string;
+  /**
+   * Inbound only (Phase 4): the embedded clarifying-question list
+   * (`source.formQuestions`). Present iff `hasForm`. Rendered by
+   * `PlannerFormSlot` when this is the run's unanswered FORM.
+   */
+  formQuestions?: ClarifyingQuestion[];
 }
 
 /** All exchanges with one planner during the active conversation. */
@@ -109,6 +129,18 @@ export interface SubAgentRun {
    * a run with 3 sends shows as one card under the 3rd send, not 3.
    */
   anchorMessageId: string;
+  /**
+   * Phase 4: the planner's most recent UNANSWERED clarifying-questions
+   * FORM, if any. Set when the latest inbound entry carries
+   * `formQuestions` AND no `user-answered-planner-form` row references
+   * its `plannerMessageId`. `SidebarChat` renders `PlannerFormSlot`
+   * from this; the card's pill reads `Waiting for you` while it's set.
+   * `undefined` once answered (or when the planner never asked).
+   */
+  pendingForm?: {
+    plannerMessageId: string;
+    questions: ClarifyingQuestion[];
+  };
 }
 
 interface ToolCallOutput {
@@ -188,6 +220,10 @@ export function getSubAgentRunsFromMessages(
   messages: CanvasChatMessage[],
 ): SubAgentRun[] {
   const byFeature = new Map<string, SubAgentRun>();
+  // Planner message ids the user has answered via `PlannerFormSlot`
+  // (a `user-answered-planner-form` row). Used after the walk to
+  // decide which inbound FORM is still pending.
+  const answeredPlannerMessageIds = new Set<string>();
 
   messages.forEach((message, messageIndex) => {
     // ── Inbound: planner → canvas (fan-out row) ────────────────
@@ -202,6 +238,8 @@ export function getSubAgentRunsFromMessages(
         status: "sent",
         workflowStatus: message.source.workflowStatus,
         hasForm: message.source.hasForm,
+        plannerMessageId: message.source.plannerMessageId,
+        formQuestions: message.source.formQuestions,
       });
       // Inbound entries also move the anchor — a planner reply is
       // the freshest activity for this feature, so the card should
@@ -209,6 +247,23 @@ export function getSubAgentRunsFromMessages(
       run.anchorMessageId = message.id;
       // Don't fall through to the toolCalls walk: a planner-source
       // row should never carry a `send_to_feature_planner` tool call.
+      return;
+    }
+
+    // ── User answered a planner FORM in canvas chat (Phase 4) ──
+    if (message.source?.kind === "user-answered-planner-form") {
+      const { featureId, plannerMessageId } = message.source;
+      answeredPlannerMessageIds.add(plannerMessageId);
+      const run = upsertRun(byFeature, featureId, {});
+      run.messages.push({
+        messageId: message.id,
+        messageIndex,
+        direction: "out",
+        formAnswer: true,
+        text: message.content,
+        status: "sent",
+      });
+      run.anchorMessageId = message.id;
       return;
     }
 
@@ -259,6 +314,27 @@ export function getSubAgentRunsFromMessages(
     }
   });
 
+  // Phase 4: resolve each run's pending FORM — the most recent inbound
+  // entry that carries `formQuestions` and hasn't been answered yet.
+  // Walk newest→oldest so the *latest* unanswered FORM wins (a planner
+  // that re-asked supersedes an earlier question).
+  for (const run of byFeature.values()) {
+    for (let i = run.messages.length - 1; i >= 0; i--) {
+      const m = run.messages[i];
+      if (m.direction !== "in" || !m.formQuestions?.length) continue;
+      if (m.plannerMessageId && answeredPlannerMessageIds.has(m.plannerMessageId)) {
+        // This FORM was answered; an older one can't be "pending" once
+        // a newer message exists, so stop at the newest FORM regardless.
+        break;
+      }
+      run.pendingForm = {
+        plannerMessageId: m.plannerMessageId ?? m.messageId,
+        questions: m.formQuestions,
+      };
+      break;
+    }
+  }
+
   // Filter out any run that ended up with no anchor (shouldn't
   // happen in practice — every push sets an anchor — but defensive
   // against future code paths that pre-create a run).
@@ -307,10 +383,17 @@ interface CardStatus {
 }
 
 export function deriveCardStatus(run: SubAgentRun): CardStatus {
+  // Run-level: an unanswered planner FORM always wins — it's the one
+  // state that demands the user's hands (Phase 4). Even if a later
+  // prose message arrived, the FORM is still pending until answered.
+  if (run.pendingForm) return { label: "Waiting for you", tone: "waiting" };
+
   const latest = run.messages[run.messages.length - 1];
   if (!latest) return { label: "Sent · waiting for reply", tone: "sent" };
 
   if (latest.direction === "out") {
+    if (latest.formAnswer)
+      return { label: "Answered · waiting for planner", tone: "sent" };
     if (latest.status === "failed") return { label: "Failed", tone: "failed" };
     if (latest.status === "in_flight")
       return { label: "Sending…", tone: "running" };
@@ -484,17 +567,17 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
               </div>
 
               {/*
-                Thread — canvas-agent → planner (→) and planner →
-                canvas (←) messages, in conversation-chronological
-                order. The arrow makes direction obvious; inbound
-                entries use the foreground text color (not muted)
-                because they're "fresh content the planner wrote"
-                and visually distinct from the canvas-agent's own
-                outbound sends.
+                Thread — three entry classes, in conversation-
+                chronological order:
+                  - canvas-agent → planner send (→, muted italic)
+                  - planner → canvas reply (←, foreground)
+                  - user answered a planner FORM (✓, emerald) — Phase 4
+                The marker makes direction/kind obvious at a glance.
               */}
               <ul className="mt-1.5 space-y-1">
                 {run.messages.map((m, i) => {
                   const isInbound = m.direction === "in";
+                  const isFormAnswer = m.formAnswer === true;
                   return (
                     <li
                       key={`${m.messageId}-${i}`}
@@ -506,23 +589,23 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
                     >
                       <span
                         className={
-                          isInbound
+                          isInbound || isFormAnswer
                             ? "mt-[3px] flex-shrink-0 text-emerald-600 dark:text-emerald-400"
                             : "mt-[3px] flex-shrink-0 text-foreground/60"
                         }
                         aria-hidden="true"
                       >
-                        {isInbound ? "←" : "→"}
+                        {isInbound ? "←" : isFormAnswer ? "✓" : "→"}
                       </span>
                       <div className="min-w-0 flex-1">
                         <span
                           className={
-                            isInbound
+                            isInbound || isFormAnswer
                               ? "break-words"
                               : "break-words italic"
                           }
                         >
-                          {isInbound
+                          {isInbound || isFormAnswer
                             ? m.text || "(empty)"
                             : `\u201C${m.text || "(empty)"}\u201D`}
                         </span>
@@ -540,6 +623,7 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
                           is satisfied.
                         */}
                         {!isInbound &&
+                          !isFormAnswer &&
                           m.status === "sent" &&
                           i < run.messages.length - 1 && (
                             <Check

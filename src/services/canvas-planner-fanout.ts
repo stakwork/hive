@@ -37,14 +37,42 @@
  */
 
 import { db } from "@/lib/db";
-import { ArtifactType, WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus } from "@prisma/client";
 import type { Artifact, ChatMessage } from "@prisma/client";
+import { isClarifyingQuestions } from "@/types/stakwork";
+import type { ClarifyingQuestion } from "@/types/stakwork";
 // Type-only import — the runtime `invokeCanvasAgentOnPlannerMessage` is
 // loaded lazily (dynamic `import()` below) so this webhook-path module
 // doesn't statically pull in `runCanvasAgent`'s heavy module graph
 // (bifrost, pods, encryption, …). The auto-turn machinery is gated off
 // by default and only needed on actionable messages.
 import type { AutoTurnWakeReason } from "@/services/canvas-agent-autoturn";
+
+/**
+ * Extract the planner's clarifying-question list from a message, if it
+ * carries one.
+ *
+ * **Important representation note.** A feature planner asks the user a
+ * structured question via a `PLAN`-typed artifact whose JSON content
+ * passes `isClarifyingQuestions` (`tool_use === "ask_clarifying_questions"`,
+ * `content: ClarifyingQuestion[]`) — the exact shape
+ * `ClarifyingQuestionsPreview` renders and `FeaturePlanChat` /
+ * `FeaturePlanChatMessage` detect. This is NOT an `ArtifactType.FORM`
+ * (that's the *task* chat's form representation). Returns the questions
+ * array (≥1) or `null` when the message has no clarifying-questions
+ * artifact.
+ */
+export function extractClarifyingQuestions(
+  plannerMessage: { artifacts: Artifact[] },
+): ClarifyingQuestion[] | null {
+  for (const a of plannerMessage.artifacts) {
+    if (a.type === "PLAN" && isClarifyingQuestions(a.content)) {
+      const questions = a.content.content;
+      if (Array.isArray(questions) && questions.length > 0) return questions;
+    }
+  }
+  return null;
+}
 
 /** Subset of `Feature` the fan-out needs. */
 export interface FanOutFeatureRef {
@@ -88,8 +116,20 @@ type CanvasMessageRow = {
      * when the caller didn't supply it.
      */
     workflowStatus?: string;
-    /** `true` when the planner message carried a `FORM` artifact (Phase 3). */
+    /**
+     * `true` when the planner message carried a clarifying-questions
+     * artifact (`PLAN` + `ask_clarifying_questions`) — Phase 3. Drives
+     * the `Waiting for you` pill.
+     */
     hasForm?: boolean;
+    /**
+     * The clarifying-question list (Phase 4), embedded so the canvas
+     * conversation is self-contained — `PlannerFormSlot` renders this
+     * verbatim via `ClarifyingQuestionsPreview` with no extra fetch,
+     * and it round-trips through share / fork / iOS like every other
+     * message field. Present iff `hasForm` is `true`.
+     */
+    formQuestions?: ClarifyingQuestion[];
   };
   /** Empty for v1; Phase 3 may populate when surfacing artifacts. */
   artifactIds?: string[];
@@ -162,9 +202,7 @@ export async function fanOutPlannerMessageToCanvas(
         return;
       }
 
-      const hasForm = plannerMessage.artifacts.some(
-        (a) => a.type === ArtifactType.FORM,
-      );
+      const formQuestions = extractClarifyingQuestions(plannerMessage);
 
       const newRow: CanvasMessageRow = {
         // The canvas chat treats messages as identified by their own
@@ -178,13 +216,15 @@ export async function fanOutPlannerMessageToCanvas(
           kind: "planner",
           featureId: feature.id,
           plannerMessageId: plannerMessage.id,
-          // Phase 3 status-pill signal. Both optional — only set when
-          // we actually have the value, so the card distinguishes
-          // "unknown" (legacy/absent) from a real state.
+          // Phase 3/4 status-pill + inline-FORM signal. All optional —
+          // only set when present, so the card distinguishes "unknown"
+          // (legacy/absent) from a real state.
           ...(feature.workflowStatus
             ? { workflowStatus: feature.workflowStatus }
             : {}),
-          ...(hasForm ? { hasForm: true } : {}),
+          ...(formQuestions
+            ? { hasForm: true, formQuestions }
+            : {}),
         },
       };
 
@@ -245,8 +285,10 @@ export async function fanOutPlannerMessageToCanvas(
  * turn). Mirrors the precise definition in
  * `docs/plans/canvas-agent-manages-planners.md` Phase 3:
  *
- *   1. A `FORM` artifact (planner's explicit "a human must pick"). →
- *      `"form"`. Deterministic.
+ *   1. A clarifying-questions artifact — `PLAN` + `ask_clarifying_questions`
+ *      (planner's explicit "a human must pick"). → `"form"`.
+ *      Deterministic. (NOT `ArtifactType.FORM`, which is the task
+ *      chat's representation — feature planners use the PLAN variant.)
  *   2. The feature's `workflowStatus` is terminal
  *      (`COMPLETED` / `FAILED` / `HALTED` / `ERROR`). → mapped reason.
  *      Deterministic.
@@ -260,11 +302,8 @@ export function actionableWakeReason(
   feature: FanOutFeatureRef,
   plannerMessage: FanOutPlannerMessage,
 ): AutoTurnWakeReason | null {
-  // 1. FORM artifact.
-  const hasForm = plannerMessage.artifacts.some(
-    (a) => a.type === ArtifactType.FORM,
-  );
-  if (hasForm) return "form";
+  // 1. Clarifying-questions artifact (PLAN + ask_clarifying_questions).
+  if (extractClarifyingQuestions(plannerMessage)) return "form";
 
   // 2. Terminal workflow status.
   switch (feature.workflowStatus) {

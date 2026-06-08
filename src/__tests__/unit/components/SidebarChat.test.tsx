@@ -19,13 +19,19 @@ vi.mock("framer-motion", () => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("zustand/react/shallow", () => ({ useShallow: (fn: unknown) => fn }));
-vi.mock("lucide-react", () => ({
-  Send: () => <svg data-testid="send-icon" />,
-  Share2: () => <svg data-testid="share-icon" />,
-  X: () => <svg data-testid="x-icon" />,
-  History: () => <svg data-testid="history-icon" />,
-  PlusCircle: () => <svg data-testid="plus-icon" />,
-}));
+// Return a stub for ANY icon name. SidebarChat's transitive imports
+// (SubAgentRunCard, PlannerFormSlot → ClarifyingQuestionsPreview, …)
+// reference many icons; a Proxy keeps the mock complete without
+// enumerating every one.
+// Use the real lucide-react. SidebarChat's transitive imports
+// (SubAgentRunCard, PlannerFormSlot → ClarifyingQuestionsPreview, …)
+// reference many icons; spreading the actual module keeps the mock
+// complete without enumerating every one. No assertion depends on
+// icon stubs, so the real SVGs are harmless.
+vi.mock("lucide-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("lucide-react")>();
+  return actual;
+});
 
 vi.mock("@/app/org/[githubLogin]/_components/CanvasHistoryPopover", () => ({
   CanvasHistoryPopover: ({ githubLogin }: { githubLogin: string }) => (

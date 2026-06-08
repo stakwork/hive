@@ -15,8 +15,16 @@ import {
   getSubAgentRunsFromMessages,
   deriveCardStatus,
 } from "@/app/org/[githubLogin]/_components/SubAgentRunCard";
+import {
+  getSubAgentRunsFromMessages as runsFromMessages,
+} from "@/app/org/[githubLogin]/_components/SubAgentRunCard";
 import type { CanvasChatMessage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
+import type { ClarifyingQuestion } from "@/types/stakwork";
 import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
+
+const QUESTIONS: ClarifyingQuestion[] = [
+  { question: "Stripe or Adyen?", type: "single_choice", options: ["Stripe", "Adyen"] },
+];
 
 const FEATURE_ID = "feat-1";
 
@@ -47,7 +55,11 @@ function outbound(id: string, message: string): CanvasChatMessage {
 function inbound(
   id: string,
   content: string,
-  extra: { workflowStatus?: string; hasForm?: boolean } = {},
+  extra: {
+    workflowStatus?: string;
+    hasForm?: boolean;
+    formQuestions?: ClarifyingQuestion[];
+  } = {},
 ): CanvasChatMessage {
   return {
     id,
@@ -59,6 +71,21 @@ function inbound(
       featureId: FEATURE_ID,
       plannerMessageId: id,
       ...extra,
+    },
+  };
+}
+
+/** A `user-answered-planner-form` row referencing the planner message `pmId`. */
+function answered(id: string, pmId: string): CanvasChatMessage {
+  return {
+    id,
+    role: "user",
+    content: "Answered: Stripe",
+    timestamp: new Date(),
+    source: {
+      kind: "user-answered-planner-form",
+      featureId: FEATURE_ID,
+      plannerMessageId: pmId,
     },
   };
 }
@@ -131,5 +158,45 @@ describe("deriveCardStatus — inbound latest", () => {
       label: "Replied",
       tone: "replied",
     });
+  });
+});
+
+describe("getSubAgentRunsFromMessages — Phase 4 pending FORM", () => {
+  test("inbound FORM with questions → pendingForm set + Waiting for you", () => {
+    const messages = [
+      inbound("p1", "Which provider?", { hasForm: true, formQuestions: QUESTIONS }),
+    ];
+    const runs = runsFromMessages(messages);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].pendingForm).toEqual({
+      plannerMessageId: "p1",
+      questions: QUESTIONS,
+    });
+    expect(deriveCardStatus(runs[0])).toEqual({
+      label: "Waiting for you",
+      tone: "waiting",
+    });
+  });
+
+  test("answered FORM → pendingForm cleared + answer entry rendered", () => {
+    const messages = [
+      inbound("p1", "Which provider?", { hasForm: true, formQuestions: QUESTIONS }),
+      answered("a1", "p1"),
+    ];
+    const runs = runsFromMessages(messages);
+    expect(runs[0].pendingForm).toBeUndefined();
+    // The answer shows as an outbound form-answer entry in the thread.
+    const last = runs[0].messages[runs[0].messages.length - 1];
+    expect(last.formAnswer).toBe(true);
+    expect(last.direction).toBe("out");
+    // Pill no longer says "Waiting for you".
+    expect(deriveCardStatus(runs[0]).label).toBe("Answered · waiting for planner");
+  });
+
+  test("inbound without formQuestions → no pendingForm", () => {
+    const runs = runsFromMessages([
+      inbound("p1", "just a status", { workflowStatus: "IN_PROGRESS" }),
+    ]);
+    expect(runs[0].pendingForm).toBeUndefined();
   });
 });
