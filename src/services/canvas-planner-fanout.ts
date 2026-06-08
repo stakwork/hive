@@ -74,6 +74,19 @@ export function extractClarifyingQuestions(
   return null;
 }
 
+/**
+ * Did this planner message carry a `TASKS` artifact — i.e. the planner
+ * just generated a task breakdown? Surfaced as `source.hasTasks` so the
+ * card can offer a **Start Tasks** button (which fetches the live
+ * ready-count and POSTs to `…/tasks/assign-all`). Like the other
+ * signals, a snapshot: the actual count is read live by the card.
+ */
+export function plannerMessageHasTasks(
+  plannerMessage: { artifacts: Artifact[] },
+): boolean {
+  return plannerMessage.artifacts.some((a) => a.type === "TASKS");
+}
+
 /** Subset of `Feature` the fan-out needs. */
 export interface FanOutFeatureRef {
   id: string;
@@ -130,6 +143,12 @@ type CanvasMessageRow = {
      * message field. Present iff `hasForm` is `true`.
      */
     formQuestions?: ClarifyingQuestion[];
+    /**
+     * `true` when the planner message carried a `TASKS` artifact — it
+     * just generated a task breakdown. Gates the card's **Start Tasks**
+     * button (which reads the live ready-count itself).
+     */
+    hasTasks?: boolean;
   };
   /** Empty for v1; Phase 3 may populate when surfacing artifacts. */
   artifactIds?: string[];
@@ -203,6 +222,7 @@ export async function fanOutPlannerMessageToCanvas(
       }
 
       const formQuestions = extractClarifyingQuestions(plannerMessage);
+      const hasTasks = plannerMessageHasTasks(plannerMessage);
 
       const newRow: CanvasMessageRow = {
         // The canvas chat treats messages as identified by their own
@@ -225,6 +245,7 @@ export async function fanOutPlannerMessageToCanvas(
           ...(formQuestions
             ? { hasForm: true, formQuestions }
             : {}),
+          ...(hasTasks ? { hasTasks: true } : {}),
         },
       };
 

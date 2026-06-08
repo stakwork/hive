@@ -13,6 +13,60 @@ interface AssignAllResponse {
   count: number;
 }
 
+/**
+ * Tasks that are "ready to start" — unassigned TODO tasks in the
+ * feature's FIRST phase. Mirrors the POST handler's assignment scope
+ * exactly so the count the UI shows matches what a click will assign.
+ */
+async function countReadyTasks(featureId: string): Promise<number> {
+  const firstPhase = await db.phase.findFirst({
+    where: { featureId },
+    orderBy: { order: "asc" },
+    select: { id: true },
+  });
+  if (!firstPhase) return 0;
+  return db.task.count({
+    where: {
+      phaseId: firstPhase.id,
+      assigneeId: null,
+      systemAssigneeType: null,
+      deleted: false,
+      status: "TODO",
+    },
+  });
+}
+
+/**
+ * GET /api/features/[featureId]/tasks/assign-all
+ *
+ * Returns `{ readyCount }` — how many tasks the POST would assign right
+ * now. Powers the canvas-chat `StartTasksSlot` "Start N tasks" button.
+ * Same auth as POST (session + feature access).
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ featureId: string }> },
+) {
+  try {
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
+
+    const { featureId } = await params;
+    await validateFeatureAccess(featureId, userOrResponse.id);
+
+    const readyCount = await countReadyTasks(featureId);
+    return NextResponse.json({ readyCount }, { status: 200 });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to count ready tasks";
+    let status = 500;
+    if (message.includes("not found")) status = 404;
+    else if (message.includes("denied")) status = 403;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ featureId: string }> }

@@ -59,6 +59,7 @@ function inbound(
     workflowStatus?: string;
     hasForm?: boolean;
     formQuestions?: ClarifyingQuestion[];
+    hasTasks?: boolean;
   } = {},
 ): CanvasChatMessage {
   return {
@@ -198,5 +199,25 @@ describe("getSubAgentRunsFromMessages — Phase 4 pending FORM", () => {
       inbound("p1", "just a status", { workflowStatus: "IN_PROGRESS" }),
     ]);
     expect(runs[0].pendingForm).toBeUndefined();
+  });
+});
+
+describe("getSubAgentRunsFromMessages — Start Tasks gating", () => {
+  test("inbound TASKS artifact → hasGeneratedTasks true (sticky)", () => {
+    const runs = runsFromMessages([
+      inbound("p1", "Here are the tasks", {
+        workflowStatus: "COMPLETED",
+        hasTasks: true,
+      }),
+      inbound("p2", "follow-up status"),
+    ]);
+    expect(runs[0].hasGeneratedTasks).toBe(true);
+  });
+
+  test("no TASKS artifact → hasGeneratedTasks false", () => {
+    const runs = runsFromMessages([
+      inbound("p1", "architecture done", { workflowStatus: "COMPLETED" }),
+    ]);
+    expect(runs[0].hasGeneratedTasks).toBe(false);
   });
 });

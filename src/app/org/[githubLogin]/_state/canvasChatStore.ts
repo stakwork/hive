@@ -118,6 +118,12 @@ export type CanvasMessageSource =
        * verbatim with no extra fetch. Present iff `hasForm` is `true`.
        */
       formQuestions?: ClarifyingQuestion[];
+      /**
+       * `true` when the planner just generated a task breakdown (a
+       * `TASKS` artifact). Gates the card's **Start Tasks** button,
+       * which reads the live ready-count from the feature itself.
+       */
+      hasTasks?: boolean;
     }
   // Added in Phase 4 — kept in the union now to make exhaustive
   // checks in switch statements complete from Phase 2 onward.

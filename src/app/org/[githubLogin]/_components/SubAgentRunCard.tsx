@@ -112,6 +112,11 @@ interface RunMessage {
    * `PlannerFormSlot` when this is the run's unanswered FORM.
    */
   formQuestions?: ClarifyingQuestion[];
+  /**
+   * Inbound only: `true` when the planner generated a task breakdown
+   * (`source.hasTasks`). Gates the run's **Start Tasks** affordance.
+   */
+  hasTasks?: boolean;
 }
 
 /** All exchanges with one planner during the active conversation. */
@@ -141,6 +146,14 @@ export interface SubAgentRun {
     plannerMessageId: string;
     questions: ClarifyingQuestion[];
   };
+  /**
+   * `true` once any planner reply in this run generated a task
+   * breakdown (a `TASKS` artifact). `SidebarChat` renders a
+   * `StartTasksSlot` for the feature, which reads the live ready-count
+   * and offers a **Start Tasks** button. Starting tasks is the user's
+   * call (it spins up real compute) — the canvas agent never does it.
+   */
+  hasGeneratedTasks?: boolean;
 }
 
 interface ToolCallOutput {
@@ -240,6 +253,7 @@ export function getSubAgentRunsFromMessages(
         hasForm: message.source.hasForm,
         plannerMessageId: message.source.plannerMessageId,
         formQuestions: message.source.formQuestions,
+        hasTasks: message.source.hasTasks,
       });
       // Inbound entries also move the anchor — a planner reply is
       // the freshest activity for this feature, so the card should
@@ -319,6 +333,13 @@ export function getSubAgentRunsFromMessages(
   // Walk newest→oldest so the *latest* unanswered FORM wins (a planner
   // that re-asked supersedes an earlier question).
   for (const run of byFeature.values()) {
+    // Tasks-generated is sticky: once any planner reply carried a TASKS
+    // artifact, the Start Tasks affordance stays available (the slot
+    // itself reads the live ready-count and hides when none remain).
+    run.hasGeneratedTasks = run.messages.some(
+      (m) => m.direction === "in" && m.hasTasks === true,
+    );
+
     for (let i = run.messages.length - 1; i >= 0; i--) {
       const m = run.messages[i];
       if (m.direction !== "in" || !m.formQuestions?.length) continue;

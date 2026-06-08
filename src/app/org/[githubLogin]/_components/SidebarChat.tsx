@@ -15,6 +15,7 @@ import {
   getSubAgentRunsFromMessages,
 } from "./SubAgentRunCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
+import { StartTasksSlot } from "./StartTasksSlot";
 import { AttentionList } from "./AttentionList";
 import type { AttentionItem } from "@/services/attention/topItems";
 import {
@@ -268,6 +269,19 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                             featureTitle={run.featureTitle}
                             plannerMessageId={run.pendingForm.plannerMessageId}
                             questions={run.pendingForm.questions}
+                          />
+                        )}
+                        {/*
+                          Once the planner has generated tasks, offer a
+                          Start Tasks button (it reads the live ready-
+                          count itself and hides when none remain).
+                          Suppressed while a FORM is pending — answer the
+                          planner first.
+                        */}
+                        {run.hasGeneratedTasks && !run.pendingForm && (
+                          <StartTasksSlot
+                            featureId={run.featureId}
+                            featureTitle={run.featureTitle}
                           />
                         )}
                       </div>

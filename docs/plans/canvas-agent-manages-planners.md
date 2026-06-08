@@ -521,6 +521,16 @@ Filtered out of the main chat render the same way `source.kind === "planner"` is
 
 The user never has to leave canvas chat unless they want to. The feature plan page is now the **deep dive surface** — full plan, all artifacts, all logs — but the day-to-day "answer the planner's question and move on" is fully in canvas chat. Voice surfaces inherit this because they read the canvas conversation as text. iOS inherits the **data** (the `source`-marked messages round-trip through `SharedConversation.messages` JSON), but iOS will likely need its own `SubAgentRunCard` + `PlannerFormSlot` equivalents — those are renderers, not protocol. Phase 4's iOS rollout is a parallel task to confirm with the iOS team.
 
+## Phase 5 — Task lifecycle: generate (agent-driven) + start (user button) ✅ SHIPPED
+
+Two endpoints of the feature lifecycle that the canvas flow previously punted to the full plan page. Split deliberately by *who decides*:
+
+- **Generate tasks → the canvas agent drives it.** Generating a task breakdown from a finished plan is cheap and safe, so the agent should keep things moving. This is **prompt-only** — no new tool. `getCanvasPromptSuffix` now tells the agent: once `brief` + `requirements` + `architecture` are all populated and the architecture looks sound, *proactively* call `send_to_feature_planner` with *"The architecture looks complete — please generate the tasks now."* (unless it spotted a blocker or the user asked to review first). The planner owns the generation run; the manager just delegates. The Phase 3 auto-turn wake message reinforces this for `wakeReason: "completed"`. (Deliberately NOT wired to the deterministic `POST /api/stakwork/ai/generate` button endpoint — the manager-delegates-to-planner metaphor stays intact, and the user confirmed chat-prompting the planner generates tasks in practice.)
+
+- **Start tasks → the user clicks.** Starting tasks spins up real compute (pods / workflow runs), so it stays a human decision — never an agent action. When a planner reply carries a `TASKS` artifact, the fan-out marks `source.hasTasks`; the card derives `run.hasGeneratedTasks` (sticky); `SidebarChat` renders a `StartTasksSlot` beside the card (suppressed while a FORM is pending). The slot GETs `…/tasks/assign-all` for the live `readyCount` (unassigned TODO tasks in the first phase — the exact set the POST assigns), shows **"N tasks ready · Start tasks"**, and POSTs the existing `assign-all` route on click (assigns to the Task Coordinator + kicks the sweeps). A `GET` handler was added to the `assign-all` route to return `{ readyCount }`; the count is read live so it's accurate even if tasks were started from another surface.
+
+Both reuse existing infrastructure (`send_to_feature_planner`, the `assign-all` route) — the only new surface is `StartTasksSlot.tsx` + the `GET` count handler + the embedded `source.hasTasks` signal.
+
 ## Open questions
 
 Resolve in order — each is tagged with the earliest phase that needs an answer.
