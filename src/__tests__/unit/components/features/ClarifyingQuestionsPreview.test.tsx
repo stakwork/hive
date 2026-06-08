@@ -1,9 +1,10 @@
+// @vitest-environment jsdom
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ClarifyingQuestionsPreview } from '@/components/features/ClarifyingQuestionsPreview';
-import type { ClarifyingQuestion } from '@/types/stakwork';
+import type { ClarifyingQuestion, QuestionArtifact } from '@/types/stakwork';
 
 // Mock UI components  
 vi.mock('@/components/ui/button', () => {
@@ -40,6 +41,21 @@ vi.mock('lucide-react', () => {
 vi.mock('@/lib/utils', () => ({
   cn: (...args: any[]) => args.filter(Boolean).join(' '),
 }));
+
+// Mock artifact sub-components (MermaidDiagram uses canvas/browser APIs)
+vi.mock('@/components/features/ClarifyingQuestionsPreview/artifacts', () => {
+  const React = require('react');
+  return {
+    QuestionArtifactRenderer: ({ artifact, className }: any) =>
+      React.createElement('div', { 'data-testid': 'question-artifact-renderer', className },
+        `artifact:${artifact?.type}`
+      ),
+    ColorSwatch: ({ label, onClick }: any) =>
+      React.createElement('button', { onClick }, label),
+    CustomColorPicker: ({ value, onChange }: any) =>
+      React.createElement('input', { type: 'color', value, onChange }),
+  };
+});
 
 describe('ClarifyingQuestionsPreview', () => {
   const mockQuestions: ClarifyingQuestion[] = [
@@ -702,6 +718,102 @@ describe('ClarifyingQuestionsPreview', () => {
           expect(screen.queryByTestId('check-icon')).not.toBeInTheDocument();
         });
       });
+    });
+  });
+
+  describe('getMermaidCode / isValidMermaidArtifact (via component filtering)', () => {
+    // These tests exercise getMermaidCode and isValidMermaidArtifact indirectly.
+    // Questions with an invalid mermaid artifact are filtered out (shouldSkipQuestion).
+    // Questions with a valid mermaid artifact are kept and rendered.
+
+    function makeMermaidQuestion(data: QuestionArtifact['data']): ClarifyingQuestion {
+      return {
+        question: 'Mermaid question',
+        type: 'single_choice',
+        options: ['Yes'],
+        questionArtifact: { type: 'mermaid', data },
+      };
+    }
+
+    it('renders mermaid question when data is a bare non-empty string', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={[makeMermaidQuestion('flowchart TD\n  A --> B')]}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      expect(screen.getByText('Mermaid question')).toBeInTheDocument();
+    });
+
+    it('renders mermaid question when data has a "code" key', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={[makeMermaidQuestion({ code: 'flowchart TD\n  A --> B' })]}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      expect(screen.getByText('Mermaid question')).toBeInTheDocument();
+    });
+
+    it('renders mermaid question when data has a "graph" key', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={[makeMermaidQuestion({ graph: 'flowchart TD\n  A --> B' })]}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      expect(screen.getByText('Mermaid question')).toBeInTheDocument();
+    });
+
+    it('renders mermaid question when data has an arbitrary non-empty string value', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={[makeMermaidQuestion({ diagram: 'sequenceDiagram\n  A->>B: Hi' })]}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      expect(screen.getByText('Mermaid question')).toBeInTheDocument();
+    });
+
+    it('skips (filters out) mermaid question when data is an empty object', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={[makeMermaidQuestion({})]}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      // Component returns null when validQuestions is empty
+      expect(screen.queryByText('Mermaid question')).not.toBeInTheDocument();
+    });
+
+    it('skips mermaid question when data has only empty-string values', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={[makeMermaidQuestion({ graph: '' })]}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      expect(screen.queryByText('Mermaid question')).not.toBeInTheDocument();
+    });
+
+    it('skips mermaid question when data is an empty string', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={[makeMermaidQuestion('')]}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      expect(screen.queryByText('Mermaid question')).not.toBeInTheDocument();
+    });
+
+    it('skips mermaid question when data is whitespace-only string', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={[makeMermaidQuestion('   ')]}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      expect(screen.queryByText('Mermaid question')).not.toBeInTheDocument();
     });
   });
 
