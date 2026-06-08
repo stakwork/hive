@@ -68,6 +68,14 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       (activeId ? s.conversations[activeId]?.activeToolCalls : undefined) ??
       EMPTY_TOOL_CALLS,
   );
+  // The persisted row id. Sharing flips this row to `isShared` and hands
+  // out its id, so the sharer and every joiner live in the *same* room.
+  // Null until autosave has created the row — Share is gated on it.
+  const serverConversationId = useCanvasChatStore(
+    (s) =>
+      (activeId ? s.conversations[activeId]?.serverConversationId : null) ??
+      null,
+  );
 
   const sendMessage = useSendCanvasChatMessage();
   const inputClearRef = useRef<(() => void) | null>(null);
@@ -97,40 +105,27 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   };
 
   const handleShare = async () => {
-    if (!activeId) return;
-    if (messages.length === 0) return;
+    if (!serverConversationId) return;
     try {
-      const firstUserMessage = messages.find(
-        (m) => m.role === "user" && m.content.trim(),
+      // Mark the LIVE conversation row as a shared room and hand out its
+      // id. No snapshot/fork: the sharer is already on this row, and
+      // anyone who opens `?chat=<id>` adopts the same row, so everyone
+      // appends to one conversation and live-sync keeps them in step.
+      const res = await fetch(
+        `/api/orgs/${githubLogin}/chat/conversations/${serverConversationId}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          // Empty delta — this PUT only flips the `isShared` flag.
+          body: JSON.stringify({ messages: [], isShared: true }),
+        },
       );
-      const title = firstUserMessage
-        ? firstUserMessage.content.slice(0, 50) +
-          (firstUserMessage.content.length > 50 ? "..." : "")
-        : "Shared Conversation";
-
-      const res = await fetch(`/api/org/${githubLogin}/chat/share`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages,
-          title,
-          // The endpoint requires this field; we have nothing to
-          // share. `[]` is truthy in JS so the falsy guard accepts it.
-          followUpQuestions: [],
-          source: "org-canvas",
-        }),
-      });
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "Failed to share conversation");
       }
-      const data = await res.json();
-      // Use the forking URL shape `?chat=<shareId>` rather than the
-      // standalone read-only viewer at `/chat/shared/<shareId>` that
-      // the server returns. The viewer page still works for anyone
-      // who lands on it directly.
-      const url = `${window.location.origin}/org/${githubLogin}?chat=${data.shareId}`;
+      const url = `${window.location.origin}/org/${githubLogin}?chat=${serverConversationId}`;
       await navigator.clipboard.writeText(url);
       toast.success("Share link copied to clipboard!");
     } catch (error) {
@@ -171,7 +166,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           <button
             type="button"
             onClick={handleShare}
-            disabled={!hasMessages}
+            disabled={!serverConversationId}
             title="Copy share link"
             className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >

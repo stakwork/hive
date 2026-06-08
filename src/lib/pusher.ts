@@ -103,7 +103,11 @@ export const PUSHER_EVENTS = {
 export type CanvasConversationUpdateReason =
   | "planner"
   | "autoturn"
-  | "form-answer";
+  | "form-answer"
+  // A human appended a message to a shared conversation. Fires from the
+  // autosave PUT so other people sitting on the same shared room refetch
+  // and see the new turn live.
+  | "user-message";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON
