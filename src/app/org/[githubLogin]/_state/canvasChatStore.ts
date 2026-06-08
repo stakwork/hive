@@ -169,7 +169,13 @@ export interface CanvasConversation {
   id: string;
   /** Server-side `SharedConversation.id`, if auto-save has created one. */
   serverConversationId: string | null;
-  /** Set when this conversation was forked from `?chat=<shareId>`. Informational. */
+  /**
+   * Provenance: the `?chat=<shareId>` this conversation originated
+   * from, if any. Informational only — by default we *join* that
+   * shared row (see `serverConversationId`), so this is not a fork
+   * marker today; it's retained for telemetry and a future explicit
+   * "Fork" action that would set this without adopting the server row.
+   */
   forkedFromShareId: string | null;
   messages: CanvasChatMessage[];
   isLoading: boolean;
@@ -298,12 +304,21 @@ interface CanvasChatState {
    * how many leading seed messages to skip when computing the first
    * autosave delta. Set this to `seedMessages.length` for synthetic
    * messages that must not round-trip through `chat_conversations`.
+   *
+   * `serverConversationId` (default = null) adopts an existing
+   * `shared_conversations` row as this conversation's server row, so
+   * new turns PUT-append to it instead of POSTing a fresh row. This
+   * is the "share = drop in and continue the same conversation" path:
+   * landing on `?chat=<shareId>` passes the shared row's id here. Omit
+   * it to fork (start a brand-new row from the seed) — kept reachable
+   * for a future explicit "Fork" action.
    */
   startConversation: (
     context: ConversationContext,
     seedMessages?: CanvasChatMessage[],
     forkedFromShareId?: string,
     ephemeralSeedCount?: number,
+    serverConversationId?: string,
   ) => string;
   setActiveConversation: (conversationId: string | null) => void;
   /** Update the context of the active conversation (canvas-scope changes). */
@@ -322,6 +337,18 @@ interface CanvasChatState {
   appendUserMessage: (
     conversationId: string,
     message: CanvasChatMessage,
+  ) => void;
+  /**
+   * Replace a conversation's entire message list with the authoritative
+   * server copy. Used by the live-sync (`useCanvasChatAutoSave` Pusher
+   * nudge → refetch) to bring in server-appended rows (planner fan-out,
+   * autonomous canvas-agent turns, planner-form answers). Callers MUST
+   * only invoke this when the conversation has no unsaved local messages,
+   * so the server copy is a strict superset and nothing local is lost.
+   */
+  setConversationMessages: (
+    conversationId: string,
+    messages: CanvasChatMessage[],
   ) => void;
   /** Replace any messages whose id starts with `prefix` with `next`. */
   replaceAssistantStream: (
@@ -387,11 +414,12 @@ export const useCanvasChatStore = create<CanvasChatState>()(
         seedMessages,
         forkedFromShareId,
         ephemeralSeedCount,
+        serverConversationId,
       ) => {
         const id = newConversationId();
         const conv: CanvasConversation = {
           id,
-          serverConversationId: null,
+          serverConversationId: serverConversationId ?? null,
           forkedFromShareId: forkedFromShareId ?? null,
           messages: seedMessages ?? [],
           isLoading: false,
@@ -514,6 +542,22 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           },
           false,
           "appendUserMessage",
+        ),
+
+      setConversationMessages: (conversationId, messages) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: { ...conv, messages },
+              },
+            };
+          },
+          false,
+          "setConversationMessages",
         ),
 
       replaceAssistantStream: (conversationId, prefix, next) =>

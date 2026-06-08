@@ -3,10 +3,16 @@
  * `docs/plans/canvas-agent-manages-planners.md`).
  *
  * Coverage:
- *   - Kill switch: with `CANVAS_AUTONOMOUS_TURNS_ENABLED` unset/false,
- *     `invokeCanvasAgentOnPlannerMessage` must NOT touch the DB or call
- *     `runCanvasAgent`. Kill-switch regressions are silent in prod, so
- *     this cheap test is the insurance.
+ *   - Gating (two layers, both default off):
+ *       1. Master kill switch — with `CANVAS_AUTONOMOUS_TURNS_ENABLED`
+ *          set to `"false"`, `invokeCanvasAgentOnPlannerMessage` must NOT
+ *          touch the DB or call `runCanvasAgent`.
+ *       2. Per-user opt-in — with the env NOT hard-disabled, the owner's
+ *          `canvasAutonomousTurns` flag decides: a false flag loads the
+ *          conversation but stops before `runCanvasAgent`; a true flag
+ *          passes the gate (proceeds to the feature lookup).
+ *     Gating regressions are silent in prod, so these cheap tests are
+ *     the insurance.
  *   - `actionableWakeReason`: the deterministic FORM / workflow-status
  *     classification + the trailing-`?` heuristic that decide whether a
  *     planner message wakes the agent at all.
@@ -37,11 +43,34 @@ import { actionableWakeReason } from "@/services/canvas-planner-fanout";
 
 const ENV_KEY = "CANVAS_AUTONOMOUS_TURNS_ENABLED";
 
-describe("invokeCanvasAgentOnPlannerMessage — kill switch", () => {
+describe("invokeCanvasAgentOnPlannerMessage — gating", () => {
   const original = process.env[ENV_KEY];
+
+  const args = {
+    conversationId: "conv-1",
+    featureId: "feat-1",
+    plannerMessageId: "msg-1",
+    wakeReason: "completed" as const,
+  };
+
+  /** A conversation owned by a real user/org, with the opt-in flag set. */
+  const conversationWith = (canvasAutonomousTurns: boolean) => ({
+    id: "conv-1",
+    userId: "user-1",
+    sourceControlOrgId: "org-1",
+    workspaceId: "ws-1",
+    messages: [],
+    settings: {},
+    workspace: { slug: "ws" },
+    user: { canvasAutonomousTurns },
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Lock acquire/release: always grant the advisory lock.
+    (db.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { locked: true },
+    ]);
   });
 
   afterEach(() => {
@@ -49,33 +78,44 @@ describe("invokeCanvasAgentOnPlannerMessage — kill switch", () => {
     else process.env[ENV_KEY] = original;
   });
 
-  test("does nothing when env is unset", async () => {
-    delete process.env[ENV_KEY];
+  test('master kill: env "false" does nothing (no DB, no agent)', async () => {
+    process.env[ENV_KEY] = "false";
 
-    await invokeCanvasAgentOnPlannerMessage({
-      conversationId: "conv-1",
-      featureId: "feat-1",
-      plannerMessageId: "msg-1",
-      wakeReason: "form",
-    });
+    await invokeCanvasAgentOnPlannerMessage(args);
 
     expect(runCanvasAgent).not.toHaveBeenCalled();
     expect(db.$queryRaw).not.toHaveBeenCalled();
     expect(db.sharedConversation.findUnique).not.toHaveBeenCalled();
   });
 
-  test('does nothing when env is "false"', async () => {
-    process.env[ENV_KEY] = "false";
+  test("per-user opt-out: env unset → loads conversation but no agent", async () => {
+    delete process.env[ENV_KEY];
+    (
+      db.sharedConversation.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(conversationWith(false));
 
-    await invokeCanvasAgentOnPlannerMessage({
-      conversationId: "conv-1",
-      featureId: "feat-1",
-      plannerMessageId: "msg-1",
-      wakeReason: "completed",
-    });
+    await invokeCanvasAgentOnPlannerMessage(args);
 
+    // It gets past the master switch (lock taken, conversation loaded)…
+    expect(db.sharedConversation.findUnique).toHaveBeenCalledOnce();
+    // …but the owner opt-out stops it before the feature lookup / agent.
+    expect(db.feature.findUnique).not.toHaveBeenCalled();
     expect(runCanvasAgent).not.toHaveBeenCalled();
-    expect(db.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  test("per-user opt-in: env unset + owner flag true → passes the gate", async () => {
+    delete process.env[ENV_KEY];
+    (
+      db.sharedConversation.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(conversationWith(true));
+    // Feature gone → clean early return AFTER the opt-in gate, proving the
+    // gate was passed without having to mock the full agent run.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    expect(db.feature.findUnique).toHaveBeenCalledOnce();
+    expect(runCanvasAgent).not.toHaveBeenCalled();
   });
 });
 
