@@ -323,6 +323,18 @@ interface CanvasChatState {
     conversationId: string,
     message: CanvasChatMessage,
   ) => void;
+  /**
+   * Replace a conversation's entire message list with the authoritative
+   * server copy. Used by the live-sync (`useCanvasChatAutoSave` Pusher
+   * nudge → refetch) to bring in server-appended rows (planner fan-out,
+   * autonomous canvas-agent turns, planner-form answers). Callers MUST
+   * only invoke this when the conversation has no unsaved local messages,
+   * so the server copy is a strict superset and nothing local is lost.
+   */
+  setConversationMessages: (
+    conversationId: string,
+    messages: CanvasChatMessage[],
+  ) => void;
   /** Replace any messages whose id starts with `prefix` with `next`. */
   replaceAssistantStream: (
     conversationId: string,
@@ -514,6 +526,22 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           },
           false,
           "appendUserMessage",
+        ),
+
+      setConversationMessages: (conversationId, messages) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: { ...conv, messages },
+              },
+            };
+          },
+          false,
+          "setConversationMessages",
         ),
 
       replaceAssistantStream: (conversationId, prefix, next) =>

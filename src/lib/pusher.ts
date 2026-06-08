@@ -32,6 +32,12 @@ export const getWorkspaceChannelName = (workspaceSlug: string) => `workspace-${w
 export const getFeatureChannelName = (featureId: string) => `feature-${featureId}`;
 export const getWhiteboardChannelName = (whiteboardId: string) => `whiteboard-${whiteboardId}`;
 export const getOrgChannelName = (githubLogin: string) => `org-${githubLogin}`;
+// Per-canvas-conversation channel. The org canvas chat subscribes to this
+// for its active `SharedConversation` so server-side appends (planner
+// fan-out, autonomous canvas-agent turns, planner-form answers) push to an
+// open browser live, with no polling.
+export const getCanvasConversationChannelName = (conversationId: string) =>
+  `canvas-conversation-${conversationId}`;
 
 // Event names
 export const PUSHER_EVENTS = {
@@ -82,4 +88,43 @@ export const PUSHER_EVENTS = {
   CANVAS_SELECTION_UPDATE: "canvas-selection-update",
   // Agent log upserted for a feature — triggers live Logs tab updates in plan view
   AGENT_LOG_UPDATED: "agent-log-updated",
+  // A canvas conversation's `messages` JSON changed server-side (planner
+  // fan-out, autonomous canvas-agent turn, or a planner-form answer). The
+  // payload is a lightweight nudge `{ conversationId, reason }`; the client
+  // refetches the conversation and merges in the new rows (avoids Pusher's
+  // 10KB-per-message cap and keeps a single source of truth).
+  CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",
 } as const;
+
+/**
+ * Reason a canvas conversation changed — purely informational, lets the
+ * client log / debug which server path fired the nudge.
+ */
+export type CanvasConversationUpdateReason =
+  | "planner"
+  | "autoturn"
+  | "form-answer";
+
+/**
+ * Fire-and-forget broadcast that a canvas conversation's `messages` JSON
+ * changed. Server-side append sites call this AFTER their write commits so
+ * an open browser refetches and shows the new rows immediately. Never
+ * throws — a Pusher outage must not break the underlying write.
+ */
+export function notifyCanvasConversationUpdated(
+  conversationId: string,
+  reason: CanvasConversationUpdateReason,
+): void {
+  void pusherServer
+    .trigger(
+      getCanvasConversationChannelName(conversationId),
+      PUSHER_EVENTS.CANVAS_CONVERSATION_UPDATED,
+      { conversationId, reason, at: Date.now() },
+    )
+    .catch((err) => {
+      console.error(
+        "[pusher] notifyCanvasConversationUpdated failed (non-fatal):",
+        err,
+      );
+    });
+}

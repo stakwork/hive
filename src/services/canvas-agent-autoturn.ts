@@ -36,6 +36,7 @@ import { tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
+import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 
 /** Why the agent was woken. Surfaced verbatim in the synthetic prompt. */
 export type AutoTurnWakeReason =
@@ -275,6 +276,7 @@ async function appendAutoTurnMessages(
   if (rows.length === 0) return;
   const idPrefix = `autoturn-${plannerMessageId}-`;
 
+  let didAppend = false;
   await db.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<{ messages: unknown }[]>`
       SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
@@ -299,7 +301,15 @@ async function appendAutoTurnMessages(
         lastMessageAt: new Date(),
       },
     });
+    didAppend = true;
   });
+
+  // Push the agent's response to an open browser immediately. The
+  // auto-turn runs in the webhook's `after()` (seconds after the
+  // planner message), so this is the second live update the user sees.
+  if (didAppend) {
+    notifyCanvasConversationUpdated(conversationId, "autoturn");
+  }
 }
 
 /**
