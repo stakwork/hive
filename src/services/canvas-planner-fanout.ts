@@ -95,6 +95,16 @@ export interface FanOutFeatureRef {
   /** Carried for future use (e.g. workspace-scoped logging). Not read in v1. */
   workspaceId: string;
   /**
+   * Feature title + workspace display info, echoed onto the planner
+   * row's `source` so an inbound-only `SubAgentRunCard` (the approval
+   * flow) shows the real name + a working plan link instead of
+   * "Unknown feature". Optional for backwards-compat with existing
+   * callers/tests; absent → the card falls back to the placeholder.
+   */
+  title?: string | null;
+  workspaceSlug?: string | null;
+  workspaceName?: string | null;
+  /**
    * The feature's live workflow status, used by the Phase 3 "actionable"
    * check to decide whether a planner message warrants an autonomous
    * canvas-agent turn. Optional for backwards-compat with existing
@@ -124,6 +134,14 @@ type CanvasMessageRow = {
     kind: "planner";
     featureId: string;
     plannerMessageId: string;
+    /**
+     * Feature display metadata, echoed so an inbound-only
+     * `SubAgentRunCard` renders the real name / workspace / plan link.
+     * Omitted when the caller didn't supply them.
+     */
+    featureTitle?: string;
+    workspaceSlug?: string;
+    workspaceName?: string;
     /**
      * Feature `workflowStatus` at fan-out time (Phase 3). Drives the
      * `SubAgentRunCard` status pill. Stringified enum value; omitted
@@ -241,6 +259,16 @@ export async function fanOutPlannerMessageToCanvas(
           kind: "planner",
           featureId: feature.id,
           plannerMessageId: plannerMessage.id,
+          // Feature display metadata so an inbound-only card (approval
+          // flow) shows the real name / workspace / plan link instead
+          // of "Unknown feature". Only set when present.
+          ...(feature.title ? { featureTitle: feature.title } : {}),
+          ...(feature.workspaceSlug
+            ? { workspaceSlug: feature.workspaceSlug }
+            : {}),
+          ...(feature.workspaceName
+            ? { workspaceName: feature.workspaceName }
+            : {}),
           // Phase 3/4 status-pill + inline-FORM signal. All optional —
           // only set when present, so the card distinguishes "unknown"
           // (legacy/absent) from a real state.
