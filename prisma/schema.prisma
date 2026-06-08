@@ -50,6 +50,13 @@ model User {
   role                     UserRole                 @default(USER)
   timezone                 String?                  @default("UTC")
   locale                   String?                  @default("en")
+  // Per-user opt-in for the autonomous canvas-agent turns: when true,
+  // the canvas agent may respond to lower-level planner agents on its
+  // own (see `src/services/canvas-agent-autoturn.ts`). Toggled from the
+  // gear menu on the canvas Agent chat panel. Defaults off; the global
+  // `CANVAS_AUTONOMOUS_TURNS_ENABLED` env var is a master kill-switch
+  // layered above this flag.
+  canvasAutonomousTurns    Boolean                  @default(false) @map("canvas_autonomous_turns")
   createdAt                DateTime                 @default(now()) @map("created_at")
   updatedAt                DateTime                 @updatedAt @map("updated_at")
   deleted                  Boolean                  @default(false)
