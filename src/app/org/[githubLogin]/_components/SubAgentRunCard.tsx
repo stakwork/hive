@@ -243,7 +243,14 @@ export function getSubAgentRunsFromMessages(
     // ── Inbound: planner → canvas (fan-out row) ────────────────
     if (message.source?.kind === "planner") {
       const { featureId } = message.source;
-      const run = upsertRun(byFeature, featureId, {});
+      // Seed feature display metadata from the inbound row so an
+      // inbound-only run (approval flow — no outbound tool call to carry
+      // it) still shows the real name / workspace / plan link.
+      const run = upsertRun(byFeature, featureId, {
+        featureTitle: message.source.featureTitle,
+        workspaceSlug: message.source.workspaceSlug,
+        workspaceName: message.source.workspaceName,
+      });
       run.messages.push({
         messageId: message.id,
         messageIndex,
@@ -479,6 +486,25 @@ function StatusPill({ status }: { status: CardStatus }) {
   );
 }
 
+/**
+ * The text to show for a thread entry. Planner replies often carry no
+ * prose — the payload is a clarifying-questions FORM or a TASKS
+ * breakdown artifact, not message text — so a bare "(empty)" reads as a
+ * bug. Describe what the planner actually did instead. Outbound sends
+ * keep the literal "(empty)" (a content-less send is genuinely odd).
+ */
+function runMessageDisplayText(m: RunMessage): string {
+  if (m.text.trim()) return m.text;
+  if (m.direction === "in") {
+    if (m.hasForm) return "Asked a clarifying question";
+    if (m.hasTasks) return "Generated a task breakdown";
+    if (m.workflowStatus === "COMPLETED") return "Posted the plan";
+    return "Posted an update";
+  }
+  if (m.formAnswer) return "Answered";
+  return "(empty)";
+}
+
 interface SubAgentRunCardProps {
   run: SubAgentRun;
 }
@@ -628,8 +654,8 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
                           }
                         >
                           {isInbound || isFormAnswer
-                            ? m.text || "(empty)"
-                            : `\u201C${m.text || "(empty)"}\u201D`}
+                            ? runMessageDisplayText(m)
+                            : `\u201C${runMessageDisplayText(m)}\u201D`}
                         </span>
                         {m.status === "failed" && m.errorReason && (
                           <span className="ml-1 not-italic text-rose-600 dark:text-rose-400">
