@@ -301,6 +301,7 @@ describe("pusher.ts", () => {
         CANVAS_SELECTION_UPDATE: "canvas-selection-update",
         RESEARCH_UPDATED: "research-updated",
         AGENT_LOG_UPDATED: "agent-log-updated",
+        CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",
       });
     });
 

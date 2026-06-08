@@ -22,12 +22,18 @@
  * paragraph in `getCanvasPromptSuffix` teaches the agent how to behave
  * when the wakeup is machine-driven.
  *
- * **Kill switch.** Gated behind `CANVAS_AUTONOMOUS_TURNS_ENABLED`
- * (default off). When off, this function is a logged no-op — Phase 2's
- * fan-out still copies planner messages into the conversation (the
- * audit trail is real either way), only the *autonomous action* layer
- * is suppressed. Flip the env to `"true"` to enable; flip back to
- * disable without a redeploy.
+ * **Gating.** Two layers, both default to a no-op:
+ *   1. A per-user opt-in (`User.canvasAutonomousTurns`, default off),
+ *      toggled from the gear menu on the canvas Agent chat panel. The
+ *      auto-turn acts AS the conversation owner, so the owner's flag is
+ *      the one that governs.
+ *   2. A global master kill switch — `CANVAS_AUTONOMOUS_TURNS_ENABLED`.
+ *      Setting it to `"false"` hard-disables the feature platform-wide
+ *      (incident response) regardless of any user's opt-in. Anything
+ *      else defers to the per-user flag.
+ * When suppressed, this function is a logged no-op — Phase 2's fan-out
+ * still copies planner messages into the conversation (the audit trail
+ * is real either way), only the *autonomous action* layer is off.
  *
  * Reuses `runCanvasAgent` end-to-end — no new agent logic.
  */
@@ -36,6 +42,7 @@ import { tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
+import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 
 /** Why the agent was woken. Surfaced verbatim in the synthetic prompt. */
 export type AutoTurnWakeReason =
@@ -275,6 +282,7 @@ async function appendAutoTurnMessages(
   if (rows.length === 0) return;
   const idPrefix = `autoturn-${plannerMessageId}-`;
 
+  let didAppend = false;
   await db.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<{ messages: unknown }[]>`
       SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
@@ -299,7 +307,15 @@ async function appendAutoTurnMessages(
         lastMessageAt: new Date(),
       },
     });
+    didAppend = true;
   });
+
+  // Push the agent's response to an open browser immediately. The
+  // auto-turn runs in the webhook's `after()` (seconds after the
+  // planner message), so this is the second live update the user sees.
+  if (didAppend) {
+    notifyCanvasConversationUpdated(conversationId, "autoturn");
+  }
 }
 
 /**
@@ -361,12 +377,16 @@ export async function invokeCanvasAgentOnPlannerMessage(
 ): Promise<void> {
   const { conversationId, featureId, plannerMessageId, wakeReason } = args;
 
-  // ── Kill switch ──────────────────────────────────────────────────
-  // Off by default. When off, this is a logged no-op (Phase 2 fan-out
-  // is unaffected). Documented in
+  // ── Master kill switch ───────────────────────────────────────────
+  // `CANVAS_AUTONOMOUS_TURNS_ENABLED=false` hard-disables the feature
+  // platform-wide (incident response / ops), regardless of any user's
+  // opt-in. Anything else defers to the per-user flag checked in
+  // `runAutoTurn` (`User.canvasAutonomousTurns`, default off). Phase 3
+  // shipped this as the *only* gate; it is now a master override layered
+  // above the user preference. Documented in
   // `docs/plans/canvas-agent-manages-planners.md` Phase 3.
-  if (process.env.CANVAS_AUTONOMOUS_TURNS_ENABLED !== "true") {
-    console.log("[canvas-autoturn] skipped (disabled via env)", {
+  if (process.env.CANVAS_AUTONOMOUS_TURNS_ENABLED === "false") {
+    console.log("[canvas-autoturn] skipped (master kill switch)", {
       conversationId,
       featureId,
       wakeReason,
@@ -442,6 +462,10 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
       messages: true,
       settings: true,
       workspace: { select: { slug: true } },
+      // The owner's per-user opt-in. The auto-turn acts AS this user, so
+      // their preference is the one that governs. Loaded here (one query)
+      // and gated below.
+      user: { select: { canvasAutonomousTurns: true } },
     },
   });
 
@@ -459,6 +483,20 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
       conversationId,
       hasUser: !!conversation.userId,
       hasOrg: !!conversation.sourceControlOrgId,
+    });
+    return;
+  }
+
+  // ── Per-user opt-in ──────────────────────────────────────────────
+  // The normal gate (the master kill switch above only hard-disables
+  // platform-wide). The auto-turn acts as the conversation owner, so the
+  // owner's `canvasAutonomousTurns` preference decides. Default off — the
+  // user enables it from the gear menu on the Agent chat panel.
+  if (!conversation.user?.canvasAutonomousTurns) {
+    console.log("[canvas-autoturn] skipped (owner opt-out)", {
+      conversationId,
+      featureId,
+      wakeReason,
     });
     return;
   }

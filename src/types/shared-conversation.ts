@@ -68,6 +68,7 @@ export interface UpdateConversationRequest {
   title?: string; // Optional: update title
   source?: string; // Optional: update source
   settings?: ConversationSettings; // Optional: update chat settings
+  isShared?: boolean; // Optional: mark the conversation as a shared room (owner only)
 }
 
 // Recent chat list item for GET /recent

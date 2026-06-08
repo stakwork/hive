@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateUserBelongsToOrg } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { getLastMessageTimestamp } from "@/lib/ai/conversationHelpers";
+import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 import type { ConversationDetail, UpdateConversationRequest } from "@/types/shared-conversation";
 
 async function resolveOrg(githubLogin: string) {
@@ -38,12 +39,15 @@ export async function GET(
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
-    // IDOR: match on both orgId and userId so other users get 404
+    // Scope by org, then allow the owner OR any org member when the row
+    // is a shared room (`isShared`). Non-owner reads of a private row
+    // return 404 (not 403) for IDOR safety. This is what lets a person
+    // who opened a `?chat=<id>` share link read the live shared
+    // conversation (and the live-sync refetch keep it up to date).
     const conversation = await db.sharedConversation.findFirst({
       where: {
         id: conversationId,
         sourceControlOrgId: org.id,
-        userId: userOrResponse.id,
       },
       select: {
         id: true,
@@ -64,7 +68,10 @@ export async function GET(
       },
     });
 
-    if (!conversation) {
+    if (
+      !conversation ||
+      (conversation.userId !== userOrResponse.id && !conversation.isShared)
+    ) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
@@ -131,21 +138,31 @@ export async function PUT(
       return NextResponse.json({ error: "messages array is required" }, { status: 400 });
     }
 
-    // IDOR ownership check before any write
+    // Ownership / share check before any write. The owner can always
+    // append; non-owners may only append to rows explicitly marked
+    // `isShared` — that's the "drop in and continue a shared
+    // conversation" path (a `?chat=<shareId>` link adopts the shared
+    // row as the joiner's server conversation). Private auto-save rows
+    // stay owner-only. We still scope by org and return 404 (not 403)
+    // for IDOR safety so other orgs' rows are indistinguishable from
+    // missing.
     const existing = await db.sharedConversation.findFirst({
       where: {
         id: conversationId,
         sourceControlOrgId: org.id,
-        userId: userOrResponse.id,
       },
-      select: { id: true },
+      select: { id: true, userId: true, isShared: true },
     });
 
-    if (!existing) {
+    if (
+      !existing ||
+      (existing.userId !== userOrResponse.id && !existing.isShared)
+    ) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    const newLastMessageAt = getLastMessageTimestamp(body.messages);
+    const isOwner = existing.userId === userOrResponse.id;
+    const hasNewMessages = body.messages.length > 0;
 
     // SELECT FOR UPDATE serializes concurrent appends (same pattern as workspace route)
     const updated = await db.$transaction(async (tx) => {
@@ -163,10 +180,17 @@ export async function PUT(
         where: { id: conversationId },
         data: {
           messages: updatedMessages as any,
-          lastMessageAt: newLastMessageAt,
+          // Only bump the timestamp when we actually appended — a pure
+          // metadata write (e.g. the Share button flipping `isShared`
+          // with an empty `messages` array) shouldn't reorder history.
+          ...(hasNewMessages && { lastMessageAt: getLastMessageTimestamp(body.messages) }),
           ...(body.title && { title: body.title }),
           ...(body.source && { source: body.source }),
           ...(body.settings !== undefined && { settings: body.settings as any }),
+          // Only the owner can change the shared-room flag (typically the
+          // Share button turning it on). Joiners can append but can't
+          // un-share someone else's conversation.
+          ...(isOwner && body.isShared !== undefined && { isShared: body.isShared }),
         },
         select: {
           id: true,
@@ -174,6 +198,13 @@ export async function PUT(
         },
       });
     });
+
+    // Live-sync: tell everyone sitting on this conversation's channel to
+    // refetch. Only meaningful when messages were actually appended (a
+    // pure share-flip changes no messages). Fire-and-forget; never throws.
+    if (hasNewMessages) {
+      notifyCanvasConversationUpdated(conversationId, "user-message");
+    }
 
     return NextResponse.json({
       id: updated.id,
