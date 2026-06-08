@@ -1,26 +1,22 @@
--- AlterTable + Index (idempotent: no-op if connections table or columns/index already exist)
+-- AlterTable (idempotent: skip if column already exists)
+ALTER TABLE "connections" ADD COLUMN IF NOT EXISTS "slug" TEXT NOT NULL DEFAULT '';
+
+-- Update existing rows that still have the empty-string placeholder
+UPDATE "connections" SET "slug" = "id" WHERE "slug" = '';
+
+-- Remove default (idempotent: only drop if the default is still set)
 DO $$
 BEGIN
   IF EXISTS (
-    SELECT 1 FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_name = 'connections'
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'connections'
+      AND column_name = 'slug'
+      AND column_default IS NOT NULL
   ) THEN
-    -- Add slug column if missing
-    IF NOT EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = 'connections' AND column_name = 'slug'
-    ) THEN
-      ALTER TABLE "connections" ADD COLUMN "slug" TEXT NOT NULL DEFAULT '';
-      UPDATE "connections" SET "slug" = "id" WHERE "slug" = '';
-      ALTER TABLE "connections" ALTER COLUMN "slug" DROP DEFAULT;
-    END IF;
-
-    -- Create unique index if missing
-    IF NOT EXISTS (
-      SELECT 1 FROM pg_indexes
-      WHERE schemaname = 'public' AND tablename = 'connections' AND indexname = 'connections_org_id_slug_key'
-    ) THEN
-      CREATE UNIQUE INDEX "connections_org_id_slug_key" ON "connections"("org_id", "slug");
-    END IF;
+    ALTER TABLE "connections" ALTER COLUMN "slug" DROP DEFAULT;
   END IF;
-END $$;
+END$$;
+
+-- CreateIndex (idempotent: skip if index already exists)
+CREATE UNIQUE INDEX IF NOT EXISTS "connections_org_id_slug_key" ON "connections"("org_id", "slug");
