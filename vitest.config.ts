@@ -22,15 +22,16 @@ export default defineConfig({
             ["**/hooks/**/*.test.ts", "jsdom"],
           ],
     globals: true,
-    // Run integration tests sequentially to avoid database conflicts.
-    // vmThreads (vs forks) keeps everything in one Node process, which means
-    // the Prisma library engine (.so.node native addon) is initialised once and
-    // shared — avoiding the "Engine is not yet connected" race that occurs when
-    // Prisma 6's library engine is re-initialised inside a forked child process.
-    pool: testSuite === "integration" ? "vmThreads" : "threads",
+    // Run integration tests sequentially in a single forked child process.
+    // Using "forks" + singleFork means the child process properly inherits
+    // NODE_OPTIONS (including --max-old-space-size) from the environment,
+    // unlike vmThreads workers which don't receive V8 heap flags.
+    // singleFork ensures Prisma's library engine is initialised exactly once,
+    // avoiding the "Engine is not yet connected" race seen with multiple forks.
+    pool: testSuite === "integration" ? "forks" : "threads",
     poolOptions: testSuite === "integration" ? {
-      vmThreads: {
-        singleThread: true,
+      forks: {
+        singleFork: true,
       },
     } : undefined,
     include:

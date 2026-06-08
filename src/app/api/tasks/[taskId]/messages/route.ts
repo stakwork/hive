@@ -37,6 +37,14 @@ export async function GET(
         featureId: true,
         sourceType: true,
         feature: { select: { id: true, title: true } },
+        workflowTask: {
+          select: {
+            workflowId: true,
+            workflowName: true,
+            workflowRefId: true,
+            workflowTaskType: true,
+          },
+        },
       },
     });
 
@@ -137,6 +145,7 @@ export async function GET(
             featureId: task.featureId,
             sourceType: task.sourceType,
             feature: task.feature,
+            workflowTask: task.workflowTask ?? null,
           },
           messages: clientMessages,
           count: clientMessages.length,
