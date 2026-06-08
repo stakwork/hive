@@ -105,4 +105,10 @@ jobs:
           STAKWORK_CUSTOMERS_PASSWORD: ${{ secrets.STAKWORK_CUSTOMERS_PASSWORD}}
           SWARM_SUPER_ADMIN_URL: placeholder
           LIVEKIT_CALL_BASE_URL: "https://call-link"
+        # The integration suite runs all ~260 files in a single VM thread
+        # (vitest `pool: "vmThreads", singleThread: true` — kept that way so
+        # the Prisma library engine initializes once; see vitest.config.ts),
+        # so heap grows monotonically across the run. A recent run OOM'd at
+        # file 255/261, just short of finishing. Bump the worker heap to give
+        # headroom (runner has 16GB). If this recurs, shard the suite instead.
         run: NODE_OPTIONS="--max-old-space-size=6144" npm run test:integration

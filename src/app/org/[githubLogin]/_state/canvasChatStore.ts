@@ -61,6 +61,7 @@ import type {
   ApprovalResult,
   RejectionIntent,
 } from "@/lib/proposals/types";
+import type { ClarifyingQuestion } from "@/types/stakwork";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -105,12 +106,24 @@ export type CanvasMessageSource =
        */
       workflowStatus?: string;
       /**
-       * `true` when the planner message carried a `FORM` artifact — its
-       * explicit "a human must pick" signal (Phase 3). Drives the
-       * `Waiting for you` pill and, in Phase 4, surfaces the FORM via
-       * `PlannerFormSlot`.
+       * `true` when the planner message carried a clarifying-questions
+       * artifact (`PLAN` + `ask_clarifying_questions`) — its explicit
+       * "a human must pick" signal (Phase 3). Drives the `Waiting for
+       * you` pill and surfaces the FORM via `PlannerFormSlot`.
        */
       hasForm?: boolean;
+      /**
+       * The planner's clarifying-question list (Phase 4), embedded so
+       * `PlannerFormSlot` can render `ClarifyingQuestionsPreview`
+       * verbatim with no extra fetch. Present iff `hasForm` is `true`.
+       */
+      formQuestions?: ClarifyingQuestion[];
+      /**
+       * `true` when the planner just generated a task breakdown (a
+       * `TASKS` artifact). Gates the card's **Start Tasks** button,
+       * which reads the live ready-count from the feature itself.
+       */
+      hasTasks?: boolean;
     }
   // Added in Phase 4 — kept in the union now to make exhaustive
   // checks in switch statements complete from Phase 2 onward.

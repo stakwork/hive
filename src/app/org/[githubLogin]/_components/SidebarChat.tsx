@@ -14,6 +14,8 @@ import {
   SubAgentRunCard,
   getSubAgentRunsFromMessages,
 } from "./SubAgentRunCard";
+import { PlannerFormSlot } from "./PlannerFormSlot";
+import { StartTasksSlot } from "./StartTasksSlot";
 import { AttentionList } from "./AttentionList";
 import type { AttentionItem } from "@/services/attention/topItems";
 import {
@@ -251,7 +253,38 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 {subAgentRuns && subAgentRuns.length > 0 && (
                   <div className="space-y-1.5">
                     {subAgentRuns.map((run) => (
-                      <SubAgentRunCard key={run.featureId} run={run} />
+                      <div key={run.featureId} className="space-y-1.5">
+                        <SubAgentRunCard run={run} />
+                        {/*
+                          Phase 4: an unanswered planner FORM surfaces
+                          OUTSIDE the collapsed card so the user can
+                          answer it inline without expanding or leaving
+                          canvas chat. Only the run with a `pendingForm`
+                          renders a slot.
+                        */}
+                        {run.pendingForm && (
+                          <PlannerFormSlot
+                            githubLogin={githubLogin}
+                            featureId={run.featureId}
+                            featureTitle={run.featureTitle}
+                            plannerMessageId={run.pendingForm.plannerMessageId}
+                            questions={run.pendingForm.questions}
+                          />
+                        )}
+                        {/*
+                          Once the planner has generated tasks, offer a
+                          Start Tasks button (it reads the live ready-
+                          count itself and hides when none remain).
+                          Suppressed while a FORM is pending — answer the
+                          planner first.
+                        */}
+                        {run.hasGeneratedTasks && !run.pendingForm && (
+                          <StartTasksSlot
+                            featureId={run.featureId}
+                            featureTitle={run.featureTitle}
+                          />
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}

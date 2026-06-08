@@ -13,7 +13,7 @@
  */
 
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { ArtifactType, WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus } from "@prisma/client";
 
 // ─── Mocks ──────────────────────────────────────────────────────────
 
@@ -88,7 +88,10 @@ describe("actionableWakeReason", () => {
   };
 
   const makeMessage = (
-    overrides: Partial<{ message: string; artifacts: { type: ArtifactType }[] }>,
+    overrides: Partial<{
+      message: string;
+      artifacts: Array<{ type: string; content?: unknown }>;
+    }>,
   ) =>
     ({
       id: "msg-1",
@@ -98,15 +101,35 @@ describe("actionableWakeReason", () => {
       ...overrides,
     }) as never;
 
-  test("FORM artifact → 'form' (takes precedence over everything)", () => {
+  /** A planner clarifying-questions artifact: PLAN + ask_clarifying_questions. */
+  const clarifyingArtifact = {
+    type: "PLAN",
+    content: {
+      tool_use: "ask_clarifying_questions",
+      content: [{ question: "Stripe or Adyen?", type: "single_choice" }],
+    },
+  };
+
+  test("clarifying-questions PLAN artifact → 'form' (takes precedence over everything)", () => {
     const reason = actionableWakeReason(
       { ...baseFeature, workflowStatus: WorkflowStatus.COMPLETED },
       makeMessage({
         message: "Pick one?",
-        artifacts: [{ type: ArtifactType.FORM }],
+        artifacts: [clarifyingArtifact],
       }),
     );
     expect(reason).toBe("form");
+  });
+
+  test("ArtifactType.FORM (task-style form) does NOT trigger 'form' for planners", () => {
+    const reason = actionableWakeReason(
+      baseFeature,
+      makeMessage({
+        message: "status update.",
+        artifacts: [{ type: "FORM", content: { webhook: "x" } }],
+      }),
+    );
+    expect(reason).toBeNull();
   });
 
   test("terminal workflow status maps to its reason", () => {
