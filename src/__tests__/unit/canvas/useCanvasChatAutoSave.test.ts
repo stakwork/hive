@@ -23,6 +23,7 @@ type ConvState = {
     {
       messages: Array<{ id: string; role: string; content: string }>;
       isLoading: boolean;
+      isStreaming: boolean;
       serverConversationId: string | null;
       context: ConvContext;
     }
@@ -97,12 +98,14 @@ function makeConv(
   overrides: Partial<{
     messages: ReturnType<typeof makeMsg>[];
     isLoading: boolean;
+    isStreaming: boolean;
     serverConversationId: string | null;
   }> = {},
 ) {
   return {
     messages: [],
     isLoading: false,
+    isStreaming: false,
     serverConversationId: null,
     context: baseContext,
     ...overrides,
@@ -215,7 +218,7 @@ describe("useCanvasChatAutoSave", () => {
     );
   });
 
-  it("does not save while isLoading=true (stream in progress)", async () => {
+  it("does not save while isStreaming=true (stream in progress)", async () => {
     const fetchSpy = vi.fn();
     global.fetch = fetchSpy;
 
@@ -229,12 +232,113 @@ describe("useCanvasChatAutoSave", () => {
     act(() => {
       _store.setState({
         conversations: {
-          "conv-1": makeConv({ messages: [makeMsg("user", "m1")], isLoading: true }),
+          "conv-1": makeConv({ messages: [makeMsg("user", "m1")], isStreaming: true }),
         },
       });
     });
 
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("saves even if isLoading=true as long as isStreaming=false", async () => {
+    // isLoading flips to false on first chunk (UX) but isStreaming stays true
+    // until the stream fully finishes. This test verifies the save gate only
+    // cares about isStreaming, not isLoading.
+    const fetchSpy = buildFetch("srv-x");
+    global.fetch = fetchSpy;
+
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: { "conv-1": makeConv() },
+    });
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+
+    await act(async () => {
+      _store.setState({
+        conversations: {
+          "conv-1": makeConv({
+            messages: [makeMsg("user", "m1")],
+            isLoading: true,   // first-chunk UX flip — still "loading" visually
+            isStreaming: false, // but stream is done
+          }),
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/orgs/my-org/chat/conversations",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("does NOT save while isStreaming=true even if isLoading=false", async () => {
+    // Guard against a regression where isLoading-false alone would let
+    // mid-stream saves through.
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy;
+
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: { "conv-1": makeConv() },
+    });
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+
+    act(() => {
+      _store.setState({
+        conversations: {
+          "conv-1": makeConv({
+            messages: [makeMsg("user", "m1")],
+            isLoading: false,  // first-chunk flip has happened
+            isStreaming: true,  // but stream still in flight
+          }),
+        },
+      });
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("fires once isStreaming flips to false after being true", async () => {
+    const fetchSpy = buildFetch("srv-y");
+    global.fetch = fetchSpy;
+
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: { "conv-1": makeConv() },
+    });
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+
+    // Stream in progress — should not save
+    act(() => {
+      _store.setState({
+        conversations: {
+          "conv-1": makeConv({
+            messages: [makeMsg("user", "m1"), makeMsg("assistant", "m2")],
+            isStreaming: true,
+          }),
+        },
+      });
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // Stream completes — should now save
+    await act(async () => {
+      _store.setState({
+        conversations: {
+          "conv-1": makeConv({
+            messages: [makeMsg("user", "m1"), makeMsg("assistant", "m2")],
+            isStreaming: false,
+          }),
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
   });
 
   it("calls the org endpoint (not the workspace endpoint)", async () => {
