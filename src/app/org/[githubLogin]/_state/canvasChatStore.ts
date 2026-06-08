@@ -97,6 +97,17 @@ export type CanvasMessageSource =
       featureId: string;
       plannerMessageId: string;
       /**
+       * Feature display metadata at fan-out time, so an inbound-only run
+       * (the approval flow, where the canvas agent never made an outbound
+       * `send_to_feature_planner` call) can render the real feature name /
+       * workspace + a working "Open plan" link instead of "Unknown
+       * feature". All optional — rows written before this landed (and any
+       * future caller that omits them) fall back to the placeholder.
+       */
+      featureTitle?: string;
+      workspaceSlug?: string;
+      workspaceName?: string;
+      /**
        * The feature's `workflowStatus` at the moment the planner posted
        * (Phase 3). Lets `SubAgentRunCard` show a meaningful status pill
        * — `Running` (IN_PROGRESS), `Plan ready` (COMPLETED), `Failed`
