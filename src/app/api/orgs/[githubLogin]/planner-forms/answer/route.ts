@@ -29,6 +29,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { db } from "@/lib/db";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
+import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 
 export const runtime = "nodejs";
 
@@ -199,6 +200,7 @@ async function appendAnswerRow(
   // surfaces. Full answer already lives in the planner's chat history.
   const summary = answer.length > 140 ? `${answer.slice(0, 137)}…` : answer;
 
+  let didAppend = false;
   await db.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<{ messages: unknown }[]>`
       SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
@@ -235,5 +237,13 @@ async function appendAnswerRow(
         lastMessageAt: new Date(),
       },
     });
+    didAppend = true;
   });
+
+  // Live-update any OTHER open browser viewing this conversation (the
+  // submitting client hides the FORM locally; this keeps a second tab
+  // / device in sync).
+  if (didAppend) {
+    notifyCanvasConversationUpdated(conversationId, "form-answer");
+  }
 }
