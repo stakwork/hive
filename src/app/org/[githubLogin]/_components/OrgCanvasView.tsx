@@ -210,9 +210,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    */
   const [currentCanvasBreadcrumb, setCurrentCanvasBreadcrumb] = useState("");
 
-  // Optional `?chat=<shareId>` preload — the canvas's "copy share
-  // link" action writes URLs of this shape; landing on one preloads
-  // the conversation into a fresh forkable chat.
+  // Optional `?chat=<conversationId>` preload — the chat's "copy share
+  // link" action writes URLs of this shape pointing at a live shared
+  // conversation row. Landing on one preloads that conversation and
+  // adopts it as our server row, so we *join* the same room (sharer
+  // included) rather than forking a private copy.
   const sharedChatId = searchParams.get("chat");
   const [chatInitialMessages, setChatInitialMessages] =
     useState<CanvasChatMessage[] | null>(null);
@@ -290,7 +292,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       return;
     }
     let cancelled = false;
-    fetch(`/api/org/${githubLogin}/chat/shared/${sharedChatId}`)
+    // Read the live shared row (isShared-gated). Any org member may read
+    // a shared conversation; a non-shared/private id 404s and we just
+    // start a fresh empty chat.
+    fetch(`/api/orgs/${githubLogin}/chat/conversations/${sharedChatId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return;
@@ -848,6 +853,21 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       ephemeralSeedCount = 1;
     }
 
+    // Share = continue the SAME conversation, not fork. When we
+    // preloaded a conversation via `?chat=<shareId>`, adopt that row
+    // as our server conversation so new turns PUT-append to it instead
+    // of POSTing a fresh fork row — this is what makes refresh
+    // idempotent (re-load the same room, no new copy) and lets two
+    // people share one conversation. The seeded messages already live
+    // in that row, so they all count as already-saved. Omitting
+    // `joinServerConversationId` would fork instead — kept reachable
+    // for a future explicit "Fork" action.
+    const joinServerConversationId =
+      sharedChatId && chatInitialMessages ? sharedChatId : undefined;
+    if (joinServerConversationId) {
+      ephemeralSeedCount = chatInitialMessages!.length;
+    }
+
     const conversationId = useCanvasChatStore.getState().startConversation(
       {
         workspaceSlug,
@@ -862,6 +882,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       seedMessages,
       sharedChatId ?? undefined,
       ephemeralSeedCount,
+      joinServerConversationId,
     );
 
     // Backfill the artifact's `conversationId` now that we have one,

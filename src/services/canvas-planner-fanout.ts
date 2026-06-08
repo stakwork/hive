@@ -41,11 +41,12 @@ import { WorkflowStatus } from "@prisma/client";
 import type { Artifact, ChatMessage } from "@prisma/client";
 import { isClarifyingQuestions } from "@/types/stakwork";
 import type { ClarifyingQuestion } from "@/types/stakwork";
+import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 // Type-only import — the runtime `invokeCanvasAgentOnPlannerMessage` is
-// loaded lazily (dynamic `import()` below) so this webhook-path module
+// loaded by the webhook route (in `after()`), NOT here, so this module
 // doesn't statically pull in `runCanvasAgent`'s heavy module graph
-// (bifrost, pods, encryption, …). The auto-turn machinery is gated off
-// by default and only needed on actionable messages.
+// (bifrost, pods, encryption, …). We just report whether an auto-turn
+// is warranted; the caller schedules it off the request's critical path.
 import type { AutoTurnWakeReason } from "@/services/canvas-agent-autoturn";
 
 /**
@@ -167,20 +168,24 @@ type CanvasMessageRow = {
  *   - The conversation's `messages` JSON has one new entry with the
  *     `source.plannerMessageId === plannerMessage.id`.
  *   - `lastMessageAt` is bumped to the planner message's timestamp.
+ *   - A `CANVAS_CONVERSATION_UPDATED` Pusher nudge fires so an open
+ *     browser shows the planner message immediately.
  *
- * Returns nothing — fire-and-forget by design. Callers should not
- * await the result blocking the user-facing webhook response, but in
- * practice the work is a single short transaction (<10ms typical)
- * so awaiting is fine.
+ * **Returns the auto-turn wake reason** (or `null`). The caller (the
+ * Stakwork webhook route) is responsible for scheduling the actual
+ * `invokeCanvasAgentOnPlannerMessage` in `after()` — off the webhook's
+ * critical path — so the LLM turn never blocks the response to
+ * Stakwork. The append + Pusher nudge are the only synchronous work
+ * here (a single short transaction, <10ms typical).
  */
 export async function fanOutPlannerMessageToCanvas(
   feature: FanOutFeatureRef,
   plannerMessage: FanOutPlannerMessage,
-): Promise<void> {
+): Promise<AutoTurnWakeReason | null> {
   // No owning conversation → nothing to fan out to. Common case for
   // features created from the per-feature plan page that have never
   // been touched by a canvas agent.
-  if (!feature.parentCanvasConversationId) return;
+  if (!feature.parentCanvasConversationId) return null;
 
   const conversationId = feature.parentCanvasConversationId;
 
@@ -261,28 +266,19 @@ export async function fanOutPlannerMessageToCanvas(
       didAppend = true;
     });
 
-    // Phase 3: if the freshly-appended planner message is "actionable",
-    // wake the canvas agent to triage it. `invokeCanvasAgentOnPlannerMessage`
-    // is itself gated behind `CANVAS_AUTONOMOUS_TURNS_ENABLED` (off by
-    // default), so in production this is a logged no-op until flipped
-    // on. Runs AFTER the append commits so the agent reads a
-    // conversation that already includes this message. Awaited so the
-    // worker's failure-tolerance (the outer try/catch) covers it too;
-    // the agent turn is itself failure-tolerant and won't throw.
-    if (didAppend) {
-      const wakeReason = actionableWakeReason(feature, plannerMessage);
-      if (wakeReason) {
-        const { invokeCanvasAgentOnPlannerMessage } = await import(
-          "@/services/canvas-agent-autoturn"
-        );
-        await invokeCanvasAgentOnPlannerMessage({
-          conversationId,
-          featureId: feature.id,
-          plannerMessageId: plannerMessage.id,
-          wakeReason,
-        });
-      }
-    }
+    // Re-delivery / double-fire → no fresh append → nothing to push or
+    // wake on.
+    if (!didAppend) return null;
+
+    // Push the planner message to an open browser immediately (live
+    // chat). Fire-and-forget; never blocks the webhook.
+    notifyCanvasConversationUpdated(conversationId, "planner");
+
+    // If the message is "actionable", report the wake reason so the
+    // caller can schedule the autonomous canvas-agent turn in `after()`
+    // (off the webhook's critical path). The turn itself is gated behind
+    // `CANVAS_AUTONOMOUS_TURNS_ENABLED` (off by default).
+    return actionableWakeReason(feature, plannerMessage);
   } catch (e) {
     // Non-fatal: the planner's own write succeeded; the canvas
     // conversation is just incomplete for this one message. The user
@@ -296,6 +292,7 @@ export async function fanOutPlannerMessageToCanvas(
         error: e instanceof Error ? e.message : String(e),
       },
     );
+    return null;
   }
 }
 

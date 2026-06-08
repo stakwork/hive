@@ -30,6 +30,10 @@ type ConvState = {
   >;
   ephemeralSeedCounts: Record<string, number>;
   setServerConversationId: (conversationId: string, serverId: string) => void;
+  setConversationMessages: (
+    conversationId: string,
+    messages: Array<{ id: string; role: string; content: string }>,
+  ) => void;
 };
 
 function makeStore(initial?: Partial<ConvState>) {
@@ -47,9 +51,45 @@ function makeStore(initial?: Partial<ConvState>) {
           },
         },
       })),
+    setConversationMessages: (conversationId, messages) =>
+      set((s) => ({
+        conversations: {
+          ...s.conversations,
+          [conversationId]: {
+            ...s.conversations[conversationId],
+            messages,
+          },
+        },
+      })),
     ...initial,
   }));
 }
+
+// ── Pusher mock (live-sync) ────────────────────────────────────────────────
+// Captures the bound `CANVAS_CONVERSATION_UPDATED` handler so tests can
+// simulate a server-side nudge.
+const { fakePusher } = vi.hoisted(() => {
+  const handlers: Record<string, (...a: unknown[]) => void> = {};
+  const channel = {
+    bind: (ev: string, h: (...a: unknown[]) => void) => {
+      handlers[ev] = h;
+    },
+    unbind_all: () => {},
+  };
+  const client = { subscribe: () => channel, unsubscribe: () => {} };
+  return {
+    fakePusher: {
+      client,
+      fire: (ev: string) => handlers[ev]?.(),
+    },
+  };
+});
+
+vi.mock("@/lib/pusher", () => ({
+  getPusherClient: () => fakePusher.client,
+  getCanvasConversationChannelName: (id: string) => `canvas-conversation-${id}`,
+  PUSHER_EVENTS: { CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated" },
+}));
 
 // The hook imports `useCanvasChatStore` directly; we replace the module with
 // a factory that returns a fresh store per test.
@@ -364,5 +404,72 @@ describe("useCanvasChatAutoSave", () => {
     const [url] = fetchSpy.mock.calls[0] as [string, ...unknown[]];
     expect(url).toMatch(/\/api\/orgs\/acme-corp\/chat\/conversations/);
     expect(url).not.toMatch(/\/api\/workspaces\//);
+  });
+
+  // ── Live-sync (Pusher nudge → refetch → merge) ───────────────────────────
+  it("on a CANVAS_CONVERSATION_UPDATED nudge, refetches and replaces messages when idle", async () => {
+    // Idle conversation: 2 messages already persisted (seedSkip = 2 makes
+    // `saved == length` so no unsaved local messages).
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [makeMsg("user", "m1"), makeMsg("assistant", "a1")],
+          serverConversationId: "server-1",
+        }),
+      },
+      ephemeralSeedCounts: { "conv-1": 2 },
+    });
+
+    // GET returns the server's authoritative copy — a superset that now
+    // includes a fanned-out planner row.
+    const serverMessages = [
+      { id: "m1", role: "user", content: "Hello" },
+      { id: "a1", role: "assistant", content: "Hi" },
+      {
+        id: "planner-x",
+        role: "assistant",
+        content: "Plan ready",
+        source: { kind: "planner", featureId: "f1", plannerMessageId: "x" },
+      },
+    ];
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ messages: serverMessages }),
+    });
+    global.fetch = fetchSpy;
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+
+    // Trigger the store.subscribe callback so the hook subscribes to the
+    // conversation's Pusher channel and binds the handler.
+    act(() => {
+      _store.setState((s) => ({ ...s }));
+    });
+
+    // Simulate the server-side nudge.
+    await act(async () => {
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // It refetched via GET on the org route…
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/orgs/my-org/chat/conversations/server-1",
+    );
+    // …and replaced the local messages with the server superset (the
+    // planner row is now visible to a user sitting on the page).
+    const msgs = _store.getState().conversations["conv-1"].messages;
+    expect(msgs).toHaveLength(3);
+    expect(msgs[2].id).toBe("planner-x");
+    // No PUT/POST was issued (idle conversation → nothing to save, and the
+    // synced rows must not be re-persisted as a delta).
+    const writeCalls = fetchSpy.mock.calls.filter(
+      ([, init]) =>
+        init && ((init as RequestInit).method === "PUT" ||
+          (init as RequestInit).method === "POST"),
+    );
+    expect(writeCalls).toHaveLength(0);
   });
 });
