@@ -79,6 +79,19 @@ interface RunMessage {
   status: "sent" | "in_flight" | "failed";
   /** Failure reason for outbound `"failed"` entries. */
   errorReason?: string;
+  /**
+   * Inbound only (Phase 3): the feature's `workflowStatus` at the time
+   * the planner posted, carried on `source.workflowStatus`. Drives the
+   * card's status pill. `undefined` for outbound entries and for
+   * inbound rows written before Phase 3.
+   */
+  workflowStatus?: string;
+  /**
+   * Inbound only (Phase 3): `true` when the planner message carried a
+   * `FORM` artifact (an explicit "a human must pick"). Highest-priority
+   * signal for the status pill.
+   */
+  hasForm?: boolean;
 }
 
 /** All exchanges with one planner during the active conversation. */
@@ -187,6 +200,8 @@ export function getSubAgentRunsFromMessages(
         direction: "in",
         text: message.content,
         status: "sent",
+        workflowStatus: message.source.workflowStatus,
+        hasForm: message.source.hasForm,
       });
       // Inbound entries also move the anchor — a planner reply is
       // the freshest activity for this feature, so the card should
@@ -270,6 +285,95 @@ function deriveRunStatus(
   return "in_flight";
 }
 
+/**
+ * The card's headline status — a label plus a `tone` that selects the
+ * pill color + icon. Derived from the run's latest thread entry:
+ *
+ *   - **Outbound latest** (canvas agent → planner, no reply yet): the
+ *     send is still in flight / failed / delivered-and-waiting.
+ *   - **Inbound latest** (planner → canvas): a `FORM` means the planner
+ *     needs the user (`waiting`); otherwise the planner's
+ *     `workflowStatus` tells us whether it's still running, done, or
+ *     broken.
+ *
+ * `tone` is intentionally a small closed set so the pill/icon mapping
+ * stays exhaustive.
+ */
+type CardTone = "running" | "waiting" | "failed" | "replied" | "sent";
+
+interface CardStatus {
+  label: string;
+  tone: CardTone;
+}
+
+export function deriveCardStatus(run: SubAgentRun): CardStatus {
+  const latest = run.messages[run.messages.length - 1];
+  if (!latest) return { label: "Sent · waiting for reply", tone: "sent" };
+
+  if (latest.direction === "out") {
+    if (latest.status === "failed") return { label: "Failed", tone: "failed" };
+    if (latest.status === "in_flight")
+      return { label: "Sending…", tone: "running" };
+    return run.messages.length > 1
+      ? { label: `${run.messages.length} messages sent · waiting`, tone: "sent" }
+      : { label: "Sent · waiting for reply", tone: "sent" };
+  }
+
+  // Inbound (planner → canvas).
+  if (latest.hasForm) return { label: "Waiting for you", tone: "waiting" };
+
+  switch (latest.workflowStatus) {
+    case "IN_PROGRESS":
+      return { label: "Running", tone: "running" };
+    case "COMPLETED":
+      return { label: "Plan ready", tone: "replied" };
+    case "FAILED":
+    case "ERROR":
+    case "HALTED":
+      return { label: "Needs attention", tone: "failed" };
+    default:
+      return { label: "Replied", tone: "replied" };
+  }
+}
+
+/** Tailwind classes for the pill, keyed by tone. */
+const TONE_PILL_CLASSES: Record<CardTone, string> = {
+  running:
+    "bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-500/20",
+  waiting:
+    "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/30",
+  failed:
+    "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/20",
+  replied:
+    "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
+  sent: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
+};
+
+function StatusIconForTone({ tone }: { tone: CardTone }) {
+  switch (tone) {
+    case "running":
+      return <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-500" />;
+    case "waiting":
+      return <AlertCircle className="h-3.5 w-3.5 text-amber-500" />;
+    case "failed":
+      return <AlertCircle className="h-3.5 w-3.5 text-rose-500" />;
+    case "replied":
+      return <Check className="h-3.5 w-3.5 text-emerald-500" />;
+    case "sent":
+      return <Send className="h-3.5 w-3.5 text-sky-500" />;
+  }
+}
+
+function StatusPill({ status }: { status: CardStatus }) {
+  return (
+    <span
+      className={`inline-flex flex-shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${TONE_PILL_CLASSES[status.tone]}`}
+    >
+      {status.label}
+    </span>
+  );
+}
+
 interface SubAgentRunCardProps {
   run: SubAgentRun;
 }
@@ -284,41 +388,18 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
   // collapse); the shape is established here.
   const [collapsed, setCollapsed] = useState(true);
 
-  const latest = run.messages[run.messages.length - 1];
-  const latestStatus = latest?.status ?? "sent";
-  const latestDirection = latest?.direction ?? "out";
   const planHref =
     run.workspaceSlug && run.featureId
       ? `/w/${run.workspaceSlug}/plan/${run.featureId}`
       : null;
 
-  // Headline status copy. With Phase 2 we now see inbound planner
-  // messages too, so the headline can finally say "Replied" when the
-  // last entry is from the planner. Phase 3 will refine further
-  // (FORM artifacts → "Waiting for you"; workflow transitions →
-  // "Plan ready"); Phase 2 keeps it to the three states the data
-  // can support today.
-  const headlineStatus =
-    latestStatus === "failed"
-      ? "Failed"
-      : latestStatus === "in_flight"
-        ? "Sending..."
-        : latestDirection === "in"
-          ? "Replied"
-          : run.messages.length > 1
-            ? `${run.messages.length} messages sent · waiting`
-            : "Sent · waiting for reply";
-
-  const StatusIcon =
-    latestStatus === "in_flight" ? (
-      <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-500" />
-    ) : latestStatus === "failed" ? (
-      <AlertCircle className="h-3.5 w-3.5 text-rose-500" />
-    ) : latestDirection === "in" ? (
-      <Check className="h-3.5 w-3.5 text-emerald-500" />
-    ) : (
-      <Send className="h-3.5 w-3.5 text-sky-500" />
-    );
+  // Phase 3: a single derived status drives both the headline copy and
+  // the colored pill / icon. Replaces the Phase 2 direction-only
+  // headline; now `Running` / `Waiting for you` / `Plan ready` /
+  // `Needs attention` materialize from the inbound planner message's
+  // `workflowStatus` + `hasForm` signals carried through the fan-out.
+  const status = deriveCardStatus(run);
+  const StatusIcon = <StatusIconForTone tone={status.tone} />;
 
   const Chevron = collapsed ? (
     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
@@ -371,9 +452,7 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
               >
                 ·
               </span>
-              <span className="flex-shrink-0 truncate text-xs text-muted-foreground">
-                {headlineStatus}
-              </span>
+              <StatusPill status={status} />
             </div>
           ) : (
             // Expanded: the original card chrome (eyebrow + title +
@@ -474,8 +553,8 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
                 })}
               </ul>
 
-              <div className="mt-1.5 text-[11px] text-muted-foreground">
-                {headlineStatus}
+              <div className="mt-1.5">
+                <StatusPill status={status} />
               </div>
             </>
           )}
