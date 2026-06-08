@@ -335,8 +335,17 @@ function buildWakeMessage(
           "that defeats the planner's escalation. Choose **escalate** (a " +
           "one-paragraph note pointing at the question) or **stay silent** " +
           "(the FORM surfaces to the user directly anyway)."
-        : "Default toward escalation or silence unless the user's " +
-          "instructions clearly grant you the autonomy to answer."),
+        : wakeReason === "completed"
+          ? "This wake reason is `completed`: the planner finished a run. " +
+            "Read the plan via `<slug>__read_feature`. If `brief`, " +
+            "`requirements`, and `architecture` are all populated and the " +
+            "architecture looks sound, **keep it moving — auto-respond with " +
+            "`send_to_feature_planner` telling it to generate the tasks now** " +
+            "(unless the user asked to review the plan first). A finished " +
+            "plan that just sits waiting is the failure mode. Don't try to " +
+            "*start* tasks — that's the user's button."
+          : "Default toward escalation or silence unless the user's " +
+            "instructions clearly grant you the autonomy to answer."),
   };
 }
 
