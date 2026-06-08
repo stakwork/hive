@@ -82,6 +82,14 @@ type CanvasMessageRow = {
     kind: "planner";
     featureId: string;
     plannerMessageId: string;
+    /**
+     * Feature `workflowStatus` at fan-out time (Phase 3). Drives the
+     * `SubAgentRunCard` status pill. Stringified enum value; omitted
+     * when the caller didn't supply it.
+     */
+    workflowStatus?: string;
+    /** `true` when the planner message carried a `FORM` artifact (Phase 3). */
+    hasForm?: boolean;
   };
   /** Empty for v1; Phase 3 may populate when surfacing artifacts. */
   artifactIds?: string[];
@@ -154,6 +162,10 @@ export async function fanOutPlannerMessageToCanvas(
         return;
       }
 
+      const hasForm = plannerMessage.artifacts.some(
+        (a) => a.type === ArtifactType.FORM,
+      );
+
       const newRow: CanvasMessageRow = {
         // The canvas chat treats messages as identified by their own
         // ids. Prefix to distinguish from canvas-agent assistant
@@ -166,6 +178,13 @@ export async function fanOutPlannerMessageToCanvas(
           kind: "planner",
           featureId: feature.id,
           plannerMessageId: plannerMessage.id,
+          // Phase 3 status-pill signal. Both optional — only set when
+          // we actually have the value, so the card distinguishes
+          // "unknown" (legacy/absent) from a real state.
+          ...(feature.workflowStatus
+            ? { workflowStatus: feature.workflowStatus }
+            : {}),
+          ...(hasForm ? { hasForm: true } : {}),
         },
       };
 
