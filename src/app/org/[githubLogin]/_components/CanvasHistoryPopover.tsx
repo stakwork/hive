@@ -8,6 +8,7 @@ import {
   PopoverContent,
 } from "@/components/ui/popover";
 import type { ConversationListItem } from "@/types/shared-conversation";
+import { UNTITLED_CONVERSATION } from "@/lib/ai/conversationHelpers";
 import {
   useCanvasChatStore,
   type CanvasChatMessage,
@@ -180,7 +181,14 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
           ) : (
             <div className="py-1">
               {items.map((item) => {
-                const label = item.title || item.preview || "Untitled";
+                // A stored placeholder title (legacy rows created before
+                // title self-heal) is treated as empty so the first-user-
+                // message preview wins.
+                const meaningfulTitle =
+                  item.title && item.title !== UNTITLED_CONVERSATION
+                    ? item.title
+                    : null;
+                const label = meaningfulTitle || item.preview || "Untitled";
                 const isLoadingThis = loadingItemId === item.id;
 
                 return (
