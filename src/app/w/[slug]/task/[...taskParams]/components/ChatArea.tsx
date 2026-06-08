@@ -19,6 +19,7 @@ import { TypingIndicator } from "@/components/chat/TypingIndicator";
 import { ChatInput } from "./ChatInput";
 import type { StreamContext } from "./WorkflowStatusBadge";
 import { ChatMessage } from "./ChatMessage";
+import { findClarifyingReply } from "@/lib/utils/clarifying-questions";
 import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
@@ -389,7 +390,7 @@ export function ChatArea({
             isPlanChat && !isLoading && !!suggestions?.length && !!onSuggestionSelect;
 
           return visibleMessages.map((msg, i) => {
-            const replyMessage = messages.find((m) => m.replyId === msg.id);
+            const replyMessage = findClarifyingReply(messages, msg.id);
             const dockChipsHere = showChips && i === lastAssistantIdx;
             return (
               <ChatMessage
