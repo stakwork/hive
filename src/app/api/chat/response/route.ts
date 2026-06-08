@@ -547,8 +547,13 @@ export async function POST(request: NextRequest) {
           where: { id: featureId },
           select: {
             id: true,
+            title: true,
             parentCanvasConversationId: true,
             workspaceId: true,
+            // Echoed onto the planner row's `source` so an inbound-only
+            // SubAgentRunCard shows the real name / workspace / plan link
+            // instead of "Unknown feature".
+            workspace: { select: { slug: true, name: true } },
             // Phase 3: feeds the "actionable" check (terminal
             // workflow transitions wake the canvas agent).
             workflowStatus: true,
@@ -556,7 +561,16 @@ export async function POST(request: NextRequest) {
         });
         if (fanOutFeature) {
           const wakeReason = await fanOutPlannerMessageToCanvas(
-            fanOutFeature,
+            {
+              id: fanOutFeature.id,
+              parentCanvasConversationId:
+                fanOutFeature.parentCanvasConversationId,
+              workspaceId: fanOutFeature.workspaceId,
+              title: fanOutFeature.title,
+              workspaceSlug: fanOutFeature.workspace?.slug ?? null,
+              workspaceName: fanOutFeature.workspace?.name ?? null,
+              workflowStatus: fanOutFeature.workflowStatus,
+            },
             chatMessage,
           );
           // Schedule the autonomous canvas-agent turn AFTER the webhook
