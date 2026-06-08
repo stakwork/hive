@@ -13,8 +13,8 @@ import { useWorkflowNodes } from "@/hooks/useWorkflowNodes";
 import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
 import { useRecentWorkflows } from "@/hooks/useRecentWorkflows";
 import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSelector";
-import { ArtifactType } from "@prisma/client";
-import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
+import { createWorkflowEditorTask } from "@/lib/workflow/create-workflow-editor-task";
+import { ArtifactType } from "@/lib/chat";
 
 const formatDate = (dateString: string) => {
   try {
@@ -130,8 +130,7 @@ export default function WorkflowsPage() {
     setIsSubmitting(true);
 
     try {
-      const workflowId = parsedWorkflowId;
-      const workflowName = matchedWorkflow?.properties.workflow_name || `Workflow ${workflowId}`;
+      const workflowName = matchedWorkflow?.properties.workflow_name || `Workflow ${parsedWorkflowId}`;
 
       const selectedVersion = versions.find(
         (v) => String(v.workflow_version_id) === String(selectedVersionId)
@@ -141,74 +140,10 @@ export default function WorkflowsPage() {
         throw new Error("Selected version not found");
       }
 
-      const workflowJson = selectedVersion.workflow_json || getWorkflowJsonFromNode(matchedWorkflow);
-      const workflowRefId = selectedVersion.ref_id;
-      const taskTitle = `${workflowName}${selectedVersionId ? ` v${String(selectedVersionId).substring(0, 8)}` : ''}`;
-
-      // Create a new task
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: taskTitle,
-          description: `Editing workflow ${workflowId}${selectedVersionId ? ` version ${String(selectedVersionId).substring(0, 8)}` : ''}`,
-          status: "active",
-          workspaceSlug: slug,
-          mode: "workflow_editor",
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create task: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      const newTaskId = result.data.id;
-
-      // Save workflow artifact to database
-      const saveResponse = await fetch(`/api/tasks/${newTaskId}/messages/save`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: `Loaded: ${taskTitle}\nSelect a step on the right as a starting point.`,
-          role: "ASSISTANT",
-          artifacts: [
-            {
-              type: ArtifactType.WORKFLOW,
-              content: {
-                workflowJson: workflowJson,
-                workflowId: workflowId,
-                workflowName: workflowName,
-                workflowRefId: workflowRefId,
-                workflowVersionId: selectedVersionId,
-              },
-            },
-          ],
-        }),
-      });
-
-      if (!saveResponse.ok) {
-        console.error("Failed to save workflow artifact:", await saveResponse.text());
-      }
-
-      // Dual-write WorkflowTask row so the task is linked to the workflow in the DB
-      await fetch(`/api/tasks/${newTaskId}/workflow-task`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workflowId,
-          workflowName,
-          workflowRefId,
-          workflowVersionId: selectedVersionId,
-        }),
-      });
+      const taskId = await createWorkflowEditorTask(slug, selectedVersion, workflowName);
 
       // Navigate to task chat view
-      window.location.href = `/w/${slug}/task/${newTaskId}`;
+      window.location.href = `/w/${slug}/task/${taskId}`;
     } catch (error) {
       console.error("Failed to create workflow task:", error);
       setIsSubmitting(false);
