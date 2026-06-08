@@ -39,8 +39,7 @@ export type EncryptableField =
   | "bifrostVk"
   | "macaroonOrgPrivkey"
   | "macaroonUserPrivkey"
-  | "secretValue"
-  | "discordBotToken";
+  | "secretValue";
 
 export interface EncryptionError extends Error {
   code: "ENCRYPTION_FAILED" | "DECRYPTION_FAILED" | "INVALID_KEY" | "INVALID_DATA";
