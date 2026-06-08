@@ -54,12 +54,15 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
       const conv =
         useCanvasChatStore.getState().conversations[conversationId];
       if (!conv) return;
-      // Only save when not actively streaming. Mid-stream the
-      // assistant's messages are still being built; we'd be saving
-      // partial state. Wait for the stream to finish (`isLoading`
-      // flips back to false after `onResponseStart` and again at
-      // stream end via `setIsLoading(false)`).
-      if (conv.isLoading) return;
+      // Only save when the stream has fully settled. `isStreaming`
+      // stays `true` for the entire lifetime of a fetch — from the
+      // initial request until the `finally` block in
+      // `useSendCanvasChatMessage`. Unlike `isLoading` (which flips
+      // to `false` on the first chunk for UX), `isStreaming` covers
+      // tool call outputs that arrive later in the stream. Saving
+      // mid-stream would persist tool calls with `output: undefined`,
+      // which causes ProposalCards to disappear from history.
+      if (conv.isStreaming) return;
 
       const totalMsgs = conv.messages.length;
       if (totalMsgs === 0) return;
