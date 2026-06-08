@@ -11,6 +11,10 @@ import {
   createChatMessage,
 } from "@/lib/chat";
 import { isClarifyingQuestions } from "@/types/stakwork";
+import {
+  findClarifyingReply,
+  hasPendingClarifyingQuestions,
+} from "@/lib/utils/clarifying-questions";
 import { usePusherConnection } from "@/hooks/usePusherConnection";
 import { getPusherClient } from "@/lib/pusher";
 import { Button } from "@/components/ui/button";
@@ -144,14 +148,10 @@ export function FeaturePlanChat({
   // so the user can answer via the form *or* type a free-form
   // override ("skip these, use defaults"). Mirrors the full plan
   // page's behavior.
-  const hasPendingClarifyingQuestion = useMemo(() => {
-    return messages.some(
-      (m) =>
-        (m.artifacts ?? []).some(
-          (a) => a.type === "PLAN" && isClarifyingQuestions(a.content),
-        ) && !messages.some((reply) => reply.replyId === m.id),
-    );
-  }, [messages]);
+  const hasPendingClarifyingQuestion = useMemo(
+    () => hasPendingClarifyingQuestions(messages, isClarifyingQuestions),
+    [messages],
+  );
 
   const inputDisabled =
     loading ||
@@ -243,8 +243,7 @@ export function FeaturePlanChat({
   );
 
   const findReply = useCallback(
-    (messageId: string) =>
-      messages.find((m) => m.replyId === messageId),
+    (messageId: string) => findClarifyingReply(messages, messageId),
     [messages],
   );
 
