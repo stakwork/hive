@@ -549,6 +549,9 @@ export async function POST(request: NextRequest) {
             id: true,
             parentCanvasConversationId: true,
             workspaceId: true,
+            // Phase 3: feeds the "actionable" check (terminal
+            // workflow transitions wake the canvas agent).
+            workflowStatus: true,
           },
         });
         if (fanOutFeature) {
