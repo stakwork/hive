@@ -140,6 +140,15 @@ export interface CanvasConversation {
   forkedFromShareId: string | null;
   messages: CanvasChatMessage[];
   isLoading: boolean;
+  /**
+   * `true` for the full lifetime of a streaming response — from the
+   * initial fetch until the stream's `finally` block. Unlike
+   * `isLoading` (which flips to `false` on the first chunk for UX),
+   * `isStreaming` stays `true` until tool call outputs have fully
+   * arrived. Auto-save gates on this flag so it never persists
+   * partial tool call data.
+   */
+  isStreaming: boolean;
   activeToolCalls: ToolCall[];
   /** Hint context used when building `/api/ask/quick` requests. */
   context: ConversationContext;
@@ -292,6 +301,8 @@ interface CanvasChatState {
     toolCalls: ToolCall[],
   ) => void;
   setIsLoading: (conversationId: string, isLoading: boolean) => void;
+  /** Mirror of `setIsLoading` but for the streaming gate. See `CanvasConversation.isStreaming`. */
+  setIsStreaming: (conversationId: string, streaming: boolean) => void;
   /** Append a synthetic assistant error message to a conversation. */
   appendAssistantError: (
     conversationId: string,
@@ -351,6 +362,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           forkedFromShareId: forkedFromShareId ?? null,
           messages: seedMessages ?? [],
           isLoading: false,
+          isStreaming: false,
           activeToolCalls: [],
           context,
         };
@@ -523,6 +535,22 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           },
           false,
           "setIsLoading",
+        ),
+
+      setIsStreaming: (conversationId, isStreaming) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: { ...conv, isStreaming },
+              },
+            };
+          },
+          false,
+          "setIsStreaming",
         ),
 
       appendAssistantError: (conversationId, content) =>

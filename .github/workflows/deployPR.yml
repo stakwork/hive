@@ -383,19 +383,23 @@ jobs:
             npx prisma migrate resolve --applied "20260412042654_add_connection_architecture" 2>&1 || true
           fi
 
+          # Resolve 20260412050000_add_connection_slug.
+          # This migration adds the slug column and unique index to connections.
+          # - If slug column already exists → mark as applied.
+          # - If slug column absent → roll back so Prisma re-runs it.
           echo "Resolving 20260412050000_add_connection_slug..."
           CONN_TABLE2=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='connections' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
           if [ "$CONN_TABLE2" = "1" ]; then
             SLUG_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='connections' AND column_name='slug';" 2>/dev/null | tr -d '[:space:]' || echo "0")
             if [ "$SLUG_COL" = "1" ]; then
-              echo "  connections table + slug column both exist — marking as applied"
+              echo "  connections.slug column exists — marking as applied"
               npx prisma migrate resolve --applied "20260412050000_add_connection_slug" 2>&1 || true
             else
-              echo "  connections table exists but slug column absent — rolling back for Prisma to re-run"
+              echo "  connections.slug column absent — rolling back for Prisma to re-run"
               npx prisma migrate resolve --rolled-back "20260412050000_add_connection_slug" 2>&1 || true
             fi
           else
-            echo "  connections table absent — marking add_connection_slug as applied to skip ALTER TABLE"
+            echo "  connections table absent — marking add_connection_slug as applied to skip"
             npx prisma migrate resolve --applied "20260412050000_add_connection_slug" 2>&1 || true
           fi
 
@@ -426,8 +430,8 @@ jobs:
             else
               npx prisma migrate resolve --applied "20260412042654_add_connection_architecture" 2>&1 || true
             fi
-            CONN_TABLE_SLUG=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='connections' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
-            if [ "$CONN_TABLE_SLUG" = "1" ]; then
+            CONN_TABLE2=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='connections' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$CONN_TABLE2" = "1" ]; then
               SLUG_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='connections' AND column_name='slug';" 2>/dev/null | tr -d '[:space:]' || echo "0")
               if [ "$SLUG_COL" = "1" ]; then
                 npx prisma migrate resolve --applied "20260412050000_add_connection_slug" 2>&1 || true

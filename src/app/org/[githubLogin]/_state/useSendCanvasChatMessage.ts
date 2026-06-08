@@ -75,6 +75,7 @@ export function useSendCanvasChatMessage() {
         replaceAssistantStream,
         setActiveToolCalls,
         setIsLoading,
+        setIsStreaming,
         appendAssistantError,
       } = useCanvasChatStore.getState();
 
@@ -97,6 +98,7 @@ export function useSendCanvasChatMessage() {
 
       appendUserMessage(conversationId, userMessage);
       setIsLoading(conversationId, true);
+      setIsStreaming(conversationId, true);
 
       let firstChunk = true;
       const ctx = conv.context;
@@ -304,6 +306,7 @@ export function useSendCanvasChatMessage() {
         );
       } finally {
         setIsLoading(conversationId, false);
+        setIsStreaming(conversationId, false);
       }
     },
     [processStream],
