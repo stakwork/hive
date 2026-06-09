@@ -37,6 +37,10 @@
     {
       "path": "/api/cron/discord-sync",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/llm-model-sync",
+      "schedule": "0 1 * * *"
     }
   ]
 }

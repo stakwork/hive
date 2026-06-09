@@ -1517,6 +1517,7 @@ model LlmModel {
   createdAt            DateTime    @default(now()) @map("created_at")
   updatedAt            DateTime    @updatedAt @map("updated_at")
 
+  @@unique([name])
   @@index([provider])
   @@map("llm_models")
 }

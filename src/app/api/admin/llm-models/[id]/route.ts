@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
+import { validateApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireSuperAdmin(request);
-  if (authResult instanceof NextResponse) {
-    return authResult;
+  const isSync = validateApiToken(request);
+  if (!isSync) {
+    const authResult = await requireSuperAdmin(request);
+    if (authResult instanceof NextResponse) return authResult;
   }
 
   const { id } = await params;
