@@ -199,6 +199,33 @@ describe("actionableWakeReason", () => {
     ).toBe("failed");
   });
 
+  test("real PLAN artifact (plan ready for review) → 'completed' even when not terminal and no trailing '?'", () => {
+    expect(
+      actionableWakeReason(
+        baseFeature, // workflowStatus IN_PROGRESS — the webhook race
+        makeMessage({
+          message:
+            "Requirements are scoped tight. Confirm and I'll go deep into the architecture.",
+          artifacts: [{ type: "PLAN", content: { summary: "the plan" } }],
+        }),
+      ),
+    ).toBe("completed");
+  });
+
+  test("clarifying-questions PLAN does NOT count as a plan-ready signal (stays 'form')", () => {
+    // Same artifact type (PLAN) but the clarifying variant → 'form', not
+    // 'completed'. Guards the `plannerMessageHasPlan` exclusion.
+    expect(
+      actionableWakeReason(
+        baseFeature,
+        makeMessage({
+          message: "Which provider?",
+          artifacts: [clarifyingArtifact],
+        }),
+      ),
+    ).toBe("form");
+  });
+
   test("trailing '?' → 'question' when not terminal and no FORM", () => {
     expect(
       actionableWakeReason(
