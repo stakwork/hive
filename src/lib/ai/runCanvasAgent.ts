@@ -572,6 +572,7 @@ export async function runCanvasAgent(
       orgId
         ? { orgId, scope: buildScopeHint(scope, []) }
         : undefined,
+      ws.currentUserGithubUsername,
     );
     primarySwarmUrl = ws.swarmUrl;
     primarySwarmApiKey = ws.swarmApiKey;
