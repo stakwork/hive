@@ -3,7 +3,6 @@ import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import SessionProvider from "@/providers/SessionProvider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import type { Metadata, Viewport } from "next";
-import { Inter, Roboto } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import ModalClient from "./ModalClient";
@@ -12,13 +11,7 @@ import { getMetadata } from "@/lib/metadata";
 import { DevPanel } from "@/components/DevPanel";
 import { FaviconManager } from "@/components/FaviconManager";
 
-const inter = Inter({ subsets: ["latin"], preload: false });
-const roboto = Roboto({
-  weight: ['400', '500', '700'],
-  subsets: ["latin"],
-  variable: '--font-roboto',
-  preload: false,
-});
+
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -48,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script src="/js/staktrak.js" />
         <Script src="/js/playwright-generator.js" />
       </head>
-      <body className={`${inter.className} ${roboto.variable} min-h-screen bg-background text-foreground antialiased`}>
+      <body className={`min-h-screen bg-background text-foreground antialiased`}>
         <ThemeProvider defaultTheme="system" storageKey="theme">
           <SessionProvider>
             <WorkspaceProvider>
