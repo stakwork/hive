@@ -88,6 +88,7 @@ const mockWorkflows = [
 const mockVersions = [
   {
     workflow_version_id: "v1",
+    workflow_id: 123,
     ref_id: "ref_v1",
     workflow_name: "Test Workflow 1",
     created_at: "2024-01-01T00:00:00Z",
@@ -95,6 +96,7 @@ const mockVersions = [
   },
   {
     workflow_version_id: "v2",
+    workflow_id: 123,
     ref_id: "ref_v2",
     workflow_name: "Test Workflow 1",
     created_at: "2024-01-02T00:00:00Z",
@@ -823,13 +825,17 @@ describe("WorkflowsPage", () => {
 
       // The debounce (300ms) fires after the submit click in this test environment,
       // so the run-check fetch is NOT called before handleSubmit runs.
-      // Only the two submit calls need to be mocked.
       // Create task
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { id: "task-123" } }),
       });
       // Save artifact
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+      // Dual-write WorkflowTask row
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ success: true }),
