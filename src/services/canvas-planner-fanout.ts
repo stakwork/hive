@@ -88,6 +88,28 @@ export function plannerMessageHasTasks(
   return plannerMessage.artifacts.some((a) => a.type === "TASKS");
 }
 
+/**
+ * Did this planner message carry a *real* plan — a `PLAN` artifact that
+ * is NOT the clarifying-questions variant? This is the "the planner
+ * delivered a plan ready for review" signal: it's exactly what fires the
+ * `PLAN_AWAITING_APPROVAL` notification, and it's the substantive
+ * deliverable the canvas agent should react to (read it, and if it's
+ * solid, nudge the planner to generate tasks).
+ *
+ * A clarifying-questions message is *also* `PLAN`-typed (see
+ * `extractClarifyingQuestions`), so we exclude it here — that case is
+ * handled separately as the stronger `"form"` signal. The result: this
+ * returns true only for genuine plan summaries, not for the question
+ * variant and not for pure-prose status chatter (which has no artifact).
+ */
+export function plannerMessageHasPlan(
+  plannerMessage: { artifacts: Artifact[] },
+): boolean {
+  return plannerMessage.artifacts.some(
+    (a) => a.type === "PLAN" && !isClarifyingQuestions(a.content),
+  );
+}
+
 /** Subset of `Feature` the fan-out needs. */
 export interface FanOutFeatureRef {
   id: string;
@@ -306,7 +328,37 @@ export async function fanOutPlannerMessageToCanvas(
     // caller can schedule the autonomous canvas-agent turn in `after()`
     // (off the webhook's critical path). The turn itself is gated behind
     // `CANVAS_AUTONOMOUS_TURNS_ENABLED` (off by default).
-    return actionableWakeReason(feature, plannerMessage);
+    const wakeReason = actionableWakeReason(feature, plannerMessage);
+
+    // ALWAYS log the classification — incl. when `wakeReason` is null —
+    // so "the agent didn't auto-respond" is diagnosable from Vercel logs
+    // WITHOUT a turn ever being scheduled (a null reason means no
+    // `[canvas-autoturn]` line will ever appear). Surfaces each raw
+    // signal so the exact reason is obvious (e.g. a planner that asks a
+    // question mid-message but ends on a period → `endsWithQuestionMark:
+    // false` → not actionable via the trailing-`?` heuristic).
+    const trimmed = plannerMessage.message.trim();
+    console.log("[canvas-planner-fanout] classified planner message", {
+      featureId: feature.id,
+      plannerMessageId: plannerMessage.id,
+      conversationId,
+      wakeReason,
+      signals: {
+        hasClarifyingForm: !!extractClarifyingQuestions(plannerMessage),
+        workflowStatus: feature.workflowStatus ?? null,
+        endsWithQuestionMark: trimmed.endsWith("?"),
+        messagePreview: trimmed.slice(-80),
+      },
+      ...(wakeReason
+        ? {}
+        : {
+            notActionable:
+              "no clarifying-questions FORM, non-terminal workflowStatus, " +
+              "and message does not end with '?' — auto-turn NOT scheduled",
+          }),
+    });
+
+    return wakeReason;
   } catch (e) {
     // Non-fatal: the planner's own write succeeded; the canvas
     // conversation is just incomplete for this one message. The user
@@ -338,11 +390,24 @@ export async function fanOutPlannerMessageToCanvas(
  *   2. The feature's `workflowStatus` is terminal
  *      (`COMPLETED` / `FAILED` / `HALTED` / `ERROR`). → mapped reason.
  *      Deterministic.
- *   3. The message text ends with `?` (heuristic for "asked a question
+ *   3. The message carried a real `PLAN` artifact (a plan ready for
+ *      review — the same signal that fires `PLAN_AWAITING_APPROVAL`).
+ *      → `"completed"`. Deterministic, and independent of the
+ *      `workflowStatus` race: the plan-message webhook and the
+ *      run-completion webhook arrive separately, so the feature may
+ *      still read `IN_PROGRESS` when the plan lands. Keying off the
+ *      artifact catches "plan is done, keep it moving" reliably. The
+ *      `"completed"` prompt branch guards against premature task-pushing
+ *      (it only nudges when brief/requirements/architecture are all
+ *      populated), so an intermediate plan just gets read, not actioned.
+ *   4. The message text ends with `?` (heuristic for "asked a question
  *      without a FORM"). → `"question"`. Fragile-but-cheap; a false
  *      positive costs one extra turn the agent can `stay_silent` on.
  *
  * FORM takes precedence over the others (it's the strongest signal).
+ * Note we deliberately do NOT wake on a bare `TASKS` artifact: once
+ * tasks are generated the next step ("Start Tasks") is the user's
+ * button, so a turn there is just noise.
  */
 export function actionableWakeReason(
   feature: FanOutFeatureRef,
@@ -364,7 +429,11 @@ export function actionableWakeReason(
       break;
   }
 
-  // 3. Trailing-`?` question heuristic.
+  // 3. A real plan artifact — a plan ready for review. Treated as
+  // `completed` so the agent reads it and keeps it moving.
+  if (plannerMessageHasPlan(plannerMessage)) return "completed";
+
+  // 4. Trailing-`?` question heuristic.
   if (plannerMessage.message.trim().endsWith("?")) return "question";
 
   return null;
