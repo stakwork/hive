@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, Copy, Sparkles, CheckCircle } from "lucide-react";
+import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, Copy, Sparkles, CheckCircle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
@@ -342,6 +342,20 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
     }
   };
 
+  const handleUnmarkComplete = async (taskId: string) => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "TODO" }),
+      });
+      if (!response.ok) throw new Error("Failed to unmark complete");
+    } catch (error) {
+      console.error("Failed to unmark complete:", error);
+      toast.error("Failed to unmark task as done");
+    }
+  };
+
   const handleStartTask = async (taskId: string) => {
     if (startingTaskId) return;
     setStartingTaskId(taskId);
@@ -661,6 +675,15 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
               icon: CheckCircle,
               variant: "default" as const,
               onClick: () => handleMarkComplete(task.id),
+            });
+          }
+
+          if (task.status === "DONE") {
+            actionMenuItems.splice(actionMenuItems.length - 1, 0, {
+              label: "Unmark as Done",
+              icon: RotateCcw,
+              variant: "default" as const,
+              onClick: () => handleUnmarkComplete(task.id),
             });
           }
 
