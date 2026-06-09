@@ -12,11 +12,12 @@ import { getMetadata } from "@/lib/metadata";
 import { DevPanel } from "@/components/DevPanel";
 import { FaviconManager } from "@/components/FaviconManager";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], preload: false });
 const roboto = Roboto({
   weight: ['400', '500', '700'],
   subsets: ["latin"],
   variable: '--font-roboto',
+  preload: false,
 });
 
 export const viewport: Viewport = {
