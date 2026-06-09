@@ -394,4 +394,40 @@ describe("triggerWorkflowEditorRun", () => {
       expect(Object.prototype.hasOwnProperty.call(vars, "featureContext")).toBe(false);
     });
   });
+
+  describe("autoMergePr var injection", () => {
+    test("injects autoMergePr: true when task.autoMerge is true", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({ ...makeTask(), autoMerge: true }) as never;
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(vars.autoMergePr).toBe(true);
+    });
+
+    test("injects autoMergePr: false when task.autoMerge is false", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({ ...makeTask(), autoMerge: false }) as never;
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      const vars = body.workflow_params.set_var.attributes.vars;
+      expect(vars.autoMergePr).toBe(false);
+    });
+  });
 });
