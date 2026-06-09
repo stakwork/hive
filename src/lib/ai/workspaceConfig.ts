@@ -83,6 +83,7 @@ export async function buildWorkspaceConfigs(
       swarmApiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || ""),
       repoUrls: repositories.map((r) => r.repositoryUrl),
       pat: githubProfile.token,
+      currentUserGithubUsername: githubProfile.username ?? undefined,
       workspaceId: access.workspace.id,
       userId,
       members: memberships.map((m) => ({
