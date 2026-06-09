@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { PlanStartInput } from "./components";
 import { toast } from "sonner";
@@ -9,9 +9,21 @@ import { uploadFileToS3, type UploadedFileResult } from "@/lib/upload-image-to-s
 
 export default function NewPlanPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { id: workspaceId, slug: workspaceSlug } = useWorkspace();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState("");
+
+  const workflowIdParam = searchParams.get("workflowId");
+  const workflowNameParam = searchParams.get("workflowName");
+  const initialWorkflow =
+    workflowIdParam && workflowNameParam
+      ? {
+          workflowId: parseInt(workflowIdParam, 10),
+          workflowName: workflowNameParam,
+          workflowRefId: "",
+        }
+      : undefined;
 
   const handleSubmit = async (
     message: string,
@@ -134,5 +146,12 @@ export default function NewPlanPage() {
     }
   };
 
-  return <PlanStartInput onSubmit={handleSubmit} isLoading={isLoading} loadingStatus={loadingStatus} />;
+  return (
+    <PlanStartInput
+      onSubmit={handleSubmit}
+      isLoading={isLoading}
+      loadingStatus={loadingStatus}
+      initialWorkflow={initialWorkflow}
+    />
+  );
 }
