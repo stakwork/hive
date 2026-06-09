@@ -46,6 +46,21 @@ describe("askToolsMulti", () => {
     });
   });
 
+  describe("per-workspace tool registration", () => {
+    it("registers a slug-prefixed logs_agent for each workspace", () => {
+      const tools = askToolsMulti([ws("alpha"), ws("beta")], "api-key");
+      expect(tools).toHaveProperty("alpha__logs_agent");
+      expect(tools).toHaveProperty("beta__logs_agent");
+    });
+
+    it("keeps logs_agent distinct from the lighter search_logs tool", () => {
+      const tools = askToolsMulti([ws("alpha")], "api-key");
+      expect(tools).toHaveProperty("alpha__logs_agent");
+      expect(tools).toHaveProperty("alpha__search_logs");
+      expect(tools.alpha__logs_agent).not.toBe(tools.alpha__search_logs);
+    });
+  });
+
   describe("read_concepts_for_repo execute", () => {
     const concepts = {
       hive: [

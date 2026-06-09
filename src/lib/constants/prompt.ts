@@ -18,17 +18,20 @@ function formatMemberList(members: WorkspaceMemberInfo[]): string {
 }
 
 // System prompt for the quick ask learning assistant
-export function getQuickAskSystemPrompt(repoUrls: string[], description?: string, members?: WorkspaceMemberInfo[]): string {
+export function getQuickAskSystemPrompt(repoUrls: string[], description?: string, members?: WorkspaceMemberInfo[], currentUserGithubUsername?: string): string {
   const repoDescription =
     repoUrls.length === 1 ? `the repository ${repoUrls[0]}` : `the repositories: ${repoUrls.join(", ")}`;
   const descSuffix = description ? ` — ${description}` : "";
   const memberSection = members ? formatMemberList(members) : "";
+  const currentUserLine = currentUserGithubUsername
+    ? `\nYou are currently speaking with **@${currentUserGithubUsername}**. When the user says "me", "my", or "I", they are referring to this GitHub user.\n`
+    : "";
 
   return `
 You are a source code learning assistant for ${repoDescription}${descSuffix}. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand —- a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
 
 Try to match the tone of the user. If the question is highly technical (mentioning specific things in the code), then you can answer with more technical language and examples (or function names, endpoints names, etc). But the the user prompt is not technical, then you should answer in clear, plain language.
-${memberSection}
+${memberSection}${currentUserLine}
 You have access to tools called list_concepts and learn_concept. list_concepts fetches a list of concepts from the codebase knowledge base. learn_concept fetches detailed documentation for a specific concept by ID. If you think information about concepts might help answer the user's question, use these tools to fetch relevant data. You can also do a deep code analysis with the repo_agent tool. If you really can't find anything useful, or you truly do not know the answer, simply reply something like: "Sorry, I don't know the answer to that question, I'll look into it."
 
 When you are done print "[END_OF_ANSWER]"`;
@@ -61,8 +64,9 @@ export function getQuickAskPrefixMessages(
   description?: string,
   members?: WorkspaceMemberInfo[],
   orgContext?: SingleWorkspaceOrgContext,
+  currentUserGithubUsername?: string,
 ): ModelMessage[] {
-  const baseSystem = getQuickAskSystemPrompt(repoUrls, description, members);
+  const baseSystem = getQuickAskSystemPrompt(repoUrls, description, members, currentUserGithubUsername);
   const systemContent = orgContext
     ? baseSystem +
       getConnectionPromptSuffix() +
@@ -150,7 +154,7 @@ function buildMemberRoster(workspaces: WorkspaceConfig[]): string {
 }
 
 // Multi-workspace system prompt
-export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[]): string {
+export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[], currentUserGithubUsername?: string): string {
   // Surface only the identifiers the agent needs to *speak* about and
   // *call tools* with:
   //   - `name`: how the user refers to it in chat ("Graph & Swarm")
@@ -185,6 +189,10 @@ export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[]): st
     : `- \`{workspace}__list_concepts\` - List features/concepts from that codebase (if you only have concept IDs, re-run this tool to get full descriptions)
 - \`{workspace}__learn_concept\` - Fetch detailed documentation for a feature by ID`;
 
+  const currentUserLine = currentUserGithubUsername
+    ? `\nYou are currently speaking with **@${currentUserGithubUsername}**. When the user says "me", "my", or "I", they are referring to this GitHub user.\n`
+    : "";
+
   return `
 You are a source code learning assistant with access to multiple codebases. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone.
 
@@ -214,6 +222,7 @@ ${conceptToolLines}
 - \`{workspace}__recent_commits\` - Query recent commits
 - \`{workspace}__recent_contributions\` - Query PRs by a contributor
 - \`{workspace}__search_logs\` - Search application logs (Lucene query syntax)
+- \`{workspace}__logs_agent\` - Deep, run-grounded analysis of agent execution logs (debug agent runs/failures). Heavier than search_logs — prefer search_logs for simple keyword lookups. Optionally scope to a featureId/taskId.
 - \`{workspace}__repo_agent\` - Deep code analysis (if you can't find the answer with the other tools)
 - \`{workspace}__list_features\` - List roadmap features/plans for a workspace. Use this if the user asks about features, plans, roadmap, or what's being worked on.
 - \`{workspace}__read_feature\` - Read a feature's details, brief, requirements, architecture, and chat history
@@ -226,7 +235,7 @@ Use the repo_agent tool if the user asks about specific code in a specific repos
 If you think information about concepts might help answer the user's question, use these tools to fetch relevant data. When comparing implementations or answering questions that span multiple projects, query the relevant workspaces. Always cite which workspace information came from.
 
 If you really can't find anything useful, or you truly do not know the answer, simply reply something like: "Sorry, I don't know the answer to that question, I'll look into it."
-
+${currentUserLine}
 When you are done print "[END_OF_ANSWER]"`;
 }
 
@@ -639,12 +648,13 @@ export function getMultiWorkspacePrefixMessages(
   //   - "draw/lay out/diagram this"  → canvas tools
   //   - "document the integration"   → connection tools
   // The two suffixes have disjoint vocabulary so they don't fight.
+  const currentUserGithubUsername = workspaces[0]?.currentUserGithubUsername;
   const systemPrompt = orgId
-    ? getMultiWorkspaceSystemPrompt(workspaces) +
+    ? getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername) +
       getConnectionPromptSuffix() +
       getCanvasPromptSuffix() +
       getCanvasScopeHint(scope)
-    : getMultiWorkspaceSystemPrompt(workspaces);
+    : getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername);
 
   return [
     { role: "system", content: systemPrompt },

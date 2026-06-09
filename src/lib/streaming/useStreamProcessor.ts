@@ -142,19 +142,21 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
         debounceTimer = setTimeout(updateMessage, debounceMs);
       };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // SSE lines are not guaranteed to align with network chunk
+      // boundaries: a single large `data:` line (e.g. a big logs_agent
+      // tool result) can be split across multiple reader.read() chunks.
+      // We buffer the trailing partial line and only process complete,
+      // newline-terminated lines, carrying the remainder to the next
+      // read. Without this, JSON.parse throws "Unterminated string in
+      // JSON" on the partial line and the event is silently dropped.
+      let buffer = "";
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+      const processLine = (line: string) => {
+        const jsonStr = parseSSELine(line);
+        if (!jsonStr) return;
 
-        for (const line of lines) {
-          const jsonStr = parseSSELine(line);
-          if (!jsonStr) continue;
-
-          try {
-            const data = JSON.parse(jsonStr) as StreamEvent;
+        try {
+          const data = JSON.parse(jsonStr) as StreamEvent;
 
             if (data.type === "text-start") {
               // Generate unique ID by combining stream ID with sequence number
@@ -394,10 +396,33 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
             if (textParts.size > 0 || toolCalls.size > 0 || reasoningParts.size > 0 || error) {
               debouncedUpdate();
             }
-          } catch (parseError) {
-            console.error("Failed to parse stream chunk:", parseError);
-          }
+        } catch (parseError) {
+          console.error("Failed to parse stream chunk:", parseError);
         }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Split on newlines; the last element is a (possibly empty)
+        // partial line that we keep buffered until its terminating
+        // newline arrives in a later chunk.
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          processLine(line);
+        }
+      }
+
+      // Flush any trailing decoder state and process the final buffered
+      // line (a stream may end without a trailing newline).
+      buffer += decoder.decode();
+      if (buffer) {
+        processLine(buffer);
       }
 
       // Clear any pending debounced updates

@@ -32,7 +32,7 @@ export async function GET(
       );
     }
 
-    // Get workspace ID
+    // Get workspace ID (+ org link, for the canvas fallback below)
     const workspace = await db.workspace.findFirst({
       where: {
         slug,
@@ -40,6 +40,7 @@ export async function GET(
       },
       select: {
         id: true,
+        sourceControlOrgId: true,
       },
     });
 
@@ -50,34 +51,55 @@ export async function GET(
       );
     }
 
-    // Get conversation - accessible to any workspace member (owner can edit, others read-only)
-    const conversation = await db.sharedConversation.findFirst({
+    const conversationSelect = {
+      id: true,
+      title: true,
+      messages: true,
+      provenanceData: true,
+      followUpQuestions: true,
+      settings: true,
+      isShared: true,
+      lastMessageAt: true,
+      source: true,
+      createdAt: true,
+      updatedAt: true,
+      userId: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    } as const;
+
+    // Primary lookup: a chat that belongs to THIS workspace (accessible
+    // to any workspace member).
+    let conversation = await db.sharedConversation.findFirst({
       where: {
         id: conversationId,
         workspaceId: workspace.id,
       },
-      select: {
-        id: true,
-        title: true,
-        messages: true,
-        provenanceData: true,
-        followUpQuestions: true,
-        settings: true,
-        isShared: true,
-        lastMessageAt: true,
-        source: true,
-        createdAt: true,
-        updatedAt: true,
-        userId: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
+      select: conversationSelect,
     });
+
+    // Fallback: an org-canvas conversation for this workspace's parent
+    // org. These are org-scoped (`workspaceId` null) so they miss the
+    // query above — but the Canvas tab links here, so resolve them too.
+    // Restricted to the caller's own rows (mirrors the canvas list
+    // scope); 404 stays indistinguishable from "missing" for IDOR
+    // safety.
+    if (!conversation && workspace.sourceControlOrgId) {
+      conversation = await db.sharedConversation.findFirst({
+        where: {
+          id: conversationId,
+          sourceControlOrgId: workspace.sourceControlOrgId,
+          source: "org-canvas",
+          userId,
+        },
+        select: conversationSelect,
+      });
+    }
 
     if (!conversation) {
       return NextResponse.json(
@@ -88,6 +110,9 @@ export async function GET(
 
     const response: ConversationDetail = {
       id: conversation.id,
+      // For org-canvas rows this is the workspace the viewer reached
+      // them through, not the row's own (null) workspaceId — fine for
+      // the read-only log view.
       workspaceId: workspace.id,
       userId: conversation.userId,
       title: conversation.title,
