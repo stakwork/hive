@@ -13,6 +13,7 @@ import type { ConversationMessage } from "@/hooks/useStreamedAgentLog";
 interface AgentLogItem {
   id: string;
   agent: string;
+  createdAt?: string;
 }
 
 interface ScorerInsight {
@@ -250,7 +251,7 @@ export function LogsArtifactPanel({
   };
 
   const tabs = useMemo(() => {
-    const base = logs.map((l) => ({ id: l.id, label: formatAgentLabel(l.agent), provisional: false }));
+    const base = logs.map((l) => ({ id: l.id, label: formatAgentLabel(l.agent), createdAt: l.createdAt, provisional: false }));
     const counts = base.reduce<Record<string, number>>((acc, t) => {
       acc[t.label] = (acc[t.label] ?? 0) + 1;
       return acc;
@@ -265,6 +266,7 @@ export function LogsArtifactPanel({
       canonical.push({
         id: PROVISIONAL_ID,
         label: formatAgentLabel(streamingLog.agent),
+        createdAt: undefined,
         provisional: true,
       });
     }
@@ -287,14 +289,22 @@ export function LogsArtifactPanel({
               role="tab"
               aria-selected={selectedId === tab.id}
               onClick={() => setSelectedId(tab.id)}
+              title={tab.createdAt ? new Date(tab.createdAt).toLocaleString() : undefined}
               className={cn(
-                "px-2.5 h-7 text-xs rounded-md transition-colors whitespace-nowrap border flex items-center gap-1.5",
+                "px-2.5 h-auto py-1 text-xs rounded-md transition-colors whitespace-nowrap border flex items-center gap-1.5",
                 selectedId === tab.id
                   ? "bg-muted text-foreground border-border"
                   : "text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground",
               )}
             >
-              {tab.label}
+              <span className="flex flex-col items-start leading-tight">
+                <span>{tab.label}</span>
+                {tab.createdAt && (
+                  <span className="text-[10px] text-muted-foreground font-normal">
+                    {new Date(tab.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
+              </span>
               {tab.provisional && (
                 <span
                   className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"
