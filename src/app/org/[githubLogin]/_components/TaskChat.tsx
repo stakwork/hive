@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { ArrowUpRight, Loader2, Send } from "lucide-react";
 import {
@@ -329,13 +328,15 @@ export function TaskChat({
 
       <div className="text-[10px] text-muted-foreground italic flex items-center gap-1">
         Full task view{" "}
-        <Link
+        <a
           href={`/w/${workspaceSlug}/task/${taskId}`}
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-flex items-center gap-0.5 underline hover:text-foreground"
         >
           Open task
           <ArrowUpRight className="h-3 w-3" />
-        </Link>
+        </a>
       </div>
     </div>
   );

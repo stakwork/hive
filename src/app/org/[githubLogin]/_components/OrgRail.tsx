@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   Network,
   Gauge,
@@ -61,8 +60,10 @@ export function OrgRail({ githubLogin, activeView }: OrgRailProps) {
           return (
             <Tooltip key={item.view}>
               <TooltipTrigger asChild>
-                <Link
+                <a
                   href={`/org/${githubLogin}${item.path}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   aria-label={item.label}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
@@ -73,7 +74,7 @@ export function OrgRail({ githubLogin, activeView }: OrgRailProps) {
                   )}
                 >
                   <Icon className="h-5 w-5" />
-                </Link>
+                </a>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={6}>
                 {item.label}
