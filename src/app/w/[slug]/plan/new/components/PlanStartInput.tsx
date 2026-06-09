@@ -408,7 +408,12 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
                   onPaste={handlePaste}
                   disabled={isLoading}
                   isDragging={isDragging}
-                  className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
+                  className={cn(
+                    "resize-none min-h-[180px] text-lg bg-transparent px-8 pt-8 pb-4 rounded-3xl shadow-none",
+                    isDragging
+                      ? "border-2 border-dashed border-primary focus:ring-0 focus-visible:ring-0"
+                      : "border-0 focus:ring-0 focus-visible:ring-0"
+                  )}
                   autoFocus
                   data-testid="plan-start-input"
                 />
