@@ -49,6 +49,7 @@ const fakeStats = {
 };
 
 const singleLog = [{ id: "log-123", agent: `coding-agent-${FEATURE_ID}` }];
+const singleLogWithTimestamp = [{ id: "log-123", agent: `coding-agent-${FEATURE_ID}`, createdAt: "2026-06-09T14:34:00.000Z" }];
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -240,6 +241,61 @@ describe("LogsArtifactPanel", () => {
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith("/api/agent-logs/log-plan/stats");
     });
+  });
+
+  it("renders a formatted timestamp below the agent label when createdAt is provided", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: singleLogWithTimestamp }));
+
+    // The formatted time for "2026-06-09T14:34:00.000Z" should appear in the tab button
+    const expectedTime = new Date("2026-06-09T14:34:00.000Z").toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    expect(screen.getByText(expectedTime)).toBeDefined();
+  });
+
+  it("renders full datetime as title attribute on tab button when createdAt is provided", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: singleLogWithTimestamp }));
+
+    const tab = screen.getByRole("tab", { name: /Coding Agent/i });
+    const expectedTitle = new Date("2026-06-09T14:34:00.000Z").toLocaleString();
+    expect(tab.getAttribute("title")).toBe(expectedTitle);
+  });
+
+  it("does not render a timestamp for a log without createdAt", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
+
+    const tab = screen.getByRole("tab", { name: /Coding Agent/i });
+    expect(tab.getAttribute("title")).toBeNull();
+  });
+
+  it("does not render a timestamp for the provisional streaming tab", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    const streamingLog = {
+      agent: "streaming-agent-task1",
+      conversation: [{ role: "assistant", content: "Working…", toolCalls: [] }],
+    };
+    // No real logs so provisional tab is shown
+    render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [],
+        streamingLog,
+      })
+    );
+
+    const tab = screen.getByRole("tab", { name: /Streaming Agent/i });
+    expect(tab.getAttribute("title")).toBeNull();
   });
 });
 
