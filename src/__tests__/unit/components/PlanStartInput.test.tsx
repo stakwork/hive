@@ -487,9 +487,9 @@ describe("PlanStartInput", () => {
       expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
-    test("drop zone is shown initially (no file selected)", () => {
+    test("textarea is shown initially (no file selected)", () => {
       render(<PlanStartInput onSubmit={onSubmit} />);
-      expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
+      expect(screen.getByTestId("plan-start-input")).toBeInTheDocument();
       expect(screen.queryByTestId("file-preview")).not.toBeInTheDocument();
     });
 
@@ -505,7 +505,6 @@ describe("PlanStartInput", () => {
         expect(screen.getByTestId("preview-image")).toBeInTheDocument();
       });
 
-      expect(screen.queryByTestId("drop-zone")).not.toBeInTheDocument();
       expect(screen.getByText("screenshot.png")).toBeInTheDocument();
       expect(mockCreateObjectURL).toHaveBeenCalledWith(file);
     });
@@ -525,7 +524,7 @@ describe("PlanStartInput", () => {
 
       await waitFor(() => {
         expect(screen.queryByTestId("file-preview")).not.toBeInTheDocument();
-        expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
+        expect(screen.getByTestId("plan-start-input")).toBeInTheDocument();
       });
 
       expect(mockRevokeObjectURL).toHaveBeenCalled();

@@ -34,6 +34,7 @@ const {
   mockDbWorkflowTask: {
     upsert: vi.fn(),
     deleteMany: vi.fn(),
+    create: vi.fn(),
   },
   mockCheckRepoAllowsAutoMerge: vi.fn(),
 }));
@@ -368,6 +369,61 @@ describe("createTicket — autoMerge default", () => {
       status: "TODO" as never,
       priority: "MEDIUM" as never,
       autoMerge: false,
+    });
+
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: false }),
+      })
+    );
+  });
+
+  it("defaults autoMerge to true for SKILL type when not explicitly provided", async () => {
+    mockDbWorkflowTask.create.mockResolvedValue({});
+
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "SKILL Task",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      workflowId: 10,
+      workflowTaskType: "SKILL" as never,
+    });
+
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: true }),
+      })
+    );
+  });
+
+  it("honours explicit autoMerge: false even for SKILL type", async () => {
+    mockDbWorkflowTask.create.mockResolvedValue({});
+
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "SKILL Task",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      workflowId: 10,
+      workflowTaskType: "SKILL" as never,
+      autoMerge: false,
+    });
+
+    expect(mockDbTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ autoMerge: false }),
+      })
+    );
+  });
+
+  it("defaults autoMerge to false for WORKFLOW type", async () => {
+    mockDbWorkflowTask.create.mockResolvedValue({});
+
+    await createTicket(FEATURE_ID, USER_ID, {
+      title: "WORKFLOW Task",
+      status: "TODO" as never,
+      priority: "MEDIUM" as never,
+      workflowId: 10,
+      workflowTaskType: "WORKFLOW" as never,
     });
 
     expect(mockDbTask.create).toHaveBeenCalledWith(
