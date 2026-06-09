@@ -32,12 +32,12 @@ export default function NewPlanPage() {
       selectedRepoId: string | null;
       selectedWorkflow?: { workflowId: number; workflowName: string; workflowRefId: string } | null;
       model?: string;
-      attachmentFile?: File;
+      attachmentFiles?: File[];
       selectedRepositoryIds?: string[];
     },
   ) => {
     setIsLoading(true);
-    const attachmentFile = options?.attachmentFile;
+    const attachmentFiles = options?.attachmentFiles ?? [];
     try {
       if (options?.isPrototype) {
         // Prototype flow: create a PROTOTYPE task and redirect to task chat
@@ -60,17 +60,19 @@ export default function NewPlanPage() {
 
         const { data: task } = await res.json();
 
-        // Upload image if attached
+        // Upload images if attached
         let attachments: UploadedFileResult[] = [];
-        if (attachmentFile) {
-          setLoadingStatus("Uploading image…");
-          try {
-            const result = await uploadFileToS3(attachmentFile, { taskId: task.id });
-            attachments = [result];
-          } catch (err) {
-            console.error("Image upload error:", err);
-            // Non-fatal: proceed with empty attachments
-          }
+        if (attachmentFiles.length > 0) {
+          setLoadingStatus("Uploading images…");
+          const uploadResults = await Promise.allSettled(
+            attachmentFiles.map((f) => uploadFileToS3(f, { taskId: task.id }))
+          );
+          attachments = uploadResults
+            .filter((r): r is PromiseFulfilledResult<UploadedFileResult> => r.status === "fulfilled")
+            .map((r) => r.value);
+          uploadResults
+            .filter((r) => r.status === "rejected")
+            .forEach((r) => console.error("Image upload error:", (r as PromiseRejectedResult).reason));
         }
 
         setLoadingStatus("Sending message…");
@@ -110,17 +112,19 @@ export default function NewPlanPage() {
 
       const { data: feature } = await featureRes.json();
 
-      // Upload image if attached
+      // Upload images if attached
       let attachments: UploadedFileResult[] = [];
-      if (attachmentFile) {
-        setLoadingStatus("Uploading image…");
-        try {
-          const result = await uploadFileToS3(attachmentFile, { featureId: feature.id });
-          attachments = [result];
-        } catch (err) {
-          console.error("Image upload error:", err);
-          // Non-fatal: proceed with empty attachments
-        }
+      if (attachmentFiles.length > 0) {
+        setLoadingStatus("Uploading images…");
+        const uploadResults = await Promise.allSettled(
+          attachmentFiles.map((f) => uploadFileToS3(f, { featureId: feature.id }))
+        );
+        attachments = uploadResults
+          .filter((r): r is PromiseFulfilledResult<UploadedFileResult> => r.status === "fulfilled")
+          .map((r) => r.value);
+        uploadResults
+          .filter((r) => r.status === "rejected")
+          .forEach((r) => console.error("Image upload error:", (r as PromiseRejectedResult).reason));
       }
 
       // 2. Send first chat message + trigger Stakwork workflow

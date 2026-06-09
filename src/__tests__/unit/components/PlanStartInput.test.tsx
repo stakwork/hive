@@ -298,7 +298,7 @@ describe("PlanStartInput", () => {
         model: "anthropic/claude-sonnet-4",
         selectedRepoId: null,
         selectedWorkflow: null,
-        attachmentFile: undefined,
+        attachmentFiles: [],
         selectedRepositoryIds: [],
       });
     });
@@ -322,7 +322,7 @@ describe("PlanStartInput", () => {
         model: "anthropic/claude-sonnet-4",
         selectedRepoId: null,
         selectedWorkflow: null,
-        attachmentFile: undefined,
+        attachmentFiles: [],
         selectedRepositoryIds: [],
       });
     });
@@ -502,7 +502,7 @@ describe("PlanStartInput", () => {
 
       await waitFor(() => {
         expect(screen.getByTestId("file-preview")).toBeInTheDocument();
-        expect(screen.getByTestId("preview-image")).toBeInTheDocument();
+        expect(screen.getByTestId("file-chip-0")).toBeInTheDocument();
       });
 
       expect(screen.getByText("screenshot.png")).toBeInTheDocument();
@@ -520,7 +520,7 @@ describe("PlanStartInput", () => {
         expect(screen.getByTestId("file-preview")).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByTestId("remove-file-button"));
+      fireEvent.click(screen.getByTestId("remove-file-0"));
 
       await waitFor(() => {
         expect(screen.queryByTestId("file-preview")).not.toBeInTheDocument();
@@ -541,7 +541,7 @@ describe("PlanStartInput", () => {
       fireEvent.change(fileInput, { target: { files: [file] } });
 
       expect(toastErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid file type"),
+        expect.stringContaining("not a valid image type"),
       );
       expect(screen.queryByTestId("file-preview")).not.toBeInTheDocument();
     });
@@ -607,7 +607,7 @@ describe("PlanStartInput", () => {
       fireEvent.click(screen.getByTestId("plan-start-submit"));
 
       expect(onSubmit).toHaveBeenCalledWith("My plan with image", expect.objectContaining({
-        attachmentFile: file,
+        attachmentFiles: [file],
       }));
     });
 
@@ -624,7 +624,7 @@ describe("PlanStartInput", () => {
       fireEvent.click(screen.getByTestId("plan-start-submit"));
 
       expect(onSubmit).toHaveBeenCalledWith("My plan without image", expect.objectContaining({
-        attachmentFile: undefined,
+        attachmentFiles: [],
       }));
     });
 
