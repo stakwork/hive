@@ -22,10 +22,12 @@ import Link from "next/link";
 const LOGS_PER_PAGE = 20;
 
 type TimeRange = "24h" | "7d" | "30d" | "all";
-type AgentLogsTab = "agents" | "chats" | "sessions";
+type AgentLogsTab = "agents" | "chats" | "canvas" | "sessions";
 
 function parseAgentLogsTab(value: string | null): AgentLogsTab {
-  return value === "chats" || value === "sessions" ? value : "agents";
+  return value === "chats" || value === "canvas" || value === "sessions"
+    ? value
+    : "agents";
 }
 
 function calculateDateRange(range: TimeRange): { start?: string; end?: string } {
@@ -79,6 +81,12 @@ export default function AgentLogsPage() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [chatPage, setChatPage] = useState(1);
   const [chatHasMore, setChatHasMore] = useState(false);
+  // Canvas tab state (org-canvas chats, surfaced for the workspace's org)
+  const [canvasLogs, setCanvasLogs] = useState<AgentLogRecord[]>([]);
+  const [canvasLoading, setCanvasLoading] = useState(false);
+  const [canvasError, setCanvasError] = useState<string | null>(null);
+  const [canvasPage, setCanvasPage] = useState(1);
+  const [canvasHasMore, setCanvasHasMore] = useState(false);
   const [sessionsUrl, setSessionsUrl] = useState<string | null>(null);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
@@ -217,6 +225,55 @@ export default function AgentLogsPage() {
     fetchChats();
   }, [activeTab, slug, chatPage]);
 
+  // Fetch org-canvas chats when the Canvas tab is active. Same endpoint
+  // as Chats but with `?source=canvas`, which lists the org-canvas
+  // conversations for this workspace's parent org (org-scoped rows that
+  // never appear under the workspace-scoped Chats tab).
+  useEffect(() => {
+    if (activeTab !== "canvas") return;
+    if (!slug) return;
+
+    const fetchCanvasChats = async () => {
+      setCanvasLoading(true);
+      setCanvasError(null);
+
+      try {
+        const response = await fetch(
+          `/api/workspaces/${slug}/chat/conversations?source=canvas&page=${canvasPage}&limit=20`,
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch canvas chats");
+        }
+
+        const data: {
+          items: ConversationListItem[];
+          pagination: { page: number; limit: number; total: number; totalPages: number };
+        } = await response.json();
+
+        const mapped: AgentLogRecord[] = data.items.map((conv) => ({
+          id: conv.id,
+          agent: "canvas",
+          blobUrl: "",
+          createdAt: new Date(conv.lastMessageAt ?? conv.createdAt),
+          featureTitle: conv.title,
+          stakworkRunId: null,
+          taskId: null,
+        }));
+
+        setCanvasLogs(mapped);
+        setCanvasHasMore(canvasPage < data.pagination.totalPages);
+      } catch (err) {
+        console.error("Error fetching canvas chats:", err);
+        setCanvasError(err instanceof Error ? err.message : "Failed to fetch canvas chats");
+      } finally {
+        setCanvasLoading(false);
+      }
+    };
+
+    fetchCanvasChats();
+  }, [activeTab, slug, canvasPage]);
+
   // Mint a short-lived stakgraph sessions URL when the Sessions tab is opened.
   useEffect(() => {
     if (activeTab !== "sessions") return;
@@ -296,6 +353,13 @@ export default function AgentLogsPage() {
     router.push(`/w/${slug}/agent-logs/chat/${convId}`);
   };
 
+  const handleCanvasRowClick = (convId: string) => {
+    // Reuses the chat detail route — its conversation endpoint resolves
+    // org-canvas rows too. `from=canvas` makes the detail page's back
+    // link return to this tab.
+    router.push(`/w/${slug}/agent-logs/chat/${convId}?from=canvas`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -325,6 +389,7 @@ export default function AgentLogsPage() {
                 <TabsList>
                   <TabsTrigger value="agents">Agents</TabsTrigger>
                   <TabsTrigger value="chats">Chats</TabsTrigger>
+                  <TabsTrigger value="canvas">Canvas</TabsTrigger>
                   <TabsTrigger value="sessions">Sessions</TabsTrigger>
                 </TabsList>
               </div>
@@ -567,6 +632,99 @@ export default function AgentLogsPage() {
                           variant="ghost"
                           size="default"
                           onClick={() => setChatPage(chatPage + 1)}
+                          className="gap-1 pr-2.5"
+                        >
+                          <span>Next</span>
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </PaginationItem>
+                    )}
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            )}
+
+            {activeTab === "canvas" && canvasLoading && (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Timestamp</TableHead>
+                      <TableHead>Agent Name</TableHead>
+                      <TableHead>Feature</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <Skeleton className="h-5 w-48" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-5 w-32" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-5 w-28" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {activeTab === "canvas" && canvasError && !canvasLoading && (
+              <div className="text-center py-12">
+                <p className="text-destructive mb-2">Error loading canvas chats</p>
+                <p className="text-sm text-muted-foreground">{canvasError}</p>
+              </div>
+            )}
+
+            {activeTab === "canvas" && !canvasLoading && !canvasError && (
+              <AgentLogsTable
+                logs={canvasLogs}
+                onRowClick={handleCanvasRowClick}
+                onDownload={handleChatDownload}
+              />
+            )}
+
+            {activeTab === "canvas" && !canvasLoading && !canvasError && canvasLogs.length > 0 && (
+              <div className="mt-6">
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <Button
+                        variant="ghost"
+                        size="default"
+                        onClick={() => setCanvasPage(Math.max(1, canvasPage - 1))}
+                        disabled={canvasPage === 1}
+                        className="gap-1 pl-2.5"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span>Previous</span>
+                      </Button>
+                    </PaginationItem>
+
+                    <PaginationItem>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className={buttonVariants({
+                          variant: "outline",
+                          size: "icon",
+                        })}
+                        disabled
+                      >
+                        {canvasPage}
+                      </Button>
+                    </PaginationItem>
+
+                    {canvasHasMore && (
+                      <PaginationItem>
+                        <Button
+                          variant="ghost"
+                          size="default"
+                          onClick={() => setCanvasPage(canvasPage + 1)}
                           className="gap-1 pr-2.5"
                         >
                           <span>Next</span>

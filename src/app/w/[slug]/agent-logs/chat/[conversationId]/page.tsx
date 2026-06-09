@@ -4,35 +4,24 @@ import { redirect, notFound } from "next/navigation";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { ChatMessage } from "@/components/dashboard/DashboardChat/ChatMessage";
-import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
+import { LogDetailContent } from "@/components/agent-logs/LogDetailContent";
 import { getBaseUrl } from "@/lib/utils";
+import {
+  chatMessagesToParsedMessages,
+  type StoredChatMessage,
+} from "@/lib/utils/chat-conversation-log";
+import { parseAgentLogStats } from "@/lib/utils/agent-log-stats";
 import type { ConversationDetail } from "@/types/shared-conversation";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-  imageData?: string;
-  toolCalls?: Array<{
-    id: string;
-    toolName: string;
-    input?: unknown;
-    status: string;
-    output?: unknown;
-    errorText?: string;
-  }>;
-}
 
 interface ChatDetailPageProps {
   params: Promise<{
     slug: string;
     conversationId: string;
   }>;
+  searchParams: Promise<{ from?: string }>;
 }
 
-export default async function ChatDetailPage({ params }: ChatDetailPageProps) {
+export default async function ChatDetailPage({ params, searchParams }: ChatDetailPageProps) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user) {
@@ -45,6 +34,10 @@ export default async function ChatDetailPage({ params }: ChatDetailPageProps) {
   }
 
   const { slug, conversationId } = await params;
+  const { from } = await searchParams;
+  // Return to whichever tab the user came from (Canvas chats link here
+  // with `?from=canvas`; everything else defaults back to Chats).
+  const backTab = from === "canvas" ? "canvas" : "chats";
 
   const headerList = await headers();
   const cookie = headerList.get("cookie") ?? "";
@@ -93,18 +86,22 @@ export default async function ChatDetailPage({ params }: ChatDetailPageProps) {
 
   const data = (await res.json()) as ConversationDetail;
 
-  const messages: Message[] = ((data.messages as unknown[]) || []).map(
-    (msg) => {
-      const m = msg as Message;
-      return { ...m, timestamp: new Date(m.timestamp) };
-    }
-  );
+  // Reuse the Agent Logs detail renderer (`LogDetailContent`) so chat
+  // sessions show the SAME rich tool-call view (call args + paired
+  // result + stats bar) as external agent runs. The chat messages
+  // already persist every tool call's input and output — we just
+  // reshape them into the `ParsedMessage[]` blob format, then run the
+  // shared parser to derive the stats bar.
+  const stored = ((data.messages as unknown[]) || []) as StoredChatMessage[];
+  const parsedMessages = chatMessagesToParsedMessages(stored);
+  const rawContent = JSON.stringify(parsedMessages);
+  const { conversation, stats } = parseAgentLogStats(rawContent);
 
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-6 py-6">
         <Link
-          href={`/w/${slug}/agent-logs?tab=chats`}
+          href={`/w/${slug}/agent-logs?tab=${backTab}`}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -117,39 +114,20 @@ export default async function ChatDetailPage({ params }: ChatDetailPageProps) {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 pb-8">
-        <div className="space-y-4">
-          {messages.map((message) => {
-            if (
-              message.toolCalls &&
-              message.toolCalls.length > 0 &&
-              !message.content
-            ) {
-              return (
-                <div key={message.id}>
-                  <ToolCallIndicator toolCalls={message.toolCalls} />
-                </div>
-              );
-            }
-
-            if (message.content) {
-              return (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  isStreaming={false}
-                />
-              );
-            }
-
-            return null;
-          })}
-
-          {messages.length === 0 && (
-            <div className="text-center text-muted-foreground py-8">
-              No messages in this conversation.
-            </div>
-          )}
-        </div>
+        {conversation.length === 0 ? (
+          <div className="text-center text-muted-foreground py-8">
+            No messages in this conversation.
+          </div>
+        ) : (
+          <LogDetailContent
+            conversation={conversation}
+            stats={stats}
+            rawContent={rawContent}
+            loading={false}
+            error={null}
+            variant="page"
+          />
+        )}
       </div>
     </div>
   );
