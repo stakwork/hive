@@ -16,12 +16,13 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { WorkspacePills } from "./WorkspacePills";
 
 const DEFAULT_MAX_EXTRA_WORKSPACES = 4; // current + 4 = 5 total
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 interface ChatInputProps {
   onSend: (message: string, clearInput: () => void) => Promise<void>;
   disabled?: boolean;
-  imageData?: string | null;
-  onImageUpload?: (imageData: string) => void;
+  imageData?: string[] | null;
+  onImageUpload?: (images: string[]) => void;
   onImageRemove?: () => void;
   extraWorkspaceSlugs?: string[];
   onAddWorkspace?: (slug: string) => void;
@@ -67,10 +68,7 @@ export function ChatInput({
       setRows(1);
       return;
     }
-
-    // Count newlines in the text
     const lineCount = (input.match(/\n/g) || []).length + 1;
-    // Set rows to lineCount + 1 (one empty row below)
     setRows(Math.max(1, lineCount + 1));
   }, [input]);
 
@@ -79,7 +77,6 @@ export function ChatInput({
     if (!input.trim() || disabled) return;
 
     const message = input.trim();
-    // Don't clear input yet - wait for response to start
     await onSend(message, () => {
       setInput("");
       inputRef.current?.focus();
@@ -88,11 +85,9 @@ export function ChatInput({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      // Regular Enter submits the form
       e.preventDefault();
       handleSubmit(e);
     }
-    // Shift+Enter allows default behavior (new line)
   };
 
   const convertToBase64 = (file: File): Promise<string> => {
@@ -104,22 +99,27 @@ export function ChatInput({
     });
   };
 
-  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processImageFiles = async (files: File[]): Promise<void> => {
+    const validFiles = files.filter((f) => {
+      if (!f.type.startsWith("image/")) return false;
+      if (f.size > MAX_FILE_SIZE) return false;
+      return true;
+    });
 
-    if (!file.type.startsWith("image/")) {
-      alert("Please select an image file");
-      return;
-    }
+    if (validFiles.length === 0) return;
 
     try {
-      const base64 = await convertToBase64(file);
-      onImageUpload?.(base64);
+      const base64Array = await Promise.all(validFiles.map(convertToBase64));
+      onImageUpload?.(base64Array);
     } catch (error) {
-      console.error("Error reading file:", error);
-      alert("Failed to read image file");
+      console.error("Error reading files:", error);
     }
+  };
+
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    await processImageFiles(files);
   };
 
   const handleRemoveImage = (e: React.MouseEvent) => {
@@ -161,22 +161,14 @@ export function ChatInput({
 
     if (disabled) return;
 
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("Please drop an image file");
-      return;
-    }
-
-    try {
-      const base64 = await convertToBase64(file);
-      onImageUpload?.(base64);
-    } catch (error) {
-      console.error("Error reading file:", error);
-      alert("Failed to read image file");
-    }
+    await processImageFiles(files);
   };
+
+  const hasImages = imageData && imageData.length > 0;
+  const imageCount = imageData?.length ?? 0;
 
   return (
     <form
@@ -193,7 +185,7 @@ export function ChatInput({
           <div className="bg-background/90 px-6 py-3 rounded-lg shadow-lg">
             <p className="text-sm font-medium text-foreground flex items-center gap-2">
               <ImageIcon className="w-4 h-4" />
-              Drop image here
+              Drop images here
             </p>
           </div>
         </div>
@@ -255,6 +247,7 @@ export function ChatInput({
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             onChange={handleFileInput}
             className="hidden"
             disabled={disabled}
@@ -263,25 +256,56 @@ export function ChatInput({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
-            className={`relative h-10 w-10 rounded-full border-2 transition-all overflow-hidden ${imageData
-              ? "border-primary"
-              : "border-border/20 hover:border-primary/50 bg-background/5"
-              } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-            title={imageData ? "Click to change image" : "Upload image"}
+            className={`relative h-10 w-10 rounded-full border-2 transition-all overflow-hidden ${
+              hasImages
+                ? "border-primary"
+                : "border-border/20 hover:border-primary/50 bg-background/5"
+            } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            title={hasImages ? `${imageCount} image${imageCount > 1 ? "s" : ""} selected` : "Upload image"}
           >
-            {imageData ? (
+            {hasImages ? (
               <>
-                <img
-                  src={imageData}
-                  alt="Uploaded"
-                  className="w-full h-full object-cover"
-                />
-                <div
-                  onClick={handleRemoveImage}
-                  className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
-                >
-                  <X className="w-4 h-4 text-white" />
-                </div>
+                {imageCount === 1 ? (
+                  /* Single image: full thumbnail */
+                  <>
+                    <img
+                      src={imageData![0]}
+                      alt="Uploaded"
+                      className="w-full h-full object-cover"
+                    />
+                    <div
+                      onClick={handleRemoveImage}
+                      className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
+                    >
+                      <X className="w-4 h-4 text-white" />
+                    </div>
+                  </>
+                ) : (
+                  /* Multiple images: stacked mini-thumbnails + count chip */
+                  <>
+                    <div className="relative w-full h-full flex items-center justify-center">
+                      {imageData!.slice(0, 3).map((src, i) => (
+                        <img
+                          key={i}
+                          src={src}
+                          alt={`Image ${i + 1}`}
+                          className="absolute w-7 h-7 object-cover rounded-sm border border-white/40"
+                          style={{ left: `${i * 4}px`, zIndex: i }}
+                        />
+                      ))}
+                    </div>
+                    {/* Count chip */}
+                    <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none z-10">
+                      {imageCount}
+                    </span>
+                    <div
+                      onClick={handleRemoveImage}
+                      className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center z-20 rounded-full"
+                    >
+                      <X className="w-4 h-4 text-white" />
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <ImageIcon className="w-4 h-4 m-auto text-muted-foreground" />
@@ -298,8 +322,9 @@ export function ChatInput({
             onKeyDown={handleKeyDown}
             disabled={disabled}
             rows={rows}
-            className={`w-full px-4 py-3 pr-12 rounded-2xl bg-background/90 border border-border/50 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${disabled ? "opacity-50 cursor-not-allowed" : ""
-              }`}
+            className={`w-full px-4 py-3 pr-12 rounded-2xl bg-background/90 border border-border/50 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${
+              disabled ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           />
           <Button
             type="submit"

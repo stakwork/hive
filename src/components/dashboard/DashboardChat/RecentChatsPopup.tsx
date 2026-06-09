@@ -11,7 +11,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  imageData?: string;
+  imageData?: string[];
   toolCalls?: unknown[];
 }
 
@@ -93,7 +93,11 @@ export function RecentChatsPopup({ slug, currentUserId, onLoadConversation }: Re
           role: m.role as "user" | "assistant",
           content: typeof m.content === "string" ? m.content : "",
           timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
-          imageData: m.imageData,
+          imageData: Array.isArray(m.imageData)
+            ? m.imageData
+            : m.imageData
+            ? [m.imageData]
+            : undefined,
           toolCalls: m.toolCalls,
         }));
 
