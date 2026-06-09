@@ -3,7 +3,7 @@
  * Returns sets of changed step IDs and connection IDs for highlight purposes.
  */
 
-function parseWorkflowJson(jsonString: string | null): Record<string, unknown> | null {
+export function parseWorkflowJson(jsonString: string | null): Record<string, unknown> | null {
   if (!jsonString) return null;
 
   try {
@@ -52,7 +52,7 @@ function omitConnectionMeta(conn: unknown): unknown {
   return conn;
 }
 
-function normaliseTransitions(raw: unknown): Record<string, unknown> {
+export function normaliseTransitions(raw: unknown): Record<string, unknown> {
   if (Array.isArray(raw)) {
     const result: Record<string, unknown> = {};
     for (const step of raw) {
