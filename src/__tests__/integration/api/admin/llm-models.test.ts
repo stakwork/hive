@@ -9,7 +9,7 @@ import {
   createRequestWithHeaders,
 } from "@/__tests__/support/helpers/request-builders";
 
-const TEST_LLM_SYNC_TOKEN = "test-llm-sync-token";
+const TEST_API_TOKEN = "test-llm-sync-token";
 
 function createRequestWithApiToken(url: string, token: string, body?: object) {
   return createRequestWithHeaders(
@@ -339,13 +339,13 @@ describe("Admin LLM Models API", () => {
     });
   });
 
-  describe("POST /api/admin/llm-models — LLM_SYNC_API_TOKEN batch upsert", () => {
+  describe("POST /api/admin/llm-models — API_TOKEN batch upsert", () => {
     beforeEach(() => {
-      process.env.LLM_SYNC_API_TOKEN = TEST_LLM_SYNC_TOKEN;
+      process.env.API_TOKEN = TEST_API_TOKEN;
     });
 
     it("should upsert all models and return 201 with valid token + batch body", async () => {
-      const request = createRequestWithApiToken("/api/admin/llm-models", TEST_LLM_SYNC_TOKEN, {
+      const request = createRequestWithApiToken("/api/admin/llm-models", TEST_API_TOKEN, {
         models: [
           { name: "sync-model-a", provider: "OPENAI", inputPricePer1M: 1.0, outputPricePer1M: 2.0 },
           { name: "sync-model-b", provider: "ANTHROPIC", inputPricePer1M: 3.0, outputPricePer1M: 6.0, providerLabel: "Anthropic" },
@@ -369,7 +369,7 @@ describe("Admin LLM Models API", () => {
 
     it("should update pricing but leave admin flags unchanged on second upsert call", async () => {
       // First upsert — creates records
-      const firstRequest = createRequestWithApiToken("/api/admin/llm-models", TEST_LLM_SYNC_TOKEN, {
+      const firstRequest = createRequestWithApiToken("/api/admin/llm-models", TEST_API_TOKEN, {
         models: [
           { name: "sync-idempotent-model", provider: "GOOGLE", inputPricePer1M: 1.0, outputPricePer1M: 2.0 },
         ],
@@ -384,7 +384,7 @@ describe("Admin LLM Models API", () => {
       });
 
       // Second upsert — should update pricing, not overwrite flags
-      const secondRequest = createRequestWithApiToken("/api/admin/llm-models", TEST_LLM_SYNC_TOKEN, {
+      const secondRequest = createRequestWithApiToken("/api/admin/llm-models", TEST_API_TOKEN, {
         models: [
           { name: "sync-idempotent-model", provider: "GOOGLE", inputPricePer1M: 9.99, outputPricePer1M: 19.99 },
         ],
@@ -400,7 +400,7 @@ describe("Admin LLM Models API", () => {
     });
 
     it("should return 400 when a batch item is missing a required field", async () => {
-      const request = createRequestWithApiToken("/api/admin/llm-models", TEST_LLM_SYNC_TOKEN, {
+      const request = createRequestWithApiToken("/api/admin/llm-models", TEST_API_TOKEN, {
         models: [
           { name: "missing-provider-model", inputPricePer1M: 1.0, outputPricePer1M: 2.0 },
         ],
@@ -426,16 +426,16 @@ describe("Admin LLM Models API", () => {
     });
   });
 
-  describe("PATCH /api/admin/llm-models/[id] — LLM_SYNC_API_TOKEN auth", () => {
+  describe("PATCH /api/admin/llm-models/[id] — API_TOKEN auth", () => {
     beforeEach(() => {
-      process.env.LLM_SYNC_API_TOKEN = TEST_LLM_SYNC_TOKEN;
+      process.env.API_TOKEN = TEST_API_TOKEN;
     });
 
-    it("should update and return 200 with valid LLM_SYNC_API_TOKEN", async () => {
+    it("should update and return 200 with valid API_TOKEN", async () => {
       const model = await createTestLlmModel({ name: "sync-patch-model", provider: "OPENAI" });
       const request = createPatchRequestWithApiToken(
         `/api/admin/llm-models/${model.id}`,
-        TEST_LLM_SYNC_TOKEN,
+        TEST_API_TOKEN,
         { inputPricePer1M: 42.0 },
       );
       const { PATCH } = await import("@/app/api/admin/llm-models/[id]/route");
