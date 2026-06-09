@@ -12,6 +12,14 @@ export function validateApiToken(request: NextRequest): boolean {
 }
 
 /**
+ * Validates the x-api-token header against the LLM_SYNC_API_TOKEN environment variable.
+ */
+export function validateLlmSyncApiToken(request: NextRequest): boolean {
+  const token = request.headers.get("x-api-token");
+  return !!token && token === process.env.LLM_SYNC_API_TOKEN;
+}
+
+/**
  * Dual auth: tries session auth first, falls back to API_TOKEN.
  * When using API_TOKEN, looks up workspace owner as acting user.
  *

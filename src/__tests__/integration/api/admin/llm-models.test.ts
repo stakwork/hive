@@ -6,7 +6,28 @@ import {
   createAuthenticatedPostRequest,
   createAuthenticatedPatchRequest,
   createAuthenticatedDeleteRequest,
+  createRequestWithHeaders,
 } from "@/__tests__/support/helpers/request-builders";
+
+const TEST_LLM_SYNC_TOKEN = "test-llm-sync-token";
+
+function createRequestWithApiToken(url: string, token: string, body?: object) {
+  return createRequestWithHeaders(
+    url,
+    body ? "POST" : "POST",
+    { "x-api-token": token, "content-type": "application/json" },
+    body,
+  );
+}
+
+function createPatchRequestWithApiToken(url: string, token: string, body?: object) {
+  return createRequestWithHeaders(
+    url,
+    "PATCH",
+    { "x-api-token": token, "content-type": "application/json" },
+    body,
+  );
+}
 
 describe("Admin LLM Models API", () => {
   let superAdminUser: { id: string; email: string; name: string };
@@ -315,6 +336,131 @@ describe("Admin LLM Models API", () => {
       });
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe("POST /api/admin/llm-models — LLM_SYNC_API_TOKEN batch upsert", () => {
+    beforeEach(() => {
+      process.env.LLM_SYNC_API_TOKEN = TEST_LLM_SYNC_TOKEN;
+    });
+
+    it("should upsert all models and return 201 with valid token + batch body", async () => {
+      const request = createRequestWithApiToken("/api/admin/llm-models", TEST_LLM_SYNC_TOKEN, {
+        models: [
+          { name: "sync-model-a", provider: "OPENAI", inputPricePer1M: 1.0, outputPricePer1M: 2.0 },
+          { name: "sync-model-b", provider: "ANTHROPIC", inputPricePer1M: 3.0, outputPricePer1M: 6.0, providerLabel: "Anthropic" },
+        ],
+      });
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(Array.isArray(data.models)).toBe(true);
+      expect(data.models).toHaveLength(2);
+      const names = data.models.map((m: { name: string }) => m.name);
+      expect(names).toContain("sync-model-a");
+      expect(names).toContain("sync-model-b");
+
+      const dbA = await db.llmModel.findUnique({ where: { name: "sync-model-a" } });
+      expect(dbA).not.toBeNull();
+      expect(dbA?.inputPricePer1M).toBe(1.0);
+    });
+
+    it("should update pricing but leave admin flags unchanged on second upsert call", async () => {
+      // First upsert — creates records
+      const firstRequest = createRequestWithApiToken("/api/admin/llm-models", TEST_LLM_SYNC_TOKEN, {
+        models: [
+          { name: "sync-idempotent-model", provider: "GOOGLE", inputPricePer1M: 1.0, outputPricePer1M: 2.0 },
+        ],
+      });
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      await POST(firstRequest);
+
+      // Manually set admin flags
+      await db.llmModel.update({
+        where: { name: "sync-idempotent-model" },
+        data: { isPlanDefault: true, isPublic: true },
+      });
+
+      // Second upsert — should update pricing, not overwrite flags
+      const secondRequest = createRequestWithApiToken("/api/admin/llm-models", TEST_LLM_SYNC_TOKEN, {
+        models: [
+          { name: "sync-idempotent-model", provider: "GOOGLE", inputPricePer1M: 9.99, outputPricePer1M: 19.99 },
+        ],
+      });
+      const response = await POST(secondRequest);
+
+      expect(response.status).toBe(201);
+      const dbRecord = await db.llmModel.findUnique({ where: { name: "sync-idempotent-model" } });
+      expect(dbRecord?.inputPricePer1M).toBe(9.99);
+      expect(dbRecord?.outputPricePer1M).toBe(19.99);
+      expect(dbRecord?.isPlanDefault).toBe(true);
+      expect(dbRecord?.isPublic).toBe(true);
+    });
+
+    it("should return 400 when a batch item is missing a required field", async () => {
+      const request = createRequestWithApiToken("/api/admin/llm-models", TEST_LLM_SYNC_TOKEN, {
+        models: [
+          { name: "missing-provider-model", inputPricePer1M: 1.0, outputPricePer1M: 2.0 },
+        ],
+      });
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toBeDefined();
+    });
+
+    it("should return 401 with invalid token and no session", async () => {
+      const request = createRequestWithApiToken("/api/admin/llm-models", "wrong-token", {
+        models: [
+          { name: "should-not-create", provider: "OPENAI", inputPricePer1M: 1.0, outputPricePer1M: 2.0 },
+        ],
+      });
+      const { POST } = await import("@/app/api/admin/llm-models/route");
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe("PATCH /api/admin/llm-models/[id] — LLM_SYNC_API_TOKEN auth", () => {
+    beforeEach(() => {
+      process.env.LLM_SYNC_API_TOKEN = TEST_LLM_SYNC_TOKEN;
+    });
+
+    it("should update and return 200 with valid LLM_SYNC_API_TOKEN", async () => {
+      const model = await createTestLlmModel({ name: "sync-patch-model", provider: "OPENAI" });
+      const request = createPatchRequestWithApiToken(
+        `/api/admin/llm-models/${model.id}`,
+        TEST_LLM_SYNC_TOKEN,
+        { inputPricePer1M: 42.0 },
+      );
+      const { PATCH } = await import("@/app/api/admin/llm-models/[id]/route");
+      const response = await PATCH(request, {
+        params: Promise.resolve({ id: model.id }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.model.inputPricePer1M).toBe(42.0);
+    });
+
+    it("should return 401 with invalid token and no session", async () => {
+      const model = await createTestLlmModel({ name: "sync-patch-unauthorized", provider: "OPENAI" });
+      const request = createPatchRequestWithApiToken(
+        `/api/admin/llm-models/${model.id}`,
+        "wrong-token",
+        { inputPricePer1M: 99.0 },
+      );
+      const { PATCH } = await import("@/app/api/admin/llm-models/[id]/route");
+      const response = await PATCH(request, {
+        params: Promise.resolve({ id: model.id }),
+      });
+
+      expect(response.status).toBe(401);
     });
   });
 });

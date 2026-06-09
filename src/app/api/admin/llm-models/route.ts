@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
+import { validateLlmSyncApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
+import { LlmProvider } from "@prisma/client";
 
 export async function GET(request: NextRequest) {
   const authResult = await requireSuperAdmin(request);
@@ -24,13 +26,67 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireSuperAdmin(request);
-  if (authResult instanceof NextResponse) {
-    return authResult;
+  const isSync = validateLlmSyncApiToken(request);
+  if (!isSync) {
+    const authResult = await requireSuperAdmin(request);
+    if (authResult instanceof NextResponse) return authResult;
   }
 
   try {
     const body = await request.json();
+
+    // Batch upsert path
+    if (Array.isArray(body.models)) {
+      const items = body.models;
+
+      // Validate required fields
+      for (const item of items) {
+        if (!item.name || !item.provider || item.inputPricePer1M == null || item.outputPricePer1M == null) {
+          return NextResponse.json(
+            { error: "Each model requires: name, provider, inputPricePer1M, outputPricePer1M" },
+            { status: 400 }
+          );
+        }
+      }
+
+      const models = await Promise.all(
+        items.map(({ name, provider, providerLabel, inputPricePer1M, outputPricePer1M, cacheReadPer1MToken, cacheWritePer1MToken }: {
+          name: string;
+          provider: LlmProvider;
+          providerLabel?: string;
+          inputPricePer1M: number;
+          outputPricePer1M: number;
+          cacheReadPer1MToken?: number | null;
+          cacheWritePer1MToken?: number | null;
+        }) =>
+          db.llmModel.upsert({
+            where: { name },
+            create: {
+              name,
+              provider,
+              providerLabel: providerLabel ?? null,
+              inputPricePer1M: Number(inputPricePer1M),
+              outputPricePer1M: Number(outputPricePer1M),
+              cacheReadPer1MToken: cacheReadPer1MToken != null ? Number(cacheReadPer1MToken) : null,
+              cacheWritePer1MToken: cacheWritePer1MToken != null ? Number(cacheWritePer1MToken) : null,
+            },
+            update: {
+              provider,
+              providerLabel: providerLabel ?? null,
+              inputPricePer1M: Number(inputPricePer1M),
+              outputPricePer1M: Number(outputPricePer1M),
+              cacheReadPer1MToken: cacheReadPer1MToken != null ? Number(cacheReadPer1MToken) : null,
+              cacheWritePer1MToken: cacheWritePer1MToken != null ? Number(cacheWritePer1MToken) : null,
+              // intentionally omits isPlanDefault, isTaskDefault, isPublic, dateStart, dateEnd
+            },
+          })
+        )
+      );
+
+      return NextResponse.json({ models }, { status: 201 });
+    }
+
+    // Single model create path (existing behaviour)
     const { name, provider, providerLabel, inputPricePer1M, outputPricePer1M, cacheReadPer1MToken, cacheWritePer1MToken, dateStart, dateEnd, isPlanDefault, isTaskDefault, isPublic } = body;
 
     if (!name || !provider || inputPricePer1M == null || outputPricePer1M == null) {
