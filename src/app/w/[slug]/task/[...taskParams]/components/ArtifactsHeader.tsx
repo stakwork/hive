@@ -14,11 +14,13 @@ interface ArtifactButton {
   label: string;
 }
 
+const LOGS_BUTTON: ArtifactButton = { type: "LOGS", icon: ScrollText, label: "Logs" };
+
 const VISUAL_ARTIFACTS: ArtifactButton[] = [
   { type: "PLAN", icon: ClipboardList, label: "Plan" },
   { type: "TASKS", icon: ListChecks, label: "Tasks" },
   { type: "VERIFY", icon: ShieldCheck, label: "Verify" },
-  { type: "LOGS", icon: ScrollText, label: "Logs" },
+  LOGS_BUTTON, // plan mode: left side between VERIFY and BROWSER
   { type: "BROWSER", icon: Monitor, label: "Live Preview" },
   { type: "GRAPH", icon: PiGraphFill, label: "Graph" },
   { type: "WORKFLOW", icon: Network, label: "Workflow" },
@@ -38,14 +40,15 @@ interface ArtifactsHeaderProps {
   onArtifactChange: (type: ArtifactType) => void;
   headerAction?: React.ReactNode;
   disabledTabs?: ArtifactType[];
+  isPlanMode?: boolean;
 }
 
-export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifactChange, headerAction, disabledTabs }: ArtifactsHeaderProps) {
+export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifactChange, headerAction, disabledTabs, isPlanMode = false }: ArtifactsHeaderProps) {
   const renderButton = ({ type, icon: Icon, label }: ArtifactButton) => {
     if (!availableArtifacts.includes(type)) return null;
 
     const isActive = activeArtifact === type;
-    const showLabel = LABELED_TABS.has(type);
+    const showLabel = isPlanMode ? LABELED_TABS.has(type) : true;
     const isDisabled = disabledTabs?.includes(type) ?? false;
 
     if (showLabel) {
@@ -113,8 +116,10 @@ export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifact
     );
   };
 
-  const visualButtons = VISUAL_ARTIFACTS.map(renderButton).filter(Boolean);
-  const codeButtons = CODE_ARTIFACTS.map(renderButton).filter(Boolean);
+  const leftList = isPlanMode ? VISUAL_ARTIFACTS : VISUAL_ARTIFACTS.filter((a) => a.type !== "LOGS");
+  const rightList = isPlanMode ? CODE_ARTIFACTS : [LOGS_BUTTON, ...CODE_ARTIFACTS];
+  const visualButtons = leftList.map(renderButton).filter(Boolean);
+  const codeButtons = rightList.map(renderButton).filter(Boolean);
 
   return (
     <div className="border-b bg-background/80 backdrop-blur px-3 py-2">

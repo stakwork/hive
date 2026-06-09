@@ -114,3 +114,49 @@ describe("ArtifactsHeader - disabledTabs prop", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("ArtifactsHeader — task mode", () => {
+  test("task mode (default): LOGS renders a button with 'Logs' text label", () => {
+    render(
+      <ArtifactsHeader
+        availableArtifacts={["LOGS"]}
+        activeArtifact={null}
+        onArtifactChange={vi.fn()}
+      />
+    );
+
+    const logsButton = screen.getByText("Logs").closest("button");
+    expect(logsButton).not.toBeNull();
+  });
+
+  test("task mode (default): BROWSER renders a button with 'Live Preview' text label", () => {
+    render(
+      <ArtifactsHeader
+        availableArtifacts={["BROWSER"]}
+        activeArtifact={null}
+        onArtifactChange={vi.fn()}
+      />
+    );
+
+    const browserButton = screen.getByText("Live Preview").closest("button");
+    expect(browserButton).not.toBeNull();
+  });
+
+  test("plan mode (isPlanMode=true): BROWSER is icon-only — 'Live Preview' text only inside tooltip", () => {
+    render(
+      <ArtifactsHeader
+        availableArtifacts={["BROWSER"]}
+        activeArtifact={null}
+        onArtifactChange={vi.fn()}
+        isPlanMode={true}
+      />
+    );
+
+    // "Live Preview" should exist only inside the tooltip, not as button text
+    const allLivePreview = screen.getAllByText("Live Preview");
+    for (const el of allLivePreview) {
+      const tooltip = el.closest("[role='tooltip']");
+      expect(tooltip).not.toBeNull();
+    }
+  });
+});
