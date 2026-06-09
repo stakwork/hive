@@ -424,13 +424,8 @@ interface SidebarChatInputProps {
  * diverges far enough that sharing would require ugly conditionals
  * (no image upload, no workspace pills, no `+ workspace` button).
  */
-const MAX_ROWS = 5;
-const LINE_HEIGHT_PX = 20; // matches text-sm line-height
-const MAX_HEIGHT_PX = MAX_ROWS * LINE_HEIGHT_PX;
-
 function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
   const [input, setInput] = useState("");
-  const [height, setHeight] = useState<string>("auto");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // ─── Pending-draft consumption ─────────────────────────────────────
@@ -453,9 +448,6 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
         el.focus();
         // Move the caret to the end so the user can append context.
         el.selectionStart = el.selectionEnd = el.value.length;
-        el.style.height = "auto";
-        const newHeight = Math.min(el.scrollHeight, MAX_HEIGHT_PX);
-        setHeight(`${newHeight}px`);
       }
     });
     useCanvasChatStore.getState().setPendingInputDraft(null);
@@ -467,7 +459,6 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
     const message = input.trim();
     await onSend(message, () => {
       setInput("");
-      setHeight("auto");
       inputRef.current?.focus();
     });
   };
@@ -481,15 +472,7 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const newHeight = Math.min(el.scrollHeight, MAX_HEIGHT_PX);
-    setHeight(`${newHeight}px`);
   };
-
-  const overflowY =
-    height !== "auto" && parseInt(height) >= MAX_HEIGHT_PX ? "auto" : "hidden";
 
   return (
     <form onSubmit={handleSubmit} className="flex items-end gap-2">
@@ -502,8 +485,7 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
           onKeyDown={handleKeyDown}
           disabled={disabled}
           rows={1}
-          style={{ height, overflowY }}
-          className={`w-full px-3 py-2 pr-10 rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${
+          className={`w-full px-3 py-2 pr-10 rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-[color,border-color,box-shadow,opacity] resize-none field-sizing-content max-h-[100px] overflow-y-auto ${
             disabled ? "opacity-50 cursor-not-allowed" : ""
           }`}
         />

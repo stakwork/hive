@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -12,19 +11,17 @@ vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
     ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & { children?: React.ReactNode }) => (
-    <button {...props}>{children}</button>
-  ),
+  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    children?: React.ReactNode;
+  }) => <button {...props}>{children}</button>,
 }));
 vi.mock("@/components/dashboard/DashboardChat/ToolCallIndicator", () => ({
   ToolCallIndicator: () => null,
 }));
-vi.mock("../../../src/app/org/[githubLogin]/_components/SidebarChatMessage", () => ({
-  SidebarChatMessage: () => null,
-}));
-
-// Mock the state hooks used by the parent SidebarChat component so we can
-// isolate just the SidebarChatInput sub-component via its props.
+vi.mock(
+  "../../../src/app/org/[githubLogin]/_components/SidebarChatMessage",
+  () => ({ SidebarChatMessage: () => null }),
+);
 vi.mock(
   "/workspaces/hive/src/app/org/[githubLogin]/_state/useSendCanvasChatMessage",
   () => ({ useSendCanvasChatMessage: vi.fn(() => vi.fn()) }),
@@ -40,12 +37,7 @@ vi.mock(
   }),
 );
 
-// ── Minimal SidebarChatInput (inline, mirrors real implementation) ─────────────
-// We test the component logic directly without mounting the full SidebarChat tree.
-
-const MAX_ROWS = 5;
-const LINE_HEIGHT_PX = 20;
-const MAX_HEIGHT_PX = MAX_ROWS * LINE_HEIGHT_PX;
+// ── Minimal SidebarChatInput (mirrors real implementation post-refactor) ───────
 
 function TestSidebarChatInput({
   onSend,
@@ -55,7 +47,6 @@ function TestSidebarChatInput({
   disabled?: boolean;
 }) {
   const [input, setInput] = React.useState("");
-  const [height, setHeight] = React.useState<string>("auto");
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,7 +55,6 @@ function TestSidebarChatInput({
     const message = input.trim();
     await onSend(message, () => {
       setInput("");
-      setHeight("auto");
       inputRef.current?.focus();
     });
   };
@@ -78,15 +68,7 @@ function TestSidebarChatInput({
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const newHeight = Math.min(el.scrollHeight, MAX_HEIGHT_PX);
-    setHeight(`${newHeight}px`);
   };
-
-  const overflowY =
-    height !== "auto" && parseInt(height) >= MAX_HEIGHT_PX ? "auto" : "hidden";
 
   return (
     <form onSubmit={handleSubmit}>
@@ -98,114 +80,98 @@ function TestSidebarChatInput({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         rows={1}
-        style={{ height, overflowY }}
+        className="field-sizing-content max-h-[100px] overflow-y-auto"
       />
-      <button type="submit" data-testid="send-btn" disabled={!input.trim() || disabled}>
+      <button
+        type="submit"
+        data-testid="send-btn"
+        disabled={!input.trim() || disabled}
+      >
         Send
       </button>
     </form>
   );
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Pending-draft test component ───────────────────────────────────────────────
+// Mirrors the real SidebarChatInput's pendingDraft useEffect.
 
-function mockScrollHeight(el: HTMLTextAreaElement, value: number) {
-  Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => value });
+function TestSidebarChatInputWithDraft({
+  pendingDraft,
+  onDraftConsumed,
+}: {
+  pendingDraft: string | null;
+  onDraftConsumed: () => void;
+}) {
+  const [input, setInput] = React.useState("");
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
+
+  React.useEffect(() => {
+    if (pendingDraft === null) return;
+    setInput(pendingDraft);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.selectionStart = el.selectionEnd = el.value.length;
+      }
+    });
+    onDraftConsumed();
+  }, [pendingDraft, onDraftConsumed]);
+
+  return (
+    <textarea
+      ref={inputRef}
+      data-testid="chat-input"
+      value={input}
+      onChange={(e) => setInput(e.target.value)}
+      rows={1}
+      className="field-sizing-content max-h-[100px] overflow-y-auto"
+    />
+  );
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
-describe("SidebarChatInput — scrollHeight-based resize", () => {
+describe("SidebarChatInput — CSS-native field-sizing-content", () => {
   const noop = async (_msg: string, clear: () => void) => {
     clear();
   };
 
-  it("starts with height='auto' (1 row)", () => {
+  it("renders with field-sizing-content class and no inline height style", () => {
     render(<TestSidebarChatInput onSend={noop} />);
     const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
-    expect(ta.style.height).toBe("auto");
-    expect(ta.style.overflowY).toBe("hidden");
+    expect(ta.className).toContain("field-sizing-content");
+    expect(ta.style.height).toBe(""); // no inline height
   });
 
-  it("grows height when scrollHeight indicates wrapping", async () => {
+  it("does not set inline height style after typing multi-line content", async () => {
     render(<TestSidebarChatInput onSend={noop} />);
     const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
-
-    // Simulate 2 rows of content (40px)
-    mockScrollHeight(ta, 40);
 
     await act(async () => {
-      fireEvent.change(ta, { target: { value: "a long line that wraps" } });
+      fireEvent.change(ta, {
+        target: { value: "line1\nline2\nline3\nline4\nline5" },
+      });
     });
 
-    expect(ta.style.height).toBe("40px");
-    expect(ta.style.overflowY).toBe("hidden"); // below max
+    // CSS handles sizing — no JS-set inline height
+    expect(ta.style.height).toBe("");
   });
 
-  it("clamps height at MAX_HEIGHT_PX (100px) and sets overflow-y: auto", async () => {
+  it("does not set inline height after submit", async () => {
     render(<TestSidebarChatInput onSend={noop} />);
     const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
-
-    // Simulate content taller than 5 rows
-    mockScrollHeight(ta, 200);
-
-    await act(async () => {
-      fireEvent.change(ta, { target: { value: "very long content exceeding 5 rows" } });
-    });
-
-    expect(ta.style.height).toBe(`${MAX_HEIGHT_PX}px`);
-    expect(ta.style.overflowY).toBe("auto");
-  });
-
-  it("grows on explicit newlines the same way", async () => {
-    render(<TestSidebarChatInput onSend={noop} />);
-    const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
-
-    mockScrollHeight(ta, 60); // 3 rows
-
-    await act(async () => {
-      fireEvent.change(ta, { target: { value: "line1\nline2\nline3" } });
-    });
-
-    expect(ta.style.height).toBe("60px");
-  });
-
-  it("resets height to 'auto' after send", async () => {
-    render(<TestSidebarChatInput onSend={noop} />);
-    const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
-
-    mockScrollHeight(ta, 40);
 
     await act(async () => {
       fireEvent.change(ta, { target: { value: "some text" } });
     });
-    expect(ta.style.height).toBe("40px");
-
     await act(async () => {
       fireEvent.submit(ta.closest("form")!);
     });
 
     await waitFor(() => {
-      expect(ta.style.height).toBe("auto");
-    });
-  });
-
-  it("resets height to 'auto' on Enter (no shift) send", async () => {
-    render(<TestSidebarChatInput onSend={noop} />);
-    const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
-
-    mockScrollHeight(ta, 40);
-
-    await act(async () => {
-      fireEvent.change(ta, { target: { value: "hello" } });
-    });
-
-    await act(async () => {
-      fireEvent.keyDown(ta, { key: "Enter", shiftKey: false });
-    });
-
-    await waitFor(() => {
-      expect(ta.style.height).toBe("auto");
+      expect(ta.style.height).toBe("");
     });
   });
 
@@ -239,12 +205,57 @@ describe("SidebarChatInput — scrollHeight-based resize", () => {
     render(<TestSidebarChatInput onSend={onSend} disabled />);
     const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
 
-    mockScrollHeight(ta, 20);
     await act(async () => {
       fireEvent.change(ta, { target: { value: "hello" } });
       fireEvent.keyDown(ta, { key: "Enter", shiftKey: false });
     });
 
     expect(onSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("SidebarChatInput — pendingDraft injection", () => {
+  it("focuses textarea and positions caret at end when pendingDraft is set", async () => {
+    const onDraftConsumed = vi.fn();
+    const draft = "pre-filled message from canvas";
+
+    render(
+      <TestSidebarChatInputWithDraft
+        pendingDraft={draft}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+
+    const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
+
+    // Draft value should be adopted
+    await waitFor(() => {
+      expect(ta.value).toBe(draft);
+    });
+
+    // Draft consumed callback fired
+    expect(onDraftConsumed).toHaveBeenCalledTimes(1);
+
+    // After the rAF fires, caret should be at end and no inline height set
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(r));
+    });
+
+    expect(ta.selectionStart).toBe(draft.length);
+    expect(ta.selectionEnd).toBe(draft.length);
+    expect(ta.style.height).toBe(""); // CSS handles sizing, no inline height
+  });
+
+  it("does not consume null pendingDraft", () => {
+    const onDraftConsumed = vi.fn();
+
+    render(
+      <TestSidebarChatInputWithDraft
+        pendingDraft={null}
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+
+    expect(onDraftConsumed).not.toHaveBeenCalled();
   });
 });

@@ -342,9 +342,6 @@ export function TaskChat({
 }
 
 // ─── Input ──────────────────────────────────────────────────────────
-const MAX_ROWS = 5;
-const LINE_HEIGHT_PX = 20;
-const MAX_HEIGHT_PX = MAX_ROWS * LINE_HEIGHT_PX;
 
 interface TaskChatInputProps {
   onSend: (message: string) => void | Promise<void>;
@@ -358,7 +355,6 @@ interface TaskChatInputProps {
  */
 function TaskChatInput({ onSend, disabled = false }: TaskChatInputProps) {
   const [input, setInput] = useState("");
-  const [height, setHeight] = useState<string>("auto");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -366,7 +362,6 @@ function TaskChatInput({ onSend, disabled = false }: TaskChatInputProps) {
     const trimmed = input.trim();
     if (!trimmed || disabled) return;
     setInput("");
-    setHeight("auto");
     await onSend(trimmed);
     inputRef.current?.focus();
   };
@@ -380,15 +375,7 @@ function TaskChatInput({ onSend, disabled = false }: TaskChatInputProps) {
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const newHeight = Math.min(el.scrollHeight, MAX_HEIGHT_PX);
-    setHeight(`${newHeight}px`);
   };
-
-  const overflowY =
-    height !== "auto" && parseInt(height) >= MAX_HEIGHT_PX ? "auto" : "hidden";
 
   return (
     <form onSubmit={handleSubmit} className="flex items-end gap-2">
@@ -401,8 +388,7 @@ function TaskChatInput({ onSend, disabled = false }: TaskChatInputProps) {
           onKeyDown={handleKeyDown}
           disabled={disabled}
           rows={1}
-          style={{ height, overflowY }}
-          className={`w-full px-3 py-2 pr-10 rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${
+          className={`w-full px-3 py-2 pr-10 rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-[color,border-color,box-shadow,opacity] resize-none field-sizing-content max-h-[100px] overflow-y-auto ${
             disabled ? "opacity-50 cursor-not-allowed" : ""
           }`}
         />
