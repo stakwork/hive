@@ -304,6 +304,7 @@ function SidebarContent({
                         <li key={child.href} className="py-1">
                           <Link
                             href={childHref}
+                            prefetch={false}
                             data-testid={`nav-${child.label.toLowerCase().replace(/\s+/g, '-')}`}
                             className={`w-full text-left text-sm py-1 px-2 rounded-md transition-colors flex items-center ${
                               isChildActive
