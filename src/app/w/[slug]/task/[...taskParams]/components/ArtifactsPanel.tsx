@@ -399,6 +399,7 @@ export function ArtifactsPanel({
             onArtifactChange={handleUserTabSelect}
             headerAction={renderGenerateTasksButton()}
             disabledTabs={hasAttachments ? [] : ["VERIFY"]}
+            isPlanMode={!!planData}
           />
         </motion.div>
 
