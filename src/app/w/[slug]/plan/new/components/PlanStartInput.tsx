@@ -44,9 +44,10 @@ interface PlanStartInputProps {
   ) => void;
   isLoading?: boolean;
   loadingStatus?: string;
+  initialWorkflow?: { workflowId: number; workflowName: string; workflowRefId: string };
 }
 
-export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus }: PlanStartInputProps) {
+export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, initialWorkflow }: PlanStartInputProps) {
   const [value, setValue] = useState("");
   const [isPrototype, setIsPrototype] = useState(false);
   const [llmModels, setLlmModels] = useState<LlmModelOption[]>([]);
@@ -102,6 +103,19 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus }: P
       setSelectedTarget({ type: "repo", repositoryId: repositories[0].id });
     }
   }, [repositories, selectedTarget]);
+
+  // Pre-seed workflow target from URL params (e.g., navigating from inspector)
+  useEffect(() => {
+    if (initialWorkflow) {
+      setSelectedTarget({
+        type: "workflow",
+        workflowId: initialWorkflow.workflowId,
+        workflowName: initialWorkflow.workflowName,
+        workflowRefId: initialWorkflow.workflowRefId,
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialWorkflow]);
 
   const showTargetSelector = repositories.length > 1 || workspace?.slug === "stakwork";
 
