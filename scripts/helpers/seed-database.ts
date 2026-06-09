@@ -11,7 +11,9 @@ import {
   WorkspaceRole,
   InitiativeStatus,
   MilestoneStatus,
+  ChannelStatus,
 } from "@prisma/client";
+import { EncryptionService } from "@/lib/encryption";
 import { config as dotenvConfig } from "dotenv";
 import { seedDeploymentTracking } from "./seed-deployment-tracking";
 import { seedAgentLogs } from "./seed-agent-logs";
@@ -1704,6 +1706,98 @@ async function seedStakworkSecrets() {
   }
 }
 
+async function seedDiscordIntegration() {
+  const workspace = await prisma.workspace.findUnique({
+    where: { slug: "dev-mock" },
+    select: { id: true },
+  });
+  if (!workspace) {
+    console.warn("[seedDiscordIntegration] dev-mock workspace not found — skipping");
+    return;
+  }
+
+  let encryptedToken: string;
+  try {
+    const enc = EncryptionService.getInstance();
+    encryptedToken = JSON.stringify(enc.encryptField("discordBotToken", "mock-discord-bot-token.placeholder.value"));
+  } catch {
+    // Fallback to a fake encrypted blob if encryption key not available
+    encryptedToken = JSON.stringify({
+      data: Buffer.from("mock-discord-bot-token").toString("base64"),
+      iv: "000000000000000000000000",
+      tag: "00000000000000000000000000000000",
+      keyId: "default",
+      version: "1",
+      encryptedAt: new Date().toISOString(),
+    });
+  }
+
+  await prisma.workspace.update({
+    where: { id: workspace.id },
+    data: {
+      discordEnabled: true,
+      discordBotToken: encryptedToken,
+      discordClientId: "1234567890",
+    },
+  });
+
+  // Upsert ACTIVE channel
+  await prisma.discordChannel.upsert({
+    where: { workspaceId_channelId: { workspaceId: workspace.id, channelId: "222" } },
+    update: {
+      guildName: "Hive Dev Server",
+      channelName: "general",
+      channelType: 0,
+      status: ChannelStatus.ACTIVE,
+      lastSyncedAt: new Date(),
+      lastMessageId: "999000111",
+      syncError: null,
+      consecutiveFailures: 0,
+      enabled: true,
+    },
+    create: {
+      workspaceId: workspace.id,
+      guildId: "111",
+      guildName: "Hive Dev Server",
+      channelId: "222",
+      channelName: "general",
+      channelType: 0,
+      status: ChannelStatus.ACTIVE,
+      lastSyncedAt: new Date(),
+      lastMessageId: "999000111",
+      enabled: true,
+    },
+  });
+
+  // Upsert ERRORED channel
+  await prisma.discordChannel.upsert({
+    where: { workspaceId_channelId: { workspaceId: workspace.id, channelId: "333" } },
+    update: {
+      guildName: "Hive Dev Server",
+      channelName: "engineering",
+      channelType: 0,
+      status: ChannelStatus.ERRORED,
+      syncError: "Missing permissions in channel",
+      consecutiveFailures: 2,
+      enabled: true,
+    },
+    create: {
+      workspaceId: workspace.id,
+      guildId: "111",
+      guildName: "Hive Dev Server",
+      channelId: "333",
+      channelName: "engineering",
+      channelType: 0,
+      status: ChannelStatus.ERRORED,
+      syncError: "Missing permissions in channel",
+      consecutiveFailures: 2,
+      enabled: true,
+    },
+  });
+
+  console.log("[seedDiscordIntegration] Seeded Discord channels for dev-mock workspace");
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1720,6 +1814,7 @@ async function main() {
   await seedMilestoneLinkFeatureData(users);
   await seedWorkflowTask();
   await seedStakworkSecrets();
+  await seedDiscordIntegration();
 
   console.log("Seed completed.");
 }
