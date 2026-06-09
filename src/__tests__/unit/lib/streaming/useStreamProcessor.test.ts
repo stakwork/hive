@@ -995,6 +995,73 @@ describe("useStreamProcessor", () => {
 
       expect(onUpdate).toHaveBeenCalled();
     });
+
+    // Regression: SSE lines are not guaranteed to align with network
+    // chunk boundaries. A large tool result (e.g. logs_agent) can be
+    // split mid-string across two reader.read() chunks. The processor
+    // must buffer the partial line instead of trying to JSON.parse it,
+    // otherwise the event is dropped and nothing renders.
+    test("should reassemble an SSE line split across chunk boundaries", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      // A big output string that, when split, leaves the first chunk
+      // ending mid-JSON-string (unterminated string).
+      const bigOutput = "x".repeat(8192);
+      const event = TestDataFactories.createToolResultEvent("call-1", "logs_agent", {
+        answer: bigOutput,
+      });
+
+      // Split the single SSE line roughly in half, inside the string.
+      const splitAt = Math.floor(event.length / 2);
+      const part1 = event.slice(0, splitAt);
+      const part2 = event.slice(splitAt);
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          // Register the tool first so tool-result attaches output.
+          controller.enqueue(
+            encoder.encode(TestDataFactories.createToolCallEvent("call-1", "logs_agent", {})),
+          );
+          controller.enqueue(encoder.encode(part1));
+          controller.enqueue(encoder.encode(part2));
+          controller.close();
+        },
+      });
+
+      const response = { body: stream } as Response;
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      const toolCall = finalMessage.toolCalls?.find((t) => t.id === "call-1");
+      expect(toolCall).toBeDefined();
+      expect(toolCall?.status).toBe("output-available");
+      expect(toolCall?.output).toEqual({ answer: bigOutput });
+    });
+
+    test("should process a final line that has no trailing newline", async () => {
+      const { result } = renderHook(() => useStreamProcessor());
+      const onUpdate = TestUtils.createOnUpdateSpy();
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          // No trailing "\n" — the line lives entirely in the buffer
+          // and must be flushed after the read loop ends.
+          controller.enqueue(encoder.encode('data: {"type":"text-start","id":"text-1"}'));
+          controller.close();
+        },
+      });
+
+      const response = { body: stream } as Response;
+
+      await result.current.processStream(response, "msg-1", onUpdate);
+
+      const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(finalMessage.textParts).toHaveLength(1);
+    });
   });
 
   describe("Complex Scenarios", () => {
