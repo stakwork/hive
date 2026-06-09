@@ -62,7 +62,11 @@ export function useWorkflowVersions(
 
       // Filter to only include valid Workflow_version nodes
       const validVersions = fetchedVersions.filter(
-        (version) => version.node_type === "Workflow_version" && version.workflow_version_id && version.workflow_json,
+        (version) =>
+          version.node_type === "Workflow_version" &&
+          typeof version.workflow_version_id === "string" &&
+          version.workflow_version_id.length > 0 &&
+          version.workflow_json,
       );
 
       setVersions(validVersions);
