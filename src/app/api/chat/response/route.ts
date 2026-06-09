@@ -580,6 +580,12 @@ export async function POST(request: NextRequest) {
           // (off by default) and is failure-tolerant.
           const conversationId = fanOutFeature.parentCanvasConversationId;
           if (wakeReason && conversationId) {
+            console.log("[chat/response] scheduling canvas auto-turn", {
+              conversationId,
+              featureId: fanOutFeature.id,
+              plannerMessageId: chatMessage.id,
+              wakeReason,
+            });
             after(async () => {
               try {
                 const { invokeCanvasAgentOnPlannerMessage } = await import(
@@ -597,6 +603,22 @@ export async function POST(request: NextRequest) {
                   e,
                 );
               }
+            });
+          } else {
+            // No turn scheduled — log WHY so this is diagnosable without
+            // any `[canvas-autoturn]` line appearing. Two distinct cases:
+            // the feature isn't owned by a canvas conversation, or the
+            // planner message wasn't classified as actionable (see the
+            // `[canvas-planner-fanout] classified planner message` log for
+            // the per-signal breakdown).
+            console.log("[chat/response] canvas auto-turn NOT scheduled", {
+              featureId: fanOutFeature.id,
+              plannerMessageId: chatMessage.id,
+              conversationId,
+              wakeReason,
+              reason: !conversationId
+                ? "feature not owned by a canvas conversation (no parentCanvasConversationId)"
+                : "planner message not actionable (see [canvas-planner-fanout] classification log)",
             });
           }
         }
