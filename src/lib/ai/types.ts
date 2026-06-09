@@ -22,4 +22,6 @@ export interface WorkspaceConfig {
   workspaceId: string;
   userId: string;
   members: WorkspaceMemberInfo[];
+  /** GitHub handle of the logged-in user sending this request. Undefined for public-viewer requests. */
+  currentUserGithubUsername?: string;
 }
