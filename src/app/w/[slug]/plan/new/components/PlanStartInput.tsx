@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
-import { ArrowUp, Mic, MicOff, Loader2, Sparkles, ImageIcon, X, Code2 } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Loader2, Sparkles, ImageIcon, Upload, X, Code2 } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -38,7 +38,7 @@ interface PlanStartInputProps {
       selectedRepoId: string | null;
       selectedWorkflow: { workflowId: number; workflowName: string; workflowRefId: string } | null;
       model: string;
-      attachmentFile?: File;
+      attachmentFiles?: File[];
       selectedRepositoryIds?: string[];
     }
   ) => void;
@@ -78,8 +78,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
   const [mentionIndex, setMentionIndex] = useState(0);
 
   // File attachment state
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<{ file: File; previewUrl: string }[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -119,14 +118,13 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
 
   const showTargetSelector = repositories.length > 1 || workspace?.slug === "stakwork";
 
-  // Clean up object URL on unmount or file change
+  // Clean up object URLs on unmount
   useEffect(() => {
     return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      selectedFiles.forEach((f) => URL.revokeObjectURL(f.previewUrl));
     };
-  }, [previewUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -207,36 +205,36 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
   );
 
   // File validation and attachment
-  const handleFile = useCallback((file: File | null) => {
-    if (!file) return;
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      toast.error("Invalid file type. Please attach a JPEG, PNG, GIF, or WebP image.");
-      return;
+  const handleFiles = useCallback((files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const newEntries: { file: File; previewUrl: string }[] = [];
+    for (const file of fileArray) {
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        toast.error(`"${file.name}" is not a valid image type. Please use JPEG, PNG, GIF, or WebP.`);
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`"${file.name}" exceeds the 10MB size limit.`);
+        continue;
+      }
+      newEntries.push({ file, previewUrl: URL.createObjectURL(file) });
     }
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error("File too large. Maximum size is 10MB.");
-      return;
+    if (newEntries.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...newEntries]);
     }
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
-  }, [previewUrl]);
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    handleFile(file);
+    if (e.target.files) handleFiles(e.target.files);
     // Reset so same file can be re-selected
     e.target.value = "";
   };
 
-  const handleRemoveFile = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    setSelectedFile(null);
-    setPreviewUrl(null);
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => {
+      URL.revokeObjectURL(prev[index].previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   // Drag-and-drop handlers
@@ -249,9 +247,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setIsDragging(false);
-    }
+    setIsDragging(false);
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -263,17 +259,19 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    const file = e.dataTransfer.files[0] ?? null;
-    handleFile(file);
+    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
   };
 
   // Paste handler for the textarea
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(e.clipboardData.items);
-    const imageItem = items.find((item) => item.type.startsWith("image/"));
-    if (imageItem) {
+    const imageFiles = items
+      .filter((item) => item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((f): f is File => f !== null);
+    if (imageFiles.length > 0) {
       e.preventDefault();
-      handleFile(imageItem.getAsFile());
+      handleFiles(imageFiles);
     }
   };
 
@@ -299,7 +297,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
               }
             : null,
         model: selectedModel,
-        attachmentFile: selectedFile ?? undefined,
+        attachmentFiles: selectedFiles.map((s) => s.file),
         selectedRepositoryIds: selectedRepoIds,
       });
     }
@@ -382,42 +380,29 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
                   </Command>
                 </div>
               )}
-              <div
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleImageDrop}
-              >
-                <Textarea
-                  ref={textareaRef}
-                  placeholder={isListening ? "Listening..." : "Describe a feature or problem"}
-                  value={value}
-                  onChange={(e) => {
-                    setValue(e.target.value);
-                    const cursor = e.target.selectionStart ?? e.target.value.length;
-                    const before = e.target.value.slice(0, cursor);
-                    const match = before.match(/\B@([\w-]*)$/);
-                    if (match) {
-                      setMentionQuery(match[1]);
-                      setMentionIndex(0);
-                    } else {
-                      setMentionQuery(null);
-                    }
-                  }}
-                  onKeyDown={handleKeyDown}
-                  onPaste={handlePaste}
-                  disabled={isLoading}
-                  isDragging={isDragging}
-                  className={cn(
-                    "resize-none min-h-[180px] text-lg bg-transparent px-8 pt-8 pb-4 rounded-3xl shadow-none",
-                    isDragging
-                      ? "border-2 border-dashed border-primary focus:ring-0 focus-visible:ring-0"
-                      : "border-0 focus:ring-0 focus-visible:ring-0"
-                  )}
-                  autoFocus
-                  data-testid="plan-start-input"
-                />
-              </div>
+              <Textarea
+                ref={textareaRef}
+                placeholder={isListening ? "Listening..." : "Describe a feature or problem"}
+                value={value}
+                onChange={(e) => {
+                  setValue(e.target.value);
+                  const cursor = e.target.selectionStart ?? e.target.value.length;
+                  const before = e.target.value.slice(0, cursor);
+                  const match = before.match(/\B@([\w-]*)$/);
+                  if (match) {
+                    setMentionQuery(match[1]);
+                    setMentionIndex(0);
+                  } else {
+                    setMentionQuery(null);
+                  }
+                }}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                disabled={isLoading}
+                className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
+                autoFocus
+                data-testid="plan-start-input"
+              />
             </div>
           </motion.div>
 
@@ -429,39 +414,81 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
             accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
             onChange={handleFileSelect}
             className="hidden"
+            multiple
             data-testid="file-input"
           />
-          {selectedFile && (
-            <div className="mx-8 mb-4">
-              <div className="relative border rounded-md p-2" data-testid="file-preview">
-                <div className="flex items-start gap-2">
-                  {previewUrl && (
-                    <img
-                      src={previewUrl}
-                      alt="Preview"
-                      className="w-20 h-20 object-cover rounded"
-                      data-testid="preview-image"
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{selectedFile.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleRemoveFile}
-                    data-testid="remove-file-button"
+          <div className="mx-8 mb-4">
+            {selectedFiles.length === 0 ? (
+              <div
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleImageDrop}
+              >
+                <label htmlFor={fileInputId} className="cursor-pointer">
+                  <div
+                    className={cn(
+                      "border-2 border-dashed rounded-md p-4 text-center transition-colors",
+                      isDragging
+                        ? "border-primary bg-primary/10"
+                        : "border-muted-foreground/25 hover:border-muted-foreground/50",
+                    )}
+                    data-testid="drop-zone"
                   >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
+                    <Upload className="w-6 h-6 mx-auto mb-1 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Click to upload or drag and drop</p>
+                    <p className="text-xs text-muted-foreground mt-1">JPEG, PNG, GIF, WebP (max 10MB)</p>
+                  </div>
+                </label>
               </div>
-            </div>
-          )}
+            ) : (
+              <div
+                className="flex flex-wrap gap-2"
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleImageDrop}
+                data-testid="file-preview"
+              >
+                {selectedFiles.map((entry, index) => (
+                  <div
+                    key={entry.previewUrl}
+                    className="flex items-center gap-1.5 border rounded-md p-1.5 bg-muted/30"
+                    data-testid={`file-chip-${index}`}
+                  >
+                    <img
+                      src={entry.previewUrl}
+                      alt="Preview"
+                      className="w-10 h-10 object-cover rounded"
+                    />
+                    <div className="min-w-0 max-w-[120px]">
+                      <p className="text-xs font-medium truncate">{entry.file.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {(entry.file.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 shrink-0"
+                      onClick={() => handleRemoveFile(index)}
+                      data-testid={`remove-file-${index}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+                <label
+                  htmlFor={fileInputId}
+                  className="flex items-center justify-center w-10 h-[60px] border-2 border-dashed rounded-md cursor-pointer text-muted-foreground hover:border-muted-foreground/50 transition-colors"
+                  title="Add more images"
+                >
+                  <Upload className="w-4 h-4" />
+                </label>
+              </div>
+            )}
+          </div>
 
           {/* Prototype toggle row */}
           <div className="px-8 pb-6 flex items-center gap-4 flex-wrap" data-testid="bottom-row">
