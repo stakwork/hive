@@ -3,11 +3,12 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Workflow, Loader2, ArrowLeft } from "lucide-react";
+import { Workflow, Loader2, ArrowLeft, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
 import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSelector";
@@ -17,6 +18,8 @@ import { WorkflowParamsTable } from "@/components/workflow/inspector/WorkflowPar
 import { WorkflowVersionList } from "@/components/workflow/inspector/WorkflowVersionList";
 import { WorkflowVersionDiff } from "@/components/workflow/inspector/WorkflowVersionDiff";
 import { createWorkflowEditorTask } from "@/lib/workflow/create-workflow-editor-task";
+import { PromptsPanel } from "@/components/prompts";
+import type { WorkflowTransition } from "@/types/stakwork/workflow";
 
 function parseWorkflowJson(workflowJson: string | null | undefined): Record<string, unknown> | null {
   if (!workflowJson) return null;
@@ -79,6 +82,24 @@ export default function WorkflowInspectorPage() {
     () => parseWorkflowJson(selectedVersion?.workflow_json),
     [selectedVersion],
   );
+
+  const childWorkflows = useMemo(() => {
+    if (!parsedWorkflowData?.transitions) return [];
+    return (Object.values(parsedWorkflowData.transitions) as WorkflowTransition[])
+      .filter((t) => t.attributes?.workflow_id && t.attributes?.workflow_name)
+      .map((t) => ({
+        id: String(t.attributes.workflow_id),
+        name: t.attributes.workflow_name as string,
+      }));
+  }, [parsedWorkflowData]);
+  const hasChildWorkflows = childWorkflows.length > 0;
+
+  const TAB_GRID_COLS: Record<string, string> = {
+    "4": "grid-cols-4",
+    "5": "grid-cols-5",
+  };
+  const colCount = 4 + (hasChildWorkflows ? 1 : 0);
+  const gridColsClass = TAB_GRID_COLS[String(colCount)] ?? "grid-cols-4";
 
   const previousVersion = useMemo(() => {
     if (!selectedVersion) return null;
@@ -162,6 +183,16 @@ export default function WorkflowInspectorPage() {
       <div className="flex gap-4 h-[calc(100vh-12rem)]">
         {/* Left 60%: flow diagram */}
         <div className="flex-[3] min-w-0 border rounded-lg overflow-hidden flex flex-col">
+          {/* Version selector above diagram */}
+          <div className="border-b p-3 shrink-0">
+            <WorkflowVersionSelector
+              versions={versions}
+              selectedVersionId={selectedVersionId}
+              onVersionSelect={setSelectedVersionId}
+              isLoading={isLoadingVersions}
+              workflowName={workflowName}
+            />
+          </div>
           <div className="flex-1 overflow-hidden">
             {parsedWorkflowData ? (
               <WorkflowComponent
@@ -185,26 +216,18 @@ export default function WorkflowInspectorPage() {
               </div>
             ) : null}
           </div>
-          {/* Version selector below diagram */}
-          <div className="border-t p-3 shrink-0">
-            <WorkflowVersionSelector
-              versions={versions}
-              selectedVersionId={selectedVersionId}
-              onVersionSelect={setSelectedVersionId}
-              isLoading={isLoadingVersions}
-              workflowName={workflowName}
-            />
-          </div>
         </div>
 
         {/* Right 40%: tabbed detail */}
         <div className="flex-[2] min-w-0 border rounded-lg overflow-hidden flex flex-col">
           <Tabs defaultValue="stats" className="flex flex-col h-full">
             <div className="border-b px-3 pt-3 shrink-0">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className={`grid w-full ${gridColsClass}`}>
                 <TabsTrigger value="stats">Stats</TabsTrigger>
                 <TabsTrigger value="params">Params</TabsTrigger>
                 <TabsTrigger value="history">History</TabsTrigger>
+                <TabsTrigger value="prompts">Prompts</TabsTrigger>
+                {hasChildWorkflows && <TabsTrigger value="children">Child Workflows</TabsTrigger>}
               </TabsList>
             </div>
 
@@ -234,6 +257,39 @@ export default function WorkflowInspectorPage() {
                   />
                 )}
               </TabsContent>
+
+              <TabsContent value="prompts" className="mt-0 flex-1 overflow-hidden">
+                <PromptsPanel workflowId={workflowIdNum} workspaceSlug={slug ?? undefined} />
+              </TabsContent>
+
+              {hasChildWorkflows && (
+                <TabsContent value="children" className="mt-0 flex-1 overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>ID</TableHead>
+                        <TableHead className="w-16">Open</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {childWorkflows.map((wf) => (
+                        <TableRow key={wf.id}>
+                          <TableCell className="font-medium">{wf.name}</TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">{wf.id}</TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon" asChild>
+                              <Link href={`/w/${slug}/workflows/${wf.id}`} target="_blank">
+                                <ExternalLink className="w-4 h-4" />
+                              </Link>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TabsContent>
+              )}
             </div>
           </Tabs>
         </div>
