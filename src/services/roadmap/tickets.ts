@@ -244,7 +244,7 @@ export async function createTicket(
       dependsOnTaskIds: data.dependsOnTaskIds || [],
       runBuild: data.runBuild ?? true,
       runTestSuite: data.runTestSuite ?? true,
-      autoMerge: data.autoMerge ?? false,
+      autoMerge: data.autoMerge ?? (data.workflowTaskType === "SKILL" ? true : false),
       createdById: userId,
       updatedById: userId,
     },

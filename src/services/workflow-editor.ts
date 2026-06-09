@@ -204,6 +204,7 @@ export async function triggerWorkflowEditorRun(params: {
     select: {
       workspaceId: true,
       featureId: true,
+      autoMerge: true,
       workspace: {
         select: {
           slug: true,
@@ -299,6 +300,8 @@ export async function triggerWorkflowEditorRun(params: {
   if (workflowVersionId) {
     vars.workflow_version_id = workflowVersionId;
   }
+
+  vars.autoMergePr = task.autoMerge;
 
   const stakworkPayload = {
     name: `workflow_editor - ${taskId}`,
