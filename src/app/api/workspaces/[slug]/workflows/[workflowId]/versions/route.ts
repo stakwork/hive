@@ -16,7 +16,7 @@ type RouteParams = {
 };
 
 interface WorkflowVersion {
-  workflow_version_id: number;
+  workflow_version_id: string;
   workflow_id: number;
   workflow_json: string;
   workflow_name?: string;
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const versions: WorkflowVersion[] = nodes
       .filter((node: any) => node.properties?.workflow_version_id && getWorkflowJsonFromNode(node))
       .map((node: any) => ({
-        workflow_version_id: node.properties.workflow_version_id,
+        workflow_version_id: String(node.properties.workflow_version_id),
         workflow_id: node.properties.workflow_id,
         workflow_json: getWorkflowJsonFromNode(node),
         workflow_name: node.properties.workflow_name,
@@ -176,9 +176,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }));
 
     // Sort by date_added_to_graph descending (newest first)
-    versions.sort((a, b) => {
-      return b.workflow_version_id - a.workflow_version_id;
-    });
+    versions.sort((a, b) => Number(b.workflow_version_id) - Number(a.workflow_version_id));
 
     // Return up to 10 versions
     const limitedVersions = versions.slice(0, 10);

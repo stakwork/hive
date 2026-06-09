@@ -200,6 +200,48 @@ describe("useWorkflowVersions", () => {
     expect(result.current.versions[1].workflow_version_id).toBe("wfv-3");
   });
 
+  test("should filter out versions with numeric workflow_version_id (type guard)", async () => {
+    // Simulates a raw API response before coercion reaches the hook
+    const numericIdResponse = {
+      success: true,
+      data: {
+        versions: [
+          {
+            workflow_version_id: 42 as unknown as string, // numeric slipping through
+            workflow_id: 123,
+            workflow_json: JSON.stringify({ nodes: [] }),
+            date_added_to_graph: new Date().toISOString(),
+            ref_id: "version-1",
+            node_type: "Workflow_version",
+          },
+          {
+            workflow_version_id: "wfv-2",
+            workflow_id: 123,
+            workflow_json: JSON.stringify({ nodes: [] }),
+            date_added_to_graph: new Date().toISOString(),
+            ref_id: "version-2",
+            node_type: "Workflow_version",
+          },
+        ],
+      },
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => numericIdResponse,
+    });
+
+    const { result } = renderHook(() => useWorkflowVersions("test-workspace", 123));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    // Numeric workflow_version_id must be rejected by the type guard
+    expect(result.current.versions).toHaveLength(1);
+    expect(result.current.versions[0].workflow_version_id).toBe("wfv-2");
+  });
+
   test("should support refetch functionality", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
