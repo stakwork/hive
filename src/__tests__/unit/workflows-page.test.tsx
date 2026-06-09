@@ -5,19 +5,20 @@ import React from "react";
 import WorkflowsPage from "@/app/w/[slug]/workflows/page";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkflowNodes } from "@/hooks/useWorkflowNodes";
-import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
 import { useRecentWorkflows } from "@/hooks/useRecentWorkflows";
 
 // Mock the hooks
 vi.mock("@/hooks/useWorkspace");
 vi.mock("@/hooks/useWorkflowNodes");
-vi.mock("@/hooks/useWorkflowVersions");
 vi.mock("@/hooks/useRecentWorkflows");
+
+// Capture router.push via hoisted mock so tests can assert on it
+const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: mockPush,
     replace: vi.fn(),
     prefetch: vi.fn(),
   }),
@@ -25,31 +26,8 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-// Mock WorkflowVersionSelector to simplify testing
-vi.mock("@/components/workflow/WorkflowVersionSelector", () => ({
-  WorkflowVersionSelector: ({ versions, selectedVersionId, onVersionSelect }: any) => {
-    return (
-      <div data-testid="workflow-version-selector">
-        <select
-          data-testid="version-select"
-          value={selectedVersionId || ""}
-          onChange={(e) => onVersionSelect(e.target.value)}
-        >
-          <option value="">Select Version</option>
-          {versions?.map((v: any) => (
-            <option key={v.workflow_version_id} value={v.workflow_version_id}>
-              {v.workflow_version_id}
-            </option>
-          ))}
-        </select>
-      </div>
-    );
-  },
-}));
-
 const mockUseWorkspace = useWorkspace as ReturnType<typeof vi.fn>;
 const mockUseWorkflowNodes = useWorkflowNodes as ReturnType<typeof vi.fn>;
-const mockUseWorkflowVersions = useWorkflowVersions as ReturnType<typeof vi.fn>;
 const mockUseRecentWorkflows = useRecentWorkflows as ReturnType<typeof vi.fn>;
 
 const mockRecentWorkflows = [
@@ -147,11 +125,6 @@ describe("WorkflowsPage", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
-    });
-    mockUseWorkflowVersions.mockReturnValue({
-      versions: [],
-      isLoading: false,
-      error: null,
     });
     mockUseRecentWorkflows.mockReturnValue({
       workflows: [],
@@ -266,11 +239,6 @@ describe("WorkflowsPage", () => {
         error: null,
         refetch: vi.fn(),
       });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: [],
-        isLoading: false,
-        error: null,
-      });
 
       render(<WorkflowsPage />);
       const input = screen.getByPlaceholderText("Enter workflow or run ID...");
@@ -278,7 +246,7 @@ describe("WorkflowsPage", () => {
       await user.type(input, "999");
 
       await waitFor(() => {
-        // Version selector must not render when there are no versions and nothing is loading
+        // Version selector must not render (it was removed in the refactor)
         expect(screen.queryByTestId("workflow-version-selector")).not.toBeInTheDocument();
         // Should not show a workflow name match
         expect(screen.queryByText("Workflow:")).not.toBeInTheDocument();
@@ -306,18 +274,13 @@ describe("WorkflowsPage", () => {
   });
 
   describe("Version Selection", () => {
-    it("should display version dropdown when workflow is matched", async () => {
+    it("should display Inspect Workflow button when workflow is matched", async () => {
       const user = userEvent.setup();
       mockUseWorkflowNodes.mockReturnValue({
         workflows: mockWorkflows,
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: mockVersions,
-        isLoading: false,
-        error: null,
       });
 
       render(<WorkflowsPage />);
@@ -329,22 +292,19 @@ describe("WorkflowsPage", () => {
         expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
       });
 
-      // Version selector should be rendered
-      expect(screen.getByText("Select Version")).toBeInTheDocument();
+      // Inspect Workflow button should be rendered (no version selector needed)
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /inspect workflow/i })).toBeInTheDocument();
+      });
     });
 
-    it("should auto-select first version", async () => {
+    it("shows Inspect Workflow button when workflow is matched", async () => {
       const user = userEvent.setup();
       mockUseWorkflowNodes.mockReturnValue({
         workflows: mockWorkflows,
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: mockVersions,
-        isLoading: false,
-        error: null,
       });
 
       render(<WorkflowsPage />);
@@ -353,23 +313,17 @@ describe("WorkflowsPage", () => {
       await user.type(input, "123");
 
       await waitFor(() => {
-        // WorkflowVersionSelector auto-selects first version
-        expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /inspect workflow/i })).toBeInTheDocument();
       });
     });
 
-    it("should reset version when workflow changes", async () => {
+    it("should update workflow name when workflow ID changes", async () => {
       const user = userEvent.setup();
       mockUseWorkflowNodes.mockReturnValue({
         workflows: mockWorkflows,
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: mockVersions,
-        isLoading: false,
-        error: null,
       });
 
       render(<WorkflowsPage />);
@@ -397,18 +351,15 @@ describe("WorkflowsPage", () => {
       expect(screen.queryByText("Debug this run")).not.toBeInTheDocument();
     });
 
-    it("should not show action buttons when workflow selected but no version and no run", async () => {
+    it("should not show action buttons when workflow selected but no run", async () => {
       const user = userEvent.setup();
+      // Workflow 123 exists in mockWorkflows — Inspect Workflow IS shown
+      // This test verifies Debug this run is not shown when no run
       mockUseWorkflowNodes.mockReturnValue({
         workflows: mockWorkflows,
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: [],
-        isLoading: false,
-        error: null,
       });
 
       render(<WorkflowsPage />);
@@ -420,11 +371,14 @@ describe("WorkflowsPage", () => {
         expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
       });
 
-      expect(screen.queryByText("Load Workflow")).not.toBeInTheDocument();
-      expect(screen.queryByText("Debug this run")).not.toBeInTheDocument();
+      // Inspect Workflow is present, but Debug this run is not
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /inspect workflow/i })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /debug this run/i })).not.toBeInTheDocument();
+      });
     });
 
-    it("should show only Load Workflow when workflow-only (version selected, no run)", async () => {
+    it("should show only Inspect Workflow when workflow-only (no run)", async () => {
       const user = userEvent.setup();
       // Fetch returns no run
       global.fetch = vi.fn().mockResolvedValue({
@@ -438,11 +392,6 @@ describe("WorkflowsPage", () => {
         error: null,
         refetch: vi.fn(),
       });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: mockVersions,
-        isLoading: false,
-        error: null,
-      });
 
       render(<WorkflowsPage />);
       const input = screen.getByPlaceholderText("Enter workflow or run ID...");
@@ -452,27 +401,18 @@ describe("WorkflowsPage", () => {
         expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
       });
 
-      const versionSelect = await screen.findByTestId("version-select");
-      await user.selectOptions(versionSelect, "v1");
-
       await waitFor(() => {
-        expect(screen.queryByText("Load Workflow")).toBeInTheDocument();
-        expect(screen.queryByText("Debug this run")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /inspect workflow/i })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /debug this run/i })).not.toBeInTheDocument();
       });
     });
 
-    it("should show only Debug this run when run-only (no versions)", async () => {
+    it("should show only Debug this run when run-only (no matched workflow)", async () => {
       const user = userEvent.setup();
-      // Fetch returns a run
+      // Fetch returns a run, but 9999 doesn't match any workflow in mockWorkflows
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ success: true, data: { project: mockRunData } }),
-      });
-
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: [],
-        isLoading: false,
-        error: null,
       });
 
       render(<WorkflowsPage />);
@@ -480,14 +420,14 @@ describe("WorkflowsPage", () => {
       await user.type(input, "9999");
 
       await waitFor(() => {
-        expect(screen.queryByText("Debug this run")).toBeInTheDocument();
-        expect(screen.queryByText("Load Workflow")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /debug this run/i })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /inspect workflow/i })).not.toBeInTheDocument();
       });
     });
 
-    it("should show both buttons when ID matches both a run and a workflow with version selected", async () => {
+    it("should show both buttons when ID matches both a run and a workflow", async () => {
       const user = userEvent.setup();
-      // Fetch always returns a run
+      // Fetch always returns a run; ID 123 matches a workflow in mockWorkflows
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ success: true, data: { project: mockRunData } }),
@@ -499,45 +439,23 @@ describe("WorkflowsPage", () => {
         error: null,
         refetch: vi.fn(),
       });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: mockVersions,
-        isLoading: false,
-        error: null,
-      });
 
       render(<WorkflowsPage />);
       const input = screen.getByPlaceholderText("Enter workflow or run ID...");
       await user.type(input, "123");
 
-      // Wait for the debounce + run check to complete: "Debug this run" appears once
-      // isResolvingRun resolves and runData is set. Only then select the version so
-      // the version reset (triggered by debouncedWorkflowId change) has already happened.
       await waitFor(() => {
-        expect(screen.queryByText("Debug this run")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /debug this run/i })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /inspect workflow/i })).toBeInTheDocument();
       }, { timeout: 2000 });
-
-      // Now select a version — debouncedWorkflowId is stable so no more resets
-      const versionSelect = screen.getByTestId("version-select");
-      await user.selectOptions(versionSelect, "v1");
-
-      await waitFor(() => {
-        expect(screen.queryByText("Debug this run")).toBeInTheDocument();
-        expect(screen.queryByText("Load Workflow")).toBeInTheDocument();
-      });
     });
 
-    it("should show no buttons for an unknown ID (no run, no workflow versions)", async () => {
+    it("should show no buttons for an unknown ID (no run, no matched workflow)", async () => {
       const user = userEvent.setup();
-      // Fetch returns no run
+      // Fetch returns no run, and 00000 doesn't match any workflow
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
         json: async () => ({ success: false }),
-      });
-
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: [],
-        isLoading: false,
-        error: null,
       });
 
       render(<WorkflowsPage />);
@@ -545,8 +463,8 @@ describe("WorkflowsPage", () => {
       await user.type(input, "00000");
 
       await waitFor(() => {
-        expect(screen.queryByText("Debug this run")).not.toBeInTheDocument();
-        expect(screen.queryByText("Load Workflow")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /debug this run/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /inspect workflow/i })).not.toBeInTheDocument();
       });
     });
 
@@ -560,18 +478,12 @@ describe("WorkflowsPage", () => {
         json: async () => ({ success: true, data: { project: staleRunData } }),
       });
 
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: [],
-        isLoading: false,
-        error: null,
-      });
-
       render(<WorkflowsPage />);
       const input = screen.getByPlaceholderText("Enter workflow or run ID...");
       await user.type(input, "9999");
 
       await waitFor(() => {
-        expect(screen.queryByText("Debug this run")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /debug this run/i })).not.toBeInTheDocument();
       });
     });
 
@@ -591,23 +503,18 @@ describe("WorkflowsPage", () => {
         error: null,
         refetch: vi.fn(),
       });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: mockVersions,
-        isLoading: false,
-        error: null,
-      });
 
       render(<WorkflowsPage />);
       const input = screen.getByPlaceholderText("Enter workflow or run ID...");
       await user.type(input, "123");
 
       await waitFor(() => {
-        // Disambiguation prompt must not appear
+        // Disambiguation prompt must not appear (stale run ≠ recent run)
         expect(
           screen.queryByText(/found both a Run and a Workflow/i)
         ).not.toBeInTheDocument();
         // Debug this run must not appear
-        expect(screen.queryByText("Debug this run")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /debug this run/i })).not.toBeInTheDocument();
       });
     });
   });
@@ -651,12 +558,6 @@ describe("WorkflowsPage", () => {
       });
 
       global.fetch = mockFetch;
-
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: [],
-        isLoading: false,
-        error: null,
-      });
 
       delete (window as any).location;
       (window as any).location = { href: "" };
@@ -719,12 +620,6 @@ describe("WorkflowsPage", () => {
 
       global.fetch = mockFetch;
 
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: [],
-        isLoading: false,
-        error: null,
-      });
-
       delete (window as any).location;
       (window as any).location = { href: "" };
 
@@ -745,289 +640,55 @@ describe("WorkflowsPage", () => {
 
       // Button should re-appear (isDebugging reset)
       await waitFor(() => {
-        expect(screen.queryByText("Debug this run")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /debug this run/i })).toBeInTheDocument();
       });
     }, 15000);
   });
 
-  describe("Submit Button (Load Workflow)", () => {
-    it("should not show submit button when no workflow selected", () => {
+  describe("Inspect Workflow button", () => {
+    it("should not show Inspect Workflow button when no workflow matched", () => {
       render(<WorkflowsPage />);
-      expect(screen.queryByText("Load Workflow")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /inspect workflow/i })).not.toBeInTheDocument();
     });
 
-    it("should not show submit button when workflow selected but no version", async () => {
+    it("should show Inspect Workflow button when a workflow is matched", async () => {
       const user = userEvent.setup();
       mockUseWorkflowNodes.mockReturnValue({
         workflows: mockWorkflows,
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: [],
-        isLoading: false,
-        error: null,
       });
 
       render(<WorkflowsPage />);
       const input = screen.getByPlaceholderText("Enter workflow or run ID...");
-
       await user.type(input, "123");
 
       await waitFor(() => {
-        expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /inspect workflow/i })).toBeInTheDocument();
       });
-
-      expect(screen.queryByText("Load Workflow")).not.toBeInTheDocument();
     });
 
-    it("should show enabled submit button when workflow and version selected", async () => {
+    it("should navigate to workflow inspector on click", async () => {
       const user = userEvent.setup();
-
       mockUseWorkflowNodes.mockReturnValue({
         workflows: mockWorkflows,
         isLoading: false,
         error: null,
         refetch: vi.fn(),
-      });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: mockVersions,
-        isLoading: false,
-        error: null,
       });
 
       render(<WorkflowsPage />);
       const input = screen.getByPlaceholderText("Enter workflow or run ID...");
-
       await user.type(input, "123");
 
-      await waitFor(() => {
-        expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
-      });
+      const btn = await screen.findByRole("button", { name: /inspect workflow/i });
+      await user.click(btn);
 
-      // Wait for version selector to appear and select version
-      const versionSelect = await screen.findByTestId("version-select");
-      await user.selectOptions(versionSelect, "v1");
-
-      // Submit button should appear after version is selected
       await waitFor(() => {
-        const submitButton = screen.queryByText("Load Workflow");
-        expect(submitButton).toBeInTheDocument();
+        expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/workflows/123");
       });
     });
-  });
-
-  describe("Navigation (Load Workflow)", () => {
-    it("should navigate to task chat on submit", async () => {
-      const user = userEvent.setup();
-      const mockFetch = vi.fn();
-
-      // The debounce (300ms) fires after the submit click in this test environment,
-      // so the run-check fetch is NOT called before handleSubmit runs.
-      // Create task
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { id: "task-123" } }),
-      });
-      // Save artifact
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
-      // Dual-write WorkflowTask row
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
-
-      global.fetch = mockFetch;
-
-      mockUseWorkflowNodes.mockReturnValue({
-        workflows: mockWorkflows,
-        isLoading: false,
-        error: null,
-        refetch: vi.fn(),
-      });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: mockVersions,
-        isLoading: false,
-        error: null,
-      });
-
-      // Mock window.location.href
-      delete (window as any).location;
-      (window as any).location = { href: "" };
-
-      await act(async () => {
-        render(<WorkflowsPage />);
-      });
-
-      const input = screen.getByPlaceholderText("Enter workflow or run ID...");
-
-      await user.type(input, "123");
-
-      await waitFor(() => {
-        expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
-      });
-
-      // Wait for version selector to appear and select version
-      const versionSelect = await screen.findByTestId("version-select");
-      await user.selectOptions(versionSelect, "v1");
-
-      // Wait for submit button to appear
-      const submitButton = await screen.findByText("Load Workflow");
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(window.location.href).toBe("/w/test-workspace/task/task-123");
-      });
-    }, 10000);
-
-    it("should create task with correct data", async () => {
-      const user = userEvent.setup();
-      const mockFetch = vi.fn();
-
-      // The debounce fires after the submit click, so run-check is not called before handleSubmit.
-      // Create task
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { id: "task-123" } }),
-      });
-      // Save artifact
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
-      // Dual-write WorkflowTask row
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
-
-      global.fetch = mockFetch;
-
-      mockUseWorkflowNodes.mockReturnValue({
-        workflows: mockWorkflows,
-        isLoading: false,
-        error: null,
-        refetch: vi.fn(),
-      });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: mockVersions,
-        isLoading: false,
-        error: null,
-      });
-
-      delete (window as any).location;
-      (window as any).location = { href: "" };
-
-      await act(async () => {
-        render(<WorkflowsPage />);
-      });
-
-      const input = screen.getByPlaceholderText("Enter workflow or run ID...");
-
-      await user.type(input, "123");
-      await waitFor(() => {
-        expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
-      });
-
-      // Wait for version selector to appear and select version
-      const versionSelect = await screen.findByTestId("version-select");
-      await user.selectOptions(versionSelect, "v1");
-
-      // Wait for submit button to appear
-      const submitButton = await screen.findByText("Load Workflow");
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          "/api/tasks",
-          expect.objectContaining({
-            method: "POST",
-            body: expect.stringContaining("Test Workflow 1"),
-          })
-        );
-      });
-    }, 10000);
-
-    it("should create workflow artifact with proper structure", async () => {
-      const user = userEvent.setup();
-      const mockFetch = vi.fn();
-
-      // The debounce fires after the submit click, so run-check is not called before handleSubmit.
-      // Create task
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { id: "task-123" } }),
-      });
-      // Save artifact
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
-      // Dual-write WorkflowTask row
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
-
-      global.fetch = mockFetch;
-
-      mockUseWorkflowNodes.mockReturnValue({
-        workflows: mockWorkflows,
-        isLoading: false,
-        error: null,
-        refetch: vi.fn(),
-      });
-      mockUseWorkflowVersions.mockReturnValue({
-        versions: mockVersions,
-        isLoading: false,
-        error: null,
-      });
-
-      delete (window as any).location;
-      (window as any).location = { href: "" };
-
-      await act(async () => {
-        render(<WorkflowsPage />);
-      });
-
-      const input = screen.getByPlaceholderText("Enter workflow or run ID...");
-
-      await user.type(input, "123");
-      await waitFor(() => {
-        expect(screen.getByText("Test Workflow 1")).toBeInTheDocument();
-      });
-
-      // Wait for version selector to appear and select version
-      const versionSelect = await screen.findByTestId("version-select");
-      await user.selectOptions(versionSelect, "v1");
-
-      // Wait for submit button to appear
-      const submitButton = await screen.findByText("Load Workflow");
-      await user.click(submitButton);
-
-      await waitFor(() => {
-        const artifactCall = mockFetch.mock.calls.find(
-          call => call[0] === "/api/tasks/task-123/messages/save"
-        );
-        expect(artifactCall).toBeDefined();
-
-        const body = JSON.parse(artifactCall![1].body);
-        expect(body.artifacts).toHaveLength(1);
-        expect(body.artifacts[0].type).toBe("WORKFLOW");
-        expect(body.artifacts[0].content).toEqual(
-          expect.objectContaining({
-            workflowId: 123,
-            workflowName: "Test Workflow 1",
-            workflowVersionId: "v1",
-            workflowRefId: "ref_v1",
-          })
-        );
-      });
-    }, 10000);
   });
 
   describe("Recent Workflows", () => {
@@ -1091,7 +752,7 @@ describe("WorkflowsPage", () => {
       expect(screen.getByText("#1003")).toBeInTheDocument();
     });
 
-    it("clicking a recent workflow row sets the workflow ID input value", async () => {
+    it("clicking a recent workflow row navigates to the workflow inspector", async () => {
       const user = userEvent.setup();
 
       mockUseRecentWorkflows.mockReturnValue({
@@ -1101,17 +762,14 @@ describe("WorkflowsPage", () => {
       });
 
       render(<WorkflowsPage />);
-
-      const input = screen.getByPlaceholderText("Enter workflow or run ID...");
-      expect(input).toHaveValue("");
 
       const row = screen.getByText("Recent Workflow Alpha").closest("button")!;
       await user.click(row);
 
-      expect(input).toHaveValue("1001");
+      expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/workflows/1001");
     });
 
-    it("clicking a different row updates the input to that workflow's ID", async () => {
+    it("clicking a different row navigates to that workflow's inspector", async () => {
       const user = userEvent.setup();
 
       mockUseRecentWorkflows.mockReturnValue({
@@ -1122,13 +780,11 @@ describe("WorkflowsPage", () => {
 
       render(<WorkflowsPage />);
 
-      const input = screen.getByPlaceholderText("Enter workflow or run ID...");
-
       await user.click(screen.getByText("Recent Workflow Beta").closest("button")!);
-      expect(input).toHaveValue("1002");
+      expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/workflows/1002");
 
       await user.click(screen.getByText("Recent Workflow Gamma").closest("button")!);
-      expect(input).toHaveValue("1003");
+      expect(mockPush).toHaveBeenCalledWith("/w/test-workspace/workflows/1003");
     });
 
     it("does not render skeleton or empty state when populated", () => {
