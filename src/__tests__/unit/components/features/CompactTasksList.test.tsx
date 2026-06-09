@@ -1049,6 +1049,90 @@ describe("CompactTasksList", () => {
     });
   });
 
+  describe("Unmark as Done action menu item", () => {
+    test("shows 'Unmark as Done' for DONE task", () => {
+      const task = createMockTask({ id: "task-done", status: "DONE" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("action-unmark-as-done")).toBeInTheDocument();
+    });
+
+    test("does NOT show 'Unmark as Done' for TODO task", () => {
+      const task = createMockTask({ id: "task-todo", status: "TODO" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("action-unmark-as-done")).not.toBeInTheDocument();
+    });
+
+    test("does NOT show 'Unmark as Done' for IN_PROGRESS task", () => {
+      const task = createMockTask({ id: "task-ip", status: "IN_PROGRESS" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("action-unmark-as-done")).not.toBeInTheDocument();
+    });
+
+    test("calls PATCH /api/tasks/:id with { status: 'TODO' } on click", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
+        if (typeof url === "string" && url.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+      });
+      const task = createMockTask({ id: "task-done-click", status: "DONE" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      screen.getByTestId("action-unmark-as-done").click();
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/tasks/task-done-click",
+          expect.objectContaining({
+            method: "PATCH",
+            body: JSON.stringify({ status: "TODO" }),
+          })
+        );
+      });
+
+      fetchSpy.mockRestore();
+    });
+  });
+
   describe("Repo SelectTrigger truncation", () => {
     test("SelectTrigger inner div has overflow-hidden to prevent long repo names wrapping", () => {
       const task = createMockTask({
