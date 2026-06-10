@@ -69,7 +69,6 @@ export function getQuickAskPrefixMessages(
   const baseSystem = getQuickAskSystemPrompt(repoUrls, description, members, currentUserGithubUsername);
   const systemContent = orgContext
     ? baseSystem +
-      getConnectionPromptSuffix() +
       getCanvasPromptSuffix() +
       getCanvasScopeHint(orgContext.scope)
     : baseSystem;
@@ -259,7 +258,7 @@ Several categories are **projected from the database** rather than authored. The
 - \`initiative:<cuid>\` — Initiatives. From the \`Initiative\` table; appear on the org root canvas.
 - \`milestone:<cuid>\` — Milestones. From the \`Milestone\` table; appear on an initiative's sub-canvas, laid out left-to-right by sequence. **Not drillable** — milestones are leaf cards, no sub-canvas behind them.
 - \`feature:<cuid>\` — Features. From the \`Feature\` table; appear on the workspace sub-canvas (loose) or the initiative sub-canvas (anchored). When a feature is attached to a milestone, the projector emits a synthetic edge from the feature card to the milestone card on the same initiative canvas.
-- \`research:<cuid>\` — Research docs. From the \`Research\` table; appear on the root canvas (org-wide research) or on an initiative sub-canvas (initiative-scoped research). Created exclusively via \`save_research\` / \`update_research\` (see Research Tools below). The card label is the user's research topic; clicking opens the markdown writeup in the right panel.
+- \`research:<cuid>\` — Research docs. From the \`Research\` table; appear on the root canvas (org-wide research) or on an initiative sub-canvas (initiative-scoped research). Created via \`dispatch_research\` (background sub-agent) or inline \`save_research\` / \`update_research\` (see Research Tools below). The card label is the user's research topic; clicking opens the markdown writeup in the right panel.
 
 Rules for projected nodes:
 
@@ -439,14 +438,20 @@ Never ask the user for layout coordinates. Pick them yourself following the laye
 
 ### Research Tools
 
-You have four tools for **Research** documents \u2014 markdown writeups produced from web search, projected onto the canvas as \`research:<id>\` nodes:
+You have five tools for **Research** documents \u2014 markdown writeups produced from web search, projected onto the canvas as \`research:<id>\` nodes:
 
-- \`save_research\` \u2014 Create a Research row. Required: \`slug\` (short kebab-case), \`topic\` (the user's original wording, used as the on-canvas card label \u2014 keep it verbatim), \`title\` (a polished title for the right-panel viewer), \`summary\` (one sentence describing what the research will cover). Optional: \`initiativeId\` (when the user is on an initiative sub-canvas, scope the research to that initiative; omit for org-wide research). Returns \`{ slug, id }\`.
-- \`update_research\` \u2014 Fill in the markdown writeup once you've finished researching. Required: \`slug\` (the one returned from \`save_research\`), \`content\` (full markdown). **Note:** this is full-replace, not append. To extend an existing doc, call \`read_research\` first and send back the combined markdown.
+- \`dispatch_research\` \u2014 **Delegate a deep research task to a background sub-agent and return immediately.** Use this for requests that require multiple web searches, synthesis across sources, or a saved writeup (e.g. competitive analysis, technical deep-dives, multi-source comparisons). The sub-agent runs out-of-band and fans its result back into this conversation as its own card when done. Required: \`slug\`, \`topic\`, \`title\`, \`summary\`, \`prompt\` (detailed instructions for the sub-agent). Optional: \`initiativeId\`. **Returns immediately** \u2014 do not wait for it; continue your turn. Tell the user: *"I've dispatched a research sub-agent on [topic]; it'll appear in this chat when ready."*
+- \`save_research\` \u2014 Create a Research row immediately (inline path). Use for quick factual lookups where a background run would be overkill. Required: \`slug\`, \`topic\`, \`title\`, \`summary\`. Optional: \`initiativeId\`. Returns \`{ slug, id }\`.
+- \`update_research\` \u2014 Fill in the markdown writeup once you've finished researching (inline path only). Required: \`slug\`, \`content\` (full markdown). **Note:** full-replace, not append. To extend an existing doc, call \`read_research\` first and send back the combined markdown.
 - \`list_research\` \u2014 Enumerate research docs in this org (optionally filtered by \`initiativeId\`). Use to check what's already been researched before kicking off something new.
 - \`read_research\` \u2014 Pull a research doc's full markdown body by slug. Reach for this when the user asks about prior research, when you want to cite/extend an existing doc, or before \`update_research\` so you can preserve what's there.
 
-**The two-tool sequence is critical:** \`save_research\` makes the research node appear on the canvas immediately, so the user sees their research kicking off live; the spinner badge stays on the card while you run \`web_search\` and write the doc; \`update_research\` lands the markdown and the spinner stops. **Never** call \`update_research\` without first calling \`save_research\` \u2014 the row won't exist.
+**Choosing between \`dispatch_research\` (background) and inline \`save_research\` + \`update_research\`:**
+
+Use \`dispatch_research\` for: competitive analysis, technical deep-dives, multi-source synthesis, anything requiring 3+ web searches.
+Use inline for: quick factual lookup, single-topic check, user waiting for immediate answer, or when the user kicked off via \`+ Research\` menu.
+
+**The inline two-tool sequence is critical:** \`save_research\` makes the research node appear on the canvas immediately, so the user sees their research kicking off live; the spinner badge stays on the card while you run \`web_search\` and write the doc; \`update_research\` lands the markdown and the spinner stops. **Never** call \`update_research\` without first calling \`save_research\` \u2014 the row won't exist.
 
 When to reach for these:
 
@@ -454,40 +459,9 @@ When to reach for these:
 - You decide unprompted that external research would meaningfully improve your answer to the user's question (e.g. they're asking about an external service, library, or industry pattern that you don't have authoritative information about). Pick a topic that reads like the user might have asked for it.
 - The user is on an initiative sub-canvas (\`currentCanvasRef: "initiative:<id>"\`) \u2014 pass that id as \`initiativeId\` so the research lands on the initiative canvas, not on root.
 
-**Workflow:** \`save_research\` \u2192 \`web_search\` (one or more times) \u2192 synthesize the findings into a markdown writeup \u2192 \`update_research\`. Don't await the user's permission between steps; just execute the sequence. Cite sources inline in the markdown.
+**Inline workflow:** \`save_research\` \u2192 \`web_search\` (one or more times) \u2192 synthesize the findings into a markdown writeup \u2192 \`update_research\`. Don't await the user's permission between steps; just execute the sequence. Cite sources inline in the markdown.
 
-**Linking to a research writeup in chat.** When you reference an existing research doc in a chat reply (e.g. "I already researched that \u2014 [see the writeup](?r=<slug>)"), use a **relative** markdown link of the form \`[anchor text](?r=<slug>)\`. The slug is the same one you passed to \`save_research\` / got back from \`list_research\`. Clicking the link opens the writeup in the right-panel viewer without reloading the page. **Never** invent a path-based URL like \`/org/<login>/<slug>\` or \`/research/<slug>\` \u2014 those routes don't exist; the only valid link form is the \`?r=<slug>\` query-string deep link. Most of the time you don't need to link at all \u2014 the user is sitting next to the canvas and can click the research card directly. Only link when you're referring back to a *prior* research doc the user might not have in view.
-
-**Don't use Research for code/architecture analysis** of the org's own workspaces \u2014 that's what \`learn_concept\` and \`<workspace>__repo_agent\` are for. Research is exclusively for **external** information that requires web search to discover.
-
-The canvas and the Connections sidebar are separate. A **connection** is a written integration document (diagram, architecture, OpenAPI). A **canvas node** is a visual card on the shared map. Connections live in the sidebar; canvas nodes float on the background.`;
-}
-
-export function getConnectionPromptSuffix(): string {
-  return `
-
-## Connection Tools
-You also have access to tools for creating **Connections** — documents that describe how two or more systems/workspaces work together:
-- \`save_connection\` — Create a new Connection with a slug, name, and short overview. Returns the slug you must use for subsequent updates.
-- \`update_connection\` — Update an existing Connection (by slug) with a diagram, architecture write-up, and/or OpenAPI spec. Call once per field. Each field is independently overwritten on update — to extend an existing diagram/architecture/spec rather than replace it, call \`read_connection\` first.
-- \`list_connections\` — Enumerate Connection docs in this org with presence flags for each body field. Use to check what already exists before creating a new one.
-- \`read_connection\` — Pull a Connection's full body (diagram + architecture + openApiSpec) by slug. Reach for this when the user asks to extend, cite, or reference an existing integration doc. Edges on the canvas carry the linked slug in \`edge.customData.connectionId\` — use \`read_canvas\` to discover the linkage and \`read_connection\` to fetch the doc.
-
-The slug should be a short kebab-case identifier describing the systems involved, e.g. \`sphinx-hive\`, \`frontend-backend-api\`, \`payments-checkout\`.
-
-**Linking to a connection doc in chat.** Same rule as research links: when you reference an existing connection in a reply, use a **relative** markdown link of the form \`[anchor text](?c=<slug>)\`. Clicking opens the connection viewer in the right panel without reloading. Don't invent path-based URLs (\`/org/...\`, \`/connections/...\`) \u2014 \`?c=<slug>\` is the only valid link form. Skip the link entirely if the user is already viewing the connection or it's clearly visible on the current canvas.
-
-When a user asks you to create a connection between systems:
-1. **Research first** — immediately use list_concepts, learn_concept, and repo_agent across the involved workspaces to understand how they integrate. Do NOT ask broad clarifying questions before researching. Only ask targeted questions after you've done initial research and found genuine ambiguity.
-2. **Overview** — write a brief overview (1-2 sentences and/or a few bullet points) of the connection, then call save_connection with a slug, name, and the overview
-3. **Diagram** — generate a simple, high-level mermaid flowchart showing how the pieces interact. Keep it minimal! Follow the mermaid style guide below. Call update_connection with the slug and diagram
-4. **Architecture** — write a high-level architecture summary. Focus on cross-cutting concerns: auth flow, communication protocols, data ownership, error handling patterns. Do NOT go deep into individual endpoints (that's what the API docs are for). Keep it concise. Call update_connection with the slug and architecture
-5. **API Docs** — generate an OpenAPI spec documenting the actual endpoints/procedures involved in the integration. Call update_connection with the slug and openApiSpec
-6. Each step should be visible to the user — stream your text before saving, explain what you're generating next
-
-## Mermaid Diagram Style Guide
-
-When generating mermaid diagrams, follow these rules:
+**Linking to a research writeup in chat.** When you reference an existing research doc in a chat reply (e.g. "I already researched that \u2014 [see the writeup](?r=<slug>)"), use a **relative** markdown link of the form \`[anchor text](?r=<slug>)\`. The slug is the same one you passed to \`save_research\` / \`dispatch_research\` / got back from \`list_research\`. Clicking the link opens the writeup in the right-panel viewer without reloading the page. **Never** invent a path-based URL like \`/org/<login>/<slug>\` or \`/research/<slug>\` \u2014 those routes don't exist; the only valid link form is the \`?r=<slug>\` query-string deep link. Most of the time you don't need to link at all \u2014 the user is sitting next to the canvas and can click the research card directly. Only link when you're referring back to a *prior* research doc the user might not have in view.
 
 ### Structure
 - Use \`graph TD\` (top-down) for system/architecture diagrams
@@ -651,7 +625,6 @@ export function getMultiWorkspacePrefixMessages(
   const currentUserGithubUsername = workspaces[0]?.currentUserGithubUsername;
   const systemPrompt = orgId
     ? getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername) +
-      getConnectionPromptSuffix() +
       getCanvasPromptSuffix() +
       getCanvasScopeHint(scope)
     : getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername);

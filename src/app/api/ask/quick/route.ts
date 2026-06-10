@@ -28,6 +28,7 @@ import {
   runCanvasAgent,
   extractConceptIdsFromStep,
 } from "@/lib/ai/runCanvasAgent";
+import type { DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import { swarmFetch } from "@/lib/ai/concepts";
 
 /**
@@ -310,6 +311,10 @@ export async function POST(request: NextRequest) {
       // can fetch their provenance from stakgraph after the stream
       // finishes. Populated via the onStepFinish hook below.
       const learnedConceptIds = new Set<string>();
+      // Collector for dispatch_research intents. Populated by the
+      // internally-wired dispatch_research tool; consumed in after() to
+      // schedule one research sub-agent worker per dispatched intent.
+      const dispatchedResearch: DispatchedResearchIntent[] = [];
 
       const {
         result,
@@ -353,6 +358,7 @@ export async function POST(request: NextRequest) {
           // The HTTP chat is a live UI surface; emit HIGHLIGHT_NODES so
           // open clients animate the researched node.
           silentPusher: false,
+          dispatchedResearch,
           hooks: {
             onStepFinish: (sf) => {
               const conceptIds = extractConceptIdsFromStep(sf.content);
@@ -479,6 +485,21 @@ export async function POST(request: NextRequest) {
           console.error("❌ Error generating provenance:", error);
         }
       });
+
+      // Schedule research sub-agent workers for each dispatched intent.
+      // Each worker runs off the stream's critical path via after() so
+      // the HTTP response is already returned before any web searches run.
+      for (const intent of dispatchedResearch) {
+        after(async () => {
+          const { runResearchSubAgent } = await import(
+            "@/services/canvas-research-worker"
+          );
+          await runResearchSubAgent({
+            ...intent,
+            workspaceSlugs: slugs,
+          });
+        });
+      }
 
       return result.toUIMessageStreamResponse({
         // By default the AI SDK masks mid-stream errors as the literal

@@ -723,6 +723,8 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   <PRStatusBadge
                     url={prArtifact.content.url}
                     status={prArtifact.content.status}
+                    ciStatus={prArtifact.content.progress?.ciStatus}
+                    ciSummary={prArtifact.content.progress?.ciSummary}
                   />
                 )}
                 {task.publishArtifact && (
