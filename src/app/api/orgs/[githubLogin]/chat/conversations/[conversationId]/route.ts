@@ -170,8 +170,10 @@ export async function PUT(
 
     // SELECT FOR UPDATE serializes concurrent appends (same pattern as workspace route)
     const updated = await db.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ messages: unknown; title: string | null }[]>`
-        SELECT messages, title FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+      const locked = await tx.$queryRaw<
+        { messages: unknown; title: string | null; settings: unknown }[]
+      >`
+        SELECT messages, title, settings FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
       `;
       if (locked.length === 0) {
         throw new Error("Conversation disappeared mid-transaction");
@@ -208,7 +210,18 @@ export async function PUT(
             ? { title: healedTitle }
             : {}),
           ...(body.source && { source: body.source }),
-          ...(body.settings !== undefined && { settings: body.settings as any }),
+          // MERGE settings instead of overwriting. The client autosave
+          // sends `settings: { extraWorkspaceSlugs }` on every PUT; a
+          // blind overwrite would wipe server-written keys like
+          // `promptPrefix` (the cached agent prompt prefix written by
+          // `/api/ask/quick`). Spreading the locked row's settings first
+          // preserves those while still applying the client's keys.
+          ...(body.settings !== undefined && {
+            settings: {
+              ...((locked[0].settings as Record<string, unknown> | null) ?? {}),
+              ...(body.settings as Record<string, unknown>),
+            } as any,
+          }),
           // Only the owner can change the shared-room flag (typically the
           // Share button turning it on). Joiners can append but can't
           // un-share someone else's conversation.
