@@ -39,7 +39,11 @@ export function sanitizeTasks<T extends { agentPassword?: string | null; agentUr
 interface PrArtifactContent {
   url: string;
   status: "IN_PROGRESS" | "DONE" | "CANCELLED";
-  [key: string]: Prisma.JsonValue;
+  progress?: {
+    ciStatus?: "pending" | "success" | "failure";
+    ciSummary?: string;
+    state?: string;
+  };
 }
 
 interface TaskPrContext {
@@ -190,7 +194,7 @@ export async function extractPrArtifact(
     if (message.artifacts && message.artifacts.length > 0) {
       const prArt = message.artifacts.find((a) => a.type === "PULL_REQUEST");
       if (prArt && prArt.content) {
-        const content = prArt.content as PrArtifactContent;
+        const content = prArt.content as unknown as PrArtifactContent;
         const prUrl = content.url;
 
         // Skip GitHub API check if status is already DONE (merged PRs can't change)
@@ -229,7 +233,7 @@ export async function extractPrArtifact(
                   // Update artifact content in database
                   await db.artifact.update({
                     where: { id: prArt.id },
-                    data: { content: content },
+                    data: { content: content as unknown as import("@prisma/client").Prisma.InputJsonValue },
                   });
 
                   if (newStatus === "DONE") {

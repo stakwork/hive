@@ -603,6 +603,10 @@ export type PrArtifact = {
   content: {
     url: string;
     status: "IN_PROGRESS" | "DONE" | "CANCELLED";
+    progress?: {
+      ciStatus?: "pending" | "success" | "failure";
+      ciSummary?: string;
+    };
   };
 } | null;
 
