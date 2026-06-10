@@ -181,9 +181,11 @@ function applyFilteredHistory(dbHistory: HistoryMsg[]): HistoryMsg[] {
       return msg.artifacts.length > 0;
     }
     if (msg.role === "USER") {
-      const next = dbHistory[idx + 1];
-      if (!next || next.role !== "ASSISTANT") return false;
-      return next.artifacts.length > 0;
+      const nextAssistant = dbHistory
+        .slice(idx + 1)
+        .find((m) => m.role === "ASSISTANT");
+      if (!nextAssistant) return false;
+      return nextAssistant.artifacts.length > 0;
     }
     return true;
   });
@@ -200,6 +202,62 @@ describe("filteredHistory logic", () => {
 
     const filtered = applyFilteredHistory(history);
     expect(filtered).toHaveLength(4);
+    expect(filtered[0].role).toBe("USER");
+    expect(filtered[1].role).toBe("ASSISTANT");
+    expect(filtered[2].role).toBe("USER");
+    expect(filtered[3].role).toBe("ASSISTANT");
+  });
+
+  test("regression — USER messages present in multi-turn happy path", () => {
+    const history: HistoryMsg[] = [
+      { role: "USER", artifacts: [] },
+      { role: "ASSISTANT", artifacts: [{ type: "PLAN" }] },
+      { role: "USER", artifacts: [] },
+      { role: "ASSISTANT", artifacts: [{ type: "PLAN" }] },
+      { role: "USER", artifacts: [] },
+      { role: "ASSISTANT", artifacts: [{ type: "PLAN" }] },
+    ];
+
+    const filtered = applyFilteredHistory(history);
+    expect(filtered).toHaveLength(6);
+    const userMessages = filtered.filter((m) => m.role === "USER");
+    const assistantMessages = filtered.filter((m) => m.role === "ASSISTANT");
+    expect(userMessages).toHaveLength(3);
+    expect(assistantMessages).toHaveLength(3);
+  });
+
+  test("consecutive ASSISTANT messages — first USER excluded (next ASSISTANT has no artifact), second USER included", () => {
+    // [USER, ASSISTANT(no artifact), ASSISTANT(PLAN), USER, ASSISTANT(PLAN)]
+    const history: HistoryMsg[] = [
+      { role: "USER", artifacts: [] },
+      { role: "ASSISTANT", artifacts: [] }, // no artifact — first USER's next ASSISTANT
+      { role: "ASSISTANT", artifacts: [{ type: "PLAN" }] },
+      { role: "USER", artifacts: [] },
+      { role: "ASSISTANT", artifacts: [{ type: "PLAN" }] },
+    ];
+
+    const filtered = applyFilteredHistory(history);
+    // First USER dropped (its next ASSISTANT has no artifact)
+    // Second ASSISTANT(PLAN) kept, second USER kept, third ASSISTANT kept
+    expect(filtered).toHaveLength(3);
+    expect(filtered[0].role).toBe("ASSISTANT");
+    expect(filtered[0].artifacts).toHaveLength(1);
+    expect(filtered[1].role).toBe("USER");
+    expect(filtered[2].role).toBe("ASSISTANT");
+  });
+
+  test("leading ASSISTANT before first USER — leading ASSISTANT kept, USER kept", () => {
+    const history: HistoryMsg[] = [
+      { role: "ASSISTANT", artifacts: [{ type: "PLAN" }] },
+      { role: "USER", artifacts: [] },
+      { role: "ASSISTANT", artifacts: [{ type: "PLAN" }] },
+    ];
+
+    const filtered = applyFilteredHistory(history);
+    expect(filtered).toHaveLength(3);
+    expect(filtered[0].role).toBe("ASSISTANT");
+    expect(filtered[1].role).toBe("USER");
+    expect(filtered[2].role).toBe("ASSISTANT");
   });
 
   test("first message fails → retry: filteredHistory is [], isFirstMessage is true", () => {
@@ -249,19 +307,19 @@ describe("filteredHistory logic", () => {
     expect(filtered[filtered.length - 1].role).toBe("ASSISTANT");
   });
 
-  test("USER followed by another USER (no ASSISTANT) is dropped", () => {
+  test("consecutive USER messages — both kept when the following ASSISTANT has a PLAN artifact", () => {
     const history: HistoryMsg[] = [
       { role: "USER", artifacts: [] },
-      { role: "USER", artifacts: [] }, // next is not ASSISTANT
+      { role: "USER", artifacts: [] }, // next ASSISTANT (found via slice.find) has PLAN
       { role: "ASSISTANT", artifacts: [{ type: "PLAN" }] },
     ];
 
     const filtered = applyFilteredHistory(history);
-    // First USER dropped (next is USER, not ASSISTANT)
-    // Second USER kept (next is ASSISTANT with PLAN)
-    expect(filtered).toHaveLength(2);
+    // Both USERs kept — each finds the ASSISTANT ahead with a PLAN artifact
+    expect(filtered).toHaveLength(3);
     expect(filtered[0].role).toBe("USER");
-    expect(filtered[1].role).toBe("ASSISTANT");
+    expect(filtered[1].role).toBe("USER");
+    expect(filtered[2].role).toBe("ASSISTANT");
   });
 
   test("empty history returns empty, isFirstMessage is true", () => {
