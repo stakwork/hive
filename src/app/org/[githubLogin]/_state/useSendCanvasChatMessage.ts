@@ -28,6 +28,7 @@
 
 import { useCallback } from "react";
 import { useStreamProcessor } from "@/lib/streaming";
+import type { StreamTimelineItem } from "@/types/streaming";
 import type {
   ApprovalIntent,
   ApprovalResult,
@@ -189,6 +190,12 @@ export function useSendCanvasChatMessage() {
           const timelineMessages: CanvasChatMessage[] = [];
           let currentText = "";
           let currentToolCalls: ToolCall[] = [];
+          // Raw stream timeline items for the current tool-call run, kept
+          // alongside `currentToolCalls` so the tool message carries the
+          // rich `StreamToolCall` data (`inputText`, typed status) that
+          // `<StreamingMessage>` renders. `toolCalls` stays the lossy
+          // model/sub-agent projection; this is the display layer.
+          let currentToolItems: StreamTimelineItem[] = [];
           let msgCounter = 0;
 
           for (const item of timeline) {
@@ -258,6 +265,7 @@ export function useSendCanvasChatMessage() {
                     ? "Tool call failed"
                     : undefined,
               });
+              currentToolItems.push(item);
             }
           }
 
@@ -268,8 +276,10 @@ export function useSendCanvasChatMessage() {
               content: "",
               timestamp: new Date(),
               toolCalls: currentToolCalls,
+              timeline: currentToolItems,
             });
             currentToolCalls = [];
+            currentToolItems = [];
           }
 
           if (currentText.trim()) {
@@ -295,6 +305,23 @@ export function useSendCanvasChatMessage() {
                 break;
               }
             }
+          }
+
+          // Surface a mid-stream error part. The server forwards the
+          // real message via `toUIMessageStreamResponse({ onError })`,
+          // and `useStreamProcessor` exposes it as `updatedMessage.error`.
+          // Without this the error part is dropped (the timeline rebuild
+          // above ignores it), so a stream that errored *after* the 200
+          // headers — e.g. an Anthropic request rejection — would render
+          // nothing at all. Append it as a trailing assistant message so
+          // it shows inline after whatever partial content streamed.
+          if (updatedMessage.error) {
+            timelineMessages.push({
+              id: `${messageId}-error`,
+              role: "assistant",
+              content: updatedMessage.error,
+              timestamp: new Date(),
+            });
           }
 
           const lastMsg = timelineMessages[timelineMessages.length - 1];

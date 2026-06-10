@@ -62,6 +62,7 @@ import type {
   RejectionIntent,
 } from "@/lib/proposals/types";
 import type { ClarifyingQuestion } from "@/types/stakwork";
+import type { StreamTimelineItem } from "@/types/streaming";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -146,6 +147,21 @@ export interface CanvasChatMessage {
   content: string;
   timestamp: Date;
   toolCalls?: ToolCall[];
+  /**
+   * Interleaved render timeline (text / reasoning / tool-call items) for
+   * an assistant turn, in the AI-SDK `StreamToolCall` shape — i.e. richer
+   * than `toolCalls` (carries `inputText` + the typed `ToolCallStatus`).
+   * `SidebarChat` renders this via `<StreamingMessage>` so tool calls show
+   * as expandable cards with names / args / outputs, in order with text.
+   *
+   * Populated by `useSendCanvasChatMessage` for streamed tool-call rows
+   * and round-trips through `SharedConversation.messages` JSON (so reload,
+   * share, and live-sync all keep the rich rendering). `toolCalls` stays
+   * the source of truth for the model context (`toModelMessages`) and the
+   * sub-agent projection (`getSubAgentRunsFromMessages`); `timeline` is the
+   * display layer only.
+   */
+  timeline?: StreamTimelineItem[];
   /**
    * Forward-compat: ids referencing entries in `state.artifacts`.
    * Empty in PR 1; populated when the first artifact type ships.
