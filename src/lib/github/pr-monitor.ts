@@ -35,6 +35,11 @@ const PR_FIX_MAX_ATTEMPTS = parseInt(process.env.PR_FIX_MAX_ATTEMPTS || "6", 10)
 const PR_FIX_COOLDOWN_MS = parseInt(process.env.PR_FIX_COOLDOWN_MS || "600000", 10); // 10 minutes
 const PR_FIX_STALE_TIMEOUT_MS = parseInt(process.env.PR_FIX_STALE_TIMEOUT_MS || "1800000", 10); // 30 minutes - timeout for stuck 'in_progress' state
 
+// Stop monitoring PRs whose artifact is older than this. Stale/abandoned PRs
+// (perpetual conflicts or CI failures) otherwise occupy the per-run slot limit
+// forever and starve newer PRs from other workspaces. 0 disables the cutoff.
+const PR_MONITOR_MAX_AGE_DAYS = parseInt(process.env.PR_MONITOR_MAX_AGE_DAYS || "30", 10);
+
 /**
  * Build the prompt for the agent to fix a PR issue
  */
@@ -541,6 +546,14 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
   //   janitor_configs (workspace_id, pr_monitor_enabled, etc.)
   // Use DISTINCT ON to get only one artifact per unique PR URL
   // This prevents duplicate artifacts for the same PR from consuming the limit
+
+  // Ignore PRs older than the configured cutoff so stale/abandoned PRs don't
+  // permanently consume the per-run limit. Use a sentinel epoch when disabled.
+  const ageCutoff =
+    PR_MONITOR_MAX_AGE_DAYS > 0
+      ? new Date(Date.now() - PR_MONITOR_MAX_AGE_DAYS * 24 * 60 * 60 * 1000)
+      : new Date(0);
+
   const artifacts = await db.$queryRaw<
     Array<{
       id: string;
@@ -549,6 +562,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       pod_id: string | null;
       workspace_id: string;
       owner_id: string;
+      last_checked_at: string | null;
       pr_monitor_enabled: boolean;
       pr_conflict_fix_enabled: boolean;
       pr_ci_failure_fix_enabled: boolean;
@@ -556,51 +570,64 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       pr_use_rebase_for_updates: boolean;
     }>
   >`
-    SELECT DISTINCT ON (a.content->>'url')
-      a.id,
-      a.content,
-      t.id as task_id,
-      t.pod_id,
-      t.workspace_id,
-      w.owner_id,
-      COALESCE(jc.pr_monitor_enabled, false) as pr_monitor_enabled,
-      COALESCE(jc.pr_conflict_fix_enabled, false) as pr_conflict_fix_enabled,
-      COALESCE(jc.pr_ci_failure_fix_enabled, false) as pr_ci_failure_fix_enabled,
-      COALESCE(jc.pr_out_of_date_fix_enabled, false) as pr_out_of_date_fix_enabled,
-      COALESCE(jc.pr_use_rebase_for_updates, false) as pr_use_rebase_for_updates
-    FROM artifacts a
-    JOIN chat_messages m ON a.message_id = m.id
-    JOIN tasks t ON m.task_id = t.id
-    JOIN workspaces w ON t.workspace_id = w.id
-    LEFT JOIN janitor_configs jc ON jc.workspace_id = w.id
-    WHERE 
-      -- Indexed filters first (fast)
-      a.type = 'PULL_REQUEST'
-      AND t.deleted = false
-      AND t.archived = false
-      AND t.mode != 'agent'
-      -- Only monitor workspaces with PR monitoring enabled
-      AND COALESCE(jc.pr_monitor_enabled, false) = true
-      -- Simple JSON checks (moderate)
-      AND a.content->>'url' IS NOT NULL
-      AND a.content->>'url' LIKE 'https://github.com/%'
-      AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
-      -- Skip 'gave_up' permanently, but allow 'in_progress' to be re-checked after cooldown
-      -- This prevents PRs from getting stuck if a fix attempt never completes
-      AND COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'gave_up'
-      AND (
-        COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'in_progress'
-        OR a.content->'progress'->'resolution'->>'lastAttemptAt' IS NULL
-        OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - INTERVAL '30 minutes'
-      )
-      -- Cooldown logic: only "healthy" PRs (CI passed, no issues) have 1-hour cooldown
-      -- All other states (checking, conflict, ci_failure) are re-checked every cron run
-      AND (
-        COALESCE(a.content->'progress'->>'state', '') != 'healthy'
-        OR a.content->'progress'->>'lastCheckedAt' IS NULL
-        OR (a.content->'progress'->>'lastCheckedAt')::timestamptz < NOW() - INTERVAL '1 hour'
-      )
-    ORDER BY a.content->>'url', a.created_at DESC
+    -- Inner query dedupes to one artifact per PR URL (DISTINCT ON requires url
+    -- to lead its ORDER BY). The outer query then applies the fair rotation +
+    -- limit, which the DISTINCT ON ordering can't express directly.
+    SELECT * FROM (
+      SELECT DISTINCT ON (a.content->>'url')
+        a.id,
+        a.content,
+        t.id as task_id,
+        t.pod_id,
+        t.workspace_id,
+        w.owner_id,
+        a.content->'progress'->>'lastCheckedAt' as last_checked_at,
+        COALESCE(jc.pr_monitor_enabled, false) as pr_monitor_enabled,
+        COALESCE(jc.pr_conflict_fix_enabled, false) as pr_conflict_fix_enabled,
+        COALESCE(jc.pr_ci_failure_fix_enabled, false) as pr_ci_failure_fix_enabled,
+        COALESCE(jc.pr_out_of_date_fix_enabled, false) as pr_out_of_date_fix_enabled,
+        COALESCE(jc.pr_use_rebase_for_updates, false) as pr_use_rebase_for_updates
+      FROM artifacts a
+      JOIN chat_messages m ON a.message_id = m.id
+      JOIN tasks t ON m.task_id = t.id
+      JOIN workspaces w ON t.workspace_id = w.id
+      LEFT JOIN janitor_configs jc ON jc.workspace_id = w.id
+      WHERE 
+        -- Indexed filters first (fast)
+        a.type = 'PULL_REQUEST'
+        AND t.deleted = false
+        AND t.archived = false
+        AND t.mode != 'agent'
+        -- Skip stale/abandoned PRs so they don't permanently consume the limit
+        AND a.created_at > ${ageCutoff}
+        -- Only monitor workspaces with PR monitoring enabled
+        AND COALESCE(jc.pr_monitor_enabled, false) = true
+        -- Simple JSON checks (moderate)
+        AND a.content->>'url' IS NOT NULL
+        AND a.content->>'url' LIKE 'https://github.com/%'
+        AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
+        -- Skip 'gave_up' permanently, but allow 'in_progress' to be re-checked after cooldown
+        -- This prevents PRs from getting stuck if a fix attempt never completes
+        AND COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'gave_up'
+        AND (
+          COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'in_progress'
+          OR a.content->'progress'->'resolution'->>'lastAttemptAt' IS NULL
+          OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - INTERVAL '30 minutes'
+        )
+        -- Cooldown logic: only "healthy" PRs (CI passed, no issues) have 1-hour cooldown
+        -- All other states (checking, conflict, ci_failure) are re-checked every cron run
+        AND (
+          COALESCE(a.content->'progress'->>'state', '') != 'healthy'
+          OR a.content->'progress'->>'lastCheckedAt' IS NULL
+          OR (a.content->'progress'->>'lastCheckedAt')::timestamptz < NOW() - INTERVAL '1 hour'
+        )
+      ORDER BY a.content->>'url', a.created_at DESC
+    ) deduped
+    -- Fair rotation: check the PRs that have waited longest first. Each checked
+    -- PR stamps lastCheckedAt = now, sending it to the back of the line, so the
+    -- limit round-robins across all workspaces instead of favoring early URLs.
+    -- NULLS FIRST = never-checked PRs get priority.
+    ORDER BY last_checked_at::timestamptz ASC NULLS FIRST
     LIMIT ${limit}
   `;
 
