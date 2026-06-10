@@ -1,12 +1,15 @@
+import React from "react";
 import { Badge } from "@/components/ui/badge";
-import { GitPullRequest, GitMerge, GitPullRequestClosed, ExternalLink } from "lucide-react";
+import { GitPullRequest, GitMerge, GitPullRequestClosed, ExternalLink, Loader2, CheckCircle2, XCircle } from "lucide-react";
 
 interface PRStatusBadgeProps {
   url: string;
   status: "IN_PROGRESS" | "DONE" | "CANCELLED";
+  ciStatus?: "pending" | "success" | "failure";
+  ciSummary?: string;
 }
 
-export function PRStatusBadge({ url, status }: PRStatusBadgeProps) {
+export function PRStatusBadge({ url, status, ciStatus, ciSummary }: PRStatusBadgeProps) {
   return (
     <a
       href={url}
@@ -48,6 +51,20 @@ export function PRStatusBadge({ url, status }: PRStatusBadgeProps) {
           : status === "CANCELLED"
             ? "Closed"
             : "Merged"}
+        {status === "IN_PROGRESS" && ciStatus && (
+          <>
+            <span className="w-px h-3 bg-white opacity-25 mx-0.5" />
+            {ciStatus === "pending" && (
+              <span title={ciSummary}><Loader2 className="w-3 h-3 animate-spin opacity-60" /></span>
+            )}
+            {ciStatus === "success" && (
+              <span title={ciSummary}><CheckCircle2 className="w-3 h-3 text-emerald-300" /></span>
+            )}
+            {ciStatus === "failure" && (
+              <span title={ciSummary}><XCircle className="w-3 h-3 text-red-300" /></span>
+            )}
+          </>
+        )}
         <ExternalLink className="w-3 h-3 ml-0.5" />
       </Badge>
     </a>
