@@ -139,7 +139,17 @@ export type CanvasMessageSource =
     }
   // Added in Phase 4 — kept in the union now to make exhaustive
   // checks in switch statements complete from Phase 2 onward.
-  | { kind: "user-answered-planner-form"; featureId: string; plannerMessageId: string };
+  | { kind: "user-answered-planner-form"; featureId: string; plannerMessageId: string }
+  | {
+      kind: "research";
+      researchId: string;
+      slug: string;
+      topic: string;
+      title: string;
+      /** "ready" | "failed" — status at fan-out time */
+      status: string;
+      initiativeId?: string;
+    };
 
 export interface CanvasChatMessage {
   id: string;

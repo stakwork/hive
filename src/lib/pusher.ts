@@ -104,6 +104,7 @@ export type CanvasConversationUpdateReason =
   | "planner"
   | "autoturn"
   | "form-answer"
+  | "research"
   // A human appended a message to a shared conversation. Fires from the
   // autosave PUT so other people sitting on the same shared room refetch
   // and see the new turn live.
