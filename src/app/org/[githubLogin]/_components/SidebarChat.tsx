@@ -23,6 +23,10 @@ import {
   SubAgentRunCard,
   getSubAgentRunsFromMessages,
 } from "./SubAgentRunCard";
+import {
+  ResearchRunCard,
+  getResearchRunsFromMessages,
+} from "./ResearchRunCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
 import { AttentionList } from "./AttentionList";
@@ -165,6 +169,19 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
     return byAnchor;
   }, [messages]);
 
+  // Group dispatched research runs by their anchor message, mirroring the
+  // subAgentRunsByAnchor pattern. Inbound fan-out rows win the anchor.
+  const researchRunsByAnchor = useMemo(() => {
+    const runs = getResearchRunsFromMessages(messages);
+    const byAnchor = new Map<string, typeof runs>();
+    for (const run of runs) {
+      const existing = byAnchor.get(run.anchorMessageId);
+      if (existing) existing.push(run);
+      else byAnchor.set(run.anchorMessageId, [run]);
+    }
+    return byAnchor;
+  }, [messages]);
+
   // Render the SubAgentRunCard(s) anchored to a message. Extracted so it
   // can render under BOTH a normal message AND a suppressed fan-out
   // message (an inbound planner reply / form-answer — whose bubble is
@@ -274,14 +291,28 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
             // `getSubAgentRunsFromMessages` can walk them and so they
             // round-trip through autosave / share. See
             // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
+            const researchRuns = researchRunsByAnchor.get(message.id);
+
             if (
               message.source?.kind === "planner" ||
-              message.source?.kind === "user-answered-planner-form"
+              message.source?.kind === "user-answered-planner-form" ||
+              message.source?.kind === "research"
             ) {
-              if (!subAgentRuns || subAgentRuns.length === 0) return null;
+              if (
+                (!subAgentRuns || subAgentRuns.length === 0) &&
+                (!researchRuns || researchRuns.length === 0)
+              )
+                return null;
               return (
                 <div key={message.id} className="space-y-1.5">
-                  {renderSubAgentRuns(subAgentRuns)}
+                  {subAgentRuns && renderSubAgentRuns(subAgentRuns)}
+                  {researchRuns?.map((run) => (
+                    <ResearchRunCard
+                      key={run.researchId}
+                      run={run}
+                      githubLogin={githubLogin}
+                    />
+                  ))}
                 </div>
               );
             }
@@ -330,6 +361,15 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 {subAgentRuns &&
                   subAgentRuns.length > 0 &&
                   renderSubAgentRuns(subAgentRuns)}
+                {researchRuns &&
+                  researchRuns.length > 0 &&
+                  researchRuns.map((run) => (
+                    <ResearchRunCard
+                      key={run.researchId}
+                      run={run}
+                      githubLogin={githubLogin}
+                    />
+                  ))}
                 <MessageArtifacts artifactIds={message.artifactIds} />
               </div>
             );
