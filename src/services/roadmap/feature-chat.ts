@@ -404,9 +404,11 @@ export async function sendFeatureChatMessage({
         return artifacts.length > 0;
       }
       if (msg.role === "USER") {
-        const next = dbHistory[idx + 1];
-        if (!next || next.role !== "ASSISTANT") return false;
-        const artifacts = next.artifacts as { type: string }[];
+        const nextAssistant = dbHistory
+          .slice(idx + 1)
+          .find((m) => m.role === "ASSISTANT");
+        if (!nextAssistant) return false;
+        const artifacts = nextAssistant.artifacts as { type: string }[];
         return artifacts.length > 0;
       }
       return true;
