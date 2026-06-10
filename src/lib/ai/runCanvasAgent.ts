@@ -153,6 +153,19 @@ export interface CanvasAgentHooks {
   onFinish?: (args: { usage: unknown }) => void | Promise<void>;
 }
 
+/**
+ * Cached swarm concept data, keyed to match the two `runCanvasAgent`
+ * branches. Exactly one shape is populated per conversation depending on
+ * whether it's single- or multi-workspace. Stored verbatim in the
+ * conversation's `settings.promptConcepts` for reuse across turns.
+ */
+export interface CachedConcepts {
+  /** Multi-workspace: concepts keyed by workspace slug. */
+  conceptsByWorkspace?: Record<string, Record<string, unknown>[]>;
+  /** Single-workspace: the flat concept/feature list. */
+  features?: Record<string, unknown>[];
+}
+
 export interface RunCanvasAgentOptions {
   /** NextAuth user id. Required unless `publicViewer` is set. */
   userId: string | null;
@@ -171,6 +184,27 @@ export interface RunCanvasAgentOptions {
   };
   /** User-visible chat messages, in AI SDK ModelMessage[] form. */
   messages: ModelMessage[];
+  /**
+   * Cached concepts from a previous turn of the SAME conversation. When
+   * provided, we SKIP the slow per-workspace `listConcepts` swarm
+   * round-trip (a swarm can be slow or offline, and re-fetching the
+   * concept list on every message adds that latency/failure to every
+   * turn) and feed these cached concepts to BOTH the prompt prefix and
+   * the tools instead.
+   *
+   * We deliberately cache the *concepts* (the expensive swarm result),
+   * NOT the rendered prefix — so the prefix is rebuilt fresh each turn,
+   * keeping the per-turn-dynamic canvas scope hint (current canvas /
+   * selected node) accurate. Rebuilding is pure string work; the swarm
+   * call is the only thing skipped. The cheap DB work
+   * (`buildWorkspaceConfigs`, for tool creds) still runs every turn.
+   *
+   * Shape mirrors the two code branches: `conceptsByWorkspace` (multi-
+   * workspace) or `features` (single-workspace). Null/undefined → fetch
+   * fresh from the swarm (and the caller should persist the returned
+   * `cacheableConcepts`).
+   */
+  cachedConcepts?: CachedConcepts | null;
   /**
    * Pre-validated `SharedConversation.id` for the active canvas
    * conversation. Forwarded to `buildInitiativeTools` so
@@ -265,6 +299,25 @@ export interface RunCanvasAgentResult {
    * `readonly` was passed; useful for logging / metrics.
    */
   readonly: boolean;
+  /**
+   * The prefix messages actually used this turn (system prompt + seeded
+   * concepts), rebuilt fresh every turn with the current scope. Surfaced
+   * so the caller can persist a snapshot for the Agent Logs detail view
+   * ("what the model saw").
+   */
+  assembledPrefix: ModelMessage[];
+  /**
+   * The concepts used this turn, in cache shape. When `cacheHit` is
+   * false, the caller should persist this so the next turn can pass it
+   * back as `cachedConcepts` and skip the swarm fetch.
+   */
+  cacheableConcepts: CachedConcepts;
+  /**
+   * True when `cachedConcepts` was supplied and reused (the swarm fetch
+   * was skipped). False when concepts were fetched fresh this turn — the
+   * signal for the caller to persist `cacheableConcepts`.
+   */
+  cacheHit: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -426,7 +479,16 @@ export async function runCanvasAgent(
     currentCanvasConversationId,
     additionalTools,
     dispatchedResearch,
+    cachedConcepts,
   } = opts;
+
+  // When cached concepts are supplied we skip the slow per-workspace
+  // `listConcepts` swarm round-trip and feed the cache to the prefix +
+  // tools instead. `buildWorkspaceConfigs` still runs (DB-only; needed
+  // for swarm creds), and the prefix is still rebuilt fresh each turn so
+  // the canvas scope hint stays accurate — only the swarm fetch (the one
+  // external/offline-prone HTTP call) is elided. Each branch checks its
+  // own cache shape below (`conceptsByWorkspace` vs `features`).
 
   if (!Array.isArray(workspaceSlugs) || workspaceSlugs.length === 0) {
     throw new Error("runCanvasAgent: workspaceSlugs must be a non-empty array");
@@ -454,6 +516,9 @@ export async function runCanvasAgent(
   let tools: ToolSet;
   let prefixMessages: ModelMessage[];
   let features: Record<string, unknown>[];
+  // Concept-cache bookkeeping, assigned per branch below.
+  let cacheHit = false;
+  let cacheableConcepts: CachedConcepts = {};
   let primarySwarmUrl: string;
   let primarySwarmApiKey: string;
   // Workspace + user identity for the **primary** slug (slugs[0]).
@@ -485,7 +550,14 @@ export async function runCanvasAgent(
       );
     }
     const workspaceConfigs = await buildWorkspaceConfigs(workspaceSlugs, userId);
-    const conceptsByWorkspace = await fetchConceptsForWorkspaces(workspaceConfigs);
+    // Cache hit → reuse cached concepts and skip the swarm fetch. The
+    // cached concepts still flow into `askToolsMulti` (so the 3+ workspace
+    // `read_concepts_for_repo` tool keeps working) AND into the prefix
+    // builder below.
+    const multiCacheHit = !!cachedConcepts?.conceptsByWorkspace;
+    const conceptsByWorkspace =
+      cachedConcepts?.conceptsByWorkspace ??
+      (await fetchConceptsForWorkspaces(workspaceConfigs));
 
     tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace);
 
@@ -509,7 +581,9 @@ export async function runCanvasAgent(
     }
 
     // Initiative scope → look up visually-linked workspaces on root
-    // canvas. Only fires when the user is on `initiative:*`.
+    // canvas. Only fires when the user is on `initiative:*`. Runs every
+    // turn (even on a concept-cache hit) because it feeds the fresh scope
+    // hint — it's a cheap DB lookup, not a swarm call.
     let linkedWorkspaces: Array<{ id: string; slug: string; name: string }> = [];
     if (
       orgId &&
@@ -525,6 +599,8 @@ export async function runCanvasAgent(
       }
     }
 
+    // Always rebuilt fresh (cheap string work) so the scope hint reflects
+    // the user's CURRENT canvas/selection, even on a concept-cache hit.
     prefixMessages = getMultiWorkspacePrefixMessages(
       workspaceConfigs,
       conceptsByWorkspace,
@@ -532,6 +608,8 @@ export async function runCanvasAgent(
       orgId,
       buildScopeHint(scope, linkedWorkspaces),
     );
+    cacheHit = multiCacheHit;
+    cacheableConcepts = { conceptsByWorkspace };
     primarySwarmUrl = workspaceConfigs[0].swarmUrl;
     primarySwarmApiKey = workspaceConfigs[0].swarmApiKey;
     primaryWorkspaceId = workspaceConfigs[0].workspaceId;
@@ -556,16 +634,24 @@ export async function runCanvasAgent(
     // pre-seeded features) instead of throwing a 500. Mirrors the
     // multi-workspace path's `fetchConceptsForWorkspaces`, which
     // already swallows per-workspace failures.
-    let concepts: Record<string, unknown> = {};
-    try {
-      concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
-    } catch (e) {
-      console.error(
-        `[runCanvasAgent] Failed to pre-fetch concepts for ${ws.slug}; continuing without them:`,
-        e,
-      );
+    // Cache hit → reuse cached features and skip the swarm fetch.
+    const singleCacheHit = !!cachedConcepts?.features;
+    if (singleCacheHit) {
+      features = cachedConcepts!.features!;
+    } else {
+      let concepts: Record<string, unknown> = {};
+      try {
+        concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
+      } catch (e) {
+        console.error(
+          `[runCanvasAgent] Failed to pre-fetch concepts for ${ws.slug}; continuing without them:`,
+          e,
+        );
+      }
+      features = (concepts.features as Record<string, unknown>[]) || [];
     }
-    features = (concepts.features as Record<string, unknown>[]) || [];
+    cacheHit = singleCacheHit;
+    cacheableConcepts = { features };
 
     // Single-workspace + orgId: an org-scope caller (e.g. the org-MCP
     // `org_agent` tool, or the org SidebarChat for an org that
@@ -588,15 +674,14 @@ export async function runCanvasAgent(
       };
     }
 
+    // Always rebuilt fresh so the scope hint stays current on cache hits.
     prefixMessages = getQuickAskPrefixMessages(
       features,
       ws.repoUrls,
       [],
       ws.description,
       ws.members,
-      orgId
-        ? { orgId, scope: buildScopeHint(scope, []) }
-        : undefined,
+      orgId ? { orgId, scope: buildScopeHint(scope, []) } : undefined,
       ws.currentUserGithubUsername,
     );
     primarySwarmUrl = ws.swarmUrl;
@@ -773,6 +858,9 @@ export async function runCanvasAgent(
     primaryWorkspaceId: primaryWorkspaceId!,
     primaryUserId: primaryUserId!,
     readonly,
+    assembledPrefix: prefixMessages,
+    cacheableConcepts,
+    cacheHit,
   };
 }
 
