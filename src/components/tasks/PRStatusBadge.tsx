@@ -17,6 +17,13 @@ interface PRStatusBadgeProps {
   ciSummary?: string;
 }
 
+const ciTooltip = (ciStatus: "pending" | "success" | "failure", ciSummary?: string) => {
+  if (ciSummary) return ciSummary;
+  if (ciStatus === "success") return "All checks passed";
+  if (ciStatus === "failure") return "Checks failed";
+  return "Checks running";
+};
+
 export function PRStatusBadge({ url, status, ciStatus, ciSummary }: PRStatusBadgeProps) {
   const showCI = status === "IN_PROGRESS" && ciStatus;
 
@@ -25,13 +32,12 @@ export function PRStatusBadge({ url, status, ciStatus, ciSummary }: PRStatusBadg
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center cursor-pointer gap-0"
+      className="inline-flex items-center gap-1.5 cursor-pointer"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* PR status pill */}
       <Badge
         variant="secondary"
-        className={`gap-1 h-5 ${showCI ? "rounded-r-none border-r-0" : ""} ${
+        className={`gap-1 h-5 ${
           status === "IN_PROGRESS"
             ? "border-[#238636]/30"
             : status === "CANCELLED"
@@ -57,22 +63,11 @@ export function PRStatusBadge({ url, status, ciStatus, ciSummary }: PRStatusBadg
         <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />
       </Badge>
 
-      {/* CI status pill — adjacent, connected via shared border */}
       {showCI && (
-        <span
-          title={ciSummary}
-          className={`inline-flex items-center gap-1 h-5 px-1.5 text-[10px] font-medium rounded-r-md border ${
-            ciStatus === "success"
-              ? "bg-emerald-950 border-emerald-700/50 text-emerald-300"
-              : ciStatus === "failure"
-                ? "bg-red-950 border-red-700/50 text-red-300"
-                : "bg-neutral-800 border-neutral-600/50 text-neutral-400"
-          }`}
-        >
-          {ciStatus === "pending" && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-          {ciStatus === "success" && <CheckCircle2 className="w-2.5 h-2.5" />}
-          {ciStatus === "failure" && <XCircle className="w-2.5 h-2.5" />}
-          {ciStatus === "pending" ? "CI" : ciStatus === "success" ? "CI" : "CI"}
+        <span title={ciTooltip(ciStatus!, ciSummary)}>
+          {ciStatus === "pending" && <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />}
+          {ciStatus === "success" && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+          {ciStatus === "failure" && <XCircle className="w-3.5 h-3.5 text-red-400" />}
         </span>
       )}
     </a>
