@@ -19,6 +19,7 @@ import { WorkflowVersionList } from "@/components/workflow/inspector/WorkflowVer
 import { WorkflowVersionDiff } from "@/components/workflow/inspector/WorkflowVersionDiff";
 import { createWorkflowEditorTask } from "@/lib/workflow/create-workflow-editor-task";
 import { PromptsPanel } from "@/components/prompts";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import type { WorkflowTransition } from "@/types/stakwork/workflow";
 
 function parseWorkflowJson(workflowJson: string | null | undefined): Record<string, unknown> | null {
@@ -93,13 +94,6 @@ export default function WorkflowInspectorPage() {
       }));
   }, [parsedWorkflowData]);
   const hasChildWorkflows = childWorkflows.length > 0;
-
-  const TAB_GRID_COLS: Record<string, string> = {
-    "4": "grid-cols-4",
-    "5": "grid-cols-5",
-  };
-  const colCount = 4 + (hasChildWorkflows ? 1 : 0);
-  const gridColsClass = TAB_GRID_COLS[String(colCount)] ?? "grid-cols-4";
 
   const previousVersion = useMemo(() => {
     if (!selectedVersion) return null;
@@ -180,9 +174,10 @@ export default function WorkflowInspectorPage() {
         }
       />
 
-      <div className="flex gap-4 h-[calc(100vh-12rem)]">
+      <ResizablePanelGroup direction="horizontal" className="h-[calc(100vh-12rem)] gap-2">
         {/* Left 60%: flow diagram */}
-        <div className="flex-[3] min-w-0 border rounded-lg overflow-hidden flex flex-col">
+        <ResizablePanel defaultSize={60} minSize={25}>
+        <div className="border rounded-lg overflow-hidden flex flex-col h-full">
           {/* Version selector above diagram */}
           <div className="border-b p-3 shrink-0">
             <WorkflowVersionSelector
@@ -217,17 +212,21 @@ export default function WorkflowInspectorPage() {
             ) : null}
           </div>
         </div>
+        </ResizablePanel>
+
+        <ResizableHandle withHandle />
 
         {/* Right 40%: tabbed detail */}
-        <div className="flex-[2] min-w-0 border rounded-lg overflow-hidden flex flex-col">
+        <ResizablePanel defaultSize={40} minSize={20}>
+        <div className="border rounded-lg overflow-hidden flex flex-col h-full">
           <Tabs defaultValue="stats" className="flex flex-col h-full">
             <div className="border-b px-3 pt-3 shrink-0">
-              <TabsList className={`grid w-full ${gridColsClass}`}>
-                <TabsTrigger value="stats">Stats</TabsTrigger>
-                <TabsTrigger value="params">Params</TabsTrigger>
-                <TabsTrigger value="history">History</TabsTrigger>
-                <TabsTrigger value="prompts">Prompts</TabsTrigger>
-                {hasChildWorkflows && <TabsTrigger value="children">Child Workflows</TabsTrigger>}
+              <TabsList className="flex w-full overflow-x-auto">
+                <TabsTrigger value="stats" className="shrink-0">Stats</TabsTrigger>
+                <TabsTrigger value="params" className="shrink-0">Params</TabsTrigger>
+                <TabsTrigger value="history" className="shrink-0">History</TabsTrigger>
+                <TabsTrigger value="prompts" className="shrink-0">Prompts</TabsTrigger>
+                {hasChildWorkflows && <TabsTrigger value="children" className="shrink-0">Child Workflows</TabsTrigger>}
               </TabsList>
             </div>
 
@@ -293,7 +292,8 @@ export default function WorkflowInspectorPage() {
             </div>
           </Tabs>
         </div>
-      </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }
