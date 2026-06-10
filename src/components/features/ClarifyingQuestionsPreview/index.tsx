@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { HelpCircle, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -269,6 +269,14 @@ export function ClarifyingQuestionsPreview({
     }
   };
 
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (showReview) {
+      submitButtonRef.current?.focus();
+    }
+  }, [showReview]);
+
   const getSelectedColor = (
     question: ClarifyingQuestion,
     answer: Answer
@@ -523,6 +531,7 @@ export function ClarifyingQuestionsPreview({
           )}
 
           <Button
+            ref={submitButtonRef}
             size="sm"
             variant="default"
             onClick={handleNext}
