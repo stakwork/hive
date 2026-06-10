@@ -1,8 +1,16 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Send, Share2, X } from "lucide-react";
+import { Mic, MicOff, Send, Share2, X } from "lucide-react";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useControlKeyHold } from "@/hooks/useControlKeyHold";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CanvasHistoryPopover } from "./CanvasHistoryPopover";
 import { CanvasAgentSettingsPopover } from "./CanvasAgentSettingsPopover";
 import { toast } from "sonner";
@@ -428,6 +436,45 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const {
+    isListening,
+    transcript,
+    isSupported,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useSpeechRecognition();
+
+  const preVoiceInputRef = useRef("");
+
+  // Append transcript to existing input (do not overwrite)
+  useEffect(() => {
+    if (transcript) {
+      const newValue = preVoiceInputRef.current
+        ? `${preVoiceInputRef.current} ${transcript}`.trim()
+        : transcript;
+      setInput(newValue);
+    }
+  }, [transcript]);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      stopListening();
+    } else {
+      preVoiceInputRef.current = input;
+      startListening();
+    }
+  }, [isListening, stopListening, startListening, input]);
+
+  useControlKeyHold({
+    onStart: () => {
+      preVoiceInputRef.current = input;
+      startListening();
+    },
+    onStop: stopListening,
+    enabled: isSupported && !disabled,
+  });
+
   // ─── Pending-draft consumption ─────────────────────────────────────
   // Canvas affordances (e.g. the "+ Create connection" button on a
   // selected edge) compose a message FOR the user by writing to
@@ -457,6 +504,11 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
     e.preventDefault();
     if (!input.trim() || disabled) return;
     const message = input.trim();
+    if (isListening) {
+      stopListening();
+    }
+    resetTranscript();
+    preVoiceInputRef.current = "";
     await onSend(message, () => {
       setInput("");
       inputRef.current?.focus();
@@ -479,16 +531,42 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
       <div className="relative flex-1 min-w-0">
         <textarea
           ref={inputRef}
-          placeholder="Ask the agent…"
+          placeholder={isListening ? "Listening…" : "Ask the agent…"}
           value={input}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           disabled={disabled}
           rows={1}
-          className={`w-full px-3 py-2 pr-10 rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-[color,border-color,box-shadow,opacity] resize-none field-sizing-content max-h-[100px] overflow-y-auto ${
+          className={`w-full px-3 py-2 ${isSupported ? "pr-16" : "pr-10"} rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-[color,border-color,box-shadow,opacity] resize-none field-sizing-content max-h-[100px] overflow-y-auto ${
             disabled ? "opacity-50 cursor-not-allowed" : ""
           }`}
         />
+        {isSupported && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={toggleListening}
+                  disabled={disabled}
+                  data-testid="mic-button"
+                  className={`absolute right-9 top-1/2 -translate-y-[60%] h-7 w-7 rounded-full ${
+                    isListening
+                      ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {isListening ? "Stop recording" : "Start voice input (or hold Ctrl)"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         <Button
           type="submit"
           size="icon"
