@@ -11,6 +11,7 @@ import { RerunIngest } from "@/components/RerunIngest";
 import { Neo4jConfigSettings } from "@/components/settings/Neo4jConfigSettings";
 import { VercelIntegrationSettings } from "@/components/settings/VercelIntegrationSettings";
 import { SphinxIntegrationSettings } from "@/components/settings/SphinxIntegrationSettings";
+import { DiscordIntegrationSettings } from "@/components/settings/DiscordIntegrationSettings";
 import { ApiKeysSettings } from "@/components/settings/ApiKeysSettings";
 import { NodeTypeOrderSettings } from "@/components/settings/NodeTypeOrderSettings";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
@@ -257,6 +258,7 @@ export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwne
         <div className="max-w-2xl space-y-6 mt-6">
           <VercelIntegrationSettings />
           <SphinxIntegrationSettings />
+          <DiscordIntegrationSettings />
         </div>
       </TabsContent>
 
