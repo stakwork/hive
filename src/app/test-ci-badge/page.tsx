@@ -1,3 +1,4 @@
+"use client";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 
 export default function TestCIBadgePage() {
