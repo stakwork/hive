@@ -480,7 +480,24 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      return result.toUIMessageStreamResponse();
+      return result.toUIMessageStreamResponse({
+        // By default the AI SDK masks mid-stream errors as the literal
+        // string "An error occurred." — useless for diagnosis and
+        // indistinguishable from a clean finish on the client. Forward
+        // the real message instead. `runCanvasAgent`'s `onError` logs the
+        // full error + stack server-side; this surfaces a readable
+        // message to the chat so the user sees *why* it failed rather
+        // than a generic fallback.
+        onError: (error) => {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          console.error("❌ [quick-ask] Mid-stream error:", {
+            workspaces: slugs,
+            message,
+          });
+          return message;
+        },
+      });
     } catch (streamError) {
       // Preserve typed ApiError statuses (forbidden, notFound,
       // validation, etc.) from the inner pipeline. The original code

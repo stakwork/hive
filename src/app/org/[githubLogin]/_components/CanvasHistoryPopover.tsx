@@ -84,6 +84,7 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
           content: typeof m.content === "string" ? m.content : "",
           timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
           toolCalls: m.toolCalls,
+          timeline: m.timeline,
           artifactIds: m.artifactIds,
           approval: m.approval,
           rejection: m.rejection,

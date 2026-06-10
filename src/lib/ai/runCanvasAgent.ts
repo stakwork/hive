@@ -716,6 +716,25 @@ export async function runCanvasAgent(
         await hooks.onFinish({ usage });
       }
     },
+    // Surface errors that occur DURING streaming (after the 200 response
+    // headers are already sent). Without this, the AI SDK silently masks
+    // the failure into a generic error part and the real cause (e.g. an
+    // Anthropic `invalid_request_error` from an oversized request, or a
+    // tool throwing) never lands in the logs — the stream just goes quiet
+    // right after the `streamText:` line above. Log the full error so
+    // operators can diagnose; the message is also propagated to the client
+    // via `toUIMessageStreamResponse({ onError })` in the HTTP route.
+    onError: (event) => {
+      const err = (event as { error?: unknown })?.error ?? event;
+      console.error("[runCanvasAgent] streamText error:", {
+        workspaces: workspaceSlugs,
+        orgId: orgId ?? null,
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : undefined,
+        stack: err instanceof Error ? err.stack : undefined,
+        error: err,
+      });
+    },
   });
 
   return {
