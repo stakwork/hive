@@ -42,16 +42,33 @@ export function useRepoBranches(
     setError(null);
 
     try {
-      const params = new URLSearchParams({ repoUrl, workspaceSlug });
-      const response = await fetch(`/api/github/repository/branches?${params}`);
+      const perPage = 100;
+      let page = 1;
+      const accumulated: RepoBranch[] = [];
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch branches: ${response.statusText}`);
+      while (true) {
+        const params = new URLSearchParams({
+          repoUrl,
+          workspaceSlug,
+          page: String(page),
+          per_page: String(perPage),
+        });
+        const response = await fetch(`/api/github/repository/branches?${params}`);
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch branches: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        const pageBranches = (result.branches || result.data || result || []) as RepoBranch[];
+        const pageArray = Array.isArray(pageBranches) ? pageBranches : [];
+        accumulated.push(...pageArray);
+
+        if (pageArray.length < perPage) break;
+        page++;
       }
 
-      const result = await response.json();
-      const fetchedBranches = (result.branches || result.data || result || []) as RepoBranch[];
-      setBranches(Array.isArray(fetchedBranches) ? fetchedBranches : []);
+      setBranches(accumulated);
       lastFetchedRef.current = cacheKey;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
