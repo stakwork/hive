@@ -198,6 +198,8 @@ export function ClarifyingQuestionsPreview({
     isValidArtifact(currentQuestion.questionArtifact) &&
     currentQuestion.questionArtifact.type !== "color_swatch";
 
+  const isComparisonTableArtifact = isValidComparisonTableArtifact(currentQuestion?.questionArtifact);
+
   const updateAnswer = (update: Partial<Answer>) => {
     setAnswers((prev) => ({
       ...prev,
@@ -346,7 +348,8 @@ export function ClarifyingQuestionsPreview({
                 {currentQuestion.question}
               </h3>
 
-              {options &&
+              {!isComparisonTableArtifact &&
+                options &&
                 (currentQuestion.type === "single_choice" ||
                   currentQuestion.type === "multiple_choice") && (
                   <div className="space-y-2 mb-3">
@@ -402,6 +405,9 @@ export function ClarifyingQuestionsPreview({
               <QuestionArtifactRenderer
                 artifact={currentQuestion.questionArtifact!}
                 className="h-full"
+                selectedOptions={currentAnswer.selections}
+                onSelect={handleOptionSelect}
+                questionType={currentQuestion.type as "single_choice" | "multiple_choice"}
               />
             </div>
           </div>

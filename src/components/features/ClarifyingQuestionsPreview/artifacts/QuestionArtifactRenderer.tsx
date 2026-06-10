@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { QuestionArtifact } from "@/types/stakwork";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { ComparisonTable } from "./ComparisonTable";
@@ -7,11 +8,17 @@ import { ComparisonTable } from "./ComparisonTable";
 interface QuestionArtifactRendererProps {
   artifact: QuestionArtifact;
   className?: string;
+  selectedOptions?: string[];
+  onSelect?: (label: string) => void;
+  questionType?: "single_choice" | "multiple_choice";
 }
 
 export function QuestionArtifactRenderer({
   artifact,
   className,
+  selectedOptions,
+  onSelect,
+  questionType,
 }: QuestionArtifactRendererProps) {
   switch (artifact.type) {
     case "mermaid": {
@@ -36,6 +43,9 @@ export function QuestionArtifactRenderer({
         <ComparisonTable
           data={artifact.data as unknown as Parameters<typeof ComparisonTable>[0]["data"]}
           className={className}
+          selectedOptions={selectedOptions}
+          onSelect={onSelect}
+          questionType={questionType}
         />
       );
 
