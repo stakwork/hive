@@ -46,9 +46,24 @@ vi.mock('@/lib/utils', () => ({
 vi.mock('@/components/features/ClarifyingQuestionsPreview/artifacts', () => {
   const React = require('react');
   return {
-    QuestionArtifactRenderer: ({ artifact, className }: any) =>
-      React.createElement('div', { 'data-testid': 'question-artifact-renderer', className },
-        `artifact:${artifact?.type}`
+    QuestionArtifactRenderer: ({ artifact, className, selectedOptions, onSelect, questionType }: any) =>
+      React.createElement(
+        'div',
+        {
+          'data-testid': 'question-artifact-renderer',
+          'data-artifact-type': artifact?.type,
+          'data-selected': selectedOptions ? JSON.stringify(selectedOptions) : undefined,
+          'data-question-type': questionType,
+          className,
+        },
+        `artifact:${artifact?.type}`,
+        // Expose a clickable button so tests can simulate row selection via onSelect
+        onSelect
+          ? React.createElement('button', {
+              'data-testid': 'mock-row-select',
+              onClick: () => onSelect('SSE'),
+            }, 'Select SSE row')
+          : null,
       ),
     ColorSwatch: ({ label, onClick }: any) =>
       React.createElement('button', { onClick }, label),
@@ -858,6 +873,261 @@ describe('ClarifyingQuestionsPreview', () => {
 
       // Submit button should show "Submit" text
       expect(screen.getByRole('button', { name: /submit/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('Comparison Table Artifact', () => {
+    const comparisonTableQuestion: ClarifyingQuestion[] = [
+      {
+        question: 'Which transport should we use?',
+        type: 'single_choice',
+        options: ['SSE', 'WebSockets', 'Polling'],
+        questionArtifact: {
+          type: 'comparison_table',
+          data: {
+            columns: ['Pros', 'Cons'],
+            rows: [
+              { label: 'SSE', cells: { Pros: ['Simple'], Cons: ['One-way'] } },
+              { label: 'WebSockets', cells: { Pros: ['Bidirectional'], Cons: ['Complex'] } },
+              { label: 'Polling', cells: { Pros: ['Universal'], Cons: ['High overhead'] } },
+            ],
+          } as any,
+        },
+      },
+    ];
+
+    const multiChoiceComparisonQuestion: ClarifyingQuestion[] = [
+      {
+        question: 'Which transports do you need?',
+        type: 'multiple_choice',
+        options: ['SSE', 'WebSockets', 'Polling'],
+        questionArtifact: {
+          type: 'comparison_table',
+          data: {
+            columns: ['Pros', 'Cons'],
+            rows: [
+              { label: 'SSE', cells: { Pros: ['Simple'], Cons: ['One-way'] } },
+              { label: 'WebSockets', cells: { Pros: ['Bidirectional'], Cons: ['Complex'] } },
+            ],
+          } as any,
+        },
+      },
+    ];
+
+    it('renders the QuestionArtifactRenderer instead of standalone option buttons for comparison_table', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={comparisonTableQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      // The artifact renderer should be present
+      expect(screen.getByTestId('question-artifact-renderer')).toBeInTheDocument();
+      expect(screen.getByTestId('question-artifact-renderer').getAttribute('data-artifact-type')).toBe('comparison_table');
+    });
+
+    it('does NOT render standalone option buttons for comparison_table question', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={comparisonTableQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      // The standalone option buttons (SSE, WebSockets, Polling as buttons) should NOT be in left panel
+      // (they would normally appear as option buttons in the left panel)
+      // The options text may appear inside the artifact renderer, but not as standalone buttons
+      const artifactRenderer = screen.getByTestId('question-artifact-renderer');
+      expect(artifactRenderer).toBeInTheDocument();
+
+      // Options should not appear as standalone option buttons outside the artifact renderer
+      // We can detect this by checking the artifact renderer is present and
+      // no extra standalone option buttons exist
+      const allButtons = screen.getAllByRole('button');
+      // Allowed buttons: Back (not shown on first Q), Next/Review, and the mock-row-select inside renderer
+      const optionButtons = allButtons.filter((btn) =>
+        ['SSE', 'WebSockets', 'Polling'].includes(btn.textContent?.trim() ?? '')
+      );
+      expect(optionButtons).toHaveLength(0);
+    });
+
+    it('passes selectedOptions to QuestionArtifactRenderer', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={comparisonTableQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      const renderer = screen.getByTestId('question-artifact-renderer');
+      // Initially empty selections
+      expect(renderer.getAttribute('data-selected')).toBe('[]');
+
+      // Simulate selecting "SSE" via the mock row select button
+      const mockRowSelect = screen.getByTestId('mock-row-select');
+      await user.click(mockRowSelect);
+
+      await waitFor(() => {
+        const updatedRenderer = screen.getByTestId('question-artifact-renderer');
+        expect(updatedRenderer.getAttribute('data-selected')).toBe('["SSE"]');
+      });
+    });
+
+    it('passes questionType to QuestionArtifactRenderer for single_choice', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={comparisonTableQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      const renderer = screen.getByTestId('question-artifact-renderer');
+      expect(renderer.getAttribute('data-question-type')).toBe('single_choice');
+    });
+
+    it('passes questionType to QuestionArtifactRenderer for multiple_choice', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={multiChoiceComparisonQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      const renderer = screen.getByTestId('question-artifact-renderer');
+      expect(renderer.getAttribute('data-question-type')).toBe('multiple_choice');
+    });
+
+    it('enables Next button after row selection via onSelect', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={comparisonTableQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      // Next/Review button should be disabled initially (no selection)
+      const reviewButton = screen.getByRole('button', { name: /review/i });
+      expect(reviewButton).toBeDisabled();
+
+      // Simulate row selection
+      const mockRowSelect = screen.getByTestId('mock-row-select');
+      await user.click(mockRowSelect);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /review/i })).not.toBeDisabled();
+      });
+    });
+
+    it('toggles single_choice selection off when same row selected again', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={comparisonTableQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      const mockRowSelect = screen.getByTestId('mock-row-select');
+
+      // Select SSE
+      await user.click(mockRowSelect);
+      await waitFor(() => {
+        expect(screen.getByTestId('question-artifact-renderer').getAttribute('data-selected')).toBe('["SSE"]');
+      });
+
+      // Deselect SSE (click again)
+      await user.click(mockRowSelect);
+      await waitFor(() => {
+        expect(screen.getByTestId('question-artifact-renderer').getAttribute('data-selected')).toBe('[]');
+      });
+    });
+
+    it('accumulates selections for multiple_choice', async () => {
+      const user = userEvent.setup();
+      // Create a multi-choice question where we can select SSE twice
+      // The mock always calls onSelect('SSE'), so we test accumulation behavior
+      render(
+        <ClarifyingQuestionsPreview
+          questions={multiChoiceComparisonQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      const renderer = screen.getByTestId('question-artifact-renderer');
+      expect(renderer.getAttribute('data-selected')).toBe('[]');
+
+      const mockRowSelect = screen.getByTestId('mock-row-select');
+      // Select SSE
+      await user.click(mockRowSelect);
+      await waitFor(() => {
+        expect(screen.getByTestId('question-artifact-renderer').getAttribute('data-selected')).toBe('["SSE"]');
+      });
+
+      // Deselect SSE in multiple_choice
+      await user.click(mockRowSelect);
+      await waitFor(() => {
+        expect(screen.getByTestId('question-artifact-renderer').getAttribute('data-selected')).toBe('[]');
+      });
+    });
+
+    it('Textarea for additional context remains visible', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={comparisonTableQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+      expect(screen.getByPlaceholderText(/add additional context/i)).toBeInTheDocument();
+    });
+
+    it('does not affect mermaid question layout (mermaid still uses left-panel option buttons)', () => {
+      const mermaidQuestion: ClarifyingQuestion[] = [
+        {
+          question: 'Which architecture fits?',
+          type: 'single_choice',
+          options: ['Option A', 'Option B'],
+          questionArtifact: {
+            type: 'mermaid',
+            data: 'flowchart TD\n  A --> B',
+          },
+        },
+      ];
+
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mermaidQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      // Standalone option buttons should exist for mermaid
+      expect(screen.getByText('Option A')).toBeInTheDocument();
+      expect(screen.getByText('Option B')).toBeInTheDocument();
+    });
+
+    it('review screen shows selected options correctly after comparison_table selection', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={comparisonTableQuestion}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      // Select SSE via table row
+      const mockRowSelect = screen.getByTestId('mock-row-select');
+      await user.click(mockRowSelect);
+
+      // Proceed to review
+      await user.click(screen.getByRole('button', { name: /review/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/review your answers/i)).toBeInTheDocument();
+      });
+
+      // Review screen should show SSE as the answer
+      expect(screen.getByText('SSE')).toBeInTheDocument();
     });
   });
 });

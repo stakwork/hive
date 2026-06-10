@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Check, X, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,9 @@ interface ComparisonTableData {
 interface ComparisonTableProps {
   data: ComparisonTableData;
   className?: string;
+  selectedOptions?: string[];
+  onSelect?: (label: string) => void;
+  questionType?: "single_choice" | "multiple_choice";
 }
 
 // Determine column type from name
@@ -52,8 +56,15 @@ const colConfig = {
   },
 };
 
-export function ComparisonTable({ data, className }: ComparisonTableProps) {
+export function ComparisonTable({
+  data,
+  className,
+  selectedOptions,
+  onSelect,
+  questionType,
+}: ComparisonTableProps) {
   const { columns, rows } = data;
+  const isInteractive = !!onSelect;
 
   return (
     <div className={cn("overflow-auto rounded-md border border-border", className)}>
@@ -87,50 +98,80 @@ export function ComparisonTable({ data, className }: ComparisonTableProps) {
         </thead>
         <tbody>
           {/* Choice rows (SSE, WebSockets, Polling, etc.) */}
-          {rows.map((row, rowIdx) => (
-            <tr key={rowIdx} className="border-b last:border-b-0 border-border">
-              {/* Row header: choice label + description */}
-              <td className="p-3 align-top bg-muted/30">
-                <div className="font-semibold text-foreground">{row.label}</div>
-                {row.description && (
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {row.description}
-                  </div>
+          {rows.map((row, rowIdx) => {
+            const isSelected = selectedOptions?.includes(row.label) ?? false;
+            return (
+              <tr
+                key={rowIdx}
+                onClick={isInteractive ? () => onSelect(row.label) : undefined}
+                className={cn(
+                  "border-b last:border-b-0 border-border transition-colors",
+                  isInteractive && "cursor-pointer hover:bg-muted/20",
+                  isSelected && "bg-primary/10 border-l-2 border-primary/60"
                 )}
-              </td>
-              {/* Cells for each category column */}
-              {columns.map((col, colIdx) => {
-                const colType = getColumnType(col);
-                const config = colConfig[colType];
-                const raw = row.cells[col];
-                const cellItems: string[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
-                return (
-                  <td
-                    key={colIdx}
-                    className={cn("p-3 align-top", config.bgClass)}
-                  >
-                    {cellItems.length > 0 ? (
-                      <ul className="space-y-1">
-                        {cellItems.map((item, idx) => (
-                          <li key={idx} className="flex items-start gap-2 text-foreground">
-                            <span
-                              className={cn(
-                                "mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0",
-                                config.iconClass.replace("text-", "bg-")
-                              )}
-                            />
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
+              >
+                {/* Row header: selection indicator + choice label + description */}
+                <td className={cn("p-3 align-top", !isSelected && "bg-muted/30")}>
+                  <div className="flex items-start gap-2">
+                    {isInteractive && (
+                      <div
+                        className={cn(
+                          "mt-0.5 flex-shrink-0 w-4 h-4 border-2 flex items-center justify-center",
+                          questionType === "multiple_choice" ? "rounded-sm" : "rounded-full",
+                          isSelected
+                            ? "border-primary bg-primary"
+                            : "border-muted-foreground/40"
+                        )}
+                      >
+                        {isSelected && (
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        )}
+                      </div>
                     )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
+                    <div>
+                      <div className="font-semibold text-foreground">{row.label}</div>
+                      {row.description && (
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {row.description}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                {/* Cells for each category column */}
+                {columns.map((col, colIdx) => {
+                  const colType = getColumnType(col);
+                  const config = colConfig[colType];
+                  const raw = row.cells[col];
+                  const cellItems: string[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
+                  return (
+                    <td
+                      key={colIdx}
+                      className={cn("p-3 align-top", config.bgClass)}
+                    >
+                      {cellItems.length > 0 ? (
+                        <ul className="space-y-1">
+                          {cellItems.map((item, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-foreground">
+                              <span
+                                className={cn(
+                                  "mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0",
+                                  config.iconClass.replace("text-", "bg-")
+                                )}
+                              />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
