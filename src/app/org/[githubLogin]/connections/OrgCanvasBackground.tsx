@@ -16,9 +16,12 @@ import {
   type CanvasData,
   type CanvasEdge,
   type CanvasNode,
+  type CanvasContextMenuConfig,
+  type CanvasContextMenuItem,
   type CanvasSelection,
   type EdgeUpdate,
   type NodeContextMenuConfig,
+  type NodeMenuOption,
   type NodeUpdate,
   type SystemCanvasHandle,
 } from "system-canvas-react";
@@ -48,7 +51,7 @@ import type {
   InitiativeResponse,
   MilestoneResponse,
 } from "@/types/initiatives";
-import { categoryAllowedOnScope } from "./canvas-categories";
+import { categoryAllowedOnScope, CATEGORY_REGISTRY } from "./canvas-categories";
 import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import useCanvasClipboard from "./useCanvasClipboard";
@@ -407,6 +410,10 @@ export function OrgCanvasBackground({
   const pathname = usePathname();
   /** Imperative handle for `SystemCanvas`; used to drill into a ref from a URL param. */
   const canvasHandleRef = useRef<SystemCanvasHandle | null>(null);
+  /** Stores the `addNode` fn from the render-prop so the canvas context menu can invoke it. */
+  const addNodeFnRef = useRef<AddNodeButtonRenderProps["addNode"] | null>(null);
+  /** Stores all options from the render-prop for context-menu lookup. */
+  const menuOptionsRef = useRef<NodeMenuOption[]>([]);
   /**
    * One-shot guard so we only drill into the URL's `?canvas=` once on
    * mount. After that, `onNavigate` / `onBreadcrumbClick` own the URL
@@ -2936,8 +2943,48 @@ export function OrgCanvasBackground({
               },
             ] as NodeContextMenuConfig["items"])
           : []),
+        // View Details — live nodes (feature, initiative, workspace, research)
+        {
+          id: "view-details",
+          label: "View Details",
+          match: {
+            when: (node: CanvasNode) => isLiveId(node.id),
+          },
+        },
+        // Navigate Into — drillable containers only
+        {
+          id: "navigate-into",
+          label: "Navigate Into",
+          match: {
+            when: (node: CanvasNode) =>
+              node.id.startsWith("ws:") || node.id.startsWith("initiative:"),
+          },
+        },
+        // Delete — all nodes; live nodes are hidden, authored are removed
+        {
+          id: "delete",
+          label: "Delete",
+          destructive: true,
+          match: { when: () => true },
+        },
       ],
       onSelect: (itemId, node, ctx) => {
+        if (itemId === "delete") {
+          handleNodeDelete(node.id, ctx.canvasRef ?? undefined);
+          return;
+        }
+        if (itemId === "view-details") {
+          handleSelectionChange({
+            kind: "node",
+            node,
+            canvasRef: ctx.canvasRef ?? undefined,
+          });
+          return;
+        }
+        if (itemId === "navigate-into") {
+          void canvasHandleRef.current?.zoomIntoNode(node.id);
+          return;
+        }
         if (itemId === "promote-to-feature") {
           const text = (node.text ?? "").trim();
           // Title pre-fill: first non-empty line, capped to fit the
@@ -2971,8 +3018,71 @@ export function OrgCanvasBackground({
         }
       },
     }),
-    [currentRef, startFeatureCreate, handleUnpinFeatureFromWorkspace],
+    [
+      currentRef,
+      startFeatureCreate,
+      handleUnpinFeatureFromWorkspace,
+      handleNodeDelete,
+      handleSelectionChange,
+      canvasHandleRef,
+    ],
   );
+
+  /**
+   * Empty-canvas right-click menu — scope-filtered creation options
+   * mirroring the [+] button. Items are split into DB-backed (dialog)
+   * and authored (immediate) groups with a visual separator between them.
+   */
+  const canvasContextMenu = useMemo<CanvasContextMenuConfig>(() => {
+    const DB_BACKED = new Set(["initiative", "feature", "milestone"]);
+
+    const allowedCategories = CATEGORY_REGISTRY.filter(
+      (c) =>
+        (c as { userCreatable?: boolean }).userCreatable !== false &&
+        categoryAllowedOnScope(c.id, currentRef),
+    );
+
+    const dbItems: CanvasContextMenuItem[] = allowedCategories
+      .filter((c) => DB_BACKED.has(c.id))
+      .map((c) => ({
+        id: c.id,
+        label: `New ${c.id.charAt(0).toUpperCase() + c.id.slice(1)}`,
+      }));
+
+    const authoredItems: CanvasContextMenuItem[] = [
+      ...allowedCategories
+        .filter((c) => !DB_BACKED.has(c.id))
+        .map((c) => ({
+          id: c.id,
+          label: `New ${c.id.charAt(0).toUpperCase() + c.id.slice(1)}`,
+        })),
+      { id: "type:text", label: "Text" },
+      { id: "type:file", label: "File" },
+      { id: "type:link", label: "Link" },
+      { id: "type:group", label: "Group" },
+    ];
+
+    const items: CanvasContextMenuItem[] = [
+      ...dbItems,
+      ...(dbItems.length > 0 && authoredItems.length > 0
+        ? [{ id: "__sep__", label: "---" }]
+        : []),
+      ...authoredItems,
+    ];
+
+    return {
+      items,
+      onSelect: (itemId, ctx) => {
+        const opt = menuOptionsRef.current.find((o) =>
+          o.kind === "category"
+            ? o.value === itemId
+            : `type:${o.value}` === itemId,
+        );
+        if (!opt || !addNodeFnRef.current) return;
+        addNodeFnRef.current(opt, { x: ctx.position.x, y: ctx.position.y });
+      },
+    };
+  }, [currentRef]);
 
   /**
    * Replace the library's default FAB container so we can hoist the
@@ -2998,6 +3108,8 @@ export function OrgCanvasBackground({
    * tracks scope changes automatically.
    */
   const renderAddNodeButton = (props: AddNodeButtonRenderProps) => {
+    addNodeFnRef.current = props.addNode;
+    menuOptionsRef.current = props.options;
     const filtered = {
       ...props,
       options: props.options.filter((o) => {
@@ -3042,6 +3154,7 @@ export function OrgCanvasBackground({
           canDropNodeOn={canDropNodeOn}
           onNodeDrop={handleNodeDrop}
           nodeContextMenu={nodeContextMenu}
+          canvasContextMenu={canvasContextMenu}
           renderAddNodeButton={renderAddNodeButton}
           rootLabel={orgName || githubLogin}
           onViewportChange={(vp) => {
