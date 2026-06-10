@@ -876,6 +876,94 @@ describe('ClarifyingQuestionsPreview', () => {
     });
   });
 
+  describe('Enter key and focus on review screen', () => {
+    it('Submit button receives focus when review screen appears', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mockQuestions}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      // Navigate through all questions to reach review
+      for (let i = 0; i < mockQuestions.length; i++) {
+        const textarea = screen.getByPlaceholderText(/type your answer/i);
+        await user.type(textarea, `Answer ${i + 1}`);
+        const nextButton = i < mockQuestions.length - 1
+          ? screen.getByRole('button', { name: /next/i })
+          : screen.getByRole('button', { name: /review/i });
+        await user.click(nextButton);
+      }
+
+      await waitFor(() => {
+        expect(screen.getByText(/review your answers/i)).toBeInTheDocument();
+      });
+
+      // Submit button should be focused
+      const submitButton = screen.getByRole('button', { name: /submit/i });
+      expect(document.activeElement).toBe(submitButton);
+    });
+
+    it('pressing Enter on review screen calls onSubmit', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mockQuestions}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      // Navigate to review screen
+      for (let i = 0; i < mockQuestions.length; i++) {
+        const textarea = screen.getByPlaceholderText(/type your answer/i);
+        await user.type(textarea, `Answer ${i + 1}`);
+        const nextButton = i < mockQuestions.length - 1
+          ? screen.getByRole('button', { name: /next/i })
+          : screen.getByRole('button', { name: /review/i });
+        await user.click(nextButton);
+      }
+
+      await waitFor(() => {
+        expect(screen.getByText(/review your answers/i)).toBeInTheDocument();
+      });
+
+      // Submit button should be focused; press Enter
+      const submitButton = screen.getByRole('button', { name: /submit/i });
+      await waitFor(() => expect(document.activeElement).toBe(submitButton));
+      await user.keyboard('{Enter}');
+
+      await waitFor(() => {
+        expect(mockOnSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      expect(mockOnSubmit).toHaveBeenCalledWith(expect.stringContaining('Answer 1'));
+    });
+
+    it('pressing Enter on a question step advances to next question without calling onSubmit', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mockQuestions}
+          onSubmit={mockOnSubmit}
+        />
+      );
+
+      // Type an answer so Enter is allowed
+      const textarea = screen.getByPlaceholderText(/type your answer/i);
+      await user.type(textarea, 'My answer');
+
+      // Press Enter — should advance, not submit
+      await user.keyboard('{Enter}');
+
+      await waitFor(() => {
+        expect(screen.getByText('2 of 4')).toBeInTheDocument();
+      });
+
+      expect(mockOnSubmit).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Comparison Table Artifact', () => {
     const comparisonTableQuestion: ClarifyingQuestion[] = [
       {
