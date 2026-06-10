@@ -16,8 +16,6 @@ import {
   type CanvasData,
   type CanvasEdge,
   type CanvasNode,
-  type CanvasContextMenuConfig,
-  type CanvasContextMenuItem,
   type CanvasSelection,
   type EdgeUpdate,
   type NodeContextMenuConfig,
@@ -25,6 +23,10 @@ import {
   type NodeUpdate,
   type SystemCanvasHandle,
 } from "system-canvas-react";
+import type {
+  CanvasContextMenuConfig,
+  CanvasContextMenuItem,
+} from "system-canvas";
 // `getNodeLabel` isn't re-exported from `system-canvas-react`; pull
 // it from the core package directly. Used to resolve human-readable
 // labels for edge endpoints at click-time.
