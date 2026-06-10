@@ -27,6 +27,7 @@ import type {
 import {
   runCanvasAgent,
   extractConceptIdsFromStep,
+  type CachedConcepts,
 } from "@/lib/ai/runCanvasAgent";
 import type { DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import { swarmFetch } from "@/lib/ai/concepts";
@@ -306,6 +307,22 @@ export async function POST(request: NextRequest) {
       anonymousId: publicAnonymousId,
     });
 
+    // Org-canvas prompt-prefix cache. The prefix (system prompt + the
+    // pre-seeded `list_concepts` results) is identical turn-to-turn for a
+    // conversation, but rebuilding it re-hits the swarm (`listConcepts`)
+    // on every message — slow, and a hard failure when the swarm is
+    // offline. So on the first turn we persist the assembled prefix to
+    // `SharedConversation.settings.promptPrefix` and on later turns reuse
+    // it, skipping the swarm round-trip entirely. Org-canvas rows are
+    // org-scoped (workspaceId null), so the workspace-keyed
+    // `resolveTokenAttributionRowId` above never matches them — we resolve
+    // + load via the org-aware path here. Only the canvas chat (orgId set)
+    // participates; the dashboard chat keeps rebuilding fresh.
+    const promptCache =
+      orgId && userId
+        ? await loadOrgCanvasPromptCache({ conversationId, userId, orgId })
+        : null;
+
     try {
       // Tracks concept ids learned in this turn so the `after()` block
       // can fetch their provenance from stakgraph after the stream
@@ -322,10 +339,17 @@ export async function POST(request: NextRequest) {
         primarySwarmApiKey,
         primaryWorkspaceId,
         primaryUserId,
+        assembledPrefix,
+        cacheableConcepts,
+        cacheHit,
       } = await runCanvasAgent({
           userId,
           orgId: orgId && isMultiWorkspace ? orgId : undefined,
           workspaceSlugs: slugs,
+          // Reuse cached concepts (skips the swarm `listConcepts` call)
+          // when we have them for this org-canvas conversation. The prefix
+          // is still rebuilt fresh each turn for an accurate scope hint.
+          cachedConcepts: promptCache?.cachedConcepts ?? null,
           publicViewer: isPublicViewerRequest
             ? { workspaceId: publicViewerWorkspaceId!, primarySlug }
             : undefined,
@@ -383,6 +407,32 @@ export async function POST(request: NextRequest) {
             },
           },
         });
+
+      // Persist the freshly-fetched concepts so the next turn of this
+      // conversation can reuse them and skip the swarm `listConcepts`
+      // call. Also snapshot the rendered prefix for the Agent Logs detail
+      // view. Only on a cache MISS, with a validated org-canvas row id,
+      // and only when the concepts are NON-EMPTY — a swarm outage on the
+      // first turn yields an empty list, and caching that would poison
+      // the cache into permanently serving nothing (we retry next turn).
+      // Best-effort + off the response path via `after()`.
+      if (promptCache?.rowId && !cacheHit && hasConcepts(cacheableConcepts)) {
+        const rowId = promptCache.rowId;
+        after(async () => {
+          try {
+            await persistOrgCanvasPromptCache(
+              rowId,
+              cacheableConcepts,
+              assembledPrefix,
+            );
+          } catch (err) {
+            console.error(
+              "❌ [quick-ask] Failed to persist prompt cache:",
+              err,
+            );
+          }
+        });
+      }
 
       after(async () => {
         // Surfaces that don't render follow-ups or provenance opt out
@@ -620,6 +670,81 @@ async function resolveOrgConversationRowId(args: {
     select: { id: true },
   });
   return row?.id ?? null;
+}
+
+/**
+ * Load the cached concepts for an org-canvas conversation, while
+ * validating that the row belongs to this org and either to this caller
+ * or is an explicitly shared room (same ownership rule as
+ * `resolveOrgConversationRowId`). Returns the validated row id plus the
+ * cached concepts (or null when there's no usable cache yet). IDOR-safe:
+ * a mismatched/missing id yields `null` indistinguishably.
+ *
+ * The concepts live at `settings.promptConcepts` (`CachedConcepts`).
+ * They're the expensive swarm `listConcepts` result; reusing them lets
+ * later turns skip that round-trip. The rendered prefix is rebuilt fresh
+ * each turn (for an accurate scope hint), so it is NOT what we cache for
+ * reuse — `settings.promptPrefix` is only a display snapshot.
+ */
+async function loadOrgCanvasPromptCache(args: {
+  conversationId: unknown;
+  userId: string;
+  orgId: string;
+}): Promise<{ rowId: string; cachedConcepts: CachedConcepts | null } | null> {
+  const { conversationId, userId, orgId } = args;
+  if (typeof conversationId !== "string" || conversationId.length === 0) {
+    return null;
+  }
+  const row = await db.sharedConversation.findFirst({
+    where: {
+      id: conversationId,
+      sourceControlOrgId: orgId,
+      OR: [{ userId }, { isShared: true }],
+    },
+    select: { id: true, settings: true },
+  });
+  if (!row) return null;
+  const settings = (row.settings ?? {}) as Record<string, unknown>;
+  const pc = settings.promptConcepts;
+  const cachedConcepts =
+    pc && typeof pc === "object" ? (pc as CachedConcepts) : null;
+  return { rowId: row.id, cachedConcepts };
+}
+
+/** True when a cache holds at least one concept (defensive: never cache
+ *  an empty result from a swarm outage). */
+function hasConcepts(c: CachedConcepts): boolean {
+  if (Array.isArray(c.features)) return c.features.length > 0;
+  if (c.conceptsByWorkspace) {
+    return Object.values(c.conceptsByWorkspace).some(
+      (list) => Array.isArray(list) && list.length > 0,
+    );
+  }
+  return false;
+}
+
+/**
+ * Atomically merge the cached concepts (for reuse) + the rendered prefix
+ * snapshot (for the Agent Logs detail view) into
+ * `SharedConversation.settings` via a jsonb `||` merge. Using a single
+ * UPDATE (rather than read-modify-write) keeps it race-free against the
+ * client autosave's concurrent `settings` writes — both sides merge into
+ * the same blob instead of overwriting it. Caller has validated `rowId`.
+ */
+async function persistOrgCanvasPromptCache(
+  rowId: string,
+  concepts: CachedConcepts,
+  prefixSnapshot: ModelMessage[],
+): Promise<void> {
+  const patch = JSON.stringify({
+    promptConcepts: concepts,
+    promptPrefix: prefixSnapshot,
+  });
+  await db.$executeRaw`
+    UPDATE shared_conversations
+    SET settings = COALESCE(settings, '{}'::jsonb) || ${patch}::jsonb
+    WHERE id = ${rowId}
+  `;
 }
 
 // ─── Agent-proposal: synthetic SSE stream for Approve / Reject ─────

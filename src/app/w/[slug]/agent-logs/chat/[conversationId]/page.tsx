@@ -13,6 +13,25 @@ import {
 import { parseAgentLogStats } from "@/lib/utils/agent-log-stats";
 import type { ConversationDetail } from "@/types/shared-conversation";
 
+// Minimal shape of an AI SDK `ModelMessage` as persisted in
+// `settings.promptPrefix`. We only read enough to render it; the full
+// type lives in the `ai` package (server-only) and we avoid importing
+// it into this page.
+interface PrefixMessage {
+  role?: string;
+  content?: unknown;
+}
+
+/**
+ * Pull the system-prompt text out of a cached prefix for a friendlier
+ * top-of-panel display. The system message's `content` is a plain
+ * string in our prefix builders; fall back to null otherwise.
+ */
+function extractSystemText(prefix: PrefixMessage[]): string | null {
+  const sys = prefix.find((m) => m?.role === "system");
+  return typeof sys?.content === "string" ? sys.content : null;
+}
+
 interface ChatDetailPageProps {
   params: Promise<{
     slug: string;
@@ -97,6 +116,16 @@ export default async function ChatDetailPage({ params, searchParams }: ChatDetai
   const rawContent = JSON.stringify(parsedMessages);
   const { conversation, stats } = parseAgentLogStats(rawContent);
 
+  // Cached agent prompt prefix (system prompt + pre-seeded `list_concepts`
+  // results) — the exact context the model received ahead of the visible
+  // conversation. Written server-side by `/api/ask/quick`; surfaced here
+  // read-only (it never appears in the live chat). See
+  // `ConversationSettings.promptPrefix`.
+  const promptPrefix = (data.settings?.promptPrefix as PrefixMessage[]) ?? null;
+  const promptSystemText = promptPrefix
+    ? extractSystemText(promptPrefix)
+    : null;
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-6 py-6">
@@ -110,6 +139,35 @@ export default async function ChatDetailPage({ params, searchParams }: ChatDetai
 
         {data.title && (
           <h1 className="text-xl font-semibold mt-4">{data.title}</h1>
+        )}
+
+        {promptPrefix && promptPrefix.length > 0 && (
+          <details className="mt-4 rounded-lg border border-border bg-muted/30">
+            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground">
+              Agent prompt context ({promptPrefix.length} messages) — cached
+              prefix sent to the model each turn
+            </summary>
+            <div className="space-y-4 border-t border-border px-4 py-4">
+              {promptSystemText && (
+                <div>
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    System prompt
+                  </div>
+                  <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded bg-background p-3 text-xs leading-relaxed">
+                    {promptSystemText}
+                  </pre>
+                </div>
+              )}
+              <div>
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Full prefix (incl. seeded concepts)
+                </div>
+                <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded bg-background p-3 text-xs leading-relaxed">
+                  {JSON.stringify(promptPrefix, null, 2)}
+                </pre>
+              </div>
+            </div>
+          </details>
         )}
       </div>
 
