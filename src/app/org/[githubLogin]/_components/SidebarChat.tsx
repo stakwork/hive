@@ -15,7 +15,7 @@ import { CanvasHistoryPopover } from "./CanvasHistoryPopover";
 import { CanvasAgentSettingsPopover } from "./CanvasAgentSettingsPopover";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
-import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
+import { StreamingMessage } from "@/components/streaming";
 import { Button } from "@/components/ui/button";
 import { SidebarChatMessage } from "./SidebarChatMessage";
 import { ProposalCard, getProposalsFromMessage } from "./ProposalCard";
@@ -290,12 +290,33 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 
             const proposals = getProposalsFromMessage(message);
 
+            // A streamed tool-call row carries a `timeline` (and empty
+            // text content). Render it as rich, expandable tool cards via
+            // the shared `<StreamingMessage>` — names, args, outputs, and
+            // live status, in order with any interleaved text. Plain text
+            // rows fall through to `SidebarChatMessage` so the bubble look
+            // and the `?r=`/`?c=` deep-link interceptor are preserved.
+            const hasTimeline = !!message.timeline?.length;
+
             return (
               <div key={message.id} className="space-y-1.5">
-                <SidebarChatMessage
-                  message={message}
-                  isStreaming={isMessageStreaming}
-                />
+                {hasTimeline ? (
+                  <div className="w-full text-foreground/90">
+                    <StreamingMessage
+                      message={{
+                        id: message.id,
+                        content: message.content,
+                        timeline: message.timeline,
+                        isStreaming: isMessageStreaming,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <SidebarChatMessage
+                    message={message}
+                    isStreaming={isMessageStreaming}
+                  />
+                )}
                 {proposals.length > 0 && (
                   <div className="space-y-1.5">
                     {proposals.map((p) => (
@@ -343,9 +364,6 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 </div>
               </div>
             </motion.div>
-          )}
-          {activeToolCalls.length > 0 && (
-            <ToolCallIndicator toolCalls={activeToolCalls} />
           )}
         </div>
       </div>

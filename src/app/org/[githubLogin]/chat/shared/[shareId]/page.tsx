@@ -3,8 +3,10 @@ import { getServerSession } from "next-auth/next";
 import { redirect, notFound } from "next/navigation";
 import { ChatMessage } from "@/components/dashboard/DashboardChat/ChatMessage";
 import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
+import { StreamingMessage } from "@/components/streaming";
 import { db } from "@/lib/db";
 import { SharedConversationData } from "@/types/shared-conversation";
+import type { StreamTimelineItem } from "@/types/streaming";
 import { Badge } from "@/components/ui/badge";
 
 interface Message {
@@ -21,6 +23,7 @@ interface Message {
     output?: unknown;
     errorText?: string;
   }>;
+  timeline?: StreamTimelineItem[];
 }
 
 interface OrgSharedConversationPageProps {
@@ -201,6 +204,25 @@ export default async function OrgSharedConversationPage({ params }: OrgSharedCon
         <div className="max-w-4xl mx-auto px-6 py-8">
           <div className="space-y-4">
             {messages.map((message) => {
+              // Streamed tool-call rows persist their rich render timeline —
+              // show the expandable cards (names / args / outputs) just like
+              // the live canvas chat.
+              if (message.timeline && message.timeline.length > 0) {
+                return (
+                  <div key={message.id} className="text-foreground/90">
+                    <StreamingMessage
+                      message={{
+                        id: message.id,
+                        content: message.content,
+                        timeline: message.timeline,
+                      }}
+                    />
+                  </div>
+                );
+              }
+
+              // Legacy rows (saved before the timeline landed) fall back to
+              // the generic indicator.
               if (message.toolCalls && message.toolCalls.length > 0 && !message.content) {
                 return (
                   <div key={message.id}>
