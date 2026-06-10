@@ -54,7 +54,7 @@ import {
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
-import { buildResearchTools, type CapturedSearchResult } from "@/lib/ai/researchTools";
+import { buildResearchTools, type CapturedSearchResult, type DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
@@ -97,10 +97,13 @@ const READONLY_STRIP_TOOL_NAMES: ReadonlySet<string> = new Set([
   PROPOSE_MILESTONE_TOOL,
 ]);
 
-function filterReadonly(tools: ToolSet): ToolSet {
+export function filterReadonly(tools: ToolSet, keepWriteToolNames?: string[]): ToolSet {
   const out: ToolSet = {};
   for (const [name, def] of Object.entries(tools)) {
-    if (READONLY_STRIP_TOOL_NAMES.has(name)) continue;
+    if (READONLY_STRIP_TOOL_NAMES.has(name)) {
+      // Spare tools the caller explicitly wants to keep even in readonly mode.
+      if (!keepWriteToolNames?.includes(name)) continue;
+    }
     out[name] = def;
   }
   return out;
@@ -188,6 +191,19 @@ export interface RunCanvasAgentOptions {
    */
   readonly?: boolean;
   /**
+   * Tool names to spare from the `readonly` strip. Only meaningful when
+   * `readonly: true`. Lets targeted workers (e.g. the research sub-agent)
+   * keep one write tool (e.g. `update_research`) while everything else is
+   * stripped. Names must match the exact tool name (no namespace prefix).
+   *
+   * **Important:** the spared tool must be one of the *internally-wired*
+   * tools (built inside `runCanvasAgent` with shared closures like
+   * `capturedWebSearchResults`). Passing an external tool name here that
+   * is NOT in the internal toolset is a no-op — the tool is already
+   * absent; nothing is restored.
+   */
+  keepWriteToolNames?: string[];
+  /**
    * When `true`, suppress the internal Pusher `HIGHLIGHT_NODES`
    * fan-out fired when the agent calls `learn_concept`. The HTTP
    * chat route leaves this `false` (default) so open chat clients
@@ -205,6 +221,13 @@ export interface RunCanvasAgentOptions {
    * collision with the built-in toolset (last spread wins).
    */
   additionalTools?: ToolSet;
+  /**
+   * Mutable collector for `dispatch_research` intents. When provided, the
+   * internally-wired `dispatch_research` tool will push each dispatched
+   * intent here so the caller's `after()` block can schedule workers.
+   * Sibling pattern to `capturedWebSearchResults`.
+   */
+  dispatchedResearch?: DispatchedResearchIntent[];
   /** Caller-owned side effects. */
   hooks?: CanvasAgentHooks;
 }
@@ -397,10 +420,12 @@ export async function runCanvasAgent(
     scope,
     messages,
     readonly = false,
+    keepWriteToolNames,
     silentPusher = false,
     hooks,
     currentCanvasConversationId,
     additionalTools,
+    dispatchedResearch,
   } = opts;
 
   if (!Array.isArray(workspaceSlugs) || workspaceSlugs.length === 0) {
@@ -474,7 +499,7 @@ export async function runCanvasAgent(
         ...buildConnectionTools(orgId, userId),
         ...buildCanvasTools(orgId),
         ...buildInitiativeTools(orgId, userId, currentCanvasConversationId),
-        ...buildResearchTools(orgId, userId, capturedWebSearchResults),
+        ...buildResearchTools(orgId, userId, capturedWebSearchResults, dispatchedResearch, currentCanvasConversationId),
       };
     }
 
@@ -559,7 +584,7 @@ export async function runCanvasAgent(
         ...buildConnectionTools(orgId, userId),
         ...buildCanvasTools(orgId),
         ...buildInitiativeTools(orgId, userId, currentCanvasConversationId),
-        ...buildResearchTools(orgId, userId, capturedWebSearchResults),
+        ...buildResearchTools(orgId, userId, capturedWebSearchResults, dispatchedResearch, currentCanvasConversationId),
       };
     }
 
@@ -584,7 +609,7 @@ export async function runCanvasAgent(
   }
 
   if (readonly) {
-    tools = filterReadonly(tools);
+    tools = filterReadonly(tools, keepWriteToolNames);
   }
 
   // Merge caller-supplied extra tools AFTER the readonly strip so they
