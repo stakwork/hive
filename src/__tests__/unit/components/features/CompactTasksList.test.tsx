@@ -132,8 +132,14 @@ vi.mock("@/components/tasks/DeploymentStatusBadge", () => ({
 }));
 
 vi.mock("@/components/tasks/PRStatusBadge", () => ({
-  PRStatusBadge: ({ url, status }: any) => (
-    <div data-testid="pr-badge" data-url={url} data-status={status}>
+  PRStatusBadge: ({ url, status, ciStatus, ciSummary }: any) => (
+    <div
+      data-testid="pr-badge"
+      data-url={url}
+      data-status={status}
+      data-cistatus={ciStatus}
+      data-cisummary={ciSummary}
+    >
       PR
     </div>
   ),
@@ -2966,6 +2972,69 @@ describe("CompactTasksList", () => {
       const badge = screen.getByTestId("publish-badge");
       expect(badge.getAttribute("data-type")).toBe("PUBLISH_SCRIPT");
       expect(badge.getAttribute("data-published")).toBe("false");
+    });
+  });
+
+  describe("CI status on PR badge", () => {
+    test("passes ciStatus and ciSummary to PRStatusBadge when progress is present", () => {
+      const task = createMockTask({
+        id: "task-ci-success",
+        status: "IN_PROGRESS" as TaskStatus,
+        prArtifact: {
+          id: "pr-artifact-1",
+          type: "PULL_REQUEST",
+          content: {
+            url: "https://github.com/org/repo/pull/42",
+            status: "IN_PROGRESS" as const,
+            progress: {
+              ciStatus: "success" as const,
+              ciSummary: "5/5 passed",
+            },
+          },
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const badge = screen.getByTestId("pr-badge");
+      expect(badge.getAttribute("data-cistatus")).toBe("success");
+      expect(badge.getAttribute("data-cisummary")).toBe("5/5 passed");
+    });
+
+    test("renders PR badge without data-cistatus when progress is absent", () => {
+      const task = createMockTask({
+        id: "task-no-ci",
+        status: "IN_PROGRESS" as TaskStatus,
+        prArtifact: {
+          id: "pr-artifact-2",
+          type: "PULL_REQUEST",
+          content: {
+            url: "https://github.com/org/repo/pull/43",
+            status: "IN_PROGRESS" as const,
+          },
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const badge = screen.getByTestId("pr-badge");
+      expect(badge.getAttribute("data-cistatus")).toBeNull();
     });
   });
 });
