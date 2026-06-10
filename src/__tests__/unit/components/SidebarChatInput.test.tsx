@@ -77,9 +77,9 @@ function TestSidebarChatInput({
     e.preventDefault();
     if (!input.trim() || disabled) return;
     const message = input.trim();
+    setInput(""); // clear immediately on send
     await onSend(message, () => {
-      setInput("");
-      inputRef.current?.focus();
+      inputRef.current?.focus(); // callback now only handles re-focus
     });
   };
 
@@ -235,6 +235,37 @@ describe("SidebarChatInput — CSS-native field-sizing-content", () => {
     });
 
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("clears input immediately on submit, before onSend resolves", async () => {
+    // onSend never resolves during this test — simulates slow AI response
+    let resolveSend!: () => void;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+
+    render(<TestSidebarChatInput onSend={onSend} />);
+    const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
+
+    await act(async () => {
+      fireEvent.change(ta, { target: { value: "hello world" } });
+    });
+    expect(ta.value).toBe("hello world");
+
+    // Submit — do NOT await so we can inspect state mid-flight
+    act(() => {
+      fireEvent.submit(ta.closest("form")!);
+    });
+
+    // Input should be empty immediately, before onSend has resolved
+    expect(ta.value).toBe("");
+    expect(onSend).toHaveBeenCalledWith("hello world", expect.any(Function));
+
+    // Clean up the pending promise
+    resolveSend();
   });
 });
 

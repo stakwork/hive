@@ -87,7 +87,6 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   );
 
   const sendMessage = useSendCanvasChatMessage();
-  const inputClearRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Scroll the messages container (not the page) to the bottom on
@@ -101,11 +100,10 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 
   const handleSend = async (content: string, clearInput: () => void) => {
     if (!activeId) return;
-    inputClearRef.current = clearInput;
     await sendMessage({
       conversationId: activeId,
       content,
-      onResponseStart: () => clearInput(),
+      onResponseStart: () => clearInput(), // now only re-focuses, harmless to keep
     });
   };
 
@@ -527,9 +525,9 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
     }
     resetTranscript();
     preVoiceInputRef.current = "";
+    setInput(""); // clear immediately on send
     await onSend(message, () => {
-      setInput("");
-      inputRef.current?.focus();
+      inputRef.current?.focus(); // callback now only handles re-focus
     });
   };
 
