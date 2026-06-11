@@ -229,9 +229,14 @@ function buildWakeMessage(
             "`requirements`, and `architecture` are all populated and the " +
             "architecture looks sound, **keep it moving — auto-respond with " +
             "`send_to_feature_planner` telling it to generate the tasks now** " +
-            "(unless the user asked to review the plan first). A finished " +
-            "plan that just sits waiting is the failure mode. Don't try to " +
-            "*start* tasks — that's the user's button."
+            "(unless the user asked to review the plan first). If instead a " +
+            "stage is still missing, ask only for the SINGLE next stage " +
+            "(requirements, then architecture, then tasks) — the planner runs " +
+            "one stage per turn and silently ignores a second ask, so never " +
+            "batch (e.g. 'write the architecture and generate the tasks'). " +
+            "One ask per round-trip; you'll be woken again when it lands. A " +
+            "finished plan that just sits waiting is the failure mode. Don't " +
+            "try to *start* tasks — that's the user's button."
           : "Default toward escalation or silence unless the user's " +
             "instructions clearly grant you the autonomy to answer."),
   };
