@@ -209,17 +209,29 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
             />
           )}
           {/*
-            Once the planner has generated tasks, offer a Start Tasks
-            button (it reads the live ready-count itself and hides when
-            none remain). Suppressed while a FORM is pending — answer the
-            planner first.
+            Offer a Start Tasks button once the planner has replied at
+            all — NOT just when a reply carried a `TASKS` artifact.
+            Tasks created by the remote planner over MCP
+            (`create_task` / `create_feature_task`) hit the DB directly
+            with no artifact, no chat message, and no fan-out, so
+            `run.hasGeneratedTasks` (artifact-derived) stays false even
+            though real tasks exist. The slot itself reads the live
+            ready-count (`GET …/tasks/assign-all`) and renders nothing
+            when zero, so showing it for any answered run is safe — the
+            count is the artifact-independent source of truth. We pass
+            `revalidateKey` (the anchor, which moves on each new planner
+            reply) so a closing "tasks created" message re-queries the
+            count and surfaces the button live. Suppressed while a FORM
+            is pending — answer the planner first.
           */}
-          {run.hasGeneratedTasks && !run.pendingForm && (
-            <StartTasksSlot
-              featureId={run.featureId}
-              featureTitle={run.featureTitle}
-            />
-          )}
+          {!run.pendingForm &&
+            run.messages.some((m) => m.direction === "in") && (
+              <StartTasksSlot
+                featureId={run.featureId}
+                featureTitle={run.featureTitle}
+                revalidateKey={run.anchorMessageId}
+              />
+            )}
         </div>
       ))}
     </div>
