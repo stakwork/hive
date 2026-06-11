@@ -157,6 +157,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
                   branch: defaultBranch,
                   status: "PENDING",
                   updatedAt: new Date().toISOString(),
+                  allowAutoMerge: false,
                 },
               ],
               swarmId: swarmData.data.id,
