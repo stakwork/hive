@@ -199,7 +199,7 @@ export async function GET(request: NextRequest) {
     if (c.source === "org-canvas") {
       const githubLogin = c.sourceControlOrgId ? orgMap.get(c.sourceControlOrgId) : undefined;
       if (githubLogin) {
-        link = `/org/${githubLogin}`;
+        link = `/org/${githubLogin}?chat=${c.id}`;
         orgName = githubLogin;
       }
     } else if (c.workspaceId) {
@@ -208,9 +208,9 @@ export async function GET(request: NextRequest) {
         workspaceName = ws.name;
         orgName = ws.githubLogin;
         if (c.source === "dashboard") {
-          link = `/w/${ws.slug}`;
+          link = `/w/${ws.slug}?chat=${c.id}`;
         } else if (c.source === "logs-agent") {
-          link = `/w/${ws.slug}/agent-logs`;
+          link = `/w/${ws.slug}/agent-logs/chat/${c.id}`;
         }
       }
     }
