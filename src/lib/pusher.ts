@@ -113,7 +113,13 @@ export type CanvasConversationUpdateReason =
   // `/api/ask/quick` org path, in `after()`). The authoring tab filters
   // its own turn out of the merge by id prefix; other viewers / a
   // reopened tab live-sync it in.
-  | "user-turn";
+  | "user-turn"
+  // A feature's planner workflow reached a new (often terminal) status
+  // AFTER its message already fanned out — the stakwork webhook updated
+  // the latest planner row's `source.workflowStatus` in place (same id).
+  // The client reconciles existing planner rows' `source` from the
+  // server copy so the `SubAgentRunCard` pill re-derives live.
+  | "workflow-status";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON

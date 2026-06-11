@@ -149,9 +149,14 @@ export interface SubAgentRun {
   };
   /**
    * `true` once any planner reply in this run generated a task
-   * breakdown (a `TASKS` artifact). `SidebarChat` renders a
-   * `StartTasksSlot` for the feature, which reads the live ready-count
-   * and offers a **Start Tasks** button. Starting tasks is the user's
+   * breakdown via a `TASKS` artifact. NOTE: this is only the
+   * artifact-derived fast-path — it is NOT what gates the **Start
+   * Tasks** button. The planner can also create tasks over MCP
+   * (`create_task` / `create_feature_task`), which produce no artifact
+   * and leave this `false`. `SidebarChat` therefore renders
+   * `StartTasksSlot` for any run that got a planner reply, and the slot
+   * reads the live ready-count (`…/tasks/assign-all`) as the real,
+   * artifact-independent source of truth. Starting tasks is the user's
    * call (it spins up real compute) — the canvas agent never does it.
    */
   hasGeneratedTasks?: boolean;
