@@ -303,6 +303,19 @@ interface CanvasChatState {
   ephemeralSeedCounts: Record<string, number>;
 
   /**
+   * Turn ids this client authored (sent via `useSendCanvasChatMessage`).
+   * Backend-driven persistence (docs/plans/backend-driven-canvas-turns.md):
+   * the SERVER writes each turn's rows under `${turnId}-u` / `${turnId}-a*`
+   * and broadcasts a Pusher nudge. The authoring tab is already showing its
+   * own optimistic stream for those turns, so `useCanvasChatAutoSave`'s
+   * live-sync filters server rows whose id starts with `${turnId}-` for any
+   * id in this set — preventing a double-render. Other tabs / a reopened tab
+   * have an empty set and merge the server rows normally. Grow-only per
+   * session (ids are unique; stale entries simply never match).
+   */
+  locallyAuthoredTurnIds: Set<string>;
+
+  /**
    * One-shot text the chat input should adopt the next time it
    * renders. `null` means "no draft pending"; non-null means "set
    * the textarea to this string, focus it, then clear this slot."
@@ -358,6 +371,8 @@ interface CanvasChatState {
     serverConversationId?: string,
   ) => string;
   setActiveConversation: (conversationId: string | null) => void;
+  /** Record a turn id this client just sent (see `locallyAuthoredTurnIds`). */
+  markTurnAuthored: (turnId: string) => void;
   /** Update the context of the active conversation (canvas-scope changes). */
   updateActiveContext: (patch: Partial<ConversationContext>) => void;
   /** Wipe the active conversation's messages but keep the conversation row. */
@@ -440,6 +455,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       conversations: {},
       activeConversationId: null,
       ephemeralSeedCounts: {},
+      locallyAuthoredTurnIds: new Set<string>(),
       pendingInputDraft: null,
       proposals: {},
       subAgentRuns: {},
@@ -481,6 +497,18 @@ export const useCanvasChatStore = create<CanvasChatState>()(
 
       setActiveConversation: (conversationId) =>
         set({ activeConversationId: conversationId }, false, "setActiveConversation"),
+
+      markTurnAuthored: (turnId) =>
+        set(
+          (s) => {
+            if (s.locallyAuthoredTurnIds.has(turnId)) return s;
+            const next = new Set(s.locallyAuthoredTurnIds);
+            next.add(turnId);
+            return { locallyAuthoredTurnIds: next };
+          },
+          false,
+          "markTurnAuthored",
+        ),
 
       updateActiveContext: (patch) =>
         set(

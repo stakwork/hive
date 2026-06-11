@@ -64,13 +64,28 @@ export interface MergeResult<T> {
  * newest, so appending them in server order is chronological — and the
  * `<SubAgentRunCard>`'s `source.kind === "planner"` rows land in the
  * conversation this way.
+ *
+ * `skipServerIdPrefixes` filters out server rows whose id starts with any
+ * of the given prefixes — the backend-driven-turn dedup. The authoring
+ * tab passes `${turnId}-` for every turn it sent (see
+ * `locallyAuthoredTurnIds`): the SERVER persists those turns' rows under
+ * that prefix, but this tab is already showing its own optimistic stream
+ * for them, so merging the server copies would double-render. Other tabs
+ * / a reopened tab pass no prefixes and merge everything. Local rows are
+ * never affected — only incoming server rows are skipped.
  */
 export function mergeServerMessages<T extends PersistableMessage>(
   local: T[],
   server: T[],
+  skipServerIdPrefixes: readonly string[] = [],
 ): MergeResult<T> {
   const localIds = new Set(local.map((m) => m.id));
-  const added = server.filter((m) => !localIds.has(m.id));
+  const isSkipped = (id: string) =>
+    skipServerIdPrefixes.length > 0 &&
+    skipServerIdPrefixes.some((p) => id.startsWith(p));
+  const added = server.filter(
+    (m) => !localIds.has(m.id) && !isSkipped(m.id),
+  );
   return {
     messages: added.length > 0 ? [...local, ...added] : local,
     added,
