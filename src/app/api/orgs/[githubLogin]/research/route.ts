@@ -95,10 +95,8 @@ export async function DELETE(
       );
     }
 
-    // Admin-gated, mirroring the Connection delete path. Members can
-    // read research but only ADMIN/OWNER of at least one workspace
-    // under the org can delete.
-    const orgId = await resolveAuthorizedOrgId(githubLogin, userId, true);
+    // Member-gate first; then allow deletion by admin OR the original creator.
+    const orgId = await resolveAuthorizedOrgId(githubLogin, userId, false);
     if (!orgId) {
       return NextResponse.json(
         { error: "Organization not found" },
@@ -110,13 +108,19 @@ export async function DELETE(
     // and to enforce the org-membership guard before deleting.
     const research = await db.research.findFirst({
       where: { id: researchId, orgId },
-      select: { id: true, slug: true, initiativeId: true },
+      select: { id: true, slug: true, initiativeId: true, createdBy: true },
     });
     if (!research) {
       return NextResponse.json(
         { error: "Research not found" },
         { status: 404 },
       );
+    }
+
+    // Enforce: only admins or the original creator may delete.
+    const isAdmin = !!(await resolveAuthorizedOrgId(githubLogin, userId, true));
+    if (!isAdmin && research.createdBy !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     await db.research.delete({ where: { id: research.id } });
