@@ -84,7 +84,7 @@ describe("useStreamContext", () => {
     WorkflowStatus.FAILED,
     WorkflowStatus.ERROR,
     WorkflowStatus.HALTED,
-  ])("onWorkflowStatusUpdate clears streamContext for terminal status: %s", (status) => {
+  ])("onWorkflowStatusUpdate preserves streamContext for terminal status: %s", (status) => {
     const { result } = renderHook(() => useStreamContext());
 
     // First set a stream context
@@ -111,7 +111,9 @@ describe("useStreamContext", () => {
       result.current.onWorkflowStatusUpdate({ workflowStatus: status } as WorkflowStatusUpdate);
     });
 
-    expect(result.current.streamContext).toBeNull();
+    // Context should be preserved — no longer cleared on terminal status
+    expect(result.current.streamContext).not.toBeNull();
+    expect(result.current.streamContext?.requestId).toBe("req-1");
   });
 
   it("onWorkflowStatusUpdate does NOT clear streamContext for IN_PROGRESS", () => {
@@ -146,5 +148,44 @@ describe("useStreamContext", () => {
     // Should still be set
     expect(result.current.streamContext).not.toBeNull();
     expect(result.current.streamContext?.requestId).toBe("req-1");
+  });
+
+  it("second STREAM artifact overrides first context even after terminal status", () => {
+    const { result } = renderHook(() => useStreamContext());
+
+    const makeStreamMessage = (requestId: string) =>
+      makeMessage({
+        artifacts: [
+          {
+            type: "STREAM",
+            content: {
+              requestId,
+              eventsToken: "tok-1",
+              baseUrl: "https://example.com",
+            },
+          },
+        ] as ChatMessage["artifacts"],
+      });
+
+    // Run 1: set first context
+    act(() => {
+      result.current.onMessage(makeStreamMessage("req-1"));
+    });
+    expect(result.current.streamContext?.requestId).toBe("req-1");
+
+    // Run 1 completes — should be a no-op now
+    act(() => {
+      result.current.onWorkflowStatusUpdate({
+        workflowStatus: WorkflowStatus.COMPLETED,
+      } as WorkflowStatusUpdate);
+    });
+    expect(result.current.streamContext?.requestId).toBe("req-1");
+
+    // Run 2: new STREAM artifact arrives
+    act(() => {
+      result.current.onMessage(makeStreamMessage("req-2"));
+    });
+
+    expect(result.current.streamContext?.requestId).toBe("req-2");
   });
 });

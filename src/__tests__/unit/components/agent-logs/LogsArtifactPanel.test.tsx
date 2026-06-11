@@ -285,6 +285,7 @@ describe("LogsArtifactPanel", () => {
     const streamingLog = {
       agent: "streaming-agent-task1",
       conversation: [{ role: "assistant", content: "Working…", toolCalls: [] }],
+      status: "streaming" as const,
     };
     // No real logs so provisional tab is shown
     render(
@@ -296,6 +297,34 @@ describe("LogsArtifactPanel", () => {
 
     const tab = screen.getByRole("tab", { name: /Streaming Agent/i });
     expect(tab.getAttribute("title")).toBeNull();
+  });
+
+  it("shows provisional tab for second run even when a canonical log with the same agent name already exists", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => fakeStats });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    const streamingLog = {
+      agent: "plan-agent",
+      conversation: [],
+      status: "streaming" as const,
+    };
+
+    render(
+      React.createElement(LogsArtifactPanel, {
+        logs: [{ id: "log-1", agent: "plan-agent" }],
+        streamingLog,
+      })
+    );
+
+    // Provisional tab should be present despite the canonical log sharing the same agent name
+    const provisionalTab = screen.getByRole("tab", { name: /Plan Agent/i, selected: false });
+    expect(provisionalTab).toBeDefined();
+    // The streaming indicator (animate-pulse dot) is only on the provisional tab
+    const allTabs = screen.getAllByRole("tab");
+    const provisionalTabWithPulse = allTabs.find((tab) =>
+      tab.querySelector("[aria-label='streaming']") !== null
+    );
+    expect(provisionalTabWithPulse).toBeDefined();
   });
 });
 

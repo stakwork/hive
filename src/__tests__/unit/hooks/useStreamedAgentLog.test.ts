@@ -56,7 +56,7 @@ describe("useStreamedAgentLog", () => {
     expect(result.current).toBeNull();
   });
 
-  it("returns { agent, conversation: [] } when streaming with no events yet", () => {
+  it("returns { agent, conversation: [], status: 'streaming' } when streaming with no events yet", () => {
     const { result } = renderHook(() =>
       useStreamedAgentLog({
         requestId: "req-1",
@@ -68,6 +68,7 @@ describe("useStreamedAgentLog", () => {
     expect(result.current).not.toBeNull();
     expect(result.current?.agent).toBe("plan-agent-abc");
     expect(result.current?.conversation).toEqual([]);
+    expect(result.current?.status).toBe("streaming");
   });
 
   it("maps text events to assistant conversation messages", () => {
@@ -87,6 +88,7 @@ describe("useStreamedAgentLog", () => {
     expect(result.current?.conversation).toEqual([
       { role: "assistant", content: "Hello world" },
     ]);
+    expect(result.current?.status).toBe("streaming");
   });
 
   it("maps tool_call events with input to formatted assistant messages", () => {
@@ -110,6 +112,7 @@ describe("useStreamedAgentLog", () => {
     expect(result.current?.conversation[0].role).toBe("assistant");
     expect(result.current?.conversation[0].content).toContain("🔧 search_files");
     expect(result.current?.conversation[0].content).toContain("query: test");
+    expect(result.current?.status).toBe("streaming");
   });
 
   it("maps tool_call events without input to simple formatted messages", () => {
@@ -127,6 +130,7 @@ describe("useStreamedAgentLog", () => {
     });
 
     expect(result.current?.conversation[0].content).toBe("🔧 read_file");
+    expect(result.current?.status).toBe("streaming");
   });
 
   it("accumulates multiple events in order", () => {
@@ -150,6 +154,7 @@ describe("useStreamedAgentLog", () => {
     expect(result.current?.conversation[0].content).toBe("First");
     expect(result.current?.conversation[1].content).toBe("🔧 search");
     expect(result.current?.conversation[2].content).toBe("Second");
+    expect(result.current?.status).toBe("streaming");
   });
 
   it("returns null when status is done and no events exist", () => {
@@ -169,7 +174,7 @@ describe("useStreamedAgentLog", () => {
     expect(result.current).toBeNull();
   });
 
-  it("returns conversation when status is done but events exist", () => {
+  it("returns conversation with status 'done' when status is done but events exist", () => {
     const { result } = renderHook(() =>
       useStreamedAgentLog({
         requestId: "req-1",
@@ -188,6 +193,7 @@ describe("useStreamedAgentLog", () => {
     // Has events so should still return conversation
     expect(result.current).not.toBeNull();
     expect(result.current?.conversation).toHaveLength(1);
+    expect(result.current?.status).toBe("done");
   });
 
   it("returns null when status is error and no events exist", () => {
@@ -229,5 +235,6 @@ describe("useStreamedAgentLog", () => {
 
     // New EventSource opened, events reset
     expect(result.current?.conversation).toHaveLength(0);
+    expect(result.current?.status).toBe("streaming");
   });
 });
