@@ -195,6 +195,12 @@ export interface CanvasChatMessage {
    */
   approvalResult?: ApprovalResult;
   /**
+   * Set by `/api/ask/quick` when `handleApproval` fails; carries the
+   * failure reason. The ProposalCard reads this to enter a recoverable
+   * "failed" state with a Retry button instead of a permanent spinner.
+   */
+  approvalError?: { proposalId: string; error: string };
+  /**
    * Provenance marker for rows that didn't originate in the canvas
    * conversation (planner fan-out, planner-form answers).
    * See `CanvasMessageSource`.

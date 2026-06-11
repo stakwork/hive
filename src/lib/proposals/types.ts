@@ -364,7 +364,8 @@ export type ProposalStatus =
   | { status: "pending" }
   | { status: "pending-in-flight" } // Approve clicked, server hasn't replied yet
   | { status: "approved"; result: ApprovalResult }
-  | { status: "rejected" };
+  | { status: "rejected" }
+  | { status: "failed"; error: string }; // Approval failed; user can retry
 
 /**
  * Minimal shape we need from a `CanvasChatMessage` to derive proposal
@@ -376,45 +377,47 @@ interface MessageForStatusScan {
   approval?: ApprovalIntent;
   rejection?: RejectionIntent;
   approvalResult?: ApprovalResult;
+  approvalError?: { proposalId: string; error: string };
 }
 
 /**
  * Resolve a proposal's lifecycle status from the conversation transcript.
  *
- * Scan order is forward — the first matching terminal event wins.
+ * Scan order is forward, last-wins — so a retry (new user approval intent
+ * after a `failed` message) naturally overrides back to `"pending-in-flight"`:
  *
- *   - assistant message with `approvalResult.proposalId === id` → approved.
- *   - user message with `rejection.proposalId === id` → rejected.
- *   - user message with `approval.proposalId === id` AND no later
- *     `approvalResult` → in flight (Approve was clicked, the route's
- *     synthetic confirmation hasn't streamed back yet).
- *   - otherwise → pending.
+ *   pending
+ *     → (user approval)       → pending-in-flight
+ *     → (assistant error)     → failed
+ *     → (user approval retry) → pending-in-flight
+ *     → (assistant result)    → approved
  *
- * `approvalResult` short-circuits over `rejection` when both exist
- * (shouldn't happen, but if it did, the row got created — the DB is
- * authoritative). Subsequent re-approvals are no-ops by the route's
- * idempotency scan; we don't need to model "approved twice."
+ * `approved` and `rejected` are terminal — once reached they cannot
+ * be overridden (the DB row exists).
  */
 export function getProposalStatus(
   messages: MessageForStatusScan[],
   proposalId: string,
 ): ProposalStatus {
-  let sawApprovalIntent = false;
+  let current: ProposalStatus = { status: "pending" };
 
   for (const msg of messages) {
-    if (
+    if (msg.role === "user" && msg.approval?.proposalId === proposalId) {
+      current = { status: "pending-in-flight" };
+    } else if (msg.role === "user" && msg.rejection?.proposalId === proposalId) {
+      current = { status: "rejected" };
+    } else if (
       msg.role === "assistant" &&
       msg.approvalResult?.proposalId === proposalId
     ) {
-      return { status: "approved", result: msg.approvalResult };
-    }
-    if (msg.role === "user" && msg.rejection?.proposalId === proposalId) {
-      return { status: "rejected" };
-    }
-    if (msg.role === "user" && msg.approval?.proposalId === proposalId) {
-      sawApprovalIntent = true;
+      current = { status: "approved", result: msg.approvalResult };
+    } else if (
+      msg.role === "assistant" &&
+      msg.approvalError?.proposalId === proposalId
+    ) {
+      current = { status: "failed", error: msg.approvalError.error };
     }
   }
 
-  return sawApprovalIntent ? { status: "pending-in-flight" } : { status: "pending" };
+  return current;
 }

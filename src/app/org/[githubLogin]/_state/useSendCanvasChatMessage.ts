@@ -176,6 +176,19 @@ export function useSendCanvasChatMessage() {
           }
         }
 
+        let approvalError: { proposalId: string; error: string } | null = null;
+        const approvalErrorHeader = response.headers.get("X-Approval-Error");
+        if (approvalErrorHeader) {
+          try {
+            approvalError = JSON.parse(approvalErrorHeader) as {
+              proposalId: string;
+              error: string;
+            };
+          } catch (e) {
+            console.warn("Invalid X-Approval-Error header:", e);
+          }
+        }
+
         const messageId = (Date.now() + 1).toString();
         const loggedToolCalls = new Set<string>();
 
@@ -291,17 +304,21 @@ export function useSendCanvasChatMessage() {
             });
           }
 
-          // Stamp the structured approval outcome onto the last
-          // assistant text message in this batch, when the route
+          // Stamp the structured approval outcome (or failure) onto the
+          // last assistant text message in this batch, when the route
           // returned one. This is what the proposal card scans for
           // when computing status, and what survives a refresh
           // because the field round-trips through
           // `SharedConversation.messages` JSON.
-          if (approvalResult) {
+          if (approvalResult || approvalError) {
             for (let i = timelineMessages.length - 1; i >= 0; i--) {
               const m = timelineMessages[i];
               if (m.role === "assistant" && !m.toolCalls?.length) {
-                timelineMessages[i] = { ...m, approvalResult };
+                timelineMessages[i] = {
+                  ...m,
+                  ...(approvalResult ? { approvalResult } : {}),
+                  ...(approvalError ? { approvalError } : {}),
+                };
                 break;
               }
             }

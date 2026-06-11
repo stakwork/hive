@@ -784,6 +784,7 @@ async function runProposalIntent(args: {
 
   let summaryText: string;
   let approvalResultHeader: string | null = null;
+  let approvalErrorHeader: string | null = null;
   let alreadyApproved = false;
 
   if (approvalIntent) {
@@ -795,13 +796,16 @@ async function runProposalIntent(args: {
       ...(conversationId ? { conversationId } : {}),
     });
     if (!outcome.ok) {
-      // Surface validation errors as the assistant text. The card UI
-      // distinguishes "approval failed" from "approved" by checking
-      // for `approvalResult` on the message; without it, the card
-      // stays in pending-in-flight + shows the assistant text as the
-      // failure reason. The HTTP status stays 200 so the SSE stream
-      // still flushes cleanly.
+      // Surface validation errors as the assistant text AND stamp an
+      // X-Approval-Error header so the chat send hook can flip the
+      // ProposalCard to a recoverable "failed" state (with a Retry
+      // button) instead of leaving it permanently in-flight. The HTTP
+      // status stays 200 so the SSE stream still flushes cleanly.
       summaryText = `I couldn't create that: ${outcome.error}`;
+      approvalErrorHeader = JSON.stringify({
+        proposalId: approvalIntent!.proposalId,
+        error: outcome.error,
+      });
     } else {
       const r = outcome.result;
       alreadyApproved = outcome.alreadyApproved;
@@ -878,12 +882,14 @@ async function runProposalIntent(args: {
   };
   if (approvalResultHeader) {
     headers["X-Approval-Result"] = approvalResultHeader;
-    // Browsers expose only safelisted response headers to fetch
-    // unless the server opts in via Access-Control-Expose-Headers.
-    // The chat is same-origin so this isn't strictly required, but
-    // setting it makes the contract explicit and safe under any
-    // future origin-split.
-    headers["Access-Control-Expose-Headers"] = "X-Approval-Result";
+  }
+  if (approvalErrorHeader) {
+    headers["X-Approval-Error"] = approvalErrorHeader;
+  }
+  // Expose both approval headers to fetch. Same-origin so not strictly
+  // required, but explicit and safe under any future origin-split.
+  if (approvalResultHeader || approvalErrorHeader) {
+    headers["Access-Control-Expose-Headers"] = "X-Approval-Result, X-Approval-Error";
   }
 
   return new Response(stream, { headers });
