@@ -5,6 +5,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PublishScriptArtifact } from "@/app/w/[slug]/task/[...taskParams]/artifacts/publish-script";
 import { ArtifactType } from "@/lib/chat";
 
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({ slug: "stakwork" }),
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({ children, onClick, disabled, ...props }: any) => (
     <button onClick={onClick} disabled={disabled} {...props}>
@@ -21,6 +25,7 @@ vi.mock("lucide-react", () => ({
   Upload: () => <svg data-testid="icon-upload" />,
   CheckCircle2: () => <svg data-testid="icon-check" />,
   Loader2: () => <svg data-testid="icon-loader" />,
+  ExternalLink: () => <svg data-testid="icon-external-link" />,
 }));
 
 vi.mock("sonner", () => ({
@@ -149,5 +154,26 @@ describe("PublishScriptArtifact", () => {
       expect(toast.error).toHaveBeenCalledWith("Missing script ID or version ID");
     });
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("renders version chip and link when scriptVersionId is present", () => {
+    render(<PublishScriptArtifact artifact={makeArtifact() as any} />);
+    expect(screen.getByTestId("script-version-chip")).toBeInTheDocument();
+    expect(screen.getByTestId("script-version-chip")).toHaveTextContent("v1");
+    expect(screen.getByTestId("script-version-link")).toBeInTheDocument();
+    expect(screen.getByTestId("script-version-link")).toHaveAttribute(
+      "href",
+      "/w/stakwork/scripts?script=1&version=1"
+    );
+  });
+
+  it("does NOT render version chip when scriptVersionId is absent", () => {
+    render(
+      <PublishScriptArtifact
+        artifact={makeArtifact({ scriptVersionId: undefined }) as any}
+      />
+    );
+    expect(screen.queryByTestId("script-version-chip")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("script-version-link")).not.toBeInTheDocument();
   });
 });

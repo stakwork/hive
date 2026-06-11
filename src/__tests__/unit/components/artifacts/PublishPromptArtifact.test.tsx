@@ -5,6 +5,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PublishPromptArtifact } from "@/app/w/[slug]/task/[...taskParams]/artifacts/publish-prompt";
 import { ArtifactType } from "@/lib/chat";
 
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({ slug: "stakwork" }),
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({ children, onClick, disabled, ...props }: any) => (
     <button onClick={onClick} disabled={disabled} {...props}>
@@ -21,6 +25,7 @@ vi.mock("lucide-react", () => ({
   Upload: () => <svg data-testid="icon-upload" />,
   CheckCircle2: () => <svg data-testid="icon-check" />,
   Loader2: () => <svg data-testid="icon-loader" />,
+  ExternalLink: () => <svg data-testid="icon-external-link" />,
 }));
 
 vi.mock("sonner", () => ({
@@ -144,5 +149,26 @@ describe("PublishPromptArtifact", () => {
       expect(toast.error).toHaveBeenCalledWith("Missing prompt ID or version ID");
     });
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("renders version chip and link when promptVersionId is present", () => {
+    render(<PublishPromptArtifact artifact={makeArtifact() as any} />);
+    expect(screen.getByTestId("prompt-version-chip")).toBeInTheDocument();
+    expect(screen.getByTestId("prompt-version-chip")).toHaveTextContent("v7");
+    expect(screen.getByTestId("prompt-version-link")).toBeInTheDocument();
+    expect(screen.getByTestId("prompt-version-link")).toHaveAttribute(
+      "href",
+      "/w/stakwork/prompts?prompt=42&version=7"
+    );
+  });
+
+  it("does NOT render version chip when promptVersionId is absent", () => {
+    render(
+      <PublishPromptArtifact
+        artifact={makeArtifact({ promptVersionId: undefined }) as any}
+      />
+    );
+    expect(screen.queryByTestId("prompt-version-chip")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("prompt-version-link")).not.toBeInTheDocument();
   });
 });
