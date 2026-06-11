@@ -190,10 +190,22 @@ const AUTOTURN_STRIP_TOOLS: ReadonlySet<string> = new Set([STAY_SILENT_TOOL]);
  * messages" and Anthropic throws `AI_UnsupportedFunctionalityError`,
  * aborting the whole auto-turn. (The user-driven `/api/ask/quick` path
  * never hits this because its `messages` start with a `user` turn.)
- * As a `user` message the wake note rides safely at the head of the
- * conversation — the AI SDK merges it with the following user turn —
- * and the planner's reply is still "the most recent assistant entry"
- * the prompt refers to. Do NOT change this back to `system`.
+ * Do NOT change this back to `system`.
+ *
+ * Placement is load-bearing too: the caller appends this message at the
+ * TAIL of the model message list, AFTER the full transcript — so the
+ * planner's reply is the last *assistant* entry and THIS user message is
+ * the last entry overall. That matters because Anthropic treats a
+ * conversation ending on an assistant turn as a *prefill to continue*,
+ * not a prompt to act on: the model just extends the planner's text
+ * (echoing earlier assistant chatter, skipping every tool call) instead
+ * of running its wake instructions. We learned this the hard way — an
+ * earlier version put the wake note at the HEAD, the array ended on the
+ * planner's assistant turn, and the agent reliably emitted a stale
+ * narration row with zero tool calls (no `read_feature`, no
+ * `send_to_feature_planner`) — i.e. did nothing. Ending on this `user`
+ * turn mirrors the working `/api/ask/quick` path, which always ends on
+ * the user's just-typed message. Do NOT move this back to the head.
  */
 function buildWakeMessage(
   featureTitle: string,
@@ -203,9 +215,9 @@ function buildWakeMessage(
     role: "user",
     content:
       `You were invoked because the planner for feature **${featureTitle}** ` +
-      `just posted a message (wake reason: ${wakeReason}). The planner's ` +
-      "message is the most recent assistant entry in this conversation, " +
-      "marked with `source.kind === \"planner\"`.\n\n" +
+      `just posted a message (wake reason: ${wakeReason}). That planner ` +
+      "message is the most recent assistant entry above this one — read " +
+      "it as the thing you're reacting to now.\n\n" +
       "Follow the user's standing instructions in this conversation. " +
       "Decide one of:\n" +
       "- **Auto-respond:** call `send_to_feature_planner` with your answer. " +
@@ -431,9 +443,14 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     return;
   }
 
+  // The wake message goes at the TAIL, after the full transcript, so the
+  // model message list ends on a `user` turn (mirroring the user-driven
+  // `/api/ask/quick` path). Ending on the planner's trailing *assistant*
+  // turn instead puts Anthropic into prefill/continuation mode and the
+  // agent does nothing — see `buildWakeMessage`'s doc comment.
   const modelMessages: ModelMessage[] = [
-    buildWakeMessage(feature.title, wakeReason),
     ...toModelMessages(storedMessages),
+    buildWakeMessage(feature.title, wakeReason),
   ];
 
   // Reuse the concepts the user-driven `/api/ask/quick` path already

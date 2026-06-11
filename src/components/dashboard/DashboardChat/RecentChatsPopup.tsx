@@ -5,6 +5,7 @@ import { Clock } from "lucide-react";
 import { useState, useCallback } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import type { RecentChatItem } from "@/types/shared-conversation";
+import { mapConversationMessages } from "@/lib/utils/map-conversation-messages";
 
 export interface ChatMessage {
   id: string;
@@ -85,17 +86,7 @@ export function RecentChatsPopup({ slug, currentUserId, onLoadConversation }: Re
       const conv = await res.json();
 
       // Map stored messages → local Message[] format
-      const rawMessages: unknown[] = Array.isArray(conv.messages) ? conv.messages : [];
-      const messages: ChatMessage[] = rawMessages
-        .filter((m: any) => m.role === "user" || m.role === "assistant")
-        .map((m: any, idx: number) => ({
-          id: m.id || `loaded-${idx}`,
-          role: m.role as "user" | "assistant",
-          content: typeof m.content === "string" ? m.content : "",
-          timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
-          imageData: m.imageData,
-          toolCalls: m.toolCalls,
-        }));
+      const messages: ChatMessage[] = mapConversationMessages(conv.messages ?? []) as ChatMessage[];
 
       const extraWorkspaceSlugs: string[] = conv.settings?.extraWorkspaceSlugs ?? [];
       const isOwner = conv.userId === currentUserId;

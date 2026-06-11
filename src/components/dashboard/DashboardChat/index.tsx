@@ -4,7 +4,8 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useSession } from "next-auth/react";
 import { useStreamProcessor } from "@/lib/streaming";
 import React, { useRef, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { mapConversationMessages } from "@/lib/utils/map-conversation-messages";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
@@ -75,6 +76,8 @@ export function DashboardChat({
 }: DashboardChatProps = {}) {
   const { slug, workspace, isPublicViewer } = useWorkspace();
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
+  const chatParam = searchParams.get("chat");
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -112,6 +115,37 @@ export function DashboardChat({
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, activeToolCalls, userScrolledUp]);
+
+  // Preload a conversation when `?chat=<id>` is present (e.g. from My Activity links)
+  useEffect(() => {
+    if (!chatParam || !slug) return;
+    const currentUserId = (session?.user as { id?: string } | undefined)?.id;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/workspaces/${slug}/chat/conversations/${chatParam}`);
+        if (!res.ok) return; // 404 / 403 → fall through to empty chat
+        const conv = await res.json();
+
+        const messages = mapConversationMessages(conv.messages ?? []) as Message[];
+        const extraWorkspaceSlugs: string[] = conv.settings?.extraWorkspaceSlugs ?? [];
+        const isOwner = !!currentUserId && conv.userId === currentUserId;
+
+        handleLoadConversation({
+          messages,
+          extraWorkspaceSlugs,
+          conversationId: isOwner ? chatParam : null,
+          isReadOnly: !isOwner,
+        });
+      } catch (err) {
+        console.error("[DashboardChat] Failed to preload conversation from ?chat param:", err);
+        // Silently fall through to empty chat
+      }
+    })();
+    // We only want to run this once on mount (or when slug/chatParam change).
+    // session is intentionally excluded to avoid re-running on session refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatParam, slug]);
 
   // Subscribe to Pusher for follow-up questions and provenance data
   useEffect(() => {
