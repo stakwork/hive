@@ -108,6 +108,50 @@ describe("mergeServerMessages — never loses a local message", () => {
   });
 });
 
+describe("mergeServerMessages — authored-turn prefix filter", () => {
+  test("server rows for a turn THIS tab authored are not merged (no double-render)", () => {
+    // The authoring tab shows its own optimistic stream under local ids;
+    // the server persisted that turn as `turn-1-u` / `turn-1-a0`.
+    const local = [msg("local-u"), msg("local-a", "assistant")];
+    const server = [
+      msg("turn-1-u"),
+      msg("turn-1-a0", "assistant"),
+      msg("planner-x", "assistant"),
+    ];
+
+    const merged = mergeServerMessages(local, server, ["turn-1-"]);
+
+    // Authored turn's server rows filtered out; the planner row (not
+    // authored) merges in; local optimistic rows untouched.
+    expect(merged.messages.map((m) => m.id)).toEqual([
+      "local-u",
+      "local-a",
+      "planner-x",
+    ]);
+    expect(merged.added.map((m) => m.id)).toEqual(["planner-x"]);
+  });
+
+  test("a tab that authored nothing merges the full server turn (reopen/other viewer)", () => {
+    const local: ReturnType<typeof msg>[] = [];
+    const server = [msg("turn-1-u"), msg("turn-1-a0", "assistant")];
+
+    const merged = mergeServerMessages(local, server, []);
+
+    expect(merged.messages.map((m) => m.id)).toEqual(["turn-1-u", "turn-1-a0"]);
+  });
+
+  test("prefix filter only skips incoming server rows, never local rows", () => {
+    // Even if a local row shares the prefix, it is preserved (the filter is
+    // server-side only).
+    const local = [msg("turn-1-u")];
+    const server = [msg("turn-1-u"), msg("planner-x", "assistant")];
+
+    const merged = mergeServerMessages(local, server, ["turn-1-"]);
+
+    expect(merged.messages.map((m) => m.id)).toEqual(["turn-1-u", "planner-x"]);
+  });
+});
+
 describe("full turn lifecycle stays consistent", () => {
   test("seed → first user turn → planner nudge keeps a complete, ordered list", () => {
     const seedCount = 1;
