@@ -78,7 +78,7 @@ export function useRoadmapTaskMutations() {
     }
   };
 
-  const updateTicket = async (params: UpdateRoadmapTaskParams): Promise<TicketListItem | null> => {
+  const updateTicket = async (params: UpdateRoadmapTaskParams): Promise<TicketListItem> => {
     try {
       setLoading(true);
       setError(null);
@@ -104,7 +104,7 @@ export function useRoadmapTaskMutations() {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
       console.error("Failed to update roadmap task:", err);
-      return null;
+      throw err;
     } finally {
       setLoading(false);
     }
