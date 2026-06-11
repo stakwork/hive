@@ -209,15 +209,27 @@ const AUTOTURN_STRIP_TOOLS: ReadonlySet<string> = new Set([STAY_SILENT_TOOL]);
  */
 function buildWakeMessage(
   featureTitle: string,
+  featureId: string,
+  featureSlug: string | undefined,
   wakeReason: AutoTurnWakeReason,
 ): ModelMessage {
+  // The agent must read the plan with the EXACT Hive feature id —
+  // `<slug>__read_feature` does `db.feature.findUnique({ where: { id } })`
+  // and returns "Feature not found" for anything else. Without this line
+  // the agent guesses an id from the title (e.g. `f-expandable-proposal-
+  // card`), the read fails, and it confabulates a "feature was just
+  // created" state and stays passive. Hand it the literal id + the
+  // namespaced tool to call.
+  const readInstruction = featureSlug
+    ? `Read the plan with \`${featureSlug}__read_feature({ featureId: "${featureId}" })\` — use that EXACT featureId, do not guess one from the title.`
+    : `Read the plan with \`<slug>__read_feature({ featureId: "${featureId}" })\` — use that EXACT featureId, do not guess one from the title.`;
   return {
     role: "user",
     content:
       `You were invoked because the planner for feature **${featureTitle}** ` +
-      `just posted a message (wake reason: ${wakeReason}). That planner ` +
-      "message is the most recent assistant entry above this one — read " +
-      "it as the thing you're reacting to now.\n\n" +
+      `(featureId: \`${featureId}\`) just posted a message (wake reason: ` +
+      `${wakeReason}). That planner message is the most recent assistant ` +
+      "entry above this one — read it as the thing you're reacting to now.\n\n" +
       "Follow the user's standing instructions in this conversation. " +
       "Decide one of:\n" +
       "- **Auto-respond:** call `send_to_feature_planner` with your answer. " +
@@ -237,18 +249,21 @@ function buildWakeMessage(
           "(the FORM surfaces to the user directly anyway)."
         : wakeReason === "completed"
           ? "This wake reason is `completed`: the planner finished a run. " +
-            "Read the plan via `<slug>__read_feature`. If `brief`, " +
-            "`requirements`, and `architecture` are all populated and the " +
-            "architecture looks sound, **keep it moving — auto-respond with " +
-            "`send_to_feature_planner` telling it to generate the tasks now** " +
-            "(unless the user asked to review the plan first). If instead a " +
-            "stage is still missing, ask only for the SINGLE next stage " +
-            "(requirements, then architecture, then tasks) — the planner runs " +
-            "one stage per turn and silently ignores a second ask, so never " +
-            "batch (e.g. 'write the architecture and generate the tasks'). " +
-            "One ask per round-trip; you'll be woken again when it lands. A " +
-            "finished plan that just sits waiting is the failure mode. Don't " +
-            "try to *start* tasks — that's the user's button."
+            readInstruction +
+            " If `brief`, `requirements`, and `architecture` are all " +
+            "populated and the architecture looks sound, **keep it moving — " +
+            "auto-respond with `send_to_feature_planner` telling it to " +
+            "generate the tasks now** (unless the user asked to review the " +
+            "plan first). If instead a stage is still missing, ask only for " +
+            "the SINGLE next stage (requirements, then architecture, then " +
+            "tasks) — the planner runs one stage per turn and silently " +
+            "ignores a second ask, so never batch (e.g. 'write the " +
+            "architecture and generate the tasks'). One ask per round-trip; " +
+            "you'll be woken again when it lands. A finished plan that just " +
+            "sits waiting is the failure mode. Don't try to *start* tasks — " +
+            "that's the user's button. Trust the planner message above and " +
+            "the `read_feature` result over any assumption that the feature " +
+            "is new — by the time you're woken the planner has already run."
           : "Default toward escalation or silence unless the user's " +
             "instructions clearly grant you the autonomy to answer."),
   };
@@ -450,7 +465,12 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
   // agent does nothing — see `buildWakeMessage`'s doc comment.
   const modelMessages: ModelMessage[] = [
     ...toModelMessages(storedMessages),
-    buildWakeMessage(feature.title, wakeReason),
+    buildWakeMessage(
+      feature.title,
+      featureId,
+      feature.workspace?.slug,
+      wakeReason,
+    ),
   ];
 
   // Reuse the concepts the user-driven `/api/ask/quick` path already
