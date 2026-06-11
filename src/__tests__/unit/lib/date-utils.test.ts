@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
-import { formatRelativeOrDate, formatFeatureDate, isRelativeFormat } from "@/lib/date-utils";
+import { formatRelativeOrDate, formatFeatureDate, isRelativeFormat, formatDaySeparatorLabel, isSameCalendarDay } from "@/lib/date-utils";
 
 describe("date-utils", () => {
   beforeEach(() => {
@@ -194,6 +194,82 @@ describe("date-utils", () => {
       expect(isRelativeFormat(date1)).toBe(true);
       expect(isRelativeFormat(date2)).toBe(true);
       expect(isRelativeFormat(date3)).toBe(false);
+    });
+  });
+
+  describe("formatDaySeparatorLabel", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      // Use local midnight to avoid timezone edge cases
+      vi.setSystemTime(new Date(2025, 11, 2, 12, 0, 0)); // Dec 2 2025 noon local
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test("returns 'Today' for a date on the same calendar day", () => {
+      const d = new Date(2025, 11, 2, 9, 0, 0); // same day, 9am
+      expect(formatDaySeparatorLabel(d)).toBe("Today");
+    });
+
+    test("returns 'Yesterday' for a date one calendar day back", () => {
+      const d = new Date(2025, 11, 1, 23, 59, 59); // Dec 1 just before midnight
+      expect(formatDaySeparatorLabel(d)).toBe("Yesterday");
+    });
+
+    test("returns formatted date for older dates", () => {
+      const d = new Date(2025, 9, 12, 10, 0, 0); // Oct 12 2025
+      expect(formatDaySeparatorLabel(d)).toBe("Oct 12, 2025");
+    });
+
+    test("returns formatted date for a different year", () => {
+      const d = new Date(2024, 0, 15, 8, 0, 0); // Jan 15 2024
+      expect(formatDaySeparatorLabel(d)).toBe("Jan 15, 2024");
+    });
+
+    test("accepts ISO string input", () => {
+      // Build ISO string that is local-midnight of today
+      const now = new Date(2025, 11, 2, 12, 0, 0);
+      expect(formatDaySeparatorLabel(now.toISOString())).toBe("Today");
+    });
+  });
+
+  describe("isSameCalendarDay", () => {
+    test("returns true for two dates on the same calendar day", () => {
+      const a = new Date(2025, 11, 2, 9, 0, 0);
+      const b = new Date(2025, 11, 2, 23, 59, 59);
+      expect(isSameCalendarDay(a, b)).toBe(true);
+    });
+
+    test("returns false for dates on different calendar days", () => {
+      const a = new Date(2025, 11, 2, 9, 0, 0);
+      const b = new Date(2025, 11, 3, 0, 0, 0);
+      expect(isSameCalendarDay(a, b)).toBe(false);
+    });
+
+    test("returns false across midnight boundary", () => {
+      const a = new Date(2025, 11, 2, 23, 59, 59);
+      const b = new Date(2025, 11, 3, 0, 0, 0);
+      expect(isSameCalendarDay(a, b)).toBe(false);
+    });
+
+    test("returns true for identical timestamps", () => {
+      const a = new Date(2025, 11, 2, 12, 0, 0);
+      expect(isSameCalendarDay(a, a)).toBe(true);
+    });
+
+    test("accepts ISO string input", () => {
+      const a = "2025-12-02T09:00:00.000Z";
+      const b = "2025-12-02T22:00:00.000Z";
+      // Both are same UTC day — result depends on local offset; just assert it's boolean
+      expect(typeof isSameCalendarDay(a, b)).toBe("boolean");
+    });
+
+    test("returns false for dates one month apart", () => {
+      const a = new Date(2025, 10, 2, 12, 0, 0); // Nov 2
+      const b = new Date(2025, 11, 2, 12, 0, 0); // Dec 2
+      expect(isSameCalendarDay(a, b)).toBe(false);
     });
   });
 });

@@ -1,4 +1,39 @@
 /**
+ * Returns 'Today', 'Yesterday', or 'Oct 12, 2025' for older dates.
+ * Used as day separator labels in chat views.
+ */
+export function formatDaySeparatorLabel(date: string | Date): string {
+  const d = new Date(date);
+  const now = new Date();
+
+  // Compare calendar days in local time
+  const toMidnight = (dt: Date) =>
+    new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+
+  const diffDays = Math.round(
+    (toMidnight(now) - toMidnight(d)) / (1000 * 60 * 60 * 24)
+  );
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * Returns true when two dates fall on the same calendar day (local time).
+ */
+export function isSameCalendarDay(a: string | Date, b: string | Date): boolean {
+  const da = new Date(a);
+  const db = new Date(b);
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
+}
+
+/**
  * Format a date as relative time for recent dates, or as a date string for older dates.
  * - Within last 2 days: "2 hrs ago", "Yesterday", "2 days ago"
  * - Older than 2 days: "Nov 1, 2023" (date only, no time)
