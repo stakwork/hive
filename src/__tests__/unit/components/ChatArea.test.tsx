@@ -30,6 +30,12 @@ vi.mock("framer-motion", () => ({
 }));
 
 // Mock child components
+vi.mock("@/app/w/[slug]/task/[...taskParams]/components/DateSeparator", () => ({
+  DateSeparator: ({ label }: { label: string }) => (
+    <div data-testid="date-separator" data-label={label}>{label}</div>
+  ),
+}));
+
 vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatMessage", () => ({
   ChatMessage: ({ message, replyMessage, onArtifactAction }: any) => (
     <div data-testid={`chat-message-${message.id}`}>
@@ -166,6 +172,7 @@ const TestDataFactories = {
     message: "Test message content",
     role: "user",
     timestamp: new Date("2024-01-01T12:00:00Z"),
+    createdAt: new Date("2024-01-01T12:00:00Z"),
     status: "sent",
     contextTags: [],
     artifacts: [],
@@ -976,6 +983,68 @@ describe("ChatArea", () => {
 
       expect(router.back).toHaveBeenCalledTimes(1);
       expect(router.push).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Day Separator Rendering", () => {
+    test("renders a separator before the first message", () => {
+      const messages = [
+        createTestMessage({ id: "msg-1", createdAt: new Date("2025-06-10T10:00:00Z") }),
+      ];
+      const { props } = setupChatAreaTest({ messages });
+      render(<ChatArea {...props} />);
+
+      const separators = screen.getAllByTestId("date-separator");
+      expect(separators).toHaveLength(1);
+    });
+
+    test("inserts one separator per day boundary across two days", () => {
+      const messages = [
+        createTestMessage({ id: "msg-1", createdAt: new Date("2025-06-09T10:00:00Z") }),
+        createTestMessage({ id: "msg-2", createdAt: new Date("2025-06-09T14:00:00Z") }),
+        createTestMessage({ id: "msg-3", createdAt: new Date("2025-06-10T08:00:00Z") }),
+        createTestMessage({ id: "msg-4", createdAt: new Date("2025-06-10T12:00:00Z") }),
+      ];
+      const { props } = setupChatAreaTest({ messages });
+      render(<ChatArea {...props} />);
+
+      // Two separators: one per distinct day
+      const separators = screen.getAllByTestId("date-separator");
+      expect(separators).toHaveLength(2);
+    });
+
+    test("does not insert extra separators between same-day messages", () => {
+      const messages = [
+        createTestMessage({ id: "msg-1", createdAt: new Date("2025-06-10T08:00:00Z") }),
+        createTestMessage({ id: "msg-2", createdAt: new Date("2025-06-10T09:00:00Z") }),
+        createTestMessage({ id: "msg-3", createdAt: new Date("2025-06-10T10:00:00Z") }),
+      ];
+      const { props } = setupChatAreaTest({ messages });
+      render(<ChatArea {...props} />);
+
+      // All on same day → only 1 separator (before first message)
+      const separators = screen.getAllByTestId("date-separator");
+      expect(separators).toHaveLength(1);
+    });
+
+    test("renders no separators when messages list is empty", () => {
+      const { props } = setupChatAreaTest({ messages: [] });
+      render(<ChatArea {...props} />);
+
+      expect(screen.queryAllByTestId("date-separator")).toHaveLength(0);
+    });
+
+    test("inserts separators across three distinct days", () => {
+      const messages = [
+        createTestMessage({ id: "msg-1", createdAt: new Date("2025-06-08T10:00:00Z") }),
+        createTestMessage({ id: "msg-2", createdAt: new Date("2025-06-09T10:00:00Z") }),
+        createTestMessage({ id: "msg-3", createdAt: new Date("2025-06-10T10:00:00Z") }),
+      ];
+      const { props } = setupChatAreaTest({ messages });
+      render(<ChatArea {...props} />);
+
+      const separators = screen.getAllByTestId("date-separator");
+      expect(separators).toHaveLength(3);
     });
   });
 });
