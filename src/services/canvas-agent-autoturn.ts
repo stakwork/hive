@@ -207,10 +207,47 @@ const AUTOTURN_STRIP_TOOLS: ReadonlySet<string> = new Set([STAY_SILENT_TOOL]);
  * turn mirrors the working `/api/ask/quick` path, which always ends on
  * the user's just-typed message. Do NOT move this back to the head.
  */
+/** The current plan snapshot, loaded fresh each turn in `runAutoTurn`. */
+interface PlanSnapshot {
+  brief: string | null;
+  requirements: string | null;
+  architecture: string | null;
+  workflowStatus: string | null;
+}
+
+/** Render one plan stage as a labelled section, or a clear "not yet written" marker. */
+function renderStage(label: string, body: string | null): string {
+  const trimmed = body?.trim();
+  return trimmed
+    ? `### ${label}\n${trimmed}`
+    : `### ${label}\n_(not yet written)_`;
+}
+
 function buildWakeMessage(
   featureTitle: string,
+  featureId: string,
+  plan: PlanSnapshot,
   wakeReason: AutoTurnWakeReason,
 ): ModelMessage {
+  // Inject the WHOLE current plan, fresh each turn, so the agent reviews
+  // the underling planner's actual work like a real human lead would —
+  // not a guess, not a stale assumption. This snapshot is ephemeral: the
+  // wake message is never persisted to the conversation (only the agent's
+  // own output rows are), so re-injecting the full plan every turn does
+  // NOT accumulate copies in history — each turn sees exactly one current
+  // snapshot and it's thrown away after the call. This also removes the
+  // need for the agent to call `read_feature` (and the bug where it
+  // guessed a wrong id, got "Feature not found", and confabulated a
+  // "feature was just created" state). `featureId` is still surfaced so a
+  // `send_to_feature_planner` reply / chat-history read targets the right
+  // feature.
+  const planBlock =
+    `Current plan snapshot for **${featureTitle}** ` +
+    `(featureId: \`${featureId}\`, workflowStatus: ` +
+    `${plan.workflowStatus ?? "unknown"}):\n\n` +
+    `${renderStage("Brief", plan.brief)}\n\n` +
+    `${renderStage("Requirements", plan.requirements)}\n\n` +
+    `${renderStage("Architecture", plan.architecture)}`;
   return {
     role: "user",
     content:
@@ -218,7 +255,9 @@ function buildWakeMessage(
       `just posted a message (wake reason: ${wakeReason}). That planner ` +
       "message is the most recent assistant entry above this one — read " +
       "it as the thing you're reacting to now.\n\n" +
-      "Follow the user's standing instructions in this conversation. " +
+      `${planBlock}\n\n` +
+      "Review that plan the way a lead reviews an underling's work, then " +
+      "follow the user's standing instructions in this conversation. " +
       "Decide one of:\n" +
       "- **Auto-respond:** call `send_to_feature_planner` with your answer. " +
       "Don't write a separate chat message.\n" +
@@ -237,9 +276,11 @@ function buildWakeMessage(
           "(the FORM surfaces to the user directly anyway)."
         : wakeReason === "completed"
           ? "This wake reason is `completed`: the planner finished a run. " +
-            "Read the plan via `<slug>__read_feature`. If `brief`, " +
-            "`requirements`, and `architecture` are all populated and the " +
-            "architecture looks sound, **keep it moving — auto-respond with " +
+            "The snapshot above IS the current state — trust it over any " +
+            "assumption that the feature is new (by the time you're woken " +
+            "the planner has already run). If `Brief`, `Requirements`, and " +
+            "`Architecture` are all written and the architecture looks " +
+            "sound, **keep it moving — auto-respond with " +
             "`send_to_feature_planner` telling it to generate the tasks now** " +
             "(unless the user asked to review the plan first). If instead a " +
             "stage is still missing, ask only for the SINGLE next stage " +
@@ -390,9 +431,25 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     return;
   }
 
+  // Load the plan-stage flags alongside the title. We compute a compact
+  // status line (which stages are populated + workflowStatus) and inject
+  // THAT into the wake message — not the full plan text. The full
+  // brief/requirements/architecture bodies are already in the persisted
+  // planner messages in history, so re-injecting them would just
+  // duplicate context every turn. The status line is the deterministic
+  // signal the `completed` decision actually needs (pick the next stage),
+  // and the agent can still `read_feature` with the real id below if it
+  // wants to inspect a stage's quality.
   const feature = await db.feature.findUnique({
     where: { id: featureId },
-    select: { title: true, workspace: { select: { slug: true } } },
+    select: {
+      title: true,
+      brief: true,
+      requirements: true,
+      architecture: true,
+      workflowStatus: true,
+      workspace: { select: { slug: true } },
+    },
   });
   if (!feature) {
     console.log("[canvas-autoturn] feature gone; skipping", { featureId });
@@ -450,7 +507,17 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
   // agent does nothing — see `buildWakeMessage`'s doc comment.
   const modelMessages: ModelMessage[] = [
     ...toModelMessages(storedMessages),
-    buildWakeMessage(feature.title, wakeReason),
+    buildWakeMessage(
+      feature.title,
+      featureId,
+      {
+        brief: feature.brief,
+        requirements: feature.requirements,
+        architecture: feature.architecture,
+        workflowStatus: feature.workflowStatus,
+      },
+      wakeReason,
+    ),
   ];
 
   // Reuse the concepts the user-driven `/api/ask/quick` path already

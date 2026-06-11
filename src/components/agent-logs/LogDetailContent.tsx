@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { format } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -234,6 +235,14 @@ export function ToolCallItem({
   );
 }
 
+function formatMsgTime(ts: string): string {
+  try {
+    return format(new Date(ts), "HH:mm");
+  } catch {
+    return "";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // MessageBubble
 // ---------------------------------------------------------------------------
@@ -447,6 +456,17 @@ export function MessageBubble({
               />
             ))}
           </div>
+        )}
+        {/* Timestamp label for user and assistant messages */}
+        {message.timestamp && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={cn("mt-1 block text-[10px] opacity-50 select-none", isUser && "text-right")}>
+                {formatMsgTime(message.timestamp)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{new Date(message.timestamp).toLocaleString()}</TooltipContent>
+          </Tooltip>
         )}
       </div>
     </div>

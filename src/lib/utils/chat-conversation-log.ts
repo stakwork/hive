@@ -21,6 +21,7 @@ export interface StoredChatMessage {
   content?: string;
   imageData?: string;
   toolCalls?: StoredChatToolCall[];
+  timestamp?: string | null;
 }
 
 /**
@@ -83,7 +84,7 @@ export function chatMessagesToParsedMessages(
 
       // 3. any trailing assistant text that accompanied the batch
       if (m.content) {
-        out.push({ role: "assistant", content: m.content });
+        out.push({ role: "assistant", content: m.content, timestamp: m.timestamp ?? null });
       }
       continue;
     }
@@ -94,7 +95,7 @@ export function chatMessagesToParsedMessages(
     if (m.imageData) {
       content = content ? `[image attached]\n${content}` : "[image attached]";
     }
-    out.push({ role: m.role, content });
+    out.push({ role: m.role, content, timestamp: m.timestamp ?? null });
   }
 
   return out;
