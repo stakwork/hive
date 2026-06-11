@@ -5,6 +5,7 @@ import { FeatureStatus, FeaturePriority } from "@prisma/client";
 import { resolveWorkspaceAccess, isPublicViewer } from "@/lib/auth/workspace-access";
 import { toPublicFeatures } from "@/lib/auth/public-redact";
 import { notifyCanvasUpdated } from "@/lib/canvas";
+import { notifyActivityUpdated } from "@/lib/pusher";
 import { db } from "@/lib/db";
 import type {
   CreateFeatureRequest,
@@ -199,6 +200,9 @@ export async function POST(request: NextRequest) {
         });
       }
     }
+
+    // Nudge the profile activity feed (fire-and-forget — never blocks response)
+    notifyActivityUpdated(userOrResponse.id);
 
     return NextResponse.json<FeatureResponse>(
       {
