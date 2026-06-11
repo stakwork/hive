@@ -31,6 +31,21 @@ import {
 } from "@/lib/ai/runCanvasAgent";
 import type { DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import { swarmFetch } from "@/lib/ai/concepts";
+import { generateTitle } from "@/lib/ai/conversationHelpers";
+import {
+  messagesFromSteps,
+  appendTurnMessages,
+  type StoredMessage,
+} from "@/services/canvas-turn-persistence";
+
+// Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
+// the org-canvas turn is persisted server-side in `after()` so it survives the
+// browser closing mid-stream. `after()` runs inside this invocation, so give
+// the function generous headroom — a turn longer than this is the only case a
+// closed-tab turn can be lost (Vercel doesn't kill in-flight functions on
+// deploy, and `runCanvasAgent` passes no abort signal, so a client disconnect
+// can't cancel generation).
+export const maxDuration = 300;
 
 /**
  * Provenance data types
@@ -123,6 +138,13 @@ export async function POST(request: NextRequest) {
       // rate-limit gate sums recent spend, so passing it through is
       // important from message 2+.
       conversationId,
+      // Backend-driven canvas turns (org-canvas only). A client-
+      // generated id stamped on every send; the server persists the
+      // user row as `${turnId}-u` and the assistant rows as
+      // `${turnId}-a*`, and the client filters its own turn out of the
+      // live-sync merge by this prefix. Absent → legacy client-driven
+      // persistence (dashboard chat, public viewers, older clients).
+      turnId,
     } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -251,6 +273,7 @@ export async function POST(request: NextRequest) {
         approvalIntent,
         rejectionIntent,
         ...(approvalConversationId ? { conversationId: approvalConversationId } : {}),
+        ...(typeof turnId === "string" && turnId ? { turnId } : {}),
       });
     }
 
@@ -323,6 +346,46 @@ export async function POST(request: NextRequest) {
         ? await loadOrgCanvasPromptCache({ conversationId, userId, orgId })
         : null;
 
+    // ============================================================
+    // Backend-driven canvas turn — server-side persistence (Tier 1).
+    //
+    // For the org-canvas chat, the SERVER owns the conversation row:
+    // it persists the user message synchronously here (before the
+    // stream), and the assistant turn in `after()` below. This makes a
+    // turn survive the browser closing mid-stream — the client no
+    // longer POSTs/PUTs messages (it just live-syncs server rows by
+    // Pusher nudge). Gated on a `turnId` from the client; absent it,
+    // we leave the legacy client-driven path untouched (dashboard chat,
+    // public viewers, older clients).
+    //
+    // `${turnId}-u` = the user row id (idempotency key for this write);
+    // `${turnId}-a*` = the assistant rows (written in `after()`). The
+    // client filters server rows by the `${turnId}-` prefix in its
+    // live-sync merge so the authoring tab never double-renders.
+    // ============================================================
+    const turnIdStr: string | null =
+      typeof turnId === "string" && turnId.length > 0 ? turnId : null;
+    const newUserContent = (() => {
+      const last = convertedMessages[convertedMessages.length - 1];
+      return last && last.role === "user" && typeof last.content === "string"
+        ? last.content
+        : "";
+    })();
+    let canvasConversationRowId: string | null = null;
+    if (orgId && userId && turnIdStr && newUserContent.trim()) {
+      canvasConversationRowId = await persistCanvasUserMessage({
+        orgId,
+        userId,
+        // `promptCache?.rowId` is the validated *existing* org-canvas
+        // row (or null on the first turn / an IDOR-mismatched id, in
+        // which case we create a fresh row owned by this caller).
+        existingRowId: promptCache?.rowId ?? null,
+        turnId: turnIdStr,
+        content: newUserContent,
+        workspaceSlugs: slugs,
+      });
+    }
+
     try {
       // Tracks concept ids learned in this turn so the `after()` block
       // can fetch their provenance from stakgraph after the stream
@@ -376,8 +439,14 @@ export async function POST(request: NextRequest) {
           // fan-out. Using the validated id (not the raw body field)
           // prevents a malicious caller from laundering ownership
           // claims into someone else's conversation.
-          ...(tokenAttributionRowId
-            ? { currentCanvasConversationId: tokenAttributionRowId }
+          // Org-canvas rows are workspace-null, so `tokenAttributionRowId`
+          // never matches them — `canvasConversationRowId` (the
+          // server-owned org-canvas row) is the one fan-out needs.
+          ...((canvasConversationRowId ?? tokenAttributionRowId)
+            ? {
+                currentCanvasConversationId:
+                  canvasConversationRowId ?? tokenAttributionRowId ?? undefined,
+              }
             : {}),
           // The HTTP chat is a live UI surface; emit HIGHLIGHT_NODES so
           // open clients animate the researched node.
@@ -416,12 +485,14 @@ export async function POST(request: NextRequest) {
       // first turn yields an empty list, and caching that would poison
       // the cache into permanently serving nothing (we retry next turn).
       // Best-effort + off the response path via `after()`.
-      if (promptCache?.rowId && !cacheHit && hasConcepts(cacheableConcepts)) {
-        const rowId = promptCache.rowId;
+      // `canvasConversationRowId` covers the first turn (the row was just
+      // created in this request, so `promptCache.rowId` was null at load).
+      const cacheRowId = promptCache?.rowId ?? canvasConversationRowId;
+      if (cacheRowId && !cacheHit && hasConcepts(cacheableConcepts)) {
         after(async () => {
           try {
             await persistOrgCanvasPromptCache(
-              rowId,
+              cacheRowId,
               cacheableConcepts,
               assembledPrefix,
             );
@@ -430,6 +501,55 @@ export async function POST(request: NextRequest) {
               "❌ [quick-ask] Failed to persist prompt cache:",
               err,
             );
+          }
+        });
+      }
+
+      // ── Backend-driven turn: persist the assistant turn server-side ──
+      // Drive the stream to completion off the client socket and write
+      // the assistant rows under the `${turnId}-a` prefix. This is what
+      // survives the browser closing mid-stream. Idempotent on the
+      // prefix; the client filters these rows out of its own live-sync
+      // merge (it's already showing them optimistically).
+      if (canvasConversationRowId && turnIdStr) {
+        const rowId = canvasConversationRowId;
+        const assistantPrefix = `${turnIdStr}-a`;
+        after(async () => {
+          try {
+            // `consumeStream()` drives generation to completion even if
+            // the client disconnected (no abort signal is wired, so the
+            // run isn't cancelled by a closed socket). Then `steps`
+            // resolves with the full tool-call trace.
+            await result.consumeStream();
+            const steps = await result.steps;
+            const rows = messagesFromSteps(
+              steps as Parameters<typeof messagesFromSteps>[0],
+              assistantPrefix,
+            );
+            await appendTurnMessages({
+              conversationId: rowId,
+              rows,
+              idPrefix: assistantPrefix,
+              reason: "user-turn",
+            });
+          } catch (err) {
+            console.error("❌ [quick-ask] Turn persist failed:", err);
+            // Persist a trailing error row so a reopened tab sees the
+            // failure instead of a silently-missing answer (mirrors the
+            // client's inline error message).
+            const errorRow: StoredMessage = {
+              id: `${assistantPrefix}error`,
+              role: "assistant",
+              content:
+                "I'm sorry, but I encountered an error while processing your question. Please try again.",
+              timestamp: new Date().toISOString(),
+            };
+            await appendTurnMessages({
+              conversationId: rowId,
+              rows: [errorRow],
+              idPrefix: assistantPrefix,
+              reason: "user-turn",
+            }).catch(() => {});
           }
         });
       }
@@ -552,6 +672,17 @@ export async function POST(request: NextRequest) {
       }
 
       return result.toUIMessageStreamResponse({
+        // Hand the server-created/validated org-canvas row id back to the
+        // client (same pattern as `X-Approval-Result`) so it can stamp
+        // `serverConversationId` on the first turn without a separate POST.
+        ...(canvasConversationRowId
+          ? {
+              headers: {
+                "X-Conversation-Id": canvasConversationRowId,
+                "Access-Control-Expose-Headers": "X-Conversation-Id",
+              },
+            }
+          : {}),
         // By default the AI SDK masks mid-stream errors as the literal
         // string "An error occurred." — useless for diagnosis and
         // indistinguishable from a clean finish on the client. Forward
@@ -673,6 +804,69 @@ async function resolveOrgConversationRowId(args: {
 }
 
 /**
+ * Persist the user's message for a backend-driven org-canvas turn,
+ * creating the conversation row on the first turn. Returns the row id
+ * the rest of the request (fan-out, the `after()` assistant-turn write,
+ * the `X-Conversation-Id` header) keys off.
+ *
+ * - **Existing row** (validated org-canvas id from the prompt cache):
+ *   append the user row under the shared row lock, idempotent on
+ *   `${turnId}-u` so a retry / double-send doesn't duplicate it.
+ * - **No / mismatched id:** create a fresh `SharedConversation` owned by
+ *   this caller (workspace-null, org-scoped), titled from the message,
+ *   seeded with the user row, and carrying the full workspace-slug set
+ *   in `settings.extraWorkspaceSlugs` (what the auto-turn reconstruction
+ *   and later turns read — org rows have no `workspaceId` to recover the
+ *   slugs from). Creating a new row on an IDOR-mismatched id is safe:
+ *   the caller can only ever write to their own conversation.
+ */
+async function persistCanvasUserMessage(args: {
+  orgId: string;
+  userId: string;
+  existingRowId: string | null;
+  turnId: string;
+  content: string;
+  workspaceSlugs: string[];
+}): Promise<string> {
+  const { orgId, userId, existingRowId, turnId, content, workspaceSlugs } =
+    args;
+
+  const userRow: StoredMessage = {
+    id: `${turnId}-u`,
+    role: "user",
+    content,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (existingRowId) {
+    await appendTurnMessages({
+      conversationId: existingRowId,
+      rows: [userRow],
+      idPrefix: `${turnId}-u`,
+      reason: "user-message",
+    });
+    return existingRowId;
+  }
+
+  const created = await db.sharedConversation.create({
+    data: {
+      sourceControlOrgId: orgId,
+      userId,
+      workspaceId: null,
+      messages: [userRow] as unknown as never,
+      title: generateTitle([userRow]),
+      lastMessageAt: new Date(),
+      source: "org-canvas",
+      settings: { extraWorkspaceSlugs: workspaceSlugs } as unknown as never,
+      followUpQuestions: [],
+      isShared: false,
+    },
+    select: { id: true },
+  });
+  return created.id;
+}
+
+/**
  * Load the cached concepts for an org-canvas conversation, while
  * validating that the row belongs to this org and either to this caller
  * or is an explicitly shared room (same ownership rule as
@@ -772,6 +966,14 @@ async function runProposalIntent(args: {
    * un-validated — the caller is the trust boundary.
    */
   conversationId?: string;
+  /**
+   * Backend-driven persistence id (org-canvas). When present alongside
+   * `conversationId`, the click row + synthetic assistant row (carrying
+   * `approvalResult`) are written server-side under `${turnId}-`, so the
+   * proposal-card "approved" state survives a refresh without the client
+   * autosave. Mirrors the LLM turn's persistence.
+   */
+  turnId?: string;
 }): Promise<Response> {
   const {
     orgId,
@@ -780,10 +982,12 @@ async function runProposalIntent(args: {
     approvalIntent,
     rejectionIntent,
     conversationId,
+    turnId,
   } = args;
 
   let summaryText: string;
   let approvalResultHeader: string | null = null;
+  let approvalResultObj: unknown = null;
   let alreadyApproved = false;
 
   if (approvalIntent) {
@@ -806,6 +1010,7 @@ async function runProposalIntent(args: {
       const r = outcome.result;
       alreadyApproved = outcome.alreadyApproved;
       approvalResultHeader = JSON.stringify(r);
+      approvalResultObj = r;
       // Prefer the resolved entity name ("Auth Refactor") over the
       // generic kind label ("an initiative canvas") so the user knows
       // exactly which workspace / initiative the new row landed
@@ -846,6 +1051,42 @@ async function runProposalIntent(args: {
   } else {
     // Defensive — shouldn't happen given the caller guard.
     summaryText = "No proposal intent provided.";
+  }
+
+  // Persist the click + synthetic assistant row server-side (org-canvas
+  // backend-driven turns). Single locked write under the `${turnId}-`
+  // prefix (idempotent) so a re-click never double-appends. The client
+  // filters its own `${turnId}-*` rows out of the live-sync merge.
+  if (conversationId && turnId) {
+    const lastUser = [...transcript]
+      .reverse()
+      .find((m) => m.role === "user") as
+      | { content?: unknown; approval?: unknown; rejection?: unknown }
+      | undefined;
+    const clickRow: StoredMessage = {
+      id: `${turnId}-u`,
+      role: "user",
+      content:
+        typeof lastUser?.content === "string" ? lastUser.content : "",
+      timestamp: new Date().toISOString(),
+      ...(approvalIntent ? { approval: approvalIntent } : {}),
+      ...(rejectionIntent ? { rejection: rejectionIntent } : {}),
+    };
+    const resultRow: StoredMessage = {
+      id: `${turnId}-a0`,
+      role: "assistant",
+      content: summaryText,
+      timestamp: new Date().toISOString(),
+      ...(approvalResultObj ? { approvalResult: approvalResultObj } : {}),
+    };
+    await appendTurnMessages({
+      conversationId,
+      rows: [clickRow, resultRow],
+      idPrefix: `${turnId}-`,
+      reason: "user-turn",
+    }).catch((err) =>
+      console.error("❌ [quick-ask] Proposal persist failed:", err),
+    );
   }
 
   // Build a minimal SSE stream of UIMessageChunk parts.
