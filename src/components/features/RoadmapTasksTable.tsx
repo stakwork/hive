@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
 import { useReorderRoadmapTasks } from "@/hooks/useReorderRoadmapTasks";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
@@ -41,6 +42,7 @@ interface WorkspaceRepo {
   id: string;
   name: string;
   repositoryUrl: string;
+  allowAutoMerge: boolean;
 }
 
 interface RoadmapTasksTableProps {
@@ -149,6 +151,18 @@ function SortableTableRow({
 
   const showRepoColumn = workspaceRepos.length > 1;
 
+  // Determine if auto-merge is allowed for this task's repo
+  const repoAllowsAutoMerge: boolean = (() => {
+    if (task.repository?.id) {
+      const repo = workspaceRepos.find((r) => r.id === task.repository!.id);
+      return repo?.allowAutoMerge ?? true;
+    }
+    if (workspaceRepos.length === 1) {
+      return workspaceRepos[0].allowAutoMerge;
+    }
+    return true; // multi-repo, no assignment: server gate is the safety net
+  })();
+
   return (
     <TableRow
       ref={setNodeRef}
@@ -252,10 +266,20 @@ function SortableTableRow({
           onClick={(e) => e.stopPropagation()}
           className="flex items-center justify-center"
         >
-          <Switch
-            checked={task.autoMerge ?? false}
-            onCheckedChange={onAutoMergeUpdate}
-          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Switch
+                  checked={task.autoMerge ?? false}
+                  onCheckedChange={onAutoMergeUpdate}
+                  disabled={!repoAllowsAutoMerge}
+                />
+              </span>
+            </TooltipTrigger>
+            {!repoAllowsAutoMerge && (
+              <TooltipContent>Enable auto-merge in GitHub repo settings first</TooltipContent>
+            )}
+          </Tooltip>
         </div>
       </TableCell>
       <TableCell className="w-[50px]">
@@ -275,6 +299,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
     id: r.id,
     name: r.name,
     repositoryUrl: r.repositoryUrl,
+    allowAutoMerge: r.allowAutoMerge,
   }));
   const showRepoColumn = workspaceRepos.length > 1;
 
@@ -327,10 +352,10 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
       if (updatedTask && onTaskUpdate) {
         onTaskUpdate(taskId, updatedTask);
       }
-    } catch {
+    } catch (err) {
       // Revert optimistic update on failure
       setOptimisticUpdates(prev => { const n = { ...prev }; delete n[taskId]; return n; });
-      toast.error("Failed to update task");
+      toast.error(err instanceof Error ? err.message : "Failed to update task");
     }
   };
 
