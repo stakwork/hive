@@ -92,3 +92,61 @@ export function mergeServerMessages<T extends PersistableMessage>(
     serverIds: server.map((m) => m.id),
   };
 }
+
+/** Minimal planner-row `source` shape this reconcile compares/refreshes. */
+interface PlannerSourceLike {
+  kind?: string;
+  workflowStatus?: string;
+  hasTasks?: boolean;
+  hasForm?: boolean;
+}
+
+interface ReconcilableMessage {
+  id: string;
+  source?: PlannerSourceLike | { kind?: string } | null;
+}
+
+/**
+ * Server-authoritative refresh of planner-row metadata.
+ *
+ * Planner rows (`source.kind === "planner"`) originate server-side and
+ * are never edited locally, so the server copy is authoritative. The
+ * append-only `mergeServerMessages` can't refresh an already-present
+ * row (it only adds NEW ids), which leaves a planner row's frozen
+ * `source.workflowStatus` snapshot stale when the feature workflow
+ * reaches a terminal state AFTER the message fanned out — the stakwork
+ * webhook updates the row in place (same id) and nudges, but the merge
+ * skips it. This step closes that gap: for each local planner row, if
+ * the server has a row with the SAME id whose tracked `source` fields
+ * differ, swap in the server `source`.
+ *
+ * It never drops, reorders, or adds rows — it only refreshes `source`
+ * on rows already present locally, so the "never lose a local message"
+ * invariant `mergeServerMessages` guarantees is untouched. Returns
+ * `changed: false` (and the original array by reference) when nothing
+ * moved, so callers can skip a no-op store write.
+ */
+export function reconcilePlannerSources<T extends ReconcilableMessage>(
+  local: T[],
+  server: T[],
+): { messages: T[]; changed: boolean } {
+  const serverById = new Map(server.map((m) => [m.id, m]));
+  let changed = false;
+  const messages = local.map((m) => {
+    const localSource = m.source as PlannerSourceLike | null | undefined;
+    if (localSource?.kind !== "planner") return m;
+    const s = serverById.get(m.id);
+    const serverSource = s?.source as PlannerSourceLike | null | undefined;
+    if (serverSource?.kind !== "planner") return m;
+    if (
+      localSource.workflowStatus === serverSource.workflowStatus &&
+      localSource.hasTasks === serverSource.hasTasks &&
+      localSource.hasForm === serverSource.hasForm
+    ) {
+      return m;
+    }
+    changed = true;
+    return { ...m, source: s!.source } as T;
+  });
+  return changed ? { messages, changed: true } : { messages: local, changed: false };
+}

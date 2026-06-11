@@ -438,3 +438,91 @@ export function actionableWakeReason(
 
   return null;
 }
+
+/**
+ * Refresh the latest planner row's `source.workflowStatus` in a
+ * feature's owning canvas conversation, in place.
+ *
+ * **Why this exists.** The `SubAgentRunCard` pill reads a *frozen*
+ * `source.workflowStatus` snapshot taken when the planner's message
+ * fanned out (`fanOutPlannerMessageToCanvas`). But a feature's terminal
+ * status (`COMPLETED` / `FAILED` / …) is written by a *different*
+ * webhook (`/api/stakwork/webhook`) that typically fires a few seconds
+ * AFTER the planner message already landed — so the snapshot freezes at
+ * `IN_PROGRESS` and the pill is stuck on "Running" forever. This patches
+ * the snapshot the moment the real status arrives.
+ *
+ * It updates the row **in place** (same id, only `source.workflowStatus`)
+ * so fresh loads / reopened tabs / shares / iOS all read the correct
+ * status. Because the client live-sync merge is append-only (it can't
+ * refresh an existing id), the matching `notifyCanvasConversationUpdated`
+ * nudge is paired with a client `reconcilePlannerSources` step
+ * (`canvasChatPersistence.ts`) that swaps the refreshed `source` into an
+ * already-open tab — so the pill flips live, with no reload.
+ *
+ * Idempotent and failure-tolerant, like the fan-out: a no-op when the
+ * conversation is gone, when there's no planner row for the feature, or
+ * when the status already matches. Never throws — the feature's own
+ * `workflowStatus` write is the source of truth; this derived surface
+ * self-heals on the next fresh load if the patch is missed.
+ */
+export async function syncPlannerWorkflowStatusToCanvas(
+  conversationId: string,
+  featureId: string,
+  workflowStatus: WorkflowStatus,
+): Promise<void> {
+  try {
+    let changed = false;
+    await db.$transaction(async (tx) => {
+      // Same row-level lock the fan-out + autosave PUT use — serialize
+      // against a concurrent append so we don't clobber it.
+      const locked = await tx.$queryRaw<{ messages: unknown }[]>`
+        SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+      `;
+      if (locked.length === 0) return; // conversation deleted → no-op
+
+      const messages = Array.isArray(locked[0].messages)
+        ? (locked[0].messages as CanvasMessageRow[])
+        : [];
+
+      // The pill derives from the run's LATEST inbound planner entry, so
+      // only the newest planner row for this feature matters.
+      let idx = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const s = messages[i]?.source;
+        if (s?.kind === "planner" && s.featureId === featureId) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx === -1) return; // no fanned-out planner row yet → nothing to patch
+      if (messages[idx].source.workflowStatus === workflowStatus) return; // already current
+
+      const updated = messages.map((m, i) =>
+        i === idx
+          ? { ...m, source: { ...m.source, workflowStatus } }
+          : m,
+      );
+
+      await tx.sharedConversation.update({
+        where: { id: conversationId },
+        data: { messages: updated as unknown as never },
+      });
+      changed = true;
+    });
+
+    if (changed) {
+      notifyCanvasConversationUpdated(conversationId, "workflow-status");
+    }
+  } catch (e) {
+    console.error(
+      "[canvas-planner-fanout] syncPlannerWorkflowStatusToCanvas failed (non-fatal):",
+      {
+        conversationId,
+        featureId,
+        workflowStatus,
+        error: e instanceof Error ? e.message : String(e),
+      },
+    );
+  }
+}
