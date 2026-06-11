@@ -78,7 +78,22 @@ export function useSendCanvasChatMessage() {
         setIsLoading,
         setIsStreaming,
         appendAssistantError,
+        markTurnAuthored,
+        setServerConversationId,
       } = useCanvasChatStore.getState();
+
+      // Backend-driven persistence id for this turn
+      // (docs/plans/backend-driven-canvas-turns.md). The server persists
+      // the user row as `${turnId}-u` and the assistant rows as
+      // `${turnId}-a*`; we register the id so the live-sync filters those
+      // server rows out of the merge (this tab already shows them live).
+      const turnId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `turn-${Date.now().toString(36)}-${Math.random()
+              .toString(36)
+              .slice(2)}`;
+      markTurnAuthored(turnId);
 
       // Snapshot the conversation BEFORE we mutate so the request
       // body sees a consistent message list. We also need its
@@ -151,11 +166,26 @@ export function useSendCanvasChatMessage() {
             ...(approval || rejection
               ? { canvasChatMessages: updatedMessages }
               : {}),
+            // Backend-driven persistence: the server writes this turn's
+            // rows under `${turnId}-*` and returns the (possibly newly-
+            // created) row id in `X-Conversation-Id`.
+            turnId,
           }),
         });
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        // First turn of a fresh conversation: the server created the
+        // `SharedConversation` row and handed its id back here. Adopt it
+        // so the live-sync subscribes to the right channel and later
+        // turns/approvals reference the same row. (Same pattern as the
+        // old autosave POST setting it — now server-driven.)
+        const serverConversationIdHeader =
+          response.headers.get("X-Conversation-Id");
+        if (serverConversationIdHeader && !conv.serverConversationId) {
+          setServerConversationId(conversationId, serverConversationIdHeader);
         }
 
         // The proposal-approval endpoint stamps the structured
