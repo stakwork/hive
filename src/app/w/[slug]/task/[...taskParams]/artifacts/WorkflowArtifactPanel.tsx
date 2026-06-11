@@ -94,12 +94,14 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
   // Merge data from all workflow artifacts, always using the LATEST values
   // This supports multiple executions and publishes - always shows the most recent:
-  // - workflowJson: Latest published workflow (for Editor tab)
-  // - originalWorkflowJson: Original workflow before changes (for Changes tab)
+  // - workflowJson: Latest published workflow (for Editor tab) — always last-wins
+  // - changesWorkflowJson: Only from agent-response artifacts (for Changes tab diff right-side)
+  // - originalWorkflowJson: Original workflow before changes (for Changes tab diff left-side)
   // - projectId: Latest execution project (for Stakwork tab)
   // - projectInfo: Project data for project debugger mode
   const mergedContent = useMemo(() => {
-    let workflowJson: string | undefined;
+    let workflowJson: string | undefined;          // Editor tab — always latest winner
+    let changesWorkflowJson: string | undefined;   // Changes tab — only from agent-response artifacts
     let originalWorkflowJson: string | undefined;
     let projectId: string | undefined;
     let workflowId: number | string | undefined;
@@ -113,6 +115,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     for (const artifact of activeArtifacts) {
       const content = artifact.content as WorkflowContent;
       if (content?.workflowJson) workflowJson = content.workflowJson;
+      // Only update changesWorkflowJson when the artifact has a real originalWorkflowJson
+      // (length > 100 distinguishes agent-response artifacts from run-start "" and publish artifacts without originalWorkflowJson)
+      if (
+        content?.workflowJson &&
+        content?.originalWorkflowJson &&
+        content.originalWorkflowJson.length > 100
+      ) {
+        changesWorkflowJson = content.workflowJson;
+      }
       if (content?.originalWorkflowJson) originalWorkflowJson = content.originalWorkflowJson;
       if (content?.projectId) projectId = content.projectId;
       if (content?.workflowId) workflowId = content.workflowId;
@@ -125,6 +136,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
     return {
       workflowJson,
+      changesWorkflowJson,
       originalWorkflowJson,
       projectId,
       workflowId,
@@ -136,7 +148,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     };
   }, [activeArtifacts]);
 
-  const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
+  const { workflowJson, changesWorkflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
 
   // Detect if we're in project debugger context
   const isProjectDebuggerMode = !!(projectInfo && debuggerProjectId);
@@ -144,8 +156,8 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   // Determine if we're in editor mode (workflowJson present)
   const isEditorMode = !!workflowJson;
 
-  // Check if we have changes to show
-  const hasChanges = !!(originalWorkflowJson && workflowJson);
+  // Check if we have changes to show (requires both a confirmed agent-response diff and an original)
+  const hasChanges = !!(originalWorkflowJson && changesWorkflowJson);
   // Always show Changes tab in editor mode (even without a prior version)
   const showChangesTab = isEditorMode;
 
@@ -154,8 +166,8 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     if (!hasChanges) {
       return { changedStepIds: new Set<string>(), changedConnectionIds: new Set<string>() };
     }
-    return computeWorkflowDiff(originalWorkflowJson ?? null, workflowJson ?? null);
-  }, [hasChanges, originalWorkflowJson, workflowJson]);
+    return computeWorkflowDiff(originalWorkflowJson ?? null, changesWorkflowJson ?? null);
+  }, [hasChanges, originalWorkflowJson, changesWorkflowJson]);
 
 
 
@@ -315,7 +327,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
             <TabsContent value="changes" className="flex-1 overflow-hidden mt-0">
               <WorkflowChangesPanel
                 originalJson={originalWorkflowJson || null}
-                updatedJson={workflowJson || null}
+                updatedJson={changesWorkflowJson || (!originalWorkflowJson ? workflowJson : null) || null}
               />
             </TabsContent>
           )}
