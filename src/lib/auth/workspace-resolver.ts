@@ -13,7 +13,7 @@ export interface WorkspaceResolutionResult {
 }
 
 /** Routes that workspace-less authenticated users may access without onboarding redirect. */
-export const WORKSPACE_FREE_ROUTES = ['/settings'];
+export const WORKSPACE_FREE_ROUTES = ['/settings', '/profile'];
 
 /**
  * Resolves where a user should be redirected based on their workspace access
