@@ -57,6 +57,7 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
     branch: string;
     status: "PENDING" | "SYNCED" | "FAILED";
     updatedAt: string;
+    allowAutoMerge: boolean;
   }>;
   isPublicViewable?: boolean;
 }
