@@ -10,6 +10,8 @@ import {
   createTestWorkspace,
   createTestMembership,
   createTestSwarm,
+  createTestTask,
+  createTestFeature,
 } from "@/__tests__/support/factories";
 import {
   createAuthenticatedGetRequest,
@@ -810,20 +812,35 @@ describe("Evals API — Integration Tests", () => {
   // ---------------------------------------------------------------------------
   describe("POST /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/runs", () => {
     describe("Success", () => {
-      test("links sessions to requirement", async () => {
+      test("creates EvalRun node and HAS_RUN edge for TASK target", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
-        vi.mocked(nodesService.addEdge)
-          .mockResolvedValueOnce({ success: true })
-          .mockResolvedValueOnce({ success: true });
+        const task = await createTestTask({
+          workspaceId: workspace.id,
+          createdById: owner.id,
+          title: "Test Task for Eval Run",
+        });
+
+        // addNode returns the EvalRun ref_id; addEdge x2 (HAS_RUN + maybe EVALUATED)
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({
+          success: true,
+          ref_id: "eval-run-1",
+        });
+        vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+
+        // Jarvis AgentSession resolution — no match, null session_id (best-effort)
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [] }),
+        } as any);
 
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/runs`,
           owner,
-          { session_ids: ["session-1", "session-2"] },
+          { target_type: "TASK", task_id: task.id },
         );
 
         const response = await linkRuns(request, {
@@ -833,30 +850,138 @@ describe("Evals API — Integration Tests", () => {
         expect(response.status).toBe(200);
         const data = await response.json();
         expect(data.success).toBe(true);
-        expect(data.linked).toBe(2);
+        expect(data.ref_id).toBe("eval-run-1");
+        expect(data.linked).toBe(1);
 
-        expect(nodesService.addEdge).toHaveBeenCalledTimes(2);
+        expect(nodesService.addNode).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            node_type: "EvalRun",
+            node_data: expect.objectContaining({
+              target_type: "TASK",
+              task_id: task.id,
+            }),
+          }),
+        );
+
         expect(nodesService.addEdge).toHaveBeenCalledWith(
           expect.any(Object),
           expect.objectContaining({
-            edge: { edge_type: "EVAL_RUN" },
+            edge: { edge_type: "HAS_RUN" },
             source: { ref_id: "req-1" },
-            target: { ref_id: "session-1" },
+            target: { ref_id: "eval-run-1" },
           }),
+        );
+      });
+
+      test("creates EvalRun node even when no AgentSession match is found", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const task = await createTestTask({
+          workspaceId: workspace.id,
+          createdById: owner.id,
+        });
+
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({
+          success: true,
+          ref_id: "eval-run-no-session",
+        });
+        vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+
+        // Jarvis returns empty — no session resolved
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [] }),
+        } as any);
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/runs`,
+          owner,
+          { target_type: "TASK", task_id: task.id },
+        );
+
+        const response = await linkRuns(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.ref_id).toBe("eval-run-no-session");
+
+        // Only HAS_RUN edge — no EVALUATED edge since session_id is null
+        expect(nodesService.addEdge).toHaveBeenCalledTimes(1);
+        expect(nodesService.addEdge).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({ edge: { edge_type: "HAS_RUN" } }),
+        );
+      });
+
+      test("creates EVALUATED edge when AgentSession is resolved", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const task = await createTestTask({
+          workspaceId: workspace.id,
+          createdById: owner.id,
+        });
+
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({
+          success: true,
+          ref_id: "eval-run-with-session",
+        });
+        vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+
+        // Jarvis returns a matching AgentSession
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            nodes: [
+              {
+                ref_id: "agent-session-xyz",
+                node_type: "AgentSession",
+                node_data: { task_id: task.id, created_at: new Date().toISOString() },
+              },
+            ],
+          }),
+        } as any);
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/runs`,
+          owner,
+          { target_type: "TASK", task_id: task.id },
+        );
+
+        const response = await linkRuns(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(200);
+
+        // Both HAS_RUN and EVALUATED edges created
+        expect(nodesService.addEdge).toHaveBeenCalledTimes(2);
+        expect(nodesService.addEdge).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({ edge: { edge_type: "HAS_RUN" } }),
         );
         expect(nodesService.addEdge).toHaveBeenCalledWith(
           expect.any(Object),
           expect.objectContaining({
-            edge: { edge_type: "EVAL_RUN" },
-            source: { ref_id: "req-1" },
-            target: { ref_id: "session-2" },
+            edge: { edge_type: "EVALUATED" },
+            source: { ref_id: "eval-run-with-session" },
+            target: { ref_id: "agent-session-xyz" },
           }),
         );
       });
     });
 
     describe("Validation failures", () => {
-      test("rejects empty session_ids array", async () => {
+      test("rejects missing or invalid target_type", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
@@ -865,18 +990,18 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/runs`,
           owner,
-          { session_ids: [] },
+          { target_type: "INVALID" },
         );
 
         const response = await linkRuns(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
         });
 
-        await expectError(response, "session_ids must be a non-empty array", 400);
-        expect(nodesService.addEdge).not.toHaveBeenCalled();
+        await expectError(response, "target_type must be TASK, FEATURE, or AGENT_LOG", 400);
+        expect(nodesService.addNode).not.toHaveBeenCalled();
       });
 
-      test("rejects missing session_ids", async () => {
+      test("rejects TASK target without task_id", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
@@ -885,14 +1010,63 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/runs`,
           owner,
-          {},
+          { target_type: "TASK" },
         );
 
         const response = await linkRuns(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
         });
 
-        await expectError(response, "session_ids must be a non-empty array", 400);
+        await expectError(response, "task_id required for TASK target", 400);
+      });
+
+      test("rejects FEATURE target without feature_id", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/runs`,
+          owner,
+          { target_type: "FEATURE" },
+        );
+
+        const response = await linkRuns(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectError(response, "feature_id required for FEATURE target", 400);
+      });
+    });
+
+    describe("IDOR protection", () => {
+      test("rejects task_id from a different workspace with 404", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        // Task belongs to a different workspace
+        const otherOwner = await createTestUser();
+        const otherWorkspace = await createTestWorkspace({ ownerId: otherOwner.id });
+        const otherTask = await createTestTask({
+          workspaceId: otherWorkspace.id,
+          createdById: otherOwner.id,
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/runs`,
+          owner,
+          { target_type: "TASK", task_id: otherTask.id },
+        );
+
+        const response = await linkRuns(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(404);
+        expect(nodesService.addNode).not.toHaveBeenCalled();
       });
     });
 
@@ -903,7 +1077,7 @@ describe("Evals API — Integration Tests", () => {
 
         const request = createPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/runs`,
-          { session_ids: ["s-1"] },
+          { target_type: "TASK", task_id: "some-id" },
         );
 
         const response = await linkRuns(request, {
@@ -923,7 +1097,7 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/runs`,
           owner,
-          { session_ids: ["s-1"] },
+          { target_type: "TASK", task_id: "some-id" },
         );
 
         const response = await linkRuns(request, {
@@ -935,20 +1109,31 @@ describe("Evals API — Integration Tests", () => {
     });
 
     describe("Service failures", () => {
-      test("returns 502 when any addEdge fails", async () => {
+      test("returns 502 when addNode fails", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
-        vi.mocked(nodesService.addEdge)
-          .mockResolvedValueOnce({ success: true })
-          .mockResolvedValueOnce({ success: false, error: "Edge failed" });
+        const task = await createTestTask({
+          workspaceId: workspace.id,
+          createdById: owner.id,
+        });
+
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({
+          success: false,
+          error: "Node creation failed",
+        });
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [] }),
+        } as any);
 
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/runs`,
           owner,
-          { session_ids: ["s-1", "s-2"] },
+          { target_type: "TASK", task_id: task.id },
         );
 
         const response = await linkRuns(request, {
@@ -965,20 +1150,23 @@ describe("Evals API — Integration Tests", () => {
   // ---------------------------------------------------------------------------
   describe("GET /api/workspaces/[slug]/evals/sessions", () => {
     describe("Success", () => {
-      test("returns agent session nodes", async () => {
+      test("returns tasks and features for workspace", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
-        const mockSessions = [
-          { ref_id: "s-1", node_type: "AgentSession", properties: { name: "Session 1" } },
-        ];
-
-        global.fetch = vi.fn().mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ nodes: mockSessions, total: 1 }),
-        } as any);
+        await createTestTask({
+          workspaceId: workspace.id,
+          createdById: owner.id,
+          title: "Alpha Task",
+        });
+        await createTestFeature({
+          workspaceId: workspace.id,
+          createdById: owner.id,
+          updatedById: owner.id,
+          title: "Beta Feature",
+        });
 
         const request = createAuthenticatedGetRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/sessions`,
@@ -992,8 +1180,56 @@ describe("Evals API — Integration Tests", () => {
         expect(response.status).toBe(200);
         const data = await response.json();
         expect(data.success).toBe(true);
-        expect(data.data.nodes).toHaveLength(1);
-        expect(data.data.total).toBe(1);
+        expect(Array.isArray(data.data.items)).toBe(true);
+
+        const ids = data.data.items.map((i: { id: string }) => i.id);
+        expect(ids).toEqual(expect.arrayContaining([expect.any(String)]));
+
+        // Each item has required shape
+        for (const item of data.data.items) {
+          expect(item).toMatchObject({
+            id: expect.any(String),
+            type: expect.stringMatching(/^(task|feature)$/),
+            title: expect.any(String),
+          });
+        }
+      });
+
+      test("filters by ?q= search param", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        await createTestTask({
+          workspaceId: workspace.id,
+          createdById: owner.id,
+          title: "Unique Searchable Task XYZ",
+        });
+        await createTestTask({
+          workspaceId: workspace.id,
+          createdById: owner.id,
+          title: "Completely Different Task",
+        });
+
+        const url = new URL(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/sessions`,
+        );
+        url.searchParams.set("q", "Unique Searchable");
+
+        const request = createAuthenticatedGetRequest(url.toString(), owner);
+
+        const response = await getSessions(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+
+        const titles = data.data.items.map((i: { title: string }) => i.title);
+        expect(titles).toContain("Unique Searchable Task XYZ");
+        expect(titles).not.toContain("Completely Different Task");
       });
     });
 
@@ -1048,31 +1284,6 @@ describe("Evals API — Integration Tests", () => {
         });
 
         await expectError(response, "Swarm not configured", 400);
-      });
-    });
-
-    describe("Upstream failure", () => {
-      test("returns 502 when Jarvis returns non-ok", async () => {
-        const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
-
-        global.fetch = vi.fn().mockResolvedValueOnce({
-          ok: false,
-          status: 503,
-        } as any);
-
-        const request = createAuthenticatedGetRequest(
-          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/sessions`,
-          owner,
-        );
-
-        const response = await getSessions(request, {
-          params: Promise.resolve({ slug: workspace.slug }),
-        });
-
-        expect(response.status).toBe(502);
       });
     });
   });

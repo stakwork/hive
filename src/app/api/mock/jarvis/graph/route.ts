@@ -5,7 +5,7 @@ import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
 export const runtime = "nodejs";
 
 // Mock data generators
-function generateMockNodes(): JarvisNode[] {
+function generateMockNodes(seedTaskIds: string[] = []): JarvisNode[] {
   //   const nodeTypes = ["Function", "Variable", "Person", "Episode", "Clip"];
   const nodes: JarvisNode[] = [];
   const now = Date.now() / 1000; // Current time in seconds
@@ -74,19 +74,22 @@ function generateMockNodes(): JarvisNode[] {
     });
   });
 
-  // AgentSession nodes for Evals feature
-  const agentSessions = [
-    { ref_id: "session-1", name: "Session: Fix auth bug", date: "2025-05-01" },
-    { ref_id: "session-2", name: "Session: Refactor payments", date: "2025-05-03" },
-    { ref_id: "session-3", name: "Session: Add notifications", date: "2025-05-07" },
-    { ref_id: "session-4", name: "Session: Debug eval runner", date: "2025-05-10" },
+  // AgentSession nodes for Evals feature — task_ids populated at runtime from seed tasks
+  // (see GET handler below which calls generateMockNodes with real task IDs)
+  const agentSessionDefs = [
+    { ref_id: "session-1", name: "Coding Agent Run", taskIndex: 0 },
+    { ref_id: "session-2", name: "Build Agent Run", taskIndex: 1 },
+    { ref_id: "session-3", name: "Test Agent Run", taskIndex: 2 },
+    { ref_id: "session-4", name: "Review Agent Run", taskIndex: 0 },
   ];
-  agentSessions.forEach(({ ref_id, name, date }) => {
+  agentSessionDefs.forEach(({ ref_id, name, taskIndex }) => {
+    const taskId = seedTaskIds[taskIndex] ?? "placeholder-task-id";
     nodes.push({
       ref_id,
       node_type: "AgentSession",
       date_added_to_graph: now,
-      properties: { name, date },
+      node_data: { task_id: taskId, created_at: new Date().toISOString() },
+      properties: { name, date: new Date().toISOString() },
     });
   });
 
@@ -154,8 +157,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
+    // Fetch up to 3 real seed task IDs so AgentSession mock nodes reference them
+    const seedTasks = await db.task.findMany({
+      where: { workspaceId: workspace.id, deleted: false },
+      take: 3,
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    const seedTaskIds = seedTasks.map((t) => t.id);
+
     const response: JarvisResponse = {
-      nodes: generateMockNodes(),
+      nodes: generateMockNodes(seedTaskIds),
       edges: generateMockEdges(),
     };
 
