@@ -42,7 +42,11 @@ import { tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
-import { notifyCanvasConversationUpdated } from "@/lib/pusher";
+import {
+  messagesFromSteps,
+  appendTurnMessages,
+  type StoredMessage,
+} from "@/services/canvas-turn-persistence";
 
 /** Why the agent was woken. Surfaced verbatim in the synthetic prompt. */
 export type AutoTurnWakeReason =
@@ -109,29 +113,10 @@ function buildStaySilentTool(ctx: {
   };
 }
 
-// ───────────────────────────────────────────────────────────────────
-// Stored-message types (the `CanvasChatMessage` JSON shape inside
-// `SharedConversation.messages`). Kept loose — the column is `Json`
-// and the canonical render-side type lives in `canvasChatStore.ts`.
-// ───────────────────────────────────────────────────────────────────
-
-interface StoredToolCall {
-  id: string;
-  toolName: string;
-  input?: unknown;
-  status?: string;
-  output?: unknown;
-  errorText?: string;
-}
-
-interface StoredMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp?: string;
-  toolCalls?: StoredToolCall[];
-  source?: { kind: string; featureId?: string; plannerMessageId?: string };
-}
+// Stored-message types (`StoredMessage` / `StoredToolCall`) and the
+// turn writer (`messagesFromSteps` / `appendTurnMessages`) now live in
+// `@/services/canvas-turn-persistence` so the user-driven `/api/ask/quick`
+// path and this auto-turn path share one persistence code path.
 
 /**
  * Server-side mirror of `toModelMessages` from `canvasChatStore.ts`.
@@ -189,134 +174,8 @@ function toModelMessages(messages: StoredMessage[]): ModelMessage[] {
     });
 }
 
-/**
- * Reconstruct the agent's output as `CanvasChatMessage`-shaped rows
- * from the finished stream's `steps`. Mirrors the client-side timeline
- * split in `useSendCanvasChatMessage.ts`: text becomes a text message,
- * tool calls become a tool-call message (so `SubAgentRunCard` can
- * extract `send_to_feature_planner` calls as outbound thread entries).
- *
- * The `stay_silent` tool call is stripped — it's a control signal, not
- * a transcript entry. A turn that did nothing but `stay_silent`
- * produces an empty array, and the caller appends nothing.
- */
-function messagesFromSteps(
-  steps: Array<{
-    text?: string;
-    toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
-    toolResults?: Array<{ toolCallId: string; output?: unknown; result?: unknown }>;
-  }>,
-  plannerMessageId: string,
-): StoredMessage[] {
-  const rows: StoredMessage[] = [];
-  let idx = 0;
-  const nextId = () => `autoturn-${plannerMessageId}-${idx++}`;
-  const now = new Date().toISOString();
-
-  for (const step of steps) {
-    if (step.text && step.text.trim()) {
-      rows.push({
-        id: nextId(),
-        role: "assistant",
-        content: step.text,
-        timestamp: now,
-      });
-    }
-
-    const calls = step.toolCalls ?? [];
-    if (calls.length === 0) continue;
-
-    const resultByCallId = new Map(
-      (step.toolResults ?? []).map((r) => [r.toolCallId, r] as const),
-    );
-
-    const toolCalls: StoredToolCall[] = calls
-      .filter((tc) => tc.toolName !== STAY_SILENT_TOOL)
-      .map((tc) => {
-        const r = resultByCallId.get(tc.toolCallId);
-        const output = r ? (r.output ?? r.result) : undefined;
-        const isError =
-          !!output &&
-          typeof output === "object" &&
-          "error" in (output as Record<string, unknown>);
-        return {
-          id: tc.toolCallId,
-          toolName: tc.toolName,
-          input: tc.input,
-          output,
-          status:
-            output === undefined
-              ? "input-available"
-              : isError
-                ? "output-error"
-                : "output-available",
-          ...(isError ? { errorText: "Tool call failed" } : {}),
-        };
-      });
-
-    if (toolCalls.length > 0) {
-      rows.push({
-        id: nextId(),
-        role: "assistant",
-        content: "",
-        timestamp: now,
-        toolCalls,
-      });
-    }
-  }
-
-  return rows;
-}
-
-/**
- * Append agent-produced rows into the canvas conversation under the
- * same row-level lock the fan-out worker and the autosave PUT use, so
- * all three writers serialize on the conversation row. Idempotent on
- * the `autoturn-<plannerMessageId>-` id prefix.
- */
-async function appendAutoTurnMessages(
-  conversationId: string,
-  rows: StoredMessage[],
-  plannerMessageId: string,
-): Promise<void> {
-  if (rows.length === 0) return;
-  const idPrefix = `autoturn-${plannerMessageId}-`;
-
-  let didAppend = false;
-  await db.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ messages: unknown }[]>`
-      SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
-    `;
-    if (locked.length === 0) return; // conversation deleted mid-turn
-
-    const existing = Array.isArray(locked[0].messages)
-      ? (locked[0].messages as StoredMessage[])
-      : [];
-
-    // Idempotency: if a prior run for this planner message already
-    // committed rows, don't double-append.
-    const alreadyAppended = existing.some(
-      (m) => typeof m.id === "string" && m.id.startsWith(idPrefix),
-    );
-    if (alreadyAppended) return;
-
-    await tx.sharedConversation.update({
-      where: { id: conversationId },
-      data: {
-        messages: [...existing, ...rows] as unknown as never,
-        lastMessageAt: new Date(),
-      },
-    });
-    didAppend = true;
-  });
-
-  // Push the agent's response to an open browser immediately. The
-  // auto-turn runs in the webhook's `after()` (seconds after the
-  // planner message), so this is the second live update the user sees.
-  if (didAppend) {
-    notifyCanvasConversationUpdated(conversationId, "autoturn");
-  }
-}
+/** Tool names stripped from the persisted transcript (control signals). */
+const AUTOTURN_STRIP_TOOLS: ReadonlySet<string> = new Set([STAY_SILENT_TOOL]);
 
 /**
  * Build the short, context-only synthetic wake message that tells the
@@ -629,10 +488,16 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
 
   const rows = messagesFromSteps(
     steps as Parameters<typeof messagesFromSteps>[0],
-    plannerMessageId,
+    idPrefix,
+    AUTOTURN_STRIP_TOOLS,
   );
 
-  await appendAutoTurnMessages(conversationId, rows, plannerMessageId);
+  await appendTurnMessages({
+    conversationId,
+    rows,
+    idPrefix,
+    reason: "autoturn",
+  });
 
   console.log("[canvas-autoturn] completed", {
     conversationId,

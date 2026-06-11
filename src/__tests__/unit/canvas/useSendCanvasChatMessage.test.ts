@@ -58,6 +58,8 @@ interface MockStoreState {
   setIsLoading: ReturnType<typeof vi.fn>;
   setIsStreaming: ReturnType<typeof vi.fn>;
   appendAssistantError: ReturnType<typeof vi.fn>;
+  markTurnAuthored: ReturnType<typeof vi.fn>;
+  setServerConversationId: ReturnType<typeof vi.fn>;
 }
 
 const baseContext: ConvContext = {
@@ -104,6 +106,8 @@ function makeTrackedState(): MockStoreState {
       }
     }),
     appendAssistantError: vi.fn(),
+    markTurnAuthored: vi.fn(),
+    setServerConversationId: vi.fn(),
   };
   return state;
 }
