@@ -36,6 +36,8 @@ export function WorkflowVersionList({
     );
   }
 
+  const activeVersionId = versions.find((v) => v.published)?.workflow_version_id ?? null;
+
   return (
     <div className="overflow-y-auto max-h-64 space-y-1">
       {versions.map((version) => {
@@ -54,11 +56,11 @@ export function WorkflowVersionList({
             <span className="text-xs text-muted-foreground truncate flex-1">
               {formatDate(version.date_added_to_graph)}
             </span>
-            {version.published && (
-              <Badge variant="secondary" className="shrink-0 text-xs">
-                Published
-              </Badge>
-            )}
+            {version.workflow_version_id === activeVersionId ? (
+              <Badge variant="default" className="shrink-0 text-xs">Active</Badge>
+            ) : version.published ? (
+              <Badge variant="outline" className="shrink-0 text-xs text-muted-foreground">Published</Badge>
+            ) : null}
           </button>
         );
       })}
