@@ -33,7 +33,10 @@ import {
   useCanvasChatStore,
   type CanvasChatMessage,
 } from "./canvasChatStore";
-import { mergeServerMessages } from "./canvasChatPersistence";
+import {
+  mergeServerMessages,
+  reconcilePlannerSources,
+} from "./canvasChatPersistence";
 import {
   getPusherClient,
   getCanvasConversationChannelName,
@@ -156,10 +159,19 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
           authoredPrefixes(),
         );
 
-        if (merged.added.length === 0) return; // in sync, nothing to do
+        // Append-only merge can't refresh an existing row — so a planner
+        // row whose `source.workflowStatus` the server patched in place
+        // (the `"workflow-status"` nudge: a feature's run reached a
+        // terminal status after its message fanned out) would stay stale.
+        // Reconcile those existing planner rows from the server copy so
+        // the `SubAgentRunCard` pill re-derives live. Never drops/reorders
+        // rows, so the no-message-loss invariant holds.
+        const reconciled = reconcilePlannerSources(merged.messages, mapped);
+
+        if (merged.added.length === 0 && !reconciled.changed) return; // in sync
         useCanvasChatStore
           .getState()
-          .setConversationMessages(conversationId, merged.messages);
+          .setConversationMessages(conversationId, reconciled.messages);
       } catch {
         // Network hiccup — a later nudge (or the next server append) will
         // resync.

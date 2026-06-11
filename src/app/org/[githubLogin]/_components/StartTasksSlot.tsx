@@ -7,10 +7,9 @@ import { Button } from "@/components/ui/button";
 /**
  * StartTasksSlot — the canvas-chat "Start Tasks" affordance.
  *
- * Once a feature's planner has generated a task breakdown
- * (`run.hasGeneratedTasks`), this slot sits beside the
- * `SubAgentRunCard` and lets the user kick off execution — assigning
- * the feature's ready tasks to the Task Coordinator — without leaving
+ * Sits beside the `SubAgentRunCard` once a feature's planner has
+ * replied, and lets the user kick off execution — assigning the
+ * feature's ready tasks to the Task Coordinator — without leaving
  * canvas chat. It mirrors the "Start Tasks" button on the full plan
  * page (`/w/<slug>/plan/<featureId>`).
  *
@@ -18,10 +17,20 @@ import { Button } from "@/components/ui/button";
  * spins up real compute (pods / workflow runs). So this is a plain
  * button, not an agent tool.
  *
+ * **The live `readyCount` is the source of truth, NOT a chat
+ * artifact.** Tasks created by the remote planner over MCP
+ * (`create_task` / `create_feature_task`) land in the DB with no
+ * `TASKS` artifact, so the artifact-derived `run.hasGeneratedTasks`
+ * flag can't see them. This slot instead asks the DB directly, so it
+ * surfaces tasks no matter how they were created.
+ *
  * Data flow:
- *   - On mount, GET `…/tasks/assign-all` → `{ readyCount }` (unassigned
- *     TODO tasks in the feature's first phase — the exact set the POST
- *     will assign).
+ *   - GET `…/tasks/assign-all` → `{ readyCount }` (unassigned TODO
+ *     tasks in the feature's first phase — the exact set the POST will
+ *     assign). Re-runs on mount, whenever `revalidateKey` changes (the
+ *     parent passes the run's anchor, which moves on each new planner
+ *     reply — so a closing "tasks created" message refreshes the count),
+ *     and on window focus (covers MCP creates with no closing message).
  *   - Renders nothing while loading or when `readyCount === 0`
  *     (e.g. all tasks already started elsewhere).
  *   - Click → POST `…/tasks/assign-all` → `{ success, count }`, then
@@ -31,9 +40,20 @@ import { Button } from "@/components/ui/button";
 interface StartTasksSlotProps {
   featureId: string;
   featureTitle?: string;
+  /**
+   * Changes whenever the owning run sees new planner activity (the
+   * parent passes `run.anchorMessageId`). A change re-queries the live
+   * ready-count, so tasks the planner just created (incl. via MCP, with
+   * no artifact) surface without a manual refresh.
+   */
+  revalidateKey?: string;
 }
 
-export function StartTasksSlot({ featureId, featureTitle }: StartTasksSlotProps) {
+export function StartTasksSlot({
+  featureId,
+  featureTitle,
+  revalidateKey,
+}: StartTasksSlotProps) {
   const [readyCount, setReadyCount] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
   const [startedCount, setStartedCount] = useState<number | null>(null);
@@ -52,9 +72,24 @@ export function StartTasksSlot({ featureId, featureTitle }: StartTasksSlotProps)
     }
   }, [featureId]);
 
+  // Re-query on mount and whenever the run advances (`revalidateKey`).
+  // A new planner reply — including the closing message after the agent
+  // created tasks over MCP — bumps the key, so the count refreshes and
+  // the button appears without the user touching anything.
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, revalidateKey]);
+
+  // Also revalidate when the user returns to the tab. Covers the case
+  // where tasks were created (MCP or elsewhere) while the conversation
+  // was idle and produced no new message to bump `revalidateKey`. Only
+  // worth polling for while nothing is started yet.
+  useEffect(() => {
+    if (startedCount !== null) return;
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh, startedCount]);
 
   const handleStart = async () => {
     setStarting(true);
