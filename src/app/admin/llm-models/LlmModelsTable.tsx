@@ -108,6 +108,24 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
   const [editingModel, setEditingModel] = useState<LlmModel | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/admin/llm-models/sync', { method: 'POST' });
+      if (res.ok) {
+        toast.success('Sync complete.');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error ?? 'Sync failed. Please try again.');
+      }
+    } catch {
+      toast.error('Sync failed. Please try again.');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const openAdd = () => {
     setEditingModel(null);
@@ -202,7 +220,10 @@ export default function LlmModelsTable({ initialData }: LlmModelsTableProps) {
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-end gap-2 mb-4">
+        <Button variant="outline" onClick={handleSync} disabled={syncing}>
+          {syncing ? 'Syncing…' : 'Sync Now'}
+        </Button>
         <Button onClick={openAdd}>Add Model</Button>
       </div>
 

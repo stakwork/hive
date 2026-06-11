@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { config } from '@/config/env';
+import { runLlmModelSync } from '@/lib/ai/llm-model-sync';
 
 export async function GET(request: NextRequest) {
   try {
-    // Auth — must match CRON_SECRET (same pattern as all other crons)
     const authHeader = request.headers.get('authorization');
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -12,51 +10,13 @@ export async function GET(request: NextRequest) {
 
     console.log('[LlmModelSyncCron] Starting LLM model sync run');
 
-    // Query all LLM models
-    const models = await db.llmModel.findMany({ orderBy: { name: 'asc' } });
-    console.log(`[LlmModelSyncCron] Found ${models.length} models`);
+    const { modelCount } = await runLlmModelSync();
 
-    // Guard: workflow ID must be configured
-    if (!config.STAKWORK_WORKFLOW_ID_LLM_SYNC) {
-      throw new Error('STAKWORK_WORKFLOW_ID_LLM_SYNC is not configured');
-    }
-    if (!config.STAKWORK_API_KEY) {
-      throw new Error('STAKWORK_API_KEY is not configured');
-    }
-
-    const stakworkURL = `${config.STAKWORK_BASE_URL}/projects`;
-    const payload = {
-      name: 'llm-model-sync',
-      workflow_id: parseInt(config.STAKWORK_WORKFLOW_ID_LLM_SYNC, 10),
-      workflow_params: {
-        set_var: { attributes: { vars: { models } } },
-      },
-    };
-
-    console.log('[LlmModelSyncCron] Dispatching to Stakwork', {
-      workflowId: payload.workflow_id,
-      modelCount: models.length,
-    });
-
-    const response = await fetch(stakworkURL, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      headers: {
-        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Stakwork responded with ${response.status}: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    console.log('[LlmModelSyncCron] Dispatch successful', result);
+    console.log('[LlmModelSyncCron] Dispatch successful', { modelCount });
 
     return NextResponse.json({
       success: true,
-      modelCount: models.length,
+      modelCount,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
