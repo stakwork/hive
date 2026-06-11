@@ -17,7 +17,7 @@
  *   - **Stay silent:** call the `stay_silent` tool (terminal no-op).
  *
  * There is deliberately NO policy extractor / classifier here — the
- * agent is the classifier. The synthetic system message below only
+ * agent is the classifier. The synthetic wake message below only
  * supplies *context* (which feature, which wake reason); the prompt
  * paragraph in `getCanvasPromptSuffix` teaches the agent how to behave
  * when the wakeup is machine-driven.
@@ -41,7 +41,7 @@
 import { tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
+import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 
 /** Why the agent was woken. Surfaced verbatim in the synthetic prompt. */
@@ -319,16 +319,29 @@ async function appendAutoTurnMessages(
 }
 
 /**
- * Build the short, context-only synthetic system message that tells
- * the agent WHY it was woken. It does NOT state the user's policy —
- * the agent reads that from the conversation itself.
+ * Build the short, context-only synthetic wake message that tells the
+ * agent WHY it was woken. It does NOT state the user's policy — the
+ * agent reads that from the conversation itself.
+ *
+ * Role is `user`, NOT `system`, on purpose. `runCanvasAgent` already
+ * prepends its own leading `system` prompt followed by assistant/tool
+ * concept-seeding messages (see `getMultiWorkspacePrefixMessages`). A
+ * second `system` message injected here lands *after* those, so the
+ * provider sees "multiple system messages separated by user/assistant
+ * messages" and Anthropic throws `AI_UnsupportedFunctionalityError`,
+ * aborting the whole auto-turn. (The user-driven `/api/ask/quick` path
+ * never hits this because its `messages` start with a `user` turn.)
+ * As a `user` message the wake note rides safely at the head of the
+ * conversation — the AI SDK merges it with the following user turn —
+ * and the planner's reply is still "the most recent assistant entry"
+ * the prompt refers to. Do NOT change this back to `system`.
  */
 function buildWakeMessage(
   featureTitle: string,
   wakeReason: AutoTurnWakeReason,
 ): ModelMessage {
   return {
-    role: "system",
+    role: "user",
     content:
       `You were invoked because the planner for feature **${featureTitle}** ` +
       `just posted a message (wake reason: ${wakeReason}). The planner's ` +
@@ -517,6 +530,7 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
   // is available to the agent). Deduped, capped at 20.
   const settings = (conversation.settings ?? {}) as {
     extraWorkspaceSlugs?: unknown;
+    promptConcepts?: unknown;
   };
   const extraSlugs = Array.isArray(settings.extraWorkspaceSlugs)
     ? settings.extraWorkspaceSlugs.filter(
@@ -558,11 +572,30 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     ...toModelMessages(storedMessages),
   ];
 
-  const { result } = await runCanvasAgent({
+  // Reuse the concepts the user-driven `/api/ask/quick` path already
+  // fetched + persisted to `settings.promptConcepts` for this
+  // conversation (see `loadOrgCanvasPromptCache` /
+  // `persistOrgCanvasPromptCache` in that route). Without this the
+  // auto-turn re-hits every workspace's swarm `list_concepts` on every
+  // wakeup — slow, and a hard failure when a swarm is offline (the
+  // `ConnectTimeoutError`s you see in the logs). A cache hit skips the
+  // swarm fetch entirely. Falls back to a fresh fetch when the cache is
+  // absent (e.g. the conversation never had a user turn). NOTE: this
+  // does NOT skip `buildWorkspaceConfigs` (the per-workspace PAT/swarm
+  // lookups) — those run every turn regardless, since the toolset needs
+  // live swarm credentials.
+  const cachedConcepts =
+    settings.promptConcepts &&
+    typeof settings.promptConcepts === "object"
+      ? (settings.promptConcepts as CachedConcepts)
+      : null;
+
+  const { result, cacheableConcepts, cacheHit } = await runCanvasAgent({
     userId: conversation.userId,
     orgId: conversation.sourceControlOrgId,
     workspaceSlugs,
     messages: modelMessages,
+    cachedConcepts,
     // Machine-driven, no live UI subscriber on this turn — suppress the
     // "researching" highlight Pusher fan-out.
     silentPusher: true,
@@ -572,6 +605,21 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     currentCanvasConversationId: conversationId,
     additionalTools: buildStaySilentTool({ conversationId, featureId }),
   });
+
+  // Self-heal the concept cache. On a MISS the auto-turn just paid for a
+  // fresh per-swarm `list_concepts` fetch — persist it so the NEXT
+  // auto-turn (or user turn) reuses it instead of re-hitting every swarm.
+  // Without this the auto-turn would re-fetch on every wakeup whenever the
+  // conversation hadn't yet had a cache-populating user turn. Guarded on
+  // `hasConcepts` so a swarm outage (empty result) never poisons the cache
+  // into permanently serving nothing. Fire-and-forget — never block the
+  // turn on a cache write. Mirrors `persistOrgCanvasPromptCache` in
+  // `/api/ask/quick/route.ts` (same race-safe jsonb `||` merge).
+  if (!cacheHit && hasConcepts(cacheableConcepts)) {
+    void persistPromptConcepts(conversationId, cacheableConcepts).catch((e) =>
+      console.error("[canvas-autoturn] prompt-cache persist failed:", e),
+    );
+  }
 
   // Drive the stream to completion (executes tool calls server-side,
   // e.g. `send_to_feature_planner`). `.text` auto-consumes; `.steps`
@@ -593,4 +641,41 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     wakeReason,
     appendedRows: rows.length,
   });
+}
+
+/**
+ * True when a cache holds at least one concept. Defensive: never cache an
+ * empty result (a swarm outage yields an empty list, and caching that
+ * would poison the cache into permanently serving nothing). Mirrors the
+ * `hasConcepts` guard in `/api/ask/quick/route.ts`.
+ */
+function hasConcepts(c: CachedConcepts): boolean {
+  if (Array.isArray(c.features)) return c.features.length > 0;
+  if (c.conceptsByWorkspace) {
+    return Object.values(c.conceptsByWorkspace).some(
+      (list) => Array.isArray(list) && list.length > 0,
+    );
+  }
+  return false;
+}
+
+/**
+ * Persist freshly-fetched concepts to `settings.promptConcepts` so the
+ * next turn (auto or user-driven) reuses them and skips the per-swarm
+ * `list_concepts` fetch. Uses a single jsonb `||` merge (not
+ * read-modify-write) so it's race-free against the client autosave's
+ * concurrent `settings` writes — both sides merge into the same blob
+ * instead of overwriting it. Sibling of `persistOrgCanvasPromptCache` in
+ * `/api/ask/quick/route.ts`.
+ */
+async function persistPromptConcepts(
+  conversationId: string,
+  concepts: CachedConcepts,
+): Promise<void> {
+  const patch = JSON.stringify({ promptConcepts: concepts });
+  await db.$executeRaw`
+    UPDATE shared_conversations
+    SET settings = COALESCE(settings, '{}'::jsonb) || ${patch}::jsonb
+    WHERE id = ${conversationId}
+  `;
 }
