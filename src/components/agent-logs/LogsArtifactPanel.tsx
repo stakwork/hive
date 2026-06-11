@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { MessageBubble, StatsBar, unescapeLogString } from "./LogDetailContent";
 import type { ParsedMessage, AgentLogStats } from "@/lib/utils/agent-log-stats";
 import type { ConversationMessage } from "@/hooks/useStreamedAgentLog";
+import type { AgentEventsStatus } from "@/hooks/useAgentEvents";
 
 interface AgentLogItem {
   id: string;
@@ -34,7 +35,7 @@ const INSIGHTS_ID = "INSIGHTS";
 interface LogsArtifactPanelProps {
   logs: AgentLogItem[];
   lastUpdated?: Record<string, number>;
-  streamingLog?: { agent: string; conversation: ConversationMessage[] } | null;
+  streamingLog?: { agent: string; conversation: ConversationMessage[]; status: AgentEventsStatus } | null;
   featureId?: string;
   isSuperAdmin?: boolean;
 }
@@ -83,9 +84,7 @@ export function LogsArtifactPanel({
   featureId,
   isSuperAdmin,
 }: LogsArtifactPanelProps) {
-  const hasProvisional =
-    !!streamingLog &&
-    !logs.some((l) => l.agent === streamingLog.agent);
+  const hasProvisional = !!streamingLog && streamingLog.status === "streaming";
 
   const defaultId = logs[logs.length - 1]?.id ?? (hasProvisional ? PROVISIONAL_ID : null);
 

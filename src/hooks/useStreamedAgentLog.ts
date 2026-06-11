@@ -1,4 +1,4 @@
-import { useAgentEvents } from "@/hooks/useAgentEvents";
+import { useAgentEvents, type AgentEventsStatus } from "@/hooks/useAgentEvents";
 import type { StreamContext } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 
 export interface ConversationMessage {
@@ -14,7 +14,7 @@ export interface ConversationMessage {
  */
 export function useStreamedAgentLog(
   streamContext: (StreamContext & { agent?: string }) | null,
-): { agent: string; conversation: ConversationMessage[] } | null {
+): { agent: string; conversation: ConversationMessage[]; status: AgentEventsStatus } | null {
   const { events, status } = useAgentEvents(
     streamContext?.requestId ?? null,
     streamContext?.eventsToken ?? null,
@@ -42,5 +42,5 @@ export function useStreamedAgentLog(
     return { role: "assistant" as const, content: e.text };
   });
 
-  return { agent: streamContext.agent, conversation };
+  return { agent: streamContext.agent, conversation, status };
 }

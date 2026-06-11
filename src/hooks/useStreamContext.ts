@@ -3,13 +3,6 @@ import type { StreamContext } from "@/app/w/[slug]/task/[...taskParams]/componen
 import { type ChatMessage, type StreamContent, WorkflowStatus } from "@/lib/chat";
 import type { WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 
-const TERMINAL_STATUSES: WorkflowStatus[] = [
-  WorkflowStatus.COMPLETED,
-  WorkflowStatus.FAILED,
-  WorkflowStatus.ERROR,
-  WorkflowStatus.HALTED,
-];
-
 export function useStreamContext() {
   const [streamContext, setStreamContext] = useState<StreamContext | null>(null);
 
@@ -30,10 +23,9 @@ export function useStreamContext() {
 
   function onWorkflowStatusUpdate(update: WorkflowStatusUpdate) {
     console.log("[useStreamContext] onWorkflowStatusUpdate", update.workflowStatus);
-    if (TERMINAL_STATUSES.includes(update.workflowStatus)) {
-      console.log("[useStreamContext] clearing streamContext (terminal status)");
-      setStreamContext(null);
-    }
+    // No-op: terminal statuses no longer clear streamContext.
+    // The EventSource "done" event drives hasProvisional to false via the status-based check,
+    // and clearing here caused a race condition that wiped a freshly-set context for the next run.
   }
 
   return { streamContext, onMessage, onWorkflowStatusUpdate };
