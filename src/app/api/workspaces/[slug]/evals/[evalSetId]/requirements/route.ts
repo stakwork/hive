@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getJarvisUrl } from "@/lib/utils/swarm";
@@ -149,9 +150,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const config = { jarvisUrl, apiKey: swarmApiKey };
     console.log(`[Evals Requirements POST] Jarvis URL: ${jarvisUrl}`);
 
+    const id = randomUUID();
     const nodeResult = await addNode(config, {
       node_type: "EvalRequirement",
       node_data: {
+        id,
         name: name.trim(),
         description,
         prompt_snippet: prompt_snippet.trim(),
