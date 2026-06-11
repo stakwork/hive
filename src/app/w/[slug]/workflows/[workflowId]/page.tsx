@@ -60,10 +60,11 @@ export default function WorkflowInspectorPage() {
     isNaN(workflowIdNum) ? null : workflowIdNum,
   );
 
-  // Auto-select first version
+  // Auto-select active (most recently published) version, falling back to first
   useEffect(() => {
     if (!selectedVersionId && versions.length > 0) {
-      setSelectedVersionId(versions[0].workflow_version_id);
+      const active = versions.find((v) => v.published);
+      setSelectedVersionId((active ?? versions[0]).workflow_version_id);
     }
   }, [versions, selectedVersionId]);
 

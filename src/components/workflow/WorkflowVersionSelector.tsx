@@ -62,6 +62,7 @@ export function WorkflowVersionSelector({
   };
 
   const selectedVersion = versions.find((v) => v.workflow_version_id === selectedVersionId) || versions[0];
+  const activeVersionId = versions.find((v) => v.published)?.workflow_version_id ?? null;
 
   return (
     <div data-testid="version-selector" className="mt-4 space-y-2">
@@ -78,11 +79,11 @@ export function WorkflowVersionSelector({
                     Latest
                   </Badge>
                 )}
-                {selectedVersion.published && (
-                  <Badge variant="default" className="text-xs">
-                    Published
-                  </Badge>
-                )}
+                {selectedVersion.workflow_version_id === activeVersionId ? (
+                  <Badge variant="default" className="text-xs">Active</Badge>
+                ) : selectedVersion.published ? (
+                  <Badge variant="outline" className="text-xs text-muted-foreground">Published</Badge>
+                ) : null}
               </div>
             )}
           </SelectValue>
@@ -102,11 +103,11 @@ export function WorkflowVersionSelector({
                     Latest
                   </Badge>
                 )}
-                {version.published && (
-                  <Badge variant="default" className="text-xs">
-                    Published
-                  </Badge>
-                )}
+                {version.workflow_version_id === activeVersionId ? (
+                  <Badge variant="default" className="text-xs">Active</Badge>
+                ) : version.published ? (
+                  <Badge variant="outline" className="text-xs text-muted-foreground">Published</Badge>
+                ) : null}
               </div>
             </SelectItem>
           ))}
