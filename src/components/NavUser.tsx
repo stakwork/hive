@@ -7,6 +7,7 @@ import {
   Settings,
   Building2,
   Zap,
+  Activity,
 } from "lucide-react";
 import Link from "next/link";
 import type { OrgResponse } from "@/types/workspace";
@@ -130,6 +131,15 @@ export function NavUser({
                 </DropdownMenuItem>
               </>
             )}
+
+            {/* My Activity */}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/profile" className="flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                My Activity
+              </Link>
+            </DropdownMenuItem>
 
             {/* Organizations Section */}
             {orgs.length > 0 && (
