@@ -588,6 +588,7 @@ describe("Evals API — Integration Tests", () => {
           expect.objectContaining({
             node_type: "EvalRequirement",
             node_data: expect.objectContaining({
+              id: expect.any(String),
               name: "Req 1",
               prompt_snippet: validBody.prompt_snippet,
               positive_cases: validBody.positive_cases,
