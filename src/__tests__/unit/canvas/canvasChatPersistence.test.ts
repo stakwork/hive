@@ -13,6 +13,7 @@ import {
   seedPersistedIds,
   computeUnsaved,
   mergeServerMessages,
+  reconcilePlannerSources,
   type PersistableMessage,
 } from "@/app/org/[githubLogin]/_state/canvasChatPersistence";
 
@@ -188,5 +189,66 @@ describe("full turn lifecycle stays consistent", () => {
     ]);
     // Nothing left to re-save (no duplicate PUTs).
     expect(computeUnsaved(local, persisted)).toEqual([]);
+  });
+});
+
+describe("reconcilePlannerSources — refresh planner status in place", () => {
+  type Row = {
+    id: string;
+    role: "user" | "assistant";
+    source?: { kind?: string; featureId?: string; workflowStatus?: string } | null;
+  };
+  const plannerRow = (id: string, workflowStatus: string): Row => ({
+    id,
+    role: "assistant",
+    source: { kind: "planner", featureId: "feat-1", workflowStatus },
+  });
+
+  test("swaps a stale IN_PROGRESS snapshot for the server's COMPLETED", () => {
+    const local: Row[] = [
+      { id: "user1", role: "user" },
+      plannerRow("planner-x", "IN_PROGRESS"),
+    ];
+    const server: Row[] = [
+      { id: "user1", role: "user" },
+      plannerRow("planner-x", "COMPLETED"),
+    ];
+    const { messages, changed } = reconcilePlannerSources(local, server);
+    expect(changed).toBe(true);
+    expect(messages[1].source?.workflowStatus).toBe("COMPLETED");
+    // Order + non-planner rows untouched.
+    expect(messages.map((m) => m.id)).toEqual(["user1", "planner-x"]);
+  });
+
+  test("no-op (same array, changed=false) when statuses already match", () => {
+    const local: Row[] = [plannerRow("planner-x", "COMPLETED")];
+    const server: Row[] = [plannerRow("planner-x", "COMPLETED")];
+    const result = reconcilePlannerSources(local, server);
+    expect(result.changed).toBe(false);
+    expect(result.messages).toBe(local); // identity preserved → no store write
+  });
+
+  test("never adds or drops rows — only refreshes existing planner ids", () => {
+    const local: Row[] = [plannerRow("planner-x", "IN_PROGRESS")];
+    // Server has an extra row, but reconcile must not append it.
+    const server: Row[] = [
+      plannerRow("planner-x", "FAILED"),
+      plannerRow("planner-y", "COMPLETED"),
+    ];
+    const { messages, changed } = reconcilePlannerSources(local, server);
+    expect(changed).toBe(true);
+    expect(messages.map((m) => m.id)).toEqual(["planner-x"]);
+    expect(messages[0].source?.workflowStatus).toBe("FAILED");
+  });
+
+  test("leaves non-planner rows and rows absent on the server alone", () => {
+    const local: Row[] = [
+      { id: "user1", role: "user" },
+      plannerRow("planner-local-only", "IN_PROGRESS"),
+    ];
+    const server: Row[] = [{ id: "user1", role: "user" }];
+    const result = reconcilePlannerSources(local, server);
+    expect(result.changed).toBe(false);
+    expect(result.messages).toBe(local);
   });
 });
