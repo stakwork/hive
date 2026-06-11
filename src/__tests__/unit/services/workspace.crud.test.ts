@@ -155,7 +155,7 @@ describe("Workspace CRUD Operations", () => {
         include: {
           owner: { select: { id: true, name: true, email: true } },
           swarm: { select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, swarmUrl: true } },
-          repositories: { select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true } },
+          repositories: { select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true, allowAutoMerge: true } },
         },
       });
       expect(result).toEqual({
