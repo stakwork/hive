@@ -252,9 +252,9 @@ describe("GET /api/profile/activity", () => {
       body.items.map((i: { id: string; link: string }) => [i.id, i.link]),
     );
 
-    expect(byId["c-dashboard"]).toBe("/w/my-ws");
-    expect(byId["c-logs"]).toBe("/w/my-ws/agent-logs");
-    expect(byId["c-canvas"]).toBe("/org/my-org");
+    expect(byId["c-dashboard"]).toBe("/w/my-ws?chat=c-dashboard");
+    expect(byId["c-logs"]).toBe("/w/my-ws/agent-logs/chat/c-logs");
+    expect(byId["c-canvas"]).toBe("/org/my-org?chat=c-canvas");
   });
 
   it("returns 200 and partial results when one query fails", async () => {
