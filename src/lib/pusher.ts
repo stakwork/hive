@@ -108,7 +108,12 @@ export type CanvasConversationUpdateReason =
   // A human appended a message to a shared conversation. Fires from the
   // autosave PUT so other people sitting on the same shared room refetch
   // and see the new turn live.
-  | "user-message";
+  | "user-message"
+  // A user-driven canvas-agent turn was persisted server-side (the
+  // `/api/ask/quick` org path, in `after()`). The authoring tab filters
+  // its own turn out of the merge by id prefix; other viewers / a
+  // reopened tab live-sync it in.
+  | "user-turn";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON
