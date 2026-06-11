@@ -845,6 +845,39 @@ describe('ChatMessage', () => {
       expect(screen.getByText('User Two')).toBeInTheDocument();
       expect(screen.queryByText('User One')).not.toBeInTheDocument();
     });
+
+    it('shows relative timestamp in tooltip for USER messages', () => {
+      const fixedDate = new Date('2025-12-02T10:00:00.000Z');
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'Timed message',
+        createdAt: fixedDate,
+        createdBy: {
+          id: 'user-ts',
+          name: 'Alice',
+          email: 'alice@example.com',
+          image: null,
+          githubAuth: null,
+        },
+      });
+
+      render(
+        <ChatMessage
+          message={message}
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Name is in tooltip
+      expect(screen.getByText('Alice')).toBeInTheDocument();
+      // Tooltip content node contains a second <p> with the timestamp
+      const tooltipContent = screen.getByTestId('tooltip-content');
+      const paragraphs = tooltipContent.querySelectorAll('p');
+      expect(paragraphs).toHaveLength(2);
+      expect(paragraphs[0].textContent).toBe('Alice');
+      // Second paragraph is a non-empty timestamp string
+      expect(paragraphs[1].textContent).toBeTruthy();
+    });
   });
 
   describe('Attachment Rendering', () => {

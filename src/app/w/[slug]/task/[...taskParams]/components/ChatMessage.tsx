@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { cn } from "@/lib/utils";
+import { formatRelativeOrDate } from "@/lib/date-utils";
 import { isClarifyingQuestions } from "@/types/stakwork";
 import type { ClarifyingQuestionsResponse } from "@/types/stakwork";
 import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
@@ -257,6 +258,7 @@ export const ChatMessage = memo(function ChatMessage({
               </TooltipTrigger>
               <TooltipContent>
                 <p>{message.createdBy.name || message.createdBy.githubAuth?.githubUsername || "User"}</p>
+                <p className="text-muted-foreground text-xs">{formatRelativeOrDate(message.createdAt)}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
