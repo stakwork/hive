@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import { ActivityFeed } from "./_components/ActivityFeed";
+import { BackButton } from "./_components/BackButton";
 
 export default async function ProfilePage() {
   const session = await getServerSession(authOptions);
@@ -24,6 +25,9 @@ export default async function ProfilePage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-3xl px-4 py-12">
+        <div className="mb-6">
+          <BackButton />
+        </div>
         {/* Header */}
         <div className="mb-8 flex items-center gap-4">
           {image ? (
