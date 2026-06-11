@@ -38,6 +38,8 @@ export const getOrgChannelName = (githubLogin: string) => `org-${githubLogin}`;
 // open browser live, with no polling.
 export const getCanvasConversationChannelName = (conversationId: string) =>
   `canvas-conversation-${conversationId}`;
+// Per-user channel for profile activity nudges
+export const getUserChannelName = (userId: string) => `user-${userId}`;
 
 // Event names
 export const PUSHER_EVENTS = {
@@ -94,6 +96,8 @@ export const PUSHER_EVENTS = {
   // refetches the conversation and merges in the new rows (avoids Pusher's
   // 10KB-per-message cap and keeps a single source of truth).
   CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",
+  // Per-user profile activity feed nudge
+  ACTIVITY_UPDATED: "activity-updated",
 } as const;
 
 /**
@@ -154,5 +158,26 @@ export function notifyCanvasConversationUpdated(
       "[pusher] notifyCanvasConversationUpdated threw (non-fatal):",
       err,
     );
+  }
+}
+
+/**
+ * Fire-and-forget broadcast that the user's profile activity feed has new
+ * items. Creation endpoints call this AFTER their write commits so an open
+ * /profile page refetches without a manual refresh. Never throws — a Pusher
+ * outage must not break the underlying creation request.
+ */
+export function notifyActivityUpdated(userId: string): void {
+  try {
+    void pusherServer
+      .trigger(getUserChannelName(userId), PUSHER_EVENTS.ACTIVITY_UPDATED, {
+        userId,
+        at: Date.now(),
+      })
+      .catch((err) => {
+        console.error("[pusher] notifyActivityUpdated failed (non-fatal):", err);
+      });
+  } catch (err) {
+    console.error("[pusher] notifyActivityUpdated threw (non-fatal):", err);
   }
 }
