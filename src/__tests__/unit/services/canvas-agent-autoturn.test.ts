@@ -117,6 +117,54 @@ describe("invokeCanvasAgentOnPlannerMessage — gating", () => {
     expect(db.feature.findUnique).toHaveBeenCalledOnce();
     expect(runCanvasAgent).not.toHaveBeenCalled();
   });
+
+  test("wake message rides as a USER turn, never a second system message", async () => {
+    // Regression: a `system`-role wake message lands AFTER
+    // `runCanvasAgent`'s own leading system prompt + concept-seeding
+    // assistant/tool messages, so Anthropic rejects the turn with
+    // `AI_UnsupportedFunctionalityError: 'Multiple system messages that
+    // are separated by user/assistant messages'` — aborting every
+    // auto-turn. The wake context must ride as a `user` message.
+    delete process.env[ENV_KEY];
+    (
+      db.sharedConversation.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      ...conversationWith(true),
+      messages: [
+        { id: "u1", role: "user", content: "Manage this feature for me." },
+        {
+          id: "p1",
+          role: "assistant",
+          content: "Plan ready?",
+          source: { kind: "planner" },
+        },
+      ],
+    });
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      title: "Auth Refactor",
+      workspace: { slug: "ws" },
+    });
+    // Empty steps → no rows appended → no $transaction needed.
+    // `cacheableConcepts: {}` + `cacheHit: false` mirrors a real miss
+    // with no concepts (swarm returned nothing) → `hasConcepts` false →
+    // no cache-persist write, so no `$executeRaw` mock needed.
+    (runCanvasAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      result: { text: Promise.resolve(""), steps: Promise.resolve([]) },
+      cacheableConcepts: {},
+      cacheHit: false,
+    });
+
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    expect(runCanvasAgent).toHaveBeenCalledOnce();
+    const passedMessages = (runCanvasAgent as ReturnType<typeof vi.fn>).mock
+      .calls[0][0].messages as Array<{ role: string }>;
+    // runCanvasAgent owns the single system prompt; the auto-turn must
+    // not inject another one into the message stream.
+    expect(passedMessages.some((m) => m.role === "system")).toBe(false);
+    // The wake context is the leading user turn.
+    expect(passedMessages[0].role).toBe("user");
+  });
 });
 
 describe("actionableWakeReason", () => {
