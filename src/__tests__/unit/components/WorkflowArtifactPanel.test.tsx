@@ -75,7 +75,7 @@ import { Artifact } from "@/lib/chat";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeWorkflowArtifact(projectId: string): Artifact {
+function makeWorkflowArtifact(projectId: string, extra: Partial<import("@/lib/chat").WorkflowContent> = {}): Artifact {
   return {
     id: "art-1",
     type: "workflow",
@@ -83,6 +83,7 @@ function makeWorkflowArtifact(projectId: string): Artifact {
       projectId,
       workflowId: 42,
       workflowJson: JSON.stringify({ nodes: [], edges: [] }),
+      ...extra,
     } satisfies import("@/lib/chat").WorkflowContent,
   } as unknown as Artifact;
 }
@@ -139,5 +140,96 @@ describe("WorkflowArtifactPanel — hiveUrl prop", () => {
     expect(hiveUrl).not.toContain("window.location");
     expect(hiveUrl).not.toBe(typeof window !== "undefined" ? window.location.href : "");
     expect(hiveUrl).toBe(`/w/hive/projects?id=${projectId}`);
+  });
+});
+
+describe("WorkflowArtifactPanel — version badge", () => {
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders version badge and external link when workflowVersionId is present", () => {
+    const artifact = makeWorkflowArtifact("proj-1", { workflowVersionId: "v99" });
+
+    render(
+      <WorkflowArtifactPanel
+        artifacts={[artifact]}
+        isActive={false}
+      />
+    );
+
+    expect(screen.getByTestId("workflow-version-badge")).toBeInTheDocument();
+    expect(screen.getByTestId("workflow-version-badge")).toHaveTextContent("vv99");
+    expect(screen.getByTestId("workflow-external-link")).toBeInTheDocument();
+  });
+
+  it("does NOT render version badge when workflowVersionId is absent", () => {
+    const artifact = makeWorkflowArtifact("proj-2");
+
+    render(
+      <WorkflowArtifactPanel
+        artifacts={[artifact]}
+        isActive={false}
+      />
+    );
+
+    expect(screen.queryByTestId("workflow-version-badge")).not.toBeInTheDocument();
+  });
+
+  it("includes ?version= in href when workflowVersionId is present", () => {
+    const artifact = makeWorkflowArtifact("proj-3", { workflowVersionId: "42" });
+
+    render(
+      <WorkflowArtifactPanel
+        artifacts={[artifact]}
+        isActive={false}
+      />
+    );
+
+    const link = screen.getByTestId("workflow-external-link");
+    expect(link).toHaveAttribute(
+      "href",
+      "https://jobs.stakwork.com/admin/workflows/42/edit?version=42"
+    );
+  });
+
+  it("omits ?version= in href when workflowVersionId is absent", () => {
+    const artifact = makeWorkflowArtifact("proj-4");
+
+    render(
+      <WorkflowArtifactPanel
+        artifacts={[artifact]}
+        isActive={false}
+      />
+    );
+
+    const link = screen.getByTestId("workflow-external-link");
+    expect(link).toHaveAttribute(
+      "href",
+      "https://jobs.stakwork.com/admin/workflows/42/edit"
+    );
+  });
+
+  it("does NOT render external link when workflowId is absent", () => {
+    const artifact: Artifact = {
+      id: "art-no-id",
+      type: "workflow",
+      content: {
+        workflowJson: JSON.stringify({ nodes: [], edges: [] }),
+      } as import("@/lib/chat").WorkflowContent,
+    } as unknown as Artifact;
+
+    render(
+      <WorkflowArtifactPanel
+        artifacts={[artifact]}
+        isActive={false}
+      />
+    );
+
+    expect(screen.queryByTestId("workflow-external-link")).not.toBeInTheDocument();
   });
 });

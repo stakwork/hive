@@ -283,6 +283,32 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
             </Select>
           </div>
         )}
+        {workflowId && (
+          <div className="px-2 pt-1 pb-1 flex-shrink-0 flex items-center gap-2">
+            {workflowVersionId && (
+              <span
+                data-testid="workflow-version-badge"
+                className="font-mono text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded"
+              >
+                v{workflowVersionId}
+              </span>
+            )}
+            <a
+              data-testid="workflow-external-link"
+              href={
+                workflowVersionId
+                  ? `https://jobs.stakwork.com/admin/workflows/${workflowId}/edit?version=${workflowVersionId}`
+                  : `https://jobs.stakwork.com/admin/workflows/${workflowId}/edit`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Open in Stakwork"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        )}
         <Tabs
           value={activeDisplayTab}
           onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork" | "children")}
