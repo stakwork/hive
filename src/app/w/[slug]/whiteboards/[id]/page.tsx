@@ -84,6 +84,13 @@ export default function WhiteboardDetailPage() {
   const savePausedRef = useRef(false);
   const knownElementIdsRef = useRef<Set<string>>(new Set());
   const lastVersionSnapshotRef = useRef<Set<string>>(new Set());
+  // Detect Excalidraw element deep-link once at mount so auto-fit doesn't override it
+  const hasElementDeepLinkRef = useRef<boolean>((() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    return params.has('element') || hashParams.has('element');
+  })());
 
   const {
     collaborators,
@@ -612,6 +619,7 @@ export default function WhiteboardDetailPage() {
   // Auto-fit all content into view on initial load
   useEffect(() => {
     if (!excalidrawAPI) return;
+    if (hasElementDeepLinkRef.current) return; // skip: deep link will position the view
     const hasElements = whiteboard?.elements?.some(
       (el) => !(el as { isDeleted?: boolean }).isDeleted
     );
@@ -637,12 +645,14 @@ export default function WhiteboardDetailPage() {
         appState: safeAppState as unknown as AppState,
       });
       setTimeout(() => {
-        excalidrawAPI.scrollToContent(undefined, {
-          fitToViewport: true,
-          viewportZoomFactor: 0.9,
-          animate: true,
-          duration: 300,
-        });
+        if (!hasElementDeepLinkRef.current) { // skip fit when deep link is present on initial load
+          excalidrawAPI.scrollToContent(undefined, {
+            fitToViewport: true,
+            viewportZoomFactor: 0.9,
+            animate: true,
+            duration: 300,
+          });
+        }
       }, 100);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
