@@ -110,6 +110,7 @@ model User {
   createdSecrets           WorkspaceSecret[]        @relation("SecretCreator")
   initiativeAssignments    Initiative[]             @relation("InitiativeAssignee")
   milestoneAssignments     Milestone[]              @relation("MilestoneAssignee")
+  canvasReviewCards        CanvasReviewCard[]
 
   @@index([createdAt])
   @@index([deleted])
@@ -190,6 +191,8 @@ model SourceControlOrg {
   canvases             Canvas[]
   initiatives          Initiative[]
   researches           Research[]
+  canvasJanitorConfig  CanvasJanitorConfig?
+  canvasReviewCards    CanvasReviewCard[]
 
   @@index([githubLogin])
   @@index([githubInstallationId])
@@ -1770,6 +1773,82 @@ model Milestone {
   @@unique([initiativeId, sequence])
   @@index([initiativeId])
   @@map("milestones")
+}
+
+enum CanvasReviewReason {
+  STALE_CONTENT
+  DANGLING_ENTITY_LINK
+  ARCHIVED_INITIATIVE_LINK
+  STALE_INITIATIVE
+}
+
+enum CanvasReviewStatus {
+  PENDING
+  DISMISSED
+  ACKNOWLEDGED
+  ACTIONED
+}
+
+model CanvasJanitorConfig {
+  id                   String           @id @default(cuid())
+  orgId                String           @unique @map("org_id")
+  enabled              Boolean          @default(true)
+  scheduleIntervalDays Int              @default(7) @map("schedule_interval_days")
+  lastRunAt            DateTime?        @map("last_run_at")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+  org                  SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  runs                 CanvasJanitorRun[]
+
+  @@map("canvas_janitor_configs")
+}
+
+model CanvasJanitorRun {
+  id                String              @id @default(cuid())
+  configId          String              @map("config_id")
+  triggeredBy       JanitorTrigger      @default(SCHEDULED) @map("triggered_by")
+  triggeredByUserId String?             @map("triggered_by_user_id")
+  status            JanitorStatus       @default(PENDING)
+  cardsCreated      Int                 @default(0) @map("cards_created")
+  startedAt         DateTime?           @map("started_at")
+  completedAt       DateTime?           @map("completed_at")
+  error             String?
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  config            CanvasJanitorConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  reviewCards       CanvasReviewCard[]
+
+  @@index([configId])
+  @@index([status])
+  @@map("canvas_janitor_runs")
+}
+
+model CanvasReviewCard {
+  id           String             @id @default(cuid())
+  orgId        String             @map("org_id")
+  userId       String             @map("user_id")
+  runId        String?            @map("run_id")
+  reason       CanvasReviewReason
+  status       CanvasReviewStatus @default(PENDING)
+  nodeId       String?            @map("node_id")
+  canvasRef    String?            @map("canvas_ref")
+  nodeText     String?            @map("node_text") @db.Text
+  nodeCategory String?            @map("node_category")
+  entityId     String?            @map("entity_id")
+  entityName   String?            @map("entity_name")
+  reasonDetail String?            @map("reason_detail") @db.Text
+  dismissedAt  DateTime?          @map("dismissed_at")
+  actionedAt   DateTime?          @map("actioned_at")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+  org          SourceControlOrg   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  run          CanvasJanitorRun?  @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, userId, status])
+  @@index([orgId])
+  @@index([userId])
+  @@map("canvas_review_cards")
 }
 
 enum ChannelStatus {

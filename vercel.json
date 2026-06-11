@@ -39,6 +39,10 @@
       "schedule": "0 * * * *"
     },
     {
+      "path": "/api/cron/canvas-janitor",
+      "schedule": "0 9 * * 1"
+    },
+    {
       "path": "/api/cron/llm-model-sync",
       "schedule": "0 1 * * *"
     }

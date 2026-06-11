@@ -94,6 +94,7 @@ export const PUSHER_EVENTS = {
   // refetches the conversation and merges in the new rows (avoids Pusher's
   // 10KB-per-message cap and keeps a single source of truth).
   CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",
+  CANVAS_REVIEW_UPDATED: "canvas-review-updated",
 } as const;
 
 /**

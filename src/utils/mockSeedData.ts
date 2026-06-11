@@ -3,8 +3,11 @@ import { db } from "@/lib/db";
 import { mockPoolState } from "@/lib/mock/pool-manager-state";
 import {
   ArtifactType,
+  CanvasReviewReason,
+  CanvasReviewStatus,
   FeaturePriority,
   FeatureStatus,
+  InitiativeStatus,
   JanitorStatus,
   JanitorTrigger,
   JanitorType,
@@ -63,6 +66,15 @@ export async function seedMockData(
 
   // Create janitor config, runs, and recommendations
   await seedJanitorData(userId, workspaceId);
+
+  // Seed Canvas Janitor data
+  const workspaceForOrg = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { sourceControlOrgId: true },
+  });
+  if (workspaceForOrg?.sourceControlOrgId) {
+    await seedCanvasJanitorData(workspaceForOrg.sourceControlOrgId, userId, workspaceId);
+  }
 
   // Seed StakworkRuns for AI generation history
   await seedStakworkRuns(workspaceId, features);
@@ -2495,6 +2507,124 @@ async function seedAttachments(
 
     console.log(`[MockSeed] Created ${diagramSeeds.length} seed diagrams`);
   }
+}
+
+/**
+ * Seeds Canvas Janitor config, a completed run, and 3 review cards for the org.
+ * Idempotent — skips if config already exists.
+ */
+async function seedCanvasJanitorData(
+  orgId: string,
+  userId: string,
+  workspaceId: string,
+): Promise<void> {
+  // Idempotency check
+  const existing = await db.canvasJanitorConfig.findUnique({ where: { orgId } });
+  if (existing) {
+    console.log("[MockSeed] Canvas janitor data already exists, skipping");
+    return;
+  }
+
+  // Ensure at least 1 CANCELLED Feature exists in this org
+  const cancelledFeature = await db.feature.findFirst({
+    where: { workspaceId, status: FeatureStatus.CANCELLED, deleted: false },
+    select: { id: true },
+  });
+  if (!cancelledFeature) {
+    await db.feature.create({
+      data: {
+        title: "Redis Session Caching (Cancelled)",
+        workspaceId,
+        createdById: userId,
+        updatedById: userId,
+        status: FeatureStatus.CANCELLED,
+      },
+    });
+  }
+
+  // Ensure at least 1 ARCHIVED Initiative exists in this org
+  const archivedInitiative = await db.initiative.findFirst({
+    where: { orgId, status: InitiativeStatus.ARCHIVED },
+    select: { id: true },
+  });
+  if (!archivedInitiative) {
+    await db.initiative.create({
+      data: {
+        orgId,
+        name: "Monorepo Migration (Archived)",
+        status: InitiativeStatus.ARCHIVED,
+      },
+    });
+  }
+
+  const now = new Date();
+  const startedAt = new Date(now.getTime() - 60_000);
+
+  // Create config
+  const janitorConfig = await db.canvasJanitorConfig.create({
+    data: {
+      orgId,
+      enabled: true,
+      scheduleIntervalDays: 7,
+      lastRunAt: now,
+    },
+  });
+
+  // Create a completed run
+  const janitorRun = await db.canvasJanitorRun.create({
+    data: {
+      configId: janitorConfig.id,
+      status: JanitorStatus.COMPLETED,
+      triggeredBy: JanitorTrigger.SCHEDULED,
+      cardsCreated: 3,
+      startedAt,
+      completedAt: now,
+    },
+  });
+
+  // Create 3 review cards
+  await db.canvasReviewCard.createMany({
+    data: [
+      {
+        orgId,
+        userId,
+        runId: janitorRun.id,
+        reason: CanvasReviewReason.STALE_CONTENT,
+        status: CanvasReviewStatus.PENDING,
+        nodeText: "Reminder: schedule Q3 retro with the full team",
+        nodeCategory: "note",
+        reasonDetail:
+          "This reminder was created in September and appears to be time-sensitive content that has likely passed.",
+        canvasRef: "",
+      },
+      {
+        orgId,
+        userId,
+        runId: janitorRun.id,
+        reason: CanvasReviewReason.DANGLING_ENTITY_LINK,
+        status: CanvasReviewStatus.PENDING,
+        nodeText: "Spike: evaluate Redis for session caching",
+        nodeCategory: "note",
+        reasonDetail:
+          "This note is linked to a feature that was cancelled. Consider archiving or promoting to a new feature.",
+        canvasRef: "",
+      },
+      {
+        orgId,
+        userId,
+        runId: janitorRun.id,
+        reason: CanvasReviewReason.ARCHIVED_INITIATIVE_LINK,
+        status: CanvasReviewStatus.PENDING,
+        nodeText: "Decision: adopt monorepo structure",
+        nodeCategory: "decision",
+        reasonDetail:
+          "This decision card is linked to an initiative that has been archived.",
+        canvasRef: "",
+      },
+    ],
+  });
+
+  console.log("[MockSeed] Canvas janitor data seeded for org:", orgId);
 }
 
 /**
