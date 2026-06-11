@@ -172,10 +172,12 @@ describe("WorkflowVersionSelector", () => {
     });
   });
 
-  describe("Published Badge", () => {
-    it("should show Published badge for version with published_at timestamp", () => {
+  describe("Active / Published Badge", () => {
+    it("should show Active badge for the most recently published (first published) version", () => {
       const versions = [
-        createMockVersion("version-1", "2024-01-20T10:00:00Z"),
+        createMockVersion("version-1", "2024-01-20T10:00:00Z"), // active
+        createMockVersion("version-2", "2024-01-10T10:00:00Z"), // older published
+        createMockVersion("version-3", null),                    // unpublished
       ];
 
       render(
@@ -188,11 +190,53 @@ describe("WorkflowVersionSelector", () => {
         />
       );
 
-      // Should show Published badge in the selected version display
-      expect(screen.getByText("Published")).toBeInTheDocument();
+      // Only one Active badge (for selected version-1)
+      expect(screen.getByText("Active")).toBeInTheDocument();
     });
 
-    it("should not show Published badge for version with null published_at", () => {
+    it("should show dimmed Published badge for older published versions, not Active", () => {
+      const versions = [
+        createMockVersion("version-1", "2024-01-20T10:00:00Z"), // active
+        createMockVersion("version-2", "2024-01-10T10:00:00Z"), // older published
+      ];
+
+      render(
+        <WorkflowVersionSelector
+          workflowName="Test Workflow"
+          versions={versions}
+          selectedVersionId="version-2"
+          onVersionSelect={mockOnVersionSelect}
+          isLoading={false}
+        />
+      );
+
+      // Selected older published version shows "Published" (not "Active")
+      expect(screen.getByText("Published")).toBeInTheDocument();
+      expect(screen.queryByText("Active")).not.toBeInTheDocument();
+    });
+
+    it("should show exactly one Active badge when multiple versions are published", () => {
+      const versions = [
+        createMockVersion("version-1", "2024-01-20T10:00:00Z"), // active
+        createMockVersion("version-2", "2024-01-10T10:00:00Z"), // older published
+        createMockVersion("version-3", "2024-01-01T10:00:00Z"), // oldest published
+      ];
+
+      render(
+        <WorkflowVersionSelector
+          workflowName="Test Workflow"
+          versions={versions}
+          selectedVersionId="version-1"
+          onVersionSelect={mockOnVersionSelect}
+          isLoading={false}
+        />
+      );
+
+      const activeBadges = screen.getAllByText("Active");
+      expect(activeBadges).toHaveLength(1);
+    });
+
+    it("should not show any badge for unpublished versions", () => {
       const versions = [
         createMockVersion("version-1", null),
       ];
@@ -207,7 +251,27 @@ describe("WorkflowVersionSelector", () => {
         />
       );
 
-      // Should not show Published badge
+      expect(screen.queryByText("Published")).not.toBeInTheDocument();
+      expect(screen.queryByText("Active")).not.toBeInTheDocument();
+    });
+
+    it("should show no badge when no versions are published", () => {
+      const versions = [
+        createMockVersion("version-1", null),
+        createMockVersion("version-2", null),
+      ];
+
+      render(
+        <WorkflowVersionSelector
+          workflowName="Test Workflow"
+          versions={versions}
+          selectedVersionId="version-1"
+          onVersionSelect={mockOnVersionSelect}
+          isLoading={false}
+        />
+      );
+
+      expect(screen.queryByText("Active")).not.toBeInTheDocument();
       expect(screen.queryByText("Published")).not.toBeInTheDocument();
     });
   });
