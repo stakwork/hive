@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock, Trash2, Zap, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Search, History, Trash2, Zap, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { estimateTokens, formatTokenCount } from "@/lib/utils/token-estimate";
@@ -27,23 +27,16 @@ import { diffLines } from "diff";
 // Sentinel ID for representing the current live version
 const CURRENT_VERSION_SENTINEL = -1;
 
-interface PromptUsage {
-  workflow_id: number;
-  workflow_name: string;
-  step_id: string;
-}
-
-// Prompt list item (from API list endpoint)
-interface Prompt {
+// Script list item (from API list endpoint)
+interface Script {
   id: number;
   name: string;
   description: string;
   usage_notation: string;
   value?: string;
-  usages?: PromptUsage[];
 }
 
-interface PromptDetail {
+interface ScriptDetail {
   id: number;
   name: string;
   value: string;
@@ -54,51 +47,42 @@ interface PromptDetail {
   version_count: number;
 }
 
-interface PromptVersion {
+interface ScriptVersion {
   id: number;
   version_number: number;
   created_at: string;
   whodunnit: string | null;
 }
 
-interface PromptVersionDetail {
-  version_id: number;
-  version_number: number;
-  value: string;
-  created_at: string;
-}
-
-interface PromptsListResponse {
+interface ScriptsListResponse {
   success: boolean;
   data: {
-    prompts: Prompt[];
+    scripts: Script[];
     total: number;
     size: number;
     page: number;
   };
 }
 
-interface PromptDetailResponse {
+interface ScriptDetailResponse {
   success: boolean;
-  data: PromptDetail;
+  data: ScriptDetail;
 }
 
-interface PromptsPanelProps {
-  workflowId?: number;
+interface ScriptsPanelProps {
   variant?: "panel" | "fullpage";
-  onNavigateToWorkflow?: (workflowId: number) => void;
   workspaceSlug?: string;
 }
 
 type ViewMode = "list" | "detail" | "create" | "history";
 
-export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkflow, workspaceSlug }: PromptsPanelProps) {
+export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [prompts, setPrompts] = useState<Prompt[]>([]);
-  const [selectedPrompt, setSelectedPrompt] = useState<PromptDetail | null>(null);
+  const [scripts, setScripts] = useState<Script[]>([]);
+  const [selectedScript, setSelectedScript] = useState<ScriptDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -108,14 +92,12 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [copiedNotation, setCopiedNotation] = useState(false);
-  const [copiedShareLink, setCopiedShareLink] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [isEditing, setIsEditing] = useState(false);
-  const [selectedUsages, setSelectedUsages] = useState<PromptUsage[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Version history state
-  const [versions, setVersions] = useState<PromptVersion[]>([]);
+  const [versions, setVersions] = useState<ScriptVersion[]>([]);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishingVersionId, setPublishingVersionId] = useState<number | null>(null);
@@ -148,16 +130,15 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update URL when selecting a prompt (only in fullpage mode)
-  // Also clears the ?version param when navigating away from a prompt
-  const updateUrlWithPrompt = useCallback((promptId: number | null, versionId?: number | null) => {
+  // Update URL when selecting a script (only in fullpage mode)
+  const updateUrlWithScript = useCallback((scriptId: number | null, versionId?: number | null) => {
     if (!isFullpage) return;
 
     const params = new URLSearchParams(searchParams.toString());
-    if (promptId) {
-      params.set("prompt", promptId.toString());
+    if (scriptId) {
+      params.set("script", scriptId.toString());
     } else {
-      params.delete("prompt");
+      params.delete("script");
       params.delete("version");
     }
     if (versionId != null) {
@@ -184,64 +165,60 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     router.replace(newUrl, { scroll: false });
   }, [isFullpage, pathname, router, searchParams]);
 
-  const fetchPrompts = useCallback(async (pageNum: number, searchTerm?: string) => {
+  const fetchScripts = useCallback(async (pageNum: number, searchTerm?: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      let url = `/api/workflow/prompts?page=${pageNum}&include_usages=true`;
-      if (workflowId) {
-        url += `&workflow_id=${workflowId}`;
-      }
-      // Add search parameter if provided and not empty
+      let url = `/api/workflow/scripts?page=${pageNum}`;
       const trimmedSearch = searchTerm?.trim();
       if (trimmedSearch) {
         url += `&search=${encodeURIComponent(trimmedSearch)}`;
       }
       const response = await fetch(url);
       if (!response.ok) {
-        throw new Error("Failed to fetch prompts");
+        throw new Error("Failed to fetch scripts");
       }
-      const data: PromptsListResponse = await response.json();
+      const data: ScriptsListResponse = await response.json();
       if (data.success) {
-        setPrompts(data.data.prompts);
+        setScripts(data.data.scripts);
         setTotal(data.data.total);
         setPageSize(data.data.size);
       } else {
-        throw new Error("Failed to fetch prompts");
+        throw new Error("Failed to fetch scripts");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setIsLoading(false);
     }
-  }, [workflowId]);
+  }, []);
 
-  const fetchPromptDetail = useCallback(async (promptId: number) => {
+  const fetchScriptDetail = useCallback(async (scriptId: number) => {
     setIsLoadingDetail(true);
     try {
-      const response = await fetch(`/api/workflow/prompts/${promptId}`);
+      const response = await fetch(`/api/workflow/scripts/${scriptId}`);
       if (!response.ok) {
-        throw new Error("Failed to fetch prompt details");
+        throw new Error("Failed to fetch script details");
       }
-      const data: PromptDetailResponse = await response.json();
+      const data: ScriptDetailResponse = await response.json();
       if (data.success) {
-        setSelectedPrompt(data.data);
+        setSelectedScript(data.data);
         setFormValue(data.data.value);
         setFormDescription(data.data.description);
       } else {
-        throw new Error("Failed to fetch prompt details");
+        throw new Error("Failed to fetch script details");
       }
     } catch (err) {
-      console.error("Error fetching prompt detail:", err);
+      console.error("Error fetching script detail:", err);
     } finally {
       setIsLoadingDetail(false);
     }
   }, []);
 
-  const fetchVersionList = useCallback(async (promptId: number) => {
+  const fetchVersionList = useCallback(async (scriptId: number) => {
     setIsLoadingVersions(true);
     try {
-      const response = await fetch(`/api/workflow/prompts/${promptId}/versions`);
+      const response = await fetch(`/api/workflow/scripts/${scriptId}/versions`);
       if (!response.ok) {
         throw new Error("Failed to fetch version list");
       }
@@ -259,9 +236,9 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   }, []);
 
-  const fetchVersionContent = useCallback(async (promptId: number, versionId: number): Promise<string | null> => {
+  const fetchVersionContent = useCallback(async (scriptId: number, versionId: number): Promise<string | null> => {
     try {
-      const response = await fetch(`/api/workflow/prompts/${promptId}/versions/${versionId}`);
+      const response = await fetch(`/api/workflow/scripts/${scriptId}/versions/${versionId}`);
       if (!response.ok) {
         throw new Error("Failed to fetch version content");
       }
@@ -277,9 +254,9 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   }, []);
 
-  const fetchVersionDetail = useCallback(async (promptId: number, versionId: number): Promise<{ value: string; description: string } | null> => {
+  const fetchVersionDetail = useCallback(async (scriptId: number, versionId: number): Promise<{ value: string; description: string } | null> => {
     try {
-      const response = await fetch(`/api/workflow/prompts/${promptId}/versions/${versionId}`);
+      const response = await fetch(`/api/workflow/scripts/${scriptId}/versions/${versionId}`);
       if (!response.ok) throw new Error("Failed to fetch version detail");
       const data = await response.json();
       if (data.success) return { value: data.data.value as string, description: data.data.description as string };
@@ -290,22 +267,22 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   }, []);
 
-  // Fetch prompts when page or search changes
+  // Fetch scripts when page or search changes
   useEffect(() => {
-    fetchPrompts(page, debouncedSearchQuery);
-  }, [page, debouncedSearchQuery, fetchPrompts]);
+    fetchScripts(page, debouncedSearchQuery);
+  }, [page, debouncedSearchQuery, fetchScripts]);
 
-  // Check for prompt ID (and optional version) in URL on mount (only in fullpage mode)
+  // Check for script ID (and optional version) in URL on mount (only in fullpage mode)
   useEffect(() => {
     if (!isFullpage) return;
 
-    const promptId = searchParams.get("prompt");
+    const scriptId = searchParams.get("script");
     const versionId = searchParams.get("version");
-    if (promptId) {
-      const id = parseInt(promptId, 10);
+    if (scriptId) {
+      const id = parseInt(scriptId, 10);
       if (!isNaN(id)) {
         setViewMode("detail");
-        fetchPromptDetail(id).then(() => {
+        fetchScriptDetail(id).then(() => {
           if (versionId) {
             const vid = parseInt(versionId, 10);
             if (!isNaN(vid)) {
@@ -336,37 +313,34 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     const currentSearch = params.get("search") || "";
     const trimmedQuery = debouncedSearchQuery.trim();
 
-    // Only update if the value actually changed
     if (currentSearch !== trimmedQuery) {
       if (trimmedQuery) {
         params.set("search", trimmedQuery);
       } else {
         params.delete("search");
       }
-      params.delete("page"); // Remove page param when searching
+      params.delete("page");
       const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
       router.replace(newUrl, { scroll: false });
     }
   }, [debouncedSearchQuery, pathname, router]);
 
-  const handlePromptClick = (prompt: Prompt) => {
+  const handleScriptClick = (script: Script) => {
     setViewMode("detail");
     setIsEditing(false);
-    setSelectedUsages(prompt.usages || []);
-    fetchPromptDetail(prompt.id);
-    updateUrlWithPrompt(prompt.id);
+    fetchScriptDetail(script.id);
+    updateUrlWithScript(script.id);
   };
 
   const handleBackToList = () => {
-    setSelectedPrompt(null);
+    setSelectedScript(null);
     setViewMode("list");
     setIsEditing(false);
     setCopiedNotation(false);
-    setSelectedUsages([]);
     setFormName("");
     setFormValue("");
     setFormDescription("");
-    updateUrlWithPrompt(null);
+    updateUrlWithScript(null);
   };
 
   const handleCreateClick = () => {
@@ -377,40 +351,27 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   };
 
   const handleEditClick = () => {
-    if (selectedPrompt) {
-      setFormValue(selectedPrompt.value);
-      setFormDescription(selectedPrompt.description);
+    if (selectedScript) {
+      setFormValue(selectedScript.value);
+      setFormDescription(selectedScript.description);
       setIsEditing(true);
     }
   };
 
   const handleCancelEdit = () => {
-    if (selectedPrompt) {
-      setFormValue(selectedPrompt.value);
-      setFormDescription(selectedPrompt.description);
+    if (selectedScript) {
+      setFormValue(selectedScript.value);
+      setFormDescription(selectedScript.description);
     }
     setIsEditing(false);
   };
 
-  const handleOpenWorkflowInNewTab = useCallback((targetWorkflowId: number) => {
-    if (workspaceSlug) {
-      // Store the workflow ID to prefill in the new tab
-      localStorage.setItem("prefill_workflow_id", targetWorkflowId.toString());
-      localStorage.setItem("task_mode", "workflow_editor");
-      window.open(`/w/${workspaceSlug}/task/new`, "_blank");
-    } else if (onNavigateToWorkflow) {
-      onNavigateToWorkflow(targetWorkflowId);
-    }
-  }, [workspaceSlug, onNavigateToWorkflow]);
-
-  const handleCreatePrompt = async () => {
-    if (!formName.trim() || !formValue.trim()) {
-      return;
-    }
+  const handleCreateScript = async () => {
+    if (!formName.trim() || !formValue.trim()) return;
 
     setIsSaving(true);
     try {
-      const response = await fetch("/api/workflow/prompts", {
+      const response = await fetch("/api/workflow/scripts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -420,36 +381,30 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to create prompt");
-      }
+      if (!response.ok) throw new Error("Failed to create script");
 
       const data = await response.json();
       if (data.success) {
-        // Reset form and go back to list
         handleBackToList();
-        // Refresh the list to show the new prompt
-        fetchPrompts(1);
+        fetchScripts(1);
         goToPage(1);
       } else {
-        throw new Error("Failed to create prompt");
+        throw new Error("Failed to create script");
       }
     } catch (err) {
-      console.error("Error creating prompt:", err);
-      setError(err instanceof Error ? err.message : "Failed to create prompt");
+      console.error("Error creating script:", err);
+      setError(err instanceof Error ? err.message : "Failed to create script");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleUpdatePrompt = async () => {
-    if (!selectedPrompt || !formValue.trim()) {
-      return;
-    }
+  const handleUpdateScript = async () => {
+    if (!selectedScript || !formValue.trim()) return;
 
     setIsSaving(true);
     try {
-      const response = await fetch(`/api/workflow/prompts/${selectedPrompt.id}`, {
+      const response = await fetch(`/api/workflow/scripts/${selectedScript.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -458,56 +413,49 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to update prompt");
-      }
+      if (!response.ok) throw new Error("Failed to update script");
 
       const data = await response.json();
       if (data.success) {
-        // Refresh the prompt detail
-        await fetchPromptDetail(selectedPrompt.id);
+        await fetchScriptDetail(selectedScript.id);
         setIsEditing(false);
-        // Also refresh the list in case description changed
-        fetchPrompts(page);
+        fetchScripts(page);
       } else {
-        throw new Error("Failed to update prompt");
+        throw new Error("Failed to update script");
       }
     } catch (err) {
-      console.error("Error updating prompt:", err);
-      setError(err instanceof Error ? err.message : "Failed to update prompt");
+      console.error("Error updating script:", err);
+      setError(err instanceof Error ? err.message : "Failed to update script");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDeletePrompt = async () => {
-    if (!selectedPrompt) {
-      return;
-    }
+  const handleDeleteScript = async () => {
+    if (!selectedScript) return;
 
     setIsDeleting(true);
     setError(null);
     try {
-      const response = await fetch(`/api/workflow/prompts/${selectedPrompt.id}`, {
+      const response = await fetch(`/api/workflow/scripts/${selectedScript.id}`, {
         method: "DELETE",
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to delete prompt");
+        throw new Error(errorData.error || "Failed to delete script");
       }
 
       const data = await response.json();
       if (data.success) {
-        // Navigate back to list and refresh
         handleBackToList();
-        fetchPrompts(1);
+        fetchScripts(1);
       } else {
-        throw new Error("Failed to delete prompt");
+        throw new Error("Failed to delete script");
       }
     } catch (err) {
-      console.error("Error deleting prompt:", err);
-      setError(err instanceof Error ? err.message : "Failed to delete prompt");
+      console.error("Error deleting script:", err);
+      setError(err instanceof Error ? err.message : "Failed to delete script");
     } finally {
       setIsDeleting(false);
     }
@@ -516,35 +464,17 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const totalPages = Math.ceil(total / pageSize);
 
   const handleCopyNotation = async () => {
-    if (selectedPrompt?.usage_notation) {
-      await navigator.clipboard.writeText(selectedPrompt.usage_notation);
+    if (selectedScript?.usage_notation) {
+      await navigator.clipboard.writeText(selectedScript.usage_notation);
       setCopiedNotation(true);
       setTimeout(() => setCopiedNotation(false), 2000);
     }
   };
 
-  const handleSharePrompt = async (promptId: number) => {
-    // Extract workspace slug from pathname (format: /w/[slug]/...)
-    const pathParts = pathname.split("/");
-    const wIndex = pathParts.indexOf("w");
-    const slug = wIndex !== -1 && pathParts[wIndex + 1] ? pathParts[wIndex + 1] : workspaceSlug;
-
-    if (!slug) return;
-
-    // Generate the share URL - always points to prompts mode with the prompt selected
-    const baseUrl = window.location.origin;
-    const shareUrl = `${baseUrl}/w/${slug}/task/new?prompt=${promptId}`;
-
-    await navigator.clipboard.writeText(shareUrl);
-    setCopiedShareLink(true);
-    setTimeout(() => setCopiedShareLink(false), 2000);
-  };
-
   const handleHistoryClick = async () => {
-    if (!selectedPrompt) return;
-    
+    if (!selectedScript) return;
     setViewMode("history");
-    await fetchVersionList(selectedPrompt.id);
+    await fetchVersionList(selectedScript.id);
   };
 
   const handleBackToDetail = () => {
@@ -560,8 +490,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const handleEditFromVersion = () => {
     if (!selectedVersionAId || versionAContent === null) return;
     setFormValue(versionAContent);
-    setFormDescription(previewVersionDescription ?? selectedPrompt!.description);
-    // Reset all history state
+    setFormDescription(previewVersionDescription ?? selectedScript!.description);
     setVersions([]);
     setSelectedVersionAId(null);
     setSelectedVersionBId(null);
@@ -573,19 +502,19 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   };
 
   const handlePublishVersion = async (versionId: number) => {
-    if (!selectedPrompt) return;
+    if (!selectedScript) return;
     setIsPublishing(true);
     setPublishingVersionId(versionId);
     setError(null);
     try {
       const response = await fetch(
-        `/api/workflow/prompts/${selectedPrompt.id}/versions/${versionId}/publish`,
+        `/api/workflow/scripts/${selectedScript.id}/versions/${versionId}/publish`,
         { method: "POST" }
       );
       if (!response.ok) throw new Error("Failed to publish version");
       const data = await response.json();
       if (!data.success) throw new Error("Failed to publish version");
-      await fetchPromptDetail(selectedPrompt.id);
+      await fetchScriptDetail(selectedScript.id);
       setViewMode("detail");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to publish version");
@@ -600,22 +529,17 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       setSelectedVersionAId(versionId);
     } else if (selectedVersionBId === null) {
       if (versionId === selectedVersionAId) {
-        // Clicking the same version twice deselects it
         setSelectedVersionAId(null);
       } else {
         setSelectedVersionBId(versionId);
       }
     } else {
-      // Both selected, replace B with new selection
       if (versionId === selectedVersionAId) {
-        // Deselect A, move B to A
         setSelectedVersionAId(selectedVersionBId);
         setSelectedVersionBId(null);
       } else if (versionId === selectedVersionBId) {
-        // Deselect B
         setSelectedVersionBId(null);
       } else {
-        // Replace B with new selection
         setSelectedVersionBId(versionId);
       }
     }
@@ -623,7 +547,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
   // Fetch version content when A (and optionally B) is selected
   useEffect(() => {
-    if (!selectedPrompt || !selectedVersionAId) {
+    if (!selectedScript || !selectedVersionAId) {
       setVersionAContent(null);
       setVersionBContent(null);
       setPreviewVersionDescription(null);
@@ -634,26 +558,24 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       setIsLoadingDiff(true);
       try {
         if (selectedVersionBId) {
-          // Both A and B selected: fetch for diff
           const resolveA = selectedVersionAId === CURRENT_VERSION_SENTINEL
-            ? Promise.resolve({ value: selectedPrompt.value, description: selectedPrompt.description })
-            : fetchVersionDetail(selectedPrompt.id, selectedVersionAId);
+            ? Promise.resolve({ value: selectedScript.value, description: selectedScript.description })
+            : fetchVersionDetail(selectedScript.id, selectedVersionAId);
 
           const resolveB = selectedVersionBId === CURRENT_VERSION_SENTINEL
-            ? Promise.resolve(selectedPrompt.value)
-            : fetchVersionContent(selectedPrompt.id, selectedVersionBId);
+            ? Promise.resolve(selectedScript.value)
+            : fetchVersionContent(selectedScript.id, selectedVersionBId);
 
           const [detailA, contentB] = await Promise.all([resolveA, resolveB]);
           setVersionAContent(detailA ? detailA.value : null);
           setPreviewVersionDescription(detailA ? detailA.description : null);
           setVersionBContent(contentB);
         } else {
-          // Only A selected: preview mode
           if (selectedVersionAId === CURRENT_VERSION_SENTINEL) {
-            setVersionAContent(selectedPrompt.value);
-            setPreviewVersionDescription(selectedPrompt.description);
+            setVersionAContent(selectedScript.value);
+            setPreviewVersionDescription(selectedScript.description);
           } else {
-            const detail = await fetchVersionDetail(selectedPrompt.id, selectedVersionAId);
+            const detail = await fetchVersionDetail(selectedScript.id, selectedVersionAId);
             setVersionAContent(detail ? detail.value : null);
             setPreviewVersionDescription(detail ? detail.description : null);
           }
@@ -667,12 +589,11 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     };
 
     fetchContent();
-  }, [selectedPrompt, selectedVersionAId, selectedVersionBId, fetchVersionContent, fetchVersionDetail]);
+  }, [selectedScript, selectedVersionAId, selectedVersionBId, fetchVersionContent, fetchVersionDetail]);
 
   const formatTimestamp = (timestamp: string) => {
     try {
-      const date = new Date(timestamp);
-      return date.toLocaleString();
+      return new Date(timestamp).toLocaleString();
     } catch {
       return timestamp;
     }
@@ -683,17 +604,17 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     ? "w-full bg-card rounded-3xl shadow-sm border flex-1 overflow-hidden flex flex-col min-h-0"
     : "";
 
-  if (isLoading && prompts.length === 0 && viewMode === "list") {
+  if (isLoading && scripts.length === 0 && viewMode === "list") {
     const content = (
       <div className={cn("flex items-center justify-center p-8", isFullpage ? "h-[400px]" : "h-full")}>
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        <span className="ml-2 text-muted-foreground text-sm">Loading prompts...</span>
+        <span className="ml-2 text-muted-foreground text-sm">Loading scripts...</span>
       </div>
     );
     return isFullpage ? <Card className={wrapperClassName}>{content}</Card> : content;
   }
 
-  if (error && prompts.length === 0 && viewMode === "list") {
+  if (error && scripts.length === 0 && viewMode === "list") {
     const content = (
       <div className={cn("flex items-center justify-center p-8", isFullpage ? "h-[400px]" : "h-full")}>
         <div className="text-destructive text-sm">{error}</div>
@@ -702,7 +623,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     return isFullpage ? <Card className={wrapperClassName}>{content}</Card> : content;
   }
 
-  // Create prompt view
+  // Create script view
   if (viewMode === "create") {
     const content = (
       <div className={cn("flex flex-col", isFullpage ? "h-full" : "h-full overflow-hidden")}>
@@ -711,7 +632,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             <ChevronLeft className="h-4 w-4 mr-1" />
             Back
           </Button>
-          <span className="text-sm font-medium flex-1">Create New Prompt</span>
+          <span className="text-sm font-medium flex-1">Create New Script</span>
         </div>
 
         <div className="flex-1 overflow-auto min-h-0 p-4">
@@ -722,7 +643,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
               </label>
               <Input
                 className="mt-1"
-                placeholder="PROMPT_NAME"
+                placeholder="SCRIPT_NAME"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value.toUpperCase().replace(/[^A-Z_]/g, ""))}
                 disabled={isSaving}
@@ -751,14 +672,13 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
               </label>
               <Textarea
                 className={cn("mt-1 font-mono text-sm", isFullpage ? "min-h-[500px]" : "min-h-[200px]")}
-                placeholder="Enter prompt value..."
+                placeholder="Enter script value..."
                 value={formValue}
                 onChange={(e) => setFormValue(e.target.value)}
                 disabled={isSaving}
               />
               <p className="text-xs text-muted-foreground text-right mt-1">{formatTokenCount(liveTokenCount)}</p>
             </div>
-
           </div>
         </div>
         <div className="flex justify-end gap-2 p-3 border-t flex-shrink-0">
@@ -766,7 +686,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             Cancel
           </Button>
           <Button
-            onClick={handleCreatePrompt}
+            onClick={handleCreateScript}
             disabled={isSaving || !formName.trim() || !formValue.trim()}
           >
             {isSaving ? (
@@ -777,7 +697,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             ) : (
               <>
                 <Plus className="h-4 w-4 mr-2" />
-                Create Prompt
+                Create Script
               </>
             )}
           </Button>
@@ -787,10 +707,10 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     return isFullpage ? <Card className={wrapperClassName}>{content}</Card> : content;
   }
 
-  // Show prompt detail view
-  if (viewMode === "detail" && selectedPrompt) {
-    const isPublished = selectedPrompt.current_version_id !== null &&
-      selectedPrompt.current_version_id === selectedPrompt.published_version_id;
+  // Show script detail view
+  if (viewMode === "detail" && selectedScript) {
+    const isPublished = selectedScript.current_version_id !== null &&
+      selectedScript.current_version_id === selectedScript.published_version_id;
 
     const content = (
       <div className={cn("flex flex-col", isFullpage ? "h-full" : "h-full overflow-hidden")}>
@@ -799,7 +719,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             <ChevronLeft className="h-4 w-4 mr-1" />
             Back
           </Button>
-          <span className="text-sm font-medium truncate flex-1">{selectedPrompt.name}</span>
+          <span className="text-sm font-medium truncate flex-1">{selectedScript.name}</span>
           {!isEditing && (
             isPublished ? (
               <Badge variant="default" className="bg-green-600 text-white text-xs flex-shrink-0">Published</Badge>
@@ -809,14 +729,10 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
           )}
           {!isEditing && (
             <>
-              {!isPublished && selectedPrompt.current_version_id && (
+              {!isPublished && selectedScript.current_version_id && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isPublishing}
-                    >
+                    <Button variant="outline" size="sm" disabled={isPublishing}>
                       {isPublishing ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -834,30 +750,18 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                     <AlertDialogHeader>
                       <AlertDialogTitle>Publish Changes?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will make the current version the live prompt used by all workflows. This cannot be undone.
+                        This will make the current version the live script used by all workflows. This cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => handlePublishVersion(selectedPrompt.current_version_id!)}>
+                      <AlertDialogAction onClick={() => handlePublishVersion(selectedScript.current_version_id!)}>
                         Publish
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleSharePrompt(selectedPrompt.id)}
-                title="Copy share link"
-              >
-                {copiedShareLink ? (
-                  <Check className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Share2 className="h-4 w-4" />
-                )}
-              </Button>
               <Button variant="outline" size="sm" onClick={handleEditClick}>
                 <Pencil className="h-4 w-4 mr-1" />
                 Edit
@@ -875,15 +779,15 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Prompt</AlertDialogTitle>
+                    <AlertDialogTitle>Delete Script</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Are you sure you want to delete &quot;{selectedPrompt.name}&quot;? This action cannot be undone.
+                      Are you sure you want to delete &quot;{selectedScript.name}&quot;? This action cannot be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
                     <AlertDialogAction
-                      onClick={handleDeletePrompt}
+                      onClick={handleDeleteScript}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       disabled={isDeleting}
                     >
@@ -904,7 +808,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         ) : (
           <div className="flex-1 overflow-auto min-h-0 p-4">
             <div className={cn("space-y-4", isFullpage && "max-w-3xl mx-auto")}>
-              {!isEditing && selectedPrompt.version_count > 1 && (
+              {!isEditing && selectedScript.version_count > 1 && (
                 <div>
                   <Button
                     variant="outline"
@@ -913,7 +817,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                     className="w-full"
                   >
                     <History className="h-4 w-4 mr-2" />
-                    View History ({selectedPrompt.version_count} versions)
+                    View History ({selectedScript.version_count} versions)
                   </Button>
                 </div>
               )}
@@ -924,7 +828,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                 </label>
                 <div className="mt-1 flex items-center gap-2">
                   <code className="text-sm bg-muted px-2 py-1 rounded font-mono flex-1 overflow-x-auto">
-                    {selectedPrompt.usage_notation}
+                    {selectedScript.usage_notation}
                   </code>
                   <Button
                     variant="ghost"
@@ -955,7 +859,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                   />
                 ) : (
                   <p className="mt-1 text-sm">
-                    {selectedPrompt.description || <span className="text-muted-foreground italic">No description</span>}
+                    {selectedScript.description || <span className="text-muted-foreground italic">No description</span>}
                   </p>
                 )}
               </div>
@@ -963,10 +867,10 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Prompt Value
+                    Script Value
                   </label>
                   <span className="text-xs text-muted-foreground">
-                    {formatTokenCount(estimateTokens(isEditing ? debouncedFormValue : selectedPrompt.value))}
+                    {formatTokenCount(estimateTokens(isEditing ? debouncedFormValue : selectedScript.value))}
                   </span>
                 </div>
                 {isEditing ? (
@@ -980,54 +884,11 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                     <p className="text-xs text-muted-foreground text-right mt-1">{formatTokenCount(liveTokenCount)}</p>
                   </>
                 ) : (
-                  <pre className={cn(
-                    "mt-1 text-sm bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap font-mono",
-                  )}>
-                    {selectedPrompt.value}
+                  <pre className="mt-1 text-sm bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap font-mono">
+                    {selectedScript.value}
                   </pre>
                 )}
               </div>
-
-
-
-              {!isEditing && selectedUsages.length > 0 && (
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Used In ({selectedUsages.length} {selectedUsages.length === 1 ? "place" : "places"})
-                  </label>
-                  <div className="mt-2 space-y-2">
-                    {selectedUsages.map((usage, index) =>
-                      workspaceSlug || onNavigateToWorkflow ? (
-                        <button
-                          key={`${usage.workflow_id}-${usage.step_id}-${index}`}
-                          onClick={() => handleOpenWorkflowInNewTab(usage.workflow_id)}
-                          className="w-full text-left text-sm bg-muted/50 border rounded p-2 hover:bg-muted transition-colors cursor-pointer"
-                        >
-                          <div className="font-medium truncate">{usage.workflow_name}</div>
-                          <div className="text-xs text-muted-foreground flex gap-2 mt-1">
-                            <span>Workflow ID: {usage.workflow_id}</span>
-                            <span>|</span>
-                            <span>Step: {usage.step_id}</span>
-                          </div>
-                        </button>
-                      ) : (
-                        <div
-                          key={`${usage.workflow_id}-${usage.step_id}-${index}`}
-                          className="text-sm bg-muted/50 border rounded p-2"
-                        >
-                          <div className="font-medium truncate">{usage.workflow_name}</div>
-                          <div className="text-xs text-muted-foreground flex gap-2 mt-1">
-                            <span>Workflow ID: {usage.workflow_id}</span>
-                            <span>|</span>
-                            <span>Step: {usage.step_id}</span>
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-
             </div>
           </div>
         )}
@@ -1038,7 +899,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
               Cancel
             </Button>
             <Button
-              onClick={handleUpdatePrompt}
+              onClick={handleUpdateScript}
               disabled={isSaving || !formValue.trim()}
             >
               {isSaving ? (
@@ -1061,7 +922,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   }
 
   // Show version history view
-  if (viewMode === "history" && selectedPrompt) {
+  if (viewMode === "history" && selectedScript) {
     interface DiffPart {
       added?: boolean;
       removed?: boolean;
@@ -1075,12 +936,9 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       diffChanges = diffLines(versionBContent, versionAContent);
       stats = diffChanges.reduce(
         (acc, part) => {
-          const lines = part.value.split('\n').filter(line => line !== '');
-          if (part.added) {
-            acc.additions += lines.length;
-          } else if (part.removed) {
-            acc.deletions += lines.length;
-          }
+          const lines = part.value.split("\n").filter((line) => line !== "");
+          if (part.added) acc.additions += lines.length;
+          else if (part.removed) acc.deletions += lines.length;
           return acc;
         },
         { additions: 0, deletions: 0 }
@@ -1094,7 +952,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             <ChevronLeft className="h-4 w-4 mr-1" />
             Back
           </Button>
-          <span className="text-sm font-medium truncate flex-1">Version History - {selectedPrompt.name}</span>
+          <span className="text-sm font-medium truncate flex-1">Version History - {selectedScript.name}</span>
         </div>
 
         {isLoadingVersions ? (
@@ -1135,8 +993,8 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                           {isCurrentB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
                         </div>
                         <div className="flex items-center gap-2">
-                          {selectedPrompt.published_version_id !== null &&
-                            selectedPrompt.current_version_id === selectedPrompt.published_version_id && (
+                          {selectedScript.published_version_id !== null &&
+                            selectedScript.current_version_id === selectedScript.published_version_id && (
                               <Badge variant="default" className="text-xs flex-shrink-0 bg-green-600 text-white">
                                 Published
                               </Badge>
@@ -1154,8 +1012,9 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                     const isSelectedA = selectedVersionAId === version.id;
                     const isSelectedB = selectedVersionBId === version.id;
                     const isSelected = isSelectedA || isSelectedB;
-                    const isLive = version.id === selectedPrompt.published_version_id &&
-                                  version.id !== selectedPrompt.current_version_id;
+                    const isLive =
+                      version.id === selectedScript.published_version_id &&
+                      version.id !== selectedScript.current_version_id;
 
                     return (
                       <div key={version.id} className="relative flex items-center gap-2">
@@ -1186,33 +1045,33 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                         ) : publishingVersionId === version.id ? (
                           <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
                         ) : (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="flex-shrink-0 h-7 w-7 p-0"
-                                  disabled={isPublishing}
-                                  title={`Publish v${version.version_number}`}
-                                >
-                                  <Upload className="h-3 w-3" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Publish Version v{version.version_number}?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This will make v{version.version_number} the live prompt used by all workflows. This cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handlePublishVersion(version.id)}>
-                                    Publish
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="flex-shrink-0 h-7 w-7 p-0"
+                                disabled={isPublishing}
+                                title={`Publish v${version.version_number}`}
+                              >
+                                <Upload className="h-3 w-3" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Publish Version v{version.version_number}?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will make v{version.version_number} the live script used by all workflows. This cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handlePublishVersion(version.id)}>
+                                  Publish
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         )}
                       </div>
                     );
@@ -1238,16 +1097,12 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                     <div className="flex items-center justify-between p-3 border-b bg-muted/30 flex-shrink-0">
                       <span className="text-xs font-medium">
                         {selectedVersionAId === CURRENT_VERSION_SENTINEL ? "Current" : (() => {
-                          const v = versions.find(v => v.id === selectedVersionAId);
+                          const v = versions.find((v) => v.id === selectedVersionAId);
                           return v ? `v${v.version_number}` : "Version";
                         })()}
                       </span>
                       {selectedVersionAId !== CURRENT_VERSION_SENTINEL && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleEditFromVersion}
-                        >
+                        <Button variant="outline" size="sm" onClick={handleEditFromVersion}>
                           <Pencil className="h-3.5 w-3.5 mr-1" />
                           Edit from this version
                         </Button>
@@ -1292,26 +1147,21 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                       <table className="w-full border-collapse">
                         <tbody>
                           {diffChanges.map((part: DiffPart, index: number) => {
-                            const lines = part.value.split('\n');
-                            if (lines[lines.length - 1] === '') {
-                              lines.pop();
-                            }
+                            const lines = part.value.split("\n");
+                            if (lines[lines.length - 1] === "") lines.pop();
 
                             return lines.map((line: string, lineIndex: number) => {
                               let bgColor = "";
                               let textColor = "";
-                              let prefix = " ";
                               let Icon: typeof Plus | typeof Minus | null = null;
 
                               if (part.added) {
                                 bgColor = "bg-green-50 dark:bg-green-950/50";
                                 textColor = "text-green-800 dark:text-green-300";
-                                prefix = "+";
                                 Icon = Plus;
                               } else if (part.removed) {
                                 bgColor = "bg-red-50 dark:bg-red-950/50";
                                 textColor = "text-red-800 dark:text-red-300";
-                                prefix = "-";
                                 Icon = Minus;
                               }
 
@@ -1322,7 +1172,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                                     textColor || "text-muted-foreground"
                                   )}>
                                     {Icon && <Icon className="w-3 h-3 inline" />}
-                                    {!Icon && <span className="opacity-30">{prefix}</span>}
+                                    {!Icon && <span className="opacity-30"> </span>}
                                   </td>
                                   <td className={cn("px-3 py-0.5 whitespace-pre", textColor)}>
                                     {line || " "}
@@ -1349,12 +1199,12 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     return isFullpage ? <Card className={wrapperClassName}>{content}</Card> : content;
   }
 
-  // Show prompts list
+  // Show scripts list
   const listContent = (
     <div className={cn("flex flex-col", isFullpage ? "h-full" : "h-full overflow-hidden")}>
       {/* Header with Create button */}
       <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0">
-        <span className={cn("font-medium", isFullpage ? "text-lg" : "text-sm")}>Prompts</span>
+        <span className={cn("font-medium", isFullpage ? "text-lg" : "text-sm")}>Scripts</span>
         <Button variant="outline" size="sm" onClick={handleCreateClick}>
           <Plus className="h-4 w-4 mr-1" />
           Create
@@ -1366,7 +1216,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search prompts by name..."
+            placeholder="Search scripts by name..."
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9 pr-9"
@@ -1385,34 +1235,31 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
       <div className="flex-1 overflow-auto min-h-0">
         <ul className="divide-y">
-          {prompts.map((prompt) => (
-            <li key={prompt.id}>
+          {scripts.map((script) => (
+            <li key={script.id}>
               <button
-                onClick={() => handlePromptClick(prompt)}
+                onClick={() => handleScriptClick(script)}
                 className={cn(
                   "w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors",
                   "focus:outline-none focus:bg-muted/50"
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium truncate flex-1">{prompt.name}</span>
-                  {prompt.value != null && (
+                  <span className="text-sm font-medium truncate flex-1">{script.name}</span>
+                  {script.value != null && (
                     <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded flex-shrink-0">
-                      {formatTokenCount(estimateTokens(prompt.value))}
-                    </span>
-                  )}
-                  {prompt.usages && prompt.usages.length > 0 && (
-                    <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded flex-shrink-0">
-                      {prompt.usages.length} {prompt.usages.length === 1 ? "usage" : "usages"}
+                      {formatTokenCount(estimateTokens(script.value))}
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-muted-foreground font-mono truncate mt-1">
-                  {prompt.usage_notation}
-                </div>
-                {prompt.description && (
+                {script.usage_notation && (
+                  <div className="text-xs text-muted-foreground font-mono truncate mt-1">
+                    {script.usage_notation}
+                  </div>
+                )}
+                {script.description && (
                   <div className="text-xs text-muted-foreground truncate mt-1">
-                    {prompt.description}
+                    {script.description}
                   </div>
                 )}
               </button>
@@ -1425,7 +1272,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-4 py-3 border-t flex-shrink-0">
           <div className="text-xs text-muted-foreground">
-            Page {page} of {totalPages} ({total} prompts)
+            Page {page} of {totalPages} ({total} scripts)
           </div>
           <div className="flex items-center gap-2">
             <Button

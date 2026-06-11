@@ -21,6 +21,7 @@ import {
   Mic,
   PenLine,
   Phone,
+  ScrollText,
   Server,
   Settings,
   Share2,
@@ -457,6 +458,7 @@ export function Sidebar({ user }: SidebarProps) {
       href: "/stak-toolkit",
       children: [
         { icon: FileText, label: "Prompts", href: "/prompts" },
+        { icon: ScrollText, label: "Scripts", href: "/scripts" },
         { icon: Workflow, label: "Workflows", href: "/workflows" },
         { icon: KeyRound, label: "Secrets", href: "/secrets" },
       ],
