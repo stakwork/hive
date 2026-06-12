@@ -101,6 +101,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           available: true,
           last_run_at: statsData.last_run_at ?? null,
           total_runs: statsData.total_runs ?? 0,
+          active_runs: statsData.active_runs ?? 0,
           error_rate: statsData.error_rate ?? 0,
         },
       });

@@ -30,7 +30,7 @@ export function WorkflowStatsPanel({ slug, workflowId }: WorkflowStatsPanelProps
     );
   }
 
-  if (stats.total_runs === 0) {
+  if (stats.total_runs === 0 && (stats.active_runs ?? 0) === 0) {
     return (
       <p className="text-sm text-muted-foreground p-4">
         No runs recorded yet for this workflow.
