@@ -6,6 +6,7 @@ export interface WorkflowStats {
   available: boolean;
   last_run_at?: string | null;
   total_runs?: number;
+  active_runs?: number;
   error_rate?: number;
 }
 
