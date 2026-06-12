@@ -245,7 +245,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   return (
     <div className="flex h-full flex-col min-h-0">
       <div className="flex items-center justify-between px-3 py-2 border-b">
-        <span className="text-xs font-medium text-muted-foreground">Agent</span>
+        <span className="text-xs font-medium text-muted-foreground">Ask Jamie</span>
         <div className="flex items-center gap-1">
           <button
             type="button"
