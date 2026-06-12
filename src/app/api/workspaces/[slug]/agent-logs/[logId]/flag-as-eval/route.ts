@@ -117,8 +117,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         id: randomUUID(),
         name: requirementName,
         prompt_snippet: requirementDescription,
-        positive_cases: positiveCases,
-        negative_cases: negativeCases,
+        desirable_cases: positiveCases,
+        undesirable_cases: negativeCases,
       },
     });
 

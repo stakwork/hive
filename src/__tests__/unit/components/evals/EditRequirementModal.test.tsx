@@ -57,8 +57,8 @@ const REQUIREMENT = {
     name: "Existing Req",
     description: "Existing req desc",
     prompt_snippet: "When asked to do X...",
-    positive_cases: ["Does A", "Does B"],
-    negative_cases: ["Fails to C"],
+    desirable_cases: ["Does A", "Does B"],
+    undesirable_cases: ["Fails to C"],
   },
 };
 
@@ -121,7 +121,7 @@ describe("EditRequirementModal", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("shows validation error when positive_cases is cleared", async () => {
+  it("shows validation error when desirable_cases is cleared", async () => {
     render(<EditRequirementModal {...defaultProps} />);
     const posTextarea = screen.getByPlaceholderText("The agent correctly...");
     await userEvent.clear(posTextarea);
@@ -129,12 +129,12 @@ describe("EditRequirementModal", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      expect(screen.getByText("At least one positive case is required")).toBeTruthy();
+      expect(screen.getByText("At least one desirable case is required")).toBeTruthy();
     });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("shows validation error when negative_cases is cleared", async () => {
+  it("shows validation error when undesirable_cases is cleared", async () => {
     render(<EditRequirementModal {...defaultProps} />);
     const negTextarea = screen.getByPlaceholderText("The agent fails to...");
     await userEvent.clear(negTextarea);
@@ -142,7 +142,7 @@ describe("EditRequirementModal", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      expect(screen.getByText("At least one negative case is required")).toBeTruthy();
+      expect(screen.getByText("At least one undesirable case is required")).toBeTruthy();
     });
     expect(global.fetch).not.toHaveBeenCalled();
   });
@@ -164,8 +164,8 @@ describe("EditRequirementModal", () => {
     const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
     expect(body.name).toBe("Existing Req");
     expect(body.prompt_snippet).toBe("When asked to do X...");
-    expect(body.positive_cases).toEqual(["Does A", "Does B"]);
-    expect(body.negative_cases).toEqual(["Fails to C"]);
+    expect(body.desirable_cases).toEqual(["Does A", "Does B"]);
+    expect(body.undesirable_cases).toEqual(["Fails to C"]);
   });
 
   it("calls onUpdated and closes modal on success", async () => {
@@ -202,8 +202,8 @@ describe("EditRequirementModal", () => {
       ...REQUIREMENT,
       properties: {
         ...REQUIREMENT.properties,
-        positive_cases: ["Case one", "Case two"],
-        negative_cases: ["Neg one"],
+        desirable_cases: ["Case one", "Case two"],
+        undesirable_cases: ["Neg one"],
       },
     };
     render(<EditRequirementModal {...defaultProps} requirement={reqWithMultiline} />);
@@ -212,6 +212,6 @@ describe("EditRequirementModal", () => {
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-    expect(body.positive_cases).toEqual(["Case one", "Case two"]);
+    expect(body.desirable_cases).toEqual(["Case one", "Case two"]);
   });
 });

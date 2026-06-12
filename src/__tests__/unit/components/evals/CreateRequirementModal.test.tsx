@@ -116,7 +116,7 @@ describe("CreateRequirementModal — validation", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("blocks submission when positive_cases is empty", async () => {
+  it("blocks submission when desirable_cases is empty", async () => {
     render(<CreateRequirementModal {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("e.g. Correct auth handling"), "My req");
@@ -125,17 +125,17 @@ describe("CreateRequirementModal — validation", () => {
       "Some prompt",
     );
     await addTagItem("The agent fails to...", "Bad output");
-    // Leave positive_cases blank
+    // Leave desirable_cases blank
 
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
 
     await waitFor(() => {
-      expect(screen.getByText("At least one positive case is required")).toBeTruthy();
+      expect(screen.getByText("At least one desirable case is required")).toBeTruthy();
     });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("blocks submission when negative_cases is empty", async () => {
+  it("blocks submission when undesirable_cases is empty", async () => {
     render(<CreateRequirementModal {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("e.g. Correct auth handling"), "My req");
@@ -144,12 +144,12 @@ describe("CreateRequirementModal — validation", () => {
       "Some prompt",
     );
     await addTagItem("The agent correctly...", "Good output");
-    // Leave negative_cases blank
+    // Leave undesirable_cases blank
 
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
 
     await waitFor(() => {
-      expect(screen.getByText("At least one negative case is required")).toBeTruthy();
+      expect(screen.getByText("At least one undesirable case is required")).toBeTruthy();
     });
     expect(global.fetch).not.toHaveBeenCalled();
   });
@@ -241,7 +241,7 @@ describe("CreateRequirementModal — validation", () => {
     });
 
     const callBody = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-    expect(callBody.positive_cases).toEqual(["Case one", "Case two"]);
-    expect(callBody.negative_cases).toEqual(["Neg one", "Neg two"]);
+    expect(callBody.desirable_cases).toEqual(["Case one", "Case two"]);
+    expect(callBody.undesirable_cases).toEqual(["Neg one", "Neg two"]);
   });
 });
