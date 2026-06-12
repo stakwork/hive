@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Search, History, Trash2, Zap, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Search, History, Trash2, Zap, Upload, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { estimateTokens, formatTokenCount } from "@/lib/utils/token-estimate";
@@ -45,6 +45,7 @@ interface ScriptDetail {
   current_version_id: number | null;
   published_version_id: number | null;
   version_count: number;
+  public_url: string | null;
 }
 
 interface ScriptVersion {
@@ -52,6 +53,7 @@ interface ScriptVersion {
   version_number: number;
   created_at: string;
   whodunnit: string | null;
+  event: string | null;
 }
 
 interface ScriptsListResponse {
@@ -864,6 +866,25 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
                 )}
               </div>
 
+              {selectedScript.public_url && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Source File
+                  </label>
+                  <div className="mt-1">
+                    <a
+                      href={selectedScript.public_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline flex items-center gap-1"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {selectedScript.public_url}
+                    </a>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -1038,6 +1059,14 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
                               {formatTimestamp(version.created_at)}
                             </span>
                           </div>
+                          {(version.whodunnit || version.event) && (
+                            <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                              {version.whodunnit && <span>{version.whodunnit}</span>}
+                              {version.event && (
+                                <Badge variant="outline" className="text-xs py-0">{version.event}</Badge>
+                              )}
+                            </div>
+                          )}
                         </button>
 
                         {isLive ? (
