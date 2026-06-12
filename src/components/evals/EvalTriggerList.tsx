@@ -35,6 +35,19 @@ interface EvalTrigger {
   outputs?: EvalTriggerOutput[];
 }
 
+type RawOutputNode = { ref_id: string; properties?: Record<string, unknown> };
+type RawTriggerNode = { ref_id: string; properties: EvalTrigger["properties"]; outputs?: RawOutputNode[] };
+
+function normalizeOutput(n: RawOutputNode): EvalTriggerOutput {
+  return {
+    ref_id: n.ref_id,
+    attempt_number: Number(n.properties?.attempt_number ?? 0),
+    result: String(n.properties?.result ?? ""),
+    score: Number(n.properties?.score ?? 0),
+    judge_notes: n.properties?.judge_notes ? String(n.properties.judge_notes) : undefined,
+  };
+}
+
 export function EvalTriggerList({ evalSetId, reqId, slug }: EvalTriggerListProps) {
   const [expanded, setExpanded] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -49,7 +62,10 @@ export function EvalTriggerList({ evalSetId, reqId, slug }: EvalTriggerListProps
         `/api/workspaces/${slug}/evals/${evalSetId}/requirements/${reqId}/triggers`,
       );
       const data = await res.json();
-      const nodes: EvalTrigger[] = data?.data?.nodes ?? [];
+      const nodes: EvalTrigger[] = (data?.data?.nodes ?? []).map((t: RawTriggerNode) => ({
+        ...t,
+        outputs: (t.outputs ?? []).map(normalizeOutput),
+      }));
       setTriggers(nodes);
       setLoaded(true);
     } catch {
@@ -82,15 +98,7 @@ export function EvalTriggerList({ evalSetId, reqId, slug }: EvalTriggerListProps
         `/api/workspaces/${slug}/evals/${evalSetId}/requirements/${reqId}/triggers/${triggerId}/outputs`,
       );
       const outData = await outRes.json();
-      const outputs: EvalTriggerOutput[] = (outData?.data?.nodes ?? []).map(
-        (n: { ref_id: string; properties?: Partial<EvalTriggerOutput> }) => ({
-          ref_id: n.ref_id,
-          attempt_number: Number(n.properties?.attempt_number ?? 0),
-          result: String(n.properties?.result ?? ""),
-          score: Number(n.properties?.score ?? 0),
-          judge_notes: n.properties?.judge_notes ? String(n.properties.judge_notes) : undefined,
-        }),
-      );
+      const outputs: EvalTriggerOutput[] = (outData?.data?.nodes ?? []).map(normalizeOutput);
 
       setTriggers((prev) =>
         prev.map((t) => (t.ref_id === triggerId ? { ...t, outputs } : t)),
@@ -208,7 +216,7 @@ export function EvalTriggerList({ evalSetId, reqId, slug }: EvalTriggerListProps
                             >
                               {output.result}
                             </Badge>
-                            <span className="font-medium">{output.score.toFixed(2)}</span>
+                            <span className="font-medium">{(output.score ?? 0).toFixed(2)}</span>
                             {output.judge_notes && (
                               <span className="text-muted-foreground">{output.judge_notes}</span>
                             )}
