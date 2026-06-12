@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { pusherServer, getFeatureChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { addNode, addEdge } from "@/services/swarm/api/nodes";
+import { extractAgentRoleName } from "@/lib/utils/agent-role";
+import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 
 export const fetchCache = "force-no-store";
 
@@ -34,6 +37,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { agent, workspace_id, logs } = body;
+    const model = body.model ? String(body.model) : undefined;
     // Stakwork sends project IDs as integers
     const stakwork_run_id = body.stakwork_run_id
       ? Number(body.stakwork_run_id)
@@ -194,6 +198,66 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         console.error("[agent-logs] pusher task broadcast failed", err);
       }
+    }
+
+    // ── Best-effort Jarvis graph write ─────────────────────────────────────────
+    try {
+      const jarvisConfig = await getJarvisConfigForWorkspace(workspace_id);
+      if (!jarvisConfig) {
+        console.info("[agent-logs] Jarvis write skipped: no swarm config", { workspace_id });
+      } else {
+        const roleName = extractAgentRoleName(agent);
+
+        // (1) Upsert AgentRole — Warning+data.ref_id shape handled by the addNode fix
+        const roleResult = await addNode(jarvisConfig, {
+          node_type: "AgentRole",
+          node_data: { name: roleName },
+        });
+        console.info("[agent-logs] AgentRole upsert", {
+          roleName,
+          success: roleResult.success,
+          ref_id: roleResult.ref_id,
+        });
+
+        // (2) Create AgentSession
+        const sessionResult = await addNode(jarvisConfig, {
+          node_type: "AgentSession",
+          node_data: {
+            agent_name: agent,
+            feature_id: feature_id ?? null,
+            task_id: task_id ?? null,
+            log_url: blob.url,
+            ...(model ? { model } : {}),
+            workspace_id,
+            created_at: new Date().toISOString(),
+          },
+        });
+        console.info("[agent-logs] AgentSession create", {
+          agent,
+          success: sessionResult.success,
+          ref_id: sessionResult.ref_id,
+        });
+
+        // (3) HAS_SESSION edge — only if both ref_ids resolved
+        if (roleResult.ref_id && sessionResult.ref_id) {
+          const edgeResult = await addEdge(jarvisConfig, {
+            edge: { edge_type: "HAS_SESSION" },
+            source: { ref_id: roleResult.ref_id },
+            target: { ref_id: sessionResult.ref_id },
+          });
+          console.info("[agent-logs] HAS_SESSION edge", {
+            success: edgeResult.success,
+            error: edgeResult.error,
+          });
+        } else {
+          console.warn("[agent-logs] HAS_SESSION edge skipped: missing ref_id(s)", {
+            roleRefId: roleResult.ref_id,
+            sessionRefId: sessionResult.ref_id,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[agent-logs] Jarvis write failed (non-fatal)", err);
     }
 
     return NextResponse.json(
