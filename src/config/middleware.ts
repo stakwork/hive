@@ -166,6 +166,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/tasks/*/webhook", strategy: "pattern", access: "webhook" },
   { path: "/api/webhook/pool-manager", strategy: "prefix", access: "webhook" },
   { path: "/api/w/*/pool/workspaces", strategy: "pattern", access: "webhook" },
+  { path: "/api/workspaces/*/workflows/*/summarise/callback", strategy: "pattern", access: "webhook" },
   { path: "/api/workspaces/*/stakgraph", strategy: "pattern", access: "webhook" },
   { path: "/api/workspaces/*/members", strategy: "pattern", access: "webhook" },
   { path: "/api/workspaces/*/members/*", strategy: "pattern", access: "webhook" },
@@ -173,6 +174,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },
   { path: "/api/agent-logs/*/content", strategy: "pattern", access: "webhook" }, // has its own auth (signed URL or session)
   { path: "/api/agent-logs/*/stats", strategy: "pattern", access: "webhook" }, // has its own auth (signed URL or session)
+  { path: "/api/agent-logs/*", strategy: "pattern", access: "webhook" }, // has its own auth (session or signed URL)
   { path: "/api/config/price", strategy: "exact", access: "public" },
   { path: "/api/stripe/checkout", strategy: "exact", access: "public" },
   { path: "/api/lightning/invoice/preauth", strategy: "exact", access: "public" },

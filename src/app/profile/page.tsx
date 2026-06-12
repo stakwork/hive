@@ -49,7 +49,7 @@ export default async function ProfilePage() {
           </div>
         </div>
 
-        <ActivityFeed />
+        <ActivityFeed userId={session.user.id as string} />
       </div>
     </div>
   );

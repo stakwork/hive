@@ -1,26 +1,38 @@
 /**
- * GET /api/profile/activity?days=N
+ * GET /api/profile/activity
  *
  * Returns a unified reverse-chronological feed of the authenticated user's
  * recent activity across all orgs and workspaces:
  *   - SharedConversation rows (dashboard / org-canvas / logs-agent)
  *   - ChatMessage rows with featureId → plan chat activity (deduplicated per feature)
  *   - ChatMessage rows with taskId → task chat activity (deduplicated per task)
+ *   - Tasks created by the user
+ *   - Features created by the user
  *
  * Query params:
- *   days — integer 1–30, default 30 (clamped to range)
+ *   days     — integer 1–30, default 30 (clamped to range)
+ *   cursor   — ISO timestamp string; exclusive upper bound for pagination
+ *   limit    — integer 1–50, default 20
+ *   category — "task" | "plan" | "chat"; omit = all
+ *   q        — title search (case-insensitive contains); empty/whitespace = no-op
  *
- * Returns { items: ActivityItem[] }, sorted by timestamp DESC, max 50 items.
+ * Returns { items: ActivityItem[], nextCursor: string | null }.
+ *
+ * NOTE: To exercise the created-by paths locally, ensure the dev/session user
+ * has created Tasks and Features via the UI (beyond just chatted-in ones).
+ * No seed script exists; create items through the normal Hive UI flows.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { ChatRole } from "@prisma/client";
+import { ChatRole, Prisma } from "@prisma/client";
 
 export interface ActivityItem {
   id: string;
   kind: "conversation" | "plan" | "task";
+  category: "chat" | "plan" | "task";
+  action: "created" | "active";
   title: string;
   link: string;
   workspaceName: string;
@@ -31,12 +43,19 @@ export interface ActivityItem {
 const DEFAULT_DAYS = 30;
 const MIN_DAYS = 1;
 const MAX_DAYS = 30;
-const MAX_RESULTS = 50;
-const QUERY_LIMIT = 25;
+const DEFAULT_LIMIT = 20;
+const MIN_LIMIT = 1;
+const MAX_LIMIT = 50;
+const QUERY_LIMIT = 100; // fetch more than needed so we can de-dupe then paginate
 
 function clampDays(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_DAYS;
   return Math.min(Math.max(value, MIN_DAYS), MAX_DAYS);
+}
+
+function clampLimit(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_LIMIT;
+  return Math.min(Math.max(value, MIN_LIMIT), MAX_LIMIT);
 }
 
 interface PlanRow {
@@ -61,70 +80,172 @@ export async function GET(request: NextRequest) {
 
   const userId = userOrResponse.id;
 
-  const daysParam = request.nextUrl.searchParams.get("days");
+  const params = request.nextUrl.searchParams;
+  const daysParam = params.get("days");
   const days = clampDays(daysParam ? Number.parseInt(daysParam, 10) : DEFAULT_DAYS);
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  // ── Three parallel queries ─────────────────────────────────────────────────
-  const [conversationsResult, planResult, taskResult] = await Promise.allSettled([
-    // 1. SharedConversation rows
-    db.sharedConversation.findMany({
-      where: {
-        userId,
-        source: { in: ["dashboard", "org-canvas", "logs-agent"] },
-        lastMessageAt: { gte: cutoff },
-      },
-      select: {
-        id: true,
-        title: true,
-        source: true,
-        workspaceId: true,
-        sourceControlOrgId: true,
-        lastMessageAt: true,
-      },
-      orderBy: { lastMessageAt: "desc" },
-      take: QUERY_LIMIT,
-    }),
+  const cursorParam = params.get("cursor");
+  const cursor = cursorParam ? new Date(cursorParam) : null;
+
+  const limitParam = params.get("limit");
+  const limit = clampLimit(limitParam ? Number.parseInt(limitParam, 10) : DEFAULT_LIMIT);
+
+  const categoryParam = params.get("category");
+  const category =
+    categoryParam === "task" || categoryParam === "plan" || categoryParam === "chat"
+      ? categoryParam
+      : null;
+
+  const qRaw = params.get("q") ?? "";
+  const q = qRaw.trim();
+
+  // Determine which queries to run based on category filter
+  const runChat = !category || category === "chat";
+  const runPlan = !category || category === "plan";
+  const runTask = !category || category === "task";
+
+  // ── Time-window filter for Prisma ORM queries ─────────────────────────────
+  const timeFilter = cursor
+    ? { gte: cutoff, lt: cursor }
+    : { gte: cutoff };
+
+  // ── Queries (run in parallel) ──────────────────────────────────────────────
+  const [
+    conversationsResult,
+    planChatResult,
+    taskChatResult,
+    createdTasksResult,
+    createdFeaturesResult,
+  ] = await Promise.allSettled([
+    // 1. SharedConversation rows (chat category)
+    runChat
+      ? db.sharedConversation.findMany({
+          where: {
+            userId,
+            source: { in: ["dashboard", "org-canvas", "logs-agent"] },
+            lastMessageAt: timeFilter,
+            ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
+          },
+          select: {
+            id: true,
+            title: true,
+            source: true,
+            workspaceId: true,
+            sourceControlOrgId: true,
+            lastMessageAt: true,
+          },
+          orderBy: { lastMessageAt: "desc" },
+          take: QUERY_LIMIT,
+        })
+      : Promise.resolve([]),
 
     // 2. Plan chat activity — GROUP BY featureId, latest timestamp
-    db.$queryRaw<PlanRow[]>`
-      SELECT
-        cm.feature_id        AS "featureId",
-        f.title              AS "title",
-        f.workspace_id       AS "workspaceId",
-        f.deleted            AS "deleted",
-        MAX(cm.timestamp)    AS "lastMessageAt"
-      FROM chat_messages cm
-      JOIN features f ON f.id = cm.feature_id
-      WHERE cm.user_id = ${userId}
-        AND cm.role = ${ChatRole.USER}::"ChatRole"
-        AND cm.feature_id IS NOT NULL
-        AND cm.timestamp >= ${cutoff}
-        AND f.deleted = false
-      GROUP BY cm.feature_id, f.title, f.workspace_id, f.deleted
-      ORDER BY "lastMessageAt" DESC
-      LIMIT ${QUERY_LIMIT}
-    `,
+    runPlan
+      ? db.$queryRaw<PlanRow[]>(
+          Prisma.sql`
+            SELECT
+              cm.feature_id        AS "featureId",
+              f.title              AS "title",
+              f.workspace_id       AS "workspaceId",
+              f.deleted            AS "deleted",
+              MAX(cm.timestamp)    AS "lastMessageAt"
+            FROM chat_messages cm
+            JOIN features f ON f.id = cm.feature_id
+            WHERE cm.user_id = ${userId}
+              AND cm.role = ${ChatRole.USER}::"ChatRole"
+              AND cm.feature_id IS NOT NULL
+              AND cm.timestamp >= ${cutoff}
+              ${cursor ? Prisma.sql`AND cm.timestamp < ${cursor}` : Prisma.empty}
+              AND f.deleted = false
+              ${q ? Prisma.sql`AND f.title ILIKE ${"%" + q + "%"}` : Prisma.empty}
+            GROUP BY cm.feature_id, f.title, f.workspace_id, f.deleted
+            ORDER BY "lastMessageAt" DESC
+            LIMIT ${QUERY_LIMIT}
+          `,
+        )
+      : Promise.resolve([]),
 
     // 3. Task chat activity — GROUP BY taskId, latest timestamp
-    db.$queryRaw<TaskRow[]>`
-      SELECT
-        cm.task_id           AS "taskId",
-        t.title              AS "title",
-        t.workspace_id       AS "workspaceId",
-        MAX(cm.timestamp)    AS "lastMessageAt"
-      FROM chat_messages cm
-      JOIN tasks t ON t.id = cm.task_id
-      WHERE cm.user_id = ${userId}
-        AND cm.role = ${ChatRole.USER}::"ChatRole"
-        AND cm.task_id IS NOT NULL
-        AND cm.timestamp >= ${cutoff}
-        AND t.deleted = false
-        AND t.archived = false
-      GROUP BY cm.task_id, t.title, t.workspace_id
-      ORDER BY "lastMessageAt" DESC
-      LIMIT ${QUERY_LIMIT}
-    `,
+    runTask
+      ? db.$queryRaw<TaskRow[]>(
+          Prisma.sql`
+            SELECT
+              cm.task_id           AS "taskId",
+              t.title              AS "title",
+              t.workspace_id       AS "workspaceId",
+              MAX(cm.timestamp)    AS "lastMessageAt"
+            FROM chat_messages cm
+            JOIN tasks t ON t.id = cm.task_id
+            WHERE cm.user_id = ${userId}
+              AND cm.role = ${ChatRole.USER}::"ChatRole"
+              AND cm.task_id IS NOT NULL
+              AND cm.timestamp >= ${cutoff}
+              ${cursor ? Prisma.sql`AND cm.timestamp < ${cursor}` : Prisma.empty}
+              AND t.deleted = false
+              AND t.archived = false
+              ${q ? Prisma.sql`AND t.title ILIKE ${"%" + q + "%"}` : Prisma.empty}
+            GROUP BY cm.task_id, t.title, t.workspace_id
+            ORDER BY "lastMessageAt" DESC
+            LIMIT ${QUERY_LIMIT}
+          `,
+        )
+      : Promise.resolve([]),
+
+    // 4. Tasks created by user
+    runTask
+      ? db.task.findMany({
+          where: {
+            createdById: userId,
+            deleted: false,
+            archived: false,
+            createdAt: timeFilter,
+            ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
+          },
+          select: {
+            id: true,
+            title: true,
+            workspaceId: true,
+            createdAt: true,
+            workspace: {
+              select: {
+                slug: true,
+                name: true,
+                sourceControlOrg: { select: { githubLogin: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: QUERY_LIMIT,
+        })
+      : Promise.resolve([]),
+
+    // 5. Features created by user
+    runPlan
+      ? db.feature.findMany({
+          where: {
+            createdById: userId,
+            deleted: false,
+            createdAt: timeFilter,
+            ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
+          },
+          select: {
+            id: true,
+            title: true,
+            workspaceId: true,
+            createdAt: true,
+            workspace: {
+              select: {
+                slug: true,
+                name: true,
+                sourceControlOrg: { select: { githubLogin: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: QUERY_LIMIT,
+        })
+      : Promise.resolve([]),
   ]);
 
   if (conversationsResult.status === "rejected") {
@@ -132,19 +253,37 @@ export async function GET(request: NextRequest) {
       error: conversationsResult.reason,
     });
   }
-  if (planResult.status === "rejected") {
-    logger.error("profile/activity: plan query failed", "profile/activity", { error: planResult.reason });
+  if (planChatResult.status === "rejected") {
+    logger.error("profile/activity: plan chat query failed", "profile/activity", {
+      error: planChatResult.reason,
+    });
   }
-  if (taskResult.status === "rejected") {
-    logger.error("profile/activity: task query failed", "profile/activity", { error: taskResult.reason });
+  if (taskChatResult.status === "rejected") {
+    logger.error("profile/activity: task chat query failed", "profile/activity", {
+      error: taskChatResult.reason,
+    });
+  }
+  if (createdTasksResult.status === "rejected") {
+    logger.error("profile/activity: created tasks query failed", "profile/activity", {
+      error: createdTasksResult.reason,
+    });
+  }
+  if (createdFeaturesResult.status === "rejected") {
+    logger.error("profile/activity: created features query failed", "profile/activity", {
+      error: createdFeaturesResult.reason,
+    });
   }
 
   const conversations =
     conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
-  const planRows = planResult.status === "fulfilled" ? planResult.value : [];
-  const taskRows = taskResult.status === "fulfilled" ? taskResult.value : [];
+  const planRows = planChatResult.status === "fulfilled" ? planChatResult.value : [];
+  const taskRows = taskChatResult.status === "fulfilled" ? taskChatResult.value : [];
+  const createdTasks = createdTasksResult.status === "fulfilled" ? createdTasksResult.value : [];
+  const createdFeatures =
+    createdFeaturesResult.status === "fulfilled" ? createdFeaturesResult.value : [];
 
-  // ── Batch-resolve workspace + org info ─────────────────────────────────────
+  // ── Batch-resolve workspace + org info for chat-sourced rows ───────────────
+  // (created-by queries already embed workspace via Prisma include)
   const workspaceIds = new Set<string>();
   for (const c of conversations) {
     if (c.workspaceId) workspaceIds.add(c.workspaceId);
@@ -185,9 +324,91 @@ export async function GET(request: NextRequest) {
   );
   const orgMap = new Map(orgs.map((o) => [o.id, o.githubLogin]));
 
-  // ── Map to ActivityItem ────────────────────────────────────────────────────
-  const items: ActivityItem[] = [];
+  // ── Map to ActivityItem with de-duplication ────────────────────────────────
+  // We use a Map<id, ActivityItem> for de-duplication.
+  // - If an entity appears in both created-by and chat-activity results, keep
+  //   a single item using the most-recent timestamp.
+  // - action = "active" if there has been any chat activity; "created" otherwise.
+  const itemMap = new Map<string, ActivityItem>();
 
+  function upsert(incoming: ActivityItem) {
+    const existing = itemMap.get(incoming.id);
+    if (!existing) {
+      itemMap.set(incoming.id, incoming);
+      return;
+    }
+    const latestTs =
+      incoming.timestamp > existing.timestamp ? incoming.timestamp : existing.timestamp;
+    const action: "active" | "created" =
+      incoming.action === "active" || existing.action === "active" ? "active" : "created";
+    itemMap.set(incoming.id, { ...existing, timestamp: latestTs, action });
+  }
+
+  // 1. Created tasks (may be overridden/merged by chat activity below)
+  for (const t of createdTasks) {
+    const ws = t.workspace;
+    upsert({
+      id: t.id,
+      kind: "task",
+      category: "task",
+      action: "created",
+      title: t.title ?? "Untitled task",
+      link: ws ? `/w/${ws.slug}/task/${t.id}` : "#",
+      workspaceName: ws?.name ?? "",
+      orgName: ws?.sourceControlOrg?.githubLogin,
+      timestamp: t.createdAt.toISOString(),
+    });
+  }
+
+  // 2. Created features (may be overridden/merged by plan chat below)
+  for (const f of createdFeatures) {
+    const ws = f.workspace;
+    upsert({
+      id: f.id,
+      kind: "plan",
+      category: "plan",
+      action: "created",
+      title: f.title ?? "Untitled feature",
+      link: ws ? `/w/${ws.slug}/plan/${f.id}` : "#",
+      workspaceName: ws?.name ?? "",
+      orgName: ws?.sourceControlOrg?.githubLogin,
+      timestamp: f.createdAt.toISOString(),
+    });
+  }
+
+  // 3. Task chat activity (marks action as "active")
+  for (const t of taskRows) {
+    const ws = wsMap.get(t.workspaceId);
+    upsert({
+      id: t.taskId,
+      kind: "task",
+      category: "task",
+      action: "active",
+      title: t.title ?? "Untitled task",
+      link: ws ? `/w/${ws.slug}/task/${t.taskId}` : "#",
+      workspaceName: ws?.name ?? "",
+      orgName: ws?.githubLogin,
+      timestamp: new Date(t.lastMessageAt).toISOString(),
+    });
+  }
+
+  // 4. Plan chat activity (marks action as "active")
+  for (const p of planRows) {
+    const ws = wsMap.get(p.workspaceId);
+    upsert({
+      id: p.featureId,
+      kind: "plan",
+      category: "plan",
+      action: "active",
+      title: p.title ?? "Untitled feature",
+      link: ws ? `/w/${ws.slug}/plan/${p.featureId}` : "#",
+      workspaceName: ws?.name ?? "",
+      orgName: ws?.githubLogin,
+      timestamp: new Date(p.lastMessageAt).toISOString(),
+    });
+  }
+
+  // 5. Conversations (always chat category / action: "active")
   for (const c of conversations) {
     const timestamp = c.lastMessageAt?.toISOString();
     if (!timestamp) continue;
@@ -215,9 +436,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    items.push({
+    upsert({
       id: c.id,
       kind: "conversation",
+      category: "chat",
+      action: "active",
       title: c.title ?? "Untitled conversation",
       link,
       workspaceName,
@@ -226,35 +449,13 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  for (const p of planRows) {
-    const ws = wsMap.get(p.workspaceId);
-    items.push({
-      id: p.featureId,
-      kind: "plan",
-      title: p.title ?? "Untitled feature",
-      link: ws ? `/w/${ws.slug}/plan/${p.featureId}` : "#",
-      workspaceName: ws?.name ?? "",
-      orgName: ws?.githubLogin,
-      timestamp: new Date(p.lastMessageAt).toISOString(),
-    });
-  }
+  // ── Sort DESC + paginate ──────────────────────────────────────────────────
+  const sorted = Array.from(itemMap.values()).sort((a, b) =>
+    a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0,
+  );
 
-  for (const t of taskRows) {
-    const ws = wsMap.get(t.workspaceId);
-    items.push({
-      id: t.taskId,
-      kind: "task",
-      title: t.title ?? "Untitled task",
-      link: ws ? `/w/${ws.slug}/task/${t.taskId}` : "#",
-      workspaceName: ws?.name ?? "",
-      orgName: ws?.githubLogin,
-      timestamp: new Date(t.lastMessageAt).toISOString(),
-    });
-  }
+  const page = sorted.slice(0, limit);
+  const nextCursor = page.length === limit ? page[page.length - 1].timestamp : null;
 
-  // ── Sort DESC + slice ─────────────────────────────────────────────────────
-  items.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
-  const result = items.slice(0, MAX_RESULTS);
-
-  return NextResponse.json({ items: result });
+  return NextResponse.json({ items: page, nextCursor });
 }

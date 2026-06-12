@@ -6,6 +6,7 @@ import { VALID_MODELS } from "@/lib/ai/models";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
 import { toPublicTasks } from "@/lib/auth/public-redact";
+import { notifyActivityUpdated } from "@/lib/pusher";
 
 export async function GET(request: NextRequest) {
   try {
@@ -605,6 +606,9 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Nudge the profile activity feed (fire-and-forget — never blocks response)
+    notifyActivityUpdated(userId);
 
     return NextResponse.json(
       {

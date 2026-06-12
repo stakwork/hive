@@ -13,8 +13,8 @@ describe("chatMessagesToParsedMessages", () => {
       { id: "2", role: "assistant", content: "hi there" },
     ];
     expect(chatMessagesToParsedMessages(stored)).toEqual([
-      { role: "user", content: "hello" },
-      { role: "assistant", content: "hi there" },
+      { role: "user", content: "hello", timestamp: null },
+      { role: "assistant", content: "hi there", timestamp: null },
     ]);
   });
 
@@ -74,7 +74,7 @@ describe("chatMessagesToParsedMessages", () => {
     ];
     const out = chatMessagesToParsedMessages(stored);
     expect(out).toHaveLength(3);
-    expect(out[2]).toEqual({ role: "assistant", content: "Here is what I found" });
+    expect(out[2]).toEqual({ role: "assistant", content: "Here is what I found", timestamp: null });
   });
 
   it("omits the tool-result message when no call resolved, and uses errorText as fallback output", () => {
@@ -112,9 +112,46 @@ describe("chatMessagesToParsedMessages", () => {
       { role: "user", content: "", imageData: "data:image/png;base64,yyy" },
     ];
     expect(chatMessagesToParsedMessages(stored)).toEqual([
-      { role: "user", content: "[image attached]\nwhat is this" },
-      { role: "user", content: "[image attached]" },
+      { role: "user", content: "[image attached]\nwhat is this", timestamp: null },
+      { role: "user", content: "[image attached]", timestamp: null },
     ]);
+  });
+
+  it("propagates timestamp from StoredChatMessage to ParsedMessage", () => {
+    const stored: StoredChatMessage[] = [
+      { role: "user", content: "hello", timestamp: "2024-01-15T10:30:00.000Z" },
+      { role: "assistant", content: "hi there", timestamp: "2024-01-15T10:30:05.000Z" },
+    ];
+    const out = chatMessagesToParsedMessages(stored);
+    expect(out[0].timestamp).toBe("2024-01-15T10:30:00.000Z");
+    expect(out[1].timestamp).toBe("2024-01-15T10:30:05.000Z");
+  });
+
+  it("sets timestamp to null when StoredChatMessage has no timestamp", () => {
+    const stored: StoredChatMessage[] = [
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+    ];
+    const out = chatMessagesToParsedMessages(stored);
+    expect(out[0].timestamp).toBeNull();
+    expect(out[1].timestamp).toBeNull();
+  });
+
+  it("propagates timestamp to trailing text entry in tool-call batches", () => {
+    const stored: StoredChatMessage[] = [
+      {
+        role: "assistant",
+        content: "Here is what I found",
+        timestamp: "2024-01-15T10:31:00.000Z",
+        toolCalls: [{ id: "c1", toolName: "search", input: {}, output: "ok" }],
+      },
+    ];
+    const out = chatMessagesToParsedMessages(stored);
+    // trailing text entry is the 3rd message
+    expect(out[2].timestamp).toBe("2024-01-15T10:31:00.000Z");
+    // tool-call and tool-result entries have no timestamp
+    expect(out[0].timestamp).toBeUndefined();
+    expect(out[1].timestamp).toBeUndefined();
   });
 
   it("produces output the agent-log parser + pairing helpers consume correctly", () => {

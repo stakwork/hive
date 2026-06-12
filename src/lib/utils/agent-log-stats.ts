@@ -24,6 +24,7 @@ export interface ParsedMessage {
   reasoning?: string;
   tool_calls?: OpenAIToolCall[];
   tool_call_id?: string;
+  timestamp?: string | null;
 }
 
 export interface AgentLogStats {
