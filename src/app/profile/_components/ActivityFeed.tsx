@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { MessageSquare, FileText, CheckSquare, ArrowUpRight, Loader2, Search, X, Building2 } from "lucide-react";
+import { MessageSquare, FileText, CheckSquare, Flag, ArrowUpRight, Loader2, Search, X, Building2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ const KIND_ICONS: Record<ActivityItem["kind"], React.ReactNode> = {
   conversation: <MessageSquare className="h-4 w-4 shrink-0 text-purple-400" />,
   plan: <FileText className="h-4 w-4 shrink-0 text-blue-400" />,
   task: <CheckSquare className="h-4 w-4 shrink-0 text-green-500/80" />,
+  milestone: <Flag className="h-4 w-4 shrink-0 text-orange-400" />,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -33,13 +34,14 @@ function SkeletonRow() {
   );
 }
 
-type Category = "task" | "plan" | "chat" | "";
+type Category = "task" | "plan" | "chat" | "milestone" | "";
 
 const CATEGORY_LABELS: Record<string, string> = {
   "": "All",
   task: "Tasks",
   plan: "Plans",
   chat: "Chats",
+  milestone: "Milestones",
 };
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -178,7 +180,7 @@ export function ActivityFeed({ userId }: ActivityFeedProps) {
 
       {/* Category chips */}
       <div className="flex gap-2 flex-wrap">
-        {(["", "task", "plan", "chat"] as const).map((cat) => (
+        {(["", "task", "plan", "chat", "milestone"] as const).map((cat) => (
           <button
             key={cat}
             onClick={() => setCategory(cat)}
