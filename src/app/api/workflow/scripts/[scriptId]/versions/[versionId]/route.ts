@@ -84,7 +84,8 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: result.data });
+    const raw = result.data;
+    return NextResponse.json({ success: true, data: { ...raw, value: raw.source_code ?? raw.value } });
   } catch (error) {
     console.error("Error fetching script version:", error);
     return NextResponse.json({ error: "Failed to fetch script version" }, { status: 500 });
