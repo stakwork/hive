@@ -1318,6 +1318,7 @@ async function seedInitiativesAndMilestones(
       dueDate: new Date("2025-01-31"),
       completedAt: new Date("2025-01-28"),
       assigneeId,
+      createdById: assigneeId, // seed user is both assignee and creator
     },
   });
 
@@ -1330,9 +1331,11 @@ async function seedInitiativesAndMilestones(
       sequence: 20,
       dueDate: new Date("2025-02-28"),
       assigneeId,
+      createdById: assigneeId,
     },
   });
 
+  // No owner, no creator — tests edge cases: unassigned milestone + legacy (pre-creator-tracking)
   await prisma.milestone.create({
     data: {
       initiativeId: initiative1.id,
@@ -1341,6 +1344,7 @@ async function seedInitiativesAndMilestones(
       status: MilestoneStatus.NOT_STARTED,
       sequence: 30,
       dueDate: new Date("2025-03-31"),
+      // intentionally no assigneeId or createdById
     },
   });
 
@@ -1354,6 +1358,7 @@ async function seedInitiativesAndMilestones(
       dueDate: new Date("2024-11-30"),
       completedAt: new Date("2024-11-25"),
       assigneeId,
+      // intentionally no createdById — simulates a legacy milestone without creator
     },
   });
 
