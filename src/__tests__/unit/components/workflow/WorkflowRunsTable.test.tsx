@@ -19,6 +19,16 @@ vi.mock("@/components/ui/skeleton", () => ({
   ),
 }));
 
+// ── mock shadcn Tooltip ───────────────────────────────────────────────────────
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({ children, asChild }: { children: React.ReactNode; asChild?: boolean }) =>
+    asChild ? <>{children}</> : <span>{children}</span>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="tooltip-content">{children}</div>
+  ),
+}));
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 function renderTable() {
   return render(<WorkflowRunsTable slug="test-ws" workflowId={42} />);
@@ -44,6 +54,15 @@ const MOCK_RUNS: WorkflowRun[] = [
     finished_at: null,
   },
 ];
+
+const LONG_NAME = "A".repeat(41); // 41 chars, exceeds MAX_RUN_NAME_LEN=40
+const LONG_NAME_RUN: WorkflowRun = {
+  id: 2001,
+  name: LONG_NAME,
+  status: "finished",
+  started_at: "2024-04-01T10:00:00.000Z",
+  finished_at: "2024-04-01T10:05:00.000Z",
+};
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 describe("WorkflowRunsTable", () => {
@@ -117,5 +136,51 @@ describe("WorkflowRunsTable", () => {
     renderTable();
     const badge = screen.getByText("error");
     expect(badge.className).toMatch(/destructive/);
+  });
+
+  describe("Run name truncation and tooltip", () => {
+    it("truncates names longer than 40 chars and shows tooltip with full name", () => {
+      setupRuns([LONG_NAME_RUN]);
+      renderTable();
+
+      // The rendered link text should be truncated (first 40 chars + ellipsis)
+      const truncated = LONG_NAME.slice(0, 40) + "…";
+      const link = screen.getByRole("link", { name: truncated });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute(
+        "href",
+        `https://jobs.stakwork.com/admin/projects/${LONG_NAME_RUN.id}`,
+      );
+
+      // Tooltip content should show the full name
+      const tooltip = screen.getByTestId("tooltip-content");
+      expect(tooltip).toHaveTextContent(LONG_NAME);
+    });
+
+    it("does not render a tooltip for names 40 chars or shorter", () => {
+      setupRuns([MOCK_RUNS[0]]); // "Run #1001" — well under 40 chars
+      renderTable();
+
+      // The link text should be the full name, unmodified
+      const link = screen.getByRole("link", { name: "Run #1001" });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveTextContent("Run #1001");
+
+      // No TooltipContent rendered
+      expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
+    });
+
+    it("link still navigates to the correct Stakwork URL even when truncated", () => {
+      setupRuns([LONG_NAME_RUN]);
+      renderTable();
+
+      const link = screen.getByRole("link", { name: LONG_NAME.slice(0, 40) + "…" });
+      expect(link).toHaveAttribute(
+        "href",
+        `https://jobs.stakwork.com/admin/projects/${LONG_NAME_RUN.id}`,
+      );
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noreferrer");
+    });
   });
 });

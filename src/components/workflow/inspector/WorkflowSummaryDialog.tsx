@@ -31,7 +31,7 @@ export function WorkflowSummaryDialog({
 }: WorkflowSummaryDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[75vw]">
+      <DialogContent className="sm:max-w-[75vw]">
         <DialogHeader>
           <DialogTitle>Workflow Changes Summary</DialogTitle>
           <DialogDescription>
