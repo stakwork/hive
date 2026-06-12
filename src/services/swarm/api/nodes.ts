@@ -86,7 +86,13 @@ export async function addNode(
   }
 
   const body = result.body as
-    | { status?: string; data?: { ref_id?: string }; nodes?: Array<{ ref_id?: string }>; status_messages?: string[] }
+    | {
+        status?: string;
+        message?: string;
+        data?: { ref_id?: string };
+        nodes?: Array<{ ref_id?: string }>;
+        status_messages?: string[];
+      }
     | undefined;
 
   // Treat "already exists" warnings as success
@@ -94,10 +100,14 @@ export async function addNode(
     m.toLowerCase().includes("already exists"),
   );
 
-  const ref_id =
-    body?.data?.ref_id ?? body?.nodes?.[0]?.ref_id;
+  // Jarvis returns status "Warning" with ref_id in body.data
+  // when status_messages is empty and duplicate info is only in body.message
+  const isWarningWithRef =
+    body?.status?.toLowerCase() === "warning" && !!body?.data?.ref_id;
 
-  if (body?.status === "success" || isAlreadyExists) {
+  const ref_id = body?.data?.ref_id ?? body?.nodes?.[0]?.ref_id;
+
+  if (body?.status === "success" || isAlreadyExists || isWarningWithRef) {
     return { success: true, ref_id };
   }
 
