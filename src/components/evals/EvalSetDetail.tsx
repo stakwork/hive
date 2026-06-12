@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionMenu } from "@/components/ui/action-menu";
-import { ArrowLeft, Link2, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { CreateRequirementModal } from "./CreateRequirementModal";
 import { EditRequirementModal } from "./EditRequirementModal";
-import { LinkRunModal } from "./LinkRunModal";
+import { CaptureEvalTriggerModal } from "./CaptureEvalTriggerModal";
+import { EvalTriggerList } from "./EvalTriggerList";
 import type { JarvisNode } from "@/types/jarvis";
 
 interface EvalSetDetailProps {
@@ -166,8 +167,8 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
                       size="sm"
                       onClick={() => setLinkTarget({ reqId: req.ref_id })}
                     >
-                      <Link2 className="mr-1 h-3 w-3" />
-                      Link Run
+                      <Zap className="mr-1 h-3 w-3" />
+                      Capture Trigger
                     </Button>
                     <ActionMenu
                       actions={[
@@ -192,6 +193,11 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
                     />
                   </div>
                 </div>
+                <EvalTriggerList
+                  evalSetId={evalSet.ref_id}
+                  reqId={req.ref_id}
+                  slug={slug}
+                />
               </div>
             );
           })}
@@ -207,12 +213,12 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
       />
 
       {linkTarget && (
-        <LinkRunModal
+        <CaptureEvalTriggerModal
           open={!!linkTarget}
           onOpenChange={(o) => { if (!o) setLinkTarget(null); }}
           evalSetId={evalSet.ref_id}
           reqId={linkTarget.reqId}
-          onLinked={fetchRequirements}
+          onCreated={fetchRequirements}
         />
       )}
 
