@@ -575,8 +575,8 @@ describe("updateNode", () => {
         node_data: {
           name: "Check output",
           prompt_snippet: "Summarize this",
-          positive_cases: ["Good"],
-          negative_cases: ["Bad"],
+          desirable_cases: ["Good"],
+          undesirable_cases: ["Bad"],
         },
       });
 
