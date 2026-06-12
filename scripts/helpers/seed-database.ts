@@ -1122,8 +1122,26 @@ export async function seedAutoMergeTestScenarios(
   });
 
   console.log(`✓ Created 4 edge case tasks with PR artifacts`);
+
+  // Stamp allowAutoMerge: true on the first repository in this workspace so the
+  // canvas auto-merge path is exercisable in dev without a live GitHub API call.
+  const firstRepo = await prisma.repository.findFirst({
+    where: { workspaceId: workspace.id },
+    select: { id: true, name: true },
+  });
+
+  if (firstRepo) {
+    await prisma.repository.update({
+      where: { id: firstRepo.id },
+      data: { allowAutoMerge: true },
+    });
+    console.log(`✓ Stamped allowAutoMerge: true on repository "${firstRepo.name}" (${firstRepo.id})`);
+  } else {
+    console.log("⚠ No repository found in workspace — skipping allowAutoMerge seed");
+  }
+
   console.log(
-    `\n✓ Auto-merge test data seeding complete:\n  - 2 features with dependency chains\n  - 6 core tasks (4 with autoMerge: true, 2 with autoMerge: false)\n  - 4 edge case tasks with PR artifacts\n  - Total: 10 tasks for comprehensive testing`,
+    `\n✓ Auto-merge test data seeding complete:\n  - 2 features with dependency chains\n  - 6 core tasks (4 with autoMerge: true, 2 with autoMerge: false)\n  - 4 edge case tasks with PR artifacts\n  - 1 repository stamped with allowAutoMerge: true\n  - Total: 10 tasks for comprehensive testing`,
   );
 }
 
