@@ -104,10 +104,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
 
       const runsData = await runsRes.json();
-      const runs = (runsData.runs ?? runsData ?? []).map((run: Record<string, unknown>) => ({
+      const runs = (runsData.data ?? []).map((run: Record<string, unknown>) => ({
         id: run.id,
         name: run.name,
-        status: run.status,
+        status: run.workflow_state,
         started_at: run.started_at ?? null,
         finished_at: run.finished_at ?? null,
       }));

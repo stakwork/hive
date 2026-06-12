@@ -107,10 +107,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         success: true,
         data: {
           available: true,
-          last_run_at: statsData.last_run_at ?? null,
-          total_runs: statsData.total_runs ?? 0,
-          active_runs: statsData.active_runs ?? 0,
-          error_rate: statsData.error_rate ?? 0,
+          last_run_at: statsData.data?.last_run_at ?? null,
+          total_runs: statsData.data?.total_runs ?? 0,
+          active_runs: statsData.data?.active_runs ?? 0,
+          error_rate: statsData.data?.error_rate ?? 0,
         },
       });
     } catch (err) {
