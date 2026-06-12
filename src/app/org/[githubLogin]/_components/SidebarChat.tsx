@@ -20,6 +20,11 @@ import { Button } from "@/components/ui/button";
 import { SidebarChatMessage } from "./SidebarChatMessage";
 import { ProposalCard, getProposalsFromMessage } from "./ProposalCard";
 import {
+  PROPOSE_FEATURE_TOOL,
+  PROPOSE_INITIATIVE_TOOL,
+  PROPOSE_MILESTONE_TOOL,
+} from "@/lib/proposals/types";
+import {
   SubAgentRunCard,
   getSubAgentRunsFromMessages,
 } from "./SubAgentRunCard";
@@ -331,13 +336,39 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 
             const proposals = getProposalsFromMessage(message);
 
+            // Collect tool-call IDs that produced a ProposalCard (successful
+            // proposal outputs only — failed calls stay in the timeline).
+            const proposalToolCallIds = new Set<string>();
+            if (proposals.length > 0) {
+              for (const tc of message.toolCalls ?? []) {
+                if (
+                  tc.toolName !== PROPOSE_FEATURE_TOOL &&
+                  tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
+                  tc.toolName !== PROPOSE_MILESTONE_TOOL
+                )
+                  continue;
+                const o = tc.output;
+                if (!o || typeof o !== "object" || "error" in o) continue;
+                proposalToolCallIds.add(tc.id);
+              }
+            }
+
+            const filteredTimeline =
+              proposalToolCallIds.size > 0
+                ? message.timeline?.filter(
+                    (item) =>
+                      item.type !== "toolCall" ||
+                      !proposalToolCallIds.has(item.id),
+                  )
+                : message.timeline;
+
             // A streamed tool-call row carries a `timeline` (and empty
             // text content). Render it as rich, expandable tool cards via
             // the shared `<StreamingMessage>` — names, args, outputs, and
             // live status, in order with any interleaved text. Plain text
             // rows fall through to `SidebarChatMessage` so the bubble look
             // and the `?r=`/`?c=` deep-link interceptor are preserved.
-            const hasTimeline = !!message.timeline?.length;
+            const hasTimeline = !!filteredTimeline?.length;
 
             return (
               <div key={message.id} className="space-y-1.5">
@@ -347,7 +378,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                       message={{
                         id: message.id,
                         content: message.content,
-                        timeline: message.timeline,
+                        timeline: filteredTimeline,
                         isStreaming: isMessageStreaming,
                       }}
                     />
