@@ -256,6 +256,7 @@ model Workspace {
   diagrams                DiagramWorkspace[]
   discordChannels         DiscordChannel[]
   features                Feature[]
+  workflowSummaries       WorkflowSummary[]
   janitorConfig           JanitorConfig?
   janitorRecommendations  JanitorRecommendation[]
   repositories            Repository[]
@@ -1796,4 +1797,21 @@ model DiscordChannel {
 
   @@unique([workspaceId, channelId])
   @@map("discord_channels")
+}
+
+model WorkflowSummary {
+  id          String    @id @default(cuid())
+  workflowId  Int       @map("workflow_id")
+  workspaceId String    @map("workspace_id")
+  cacheKey    String    @map("cache_key")
+  versionIds  Json      @map("version_ids")
+  content     String?   @db.Text
+  status      String    @default("PENDING")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, cacheKey])
+  @@index([workspaceId])
+  @@map("workflow_summaries")
 }

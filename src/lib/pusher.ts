@@ -98,6 +98,8 @@ export const PUSHER_EVENTS = {
   CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",
   // Per-user profile activity feed nudge
   ACTIVITY_UPDATED: "activity-updated",
+  // Workflow version summary ready (AI-generated summary delivered via webhook)
+  WORKFLOW_SUMMARY_READY: "workflow-summary-ready",
 } as const;
 
 /**
