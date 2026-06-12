@@ -22,8 +22,8 @@ interface RequirementNode extends JarvisNode {
     name?: string;
     description?: string;
     prompt_snippet?: string;
-    positive_cases?: string[];
-    negative_cases?: string[];
+    desirable_cases?: string[];
+    undesirable_cases?: string[];
     linked_session_count?: number;
     order?: number;
     [key: string]: unknown;
@@ -122,11 +122,11 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
             const promptSnippet = req.properties?.prompt_snippet
               ? String(req.properties.prompt_snippet)
               : null;
-            const posCount = Array.isArray(req.properties?.positive_cases)
-              ? req.properties.positive_cases.length
+            const posCount = Array.isArray(req.properties?.desirable_cases)
+              ? req.properties.desirable_cases.length
               : 0;
-            const negCount = Array.isArray(req.properties?.negative_cases)
-              ? req.properties.negative_cases.length
+            const negCount = Array.isArray(req.properties?.undesirable_cases)
+              ? req.properties.undesirable_cases.length
               : 0;
             const sessionCount =
               typeof req.properties?.linked_session_count === "number"

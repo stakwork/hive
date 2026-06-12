@@ -111,8 +111,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       session_ref_id,
       change_type,
       run_count,
-      positive_cases,
-      negative_cases,
+      desirable_cases,
+      undesirable_cases,
     } = body ?? {};
 
     // Validate required fields
@@ -166,8 +166,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       run_count: typeof run_count === "number" ? run_count : 1,
     };
     if (change_type) nodeData.change_type = change_type;
-    if (Array.isArray(positive_cases)) nodeData.positive_cases = positive_cases;
-    if (Array.isArray(negative_cases)) nodeData.negative_cases = negative_cases;
+    if (Array.isArray(desirable_cases)) nodeData.desirable_cases = desirable_cases;
+    if (Array.isArray(undesirable_cases)) nodeData.undesirable_cases = undesirable_cases;
 
     const nodeResult = await addNode(config, {
       node_type: "EvalTrigger",

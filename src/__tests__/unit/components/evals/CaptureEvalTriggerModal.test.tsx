@@ -114,8 +114,8 @@ describe("CaptureEvalTriggerModal", () => {
     expect(screen.getByLabelText(/End Point/i)).toBeTruthy();
     expect(screen.getByLabelText(/Environment/i)).toBeTruthy();
     expect(screen.getByLabelText(/Run Count/i)).toBeTruthy();
-    expect(screen.getByTestId("tag-input-positive_cases")).toBeTruthy();
-    expect(screen.getByTestId("tag-input-negative_cases")).toBeTruthy();
+    expect(screen.getByTestId("tag-input-desirable_cases")).toBeTruthy();
+    expect(screen.getByTestId("tag-input-undesirable_cases")).toBeTruthy();
   });
 
   it("does NOT render feedback_note field anywhere", () => {
