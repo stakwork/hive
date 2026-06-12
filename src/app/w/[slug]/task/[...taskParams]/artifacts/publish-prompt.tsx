@@ -4,8 +4,9 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Artifact, PublishPromptContent } from "@/lib/chat";
-import { Upload, CheckCircle2, Loader2 } from "lucide-react";
+import { Upload, CheckCircle2, Loader2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export function PublishPromptArtifact({
   artifact,
@@ -15,6 +16,7 @@ export function PublishPromptArtifact({
   taskId?: string;
 }) {
   const content = artifact.content as PublishPromptContent;
+  const { slug } = useWorkspace();
   const [isPublishing, setIsPublishing] = useState(false);
   const [isPublished, setIsPublished] = useState(content.published === true);
 
@@ -103,6 +105,24 @@ export function PublishPromptArtifact({
             <div className="text-sm text-muted-foreground truncate">
               {content.promptName || `Prompt v${content.promptVersionId}`}
             </div>
+            {content.promptVersionId && (
+              <div className="flex items-center gap-1 mt-1">
+                <span
+                  data-testid="prompt-version-chip"
+                  className="font-mono text-xs text-muted-foreground"
+                >
+                  v{content.promptVersionId}
+                </span>
+                <a
+                  data-testid="prompt-version-link"
+                  href={`/w/${slug}/prompts?prompt=${content.promptId}&version=${content.promptVersionId}`}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="View prompt version"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
           </div>
           <div className="flex-shrink-0">
             {isPublished ? (

@@ -1,11 +1,20 @@
 import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
+import { toast } from "sonner";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useRouter } from "next/navigation";
 import { RoadmapTasksTable } from "@/components/features/RoadmapTasksTable";
 import type { TicketListItem } from "@/types/roadmap";
 import { TaskStatus, Priority } from "@prisma/client";
+
+// Mock sonner toast
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}));
 
 // Mock Next.js router
 vi.mock("next/navigation", () => ({
@@ -30,10 +39,12 @@ vi.mock("@/hooks/useRoadmapTaskMutations", () => ({
   }),
 }));
 
+const mockWorkspaceRepositories: Array<{ id: string; name: string; repositoryUrl: string; allowAutoMerge: boolean }> = [];
+
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({
     workspace: {
-      repositories: [],
+      repositories: mockWorkspaceRepositories,
     },
   }),
 }));
@@ -116,6 +127,8 @@ describe("RoadmapTasksTable", () => {
     vi.clearAllMocks();
     mockUpdateTicket.mockResolvedValue(null);
     (useRouter as any).mockReturnValue(mockRouter);
+    // Reset workspace repos to empty by default
+    mockWorkspaceRepositories.length = 0;
     // Mock window.location for currentPath
     Object.defineProperty(window, "location", {
       value: {
@@ -581,6 +594,167 @@ describe("RoadmapTasksTable", () => {
       expect(badges).toHaveLength(2);
       expect(badges[0]).toHaveTextContent("staging");
       expect(badges[1]).toHaveTextContent("production");
+    });
+  });
+
+  describe("Auto-merge toggle disabled when repo disallows it", () => {
+    test("switch is disabled and tooltip is shown when task repo has allowAutoMerge=false", async () => {
+      const user = userEvent.setup();
+      const repoId = "repo-no-automerge";
+      mockWorkspaceRepositories.push({
+        id: repoId,
+        name: "my-repo",
+        repositoryUrl: "https://github.com/org/my-repo",
+        allowAutoMerge: false,
+      });
+
+      const task = createMockTask({
+        id: "task-disabled",
+        autoMerge: false,
+        repository: { id: repoId, name: "my-repo", repositoryUrl: "https://github.com/org/my-repo" } as any,
+      });
+
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      const switchEl = screen.getByRole("switch");
+      expect(switchEl).toBeDisabled();
+
+      // Tooltip content renders into a Radix portal only after hover
+      await user.hover(switchEl);
+      await waitFor(() => {
+        const tooltips = screen.getAllByText("Enable auto-merge in GitHub repo settings first");
+        expect(tooltips.length).toBeGreaterThan(0);
+      });
+    });
+
+    test("switch is enabled when task repo has allowAutoMerge=true", () => {
+      const repoId = "repo-with-automerge";
+      mockWorkspaceRepositories.push({
+        id: repoId,
+        name: "my-repo",
+        repositoryUrl: "https://github.com/org/my-repo",
+        allowAutoMerge: true,
+      });
+
+      const task = createMockTask({
+        id: "task-enabled",
+        autoMerge: false,
+        repository: { id: repoId, name: "my-repo", repositoryUrl: "https://github.com/org/my-repo" } as any,
+      });
+
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      const switchEl = screen.getByRole("switch");
+      expect(switchEl).not.toBeDisabled();
+      expect(screen.queryByText("Enable auto-merge in GitHub repo settings first")).not.toBeInTheDocument();
+    });
+
+    test("switch uses single workspace repo allowAutoMerge when task has no repo assigned", () => {
+      mockWorkspaceRepositories.push({
+        id: "repo-single",
+        name: "only-repo",
+        repositoryUrl: "https://github.com/org/only-repo",
+        allowAutoMerge: false,
+      });
+
+      const task = createMockTask({ id: "task-no-repo", autoMerge: false, repository: null });
+
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      const switchEl = screen.getByRole("switch");
+      expect(switchEl).toBeDisabled();
+    });
+
+    test("switch is enabled when no repo context can be determined (multi-repo, no assignment)", () => {
+      mockWorkspaceRepositories.push(
+        { id: "repo-a", name: "repo-a", repositoryUrl: "https://github.com/org/a", allowAutoMerge: false },
+        { id: "repo-b", name: "repo-b", repositoryUrl: "https://github.com/org/b", allowAutoMerge: false },
+      );
+
+      const task = createMockTask({ id: "task-multi", autoMerge: false, repository: null });
+
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      // With multi-repo and no assignment, server gate is the fallback → enabled
+      const switchEl = screen.getByRole("switch");
+      expect(switchEl).not.toBeDisabled();
+    });
+  });
+
+  describe("toast.error on updateTicket failure", () => {
+    test("shows toast.error with server error message and reverts optimistic update", async () => {
+      const user = userEvent.setup();
+      mockUpdateTicket.mockRejectedValueOnce(new Error("Auto-merge is not allowed on this repository. Enable it in GitHub repository settings."));
+
+      const task = createMockTask({ id: "task-toast", autoMerge: false });
+
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      const switchEl = screen.getByRole("switch");
+      await user.click(switchEl);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          "Auto-merge is not allowed on this repository. Enable it in GitHub repository settings."
+        );
+      });
+
+      // Optimistic update should be reverted (switch back to unchecked)
+      await waitFor(() => {
+        expect(switchEl).toHaveAttribute("data-state", "unchecked");
+      });
+    });
+
+    test("shows generic toast.error when error has no message", async () => {
+      const user = userEvent.setup();
+      mockUpdateTicket.mockRejectedValueOnce("non-error-throw");
+
+      const task = createMockTask({ id: "task-generic-error", autoMerge: false });
+
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      const switchEl = screen.getByRole("switch");
+      await user.click(switchEl);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith("Failed to update task");
+      });
     });
   });
 

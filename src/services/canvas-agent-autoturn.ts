@@ -190,23 +190,74 @@ const AUTOTURN_STRIP_TOOLS: ReadonlySet<string> = new Set([STAY_SILENT_TOOL]);
  * messages" and Anthropic throws `AI_UnsupportedFunctionalityError`,
  * aborting the whole auto-turn. (The user-driven `/api/ask/quick` path
  * never hits this because its `messages` start with a `user` turn.)
- * As a `user` message the wake note rides safely at the head of the
- * conversation — the AI SDK merges it with the following user turn —
- * and the planner's reply is still "the most recent assistant entry"
- * the prompt refers to. Do NOT change this back to `system`.
+ * Do NOT change this back to `system`.
+ *
+ * Placement is load-bearing too: the caller appends this message at the
+ * TAIL of the model message list, AFTER the full transcript — so the
+ * planner's reply is the last *assistant* entry and THIS user message is
+ * the last entry overall. That matters because Anthropic treats a
+ * conversation ending on an assistant turn as a *prefill to continue*,
+ * not a prompt to act on: the model just extends the planner's text
+ * (echoing earlier assistant chatter, skipping every tool call) instead
+ * of running its wake instructions. We learned this the hard way — an
+ * earlier version put the wake note at the HEAD, the array ended on the
+ * planner's assistant turn, and the agent reliably emitted a stale
+ * narration row with zero tool calls (no `read_feature`, no
+ * `send_to_feature_planner`) — i.e. did nothing. Ending on this `user`
+ * turn mirrors the working `/api/ask/quick` path, which always ends on
+ * the user's just-typed message. Do NOT move this back to the head.
  */
+/** The current plan snapshot, loaded fresh each turn in `runAutoTurn`. */
+interface PlanSnapshot {
+  brief: string | null;
+  requirements: string | null;
+  architecture: string | null;
+  workflowStatus: string | null;
+}
+
+/** Render one plan stage as a labelled section, or a clear "not yet written" marker. */
+function renderStage(label: string, body: string | null): string {
+  const trimmed = body?.trim();
+  return trimmed
+    ? `### ${label}\n${trimmed}`
+    : `### ${label}\n_(not yet written)_`;
+}
+
 function buildWakeMessage(
   featureTitle: string,
+  featureId: string,
+  plan: PlanSnapshot,
   wakeReason: AutoTurnWakeReason,
 ): ModelMessage {
+  // Inject the WHOLE current plan, fresh each turn, so the agent reviews
+  // the underling planner's actual work like a real human lead would —
+  // not a guess, not a stale assumption. This snapshot is ephemeral: the
+  // wake message is never persisted to the conversation (only the agent's
+  // own output rows are), so re-injecting the full plan every turn does
+  // NOT accumulate copies in history — each turn sees exactly one current
+  // snapshot and it's thrown away after the call. This also removes the
+  // need for the agent to call `read_feature` (and the bug where it
+  // guessed a wrong id, got "Feature not found", and confabulated a
+  // "feature was just created" state). `featureId` is still surfaced so a
+  // `send_to_feature_planner` reply / chat-history read targets the right
+  // feature.
+  const planBlock =
+    `Current plan snapshot for **${featureTitle}** ` +
+    `(featureId: \`${featureId}\`, workflowStatus: ` +
+    `${plan.workflowStatus ?? "unknown"}):\n\n` +
+    `${renderStage("Brief", plan.brief)}\n\n` +
+    `${renderStage("Requirements", plan.requirements)}\n\n` +
+    `${renderStage("Architecture", plan.architecture)}`;
   return {
     role: "user",
     content:
       `You were invoked because the planner for feature **${featureTitle}** ` +
-      `just posted a message (wake reason: ${wakeReason}). The planner's ` +
-      "message is the most recent assistant entry in this conversation, " +
-      "marked with `source.kind === \"planner\"`.\n\n" +
-      "Follow the user's standing instructions in this conversation. " +
+      `just posted a message (wake reason: ${wakeReason}). That planner ` +
+      "message is the most recent assistant entry above this one — read " +
+      "it as the thing you're reacting to now.\n\n" +
+      `${planBlock}\n\n` +
+      "Review that plan the way a lead reviews an underling's work, then " +
+      "follow the user's standing instructions in this conversation. " +
       "Decide one of:\n" +
       "- **Auto-respond:** call `send_to_feature_planner` with your answer. " +
       "Don't write a separate chat message.\n" +
@@ -225,13 +276,20 @@ function buildWakeMessage(
           "(the FORM surfaces to the user directly anyway)."
         : wakeReason === "completed"
           ? "This wake reason is `completed`: the planner finished a run. " +
-            "Read the plan via `<slug>__read_feature`. If `brief`, " +
-            "`requirements`, and `architecture` are all populated and the " +
-            "architecture looks sound, **keep it moving — auto-respond with " +
+            "The snapshot above IS the current state — trust it over any " +
+            "assumption that the feature is new (by the time you're woken " +
+            "the planner has already run). If `Brief`, `Requirements`, and " +
+            "`Architecture` are all written and the architecture looks " +
+            "sound, **keep it moving — auto-respond with " +
             "`send_to_feature_planner` telling it to generate the tasks now** " +
-            "(unless the user asked to review the plan first). A finished " +
-            "plan that just sits waiting is the failure mode. Don't try to " +
-            "*start* tasks — that's the user's button."
+            "(unless the user asked to review the plan first). If instead a " +
+            "stage is still missing, ask only for the SINGLE next stage " +
+            "(requirements, then architecture, then tasks) — the planner runs " +
+            "one stage per turn and silently ignores a second ask, so never " +
+            "batch (e.g. 'write the architecture and generate the tasks'). " +
+            "One ask per round-trip; you'll be woken again when it lands. A " +
+            "finished plan that just sits waiting is the failure mode. Don't " +
+            "try to *start* tasks — that's the user's button."
           : "Default toward escalation or silence unless the user's " +
             "instructions clearly grant you the autonomy to answer."),
   };
@@ -266,31 +324,43 @@ export async function invokeCanvasAgentOnPlannerMessage(
     return;
   }
 
-  // Best-effort per-conversation advisory lock so two planners
-  // replying near-simultaneously don't both wake the agent on the
-  // same conversation and double-respond.
+  // Concurrency control: a per-PLANNER-MESSAGE claim, NOT a per-conversation
+  // lock.
   //
-  // CAVEAT: Postgres session advisory locks are tied to a connection.
-  // Under Prisma's connection pool, the `pg_try_advisory_lock` and the
-  // `pg_advisory_unlock` may land on different pooled connections, so
-  // this is *best-effort*, not a hard mutex. That's an acceptable v1
-  // tradeoff: the feature is gated behind a kill switch, the worst case
-  // is one redundant auto-turn (the agent reads the full conversation
-  // and can `stay_silent`), and the lock is never held across the LLM
-  // call (which would pin a DB connection for the whole turn). A
-  // hardened version (a dedicated lock service or a row-lease) is a
-  // future seam.
-  const lockKeySql = `canvas-autoturn:${conversationId}`;
-  let lockAcquired = false;
+  // History: this used a Postgres session advisory lock
+  // (`pg_try_advisory_lock`) keyed on the *conversation*, held across the
+  // whole LLM turn, released with a separate `pg_advisory_unlock`. That was
+  // doubly broken:
+  //   1. LEAK — a session lock belongs to the exact pooled connection that
+  //      took it; the separate unlock query often ran on a *different*
+  //      pooled connection, where it's a no-op. The lock never released and
+  //      stayed held (in a frozen lambda's connection) until that
+  //      connection was recycled.
+  //   2. HEAD-OF-LINE DROP — keyed per conversation, so a leaked (or merely
+  //      in-flight) lock from one stage's turn blocked the NEXT stage's
+  //      turn, and the contended turn was silently dropped with no retry. A
+  //      finished plan's "completed" wake vanished because an earlier
+  //      stage's turn had leaked the conversation lock.
+  //
+  // The invariant we actually need is narrow: don't let two deliveries of
+  // the SAME planner message both run the turn (the agent's
+  // `send_to_feature_planner` fires mid-stream, before the append-time
+  // idempotency dedup can catch it). Different planner messages — even in
+  // the same conversation — SHOULD run concurrently. So we claim per
+  // `plannerMessageId`, using the conversation row lock (correct,
+  // connection-safe, auto-released at COMMIT), and we NEVER silently drop a
+  // needed turn: a lost claim means some other run already owns this exact
+  // message. The claim is crash-safe — a stale claim (a run that died
+  // mid-turn) expires after `AUTOTURN_CLAIM_STALE_MS` so the wake can be
+  // retried rather than wedged forever.
+  let claimed = false;
   try {
-    const lockRows = await db.$queryRaw<{ locked: boolean }[]>`
-      SELECT pg_try_advisory_lock(hashtext(${lockKeySql})) AS locked
-    `;
-    lockAcquired = lockRows[0]?.locked === true;
-    if (!lockAcquired) {
-      console.log("[canvas-autoturn] lock held; skipping", {
+    claimed = await claimAutoTurn(conversationId, plannerMessageId);
+    if (!claimed) {
+      console.log("[canvas-autoturn] message already claimed/handled; skipping", {
         conversationId,
         featureId,
+        plannerMessageId,
         wakeReason,
       });
       return;
@@ -306,14 +376,122 @@ export async function invokeCanvasAgentOnPlannerMessage(
       error: e instanceof Error ? e.message : String(e),
     });
   } finally {
-    if (lockAcquired) {
-      try {
-        await db.$queryRaw`SELECT pg_advisory_unlock(hashtext(${lockKeySql}))`;
-      } catch (e) {
-        console.error("[canvas-autoturn] advisory unlock failed:", e);
-      }
+    if (claimed) {
+      await releaseAutoTurnClaim(conversationId, plannerMessageId).catch((e) =>
+        console.error("[canvas-autoturn] claim release failed:", e),
+      );
     }
   }
+}
+
+/**
+ * A claim that has sat unreleased longer than this is treated as stale
+ * (the owning run crashed before its `finally` released it) and may be
+ * re-claimed, so a dead turn never wedges a planner message forever. Sized
+ * comfortably above the worst-case turn wall-clock (LLM + tool round-trips)
+ * so it never expires a genuinely in-flight turn.
+ */
+const AUTOTURN_CLAIM_STALE_MS = 5 * 60 * 1000;
+
+/** Shape of the per-message claim bag stored under `settings.autoTurnClaims`. */
+type AutoTurnClaims = Record<string, { claimedAt: number }>;
+
+/**
+ * Atomically claim a planner message for an auto-turn. Returns `true` iff
+ * THIS caller won the claim and should run the turn.
+ *
+ * Serialized by the conversation row lock (`SELECT … FOR UPDATE`), the same
+ * mechanism `appendTurnMessages` and the fan-out use — so it's correct
+ * under Prisma's connection pool (the whole check-and-set runs in one
+ * interactive transaction on one connection, and the lock auto-releases at
+ * COMMIT; nothing is held across the LLM call). Bails when:
+ *   - the conversation row is gone,
+ *   - the turn already COMPLETED (a real `autoturn-<id>-*` output row
+ *     exists in `messages`), or
+ *   - a non-stale claim for this message already exists (a live concurrent
+ *     run owns it).
+ * Otherwise it records `{ claimedAt: now }` and returns `true`.
+ *
+ * The claim lives in `settings.autoTurnClaims` (not a `messages` row) so it
+ * never pollutes the rendered transcript. The read-modify-write is safe
+ * against concurrent `settings` writers because they all serialize on this
+ * same row lock; we re-read the latest committed `settings` under the lock
+ * and write the full object back, preserving sibling keys (`promptConcepts`,
+ * `extraWorkspaceSlugs`). One benign edge: the client autosave PUT replaces
+ * `settings` wholesale with the client's copy (which has no `autoTurnClaims`),
+ * so an autosave landing mid-turn can erase a live claim. The fallout is
+ * minor and self-correcting — at worst a redelivered SAME message re-runs
+ * once; the planner ignores a repeated ask and `appendTurnMessages`'
+ * `idPrefix` dedup still blocks duplicate output rows. The leak/drop bug this
+ * replaces was the real hazard; this claim is the narrow belt-and-suspenders.
+ */
+async function claimAutoTurn(
+  conversationId: string,
+  plannerMessageId: string,
+): Promise<boolean> {
+  const idPrefix = `autoturn-${plannerMessageId}-`;
+  let won = false;
+  await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ messages: unknown; settings: unknown }[]>`
+      SELECT messages, settings FROM shared_conversations
+      WHERE id = ${conversationId} FOR UPDATE
+    `;
+    if (locked.length === 0) return; // conversation deleted
+
+    // Already completed? A committed output row is the permanent dedup.
+    const messages = Array.isArray(locked[0].messages)
+      ? (locked[0].messages as StoredMessage[])
+      : [];
+    if (messages.some((m) => typeof m.id === "string" && m.id.startsWith(idPrefix))) {
+      return;
+    }
+
+    const settings = (locked[0].settings ?? {}) as {
+      autoTurnClaims?: AutoTurnClaims;
+    };
+    const claims: AutoTurnClaims = { ...(settings.autoTurnClaims ?? {}) };
+    const existing = claims[plannerMessageId];
+    if (existing && Date.now() - existing.claimedAt < AUTOTURN_CLAIM_STALE_MS) {
+      return; // a live run already owns this message
+    }
+
+    claims[plannerMessageId] = { claimedAt: Date.now() };
+    await tx.sharedConversation.update({
+      where: { id: conversationId },
+      data: { settings: { ...settings, autoTurnClaims: claims } as never },
+    });
+    won = true;
+  });
+  return won;
+}
+
+/**
+ * Release a claim recorded by {@link claimAutoTurn}. Best-effort and
+ * idempotent — the stale-timeout in `claimAutoTurn` is the backstop if this
+ * never runs (e.g. the process died). Serialized by the same row lock so it
+ * doesn't clobber a concurrent `settings` writer.
+ */
+async function releaseAutoTurnClaim(
+  conversationId: string,
+  plannerMessageId: string,
+): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ settings: unknown }[]>`
+      SELECT settings FROM shared_conversations
+      WHERE id = ${conversationId} FOR UPDATE
+    `;
+    if (locked.length === 0) return;
+    const settings = (locked[0].settings ?? {}) as {
+      autoTurnClaims?: AutoTurnClaims;
+    };
+    if (!settings.autoTurnClaims?.[plannerMessageId]) return;
+    const claims: AutoTurnClaims = { ...settings.autoTurnClaims };
+    delete claims[plannerMessageId];
+    await tx.sharedConversation.update({
+      where: { id: conversationId },
+      data: { settings: { ...settings, autoTurnClaims: claims } as never },
+    });
+  });
 }
 
 /**
@@ -373,9 +551,25 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     return;
   }
 
+  // Load the plan-stage flags alongside the title. We compute a compact
+  // status line (which stages are populated + workflowStatus) and inject
+  // THAT into the wake message — not the full plan text. The full
+  // brief/requirements/architecture bodies are already in the persisted
+  // planner messages in history, so re-injecting them would just
+  // duplicate context every turn. The status line is the deterministic
+  // signal the `completed` decision actually needs (pick the next stage),
+  // and the agent can still `read_feature` with the real id below if it
+  // wants to inspect a stage's quality.
   const feature = await db.feature.findUnique({
     where: { id: featureId },
-    select: { title: true, workspace: { select: { slug: true } } },
+    select: {
+      title: true,
+      brief: true,
+      requirements: true,
+      architecture: true,
+      workflowStatus: true,
+      workspace: { select: { slug: true } },
+    },
   });
   if (!feature) {
     console.log("[canvas-autoturn] feature gone; skipping", { featureId });
@@ -426,9 +620,24 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     return;
   }
 
+  // The wake message goes at the TAIL, after the full transcript, so the
+  // model message list ends on a `user` turn (mirroring the user-driven
+  // `/api/ask/quick` path). Ending on the planner's trailing *assistant*
+  // turn instead puts Anthropic into prefill/continuation mode and the
+  // agent does nothing — see `buildWakeMessage`'s doc comment.
   const modelMessages: ModelMessage[] = [
-    buildWakeMessage(feature.title, wakeReason),
     ...toModelMessages(storedMessages),
+    buildWakeMessage(
+      feature.title,
+      featureId,
+      {
+        brief: feature.brief,
+        requirements: feature.requirements,
+        architecture: feature.architecture,
+        workflowStatus: feature.workflowStatus,
+      },
+      wakeReason,
+    ),
   ];
 
   // Reuse the concepts the user-driven `/api/ask/quick` path already

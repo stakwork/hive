@@ -149,7 +149,8 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update URL when selecting a prompt (only in fullpage mode)
-  const updateUrlWithPrompt = useCallback((promptId: number | null) => {
+  // Also clears the ?version param when navigating away from a prompt
+  const updateUrlWithPrompt = useCallback((promptId: number | null, versionId?: number | null) => {
     if (!isFullpage) return;
 
     const params = new URLSearchParams(searchParams.toString());
@@ -157,6 +158,12 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       params.set("prompt", promptId.toString());
     } else {
       params.delete("prompt");
+      params.delete("version");
+    }
+    if (versionId != null) {
+      params.set("version", versionId.toString());
+    } else {
+      params.delete("version");
     }
     const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
     router.replace(newUrl, { scroll: false });
@@ -288,19 +295,35 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     fetchPrompts(page, debouncedSearchQuery);
   }, [page, debouncedSearchQuery, fetchPrompts]);
 
-  // Check for prompt ID in URL on mount (only in fullpage mode)
+  // Check for prompt ID (and optional version) in URL on mount (only in fullpage mode)
   useEffect(() => {
     if (!isFullpage) return;
 
     const promptId = searchParams.get("prompt");
+    const versionId = searchParams.get("version");
     if (promptId) {
       const id = parseInt(promptId, 10);
       if (!isNaN(id)) {
         setViewMode("detail");
-        fetchPromptDetail(id);
+        fetchPromptDetail(id).then(() => {
+          if (versionId) {
+            const vid = parseInt(versionId, 10);
+            if (!isNaN(vid)) {
+              fetchVersionList(id).then(() => {
+                setViewMode("history");
+                setSelectedVersionAId(vid);
+                fetchVersionContent(id, vid).then((content) => {
+                  if (content !== null) {
+                    setVersionAContent(content);
+                  }
+                });
+              });
+            }
+          }
+        });
       }
     }
-  }, [isFullpage, searchParams, fetchPromptDetail]);
+  }, [isFullpage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
