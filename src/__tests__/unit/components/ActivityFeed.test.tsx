@@ -167,19 +167,21 @@ describe("ActivityFeed", () => {
 
   // ── Workspace-first label ──────────────────────────────────────────────────
 
-  it("shows workspaceName when both workspaceName and orgName are present", async () => {
+  it("shows workspaceName and no org icon when both present", async () => {
     mockFetchWith([makeItem({ workspaceName: "My Workspace", orgName: "my-org" })]);
     render(<ActivityFeed userId="user-1" />);
     await waitFor(() => screen.getByText("My Workspace"));
     expect(screen.getByText("My Workspace")).toBeInTheDocument();
     expect(screen.queryByText("my-org")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("org-icon")).not.toBeInTheDocument();
   });
 
-  it("falls back to orgName when workspaceName is absent", async () => {
+  it("falls back to orgName when workspaceName is absent and shows org icon", async () => {
     mockFetchWith([makeItem({ workspaceName: "", orgName: "fallback-org" })]);
     render(<ActivityFeed userId="user-1" />);
     await waitFor(() => screen.getByText("fallback-org"));
     expect(screen.getByText("fallback-org")).toBeInTheDocument();
+    expect(screen.getByTestId("org-icon")).toBeInTheDocument();
   });
 
   // ── Action badge ──────────────────────────────────────────────────────────
