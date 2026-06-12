@@ -32,8 +32,8 @@ export function CreateRequirementModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [promptSnippet, setPromptSnippet] = useState("");
-  const [positiveCases, setPositiveCases] = useState<string[]>([]);
-  const [negativeCases, setNegativeCases] = useState<string[]>([]);
+  const [desirableCases, setDesirableCases] = useState<string[]>([]);
+  const [undesirableCases, setUndesirableCases] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -41,8 +41,8 @@ export function CreateRequirementModal({
     setName("");
     setDescription("");
     setPromptSnippet("");
-    setPositiveCases([]);
-    setNegativeCases([]);
+    setDesirableCases([]);
+    setUndesirableCases([]);
     setErrors({});
     onOpenChange(false);
   }
@@ -51,9 +51,9 @@ export function CreateRequirementModal({
     const next: Record<string, string> = {};
     if (!name.trim()) next.name = "Name is required";
     if (!promptSnippet.trim()) next.promptSnippet = "Prompt snippet is required";
-    if (positiveCases.length === 0) next.positiveCases = "At least one positive case is required";
-    if (negativeCases.length === 0) next.negativeCases = "At least one negative case is required";
-    return { next, posLines: positiveCases, negLines: negativeCases };
+    if (desirableCases.length === 0) next.desirableCases = "At least one desirable case is required";
+    if (undesirableCases.length === 0) next.undesirableCases = "At least one undesirable case is required";
+    return { next, posLines: desirableCases, negLines: undesirableCases };
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -73,8 +73,8 @@ export function CreateRequirementModal({
           name: name.trim(),
           description: description.trim() || undefined,
           prompt_snippet: promptSnippet.trim(),
-          positive_cases: posLines,
-          negative_cases: negLines,
+          desirable_cases: posLines,
+          undesirable_cases: negLines,
           order,
         }),
       });
@@ -140,27 +140,27 @@ export function CreateRequirementModal({
 
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="req-positive">
-              Positive Cases <span className="text-destructive">*</span>
+              Desirable Cases <span className="text-destructive">*</span>
             </label>
             <TagInput
               id="req-positive"
-              items={positiveCases}
-              onChange={(items) => { setPositiveCases(items); setErrors((p) => ({ ...p, positiveCases: "" })); }}
+              items={desirableCases}
+              onChange={(items) => { setDesirableCases(items); setErrors((p) => ({ ...p, desirableCases: "" })); }}
               placeholder="The agent correctly..."
-              error={errors.positiveCases}
+              error={errors.desirableCases}
             />
           </div>
 
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="req-negative">
-              Negative Cases <span className="text-destructive">*</span>
+              Undesirable Cases <span className="text-destructive">*</span>
             </label>
             <TagInput
               id="req-negative"
-              items={negativeCases}
-              onChange={(items) => { setNegativeCases(items); setErrors((p) => ({ ...p, negativeCases: "" })); }}
+              items={undesirableCases}
+              onChange={(items) => { setUndesirableCases(items); setErrors((p) => ({ ...p, undesirableCases: "" })); }}
               placeholder="The agent fails to..."
-              error={errors.negativeCases}
+              error={errors.undesirableCases}
             />
           </div>
 
