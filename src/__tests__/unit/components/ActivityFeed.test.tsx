@@ -366,6 +366,12 @@ describe("ActivityFeed", () => {
     render(<ActivityFeed userId="user-1" />);
     await waitFor(() => screen.getByText("Item 1"));
 
+    // Wait for the IntersectionObserver effect to re-register with the updated
+    // nextCursor in its closure (effect re-runs when nextCursor state changes).
+    // Without this, CI may invoke the stale callback (nextCursor=null) that
+    // short-circuits the guard and never fetches page 2.
+    await waitFor(() => expect(observeMock).toHaveBeenCalledTimes(2));
+
     // Simulate sentinel intersection to trigger next page
     mockFetchWith(page2, null);
     await act(async () => {
