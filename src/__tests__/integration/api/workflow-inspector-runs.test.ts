@@ -1,12 +1,14 @@
 /**
- * Integration tests for GET /api/workspaces/[slug]/workflows/[workflowId]/stats
+ * Integration tests for GET /api/workspaces/[slug]/workflows/[workflowId]/runs
  *
  * Covers:
  * - 401 for unauthenticated requests
- * - 404 IDOR guard (non-member authenticated user)
+ * - 404 IDOR guard (non-member authenticated user, upstream NOT called)
+ * - 404 for non-existent workspace slug
  * - 400 for non-numeric workflowId
- * - Dev mode → delegates to mock endpoint → returns available: true
- * - Upstream non-200 → returns { available: false }, no 5xx
+ * - Dev mode → delegates to mock endpoint → returns runs array
+ * - Upstream non-200 → returns { runs: [] }, no 5xx, console.error called
+ * - Network error → returns { runs: [] }, no 5xx, console.error called
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
@@ -32,7 +34,7 @@ vi.mock("@/lib/runtime", () => ({
 const mockFetch = vi.fn();
 
 // Import route handler after mocks are set up
-import { GET } from "@/app/api/workspaces/[slug]/workflows/[workflowId]/stats/route";
+import { GET } from "@/app/api/workspaces/[slug]/workflows/[workflowId]/runs/route";
 import { NextRequest } from "next/server";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -42,15 +44,15 @@ const createdWorkspaceIds: string[] = [];
 
 async function createTestFixtures() {
   const user = await createTestUser({
-    id: generateUniqueId("stats-user"),
-    email: `stats-${Date.now()}@example.com`,
+    id: generateUniqueId("runs-user"),
+    email: `runs-${Date.now()}@example.com`,
   });
   createdUserIds.push(user.id);
 
   const workspace = await createTestWorkspace({
-    id: generateUniqueId("stats-ws"),
-    name: "Stats Test Workspace",
-    slug: `stats-ws-${Date.now()}`,
+    id: generateUniqueId("runs-ws"),
+    name: "Runs Test Workspace",
+    slug: `runs-ws-${Date.now()}`,
     ownerId: user.id,
   });
   createdWorkspaceIds.push(workspace.id);
@@ -68,7 +70,7 @@ async function createTestFixtures() {
 
 function makeRequest(slug: string, workflowId: string): NextRequest {
   return createGetRequest(
-    `http://localhost/api/workspaces/${slug}/workflows/${workflowId}/stats`,
+    `http://localhost/api/workspaces/${slug}/workflows/${workflowId}/runs`,
   );
 }
 
@@ -100,7 +102,7 @@ afterEach(async () => {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
+describe("GET /api/workspaces/[slug]/workflows/[workflowId]/runs", () => {
   describe("Authentication", () => {
     test("returns 401 when session is null (unauthenticated)", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
@@ -118,12 +120,12 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
   });
 
   describe("IDOR guard", () => {
-    test("returns 404 when authenticated user is not a workspace member", async () => {
+    test("returns 404 when authenticated user is not a workspace member and does NOT call upstream", async () => {
       const { workspace } = await createTestFixtures();
 
       const nonMember = await createTestUser({
         id: generateUniqueId("non-member"),
-        email: `nonmember-${Date.now()}@example.com`,
+        email: `nonmember-runs-${Date.now()}@example.com`,
       });
       createdUserIds.push(nonMember.id);
 
@@ -177,7 +179,7 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
   });
 
   describe("Dev mode (mock delegation)", () => {
-    test("returns available: true with mock fields in dev mode", async () => {
+    test("returns runs array from mock endpoint in dev mode", async () => {
       const { user, workspace } = await createTestFixtures();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
       mockIsDevelopmentMode.mockReturnValue(true);
@@ -187,7 +189,17 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
         ok: true,
         json: async () => ({
           success: true,
-          data: { available: true, last_run_at: "2024-03-18T14:32:10.000Z", total_runs: 42, error_rate: 0.07 },
+          data: {
+            runs: [
+              {
+                id: 1001,
+                name: "Run #1001",
+                status: "finished",
+                started_at: "2024-03-18T14:00:00.000Z",
+                finished_at: "2024-03-18T14:32:10.000Z",
+              },
+            ],
+          },
         }),
       });
 
@@ -199,13 +211,13 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
-      expect(data.data.available).toBe(true);
-      expect(data.data.total_runs).toBeDefined();
+      expect(data.data.runs).toHaveLength(1);
+      expect(data.data.runs[0].id).toBe(1001);
     });
   });
 
   describe("Upstream error handling", () => {
-    test("returns available: false (not a 5xx) when upstream returns non-200", async () => {
+    test("returns empty runs (not a 5xx) when upstream returns non-200, and logs error", async () => {
       const { user, workspace } = await createTestFixtures();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
       mockIsDevelopmentMode.mockReturnValue(false);
@@ -216,7 +228,7 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
         ok: false,
         status: 503,
         statusText: "Service Unavailable",
-        text: async () => "upstream error body",
+        text: async () => "err",
       });
 
       const request = makeRequest(workspace.slug, "123");
@@ -227,10 +239,10 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
-      expect(data.data.available).toBe(false);
+      expect(data.data.runs).toEqual([]);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "[Workflow Stats] upstream error",
+        "[Workflow Runs] upstream error",
         expect.objectContaining({
           status: 503,
           workflowId: 123,
@@ -241,14 +253,14 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
       consoleErrorSpy.mockRestore();
     });
 
-    test("returns available: false when upstream throws a network error", async () => {
+    test("returns empty runs when upstream throws a network error, and logs error", async () => {
       const { user, workspace } = await createTestFixtures();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
       mockIsDevelopmentMode.mockReturnValue(false);
 
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      mockFetch.mockRejectedValue(new Error("Network timeout"));
+      mockFetch.mockRejectedValue(new Error("Timeout"));
 
       const request = makeRequest(workspace.slug, "123");
       const response = await GET(request, {
@@ -258,12 +270,12 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.success).toBe(true);
-      expect(data.data.available).toBe(false);
+      expect(data.data.runs).toEqual([]);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "[Workflow Stats] upstream fetch failed",
+        "[Workflow Runs] upstream fetch failed",
         expect.objectContaining({
-          error: "Network timeout",
+          error: "Timeout",
           workflowId: 123,
         }),
       );

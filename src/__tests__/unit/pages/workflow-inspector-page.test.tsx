@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen, act, waitFor, fireEvent } from "@testing-library/react";
 import WorkflowInspectorPage from "@/app/w/[slug]/workflows/[workflowId]/page";
 import type { WorkflowVersion } from "@/hooks/useWorkflowVersions";
 
@@ -34,8 +34,38 @@ vi.mock("@/components/workflow/WorkflowVersionSelector", () => ({
   ),
 }));
 vi.mock("@/components/workflow/inspector/WorkflowVersionList", () => ({
-  WorkflowVersionList: ({ selectedVersionId }: { selectedVersionId: string | null }) => (
-    <div data-testid="version-list" data-selected={selectedVersionId ?? ""} />
+  WorkflowVersionList: ({
+    selectedVersionId,
+    selectable,
+    selectedIds,
+    onSelectionChange,
+    onCustomSelectionConfirm,
+  }: {
+    selectedVersionId: string | null;
+    selectable?: boolean;
+    selectedIds?: string[];
+    onSelectionChange?: (ids: string[]) => void;
+    onCustomSelectionConfirm?: () => void;
+  }) => (
+    <div
+      data-testid="version-list"
+      data-selected={selectedVersionId ?? ""}
+      data-selectable={selectable ? "true" : "false"}
+    />
+  ),
+}));
+vi.mock("@/components/workflow/inspector/SummariseChangesButton", () => ({
+  SummariseChangesButton: ({
+    onCustomModeToggle,
+  }: {
+    onCustomModeToggle: (enabled: boolean) => void;
+  }) => (
+    <button
+      data-testid="summarise-btn"
+      onClick={() => onCustomModeToggle(true)}
+    >
+      Summarise
+    </button>
   ),
 }));
 vi.mock("@/components/workflow/inspector/WorkflowStatsPanel", () => ({
@@ -158,6 +188,35 @@ describe("WorkflowInspectorPage — auto-select version on load", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("version-selector").getAttribute("data-selected")).toBe("v3");
+    });
+  });
+});
+
+describe("WorkflowInspectorPage — custom picker mode (SummariseChangesButton)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVersions = [];
+    mockIsLoading = true;
+  });
+
+  it("version list is not selectable by default", async () => {
+    await renderWithVersions([makeVersion("v1"), makeVersion("v2")]);
+    await waitFor(() => {
+      expect(screen.getByTestId("version-list").getAttribute("data-selectable")).toBe("false");
+    });
+  });
+
+  it("activates selectable mode when SummariseChangesButton calls onCustomModeToggle(true)", async () => {
+    await renderWithVersions([makeVersion("v1"), makeVersion("v2")]);
+
+    // SummariseChangesButton mock fires onCustomModeToggle(true) on click
+    const summariseBtn = screen.getByTestId("summarise-btn");
+    await act(async () => {
+      fireEvent.click(summariseBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("version-list").getAttribute("data-selectable")).toBe("true");
     });
   });
 });

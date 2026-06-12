@@ -30,7 +30,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // IDOR guard — same pattern as versions endpoint
+    // IDOR guard — same pattern as stats endpoint
     const workspace = await db.workspace.findFirst({
       where: { slug, deleted: false },
       include: {
@@ -66,23 +66,24 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Dev mode: delegate to mock endpoint
     if (isDevelopmentMode()) {
       const origin = request.nextUrl.origin;
-      const mockRes = await fetch(
-        `${origin}/api/mock/stakwork/workflows/${workflowIdNum}/stats`,
-      );
-      if (mockRes.ok) {
-        const mockData = await mockRes.json();
-        return NextResponse.json(mockData);
+      try {
+        const mockRes = await fetch(
+          `${origin}/api/mock/stakwork/workflows/${workflowIdNum}/runs`,
+        );
+        if (mockRes.ok) {
+          const mockData = await mockRes.json();
+          return NextResponse.json(mockData);
+        }
+      } catch {
+        // fall through to empty response
       }
-      return NextResponse.json(
-        { success: true, data: { available: false } },
-        { status: 200 },
-      );
+      return NextResponse.json({ success: true, data: { runs: [] } }, { status: 200 });
     }
 
-    // Prod: proxy to Stakwork stats API
+    // Prod: proxy to Stakwork runs API
     try {
-      const stakworkRes = await fetch(
-        `${config.STAKWORK_BASE_URL}/workflows/${workflowIdNum}/stats`,
+      const runsRes = await fetch(
+        `${config.STAKWORK_BASE_URL}/workflows/${workflowIdNum}/runs`,
         {
           headers: {
             Authorization: `Token token=${config.STAKWORK_API_KEY}`,
@@ -90,39 +91,41 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         },
       );
 
-      if (!stakworkRes.ok) {
-        const bodyText = await stakworkRes.text().catch(() => "(unreadable)");
-        console.error("[Workflow Stats] upstream error", {
-          status: stakworkRes.status,
-          statusText: stakworkRes.statusText,
+      if (!runsRes.ok) {
+        const bodyText = await runsRes.text().catch(() => "(unreadable)");
+        console.error("[Workflow Runs] upstream error", {
+          status: runsRes.status,
+          statusText: runsRes.statusText,
           workflowId: workflowIdNum,
           body: bodyText,
           env: process.env.NODE_ENV,
         });
-        return NextResponse.json({ success: true, data: { available: false } }, { status: 200 });
+        return NextResponse.json({ success: true, data: { runs: [] } }, { status: 200 });
       }
 
-      const statsData = await stakworkRes.json();
-      return NextResponse.json({
-        success: true,
-        data: {
-          available: true,
-          last_run_at: statsData.last_run_at ?? null,
-          total_runs: statsData.total_runs ?? 0,
-          active_runs: statsData.active_runs ?? 0,
-          error_rate: statsData.error_rate ?? 0,
-        },
-      });
+      const runsData = await runsRes.json();
+      const runs = (runsData.runs ?? runsData ?? []).map((run: Record<string, unknown>) => ({
+        id: run.id,
+        name: run.name,
+        status: run.status,
+        started_at: run.started_at ?? null,
+        finished_at: run.finished_at ?? null,
+      }));
+
+      return NextResponse.json({ success: true, data: { runs } });
     } catch (err) {
-      console.error("[Workflow Stats] upstream fetch failed", {
+      console.error("[Workflow Runs] upstream fetch failed", {
         error: err instanceof Error ? err.message : String(err),
         workflowId: workflowIdNum,
         env: process.env.NODE_ENV,
       });
-      return NextResponse.json({ success: true, data: { available: false } }, { status: 200 });
+      return NextResponse.json({ success: true, data: { runs: [] } }, { status: 200 });
     }
   } catch (error) {
-    console.error("[Workflow Stats] GET error:", error);
-    return NextResponse.json({ success: false, error: "Failed to fetch workflow stats" }, { status: 500 });
+    console.error("[Workflow Runs] GET error:", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to fetch workflow runs" },
+      { status: 500 },
+    );
   }
 }
