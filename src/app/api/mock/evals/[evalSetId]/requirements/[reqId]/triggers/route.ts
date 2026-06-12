@@ -19,6 +19,18 @@ const MOCK_TRIGGERS: Record<string, object[]> = {
         negative_cases: ["Review is empty", "Misses critical bugs"],
         run_count: 3,
       },
+      outputs: [
+        {
+          ref_id: "output-mock-1",
+          node_type: "EvalTriggerOutput",
+          properties: {
+            result: "pass",
+            score: 0.87,
+            attempt_number: 1,
+            judge_notes: "Response was accurate and complete.",
+          },
+        },
+      ],
     },
     {
       ref_id: "trigger-1-2",
