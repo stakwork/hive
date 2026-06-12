@@ -558,8 +558,8 @@ describe("Evals API — Integration Tests", () => {
       name: "Req 1",
       description: "desc",
       prompt_snippet: "When the agent is asked to...",
-      positive_cases: ["The agent responds correctly"],
-      negative_cases: ["The agent ignores the instruction"],
+      desirable_cases: ["The agent responds correctly"],
+      undesirable_cases: ["The agent ignores the instruction"],
     };
 
     describe("Success", () => {
@@ -595,8 +595,8 @@ describe("Evals API — Integration Tests", () => {
               id: expect.any(String),
               name: "Req 1",
               prompt_snippet: validBody.prompt_snippet,
-              positive_cases: validBody.positive_cases,
-              negative_cases: validBody.negative_cases,
+              desirable_cases: validBody.desirable_cases,
+              undesirable_cases: validBody.undesirable_cases,
             }),
           }),
         );
@@ -684,7 +684,7 @@ describe("Evals API — Integration Tests", () => {
         expect(nodesService.addNode).not.toHaveBeenCalled();
       });
 
-      test("rejects empty positive_cases array", async () => {
+      test("rejects empty desirable_cases array", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
@@ -693,18 +693,18 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
           owner,
-          { ...validBody, positive_cases: [] },
+          { ...validBody, desirable_cases: [] },
         );
 
         const response = await createRequirement(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }),
         });
 
-        await expectError(response, "positive_cases must be a non-empty array", 400);
+        await expectError(response, "desirable_cases must be a non-empty array", 400);
         expect(nodesService.addNode).not.toHaveBeenCalled();
       });
 
-      test("rejects empty negative_cases array", async () => {
+      test("rejects empty undesirable_cases array", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
@@ -713,14 +713,14 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
           owner,
-          { ...validBody, negative_cases: [] },
+          { ...validBody, undesirable_cases: [] },
         );
 
         const response = await createRequirement(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }),
         });
 
-        await expectError(response, "negative_cases must be a non-empty array", 400);
+        await expectError(response, "undesirable_cases must be a non-empty array", 400);
         expect(nodesService.addNode).not.toHaveBeenCalled();
       });
     });
@@ -1301,8 +1301,8 @@ describe("Evals API — Integration Tests", () => {
       name: "Check output",
       description: "Verifies correct output",
       prompt_snippet: "Summarize this text",
-      positive_cases: ["Good summary"],
-      negative_cases: ["Bad summary"],
+      desirable_cases: ["Good summary"],
+      undesirable_cases: ["Bad summary"],
     };
 
     describe("Success", () => {
@@ -1380,7 +1380,7 @@ describe("Evals API — Integration Tests", () => {
         await expectError(response, "prompt_snippet is required", 400);
       });
 
-      test("returns 400 when positive_cases is empty", async () => {
+      test("returns 400 when desirable_cases is empty", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
@@ -1389,17 +1389,17 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPutRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
           owner,
-          { ...validReqBody, positive_cases: [] },
+          { ...validReqBody, desirable_cases: [] },
         );
 
         const response = await updateRequirement(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
         });
 
-        await expectError(response, "positive_cases must be a non-empty array", 400);
+        await expectError(response, "desirable_cases must be a non-empty array", 400);
       });
 
-      test("returns 400 when negative_cases is empty", async () => {
+      test("returns 400 when undesirable_cases is empty", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
@@ -1408,14 +1408,14 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPutRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
           owner,
-          { ...validReqBody, negative_cases: [] },
+          { ...validReqBody, undesirable_cases: [] },
         );
 
         const response = await updateRequirement(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
         });
 
-        await expectError(response, "negative_cases must be a non-empty array", 400);
+        await expectError(response, "undesirable_cases must be a non-empty array", 400);
       });
     });
 

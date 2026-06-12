@@ -8,8 +8,8 @@ type RequirementNode = JarvisNode & {
     name: string;
     description: string;
     prompt_snippet: string;
-    positive_cases: string[];
-    negative_cases: string[];
+    desirable_cases: string[];
+    undesirable_cases: string[];
     order: number;
   };
 };
@@ -23,8 +23,8 @@ const SEED_REQUIREMENTS: Record<string, RequirementNode[]> = {
         name: "Basic greeting response",
         description: "Agent should greet the user appropriately",
         prompt_snippet: "Say hello to the user",
-        positive_cases: ["Response includes a greeting", "Response is polite"],
-        negative_cases: ["Response is rude", "Response ignores the user"],
+        desirable_cases: ["Response includes a greeting", "Response is polite"],
+        undesirable_cases: ["Response is rude", "Response ignores the user"],
         order: 0,
       },
     },
@@ -35,8 +35,8 @@ const SEED_REQUIREMENTS: Record<string, RequirementNode[]> = {
         name: "Code generation accuracy",
         description: "Agent should generate syntactically correct code",
         prompt_snippet: "Write a function that adds two numbers",
-        positive_cases: ["Output is valid JavaScript", "Function accepts two arguments", "Returns the sum"],
-        negative_cases: ["Syntax errors present", "Wrong return value"],
+        desirable_cases: ["Output is valid JavaScript", "Function accepts two arguments", "Returns the sum"],
+        undesirable_cases: ["Syntax errors present", "Wrong return value"],
         order: 1,
       },
     },
@@ -47,8 +47,8 @@ const SEED_REQUIREMENTS: Record<string, RequirementNode[]> = {
         name: "Error handling explanation",
         description: "Agent should explain errors clearly",
         prompt_snippet: "Explain what a null pointer exception is",
-        positive_cases: ["Explains the concept clearly", "Provides an example"],
-        negative_cases: ["Response is too technical", "No explanation given"],
+        desirable_cases: ["Explains the concept clearly", "Provides an example"],
+        undesirable_cases: ["Response is too technical", "No explanation given"],
         order: 2,
       },
     },
@@ -61,8 +61,8 @@ const SEED_REQUIREMENTS: Record<string, RequirementNode[]> = {
         name: "Security vulnerability detection",
         description: "Agent should identify SQL injection risks",
         prompt_snippet: "Review this query for security issues",
-        positive_cases: ["Identifies injection risk", "Suggests parameterized queries"],
-        negative_cases: ["Misses the vulnerability", "No remediation suggested"],
+        desirable_cases: ["Identifies injection risk", "Suggests parameterized queries"],
+        undesirable_cases: ["Misses the vulnerability", "No remediation suggested"],
         order: 0,
       },
     },
@@ -73,8 +73,8 @@ const SEED_REQUIREMENTS: Record<string, RequirementNode[]> = {
         name: "Refactor suggestion quality",
         description: "Agent should suggest meaningful refactors",
         prompt_snippet: "How can I improve this function?",
-        positive_cases: ["Suggestions improve readability", "Performance considered"],
-        negative_cases: ["Suggestions break functionality", "No explanation provided"],
+        desirable_cases: ["Suggestions improve readability", "Performance considered"],
+        undesirable_cases: ["Suggestions break functionality", "No explanation provided"],
         order: 1,
       },
     },
@@ -92,7 +92,7 @@ export async function GET(
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
-  const { name, description, prompt_snippet, positive_cases, negative_cases } =
+  const { name, description, prompt_snippet, desirable_cases, undesirable_cases } =
     body ?? {};
 
   const newNode: JarvisNode = {
@@ -102,8 +102,8 @@ export async function POST(request: NextRequest) {
       name,
       description,
       prompt_snippet,
-      positive_cases: positive_cases ?? [],
-      negative_cases: negative_cases ?? [],
+      desirable_cases: desirable_cases ?? [],
+      undesirable_cases: undesirable_cases ?? [],
     },
   };
 

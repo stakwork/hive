@@ -28,8 +28,8 @@ interface EvalTrigger {
     environment?: string;
     run_count?: number;
     change_type?: string;
-    positive_cases?: string[];
-    negative_cases?: string[];
+    desirable_cases?: string[];
+    undesirable_cases?: string[];
     [key: string]: unknown;
   };
   outputs?: EvalTriggerOutput[];
