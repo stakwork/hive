@@ -310,6 +310,53 @@ describe("EvalTriggerList", () => {
     });
   });
 
+  it("renders score from embedded outputs loaded via fetchTriggers without crashing", async () => {
+    const triggersWithRawOutputs = [
+      {
+        ...MOCK_TRIGGERS[0],
+        outputs: [
+          {
+            ref_id: "out-embedded",
+            node_type: "EvalTriggerOutput",
+            properties: { result: "pass", score: 0.75, attempt_number: 1 },
+          },
+        ],
+      },
+    ];
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: triggersWithRawOutputs } }),
+    });
+    render(<EvalTriggerList {...DEFAULT_PROPS} />);
+    await userEvent.click(screen.getByTestId("trigger-count-chip"));
+    await waitFor(() => {
+      expect(screen.getAllByTestId("trigger-output-row")).toHaveLength(1);
+      expect(screen.getByText("0.75")).toBeTruthy();
+    });
+  });
+
+  it("renders 0.00 score when score is missing from embedded output properties", async () => {
+    const triggersWithUndefinedScore = [
+      {
+        ...MOCK_TRIGGERS[0],
+        outputs: [
+          {
+            ref_id: "out-no-score",
+            node_type: "EvalTriggerOutput",
+            properties: { result: "fail", attempt_number: 1 },
+          },
+        ],
+      },
+    ];
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: triggersWithUndefinedScore } }),
+    });
+    render(<EvalTriggerList {...DEFAULT_PROPS} />);
+    await userEvent.click(screen.getByTestId("trigger-count-chip"));
+    await waitFor(() => {
+      expect(screen.getByText("0.00")).toBeTruthy();
+    });
+  });
+
   it("uses attempt_number field not attempt", async () => {
     const outputWithAttemptNumber = [
       {
