@@ -25,6 +25,7 @@ vi.mock("@/lib/pusher", () => ({
     trigger: vi.fn(),
   },
   getWorkspaceChannelName: vi.fn((slug: string) => `workspace-${slug}`),
+  getFeatureChannelName: vi.fn((id: string) => `feature-${id}`),
   getWhiteboardChannelName: vi.fn((id: string) => `whiteboard-${id}`),
   PUSHER_EVENTS: {
     STAKWORK_RUN_UPDATE: "stakwork-run-update",
