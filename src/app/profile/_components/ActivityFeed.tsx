@@ -225,7 +225,14 @@ export function ActivityFeed({ userId }: ActivityFeedProps) {
             >
               {KIND_ICONS[item.kind]}
 
-              <span className="flex-1 truncate text-sm font-medium">{item.title}</span>
+              <span
+                className={cn(
+                  "flex-1 truncate text-sm font-medium",
+                  item.completed && item.kind !== "conversation" && "line-through text-muted-foreground"
+                )}
+              >
+                {item.title}
+              </span>
 
               {item.action === "created" && (
                 <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
