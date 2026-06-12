@@ -30,8 +30,8 @@ import { ChatRole, Prisma } from "@prisma/client";
 
 export interface ActivityItem {
   id: string;
-  kind: "conversation" | "plan" | "task";
-  category: "chat" | "plan" | "task";
+  kind: "conversation" | "plan" | "task" | "milestone";
+  category: "chat" | "plan" | "task" | "milestone";
   action: "created" | "active";
   title: string;
   link: string;
@@ -96,7 +96,10 @@ export async function GET(request: NextRequest) {
 
   const categoryParam = params.get("category");
   const category =
-    categoryParam === "task" || categoryParam === "plan" || categoryParam === "chat"
+    categoryParam === "task" ||
+    categoryParam === "plan" ||
+    categoryParam === "chat" ||
+    categoryParam === "milestone"
       ? categoryParam
       : null;
 
@@ -107,6 +110,7 @@ export async function GET(request: NextRequest) {
   const runChat = !category || category === "chat";
   const runPlan = !category || category === "plan";
   const runTask = !category || category === "task";
+  const runMilestone = !category || category === "milestone";
 
   // ── Time-window filter for Prisma ORM queries ─────────────────────────────
   const timeFilter = cursor
@@ -120,6 +124,7 @@ export async function GET(request: NextRequest) {
     taskChatResult,
     createdTasksResult,
     createdFeaturesResult,
+    milestonesResult,
   ] = await Promise.allSettled([
     // 1. SharedConversation rows (chat category)
     runChat
@@ -253,6 +258,32 @@ export async function GET(request: NextRequest) {
           take: QUERY_LIMIT,
         })
       : Promise.resolve([]),
+
+    // 6. Milestones assigned to or created by the user
+    runMilestone
+      ? db.milestone.findMany({
+          where: {
+            OR: [{ assigneeId: userId }, { createdById: userId }],
+            updatedAt: timeFilter,
+            ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
+          },
+          select: {
+            id: true,
+            name: true,
+            assigneeId: true,
+            createdById: true,
+            updatedAt: true,
+            initiative: {
+              select: {
+                id: true,
+                org: { select: { githubLogin: true } },
+              },
+            },
+          },
+          orderBy: { updatedAt: "desc" },
+          take: QUERY_LIMIT,
+        })
+      : Promise.resolve([]),
   ]);
 
   if (conversationsResult.status === "rejected") {
@@ -280,6 +311,11 @@ export async function GET(request: NextRequest) {
       error: createdFeaturesResult.reason,
     });
   }
+  if (milestonesResult.status === "rejected") {
+    logger.error("profile/activity: milestone query failed", "profile/activity", {
+      error: milestonesResult.reason,
+    });
+  }
 
   const conversations =
     conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
@@ -288,6 +324,7 @@ export async function GET(request: NextRequest) {
   const createdTasks = createdTasksResult.status === "fulfilled" ? createdTasksResult.value : [];
   const createdFeatures =
     createdFeaturesResult.status === "fulfilled" ? createdFeaturesResult.value : [];
+  const milestones = milestonesResult.status === "fulfilled" ? milestonesResult.value : [];
 
   // ── Batch-resolve workspace + org info for chat-sourced rows ───────────────
   // (created-by queries already embed workspace via Prisma include)
@@ -420,7 +457,31 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // 5. Conversations (always chat category / action: "active")
+  // 5. Milestones assigned to or created by user
+  for (const m of milestones) {
+    const githubLogin = m.initiative?.org?.githubLogin;
+    const initiativeId = m.initiative?.id;
+    const link =
+      githubLogin && initiativeId
+        ? `/org/${githubLogin}?canvas=initiative:${initiativeId}`
+        : githubLogin
+          ? `/org/${githubLogin}`
+          : "#";
+    upsert({
+      id: m.id,
+      kind: "milestone",
+      category: "milestone",
+      action: m.createdById === userId ? "created" : "active",
+      title: m.name,
+      link,
+      workspaceName: "",
+      orgName: githubLogin,
+      timestamp: m.updatedAt.toISOString(),
+      completed: false,
+    });
+  }
+
+  // 6. Conversations (always chat category / action: "active")
   for (const c of conversations) {
     const timestamp = c.lastMessageAt?.toISOString();
     if (!timestamp) continue;
