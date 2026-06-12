@@ -30,8 +30,8 @@ interface Step1Fields {
   environment: string;
   change_type: string;
   run_count: number;
-  positive_cases: string[];
-  negative_cases: string[];
+  desirable_cases: string[];
+  undesirable_cases: string[];
 }
 
 interface AgentRole extends JarvisNode {
@@ -57,8 +57,8 @@ const INITIAL_STEP1: Step1Fields = {
   environment: "",
   change_type: "",
   run_count: 1,
-  positive_cases: [],
-  negative_cases: [],
+  desirable_cases: [],
+  undesirable_cases: [],
 };
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -173,8 +173,8 @@ export function CaptureEvalTriggerModal({
         end_point: fields.end_point,
         environment: fields.environment,
         run_count: fields.run_count,
-        positive_cases: fields.positive_cases,
-        negative_cases: fields.negative_cases,
+        desirable_cases: fields.desirable_cases,
+        undesirable_cases: fields.undesirable_cases,
         session_ref_id: selectedSessionId,
       };
       if (fields.change_type.trim()) {
@@ -273,18 +273,18 @@ export function CaptureEvalTriggerModal({
             <div className="space-y-1.5">
               <Label>Positive Cases</Label>
               <TagInput
-                id="positive_cases"
-                items={fields.positive_cases}
-                onChange={(items) => handleField("positive_cases", items)}
+                id="desirable_cases"
+                items={fields.desirable_cases}
+                onChange={(items) => handleField("desirable_cases", items)}
                 placeholder="Type and press Enter"
               />
             </div>
             <div className="space-y-1.5">
               <Label>Negative Cases</Label>
               <TagInput
-                id="negative_cases"
-                items={fields.negative_cases}
-                onChange={(items) => handleField("negative_cases", items)}
+                id="undesirable_cases"
+                items={fields.undesirable_cases}
+                onChange={(items) => handleField("undesirable_cases", items)}
                 placeholder="Type and press Enter"
               />
             </div>
