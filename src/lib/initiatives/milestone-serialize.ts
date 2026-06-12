@@ -60,6 +60,7 @@ export interface MilestoneWithFeatures {
   dueDate: Date | null;
   completedAt: Date | null;
   assigneeId: string | null;
+  createdById: string | null;
   assignee: { id: string; name: string | null } | null;
   features: MilestoneFeatureRef[];
   createdAt: Date;
@@ -77,6 +78,7 @@ export interface SerializedMilestone {
   dueDate: Date | null;
   completedAt: Date | null;
   assigneeId: string | null;
+  createdById: string | null;
   assignee: { id: string; name: string | null } | null;
   features: MilestoneFeatureRef[];
   /** @deprecated Use `features`. Kept for one release as a 1:1→1:N migration shim. */
