@@ -78,6 +78,7 @@ function makeItem(overrides: Partial<ActivityItem> = {}): ActivityItem {
     link: "/w/my-workspace",
     workspaceName: "My Workspace",
     timestamp: new Date().toISOString(),
+    completed: false,
     ...overrides,
   };
 }
@@ -461,5 +462,43 @@ describe("ActivityFeed", () => {
     render(<ActivityFeed userId="user-1" />);
     await waitFor(() => screen.getByText("Test item"));
     // No error thrown — channel=null is handled gracefully
+  });
+
+  // ── Strikethrough for completed items ─────────────────────────────────────
+
+  it("completed task renders title with line-through class", async () => {
+    mockFetchWith([
+      makeItem({ id: "t1", kind: "task", category: "task", title: "Done task", completed: true }),
+    ]);
+    render(<ActivityFeed userId="user-1" />);
+    const title = await screen.findByText("Done task");
+    expect(title.className).toContain("line-through");
+  });
+
+  it("completed plan renders title with line-through class", async () => {
+    mockFetchWith([
+      makeItem({ id: "p1", kind: "plan", category: "plan", title: "Done plan", completed: true }),
+    ]);
+    render(<ActivityFeed userId="user-1" />);
+    const title = await screen.findByText("Done plan");
+    expect(title.className).toContain("line-through");
+  });
+
+  it("completed conversation does NOT render title with line-through", async () => {
+    mockFetchWith([
+      makeItem({ id: "c1", kind: "conversation", category: "chat", title: "Done chat", completed: true }),
+    ]);
+    render(<ActivityFeed userId="user-1" />);
+    const title = await screen.findByText("Done chat");
+    expect(title.className).not.toContain("line-through");
+  });
+
+  it("non-completed task does NOT render title with line-through", async () => {
+    mockFetchWith([
+      makeItem({ id: "t2", kind: "task", category: "task", title: "Active task", completed: false }),
+    ]);
+    render(<ActivityFeed userId="user-1" />);
+    const title = await screen.findByText("Active task");
+    expect(title.className).not.toContain("line-through");
   });
 });

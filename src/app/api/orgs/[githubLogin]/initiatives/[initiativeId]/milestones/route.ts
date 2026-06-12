@@ -88,6 +88,7 @@ export async function POST(
         initiativeId,
         name: name.trim(),
         sequence: seq,
+        createdById: userId,
         ...(description !== undefined && { description }),
         ...(status !== undefined && { status }),
         ...(assigneeId !== undefined && { assigneeId }),

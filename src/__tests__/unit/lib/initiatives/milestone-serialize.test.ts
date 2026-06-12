@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 import { serializeMilestone } from "@/lib/initiatives/milestone-serialize";
 import type { MilestoneStatus } from "@prisma/client";
 
-function makeRow(features: Array<{ id: string; title: string; workspaceId: string; workspaceName: string }>) {
+function makeRow(features: Array<{ id: string; title: string; workspaceId: string; workspaceName: string }>, overrides: Record<string, unknown> = {}) {
   return {
     id: "m-1",
     initiativeId: "ini-1",
@@ -22,6 +22,7 @@ function makeRow(features: Array<{ id: string; title: string; workspaceId: strin
     dueDate: null,
     completedAt: null,
     assigneeId: null,
+    createdById: null,
     assignee: null,
     features: features.map((f) => ({
       id: f.id,
@@ -30,6 +31,7 @@ function makeRow(features: Array<{ id: string; title: string; workspaceId: strin
     })),
     createdAt: new Date(0),
     updatedAt: new Date(0),
+    ...overrides,
   };
 }
 
@@ -67,5 +69,18 @@ describe("serializeMilestone", () => {
     expect(out.description).toBe("A description");
     expect(out.status).toBe("IN_PROGRESS");
     expect(out.sequence).toBe(7);
+  });
+
+  it("includes createdById as null when not set (legacy row)", () => {
+    const row = makeRow([]);
+    const out = serializeMilestone(row);
+    expect(out).toHaveProperty("createdById");
+    expect(out.createdById).toBeNull();
+  });
+
+  it("includes createdById when populated", () => {
+    const row = makeRow([], { createdById: "user-abc" });
+    const out = serializeMilestone(row);
+    expect(out.createdById).toBe("user-abc");
   });
 });
