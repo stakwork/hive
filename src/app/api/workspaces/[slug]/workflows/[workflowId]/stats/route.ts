@@ -91,6 +91,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
 
       if (!stakworkRes.ok) {
+        const bodyText = await stakworkRes.text().catch(() => "(unreadable)");
+        console.error("[Workflow Stats] upstream error", {
+          status: stakworkRes.status,
+          statusText: stakworkRes.statusText,
+          workflowId: workflowIdNum,
+          body: bodyText,
+          env: process.env.NODE_ENV,
+        });
         return NextResponse.json({ success: true, data: { available: false } }, { status: 200 });
       }
 
@@ -105,8 +113,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           error_rate: statsData.error_rate ?? 0,
         },
       });
-    } catch {
-      // Network error or parse failure — return graceful unavailable state
+    } catch (err) {
+      console.error("[Workflow Stats] upstream fetch failed", {
+        error: err instanceof Error ? err.message : String(err),
+        workflowId: workflowIdNum,
+        env: process.env.NODE_ENV,
+      });
       return NextResponse.json({ success: true, data: { available: false } }, { status: 200 });
     }
   } catch (error) {
