@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Search, History, Trash2, Zap, Upload, ExternalLink } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Minus, Pencil, Save, X, Search, History, Trash2, Zap, Upload, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { estimateTokens, formatTokenCount } from "@/lib/utils/token-estimate";
@@ -93,7 +93,6 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
   const [page, setPage] = useState(() => parseInt(searchParams?.get("page") ?? "1", 10) || 1);
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(10);
-  const [copiedNotation, setCopiedNotation] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [isEditing, setIsEditing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -338,7 +337,6 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
     setSelectedScript(null);
     setViewMode("list");
     setIsEditing(false);
-    setCopiedNotation(false);
     setFormName("");
     setFormValue("");
     setFormDescription("");
@@ -464,14 +462,6 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
   };
 
   const totalPages = Math.ceil(total / pageSize);
-
-  const handleCopyNotation = async () => {
-    if (selectedScript?.usage_notation) {
-      await navigator.clipboard.writeText(selectedScript.usage_notation);
-      setCopiedNotation(true);
-      setTimeout(() => setCopiedNotation(false), 2000);
-    }
-  };
 
   const handleHistoryClick = async () => {
     if (!selectedScript) return;
@@ -823,29 +813,6 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
                   </Button>
                 </div>
               )}
-
-              <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Usage Notation
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <code className="text-sm bg-muted px-2 py-1 rounded font-mono flex-1 overflow-x-auto">
-                    {selectedScript.usage_notation}
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCopyNotation}
-                    className="flex-shrink-0"
-                  >
-                    {copiedNotation ? (
-                      <Check className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
 
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -1281,11 +1248,6 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
                     </span>
                   )}
                 </div>
-                {script.usage_notation && (
-                  <div className="text-xs text-muted-foreground font-mono truncate mt-1">
-                    {script.usage_notation}
-                  </div>
-                )}
                 {script.description && (
                   <div className="text-xs text-muted-foreground truncate mt-1">
                     {script.description}
