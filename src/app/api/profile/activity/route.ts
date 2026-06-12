@@ -38,6 +38,7 @@ export interface ActivityItem {
   workspaceName: string;
   orgName?: string;
   timestamp: string; // ISO
+  completed: boolean;
 }
 
 const DEFAULT_DAYS = 30;
@@ -64,6 +65,7 @@ interface PlanRow {
   workspaceId: string;
   deleted: boolean;
   lastMessageAt: Date;
+  status: string;
 }
 
 interface TaskRow {
@@ -71,6 +73,7 @@ interface TaskRow {
   title: string;
   workspaceId: string;
   lastMessageAt: Date;
+  status: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -149,6 +152,7 @@ export async function GET(request: NextRequest) {
               f.title              AS "title",
               f.workspace_id       AS "workspaceId",
               f.deleted            AS "deleted",
+              f.status             AS "status",
               MAX(cm.timestamp)    AS "lastMessageAt"
             FROM chat_messages cm
             JOIN features f ON f.id = cm.feature_id
@@ -159,7 +163,7 @@ export async function GET(request: NextRequest) {
               ${cursor ? Prisma.sql`AND cm.timestamp < ${cursor}` : Prisma.empty}
               AND f.deleted = false
               ${q ? Prisma.sql`AND f.title ILIKE ${"%" + q + "%"}` : Prisma.empty}
-            GROUP BY cm.feature_id, f.title, f.workspace_id, f.deleted
+            GROUP BY cm.feature_id, f.title, f.workspace_id, f.deleted, f.status
             ORDER BY "lastMessageAt" DESC
             LIMIT ${QUERY_LIMIT}
           `,
@@ -174,6 +178,7 @@ export async function GET(request: NextRequest) {
               cm.task_id           AS "taskId",
               t.title              AS "title",
               t.workspace_id       AS "workspaceId",
+              t.status             AS "status",
               MAX(cm.timestamp)    AS "lastMessageAt"
             FROM chat_messages cm
             JOIN tasks t ON t.id = cm.task_id
@@ -185,7 +190,7 @@ export async function GET(request: NextRequest) {
               AND t.deleted = false
               AND t.archived = false
               ${q ? Prisma.sql`AND t.title ILIKE ${"%" + q + "%"}` : Prisma.empty}
-            GROUP BY cm.task_id, t.title, t.workspace_id
+            GROUP BY cm.task_id, t.title, t.workspace_id, t.status
             ORDER BY "lastMessageAt" DESC
             LIMIT ${QUERY_LIMIT}
           `,
@@ -205,6 +210,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             title: true,
+            status: true,
             workspaceId: true,
             createdAt: true,
             workspace: {
@@ -232,6 +238,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             title: true,
+            status: true,
             workspaceId: true,
             createdAt: true,
             workspace: {
@@ -341,7 +348,8 @@ export async function GET(request: NextRequest) {
       incoming.timestamp > existing.timestamp ? incoming.timestamp : existing.timestamp;
     const action: "active" | "created" =
       incoming.action === "active" || existing.action === "active" ? "active" : "created";
-    itemMap.set(incoming.id, { ...existing, timestamp: latestTs, action });
+    const completed = incoming.completed || existing.completed;
+    itemMap.set(incoming.id, { ...existing, timestamp: latestTs, action, completed });
   }
 
   // 1. Created tasks (may be overridden/merged by chat activity below)
@@ -357,6 +365,7 @@ export async function GET(request: NextRequest) {
       workspaceName: ws?.name ?? "",
       orgName: ws?.sourceControlOrg?.githubLogin,
       timestamp: t.createdAt.toISOString(),
+      completed: t.status === "DONE" || t.status === "CANCELLED",
     });
   }
 
@@ -373,6 +382,7 @@ export async function GET(request: NextRequest) {
       workspaceName: ws?.name ?? "",
       orgName: ws?.sourceControlOrg?.githubLogin,
       timestamp: f.createdAt.toISOString(),
+      completed: f.status === "COMPLETED" || f.status === "CANCELLED",
     });
   }
 
@@ -389,6 +399,7 @@ export async function GET(request: NextRequest) {
       workspaceName: ws?.name ?? "",
       orgName: ws?.githubLogin,
       timestamp: new Date(t.lastMessageAt).toISOString(),
+      completed: t.status === "DONE" || t.status === "CANCELLED",
     });
   }
 
@@ -405,6 +416,7 @@ export async function GET(request: NextRequest) {
       workspaceName: ws?.name ?? "",
       orgName: ws?.githubLogin,
       timestamp: new Date(p.lastMessageAt).toISOString(),
+      completed: p.status === "COMPLETED" || p.status === "CANCELLED",
     });
   }
 
@@ -446,6 +458,7 @@ export async function GET(request: NextRequest) {
       workspaceName,
       orgName,
       timestamp,
+      completed: false,
     });
   }
 
