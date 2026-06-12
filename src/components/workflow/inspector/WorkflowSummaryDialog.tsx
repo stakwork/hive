@@ -31,7 +31,7 @@ export function WorkflowSummaryDialog({
 }: WorkflowSummaryDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-[75vw]">
         <DialogHeader>
           <DialogTitle>Workflow Changes Summary</DialogTitle>
           <DialogDescription>
@@ -39,7 +39,7 @@ export function WorkflowSummaryDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="max-h-[70vh] overflow-y-auto">
           {state === "loading" && (
             <div className="flex flex-col items-center justify-center gap-3 py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
