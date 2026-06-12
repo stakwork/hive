@@ -630,6 +630,182 @@ describe("GET /api/profile/activity — q search", () => {
   });
 });
 
+// ── New: completed field ───────────────────────────────────────────────────
+
+describe("GET /api/profile/activity — completed field", () => {
+  it("task with status DONE → completed: true", async () => {
+    mockedDb.sharedConversation.findMany.mockResolvedValue([]);
+    mockedDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockedDb.task.findMany.mockResolvedValue([makeCreatedTask({ status: "DONE" })]);
+    mockedDb.feature.findMany.mockResolvedValue([]);
+    mockedDb.workspace.findMany.mockResolvedValue([]);
+    mockedDb.sourceControlOrg.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const task = body.items.find((i: { kind: string }) => i.kind === "task");
+    expect(task.completed).toBe(true);
+  });
+
+  it("task with status CANCELLED → completed: true", async () => {
+    mockedDb.sharedConversation.findMany.mockResolvedValue([]);
+    mockedDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockedDb.task.findMany.mockResolvedValue([makeCreatedTask({ status: "CANCELLED" })]);
+    mockedDb.feature.findMany.mockResolvedValue([]);
+    mockedDb.workspace.findMany.mockResolvedValue([]);
+    mockedDb.sourceControlOrg.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const task = body.items.find((i: { kind: string }) => i.kind === "task");
+    expect(task.completed).toBe(true);
+  });
+
+  it("task with status TODO → completed: false", async () => {
+    mockedDb.sharedConversation.findMany.mockResolvedValue([]);
+    mockedDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockedDb.task.findMany.mockResolvedValue([makeCreatedTask({ status: "TODO" })]);
+    mockedDb.feature.findMany.mockResolvedValue([]);
+    mockedDb.workspace.findMany.mockResolvedValue([]);
+    mockedDb.sourceControlOrg.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const task = body.items.find((i: { kind: string }) => i.kind === "task");
+    expect(task.completed).toBe(false);
+  });
+
+  it("task with status IN_PROGRESS → completed: false", async () => {
+    mockedDb.sharedConversation.findMany.mockResolvedValue([]);
+    mockedDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockedDb.task.findMany.mockResolvedValue([makeCreatedTask({ status: "IN_PROGRESS" })]);
+    mockedDb.feature.findMany.mockResolvedValue([]);
+    mockedDb.workspace.findMany.mockResolvedValue([]);
+    mockedDb.sourceControlOrg.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const task = body.items.find((i: { kind: string }) => i.kind === "task");
+    expect(task.completed).toBe(false);
+  });
+
+  it("feature with status COMPLETED → completed: true", async () => {
+    mockedDb.sharedConversation.findMany.mockResolvedValue([]);
+    mockedDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockedDb.task.findMany.mockResolvedValue([]);
+    mockedDb.feature.findMany.mockResolvedValue([makeCreatedFeature({ status: "COMPLETED" })]);
+    mockedDb.workspace.findMany.mockResolvedValue([]);
+    mockedDb.sourceControlOrg.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const plan = body.items.find((i: { kind: string }) => i.kind === "plan");
+    expect(plan.completed).toBe(true);
+  });
+
+  it("feature with status CANCELLED → completed: true", async () => {
+    mockedDb.sharedConversation.findMany.mockResolvedValue([]);
+    mockedDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockedDb.task.findMany.mockResolvedValue([]);
+    mockedDb.feature.findMany.mockResolvedValue([makeCreatedFeature({ status: "CANCELLED" })]);
+    mockedDb.workspace.findMany.mockResolvedValue([]);
+    mockedDb.sourceControlOrg.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const plan = body.items.find((i: { kind: string }) => i.kind === "plan");
+    expect(plan.completed).toBe(true);
+  });
+
+  it("feature with status BACKLOG → completed: false", async () => {
+    mockedDb.sharedConversation.findMany.mockResolvedValue([]);
+    mockedDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockedDb.task.findMany.mockResolvedValue([]);
+    mockedDb.feature.findMany.mockResolvedValue([makeCreatedFeature({ status: "BACKLOG" })]);
+    mockedDb.workspace.findMany.mockResolvedValue([]);
+    mockedDb.sourceControlOrg.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const plan = body.items.find((i: { kind: string }) => i.kind === "plan");
+    expect(plan.completed).toBe(false);
+  });
+
+  it("feature with status IN_PROGRESS → completed: false", async () => {
+    mockedDb.sharedConversation.findMany.mockResolvedValue([]);
+    mockedDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockedDb.task.findMany.mockResolvedValue([]);
+    mockedDb.feature.findMany.mockResolvedValue([makeCreatedFeature({ status: "IN_PROGRESS" })]);
+    mockedDb.workspace.findMany.mockResolvedValue([]);
+    mockedDb.sourceControlOrg.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const plan = body.items.find((i: { kind: string }) => i.kind === "plan");
+    expect(plan.completed).toBe(false);
+  });
+
+  it("conversation item → completed: false", async () => {
+    mockedDb.sharedConversation.findMany.mockResolvedValue([
+      {
+        id: "conv-1",
+        title: "Dashboard chat",
+        source: "dashboard",
+        workspaceId: "ws-1",
+        sourceControlOrgId: null,
+        lastMessageAt: new Date("2024-06-10T10:00:00Z"),
+      },
+    ]);
+    mockedDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockedDb.task.findMany.mockResolvedValue([]);
+    mockedDb.feature.findMany.mockResolvedValue([]);
+    mockedDb.workspace.findMany.mockResolvedValue([makeWorkspace()]);
+    mockedDb.sourceControlOrg.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const conv = body.items.find((i: { kind: string }) => i.kind === "conversation");
+    expect(conv.completed).toBe(false);
+  });
+
+  it("upsert merge: either copy completed=true → merged result is true", async () => {
+    const createdAt = new Date("2024-06-09T08:00:00Z");
+    const chatAt = new Date("2024-06-10T12:00:00Z");
+
+    // created task has status TODO (not completed), chat row has status DONE (completed)
+    mockedDb.sharedConversation.findMany.mockResolvedValue([]);
+    mockedDb.$queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          taskId: "task-merge",
+          title: "Merge Task",
+          workspaceId: "ws-1",
+          status: "DONE",
+          lastMessageAt: chatAt,
+        },
+      ]);
+    mockedDb.task.findMany.mockResolvedValue([
+      {
+        id: "task-merge",
+        title: "Merge Task",
+        workspaceId: "ws-1",
+        status: "TODO",
+        createdAt,
+        workspace: { slug: "ws", name: "Workspace", sourceControlOrg: null },
+      },
+    ]);
+    mockedDb.feature.findMany.mockResolvedValue([]);
+    mockedDb.workspace.findMany.mockResolvedValue([makeWorkspace()]);
+    mockedDb.sourceControlOrg.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+    const task = body.items.find((i: { id: string }) => i.id === "task-merge");
+    expect(task.completed).toBe(true);
+  });
+});
+
 // ── New: notifyActivityUpdated non-throwing ────────────────────────────────
 
 describe("notifyActivityUpdated — non-throwing when Pusher env unset", () => {
