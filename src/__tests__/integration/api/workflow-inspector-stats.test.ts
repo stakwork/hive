@@ -210,10 +210,13 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
       mockIsDevelopmentMode.mockReturnValue(false);
 
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
       mockFetch.mockResolvedValue({
         ok: false,
         status: 503,
         statusText: "Service Unavailable",
+        text: async () => "upstream error body",
       });
 
       const request = makeRequest(workspace.slug, "123");
@@ -225,12 +228,25 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.data.available).toBe(false);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[Workflow Stats] upstream error",
+        expect.objectContaining({
+          status: 503,
+          workflowId: 123,
+          env: expect.any(String),
+        }),
+      );
+
+      consoleErrorSpy.mockRestore();
     });
 
     test("returns available: false when upstream throws a network error", async () => {
       const { user, workspace } = await createTestFixtures();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
       mockIsDevelopmentMode.mockReturnValue(false);
+
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       mockFetch.mockRejectedValue(new Error("Network timeout"));
 
@@ -243,6 +259,16 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/stats", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.data.available).toBe(false);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[Workflow Stats] upstream fetch failed",
+        expect.objectContaining({
+          error: "Network timeout",
+          workflowId: 123,
+        }),
+      );
+
+      consoleErrorSpy.mockRestore();
     });
   });
 });
