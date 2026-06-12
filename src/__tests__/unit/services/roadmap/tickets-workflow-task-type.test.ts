@@ -75,6 +75,7 @@ vi.mock("@/lib/github", () => ({
   parsePRUrl: vi.fn(),
   getOctokitForWorkspace: vi.fn(),
   checkRepoAllowsAutoMerge: vi.fn(),
+  resolveAutoMergeDefault: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock("@/lib/pods/utils", () => ({
