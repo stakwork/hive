@@ -51,15 +51,15 @@ import {
   buildPublicWorkspaceConfig,
   fetchConceptsForWorkspaces,
 } from "@/lib/ai/workspaceConfig";
-import { buildConnectionTools } from "@/lib/ai/connectionTools";
-import { buildCanvasTools } from "@/lib/ai/canvasTools";
-import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
-import { buildResearchTools, type CapturedSearchResult, type DispatchedResearchIntent } from "@/lib/ai/researchTools";
+import type { CapturedSearchResult, DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import {
-  PROPOSE_FEATURE_TOOL,
-  PROPOSE_INITIATIVE_TOOL,
-  PROPOSE_MILESTONE_TOOL,
-} from "@/lib/proposals/types";
+  ALL_CAPABILITIES,
+  composeCapabilityPromptSuffix,
+  composeCapabilityTools,
+  composeWriteToolNames,
+  resolveCapabilities,
+  type OrgCapability,
+} from "@/lib/ai/capabilities";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
@@ -71,36 +71,31 @@ import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/push
 // ---------------------------------------------------------------------------
 // Write-mode tool names — stripped when `readonly: true` is requested.
 //
+// Derived from the capability registry (`writeToolNames` per capability)
+// so the strip set always tracks the tool families actually composed in.
 // All entries are bare names (no `{slug}__` namespace). When askToolsMulti
-// namespaces a single-WS tool, we never strip those — every name in this
-// set is an org-scoped tool produced by buildCanvasTools / buildResearchTools
-// / buildConnectionTools / buildInitiativeTools, which are NOT namespaced.
+// namespaces a single-WS tool, we never strip those — every name in the
+// set is an org-scoped capability tool, which is NOT namespaced.
 // ---------------------------------------------------------------------------
 
-const READONLY_STRIP_TOOL_NAMES: ReadonlySet<string> = new Set([
-  // canvasTools
-  "update_canvas",
-  "patch_canvas",
-  // researchTools
-  "save_research",
-  "update_research",
-  // connectionTools
-  "save_connection",
-  "update_connection",
-  // initiativeTools — DB writes
-  "assign_feature_to_initiative",
-  "assign_feature_to_workspace",
-  "unassign_feature_from_workspace",
-  // initiativeTools — proposals (emit cards; user approves)
-  PROPOSE_INITIATIVE_TOOL,
-  PROPOSE_FEATURE_TOOL,
-  PROPOSE_MILESTONE_TOOL,
-]);
+// Computed lazily, NOT at module scope: this module sits on an import
+// cycle (capabilities → tool factories → … → runCanvasAgent), so the
+// registry's bindings aren't initialized yet while this module body
+// evaluates. By first call time every module in the cycle is loaded.
+let defaultReadonlyStrip: ReadonlySet<string> | undefined;
+function getDefaultReadonlyStrip(): ReadonlySet<string> {
+  return (defaultReadonlyStrip ??= composeWriteToolNames(ALL_CAPABILITIES));
+}
 
-export function filterReadonly(tools: ToolSet, keepWriteToolNames?: string[]): ToolSet {
+export function filterReadonly(
+  tools: ToolSet,
+  keepWriteToolNames?: string[],
+  stripToolNames?: ReadonlySet<string>,
+): ToolSet {
+  const strip = stripToolNames ?? getDefaultReadonlyStrip();
   const out: ToolSet = {};
   for (const [name, def] of Object.entries(tools)) {
-    if (READONLY_STRIP_TOOL_NAMES.has(name)) {
+    if (strip.has(name)) {
       // Spare tools the caller explicitly wants to keep even in readonly mode.
       if (!keepWriteToolNames?.includes(name)) continue;
     }
@@ -169,8 +164,20 @@ export interface CachedConcepts {
 export interface RunCanvasAgentOptions {
   /** NextAuth user id. Required unless `publicViewer` is set. */
   userId: string | null;
-  /** Org id (SourceControlOrg.id). When set, merges canvas/connection/initiative/research tools. */
+  /** Org id (SourceControlOrg.id). When set, merges the selected capabilities' org tools. */
   orgId?: string;
+  /**
+   * Org capability families to compose into the agent when `orgId` is
+   * set — each contributes its tools, its prompt snippet, and its
+   * readonly-strip names (see `src/lib/ai/capabilities.ts`). Defaults
+   * to the full set, i.e. the historical canvas-agent behavior. Pass a
+   * subset to run the same agent on surfaces that have no canvas —
+   * e.g. `["planner"]` for propose_feature/send_to_feature_planner
+   * with only the per-workspace tools. Note `"canvas"` implies
+   * `"research"` and `"connections"` (registry `includes`). Ignored
+   * when `orgId` is absent.
+   */
+  capabilities?: readonly OrgCapability[];
   /** Workspace slugs to expose to the agent. 1..20. */
   workspaceSlugs: string[];
   /** Public-viewer envelope (mutually exclusive with `userId` in practice). */
@@ -472,6 +479,7 @@ export async function runCanvasAgent(
     publicViewer,
     scope,
     messages,
+    capabilities = ALL_CAPABILITIES,
     readonly = false,
     keepWriteToolNames,
     silentPusher = false,
@@ -540,6 +548,15 @@ export async function runCanvasAgent(
   // (and unused) when no org-tool branch is built.
   const capturedWebSearchResults: CapturedSearchResult[] = [];
 
+  // Capability composition inputs, shared by both branches below.
+  // `orgCapabilities` is the `includes`-expanded selection in canonical
+  // order; the prompt suffix is the matching snippet concatenation
+  // (equal to getCanvasPromptSuffix() for the full set).
+  const orgCapabilities = resolveCapabilities(capabilities);
+  const orgPromptSuffix = orgId
+    ? composeCapabilityPromptSuffix(orgCapabilities)
+    : undefined;
+
   if (isMultiWorkspace) {
     // Multi-workspace mode is auth-only — public-viewer requests are
     // rejected by the caller before reaching here. The non-null
@@ -562,16 +579,19 @@ export async function runCanvasAgent(
     tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace);
 
     if (orgId) {
-      // Merge org-scoped tool families. The caller is responsible for
-      // having already validated org membership before calling us.
-      // Mirrored in the single-workspace branch below — keep these
-      // two sites in sync.
+      // Merge the selected capabilities' org tool families. The caller
+      // is responsible for having already validated org membership
+      // before calling us. Mirrored in the single-workspace branch
+      // below — keep these two sites in sync.
       tools = {
         ...tools,
-        ...buildConnectionTools(orgId, userId),
-        ...buildCanvasTools(orgId),
-        ...buildInitiativeTools(orgId, userId, currentCanvasConversationId),
-        ...buildResearchTools(orgId, userId, capturedWebSearchResults, dispatchedResearch, currentCanvasConversationId),
+        ...composeCapabilityTools(orgCapabilities, {
+          orgId,
+          userId,
+          currentCanvasConversationId,
+          capturedWebSearchResults,
+          dispatchedResearch,
+        }),
       };
     }
 
@@ -607,6 +627,7 @@ export async function runCanvasAgent(
       [],
       orgId,
       buildScopeHint(scope, linkedWorkspaces),
+      orgPromptSuffix,
     );
     cacheHit = multiCacheHit;
     cacheableConcepts = { conceptsByWorkspace };
@@ -667,10 +688,13 @@ export async function runCanvasAgent(
     if (orgId && userId) {
       tools = {
         ...tools,
-        ...buildConnectionTools(orgId, userId),
-        ...buildCanvasTools(orgId),
-        ...buildInitiativeTools(orgId, userId, currentCanvasConversationId),
-        ...buildResearchTools(orgId, userId, capturedWebSearchResults, dispatchedResearch, currentCanvasConversationId),
+        ...composeCapabilityTools(orgCapabilities, {
+          orgId,
+          userId,
+          currentCanvasConversationId,
+          capturedWebSearchResults,
+          dispatchedResearch,
+        }),
       };
     }
 
@@ -681,7 +705,13 @@ export async function runCanvasAgent(
       [],
       ws.description,
       ws.members,
-      orgId ? { orgId, scope: buildScopeHint(scope, []) } : undefined,
+      orgId
+        ? {
+            orgId,
+            scope: buildScopeHint(scope, []),
+            promptSuffix: orgPromptSuffix,
+          }
+        : undefined,
       ws.currentUserGithubUsername,
     );
     primarySwarmUrl = ws.swarmUrl;
@@ -694,7 +724,14 @@ export async function runCanvasAgent(
   }
 
   if (readonly) {
-    tools = filterReadonly(tools, keepWriteToolNames);
+    // Strip set derived from the composed capabilities — a tool family
+    // we never merged contributes nothing, so the strip always matches
+    // what's actually present.
+    tools = filterReadonly(
+      tools,
+      keepWriteToolNames,
+      orgId ? composeWriteToolNames(orgCapabilities) : undefined,
+    );
   }
 
   // Merge caller-supplied extra tools AFTER the readonly strip so they
