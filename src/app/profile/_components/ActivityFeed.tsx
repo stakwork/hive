@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { MessageSquare, FileText, CheckSquare, ArrowUpRight, Loader2, Search, X } from "lucide-react";
+import { MessageSquare, FileText, CheckSquare, ArrowUpRight, Loader2, Search, X, Building2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -15,9 +15,9 @@ import type { ActivityItem } from "@/app/api/profile/activity/route";
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 const KIND_ICONS: Record<ActivityItem["kind"], React.ReactNode> = {
-  conversation: <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />,
-  plan: <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />,
-  task: <CheckSquare className="h-4 w-4 shrink-0 text-muted-foreground" />,
+  conversation: <MessageSquare className="h-4 w-4 shrink-0 text-purple-400" />,
+  plan: <FileText className="h-4 w-4 shrink-0 text-blue-400" />,
+  task: <CheckSquare className="h-4 w-4 shrink-0 text-green-500/80" />,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -233,9 +233,16 @@ export function ActivityFeed({ userId }: ActivityFeedProps) {
                 </span>
               )}
 
-              <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
-                {item.workspaceName || item.orgName}
-              </span>
+              {(() => {
+                const isOrgFallback = !item.workspaceName && !!item.orgName;
+                const label = item.workspaceName || item.orgName;
+                return (
+                  <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
+                    {isOrgFallback && <Building2 data-testid="org-icon" className="h-3 w-3 shrink-0" />}
+                    {label}
+                  </span>
+                );
+              })()}
 
               <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                 {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
