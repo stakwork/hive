@@ -17,6 +17,7 @@ import { WorkflowStatsPanel } from "@/components/workflow/inspector/WorkflowStat
 import { WorkflowParamsTable } from "@/components/workflow/inspector/WorkflowParamsTable";
 import { WorkflowVersionList } from "@/components/workflow/inspector/WorkflowVersionList";
 import { WorkflowVersionDiff } from "@/components/workflow/inspector/WorkflowVersionDiff";
+import { SummariseChangesButton } from "@/components/workflow/inspector/SummariseChangesButton";
 import { createWorkflowEditorTask } from "@/lib/workflow/create-workflow-editor-task";
 import { PromptsPanel } from "@/components/prompts";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
@@ -54,6 +55,8 @@ export default function WorkflowInspectorPage() {
 
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [customPickerActive, setCustomPickerActive] = useState(false);
+  const [customSelectedIds, setCustomSelectedIds] = useState<string[]>([]);
 
   const { versions, isLoading: isLoadingVersions } = useWorkflowVersions(
     slug || null,
@@ -68,9 +71,11 @@ export default function WorkflowInspectorPage() {
     }
   }, [versions, selectedVersionId]);
 
-  // Reset selection when workflowId changes
+  // Reset selection and custom picker when workflowId changes
   useEffect(() => {
     setSelectedVersionId(null);
+    setCustomPickerActive(false);
+    setCustomSelectedIds([]);
   }, [workflowIdNum]);
 
   const selectedVersion = useMemo(
@@ -245,12 +250,30 @@ export default function WorkflowInspectorPage() {
               </TabsContent>
 
               <TabsContent value="history" className="mt-0 p-4">
+                {slug && (
+                  <SummariseChangesButton
+                    versions={versions}
+                    workspaceSlug={slug}
+                    workflowId={workflowIdNum}
+                    customSelectedIds={customSelectedIds}
+                    onCustomModeToggle={(enabled) => {
+                      setCustomPickerActive(enabled);
+                      if (!enabled) setCustomSelectedIds([]);
+                    }}
+                    onCustomSelectionConfirm={() => {
+                      // handled inside SummariseChangesButton via triggerWithCustomIds
+                    }}
+                  />
+                )}
                 <WorkflowVersionList
                   versions={versions}
                   selectedVersionId={selectedVersionId}
                   onVersionSelect={setSelectedVersionId}
+                  selectable={customPickerActive}
+                  selectedIds={customSelectedIds}
+                  onSelectionChange={setCustomSelectedIds}
                 />
-                {selectedVersion && (
+                {selectedVersion && !customPickerActive && (
                   <WorkflowVersionDiff
                     currentJson={selectedVersion.workflow_json}
                     previousJson={previousVersion?.workflow_json ?? null}
