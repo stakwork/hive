@@ -67,10 +67,16 @@ describe("invokeCanvasAgentOnPlannerMessage — gating", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Lock acquire/release: always grant the advisory lock.
-    (db.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { locked: true },
-    ]);
+    // The per-message claim + release run inside `db.$transaction` with a
+    // FOR UPDATE row read. Default: grant the claim (conversation present,
+    // no prior output rows, no live claim) and let release succeed.
+    (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: unknown) => unknown) =>
+        fn({
+          $queryRaw: vi.fn().mockResolvedValue([{ messages: [], settings: {} }]),
+          sharedConversation: { update: vi.fn().mockResolvedValue({}) },
+        }),
+    );
   });
 
   afterEach(() => {
@@ -84,7 +90,8 @@ describe("invokeCanvasAgentOnPlannerMessage — gating", () => {
     await invokeCanvasAgentOnPlannerMessage(args);
 
     expect(runCanvasAgent).not.toHaveBeenCalled();
-    expect(db.$queryRaw).not.toHaveBeenCalled();
+    // No claim transaction and no conversation load when hard-disabled.
+    expect(db.$transaction).not.toHaveBeenCalled();
     expect(db.sharedConversation.findUnique).not.toHaveBeenCalled();
   });
 
@@ -100,6 +107,33 @@ describe("invokeCanvasAgentOnPlannerMessage — gating", () => {
     expect(db.sharedConversation.findUnique).toHaveBeenCalledOnce();
     // …but the owner opt-out stops it before the feature lookup / agent.
     expect(db.feature.findUnique).not.toHaveBeenCalled();
+    expect(runCanvasAgent).not.toHaveBeenCalled();
+  });
+
+  test("already-claimed message: a live claim short-circuits before loading the conversation", async () => {
+    delete process.env[ENV_KEY];
+    // The claim transaction finds a fresh (non-stale) claim already
+    // recorded for this planner message → this caller LOSES the claim and
+    // must not load the conversation or run the agent. Crucially this is a
+    // dedup, not a silent drop of a needed turn: another run owns it.
+    (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: unknown) => unknown) =>
+        fn({
+          $queryRaw: vi.fn().mockResolvedValue([
+            {
+              messages: [],
+              settings: {
+                autoTurnClaims: { "msg-1": { claimedAt: Date.now() } },
+              },
+            },
+          ]),
+          sharedConversation: { update: vi.fn() },
+        }),
+    );
+
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    expect(db.sharedConversation.findUnique).not.toHaveBeenCalled();
     expect(runCanvasAgent).not.toHaveBeenCalled();
   });
 
