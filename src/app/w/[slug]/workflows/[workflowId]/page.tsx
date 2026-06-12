@@ -14,6 +14,7 @@ import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
 import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSelector";
 import WorkflowComponent from "@/components/workflow";
 import { WorkflowStatsPanel } from "@/components/workflow/inspector/WorkflowStatsPanel";
+import { WorkflowRunsTable } from "@/components/workflow/inspector/WorkflowRunsTable";
 import { WorkflowParamsTable } from "@/components/workflow/inspector/WorkflowParamsTable";
 import { WorkflowVersionList } from "@/components/workflow/inspector/WorkflowVersionList";
 import { WorkflowVersionDiff } from "@/components/workflow/inspector/WorkflowVersionDiff";
@@ -234,7 +235,10 @@ export default function WorkflowInspectorPage() {
             <div className="flex-1 overflow-y-auto">
               <TabsContent value="stats" className="mt-0">
                 {slug && (
-                  <WorkflowStatsPanel slug={slug} workflowId={workflowIdNum} />
+                  <>
+                    <WorkflowStatsPanel slug={slug} workflowId={workflowIdNum} />
+                    <WorkflowRunsTable slug={slug} workflowId={workflowIdNum} />
+                  </>
                 )}
               </TabsContent>
 
