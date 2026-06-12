@@ -81,4 +81,21 @@ describe("WorkflowSummaryDialog", () => {
     render(<WorkflowSummaryDialog {...baseProps} state="loading" />);
     expect(screen.getByText("Workflow Changes Summary")).toBeInTheDocument();
   });
+
+  it("DialogContent uses sm:max-w-[75vw] and not bare max-w-[75vw]", () => {
+    render(<WorkflowSummaryDialog {...baseProps} state="loading" />);
+    // DialogContent renders in a portal (document.body), not the local container
+    const dialogContent = document.querySelector(
+      '[class*="sm:max-w-\\[75vw\\]"]',
+    );
+    expect(dialogContent).toBeInTheDocument();
+
+    // The bare (unscoped) class must not be present
+    const bareClass = document.querySelector('[class*="max-w-\\[75vw\\]"]');
+    // If found, it should only be because it contains the sm: prefix variant
+    if (bareClass) {
+      expect(bareClass.className).toMatch(/sm:max-w-\[75vw\]/);
+      expect(bareClass.className).not.toMatch(/(?<!\S)max-w-\[75vw\]/);
+    }
+  });
 });
