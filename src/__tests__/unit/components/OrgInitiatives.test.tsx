@@ -223,8 +223,14 @@ vi.mock("lucide-react", () => ({
 
 import type { MilestoneResponse, InitiativeResponse } from "@/types/initiatives";
 
+// mockFetch handles everything EXCEPT /members (which always returns [])
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+global.fetch = ((url: string, init?: RequestInit) => {
+  if (typeof url === "string" && url.includes("/members")) {
+    return Promise.resolve({ ok: true, json: () => Promise.resolve([]) } as Response);
+  }
+  return mockFetch(url, init) as Promise<Response>;
+}) as typeof fetch;
 
 function makeMilestone(overrides: Partial<MilestoneResponse> = {}): MilestoneResponse {
   return {
@@ -236,6 +242,8 @@ function makeMilestone(overrides: Partial<MilestoneResponse> = {}): MilestoneRes
     sequence: 1,
     dueDate: null,
     completedAt: null,
+    assigneeId: null,
+    createdById: null,
     assignee: null,
     features: [],
     feature: null, // legacy 1:1 shim — kept on the wire until callers fully migrate

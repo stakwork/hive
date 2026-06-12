@@ -125,9 +125,13 @@ export function MilestoneDialog({
   // Lazily fetch org members when the dialog opens (only if githubLogin provided)
   useEffect(() => {
     if (!open || !githubLogin) return;
-    fetch(`/api/orgs/${githubLogin}/members`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: OrgMemberResponse[]) => setMembers(data))
+    const p = fetch(`/api/orgs/${githubLogin}/members`);
+    if (!p || typeof p.then !== "function") return;
+    p
+      .then((r) => (r.ok ? r.json() : Promise.resolve([])))
+      .then((data: unknown) =>
+        setMembers(Array.isArray(data) ? (data as OrgMemberResponse[]) : []),
+      )
       .catch(() => setMembers([]));
   }, [open, githubLogin]);
 
