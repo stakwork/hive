@@ -324,31 +324,43 @@ export async function invokeCanvasAgentOnPlannerMessage(
     return;
   }
 
-  // Best-effort per-conversation advisory lock so two planners
-  // replying near-simultaneously don't both wake the agent on the
-  // same conversation and double-respond.
+  // Concurrency control: a per-PLANNER-MESSAGE claim, NOT a per-conversation
+  // lock.
   //
-  // CAVEAT: Postgres session advisory locks are tied to a connection.
-  // Under Prisma's connection pool, the `pg_try_advisory_lock` and the
-  // `pg_advisory_unlock` may land on different pooled connections, so
-  // this is *best-effort*, not a hard mutex. That's an acceptable v1
-  // tradeoff: the feature is gated behind a kill switch, the worst case
-  // is one redundant auto-turn (the agent reads the full conversation
-  // and can `stay_silent`), and the lock is never held across the LLM
-  // call (which would pin a DB connection for the whole turn). A
-  // hardened version (a dedicated lock service or a row-lease) is a
-  // future seam.
-  const lockKeySql = `canvas-autoturn:${conversationId}`;
-  let lockAcquired = false;
+  // History: this used a Postgres session advisory lock
+  // (`pg_try_advisory_lock`) keyed on the *conversation*, held across the
+  // whole LLM turn, released with a separate `pg_advisory_unlock`. That was
+  // doubly broken:
+  //   1. LEAK — a session lock belongs to the exact pooled connection that
+  //      took it; the separate unlock query often ran on a *different*
+  //      pooled connection, where it's a no-op. The lock never released and
+  //      stayed held (in a frozen lambda's connection) until that
+  //      connection was recycled.
+  //   2. HEAD-OF-LINE DROP — keyed per conversation, so a leaked (or merely
+  //      in-flight) lock from one stage's turn blocked the NEXT stage's
+  //      turn, and the contended turn was silently dropped with no retry. A
+  //      finished plan's "completed" wake vanished because an earlier
+  //      stage's turn had leaked the conversation lock.
+  //
+  // The invariant we actually need is narrow: don't let two deliveries of
+  // the SAME planner message both run the turn (the agent's
+  // `send_to_feature_planner` fires mid-stream, before the append-time
+  // idempotency dedup can catch it). Different planner messages — even in
+  // the same conversation — SHOULD run concurrently. So we claim per
+  // `plannerMessageId`, using the conversation row lock (correct,
+  // connection-safe, auto-released at COMMIT), and we NEVER silently drop a
+  // needed turn: a lost claim means some other run already owns this exact
+  // message. The claim is crash-safe — a stale claim (a run that died
+  // mid-turn) expires after `AUTOTURN_CLAIM_STALE_MS` so the wake can be
+  // retried rather than wedged forever.
+  let claimed = false;
   try {
-    const lockRows = await db.$queryRaw<{ locked: boolean }[]>`
-      SELECT pg_try_advisory_lock(hashtext(${lockKeySql})) AS locked
-    `;
-    lockAcquired = lockRows[0]?.locked === true;
-    if (!lockAcquired) {
-      console.log("[canvas-autoturn] lock held; skipping", {
+    claimed = await claimAutoTurn(conversationId, plannerMessageId);
+    if (!claimed) {
+      console.log("[canvas-autoturn] message already claimed/handled; skipping", {
         conversationId,
         featureId,
+        plannerMessageId,
         wakeReason,
       });
       return;
@@ -364,14 +376,122 @@ export async function invokeCanvasAgentOnPlannerMessage(
       error: e instanceof Error ? e.message : String(e),
     });
   } finally {
-    if (lockAcquired) {
-      try {
-        await db.$queryRaw`SELECT pg_advisory_unlock(hashtext(${lockKeySql}))`;
-      } catch (e) {
-        console.error("[canvas-autoturn] advisory unlock failed:", e);
-      }
+    if (claimed) {
+      await releaseAutoTurnClaim(conversationId, plannerMessageId).catch((e) =>
+        console.error("[canvas-autoturn] claim release failed:", e),
+      );
     }
   }
+}
+
+/**
+ * A claim that has sat unreleased longer than this is treated as stale
+ * (the owning run crashed before its `finally` released it) and may be
+ * re-claimed, so a dead turn never wedges a planner message forever. Sized
+ * comfortably above the worst-case turn wall-clock (LLM + tool round-trips)
+ * so it never expires a genuinely in-flight turn.
+ */
+const AUTOTURN_CLAIM_STALE_MS = 5 * 60 * 1000;
+
+/** Shape of the per-message claim bag stored under `settings.autoTurnClaims`. */
+type AutoTurnClaims = Record<string, { claimedAt: number }>;
+
+/**
+ * Atomically claim a planner message for an auto-turn. Returns `true` iff
+ * THIS caller won the claim and should run the turn.
+ *
+ * Serialized by the conversation row lock (`SELECT … FOR UPDATE`), the same
+ * mechanism `appendTurnMessages` and the fan-out use — so it's correct
+ * under Prisma's connection pool (the whole check-and-set runs in one
+ * interactive transaction on one connection, and the lock auto-releases at
+ * COMMIT; nothing is held across the LLM call). Bails when:
+ *   - the conversation row is gone,
+ *   - the turn already COMPLETED (a real `autoturn-<id>-*` output row
+ *     exists in `messages`), or
+ *   - a non-stale claim for this message already exists (a live concurrent
+ *     run owns it).
+ * Otherwise it records `{ claimedAt: now }` and returns `true`.
+ *
+ * The claim lives in `settings.autoTurnClaims` (not a `messages` row) so it
+ * never pollutes the rendered transcript. The read-modify-write is safe
+ * against concurrent `settings` writers because they all serialize on this
+ * same row lock; we re-read the latest committed `settings` under the lock
+ * and write the full object back, preserving sibling keys (`promptConcepts`,
+ * `extraWorkspaceSlugs`). One benign edge: the client autosave PUT replaces
+ * `settings` wholesale with the client's copy (which has no `autoTurnClaims`),
+ * so an autosave landing mid-turn can erase a live claim. The fallout is
+ * minor and self-correcting — at worst a redelivered SAME message re-runs
+ * once; the planner ignores a repeated ask and `appendTurnMessages`'
+ * `idPrefix` dedup still blocks duplicate output rows. The leak/drop bug this
+ * replaces was the real hazard; this claim is the narrow belt-and-suspenders.
+ */
+async function claimAutoTurn(
+  conversationId: string,
+  plannerMessageId: string,
+): Promise<boolean> {
+  const idPrefix = `autoturn-${plannerMessageId}-`;
+  let won = false;
+  await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ messages: unknown; settings: unknown }[]>`
+      SELECT messages, settings FROM shared_conversations
+      WHERE id = ${conversationId} FOR UPDATE
+    `;
+    if (locked.length === 0) return; // conversation deleted
+
+    // Already completed? A committed output row is the permanent dedup.
+    const messages = Array.isArray(locked[0].messages)
+      ? (locked[0].messages as StoredMessage[])
+      : [];
+    if (messages.some((m) => typeof m.id === "string" && m.id.startsWith(idPrefix))) {
+      return;
+    }
+
+    const settings = (locked[0].settings ?? {}) as {
+      autoTurnClaims?: AutoTurnClaims;
+    };
+    const claims: AutoTurnClaims = { ...(settings.autoTurnClaims ?? {}) };
+    const existing = claims[plannerMessageId];
+    if (existing && Date.now() - existing.claimedAt < AUTOTURN_CLAIM_STALE_MS) {
+      return; // a live run already owns this message
+    }
+
+    claims[plannerMessageId] = { claimedAt: Date.now() };
+    await tx.sharedConversation.update({
+      where: { id: conversationId },
+      data: { settings: { ...settings, autoTurnClaims: claims } as never },
+    });
+    won = true;
+  });
+  return won;
+}
+
+/**
+ * Release a claim recorded by {@link claimAutoTurn}. Best-effort and
+ * idempotent — the stale-timeout in `claimAutoTurn` is the backstop if this
+ * never runs (e.g. the process died). Serialized by the same row lock so it
+ * doesn't clobber a concurrent `settings` writer.
+ */
+async function releaseAutoTurnClaim(
+  conversationId: string,
+  plannerMessageId: string,
+): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ settings: unknown }[]>`
+      SELECT settings FROM shared_conversations
+      WHERE id = ${conversationId} FOR UPDATE
+    `;
+    if (locked.length === 0) return;
+    const settings = (locked[0].settings ?? {}) as {
+      autoTurnClaims?: AutoTurnClaims;
+    };
+    if (!settings.autoTurnClaims?.[plannerMessageId]) return;
+    const claims: AutoTurnClaims = { ...settings.autoTurnClaims };
+    delete claims[plannerMessageId];
+    await tx.sharedConversation.update({
+      where: { id: conversationId },
+      data: { settings: { ...settings, autoTurnClaims: claims } as never },
+    });
+  });
 }
 
 /**
