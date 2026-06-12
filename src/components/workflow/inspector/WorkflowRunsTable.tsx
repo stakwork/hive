@@ -11,7 +11,10 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useWorkflowRuns, type WorkflowRun } from "@/hooks/useWorkflowRuns";
+
+const MAX_RUN_NAME_LEN = 40;
 
 interface WorkflowRunsTableProps {
   slug: string;
@@ -52,7 +55,7 @@ export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) 
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Run Name</TableHead>
+              <TableHead className="w-48">Run Name</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Started At</TableHead>
               <TableHead>Finished At</TableHead>
@@ -94,7 +97,7 @@ export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) 
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Run Name</TableHead>
+            <TableHead className="w-48">Run Name</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Started At</TableHead>
             <TableHead>Finished At</TableHead>
@@ -105,14 +108,23 @@ export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) 
           {runs.map((run) => (
             <TableRow key={run.id}>
               <TableCell>
-                <a
-                  href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline text-blue-600 hover:text-blue-800"
-                >
-                  {run.name}
-                </a>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <a
+                      href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline text-blue-600 hover:text-blue-800"
+                    >
+                      {run.name.length > MAX_RUN_NAME_LEN
+                        ? run.name.slice(0, MAX_RUN_NAME_LEN) + "…"
+                        : run.name}
+                    </a>
+                  </TooltipTrigger>
+                  {run.name.length > MAX_RUN_NAME_LEN && (
+                    <TooltipContent>{run.name}</TooltipContent>
+                  )}
+                </Tooltip>
               </TableCell>
               <TableCell>
                 <Badge variant={statusVariant(run.status)}>{run.status}</Badge>
