@@ -42,6 +42,8 @@ import {
   type ToolCall,
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 
 /**
  * Org-canvas sidebar chat. Renders the active conversation from the
@@ -94,6 +96,9 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       (activeId ? s.conversations[activeId]?.serverConversationId : null) ??
       null,
   );
+
+  const { id: workspaceId } = useWorkspace();
+  const { isActive } = useCanvasAgentActivity(activeId, workspaceId);
 
   const sendMessage = useSendCanvasChatMessage();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -245,7 +250,15 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   return (
     <div className="flex h-full flex-col min-h-0">
       <div className="flex items-center justify-between px-3 py-2 border-b">
-        <span className="text-xs font-medium text-muted-foreground">Ask Jamie</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground">Ask Jamie</span>
+          {isActive && (
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
+              aria-label="agent active"
+            />
+          )}
+        </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
