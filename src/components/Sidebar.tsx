@@ -32,7 +32,7 @@ import {
 import { PiGraphFill } from "react-icons/pi";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useVoiceStore } from "@/stores/useVoiceStore";
 
 import { Badge } from "@/components/ui/badge";
@@ -172,14 +172,24 @@ const STADEUM_LOGO_URL =
 
 function StadeumBrandHeader() {
   const [imgError, setImgError] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    const handler = () => setImgError(true);
+    img.addEventListener("error", handler);
+    return () => img.removeEventListener("error", handler);
+  }, []);
+
   return (
     <div className="flex items-center gap-2.5 px-4 py-3 border-b shrink-0">
       {!imgError && (
         <img
+          ref={imgRef}
           src={STADEUM_LOGO_URL}
           alt="Stadeum logo"
           className="w-7 h-7 rounded object-contain"
-          onError={() => setImgError(true)}
         />
       )}
       <span className="font-semibold text-sm tracking-tight">Stadeum</span>
