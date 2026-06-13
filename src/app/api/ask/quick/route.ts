@@ -45,7 +45,7 @@ import {
 // closed-tab turn can be lost (Vercel doesn't kill in-flight functions on
 // deploy, and `runCanvasAgent` passes no abort signal, so a client disconnect
 // can't cancel generation).
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /**
  * Provenance data types
