@@ -820,24 +820,25 @@ async function approveFeature(args: {
     // a first message from the feature page.
     const seed = merged.initialMessage?.trim() || merged.title.trim();
     if (seed) {
-      try {
-        await sendFeatureChatMessage({
-          featureId: feature.id,
-          userId,
-          message: seed,
-          // The canvas agent that proposed this feature already
-          // explored the org canvases when composing the seed —
-          // re-running the org-context scout from Hive would be
-          // redundant work (5-60s) and could re-frame context the
-          // proposing agent already curated. Skip it.
-          skipOrgContextScout: true,
-        });
-      } catch (e) {
-        console.error(
-          "[handleApproval] failed to seed feature chat (feature row still created):",
-          e,
-        );
-      }
+      // Fire-and-forget: the feature row is already created. Awaiting
+      // this call risks a Vercel timeout on longer-running plan
+      // workflows, which produces the same stuck ProposalCard state
+      // even though the feature was successfully created. Non-fatal —
+      // if seeding fails the user can manually send a first message
+      // from the feature page.
+      void sendFeatureChatMessage({
+        featureId: feature.id,
+        userId,
+        message: seed,
+        // The canvas agent that proposed this feature already
+        // explored the org canvases when composing the seed —
+        // re-running the org-context scout from Hive would be
+        // redundant work (5-60s) and could re-frame context the
+        // proposing agent already curated. Skip it.
+        skipOrgContextScout: true,
+      }).catch((e) =>
+        console.error("[handleApproval] failed to seed feature chat (non-fatal):", e),
+      );
     }
 
     return {

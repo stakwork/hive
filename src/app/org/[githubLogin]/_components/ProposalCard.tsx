@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, X, ExternalLink, Loader2, Lightbulb } from "lucide-react";
+import { Check, X, ExternalLink, Loader2, Lightbulb, RotateCcw, AlertCircle } from "lucide-react";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
@@ -112,9 +112,10 @@ export function ProposalCard({
   const isInFlight = status.status === "pending-in-flight";
   const isApproved = status.status === "approved";
   const isRejected = status.status === "rejected";
+  const isFailed = status.status === "failed";
 
   const handleApprove = async () => {
-    if (!activeId || !isPending) return;
+    if (!activeId || (!isPending && !isFailed)) return;
 
     // Build the payload override. We only forward fields the user
     // actually changed; an unchanged title or unchanged feature list
@@ -165,7 +166,7 @@ export function ProposalCard({
   };
 
   const handleReject = async () => {
-    if (!activeId || !isPending) return;
+    if (!activeId || (!isPending && !isFailed)) return;
     await sendMessage({
       conversationId: activeId,
       content: `Rejected: ${initialTitle}`,
@@ -262,6 +263,12 @@ export function ProposalCard({
               {proposal.rationale}
             </div>
           )}
+          {isFailed && status.status === "failed" && (
+            <div className="mt-1.5 flex items-center gap-1 text-xs text-rose-600 dark:text-rose-400">
+              <AlertCircle className="h-3 w-3 flex-shrink-0" />
+              <span>{status.error}</span>
+            </div>
+          )}
           {isApproved && approvedSubtext && (
             <div className="mt-1.5 flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
               <Check className="h-3 w-3" />
@@ -285,17 +292,19 @@ export function ProposalCard({
         </div>
 
         {/* Action buttons */}
-        {(isPending || isInFlight) && (
+        {(isPending || isInFlight || isFailed) && (
           <div className="flex flex-shrink-0 items-center gap-1">
             <button
               type="button"
               onClick={handleApprove}
-              disabled={!isPending || isInFlight}
-              title="Approve"
+              disabled={isInFlight}
+              title={isFailed ? "Retry" : "Approve"}
               className="flex h-6 w-6 items-center justify-center rounded text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
             >
               {isInFlight ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : isFailed ? (
+                <RotateCcw className="h-3.5 w-3.5" />
               ) : (
                 <Check className="h-3.5 w-3.5" />
               )}
@@ -303,7 +312,7 @@ export function ProposalCard({
             <button
               type="button"
               onClick={handleReject}
-              disabled={!isPending || isInFlight}
+              disabled={isInFlight}
               title="Reject"
               className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
             >

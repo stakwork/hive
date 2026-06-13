@@ -57,7 +57,7 @@ describe("getProposalStatus", () => {
     });
   });
 
-  it("approved wins over rejected when both somehow appear (DB is authoritative)", () => {
+  it("approved wins over rejected when both appear (last-wins, approved comes last)", () => {
     const result: ApprovalResult = {
       proposalId: "p_1",
       kind: "feature",
@@ -66,8 +66,8 @@ describe("getProposalStatus", () => {
     };
     const msgs = [
       msg("user", { approval: { proposalId: "p_1" } }),
-      msg("assistant", { approvalResult: result }),
-      msg("user", { rejection: { proposalId: "p_1" } }), // shouldn't normally happen
+      msg("user", { rejection: { proposalId: "p_1" } }), // rejected first
+      msg("assistant", { approvalResult: result }),       // then approved
     ];
     expect(getProposalStatus(msgs, "p_1")).toEqual({
       status: "approved",
@@ -113,5 +113,66 @@ describe("getProposalStatus", () => {
       msg("assistant", { rejection: { proposalId: "p_1" } }),
     ];
     expect(getProposalStatus(msgs, "p_1")).toEqual({ status: "pending" });
+  });
+
+  // ── Failed state tests ──────────────────────────────────────────────
+
+  it("returns failed when assistant carries approvalError", () => {
+    const msgs = [
+      msg("user", { approval: { proposalId: "p_1" } }),
+      msg("assistant", {
+        approvalError: { proposalId: "p_1", error: "Blocker not yet approved." },
+      }),
+    ];
+    expect(getProposalStatus(msgs, "p_1")).toEqual({
+      status: "failed",
+      error: "Blocker not yet approved.",
+    });
+  });
+
+  it("retry after failure returns pending-in-flight (approval → error → approval)", () => {
+    const msgs = [
+      msg("user", { approval: { proposalId: "p_1" } }),
+      msg("assistant", {
+        approvalError: { proposalId: "p_1", error: "Blocker not yet approved." },
+      }),
+      msg("user", { approval: { proposalId: "p_1" } }), // retry
+    ];
+    expect(getProposalStatus(msgs, "p_1")).toEqual({
+      status: "pending-in-flight",
+    });
+  });
+
+  it("retry then success: approval → error → approval → approvalResult = approved", () => {
+    const result: ApprovalResult = {
+      proposalId: "p_1",
+      kind: "feature",
+      createdEntityId: "feat_b",
+      landedOn: "ws:ws_2",
+    };
+    const msgs = [
+      msg("user", { approval: { proposalId: "p_1" } }),
+      msg("assistant", {
+        approvalError: { proposalId: "p_1", error: "Blocker not yet approved." },
+      }),
+      msg("user", { approval: { proposalId: "p_1" } }), // retry
+      msg("assistant", { approvalResult: result }),
+    ];
+    expect(getProposalStatus(msgs, "p_1")).toEqual({
+      status: "approved",
+      result,
+    });
+  });
+
+  it("ignores approvalError for a different proposalId", () => {
+    const msgs = [
+      msg("user", { approval: { proposalId: "p_1" } }),
+      msg("assistant", {
+        approvalError: { proposalId: "p_other", error: "unrelated error" },
+      }),
+    ];
+    expect(getProposalStatus(msgs, "p_1")).toEqual({
+      status: "pending-in-flight",
+    });
   });
 });
