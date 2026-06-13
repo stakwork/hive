@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Check, X, ExternalLink, Loader2, Lightbulb } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Check, X, ExternalLink, Loader2, Lightbulb, Info } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
@@ -19,6 +20,14 @@ import {
   type CanvasChatMessage,
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * Renders a single agent proposal as an inline card with Approve / Reject
@@ -107,6 +116,10 @@ export function ProposalCard({
   const [checkedFeatureIds, setCheckedFeatureIds] = useState<string[]>(
     initialFeatureIds,
   );
+
+  // Details dialog state
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const hasDetails = useMemo(() => proposalHasDetails(proposal), [proposal]);
 
   const isPending = status.status === "pending";
   const isInFlight = status.status === "pending-in-flight";
@@ -284,36 +297,310 @@ export function ProposalCard({
           )}
         </div>
 
-        {/* Action buttons */}
-        {(isPending || isInFlight) && (
-          <div className="flex flex-shrink-0 items-center gap-1">
+        {/* Right-side controls: always rendered (Info button visible in all states) */}
+        <div className="flex flex-shrink-0 items-center gap-1">
+          {hasDetails && (
             <button
               type="button"
-              onClick={handleApprove}
-              disabled={!isPending || isInFlight}
-              title="Approve"
-              className="flex h-6 w-6 items-center justify-center rounded text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
+              onClick={() => setDetailsOpen(true)}
+              title="Details"
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
             >
-              {isInFlight ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Check className="h-3.5 w-3.5" />
-              )}
+              <Info className="h-3.5 w-3.5" />
             </button>
-            <button
-              type="button"
-              onClick={handleReject}
-              disabled={!isPending || isInFlight}
-              title="Reject"
-              className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
+          )}
+          {(isPending || isInFlight) && (
+            <>
+              <button
+                type="button"
+                onClick={handleApprove}
+                disabled={!isPending || isInFlight}
+                title="Approve"
+                className="flex h-6 w-6 items-center justify-center rounded text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
+              >
+                {isInFlight ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Check className="h-3.5 w-3.5" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleReject}
+                disabled={!isPending || isInFlight}
+                title="Reject"
+                className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Details dialog — rendered outside the flex row so it doesn't affect layout */}
+      {hasDetails && (
+        <ProposalDetailsDialog
+          proposal={proposal}
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+        />
+      )}
     </div>
   );
+}
+
+// ─── ProposalDetailsDialog ─────────────────────────────────────────────
+
+interface ProposalDetailsDialogProps {
+  proposal: ProposalOutput;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+/** Section header style — consistent with "Features to attach" label in MilestoneMeta. */
+const SECTION_LABEL_CLASS =
+  "text-[10px] uppercase tracking-wide text-muted-foreground font-medium";
+
+function ProposalDetailsDialog({
+  proposal,
+  open,
+  onOpenChange,
+}: ProposalDetailsDialogProps) {
+  const kindLabel =
+    proposal.kind === "initiative"
+      ? "Initiative"
+      : proposal.kind === "milestone"
+        ? "Milestone"
+        : "Feature";
+
+  const title =
+    proposal.kind === "initiative"
+      ? proposal.payload.name
+      : proposal.kind === "milestone"
+        ? proposal.payload.name
+        : proposal.payload.title;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <div className={SECTION_LABEL_CLASS}>{kindLabel} Proposal</div>
+          <DialogTitle className="text-base">{title}</DialogTitle>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[60vh]">
+          <div className="px-5 py-4 space-y-4">
+            {/* Description — all kinds */}
+            {proposal.payload.description && (
+              <div className="space-y-1">
+                <div className={SECTION_LABEL_CLASS}>Description</div>
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown>{proposal.payload.description}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+
+            {/* Rationale — all kinds */}
+            {proposal.rationale && (
+              <div className="space-y-1">
+                <div className={SECTION_LABEL_CLASS}>Rationale</div>
+                <div className="text-xs text-muted-foreground italic">
+                  {proposal.rationale}
+                </div>
+              </div>
+            )}
+
+            {/* Feature-specific */}
+            {proposal.kind === "feature" && (
+              <>
+                {/* Planning seed (initialMessage) */}
+                {proposal.payload.initialMessage && (
+                  <div className="space-y-1">
+                    <div className={SECTION_LABEL_CLASS}>Planning seed</div>
+                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                      <ReactMarkdown>
+                        {proposal.payload.initialMessage}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+
+                {/* Feature dependencies */}
+                {((proposal.payload.dependsOnFeatureIds?.length ?? 0) > 0 ||
+                  (proposal.payload.dependsOnProposalIds?.length ?? 0) > 0) && (
+                  <div className="space-y-1">
+                    <div className={SECTION_LABEL_CLASS}>Depends on</div>
+                    {(proposal.payload.dependsOnFeatureIds?.length ?? 0) >
+                      0 && (
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-0.5">
+                          {proposal.payload.dependsOnFeatureIds!.length} feature
+                          {proposal.payload.dependsOnFeatureIds!.length === 1
+                            ? ""
+                            : "s"}
+                        </div>
+                        <ul className="space-y-0.5">
+                          {proposal.payload.dependsOnFeatureIds!.map((id) => (
+                            <li
+                              key={id}
+                              className="text-xs font-mono text-muted-foreground"
+                            >
+                              {id}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {(proposal.payload.dependsOnProposalIds?.length ?? 0) >
+                      0 && (
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-0.5">
+                          {proposal.payload.dependsOnProposalIds!.length}{" "}
+                          proposal
+                          {proposal.payload.dependsOnProposalIds!.length === 1
+                            ? ""
+                            : "s"}
+                        </div>
+                        <ul className="space-y-0.5">
+                          {proposal.payload.dependsOnProposalIds!.map((id) => (
+                            <li
+                              key={id}
+                              className="text-xs font-mono text-muted-foreground"
+                            >
+                              {id}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Initiative-specific */}
+            {proposal.kind === "initiative" && (
+              <>
+                {proposal.payload.status && (
+                  <div className="space-y-1">
+                    <div className={SECTION_LABEL_CLASS}>Status</div>
+                    <Badge variant="secondary" className="uppercase">
+                      {proposal.payload.status}
+                    </Badge>
+                  </div>
+                )}
+                {(proposal.payload.startDate || proposal.payload.targetDate) && (
+                  <div className="space-y-1">
+                    <div className={SECTION_LABEL_CLASS}>Dates</div>
+                    <div className="text-xs text-muted-foreground flex gap-4">
+                      {proposal.payload.startDate && (
+                        <span>
+                          Start:{" "}
+                          {new Date(
+                            proposal.payload.startDate,
+                          ).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </span>
+                      )}
+                      {proposal.payload.targetDate && (
+                        <span>
+                          Target:{" "}
+                          {new Date(
+                            proposal.payload.targetDate,
+                          ).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Milestone-specific */}
+            {proposal.kind === "milestone" && (
+              <>
+                {proposal.payload.status && (
+                  <div className="space-y-1">
+                    <div className={SECTION_LABEL_CLASS}>Status</div>
+                    <Badge variant="secondary" className="uppercase">
+                      {proposal.payload.status}
+                    </Badge>
+                  </div>
+                )}
+                {proposal.payload.dueDate && (
+                  <div className="space-y-1">
+                    <div className={SECTION_LABEL_CLASS}>Due date</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(proposal.payload.dueDate).toLocaleDateString(
+                        undefined,
+                        { month: "short", day: "numeric", year: "numeric" },
+                      )}
+                    </div>
+                  </div>
+                )}
+                {proposal.featureMeta.length > 0 && (
+                  <div className="space-y-1">
+                    <div className={SECTION_LABEL_CLASS}>
+                      Features to attach ({proposal.featureMeta.length})
+                    </div>
+                    <ul className="space-y-0.5">
+                      {proposal.featureMeta.map((m) => (
+                        <li
+                          key={m.id}
+                          className="flex items-baseline gap-1.5 text-xs"
+                        >
+                          <span className="truncate">{m.title}</span>
+                          <span className="ml-auto flex-shrink-0 text-[10px] text-muted-foreground">
+                            {m.currentMilestoneId
+                              ? `in ${m.currentMilestoneName ?? "another milestone"}`
+                              : "(unlinked)"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Returns true if the proposal has any "extra" fields beyond the
+ * required title/name — i.e., there is content worth showing in the
+ * Details dialog.
+ */
+export function proposalHasDetails(p: ProposalOutput): boolean {
+  if (p.kind === "feature")
+    return !!(
+      p.payload.description ||
+      p.payload.initialMessage ||
+      p.payload.dependsOnFeatureIds?.length ||
+      p.payload.dependsOnProposalIds?.length
+    );
+  if (p.kind === "initiative")
+    return !!(
+      p.payload.description ||
+      p.payload.status ||
+      p.payload.startDate ||
+      p.payload.targetDate
+    );
+  // milestone
+  return !!(p.payload.description || p.payload.status || p.payload.dueDate);
 }
 
 /**
