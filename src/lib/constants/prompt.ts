@@ -226,7 +226,7 @@ Tools are prefixed with workspace slugs. For each workspace you have:
 ${conceptToolLines}
 - \`{workspace}__recent_commits\` - Query recent commits
 - \`{workspace}__recent_contributions\` - Query PRs by a contributor
-- \`{workspace}__search_logs\` - Search application logs (Lucene query syntax)
+- \`{workspace}__search_logs\` - Search application logs (Lucene query syntax). Every term MUST have a field prefix (e.g. \`message:CLN\`, \`level:ERROR\`); a bare keyword like \`CLN\` fails with a 400 error.
 - \`{workspace}__logs_agent\` - Deep, run-grounded analysis of agent execution logs (debug agent runs/failures). Heavier than search_logs — prefer search_logs for simple keyword lookups. Optionally scope to a featureId/taskId.
 - \`{workspace}__repo_agent\` - Deep code analysis (if you can't find the answer with the other tools)
 - \`{workspace}__list_features\` - List roadmap features/plans for a workspace. Use this if the user asks about features, plans, roadmap, or what's being worked on.
