@@ -172,10 +172,11 @@ export interface RunCanvasAgentOptions {
    * readonly-strip names (see `src/lib/ai/capabilities.ts`). Defaults
    * to the full set, i.e. the historical canvas-agent behavior. Pass a
    * subset to run the same agent on surfaces that have no canvas —
-   * e.g. `["planner"]` for propose_feature/send_to_feature_planner
-   * with only the per-workspace tools. Note `"canvas"` implies
-   * `"research"` and `"connections"` (registry `includes`). Ignored
-   * when `orgId` is absent.
+   * e.g. `["planner"]` for the per-feature Plan page, giving the agent
+   * `send_to_feature_planner` plus the per-workspace tools so it can
+   * help execute an existing plan without any canvas/propose tools.
+   * Note `"canvas"` implies `"research"` and `"connections"` (registry
+   * `includes`). Ignored when `orgId` is absent.
    */
   capabilities?: readonly OrgCapability[];
   /** Workspace slugs to expose to the agent. 1..20. */

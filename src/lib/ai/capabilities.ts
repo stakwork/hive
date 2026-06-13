@@ -10,20 +10,23 @@
  *
  * Capabilities are defined by INTENT, not by the `buildXTools` factory
  * boundaries — `buildInitiativeTools` in particular spans two
- * capabilities (the initiative/milestone organization tools belong to
- * `canvas`; `propose_feature` + `send_to_feature_planner` belong to
- * `planner`), so those entries pick the relevant keys out of the
- * factory's output.
+ * capabilities (everything that authors/organizes roadmap structure —
+ * the initiative/milestone tools AND `propose_feature` — belongs to
+ * `canvas`; only `send_to_feature_planner` belongs to `planner`), so
+ * those entries pick the relevant keys out of the factory's output.
  *
  * The four capabilities:
  *   - `canvas` — the spatial board AND roadmap organization
- *     (initiatives/milestones). Folds in `research` + `connections`
- *     via `includes`, since the canvas surface has always carried
- *     both.
- *   - `planner` — driving the per-feature planning agents
- *     (`propose_feature`, `send_to_feature_planner`). Usable without
- *     `canvas`: its prompt snippet reads standalone (placement →
- *     `auto`, feature discovery via `<slug>__list_features`).
+ *     (initiatives/milestones/features). Folds in `research` +
+ *     `connections` via `includes`, since the canvas surface has
+ *     always carried both.
+ *   - `planner` — driving an EXISTING feature's per-feature planning
+ *     agent via `send_to_feature_planner`. Usable without `canvas`:
+ *     the motivating surface is the per-feature Plan page, where the
+ *     feature already exists and the user wants the org agent's help
+ *     to execute the plan (no proposing). Its prompt snippet reads
+ *     standalone — feature/chat context comes from the per-workspace
+ *     `<slug>__read_feature` / `<slug>__list_features` tools.
  *   - `research` — Research documents (web-search writeups).
  *   - `connections` — Connection documents (integration writeups).
  */
@@ -92,6 +95,9 @@ function pickTools(tools: ToolSet, names: readonly string[]): ToolSet {
 }
 
 // Intent-based split of buildInitiativeTools' output (see module doc).
+// All the roadmap-authoring/organizing tools — including
+// `propose_feature` — are `canvas`; `send_to_feature_planner` (drive an
+// existing feature's planner) is the lone `planner` tool.
 const CANVAS_INITIATIVE_TOOL_NAMES = [
   "read_initiative",
   "read_milestone",
@@ -99,13 +105,11 @@ const CANVAS_INITIATIVE_TOOL_NAMES = [
   "assign_feature_to_workspace",
   "unassign_feature_from_workspace",
   PROPOSE_INITIATIVE_TOOL,
+  PROPOSE_FEATURE_TOOL,
   PROPOSE_MILESTONE_TOOL,
 ] as const;
 
-const PLANNER_TOOL_NAMES = [
-  PROPOSE_FEATURE_TOOL,
-  "send_to_feature_planner",
-] as const;
+const PLANNER_TOOL_NAMES = ["send_to_feature_planner"] as const;
 
 /** Canonical composition order — also the prompt snippet order. */
 export const ALL_CAPABILITIES: readonly OrgCapability[] = [
@@ -141,6 +145,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         "assign_feature_to_workspace",
         "unassign_feature_from_workspace",
         PROPOSE_INITIATIVE_TOOL,
+        PROPOSE_FEATURE_TOOL,
         PROPOSE_MILESTONE_TOOL,
       ],
       includes: ["research", "connections"],
@@ -156,10 +161,10 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
           PLANNER_TOOL_NAMES,
         ),
       promptSnippet: getPlannerCapabilitySnippet,
-      // send_to_feature_planner survives readonly mode (matches the
-      // pre-registry strip set — it messages an agent rather than
-      // mutating org state directly).
-      writeToolNames: [PROPOSE_FEATURE_TOOL],
+      // No write tools to strip: send_to_feature_planner survives
+      // readonly mode (matches the pre-registry strip set — it messages
+      // an agent rather than mutating org state directly).
+      writeToolNames: [],
     },
     research: {
       buildTools: (ctx) =>
