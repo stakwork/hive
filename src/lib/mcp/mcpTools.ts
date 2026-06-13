@@ -258,18 +258,30 @@ export async function findWorkspaceUser(
 /**
  * Resolve a user within a workspace by fuzzy-matching the `user` string
  * against User.name and User.sphinxAlias (case-insensitive).
- * Falls back to the workspace owner when no match is found.
+ *
+ * Resolution order:
+ *   1. `userHint` fuzzy-match against workspace members (when supplied).
+ *   2. `fallbackUserId` (when supplied) — a context-specific default,
+ *      e.g. the feature's creator for feature-anchored task tools, so
+ *      attribution (and therefore the GitHub token that authors the PR)
+ *      follows the person who owns the feature rather than collapsing to
+ *      the workspace owner.
+ *   3. The workspace owner — the last resort.
  */
 export async function resolveWorkspaceUser(
   workspaceId: string,
   userHint?: string,
+  fallbackUserId?: string,
 ): Promise<string> {
   if (userHint) {
     const matched = await findWorkspaceUser(workspaceId, userHint);
     if (matched) return matched;
   }
 
-  // No hint or no match — fall back to owner
+  // No hint or no match — prefer the caller-supplied fallback (e.g. the
+  // feature creator) before collapsing to the workspace owner.
+  if (fallbackUserId) return fallbackUserId;
+
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
     select: { ownerId: true },
@@ -738,11 +750,12 @@ export async function mcpCreateFeatureTask(
   featureId: string,
   base: McpRoadmapTaskBase,
   repo: { repositoryId?: string; repositoryUrl?: string },
+  creatorHint?: string,
 ): Promise<McpToolResult> {
   try {
     const feature = await db.feature.findUnique({
       where: { id: featureId },
-      select: { workspaceId: true },
+      select: { workspaceId: true, createdById: true },
     });
     const err = verifyWorkspace(feature, auth, "Feature");
     if (err) return err;
@@ -758,7 +771,16 @@ export async function mcpCreateFeatureTask(
         ? (base.priority as Priority)
         : Priority.MEDIUM;
 
-    const task = await createTicket(featureId, auth.userId, {
+    // Attribution: explicit `creator` hint → the feature's creator →
+    // workspace owner. Defaulting to the feature creator (rather than the
+    // owner) keeps the PR authored by the person who owns the feature.
+    const creatorId = await resolveWorkspaceUser(
+      auth.workspaceId,
+      creatorHint,
+      feature!.createdById,
+    );
+
+    const task = await createTicket(featureId, creatorId, {
       title: base.title,
       description: base.description,
       priority: taskPriority,
@@ -805,11 +827,12 @@ export async function mcpCreateWorkflowTask(
     workflowRefId?: string;
     workflowTaskType?: import("@prisma/client").WorkflowTaskType;
   },
+  creatorHint?: string,
 ): Promise<McpToolResult> {
   try {
     const feature = await db.feature.findUnique({
       where: { id: featureId },
-      select: { workspaceId: true },
+      select: { workspaceId: true, createdById: true },
     });
     const err = verifyWorkspace(feature, auth, "Feature");
     if (err) return err;
@@ -822,7 +845,15 @@ export async function mcpCreateWorkflowTask(
 
     const hasExistingWorkflow = typeof workflow.workflowId === "number";
 
-    const task = await createTicket(featureId, auth.userId, {
+    // Attribution: explicit `creator` hint → the feature's creator →
+    // workspace owner (mirrors mcpCreateFeatureTask).
+    const creatorId = await resolveWorkspaceUser(
+      auth.workspaceId,
+      creatorHint,
+      feature!.createdById,
+    );
+
+    const task = await createTicket(featureId, creatorId, {
       title: base.title,
       description: base.description,
       priority: taskPriority,
