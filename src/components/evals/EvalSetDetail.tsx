@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionMenu } from "@/components/ui/action-menu";
-import { ArrowLeft, Link2, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { CreateRequirementModal } from "./CreateRequirementModal";
 import { EditRequirementModal } from "./EditRequirementModal";
-import { LinkRunModal } from "./LinkRunModal";
+import { CaptureEvalTriggerModal } from "./CaptureEvalTriggerModal";
+import { EvalTriggerList } from "./EvalTriggerList";
 import type { JarvisNode } from "@/types/jarvis";
 
 interface EvalSetDetailProps {
@@ -21,8 +22,8 @@ interface RequirementNode extends JarvisNode {
     name?: string;
     description?: string;
     prompt_snippet?: string;
-    positive_cases?: string[];
-    negative_cases?: string[];
+    desirable_cases?: string[];
+    undesirable_cases?: string[];
     linked_session_count?: number;
     order?: number;
     [key: string]: unknown;
@@ -121,11 +122,11 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
             const promptSnippet = req.properties?.prompt_snippet
               ? String(req.properties.prompt_snippet)
               : null;
-            const posCount = Array.isArray(req.properties?.positive_cases)
-              ? req.properties.positive_cases.length
+            const posCount = Array.isArray(req.properties?.desirable_cases)
+              ? req.properties.desirable_cases.length
               : 0;
-            const negCount = Array.isArray(req.properties?.negative_cases)
-              ? req.properties.negative_cases.length
+            const negCount = Array.isArray(req.properties?.undesirable_cases)
+              ? req.properties.undesirable_cases.length
               : 0;
             const sessionCount =
               typeof req.properties?.linked_session_count === "number"
@@ -166,8 +167,8 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
                       size="sm"
                       onClick={() => setLinkTarget({ reqId: req.ref_id })}
                     >
-                      <Link2 className="mr-1 h-3 w-3" />
-                      Link Run
+                      <Zap className="mr-1 h-3 w-3" />
+                      Capture Trigger
                     </Button>
                     <ActionMenu
                       actions={[
@@ -192,6 +193,11 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
                     />
                   </div>
                 </div>
+                <EvalTriggerList
+                  evalSetId={evalSet.ref_id}
+                  reqId={req.ref_id}
+                  slug={slug}
+                />
               </div>
             );
           })}
@@ -207,12 +213,12 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
       />
 
       {linkTarget && (
-        <LinkRunModal
+        <CaptureEvalTriggerModal
           open={!!linkTarget}
           onOpenChange={(o) => { if (!o) setLinkTarget(null); }}
           evalSetId={evalSet.ref_id}
           reqId={linkTarget.reqId}
-          onLinked={fetchRequirements}
+          onCreated={fetchRequirements}
         />
       )}
 

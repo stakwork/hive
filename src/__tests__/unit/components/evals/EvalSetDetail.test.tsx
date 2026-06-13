@@ -20,8 +20,15 @@ vi.mock("@/components/evals/CreateRequirementModal", () => ({
   CreateRequirementModal: () => null,
 }));
 
-vi.mock("@/components/evals/LinkRunModal", () => ({
-  LinkRunModal: () => null,
+vi.mock("@/components/evals/CaptureEvalTriggerModal", () => ({
+  CaptureEvalTriggerModal: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="capture-trigger-modal" /> : null,
+}));
+
+vi.mock("@/components/evals/EvalTriggerList", () => ({
+  EvalTriggerList: ({ reqId }: { reqId: string }) => (
+    <div data-testid={`eval-trigger-list-${reqId}`} />
+  ),
 }));
 
 vi.mock("@/components/evals/EditRequirementModal", () => ({
@@ -89,7 +96,7 @@ vi.mock("@/components/ui/skeleton", () => ({
 
 vi.mock("lucide-react", () => ({
   ArrowLeft: () => <span>←</span>,
-  Link2: () => <span>🔗</span>,
+  Zap: () => <span>⚡</span>,
   Pencil: () => <span>✏️</span>,
   Plus: () => <span>+</span>,
   Trash2: () => <span>🗑️</span>,
@@ -112,8 +119,8 @@ const MOCK_REQUIREMENTS = [
       name: "Req Alpha",
       description: "First requirement",
       prompt_snippet: "When asked to...",
-      positive_cases: ["Does A", "Does B"],
-      negative_cases: ["Does not C"],
+      desirable_cases: ["Does A", "Does B"],
+      undesirable_cases: ["Does not C"],
       order: 0,
     },
   },
@@ -124,8 +131,8 @@ const MOCK_REQUIREMENTS = [
       name: "Req Beta",
       description: "Second requirement",
       prompt_snippet: "When instructed to...",
-      positive_cases: ["Does X"],
-      negative_cases: ["Does not Y"],
+      desirable_cases: ["Does X"],
+      undesirable_cases: ["Does not Y"],
       order: 1,
     },
   },
@@ -305,5 +312,47 @@ describe("EvalSetDetail", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Failed to delete requirement");
     });
+  });
+
+  it("renders CaptureEvalTriggerModal (not LinkRunModal)", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_REQUIREMENTS, total: 2 } }),
+    });
+
+    render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+    await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(2));
+
+    // Trigger the modal by clicking "Capture Trigger"
+    const captureBtns = screen.getAllByText(/Capture Trigger/i);
+    expect(captureBtns.length).toBeGreaterThan(0);
+    await userEvent.click(captureBtns[0]);
+
+    expect(screen.getByTestId("capture-trigger-modal")).toBeTruthy();
+    // LinkRunModal should NOT be present at all
+    expect(screen.queryByTestId("link-run-modal")).toBeNull();
+  });
+
+  it("does NOT render LinkRunModal anywhere", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_REQUIREMENTS, total: 2 } }),
+    });
+
+    render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+    await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(2));
+
+    expect(screen.queryByTestId("link-run-modal")).toBeNull();
+    expect(screen.queryByText(/Link Run/i)).toBeNull();
+  });
+
+  it("mounts EvalTriggerList below each requirement row", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_REQUIREMENTS, total: 2 } }),
+    });
+
+    render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
+    await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(2));
+
+    expect(screen.getByTestId("eval-trigger-list-req-1")).toBeTruthy();
+    expect(screen.getByTestId("eval-trigger-list-req-2")).toBeTruthy();
   });
 });

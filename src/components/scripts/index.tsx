@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Search, History, Trash2, Zap, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Minus, Pencil, Save, X, Search, History, Trash2, Zap, Upload, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { estimateTokens, formatTokenCount } from "@/lib/utils/token-estimate";
@@ -45,6 +45,7 @@ interface ScriptDetail {
   current_version_id: number | null;
   published_version_id: number | null;
   version_count: number;
+  public_url: string | null;
 }
 
 interface ScriptVersion {
@@ -52,6 +53,7 @@ interface ScriptVersion {
   version_number: number;
   created_at: string;
   whodunnit: string | null;
+  event: string | null;
 }
 
 interface ScriptsListResponse {
@@ -91,7 +93,6 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
   const [page, setPage] = useState(() => parseInt(searchParams?.get("page") ?? "1", 10) || 1);
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(10);
-  const [copiedNotation, setCopiedNotation] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [isEditing, setIsEditing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -336,7 +337,6 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
     setSelectedScript(null);
     setViewMode("list");
     setIsEditing(false);
-    setCopiedNotation(false);
     setFormName("");
     setFormValue("");
     setFormDescription("");
@@ -462,14 +462,6 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
   };
 
   const totalPages = Math.ceil(total / pageSize);
-
-  const handleCopyNotation = async () => {
-    if (selectedScript?.usage_notation) {
-      await navigator.clipboard.writeText(selectedScript.usage_notation);
-      setCopiedNotation(true);
-      setTimeout(() => setCopiedNotation(false), 2000);
-    }
-  };
 
   const handleHistoryClick = async () => {
     if (!selectedScript) return;
@@ -824,29 +816,6 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
 
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Usage Notation
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <code className="text-sm bg-muted px-2 py-1 rounded font-mono flex-1 overflow-x-auto">
-                    {selectedScript.usage_notation}
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCopyNotation}
-                    className="flex-shrink-0"
-                  >
-                    {copiedNotation ? (
-                      <Check className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Description
                 </label>
                 {isEditing ? (
@@ -863,6 +832,25 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
                   </p>
                 )}
               </div>
+
+              {selectedScript.public_url && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Source File
+                  </label>
+                  <div className="mt-1">
+                    <a
+                      href={selectedScript.public_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline flex items-center gap-1"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {selectedScript.public_url}
+                    </a>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <div className="flex items-center gap-2 mb-1">
@@ -1038,6 +1026,14 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
                               {formatTimestamp(version.created_at)}
                             </span>
                           </div>
+                          {(version.whodunnit || version.event) && (
+                            <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                              {version.whodunnit && <span>{version.whodunnit}</span>}
+                              {version.event && (
+                                <Badge variant="outline" className="text-xs py-0">{version.event}</Badge>
+                              )}
+                            </div>
+                          )}
                         </button>
 
                         {isLive ? (
@@ -1252,11 +1248,6 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
                     </span>
                   )}
                 </div>
-                {script.usage_notation && (
-                  <div className="text-xs text-muted-foreground font-mono truncate mt-1">
-                    {script.usage_notation}
-                  </div>
-                )}
                 {script.description && (
                   <div className="text-xs text-muted-foreground truncate mt-1">
                     {script.description}

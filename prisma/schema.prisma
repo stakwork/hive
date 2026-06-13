@@ -110,6 +110,7 @@ model User {
   createdSecrets           WorkspaceSecret[]        @relation("SecretCreator")
   initiativeAssignments    Initiative[]             @relation("InitiativeAssignee")
   milestoneAssignments     Milestone[]              @relation("MilestoneAssignee")
+  createdMilestones        Milestone[]              @relation("MilestoneCreator")
 
   @@index([createdAt])
   @@index([deleted])
@@ -256,6 +257,7 @@ model Workspace {
   diagrams                DiagramWorkspace[]
   discordChannels         DiscordChannel[]
   features                Feature[]
+  workflowSummaries       WorkflowSummary[]
   janitorConfig           JanitorConfig?
   janitorRecommendations  JanitorRecommendation[]
   repositories            Repository[]
@@ -1761,10 +1763,12 @@ model Milestone {
   dueDate      DateTime?       @map("due_date")
   completedAt  DateTime?       @map("completed_at")
   assigneeId   String?         @map("assignee_id")
+  createdById  String?         @map("creator_id")
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
   initiative   Initiative      @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
   assignee     User?           @relation("MilestoneAssignee", fields: [assigneeId], references: [id])
+  creator      User?           @relation("MilestoneCreator", fields: [createdById], references: [id])
   features     Feature[]
 
   @@unique([initiativeId, sequence])
@@ -1796,4 +1800,21 @@ model DiscordChannel {
 
   @@unique([workspaceId, channelId])
   @@map("discord_channels")
+}
+
+model WorkflowSummary {
+  id          String    @id @default(cuid())
+  workflowId  Int       @map("workflow_id")
+  workspaceId String    @map("workspace_id")
+  cacheKey    String    @map("cache_key")
+  versionIds  Json      @map("version_ids")
+  content     String?   @db.Text
+  status      String    @default("PENDING")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, cacheKey])
+  @@index([workspaceId])
+  @@map("workflow_summaries")
 }

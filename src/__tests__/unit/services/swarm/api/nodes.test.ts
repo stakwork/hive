@@ -134,6 +134,26 @@ describe("addNode", () => {
 
       expect(result.success).toBe(true);
     });
+
+    test("returns success with ref_id when status is 'Warning' and data.ref_id present but status_messages is empty (Jarvis duplicate upsert shape)", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: "Warning",
+          status_messages: [],
+          message: "Node already exists in the graph with node_key: plan-agent",
+          data: { ref_id: "existing-role-ref-id" },
+        }),
+      });
+
+      const result = await addNode(config, {
+        node_type: "AgentRole",
+        node_data: { name: "plan-agent" },
+      });
+
+      expect(result).toEqual({ success: true, ref_id: "existing-role-ref-id" });
+    });
   });
 
   describe("Failure cases", () => {
@@ -555,8 +575,8 @@ describe("updateNode", () => {
         node_data: {
           name: "Check output",
           prompt_snippet: "Summarize this",
-          positive_cases: ["Good"],
-          negative_cases: ["Bad"],
+          desirable_cases: ["Good"],
+          undesirable_cases: ["Bad"],
         },
       });
 

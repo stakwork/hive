@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { WorkflowVersionList } from "@/components/workflow/inspector/WorkflowVersionList";
 import type { WorkflowVersion } from "@/hooks/useWorkflowVersions";
 
@@ -98,5 +98,121 @@ describe("WorkflowVersionList", () => {
 
     screen.getAllByRole("button")[1].click();
     expect(onSelect).toHaveBeenCalledWith("v2");
+  });
+});
+
+describe("WorkflowVersionList — selectable mode", () => {
+  it("renders checkboxes per row when selectable=true", () => {
+    const versions = [makeVersion("v1"), makeVersion("v2"), makeVersion("v3")];
+    render(
+      <WorkflowVersionList
+        versions={versions}
+        selectedVersionId={null}
+        onVersionSelect={vi.fn()}
+        selectable
+        selectedIds={[]}
+        onSelectionChange={vi.fn()}
+      />,
+    );
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(3);
+  });
+
+  it("does not render checkboxes when selectable is false (default)", () => {
+    const versions = [makeVersion("v1"), makeVersion("v2")];
+    render(
+      <WorkflowVersionList
+        versions={versions}
+        selectedVersionId={null}
+        onVersionSelect={vi.fn()}
+      />,
+    );
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("calls onSelectionChange when a checkbox is checked", () => {
+    const onSelectionChange = vi.fn();
+    const versions = [makeVersion("v1"), makeVersion("v2")];
+    render(
+      <WorkflowVersionList
+        versions={versions}
+        selectedVersionId={null}
+        onVersionSelect={vi.fn()}
+        selectable
+        selectedIds={[]}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    expect(onSelectionChange).toHaveBeenCalledWith(["v1"]);
+  });
+
+  it("disables checkboxes when 5 versions are already selected", () => {
+    const versions = ["v1", "v2", "v3", "v4", "v5", "v6"].map((id) => makeVersion(id));
+    render(
+      <WorkflowVersionList
+        versions={versions}
+        selectedVersionId={null}
+        onVersionSelect={vi.fn()}
+        selectable
+        selectedIds={["v1", "v2", "v3", "v4", "v5"]}
+        onSelectionChange={vi.fn()}
+      />,
+    );
+    const checkboxes = screen.getAllByRole("checkbox");
+    // v6 checkbox should be disabled (5 already selected and v6 is not in selection)
+    expect(checkboxes[5]).toBeDisabled();
+    // Already-selected ones should remain enabled
+    expect(checkboxes[0]).not.toBeDisabled();
+  });
+
+  it("does not show Generate Summary button when fewer than 2 versions selected", () => {
+    const versions = [makeVersion("v1"), makeVersion("v2"), makeVersion("v3")];
+    render(
+      <WorkflowVersionList
+        versions={versions}
+        selectedVersionId={null}
+        onVersionSelect={vi.fn()}
+        selectable
+        selectedIds={["v1"]}
+        onSelectionChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /generate summary/i })).not.toBeInTheDocument();
+  });
+
+  it("shows Generate Summary button with count when 2+ versions are selected", () => {
+    const versions = [makeVersion("v1"), makeVersion("v2"), makeVersion("v3")];
+    render(
+      <WorkflowVersionList
+        versions={versions}
+        selectedVersionId={null}
+        onVersionSelect={vi.fn()}
+        selectable
+        selectedIds={["v1", "v2"]}
+        onSelectionChange={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /generate summary \(2 selected\)/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("calls onCustomSelectionConfirm when Generate Summary is clicked", () => {
+    const onConfirm = vi.fn();
+    const versions = [makeVersion("v1"), makeVersion("v2")];
+    render(
+      <WorkflowVersionList
+        versions={versions}
+        selectedVersionId={null}
+        onVersionSelect={vi.fn()}
+        selectable
+        selectedIds={["v1", "v2"]}
+        onSelectionChange={vi.fn()}
+        onCustomSelectionConfirm={onConfirm}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /generate summary/i }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });

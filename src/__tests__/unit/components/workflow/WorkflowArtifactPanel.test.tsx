@@ -62,8 +62,15 @@ vi.mock("@/components/StakworkRunDropdown", () => ({
     React.createElement("div", { "data-testid": "stakwork-run-dropdown", "data-project-id": projectId }),
 }));
 
+let lastChangesPanelProps: { originalJson: string | null; updatedJson: string | null } = {
+  originalJson: null,
+  updatedJson: null,
+};
 vi.mock("@/app/w/[slug]/task/[...taskParams]/artifacts/WorkflowChangesPanel", () => ({
-  WorkflowChangesPanel: () => null,
+  WorkflowChangesPanel: (props: { originalJson: string | null; updatedJson: string | null }) => {
+    lastChangesPanelProps = props;
+    return null;
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -420,5 +427,124 @@ describe("WorkflowArtifactPanel — workflowVersion prop", () => {
     });
     render(<WorkflowArtifactPanel artifacts={[artifact]} isActive={false} />);
     expect(lastWorkflowComponentProps.workflowVersion).toBe("");
+  });
+});
+
+describe("WorkflowArtifactPanel — Changes tab diff isolation", () => {
+  // A realistic baseline string longer than 100 chars
+  const baseline = JSON.stringify({ transitions: { stepA: nonLoopTransition, stepB: nonLoopTransition } });
+  const updated = JSON.stringify({ transitions: { stepA: nonLoopTransition, stepC: loopTransition } });
+  const freshWorkflow = JSON.stringify({ transitions: { stepX: loopTransition } });
+
+  beforeEach(() => {
+    lastChangesPanelProps = { originalJson: null, updatedJson: null };
+  });
+
+  it("Test 1 — subsequent-run: keeps agent-response updatedJson after a second run-start artifact", async () => {
+    const user = userEvent.setup();
+
+    const runStartA: Artifact = {
+      id: "art-run-start-A",
+      type: "workflow",
+      content: {
+        workflowJson: baseline,
+        originalWorkflowJson: "",
+        workflowId: 1,
+      } as unknown as Artifact["content"],
+    } as unknown as Artifact;
+
+    const agentResponseB: Artifact = {
+      id: "art-agent-response-B",
+      type: "workflow",
+      content: {
+        workflowJson: updated,
+        originalWorkflowJson: baseline, // long string > 100 chars
+        workflowId: 1,
+      } as unknown as Artifact["content"],
+    } as unknown as Artifact;
+
+    const runStartC: Artifact = {
+      id: "art-run-start-C",
+      type: "workflow",
+      content: {
+        workflowJson: baseline,
+        originalWorkflowJson: "",
+        workflowId: 1,
+      } as unknown as Artifact["content"],
+    } as unknown as Artifact;
+
+    render(
+      <WorkflowArtifactPanel
+        artifacts={[runStartA, agentResponseB, runStartC]}
+        isActive={false}
+      />,
+    );
+
+    // Switch to Changes tab so WorkflowChangesPanel is rendered
+    await user.click(screen.getByRole("tab", { name: /changes/i }));
+
+    // changesWorkflowJson must still be "updated", not "baseline"
+    expect(lastChangesPanelProps.updatedJson).toBe(updated);
+  });
+
+  it("Test 2 — publish: keeps agent-response updatedJson after a publish artifact overwrites workflowJson", async () => {
+    const user = userEvent.setup();
+
+    const agentResponseA: Artifact = {
+      id: "art-agent-response-A",
+      type: "workflow",
+      content: {
+        workflowJson: updated,
+        originalWorkflowJson: baseline, // long string > 100 chars
+        workflowId: 1,
+      } as unknown as Artifact["content"],
+    } as unknown as Artifact;
+
+    const publishArtifactB: Artifact = {
+      id: "art-publish-B",
+      type: "workflow",
+      content: {
+        workflowJson: freshWorkflow,
+        // no originalWorkflowJson
+        workflowId: 1,
+      } as unknown as Artifact["content"],
+    } as unknown as Artifact;
+
+    render(
+      <WorkflowArtifactPanel
+        artifacts={[agentResponseA, publishArtifactB]}
+        isActive={false}
+      />,
+    );
+
+    // Switch to Changes tab so WorkflowChangesPanel is rendered
+    await user.click(screen.getByRole("tab", { name: /changes/i }));
+
+    // changesWorkflowJson must remain "updated", not "freshWorkflow"
+    expect(lastChangesPanelProps.updatedJson).toBe(updated);
+  });
+
+  it("Test 3 — first-run baseline fallback: shows workflowJson as all-green when no agent response yet", async () => {
+    const user = userEvent.setup();
+
+    const runStartA: Artifact = {
+      id: "art-run-start-A",
+      type: "workflow",
+      content: {
+        workflowJson: baseline,
+        originalWorkflowJson: "",
+        workflowId: 1,
+      } as unknown as Artifact["content"],
+    } as unknown as Artifact;
+
+    render(
+      <WorkflowArtifactPanel artifacts={[runStartA]} isActive={false} />,
+    );
+
+    // Switch to Changes tab so WorkflowChangesPanel is rendered
+    await user.click(screen.getByRole("tab", { name: /changes/i }));
+
+    // No agent response yet → changesWorkflowJson is undefined → fallback to workflowJson
+    expect(lastChangesPanelProps.updatedJson).toBe(baseline);
   });
 });
