@@ -27,6 +27,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     sharedConversation: { findUnique: vi.fn(), update: vi.fn() },
     feature: { findUnique: vi.fn() },
+    task: { count: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   },
@@ -38,8 +39,14 @@ vi.mock("@/lib/ai/runCanvasAgent", () => ({
 
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
-import { invokeCanvasAgentOnPlannerMessage } from "@/services/canvas-agent-autoturn";
+import {
+  invokeCanvasAgentOnPlannerMessage,
+  countTrailingPlannerAsks,
+  MAX_CONSECUTIVE_PLANNER_ASKS,
+} from "@/services/canvas-agent-autoturn";
 import { actionableWakeReason } from "@/services/canvas-planner-fanout";
+import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
+import type { StoredMessage } from "@/services/canvas-turn-persistence";
 
 const ENV_KEY = "CANVAS_AUTONOMOUS_TURNS_ENABLED";
 
@@ -77,6 +84,8 @@ describe("invokeCanvasAgentOnPlannerMessage — gating", () => {
           sharedConversation: { update: vi.fn().mockResolvedValue({}) },
         }),
     );
+    // Default: no tasks exist yet for the feature.
+    (db.task.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
   });
 
   afterEach(() => {
@@ -198,6 +207,204 @@ describe("invokeCanvasAgentOnPlannerMessage — gating", () => {
     expect(passedMessages.some((m) => m.role === "system")).toBe(false);
     // The wake context is the leading user turn.
     expect(passedMessages[0].role).toBe("user");
+  });
+});
+
+describe("invokeCanvasAgentOnPlannerMessage — generate-tasks loop prevention", () => {
+  const args = {
+    conversationId: "conv-1",
+    featureId: "feat-1",
+    plannerMessageId: "msg-1",
+    wakeReason: "completed" as const,
+  };
+
+  const conversation = (messages: StoredMessage[] = []) => ({
+    id: "conv-1",
+    userId: "user-1",
+    sourceControlOrgId: "org-1",
+    workspaceId: "ws-1",
+    messages,
+    settings: {},
+    workspace: { slug: "ws" },
+    user: { canvasAutonomousTurns: true },
+  });
+
+  const fullPlanFeature = {
+    title: "ScrollArea fix",
+    brief: "the brief",
+    requirements: "the requirements",
+    architecture: "the architecture",
+    workflowStatus: WorkflowStatus.COMPLETED,
+    workspace: { slug: "ws" },
+  };
+
+  /** An auto-turn output row that asked `featureId`'s planner something. */
+  const askRow = (n: number, featureId = "feat-1"): StoredMessage => ({
+    id: `autoturn-prev${n}-0`,
+    role: "assistant",
+    content: "",
+    toolCalls: [
+      {
+        id: `call-${n}`,
+        toolName: SEND_TO_FEATURE_PLANNER_TOOL,
+        input: { featureId, message: "Please generate the tasks now." },
+      },
+    ],
+  });
+
+  const mockAgentRun = () =>
+    (runCanvasAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      result: { text: Promise.resolve(""), steps: Promise.resolve([]) },
+      cacheableConcepts: {},
+      cacheHit: false,
+    });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env[ENV_KEY];
+    (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: unknown) => unknown) =>
+        fn({
+          $queryRaw: vi.fn().mockResolvedValue([{ messages: [], settings: {} }]),
+          sharedConversation: { update: vi.fn().mockResolvedValue({}) },
+        }),
+    );
+    (
+      db.sharedConversation.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(conversation());
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      fullPlanFeature,
+    );
+    (db.task.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+  });
+
+  test("short-circuit: plan complete + tasks already generated → no LLM turn at all", async () => {
+    // THE loop: workflowStatus is terminal so every planner reply wakes
+    // with 'completed', and the prompt used to re-ask for tasks forever.
+    (db.task.count as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+    mockAgentRun();
+
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    expect(runCanvasAgent).not.toHaveBeenCalled();
+  });
+
+  test("tasks not yet generated → turn runs and the wake message pushes for tasks", async () => {
+    mockAgentRun();
+
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    expect(runCanvasAgent).toHaveBeenCalledOnce();
+    const messages = (runCanvasAgent as ReturnType<typeof vi.fn>).mock
+      .calls[0][0].messages as Array<{ role: string; content: string }>;
+    const wake = messages[messages.length - 1];
+    expect(wake.role).toBe("user");
+    expect(wake.content).toContain("generate the tasks now");
+    expect(wake.content).toContain("_(not yet generated)_");
+  });
+
+  test("tasks generated but a stage missing → turn runs, wake message forbids re-asking for tasks", async () => {
+    // Odd-but-possible state: short-circuit doesn't apply (stage missing),
+    // so the LLM runs — the prompt must still carry the never-re-ask rule.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...fullPlanFeature,
+      architecture: null,
+    });
+    (db.task.count as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+    mockAgentRun();
+
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    expect(runCanvasAgent).toHaveBeenCalledOnce();
+    const messages = (runCanvasAgent as ReturnType<typeof vi.fn>).mock
+      .calls[0][0].messages as Array<{ role: string; content: string }>;
+    const wake = messages[messages.length - 1];
+    expect(wake.content).toContain("NEVER ask the planner to generate tasks again");
+    expect(wake.content).not.toContain("telling it to generate the tasks now");
+  });
+
+  test("loop breaker: too many consecutive asks with no human message → wake skipped", async () => {
+    // Use a non-'completed' wake so the short-circuit doesn't mask the
+    // breaker — this is the path a future semantic loop (e.g. trailing-'?'
+    // ping-pong) would take.
+    const transcript = Array.from(
+      { length: MAX_CONSECUTIVE_PLANNER_ASKS },
+      (_, n) => askRow(n),
+    );
+    (
+      db.sharedConversation.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(conversation(transcript));
+    mockAgentRun();
+
+    await invokeCanvasAgentOnPlannerMessage({ ...args, wakeReason: "question" });
+
+    expect(runCanvasAgent).not.toHaveBeenCalled();
+  });
+
+  test("loop breaker resets on a human message — steered conversations are never throttled", async () => {
+    const transcript: StoredMessage[] = [
+      ...Array.from({ length: MAX_CONSECUTIVE_PLANNER_ASKS }, (_, n) =>
+        askRow(n),
+      ),
+      { id: "u-1", role: "user", content: "keep going, I'm watching" },
+      askRow(99),
+    ];
+    (
+      db.sharedConversation.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(conversation(transcript));
+    mockAgentRun();
+
+    await invokeCanvasAgentOnPlannerMessage({ ...args, wakeReason: "question" });
+
+    expect(runCanvasAgent).toHaveBeenCalledOnce();
+  });
+});
+
+describe("countTrailingPlannerAsks", () => {
+  const ask = (id: string, featureId: string): StoredMessage => ({
+    id,
+    role: "assistant",
+    content: "",
+    toolCalls: [
+      {
+        id: `call-${id}`,
+        toolName: SEND_TO_FEATURE_PLANNER_TOOL,
+        input: { featureId, message: "next stage please" },
+      },
+    ],
+  });
+
+  test("counts only asks targeting the given feature", () => {
+    const messages: StoredMessage[] = [
+      ask("a", "feat-1"),
+      ask("b", "feat-OTHER"),
+      ask("c", "feat-1"),
+      // A non-planner tool call never counts.
+      {
+        id: "d",
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "call-d", toolName: "read_feature", input: {} }],
+      },
+      // Plain narration rows are skipped, not counted and not a reset.
+      { id: "e", role: "assistant", content: "Looking good." },
+    ];
+    expect(countTrailingPlannerAsks(messages, "feat-1")).toBe(2);
+    expect(countTrailingPlannerAsks(messages, "feat-OTHER")).toBe(1);
+  });
+
+  test("stops at the most recent human message", () => {
+    const messages: StoredMessage[] = [
+      ask("a", "feat-1"),
+      ask("b", "feat-1"),
+      { id: "u", role: "user", content: "thanks, continue" },
+      ask("c", "feat-1"),
+    ];
+    expect(countTrailingPlannerAsks(messages, "feat-1")).toBe(1);
+  });
+
+  test("empty transcript → zero", () => {
+    expect(countTrailingPlannerAsks([], "feat-1")).toBe(0);
   });
 });
 
