@@ -66,9 +66,10 @@ export async function GET(
     // `?source=canvas` we instead list the org-canvas conversations for
     // the workspace's parent org (these are org-scoped — `workspaceId`
     // is null on them — so they never match the workspace filter and
-    // are invisible to the default "Chats" tab). Always restricted to
-    // the calling user's own rows, so there's no IDOR surface even
-    // though org membership isn't separately checked here.
+    // are invisible to the default "Chats" tab). Canvas scope returns all
+    // users' sessions (no userId filter) so team members can see each
+    // other's canvas sessions. The Chats tab is still restricted to the
+    // calling user's own rows.
     const scope = url.searchParams.get("source");
     const isCanvasScope = scope === "canvas";
 
@@ -83,7 +84,6 @@ export async function GET(
     const where = isCanvasScope
       ? {
           sourceControlOrgId: workspace.sourceControlOrgId,
-          userId,
           source: "org-canvas",
         }
       : {
@@ -109,6 +109,13 @@ export async function GET(
           isShared: true,
           createdAt: true,
           updatedAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            },
+          },
         },
       }),
       db.sharedConversation.count({ where }),
@@ -124,6 +131,9 @@ export async function GET(
       isShared: conv.isShared,
       createdAt: conv.createdAt.toISOString(),
       updatedAt: conv.updatedAt.toISOString(),
+      creatorId: conv.user?.id,
+      creatorName: conv.user?.name ?? null,
+      creatorImage: conv.user?.image ?? null,
     }));
 
     return NextResponse.json({

@@ -14,6 +14,8 @@ export interface AgentLogRecord {
   featureTitle: string | null;
   createdAt: Date;
   stats?: AgentLogStats;
+  initiatorName?: string | null;
+  initiatorImage?: string | null;
 }
 
 export interface AgentLogsResponse {
