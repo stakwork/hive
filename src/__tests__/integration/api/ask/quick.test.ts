@@ -49,6 +49,14 @@ vi.mock('@/lib/ai/askTools', () => ({
 // Mock constants
 vi.mock('@/lib/constants/prompt', () => ({
   getQuickAskPrefixMessages: vi.fn(() => []),
+  getMultiWorkspacePrefixMessages: vi.fn(() => []),
+  // Per-capability snippets consumed by the capability registry
+  // (@/lib/ai/capabilities), reached transitively via runCanvasAgent.
+  getCanvasCapabilitySnippet: vi.fn(() => ''),
+  getPlannerCapabilitySnippet: vi.fn(() => ''),
+  getResearchCapabilitySnippet: vi.fn(() => ''),
+  getConnectionsCapabilitySnippet: vi.fn(() => ''),
+  getCanvasPromptSuffix: vi.fn(() => ''),
 }));
 
 // Mock Pusher

@@ -19,8 +19,8 @@
  * There is deliberately NO policy extractor / classifier here — the
  * agent is the classifier. The synthetic wake message below only
  * supplies *context* (which feature, which wake reason); the prompt
- * paragraph in `getCanvasPromptSuffix` teaches the agent how to behave
- * when the wakeup is machine-driven.
+ * paragraph in `getPlannerCapabilitySnippet` teaches the agent how to
+ * behave when the wakeup is machine-driven.
  *
  * **Gating.** Two layers, both default to a no-op:
  *   1. A per-user opt-in (`User.canvasAutonomousTurns`, default off),
