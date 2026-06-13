@@ -464,7 +464,7 @@ function createServer(
           .string()
           .optional()
           .describe(
-            "Name of the creator (matched against name or alias). Falls back to workspace owner if not found.",
+            "Name of the creator (matched against name or alias). If omitted or unmatched, defaults to the feature's creator, then the workspace owner.",
           ),
       },
     },
@@ -489,17 +489,17 @@ function createServer(
       extra,
     ) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
-      const result = await getWorkspaceAuth(
-        authExtra,
-        "create_feature_task",
-        creator,
-      );
+      // Don't resolve `creator` here — mcpCreateFeatureTask owns
+      // attribution so it can default to the feature's creator (not the
+      // workspace owner) when no hint matches.
+      const result = await getWorkspaceAuth(authExtra, "create_feature_task");
       if (result.error) return result.error;
       return mcpCreateFeatureTask(
         result.auth!,
         featureId,
         { title, description, priority },
         { repositoryId, repositoryUrl },
+        creator,
       );
     },
   );
@@ -579,7 +579,7 @@ function createServer(
           .string()
           .optional()
           .describe(
-            "Name of the creator (matched against name or alias). Falls back to workspace owner if not found.",
+            "Name of the creator (matched against name or alias). If omitted or unmatched, defaults to the feature's creator, then the workspace owner.",
           ),
       },
     },
@@ -608,17 +608,17 @@ function createServer(
       extra,
     ) => {
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
-      const result = await getWorkspaceAuth(
-        authExtra,
-        "create_workflow_task",
-        creator,
-      );
+      // Don't resolve `creator` here — mcpCreateWorkflowTask owns
+      // attribution so it can default to the feature's creator (not the
+      // workspace owner) when no hint matches.
+      const result = await getWorkspaceAuth(authExtra, "create_workflow_task");
       if (result.error) return result.error;
       return mcpCreateWorkflowTask(
         result.auth!,
         featureId,
         { title, description, priority },
         { workflowId, workflowName, workflowRefId, workflowTaskType },
+        creator,
       );
     },
   );
