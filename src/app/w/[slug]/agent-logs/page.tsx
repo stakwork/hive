@@ -259,6 +259,8 @@ export default function AgentLogsPage() {
           featureTitle: conv.title,
           stakworkRunId: null,
           taskId: null,
+          initiatorName: conv.creatorName ?? null,
+          initiatorImage: conv.creatorImage ?? null,
         }));
 
         setCanvasLogs(mapped);
@@ -650,6 +652,7 @@ export default function AgentLogsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Timestamp</TableHead>
+                      <TableHead>User</TableHead>
                       <TableHead>Agent Name</TableHead>
                       <TableHead>Feature</TableHead>
                     </TableRow>
@@ -659,6 +662,9 @@ export default function AgentLogsPage() {
                       <TableRow key={i}>
                         <TableCell>
                           <Skeleton className="h-5 w-48" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-8 w-8 rounded-full" />
                         </TableCell>
                         <TableCell>
                           <Skeleton className="h-5 w-32" />
@@ -685,6 +691,7 @@ export default function AgentLogsPage() {
                 logs={canvasLogs}
                 onRowClick={handleCanvasRowClick}
                 onDownload={handleChatDownload}
+                showUserColumn={true}
               />
             )}
 
