@@ -30,14 +30,15 @@ import { ChatRole, Prisma } from "@prisma/client";
 
 export interface ActivityItem {
   id: string;
-  kind: "conversation" | "plan" | "task";
-  category: "chat" | "plan" | "task";
+  kind: "conversation" | "plan" | "task" | "milestone";
+  category: "chat" | "plan" | "task" | "milestone";
   action: "created" | "active";
   title: string;
   link: string;
   workspaceName: string;
   orgName?: string;
   timestamp: string; // ISO
+  completed: boolean;
 }
 
 const DEFAULT_DAYS = 30;
@@ -64,6 +65,7 @@ interface PlanRow {
   workspaceId: string;
   deleted: boolean;
   lastMessageAt: Date;
+  status: string;
 }
 
 interface TaskRow {
@@ -71,6 +73,7 @@ interface TaskRow {
   title: string;
   workspaceId: string;
   lastMessageAt: Date;
+  status: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -93,7 +96,10 @@ export async function GET(request: NextRequest) {
 
   const categoryParam = params.get("category");
   const category =
-    categoryParam === "task" || categoryParam === "plan" || categoryParam === "chat"
+    categoryParam === "task" ||
+    categoryParam === "plan" ||
+    categoryParam === "chat" ||
+    categoryParam === "milestone"
       ? categoryParam
       : null;
 
@@ -104,6 +110,7 @@ export async function GET(request: NextRequest) {
   const runChat = !category || category === "chat";
   const runPlan = !category || category === "plan";
   const runTask = !category || category === "task";
+  const runMilestone = !category || category === "milestone";
 
   // ── Time-window filter for Prisma ORM queries ─────────────────────────────
   const timeFilter = cursor
@@ -117,6 +124,7 @@ export async function GET(request: NextRequest) {
     taskChatResult,
     createdTasksResult,
     createdFeaturesResult,
+    milestonesResult,
   ] = await Promise.allSettled([
     // 1. SharedConversation rows (chat category)
     runChat
@@ -149,6 +157,7 @@ export async function GET(request: NextRequest) {
               f.title              AS "title",
               f.workspace_id       AS "workspaceId",
               f.deleted            AS "deleted",
+              f.status             AS "status",
               MAX(cm.timestamp)    AS "lastMessageAt"
             FROM chat_messages cm
             JOIN features f ON f.id = cm.feature_id
@@ -159,7 +168,7 @@ export async function GET(request: NextRequest) {
               ${cursor ? Prisma.sql`AND cm.timestamp < ${cursor}` : Prisma.empty}
               AND f.deleted = false
               ${q ? Prisma.sql`AND f.title ILIKE ${"%" + q + "%"}` : Prisma.empty}
-            GROUP BY cm.feature_id, f.title, f.workspace_id, f.deleted
+            GROUP BY cm.feature_id, f.title, f.workspace_id, f.deleted, f.status
             ORDER BY "lastMessageAt" DESC
             LIMIT ${QUERY_LIMIT}
           `,
@@ -174,6 +183,7 @@ export async function GET(request: NextRequest) {
               cm.task_id           AS "taskId",
               t.title              AS "title",
               t.workspace_id       AS "workspaceId",
+              t.status             AS "status",
               MAX(cm.timestamp)    AS "lastMessageAt"
             FROM chat_messages cm
             JOIN tasks t ON t.id = cm.task_id
@@ -185,7 +195,7 @@ export async function GET(request: NextRequest) {
               AND t.deleted = false
               AND t.archived = false
               ${q ? Prisma.sql`AND t.title ILIKE ${"%" + q + "%"}` : Prisma.empty}
-            GROUP BY cm.task_id, t.title, t.workspace_id
+            GROUP BY cm.task_id, t.title, t.workspace_id, t.status
             ORDER BY "lastMessageAt" DESC
             LIMIT ${QUERY_LIMIT}
           `,
@@ -205,6 +215,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             title: true,
+            status: true,
             workspaceId: true,
             createdAt: true,
             workspace: {
@@ -232,6 +243,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             title: true,
+            status: true,
             workspaceId: true,
             createdAt: true,
             workspace: {
@@ -243,6 +255,32 @@ export async function GET(request: NextRequest) {
             },
           },
           orderBy: { createdAt: "desc" },
+          take: QUERY_LIMIT,
+        })
+      : Promise.resolve([]),
+
+    // 6. Milestones assigned to or created by the user
+    runMilestone
+      ? db.milestone.findMany({
+          where: {
+            OR: [{ assigneeId: userId }, { createdById: userId }],
+            updatedAt: timeFilter,
+            ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
+          },
+          select: {
+            id: true,
+            name: true,
+            assigneeId: true,
+            createdById: true,
+            updatedAt: true,
+            initiative: {
+              select: {
+                id: true,
+                org: { select: { githubLogin: true } },
+              },
+            },
+          },
+          orderBy: { updatedAt: "desc" },
           take: QUERY_LIMIT,
         })
       : Promise.resolve([]),
@@ -273,6 +311,11 @@ export async function GET(request: NextRequest) {
       error: createdFeaturesResult.reason,
     });
   }
+  if (milestonesResult.status === "rejected") {
+    logger.error("profile/activity: milestone query failed", "profile/activity", {
+      error: milestonesResult.reason,
+    });
+  }
 
   const conversations =
     conversationsResult.status === "fulfilled" ? conversationsResult.value : [];
@@ -281,6 +324,7 @@ export async function GET(request: NextRequest) {
   const createdTasks = createdTasksResult.status === "fulfilled" ? createdTasksResult.value : [];
   const createdFeatures =
     createdFeaturesResult.status === "fulfilled" ? createdFeaturesResult.value : [];
+  const milestones = milestonesResult.status === "fulfilled" ? milestonesResult.value : [];
 
   // ── Batch-resolve workspace + org info for chat-sourced rows ───────────────
   // (created-by queries already embed workspace via Prisma include)
@@ -341,7 +385,8 @@ export async function GET(request: NextRequest) {
       incoming.timestamp > existing.timestamp ? incoming.timestamp : existing.timestamp;
     const action: "active" | "created" =
       incoming.action === "active" || existing.action === "active" ? "active" : "created";
-    itemMap.set(incoming.id, { ...existing, timestamp: latestTs, action });
+    const completed = incoming.completed || existing.completed;
+    itemMap.set(incoming.id, { ...existing, timestamp: latestTs, action, completed });
   }
 
   // 1. Created tasks (may be overridden/merged by chat activity below)
@@ -357,6 +402,7 @@ export async function GET(request: NextRequest) {
       workspaceName: ws?.name ?? "",
       orgName: ws?.sourceControlOrg?.githubLogin,
       timestamp: t.createdAt.toISOString(),
+      completed: t.status === "DONE" || t.status === "CANCELLED",
     });
   }
 
@@ -373,6 +419,7 @@ export async function GET(request: NextRequest) {
       workspaceName: ws?.name ?? "",
       orgName: ws?.sourceControlOrg?.githubLogin,
       timestamp: f.createdAt.toISOString(),
+      completed: f.status === "COMPLETED" || f.status === "CANCELLED",
     });
   }
 
@@ -389,6 +436,7 @@ export async function GET(request: NextRequest) {
       workspaceName: ws?.name ?? "",
       orgName: ws?.githubLogin,
       timestamp: new Date(t.lastMessageAt).toISOString(),
+      completed: t.status === "DONE" || t.status === "CANCELLED",
     });
   }
 
@@ -405,10 +453,35 @@ export async function GET(request: NextRequest) {
       workspaceName: ws?.name ?? "",
       orgName: ws?.githubLogin,
       timestamp: new Date(p.lastMessageAt).toISOString(),
+      completed: p.status === "COMPLETED" || p.status === "CANCELLED",
     });
   }
 
-  // 5. Conversations (always chat category / action: "active")
+  // 5. Milestones assigned to or created by user
+  for (const m of milestones) {
+    const githubLogin = m.initiative?.org?.githubLogin;
+    const initiativeId = m.initiative?.id;
+    const link =
+      githubLogin && initiativeId
+        ? `/org/${githubLogin}?canvas=initiative:${initiativeId}`
+        : githubLogin
+          ? `/org/${githubLogin}`
+          : "#";
+    upsert({
+      id: m.id,
+      kind: "milestone",
+      category: "milestone",
+      action: m.createdById === userId ? "created" : "active",
+      title: m.name,
+      link,
+      workspaceName: "",
+      orgName: githubLogin,
+      timestamp: m.updatedAt.toISOString(),
+      completed: false,
+    });
+  }
+
+  // 6. Conversations (always chat category / action: "active")
   for (const c of conversations) {
     const timestamp = c.lastMessageAt?.toISOString();
     if (!timestamp) continue;
@@ -446,6 +519,7 @@ export async function GET(request: NextRequest) {
       workspaceName,
       orgName,
       timestamp,
+      completed: false,
     });
   }
 

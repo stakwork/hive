@@ -78,6 +78,7 @@ function makeItem(overrides: Partial<ActivityItem> = {}): ActivityItem {
     link: "/w/my-workspace",
     workspaceName: "My Workspace",
     timestamp: new Date().toISOString(),
+    completed: false,
     ...overrides,
   };
 }
@@ -284,7 +285,7 @@ describe("ActivityFeed", () => {
 
   // ── Category chips ────────────────────────────────────────────────────────
 
-  it("renders All, Tasks, Plans, Chats chips", async () => {
+  it("renders All, Tasks, Plans, Chats, Milestones chips", async () => {
     mockFetchWith([]);
     render(<ActivityFeed userId="user-1" />);
     await waitFor(() => screen.getByText("All"));
@@ -292,6 +293,7 @@ describe("ActivityFeed", () => {
     expect(screen.getByText("Tasks")).toBeInTheDocument();
     expect(screen.getByText("Plans")).toBeInTheDocument();
     expect(screen.getByText("Chats")).toBeInTheDocument();
+    expect(screen.getByText("Milestones")).toBeInTheDocument();
   });
 
   it("clicking a category chip triggers fetch with category= param", async () => {
@@ -310,6 +312,24 @@ describe("ActivityFeed", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const lastUrl = fetchMock.mock.calls[1][0] as string;
     expect(lastUrl).toContain("category=task");
+  });
+
+  it("clicking Milestones chip triggers fetch with category=milestone param", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], nextCursor: null }),
+    } as Response);
+
+    render(<ActivityFeed userId="user-1" />);
+    await waitFor(() => screen.getByText("Milestones"));
+
+    await act(async () => {
+      await userEvent.click(screen.getByText("Milestones"));
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const lastUrl = fetchMock.mock.calls[1][0] as string;
+    expect(lastUrl).toContain("category=milestone");
   });
 
   it("category and search compose on fetch", async () => {
@@ -461,5 +481,69 @@ describe("ActivityFeed", () => {
     render(<ActivityFeed userId="user-1" />);
     await waitFor(() => screen.getByText("Test item"));
     // No error thrown — channel=null is handled gracefully
+  });
+
+  // ── Milestone items ───────────────────────────────────────────────────────
+
+  it("renders milestone item with correct link and Created badge", async () => {
+    mockFetchWith([
+      makeItem({
+        id: "ms-1",
+        kind: "milestone",
+        category: "milestone",
+        action: "created",
+        title: "Launch Milestone",
+        link: "/org/my-org?canvas=initiative:init-1",
+        workspaceName: "",
+        orgName: "my-org",
+      }),
+    ]);
+    render(<ActivityFeed userId="user-1" />);
+    await waitFor(() => screen.getByText("Launch Milestone"));
+
+    expect(screen.getByText("Launch Milestone")).toBeInTheDocument();
+    expect(screen.getByText("Created")).toBeInTheDocument();
+    expect(screen.getByText("my-org")).toBeInTheDocument();
+
+    const link = screen.getByRole("link") as HTMLAnchorElement;
+    expect(link.href).toContain("/org/my-org?canvas=initiative:init-1");
+  });
+
+  // ── Strikethrough for completed items ─────────────────────────────────────
+
+  it("completed task renders title with line-through class", async () => {
+    mockFetchWith([
+      makeItem({ id: "t1", kind: "task", category: "task", title: "Done task", completed: true }),
+    ]);
+    render(<ActivityFeed userId="user-1" />);
+    const title = await screen.findByText("Done task");
+    expect(title.className).toContain("line-through");
+  });
+
+  it("completed plan renders title with line-through class", async () => {
+    mockFetchWith([
+      makeItem({ id: "p1", kind: "plan", category: "plan", title: "Done plan", completed: true }),
+    ]);
+    render(<ActivityFeed userId="user-1" />);
+    const title = await screen.findByText("Done plan");
+    expect(title.className).toContain("line-through");
+  });
+
+  it("completed conversation does NOT render title with line-through", async () => {
+    mockFetchWith([
+      makeItem({ id: "c1", kind: "conversation", category: "chat", title: "Done chat", completed: true }),
+    ]);
+    render(<ActivityFeed userId="user-1" />);
+    const title = await screen.findByText("Done chat");
+    expect(title.className).not.toContain("line-through");
+  });
+
+  it("non-completed task does NOT render title with line-through", async () => {
+    mockFetchWith([
+      makeItem({ id: "t2", kind: "task", category: "task", title: "Active task", completed: false }),
+    ]);
+    render(<ActivityFeed userId="user-1" />);
+    const title = await screen.findByText("Active task");
+    expect(title.className).not.toContain("line-through");
   });
 });

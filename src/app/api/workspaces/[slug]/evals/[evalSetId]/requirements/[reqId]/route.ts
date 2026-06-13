@@ -30,7 +30,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { slug, evalSetId, reqId } = await params;
 
     const body = await request.json();
-    const { name, description, prompt_snippet, positive_cases, negative_cases } = body ?? {};
+    const { name, description, prompt_snippet, desirable_cases, undesirable_cases } = body ?? {};
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -38,15 +38,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (!prompt_snippet || typeof prompt_snippet !== "string" || !prompt_snippet.trim()) {
       return NextResponse.json({ error: "prompt_snippet is required" }, { status: 400 });
     }
-    if (!Array.isArray(positive_cases) || positive_cases.length === 0) {
+    if (!Array.isArray(desirable_cases) || desirable_cases.length === 0) {
       return NextResponse.json(
-        { error: "positive_cases must be a non-empty array" },
+        { error: "desirable_cases must be a non-empty array" },
         { status: 400 },
       );
     }
-    if (!Array.isArray(negative_cases) || negative_cases.length === 0) {
+    if (!Array.isArray(undesirable_cases) || undesirable_cases.length === 0) {
       return NextResponse.json(
-        { error: "negative_cases must be a non-empty array" },
+        { error: "undesirable_cases must be a non-empty array" },
         { status: 400 },
       );
     }
@@ -80,8 +80,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         name: name.trim(),
         description,
         prompt_snippet: prompt_snippet.trim(),
-        positive_cases,
-        negative_cases,
+        desirable_cases,
+        undesirable_cases,
       },
     });
 

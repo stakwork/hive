@@ -32,8 +32,8 @@ export function EditRequirementModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [promptSnippet, setPromptSnippet] = useState("");
-  const [positiveCases, setPositiveCases] = useState("");
-  const [negativeCases, setNegativeCases] = useState("");
+  const [desirableCases, setDesirableCases] = useState("");
+  const [undesirableCases, setUndesirableCases] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -43,14 +43,14 @@ export function EditRequirementModal({
       setName(String(requirement.properties?.name ?? ""));
       setDescription(String(requirement.properties?.description ?? ""));
       setPromptSnippet(String(requirement.properties?.prompt_snippet ?? ""));
-      const pos = Array.isArray(requirement.properties?.positive_cases)
-        ? (requirement.properties.positive_cases as string[]).join("\n")
+      const pos = Array.isArray(requirement.properties?.desirable_cases)
+        ? (requirement.properties.desirable_cases as string[]).join("\n")
         : "";
-      const neg = Array.isArray(requirement.properties?.negative_cases)
-        ? (requirement.properties.negative_cases as string[]).join("\n")
+      const neg = Array.isArray(requirement.properties?.undesirable_cases)
+        ? (requirement.properties.undesirable_cases as string[]).join("\n")
         : "";
-      setPositiveCases(pos);
-      setNegativeCases(neg);
+      setDesirableCases(pos);
+      setUndesirableCases(neg);
       setErrors({});
     }
   }, [open, requirement]);
@@ -63,10 +63,10 @@ export function EditRequirementModal({
     const next: Record<string, string> = {};
     if (!name.trim()) next.name = "Name is required";
     if (!promptSnippet.trim()) next.promptSnippet = "Prompt snippet is required";
-    const posLines = positiveCases.split("\n").map((l) => l.trim()).filter(Boolean);
-    const negLines = negativeCases.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (posLines.length === 0) next.positiveCases = "At least one positive case is required";
-    if (negLines.length === 0) next.negativeCases = "At least one negative case is required";
+    const posLines = desirableCases.split("\n").map((l) => l.trim()).filter(Boolean);
+    const negLines = undesirableCases.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (posLines.length === 0) next.desirableCases = "At least one desirable case is required";
+    if (negLines.length === 0) next.undesirableCases = "At least one undesirable case is required";
     return { next, posLines, negLines };
   }
 
@@ -89,8 +89,8 @@ export function EditRequirementModal({
             name: name.trim(),
             description: description.trim() || undefined,
             prompt_snippet: promptSnippet.trim(),
-            positive_cases: posLines,
-            negative_cases: negLines,
+            desirable_cases: posLines,
+            undesirable_cases: negLines,
           }),
         },
       );
@@ -156,30 +156,30 @@ export function EditRequirementModal({
 
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="edit-req-positive">
-              Positive Cases (one per line) <span className="text-destructive">*</span>
+              Desirable Cases (one per line) <span className="text-destructive">*</span>
             </label>
             <Textarea
               id="edit-req-positive"
-              value={positiveCases}
-              onChange={(e) => { setPositiveCases(e.target.value); setErrors((p) => ({ ...p, positiveCases: "" })); }}
+              value={desirableCases}
+              onChange={(e) => { setDesirableCases(e.target.value); setErrors((p) => ({ ...p, desirableCases: "" })); }}
               placeholder="The agent correctly..."
               rows={3}
             />
-            {errors.positiveCases && <p className="text-xs text-destructive">{errors.positiveCases}</p>}
+            {errors.desirableCases && <p className="text-xs text-destructive">{errors.desirableCases}</p>}
           </div>
 
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="edit-req-negative">
-              Negative Cases (one per line) <span className="text-destructive">*</span>
+              Undesirable Cases (one per line) <span className="text-destructive">*</span>
             </label>
             <Textarea
               id="edit-req-negative"
-              value={negativeCases}
-              onChange={(e) => { setNegativeCases(e.target.value); setErrors((p) => ({ ...p, negativeCases: "" })); }}
+              value={undesirableCases}
+              onChange={(e) => { setUndesirableCases(e.target.value); setErrors((p) => ({ ...p, undesirableCases: "" })); }}
               placeholder="The agent fails to..."
               rows={3}
             />
-            {errors.negativeCases && <p className="text-xs text-destructive">{errors.negativeCases}</p>}
+            {errors.undesirableCases && <p className="text-xs text-destructive">{errors.undesirableCases}</p>}
           </div>
 
           <DialogFooter>
