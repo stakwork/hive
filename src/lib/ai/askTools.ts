@@ -440,7 +440,7 @@ function buildWorkspaceTools(
     logs_agent: tool({
       description:
         "Invoke the Logs Agent to perform deep, run-grounded analysis of agent execution logs for this workspace. " +
-        "Use this when the user asks about what happened during a run, debugging agent failures, or wants a synthesised explanation backed by real log data. " +
+        "Use this when the user asks about what happened during a run, on a swarm, debugging agent failures, or wants a synthesised explanation backed by real log data. " +
         "Heavier than `search_logs` (which does a quick Lucene keyword search) — prefer `search_logs` for simple keyword lookups. " +
         "Optionally narrow the analysis to a specific feature or task by supplying featureId/taskId.",
       inputSchema: z.object({
