@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix } from "@/lib/github/pr-monitor";
+import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix, createPrLogger } from "@/lib/github/pr-monitor";
 import type { Octokit } from "@octokit/rest";
 import { ChatRole, ChatStatus } from "@prisma/client";
 
@@ -17,6 +17,11 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    agentLog: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "log-1", agent: "pr-monitor", createdAt: new Date() }),
+      update: vi.fn().mockResolvedValue({ id: "log-1", agent: "pr-monitor", createdAt: new Date() }),
+    },
     $queryRaw: vi.fn(),
     $executeRaw: vi.fn(),
   },
@@ -25,12 +30,18 @@ vi.mock("@/lib/pusher", () => ({
   pusherServer: {
     trigger: vi.fn().mockResolvedValue(undefined),
   },
-  getTaskChannelName: vi.fn((taskId: string) => `task-${taskId}`),
+  getTaskChannelName: vi.fn((id: string) => `task-${id}`),
   getWorkspaceChannelName: vi.fn((slug: string) => `workspace-${slug}`),
+  getFeatureChannelName: vi.fn((id: string) => `feature-${id}`),
   PUSHER_EVENTS: {
     NEW_MESSAGE: "new-message",
     PR_STATUS_CHANGE: "pr-status-change",
+    AGENT_LOG_UPDATED: "agent-log-updated",
   },
+}));
+
+vi.mock("@vercel/blob", () => ({
+  put: vi.fn().mockResolvedValue({ url: "https://blob.vercel.com/fake-url" }),
 }));
 vi.mock("@/lib/encryption", () => ({
   EncryptionService: {
@@ -86,7 +97,8 @@ vi.mock("@/lib/auth/nextauth", () => ({
 
 // Import mocked modules after mocks are defined
 import { db } from "@/lib/db";
-import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getTaskChannelName, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { put } from "@vercel/blob";
 import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
@@ -1462,5 +1474,175 @@ describe("triggerLiveModeFix - userId resolution", () => {
       expect.stringContaining("Task creator has no GitHub credentials, falling back to workspace owner"),
       expect.stringContaining("creator-user-2")
     );
+  });
+});
+
+// ─── createPrLogger Tests ─────────────────────────────────────────────────────
+
+describe("createPrLogger", () => {
+  const taskId = "task-logger-1";
+  const workspaceId = "ws-logger-1";
+  const featureId = "feature-logger-1";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.agentLog.findFirst).mockResolvedValue(null);
+    vi.mocked(db.agentLog.create).mockResolvedValue({
+      id: "log-1",
+      agent: "pr-monitor",
+      createdAt: new Date(),
+    } as any);
+    vi.mocked(db.agentLog.update).mockResolvedValue({
+      id: "log-1",
+      agent: "pr-monitor",
+      createdAt: new Date(),
+    } as any);
+    vi.mocked(put).mockResolvedValue({ url: "https://blob.vercel.com/fake-url" } as any);
+    vi.mocked(pusherServer.trigger).mockResolvedValue(undefined as any);
+  });
+
+  it("accumulates lines with correct level/msg/ts fields", () => {
+    const prLog = createPrLogger(taskId);
+    prLog.info("info message", { key: "val" });
+    prLog.warn("warn message");
+    prLog.error("error message", { err: "oops" });
+
+    // The internal buffer is not directly accessible, but we can verify
+    // by flushing and checking what was serialized into the blob
+    // We'll verify by checking put call args after flush
+  });
+
+  it("flush uploads blob with correct path and JSON content", async () => {
+    const prLog = createPrLogger(taskId);
+    prLog.info("test info");
+    prLog.warn("test warn");
+
+    // Manually await flush by calling flushToAgentLog via the returned flush (which is void-wrapped)
+    // We need to await the underlying promise — use a small trick: let microtasks drain
+    prLog.flush(featureId, workspaceId);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(put).toHaveBeenCalledWith(
+      `agent-logs/${workspaceId}/${taskId}/pr-monitor.json`,
+      expect.stringContaining('"level"'),
+      expect.objectContaining({
+        access: "private",
+        contentType: "application/json",
+        addRandomSuffix: false,
+        allowOverwrite: true,
+      })
+    );
+
+    // Verify the JSON content is an array with correct entries
+    const putCall = vi.mocked(put).mock.calls[0];
+    const content = JSON.parse(putCall[1] as string);
+    expect(Array.isArray(content)).toBe(true);
+    expect(content).toHaveLength(2);
+    expect(content[0]).toMatchObject({ level: "info", msg: "test info" });
+    expect(content[1]).toMatchObject({ level: "warn", msg: "test warn" });
+    expect(content[0].ts).toBeDefined();
+  });
+
+  it("flush creates AgentLog row when no existing record", async () => {
+    vi.mocked(db.agentLog.findFirst).mockResolvedValue(null);
+
+    const prLog = createPrLogger(taskId);
+    prLog.info("something happened");
+
+    prLog.flush(featureId, workspaceId);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(db.agentLog.create).toHaveBeenCalledWith({
+      data: {
+        blobUrl: "https://blob.vercel.com/fake-url",
+        agent: "pr-monitor",
+        taskId,
+        featureId,
+        workspaceId,
+      },
+    });
+    expect(db.agentLog.update).not.toHaveBeenCalled();
+  });
+
+  it("flush updates AgentLog row when existing record found", async () => {
+    vi.mocked(db.agentLog.findFirst).mockResolvedValue({ id: "existing-log-1" } as any);
+
+    const prLog = createPrLogger(taskId);
+    prLog.info("update path");
+
+    prLog.flush(featureId, workspaceId);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(db.agentLog.update).toHaveBeenCalledWith({
+      where: { id: "existing-log-1" },
+      data: { blobUrl: "https://blob.vercel.com/fake-url" },
+    });
+    expect(db.agentLog.create).not.toHaveBeenCalled();
+  });
+
+  it("flush triggers Pusher on task channel", async () => {
+    const prLog = createPrLogger(taskId);
+    prLog.info("pusher test");
+
+    prLog.flush(featureId, workspaceId);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(pusherServer.trigger).toHaveBeenCalledWith(
+      `task-${taskId}`,
+      "agent-log-updated",
+      expect.objectContaining({ id: "log-1", agent: "pr-monitor" })
+    );
+  });
+
+  it("flush triggers Pusher on feature channel when featureId is non-null", async () => {
+    const prLog = createPrLogger(taskId);
+    prLog.info("feature pusher test");
+
+    prLog.flush(featureId, workspaceId);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const triggerCalls = vi.mocked(pusherServer.trigger).mock.calls;
+    const featureCall = triggerCalls.find((c) => c[0] === `feature-${featureId}`);
+    expect(featureCall).toBeDefined();
+    expect(featureCall![1]).toBe("agent-log-updated");
+  });
+
+  it("flush skips feature Pusher when featureId is null", async () => {
+    const prLog = createPrLogger(taskId);
+    prLog.info("no feature");
+
+    prLog.flush(null, workspaceId);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const triggerCalls = vi.mocked(pusherServer.trigger).mock.calls;
+    expect(triggerCalls).toHaveLength(1); // only task channel
+    expect(triggerCalls[0][0]).toBe(`task-${taskId}`);
+  });
+
+  it("flush swallows errors — does not rethrow", async () => {
+    vi.mocked(put).mockRejectedValue(new Error("Blob upload failed"));
+
+    const prLog = createPrLogger(taskId);
+    prLog.info("will fail");
+
+    // Should not throw
+    expect(() => prLog.flush(featureId, workspaceId)).not.toThrow();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // DB and pusher should not have been called
+    expect(db.agentLog.create).not.toHaveBeenCalled();
+    expect(pusherServer.trigger).not.toHaveBeenCalled();
+  });
+
+  it("flush is no-op when lines buffer is empty", async () => {
+    const prLog = createPrLogger(taskId);
+    // Don't log anything
+
+    prLog.flush(featureId, workspaceId);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(put).not.toHaveBeenCalled();
+    expect(db.agentLog.create).not.toHaveBeenCalled();
+    expect(pusherServer.trigger).not.toHaveBeenCalled();
   });
 });

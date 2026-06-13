@@ -34,6 +34,13 @@ vi.mock("ai", () => ({ streamText: vi.fn(() => ({})), tool: vi.fn((t: unknown) =
 vi.mock("@/lib/constants/prompt", () => ({
   getMultiWorkspacePrefixMessages: vi.fn(() => []),
   getQuickAskPrefixMessages: vi.fn(() => []),
+  // Per-capability snippets, consumed by the capability registry
+  // (@/lib/ai/capabilities) that runCanvasAgent composes from.
+  getCanvasCapabilitySnippet: vi.fn(() => ""),
+  getPlannerCapabilitySnippet: vi.fn(() => ""),
+  getResearchCapabilitySnippet: vi.fn(() => ""),
+  getConnectionsCapabilitySnippet: vi.fn(() => ""),
+  getCanvasPromptSuffix: vi.fn(() => ""),
 }));
 
 import { vi } from "vitest";

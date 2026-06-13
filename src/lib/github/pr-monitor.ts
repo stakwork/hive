@@ -10,11 +10,12 @@
  *    - "live" mode: Stakwork workflow for automated fixes
  */
 
+import { put } from "@vercel/blob";
 import { Octokit } from "@octokit/rest";
 import { db } from "@/lib/db";
 import { Prisma, ChatRole, ChatStatus, TaskStatus } from "@prisma/client";
 import { getUserAppTokens } from "@/lib/githubApp";
-import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getTaskChannelName, getWorkspaceChannelName, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
@@ -93,6 +94,69 @@ const log = {
   error: (msg: string, data?: Record<string, unknown>) =>
     console.error(`${LOG_PREFIX} ${msg}`, data ? JSON.stringify(data) : ""),
 };
+
+interface PrLogEntry {
+  level: "info" | "warn" | "error";
+  msg: string;
+  data?: Record<string, unknown>;
+  ts: string;
+}
+
+export function createPrLogger(taskId: string) {
+  const lines: PrLogEntry[] = [];
+
+  const record = (level: "info" | "warn" | "error", msg: string, data?: Record<string, unknown>) => {
+    lines.push({ level, msg, data, ts: new Date().toISOString() });
+    log[level](msg, data); // pass-through to stdout unchanged
+  };
+
+  async function flushToAgentLog(featureId: string | null, workspaceId: string): Promise<void> {
+    if (lines.length === 0) return;
+    try {
+      const content = JSON.stringify(lines);
+      const blobPath = `agent-logs/${workspaceId}/${taskId}/pr-monitor.json`;
+      const blob = await put(blobPath, content, {
+        access: "private",
+        contentType: "application/json",
+        addRandomSuffix: false,
+        allowOverwrite: true,
+      });
+
+      const existing = await db.agentLog.findFirst({
+        where: { agent: "pr-monitor", workspaceId, taskId },
+        select: { id: true },
+      });
+      const agentLog = existing
+        ? await db.agentLog.update({ where: { id: existing.id }, data: { blobUrl: blob.url } })
+        : await db.agentLog.create({
+            data: { blobUrl: blob.url, agent: "pr-monitor", taskId, featureId, workspaceId },
+          });
+
+      await pusherServer.trigger(
+        getTaskChannelName(taskId),
+        PUSHER_EVENTS.AGENT_LOG_UPDATED,
+        { id: agentLog.id, agent: agentLog.agent, createdAt: agentLog.createdAt, isNew: !existing }
+      );
+      if (featureId) {
+        await pusherServer.trigger(
+          getFeatureChannelName(featureId),
+          PUSHER_EVENTS.AGENT_LOG_UPDATED,
+          { id: agentLog.id, agent: agentLog.agent, createdAt: agentLog.createdAt, isNew: !existing }
+        );
+      }
+    } catch (err) {
+      log.error("Failed to flush PR monitor agent log", { taskId, error: String(err) });
+    }
+  }
+
+  return {
+    info:  (msg: string, data?: Record<string, unknown>) => record("info",  msg, data),
+    warn:  (msg: string, data?: Record<string, unknown>) => record("warn",  msg, data),
+    error: (msg: string, data?: Record<string, unknown>) => record("error", msg, data),
+    flush: (featureId: string | null, workspaceId: string) =>
+      void flushToAgentLog(featureId, workspaceId),
+  };
+}
 
 // Types for GitHub API responses
 interface GitHubPRData {
@@ -700,6 +764,12 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
   });
 
   for (const pr of openPRs) {
+    const prLog = createPrLogger(pr.taskId);
+    const taskMeta = await db.task.findUnique({
+      where: { id: pr.taskId },
+      select: { featureId: true },
+    });
+    const featureId = taskMeta?.featureId ?? null;
     try {
       // Parse to get owner for auth
       const parsed = parsePRUrl(pr.prUrl);
@@ -711,7 +781,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
       // Get authenticated client
       const octokit = await getOctokitForWorkspace(pr.ownerId, parsed.owner);
       if (!octokit) {
-        log.warn("Could not get Octokit client", {
+        prLog.warn("Could not get Octokit client", {
           taskId: pr.taskId,
           owner: parsed.owner,
         });
@@ -728,7 +798,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
 
       stats.checked++;
 
-      log.info("PR check result", {
+      prLog.info("PR check result", {
         taskId: pr.taskId,
         prNumber: result.prNumber,
         repo: `${result.owner}/${result.repo}`,
@@ -758,7 +828,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             where: { id: pr.taskId },
             data: { status: TaskStatus.DONE },
           });
-          log.info("Updated task status to DONE for merged PR", {
+          prLog.info("Updated task status to DONE for merged PR", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
           });
@@ -779,7 +849,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
                 }
               })
               ?.catch((err: unknown) =>
-                log.error("Scorer pipeline error", { error: String(err) })
+                prLog.error("Scorer pipeline error", { error: String(err) })
               );
           } catch {
             // Scorer hook must never disrupt PR monitor flow
@@ -796,14 +866,14 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             });
 
             if (releaseResult.success) {
-              log.info("Released pod for merged PR fallback", {
+              prLog.info("Released pod for merged PR fallback", {
                 taskId: pr.taskId,
                 podId: pr.podId,
                 podDropped: releaseResult.podDropped,
                 taskCleared: releaseResult.taskCleared,
               });
             } else {
-              log.error("Failed to release pod for merged PR fallback", {
+              prLog.error("Failed to release pod for merged PR fallback", {
                 taskId: pr.taskId,
                 podId: pr.podId,
                 error: releaseResult.error,
@@ -844,7 +914,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
         Date.now() - new Date(previousLastAttemptAt).getTime() > PR_FIX_STALE_TIMEOUT_MS;
 
       if (isStaleInProgress) {
-        log.info("Detected stale in_progress resolution, resetting", {
+        prLog.info("Detected stale in_progress resolution, resetting", {
           taskId: pr.taskId,
           prNumber: result.prNumber,
           previousState,
@@ -860,7 +930,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
 
         // Check if out-of-date fix is enabled for this workspace
         if (!pr.prMonitorConfig.prOutOfDateFixEnabled) {
-          log.info("PR is out of date but auto-fix disabled for workspace", {
+          prLog.info("PR is out of date but auto-fix disabled for workspace", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
             repo: `${result.owner}/${result.repo}`,
@@ -868,7 +938,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
           await updatePRArtifactProgress(pr.artifactId, progress);
         } else {
           const useRebase = pr.prMonitorConfig.prUseRebaseForUpdates;
-          log.info(`PR is out of date, attempting ${useRebase ? 'rebase' : 'merge'}`, {
+          prLog.info(`PR is out of date, attempting ${useRebase ? 'rebase' : 'merge'}`, {
             taskId: pr.taskId,
             prNumber: result.prNumber,
             repo: `${result.owner}/${result.repo}`,
@@ -896,7 +966,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
 
           if (updateResult.success) {
             stats.autoMerged++;
-            log.info(`Auto-${useRebase ? 'rebased' : 'merged'} base branch into PR`, {
+            prLog.info(`Auto-${useRebase ? 'rebased' : 'merged'} base branch into PR`, {
               taskId: pr.taskId,
               prNumber: result.prNumber,
               sha: updateResult.sha,
@@ -909,7 +979,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             await updatePRArtifactProgress(pr.artifactId, progress);
           } else {
             // Auto-update failed (likely conflicts appeared) - update state and let next check handle it
-            log.warn(`Auto-${useRebase ? 'rebase' : 'merge'} failed`, {
+            prLog.warn(`Auto-${useRebase ? 'rebase' : 'merge'} failed`, {
               taskId: pr.taskId,
               prNumber: result.prNumber,
               error: updateResult.error,
@@ -937,7 +1007,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             lastAttemptAt: lastAttemptAt,
             lastError: `Max fix attempts (${PR_FIX_MAX_ATTEMPTS}) exceeded`,
           };
-          log.warn("PR fix max attempts exceeded", {
+          prLog.warn("PR fix max attempts exceeded", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
             attempts: currentAttempts,
@@ -946,7 +1016,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
         }
 
         // Notify via Pusher and create chat message
-        log.info("Notifying PR status change", {
+        prLog.info("Notifying PR status change", {
           taskId: pr.taskId,
           prNumber: result.prNumber,
           state: result.state,
@@ -973,7 +1043,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
 
         if (shouldTriggerFix) {
           const fixPrompt = buildFixPrompt(result);
-          log.info("Triggering PR fix", {
+          prLog.info("Triggering PR fix", {
             taskId: pr.taskId,
             podId: pr.podId,
             state: result.state,
@@ -993,7 +1063,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
               lastAttemptAt: new Date().toISOString(),
             };
           } else {
-            log.info("Fix trigger did not dispatch, will retry next run", {
+            prLog.info("Fix trigger did not dispatch, will retry next run", {
               taskId: pr.taskId,
               prNumber: result.prNumber,
               error: triggerResult.error,
@@ -1001,7 +1071,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             // Don't set resolution — leave it unset so next cron run retries
           }
         } else if (pr.podId && canAttemptFix && !isFixEnabledForState) {
-          log.info("Skipping PR fix - fix type disabled for workspace", {
+          prLog.info("Skipping PR fix - fix type disabled for workspace", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
             state: result.state,
@@ -1009,7 +1079,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
             ciFailureFixEnabled: pr.prMonitorConfig.prCiFailureFixEnabled,
           });
         } else if (pr.podId && canAttemptFix && !cooldownElapsed) {
-          log.info("Skipping PR fix due to cooldown", {
+          prLog.info("Skipping PR fix due to cooldown", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
             lastAttemptAt,
@@ -1044,8 +1114,10 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
         await updatePRArtifactProgress(pr.artifactId, progress);
       }
     } catch (error) {
-      log.error("Error processing PR", { taskId: pr.taskId, error: String(error) });
+      prLog.error("Error processing PR", { taskId: pr.taskId, error: String(error) });
       stats.errors++;
+    } finally {
+      prLog.flush(featureId, pr.workspaceId); // fire-and-forget — never blocks the loop
     }
   }
 
