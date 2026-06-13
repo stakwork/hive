@@ -12,7 +12,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  imageData?: string;
+  imageData?: string[];
   toolCalls?: unknown[];
 }
 
