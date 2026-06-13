@@ -441,7 +441,7 @@ Tools are prefixed with workspace slugs. For each workspace you have:
 - \`{workspace}:learn_concept\` - Fetch detailed documentation for a feature by ID
 - \`{workspace}:recent_commits\` - Query recent commits
 - \`{workspace}:recent_contributions\` - Query PRs by a contributor
-- \`{workspace}:search_logs\` - Search application logs (Lucene query syntax)
+- \`{workspace}:search_logs\` - Search application logs (Lucene query syntax). Every term MUST have a field prefix (e.g. \`message:CLN\`, \`level:ERROR\`); a bare keyword like \`CLN\` fails with a 400 error.
 - \`{workspace}:repo_agent\` - Deep code analysis (use as LAST RESORT)
 
 If you think information about concepts might help answer the user's question, use these tools to fetch relevant data. When comparing implementations or answering questions that span multiple projects, query the relevant workspaces. Always cite which workspace information came from.

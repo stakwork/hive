@@ -265,7 +265,7 @@ export function askToolsMulti(
 
     // search_logs (via MCP)
     allTools[`${prefix}__search_logs`] = tool({
-      description: `[${ws.slug}] Search application logs for ${ws.slug} using Quickwit. Supports Lucene query syntax.`,
+      description: `[${ws.slug}] Search application logs for ${ws.slug} using Quickwit. Supports Lucene query syntax. Does not support wildcards. IMPORTANT: every term MUST include a field prefix (e.g. "message:", "level:", "path:") — there is no default search field, so a bare query like "CLN" fails with a 400 error. To search a keyword use "message:CLN".`,
       inputSchema: z.object({
         query: z.string().describe("Lucene query string"),
         max_hits: z
