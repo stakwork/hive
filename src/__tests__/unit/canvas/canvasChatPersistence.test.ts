@@ -14,6 +14,7 @@ import {
   computeUnsaved,
   mergeServerMessages,
   reconcilePlannerSources,
+  applyFeatureStatusPatch,
   type PersistableMessage,
 } from "@/app/org/[githubLogin]/_state/canvasChatPersistence";
 
@@ -250,5 +251,110 @@ describe("reconcilePlannerSources — refresh planner status in place", () => {
     const result = reconcilePlannerSources(local, server);
     expect(result.changed).toBe(false);
     expect(result.messages).toBe(local);
+  });
+});
+
+describe("applyFeatureStatusPatch — in-place status refresh for planner rows", () => {
+  type Row = {
+    id: string;
+    role: "user" | "assistant";
+    source?: {
+      kind?: string;
+      featureId?: string;
+      workflowStatus?: string;
+      hasLogs?: boolean;
+    } | null;
+  };
+
+  const plannerRow = (
+    id: string,
+    featureId: string,
+    workflowStatus: string,
+    hasLogs?: boolean,
+  ): Row => ({
+    id,
+    role: "assistant",
+    source: { kind: "planner", featureId, workflowStatus, ...(hasLogs !== undefined ? { hasLogs } : {}) },
+  });
+
+  test("patches workflowStatus for a matching planner row; returns changed: true", () => {
+    const messages: Row[] = [
+      { id: "user1", role: "user" },
+      plannerRow("planner-x", "feat-1", "IN_PROGRESS"),
+    ];
+    const patch = new Map([["feat-1", { workflowStatus: "COMPLETED" }]]);
+    const { messages: out, changed } = applyFeatureStatusPatch(messages, patch);
+    expect(changed).toBe(true);
+    expect(out[1].source?.workflowStatus).toBe("COMPLETED");
+    // Non-planner row untouched
+    expect(out[0].source).toBeUndefined();
+  });
+
+  test("patches hasLogs independently; returns changed: true", () => {
+    const messages: Row[] = [plannerRow("planner-x", "feat-1", "IN_PROGRESS", false)];
+    const patch = new Map([["feat-1", { hasLogs: true }]]);
+    const { messages: out, changed } = applyFeatureStatusPatch(messages, patch);
+    expect(changed).toBe(true);
+    expect(out[0].source?.hasLogs).toBe(true);
+    // workflowStatus unchanged
+    expect(out[0].source?.workflowStatus).toBe("IN_PROGRESS");
+  });
+
+  test("returns changed: false and original array reference when values are already current", () => {
+    const messages: Row[] = [plannerRow("planner-x", "feat-1", "COMPLETED", true)];
+    const patch = new Map([["feat-1", { workflowStatus: "COMPLETED", hasLogs: true }]]);
+    const { messages: out, changed } = applyFeatureStatusPatch(messages, patch);
+    expect(changed).toBe(false);
+    expect(out).toBe(messages); // same reference
+  });
+
+  test("non-planner rows are untouched", () => {
+    const messages: Row[] = [
+      { id: "user1", role: "user" },
+      { id: "a1", role: "assistant", source: { kind: "canvas-agent" } },
+    ];
+    const patch = new Map([["feat-1", { workflowStatus: "COMPLETED" }]]);
+    const { messages: out, changed } = applyFeatureStatusPatch(messages, patch);
+    expect(changed).toBe(false);
+    expect(out).toBe(messages);
+  });
+
+  test("messages without a featureId in source are skipped gracefully", () => {
+    const messages: Row[] = [
+      { id: "planner-x", role: "assistant", source: { kind: "planner" } },
+    ];
+    const patch = new Map([["feat-1", { workflowStatus: "COMPLETED" }]]);
+    const { messages: out, changed } = applyFeatureStatusPatch(messages, patch);
+    expect(changed).toBe(false);
+    expect(out).toBe(messages);
+  });
+
+  test("multiple messages referencing the same featureId are all patched", () => {
+    const messages: Row[] = [
+      plannerRow("planner-a", "feat-1", "IN_PROGRESS"),
+      plannerRow("planner-b", "feat-1", "PENDING"),
+    ];
+    const patch = new Map([["feat-1", { workflowStatus: "COMPLETED" }]]);
+    const { messages: out, changed } = applyFeatureStatusPatch(messages, patch);
+    expect(changed).toBe(true);
+    expect(out[0].source?.workflowStatus).toBe("COMPLETED");
+    expect(out[1].source?.workflowStatus).toBe("COMPLETED");
+  });
+
+  test("patches both workflowStatus and hasLogs together", () => {
+    const messages: Row[] = [plannerRow("planner-x", "feat-1", "IN_PROGRESS", false)];
+    const patch = new Map([["feat-1", { workflowStatus: "COMPLETED", hasLogs: true }]]);
+    const { messages: out, changed } = applyFeatureStatusPatch(messages, patch);
+    expect(changed).toBe(true);
+    expect(out[0].source?.workflowStatus).toBe("COMPLETED");
+    expect(out[0].source?.hasLogs).toBe(true);
+  });
+
+  test("empty patch map returns original reference with changed: false", () => {
+    const messages: Row[] = [plannerRow("planner-x", "feat-1", "IN_PROGRESS")];
+    const patch = new Map<string, { workflowStatus?: string; hasLogs?: boolean }>();
+    const { messages: out, changed } = applyFeatureStatusPatch(messages, patch);
+    expect(changed).toBe(false);
+    expect(out).toBe(messages);
   });
 });
