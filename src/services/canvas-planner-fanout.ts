@@ -133,6 +133,13 @@ export interface FanOutFeatureRef {
    * callers/tests; absent → workflow-transition wakeups don't fire.
    */
   workflowStatus?: WorkflowStatus | null;
+  /**
+   * Non-null when the feature has an associated Stakwork project, meaning
+   * agent logs are available. Optional for backwards-compat; absent →
+   * `hasLogs` is omitted from the fan-out source (treated as unknown/false
+   * by the client refresh hook).
+   */
+  stakworkProjectId?: string | null;
 }
 
 /** Subset of `ChatMessage` the fan-out needs. Artifacts are eagerly loaded. */
@@ -301,6 +308,9 @@ export async function fanOutPlannerMessageToCanvas(
             ? { hasForm: true, formQuestions }
             : {}),
           ...(hasTasks ? { hasTasks: true } : {}),
+          // Log-availability snapshot at fan-out time. Absent on old
+          // rows; `useSubAgentStatusRefresh` backfills it on refresh.
+          ...(feature.stakworkProjectId ? { hasLogs: true } : {}),
         },
       };
 
