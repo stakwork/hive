@@ -53,7 +53,7 @@ import { FeaturePlanDialog } from "./FeaturePlanDialog";
  */
 
 /** One round-trip the canvas agent had with the planner. */
-interface RunMessage {
+export interface RunMessage {
   /** The id of the canvas-chat message that emitted/carries this entry. */
   messageId: string;
   /** The position in the overall conversation; lets us sort runs by recency. */
@@ -498,6 +498,22 @@ function StatusPill({ status }: { status: CardStatus }) {
  * bug. Describe what the planner actually did instead. Outbound sends
  * keep the literal "(empty)" (a content-less send is genuinely odd).
  */
+/**
+ * Returns true for inbound entries that have something worth rendering
+ * in the thread. Inbound entries with no prose text, no form, no tasks,
+ * and a non-COMPLETED workflow status fall through to the "Posted an
+ * update" fallback — pure noise that the StatusPill already covers.
+ */
+export function isDisplayableMessage(m: RunMessage): boolean {
+  if (m.direction !== "in") return true; // always keep outbound + form-answer entries
+  return (
+    m.text.trim().length > 0 ||
+    !!m.hasForm ||
+    !!m.hasTasks ||
+    m.workflowStatus === "COMPLETED"
+  );
+}
+
 function runMessageDisplayText(m: RunMessage): string {
   if (m.text.trim()) return m.text;
   if (m.direction === "in") {
@@ -628,7 +644,9 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
                 The marker makes direction/kind obvious at a glance.
               */}
               <ul className="mt-1.5 space-y-1">
-                {run.messages.map((m, i) => {
+                {(() => {
+                  const displayMessages = run.messages.filter(isDisplayableMessage);
+                  return displayMessages.map((m, i) => {
                   const isInbound = m.direction === "in";
                   const isFormAnswer = m.formAnswer === true;
                   return (
@@ -678,7 +696,7 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
                         {!isInbound &&
                           !isFormAnswer &&
                           m.status === "sent" &&
-                          i < run.messages.length - 1 && (
+                          i < displayMessages.length - 1 && (
                             <Check
                               className="ml-1 inline h-3 w-3 text-emerald-600 dark:text-emerald-400"
                               aria-label="Delivered"
@@ -687,7 +705,8 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
                       </div>
                     </li>
                   );
-                })}
+                  });
+                })()}
               </ul>
 
               <div className="mt-1.5">
