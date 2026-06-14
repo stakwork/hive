@@ -170,11 +170,11 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       expect(data.details).toBeDefined();
     });
 
-    test("should return 400 for missing taskId", async () => {
+    test("should return 400 when both taskId and workspaceId are missing", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
 
       const request = createAuthenticatedPostRequest("http://localhost:3000/api/upload/presigned-url", testUser, {
-        // taskId missing
+        // neither taskId nor workspaceId
         filename: "test.jpg",
         contentType: "image/jpeg",
         size: 1024000,
@@ -735,6 +735,127 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         testTask.id,
         longFilename,
       );
+    });
+  });
+
+  describe("workspaceId-only canvas upload branch", () => {
+    async function createTestUserWithWorkspace() {
+      return await db.$transaction(async (tx) => {
+        const testUser = await tx.user.create({
+          data: {
+            id: generateUniqueId("test-user-ws"),
+            email: `test-ws-${generateUniqueId()}@example.com`,
+            name: "Test User WS",
+          },
+        });
+        const testWorkspace = await tx.workspace.create({
+          data: {
+            id: generateUniqueId("workspace-ws"),
+            name: "Test Workspace WS",
+            slug: generateUniqueId("test-workspace-ws"),
+            ownerId: testUser.id,
+          },
+        });
+        return { testUser, testWorkspace };
+      });
+    }
+
+    test("returns 401 for unauthenticated request with workspaceId", async () => {
+      const request = createPostRequest("http://localhost:3000/api/upload/presigned-url", {
+        workspaceId: "some-workspace-id",
+        filename: "photo.jpg",
+        contentType: "image/jpeg",
+        size: 1024,
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(401);
+    });
+
+    test("returns 403 when authenticated user is not a workspace member", async () => {
+      const { testWorkspace } = await createTestUserWithWorkspace();
+      const nonMember = await db.user.create({
+        data: {
+          id: generateUniqueId("non-member"),
+          email: `non-member-${generateUniqueId()}@example.com`,
+          name: "Non Member",
+        },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        nonMember,
+        {
+          workspaceId: testWorkspace.id,
+          filename: "photo.jpg",
+          contentType: "image/jpeg",
+          size: 1024,
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error).toBe("Forbidden");
+      expect(mockS3Service.generatePresignedUploadUrl).not.toHaveBeenCalled();
+    });
+
+    test("returns 200 with presignedUrl and s3Path for workspace owner", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+
+      const s3Path = `uploads/${testWorkspace.id}/canvas/ts_abc_photo.jpg`;
+      vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
+        "https://s3.example.com/presigned?sig=ok",
+      );
+      // Mock generateCanvasUploadPath via getS3Service
+      (mockS3Service as Record<string, unknown>).generateCanvasUploadPath = vi
+        .fn()
+        .mockReturnValue(s3Path);
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        testUser,
+        {
+          workspaceId: testWorkspace.id,
+          filename: "photo.jpg",
+          contentType: "image/jpeg",
+          size: 1024,
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.presignedUrl).toBe("https://s3.example.com/presigned?sig=ok");
+      expect(data.s3Path).toBe(s3Path);
+    });
+
+    test("s3Path is scoped under uploads/<workspaceId>/canvas/", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+      const expectedPath = `uploads/${testWorkspace.id}/canvas/123_abc_file.png`;
+
+      vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
+        "https://s3.example.com/presigned",
+      );
+      (mockS3Service as Record<string, unknown>).generateCanvasUploadPath = vi
+        .fn()
+        .mockReturnValue(expectedPath);
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        testUser,
+        {
+          workspaceId: testWorkspace.id,
+          filename: "file.png",
+          contentType: "image/png",
+          size: 2048,
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.s3Path).toContain(`uploads/${testWorkspace.id}/canvas/`);
     });
   });
 

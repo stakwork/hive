@@ -150,6 +150,88 @@ function buildErrorFetch() {
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
+describe("useSendCanvasChatMessage — attachments forwarding", () => {
+  beforeEach(() => {
+    mockState = makeTrackedState();
+    resetStreamPromise();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("stamps attachments onto the user message", async () => {
+    global.fetch = buildOkFetch();
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    const attachments = [
+      { path: "uploads/ws-1/canvas/img.jpg", filename: "img.jpg", mimeType: "image/jpeg", size: 1024 },
+    ];
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "here is an image", attachments });
+    });
+
+    const appendCall = (mockState.appendUserMessage as ReturnType<typeof vi.fn>).mock.calls[0];
+    const userMsg = appendCall[1];
+    expect(userMsg.attachments).toEqual(attachments);
+  });
+
+  it("does NOT stamp attachments when the array is empty", async () => {
+    global.fetch = buildOkFetch();
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "no files", attachments: [] });
+    });
+
+    const appendCall = (mockState.appendUserMessage as ReturnType<typeof vi.fn>).mock.calls[0];
+    const userMsg = appendCall[1];
+    expect(userMsg).not.toHaveProperty("attachments");
+  });
+
+  it("forwards attachments in the fetch body", async () => {
+    const fakeFetch = buildOkFetch();
+    global.fetch = fakeFetch;
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    const attachments = [
+      { path: "uploads/ws-1/canvas/doc.pdf", filename: "doc.pdf", mimeType: "application/pdf", size: 5000 },
+    ];
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "see attachment", attachments });
+    });
+
+    const [, fetchInit] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(fetchInit.body);
+    expect(body.attachments).toEqual(attachments);
+  });
+
+  it("does NOT include attachments key in fetch body when no attachments", async () => {
+    const fakeFetch = buildOkFetch();
+    global.fetch = fakeFetch;
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "just text" });
+    });
+
+    const [, fetchInit] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(fetchInit.body);
+    expect(body).not.toHaveProperty("attachments");
+  });
+});
+
 describe("useSendCanvasChatMessage — isStreaming lifecycle", () => {
   beforeEach(() => {
     mockState = makeTrackedState();
