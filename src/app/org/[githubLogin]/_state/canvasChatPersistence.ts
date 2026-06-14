@@ -96,9 +96,11 @@ export function mergeServerMessages<T extends PersistableMessage>(
 /** Minimal planner-row `source` shape this reconcile compares/refreshes. */
 interface PlannerSourceLike {
   kind?: string;
+  featureId?: string;
   workflowStatus?: string;
   hasTasks?: boolean;
   hasForm?: boolean;
+  hasLogs?: boolean;
 }
 
 interface ReconcilableMessage {
@@ -149,4 +151,49 @@ export function reconcilePlannerSources<T extends ReconcilableMessage>(
     return { ...m, source: s!.source } as T;
   });
   return changed ? { messages, changed: true } : { messages: local, changed: false };
+}
+
+/**
+ * Apply a lightweight status patch to planner rows in-place.
+ *
+ * Used by `useSubAgentStatusRefresh` to update `workflowStatus` and
+ * `hasLogs` on planner rows after fetching `/api/features/[id]/plan-status`,
+ * without discarding conversation history or triggering a full re-render.
+ *
+ * Returns the original array reference (and `changed: false`) when
+ * nothing actually changed — callers can skip the no-op store write.
+ */
+export function applyFeatureStatusPatch<T extends ReconcilableMessage>(
+  messages: T[],
+  patchByFeatureId: Map<string, { workflowStatus?: string; hasLogs?: boolean }>,
+): { messages: T[]; changed: boolean } {
+  if (patchByFeatureId.size === 0) return { messages, changed: false };
+
+  let changed = false;
+  const updated = messages.map((m) => {
+    const src = m.source as PlannerSourceLike | null | undefined;
+    if (src?.kind !== "planner" || !src.featureId) return m;
+    const patch = patchByFeatureId.get(src.featureId);
+    if (!patch) return m;
+
+    const workflowStatusChanged =
+      patch.workflowStatus !== undefined &&
+      src.workflowStatus !== patch.workflowStatus;
+    const hasLogsChanged =
+      patch.hasLogs !== undefined && src.hasLogs !== patch.hasLogs;
+
+    if (!workflowStatusChanged && !hasLogsChanged) return m;
+
+    changed = true;
+    return {
+      ...m,
+      source: {
+        ...src,
+        ...(workflowStatusChanged ? { workflowStatus: patch.workflowStatus } : {}),
+        ...(hasLogsChanged ? { hasLogs: patch.hasLogs } : {}),
+      },
+    } as T;
+  });
+
+  return changed ? { messages: updated, changed: true } : { messages, changed: false };
 }
