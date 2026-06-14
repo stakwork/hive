@@ -25,6 +25,7 @@ import {
   type CanvasChatMessage,
 } from "../_state/canvasChatStore";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
+import { useSubAgentStatusRefresh } from "../_state/useSubAgentStatusRefresh";
 import type { AttentionItem } from "@/services/attention/topItems";
 import {
   ResizableHandle,
@@ -961,6 +962,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // the page level, not inside `SidebarChat`, so tab switches and
   // chat unmounts don't lose pending saves.
   useCanvasChatAutoSave({ githubLogin });
+  useSubAgentStatusRefresh({ githubLogin });
 
   return (
     <div ref={containerRef} className="relative flex h-full w-full overflow-hidden">
