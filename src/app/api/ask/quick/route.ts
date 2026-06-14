@@ -145,6 +145,9 @@ export async function POST(request: NextRequest) {
       // live-sync merge by this prefix. Absent → legacy client-driven
       // persistence (dashboard chat, public viewers, older clients).
       turnId,
+      // Optional file attachments from canvas chat. Used to inject image
+      // parts into the last user message so the LLM receives visuals.
+      attachments,
     } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -296,6 +299,35 @@ export async function POST(request: NextRequest) {
         return { role, content } as ModelMessage;
       })
       .filter((m): m is ModelMessage => m !== null);
+
+    // Inject image attachment parts into the last user message so the LLM receives visuals.
+    // Only for canvas chat (attachments field present); safe to mutate since convertedMessages
+    // is a fresh array built above.
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      const imageAttachments = (attachments as Array<{ path: string; mimeType: string }>).filter(
+        (a) => typeof a.mimeType === "string" && a.mimeType.startsWith("image/"),
+      );
+      if (imageAttachments.length > 0) {
+        const lastUserIdx = [...convertedMessages]
+          .reverse()
+          .findIndex((m) => m.role === "user");
+        if (lastUserIdx !== -1) {
+          const realIdx = convertedMessages.length - 1 - lastUserIdx;
+          const msg = convertedMessages[realIdx];
+          const text = typeof msg.content === "string" ? msg.content : "";
+          convertedMessages[realIdx] = {
+            role: "user",
+            content: [
+              ...(text ? [{ type: "text" as const, text }] : []),
+              ...imageAttachments.map((a) => ({
+                type: "image" as const,
+                image: `/api/upload/presigned-url?s3Key=${encodeURIComponent(a.path)}`,
+              })),
+            ],
+          } as ModelMessage;
+        }
+      }
+    }
 
     // Org-membership gating for the multi-workspace + orgId branch
     // (canvas chat). Validated here in the route so `runCanvasAgent`

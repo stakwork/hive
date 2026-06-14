@@ -37,6 +37,7 @@ import type {
 import {
   toModelMessages,
   useCanvasChatStore,
+  type CanvasAttachment,
   type CanvasChatMessage,
   type ToolCall,
 } from "./canvasChatStore";
@@ -55,6 +56,8 @@ interface SendArgs {
    */
   approval?: ApprovalIntent;
   rejection?: RejectionIntent;
+  /** File attachments uploaded before send. Stamped onto the user message and forwarded to the API. */
+  attachments?: CanvasAttachment[];
 }
 
 export function useSendCanvasChatMessage() {
@@ -67,6 +70,7 @@ export function useSendCanvasChatMessage() {
       onResponseStart,
       approval,
       rejection,
+      attachments,
     }: SendArgs) => {
       const trimmed = content.trim();
       if (!trimmed) return;
@@ -107,6 +111,7 @@ export function useSendCanvasChatMessage() {
         role: "user",
         content: trimmed,
         timestamp: new Date(),
+        ...(attachments?.length ? { attachments } : {}),
         ...(approval ? { approval } : {}),
         ...(rejection ? { rejection } : {}),
       };
@@ -166,6 +171,8 @@ export function useSendCanvasChatMessage() {
             ...(approval || rejection
               ? { canvasChatMessages: updatedMessages }
               : {}),
+            // Attachments: forwarded server-side so the LLM receives image parts.
+            ...(attachments?.length ? { attachments } : {}),
             // Backend-driven persistence: the server writes this turn's
             // rows under `${turnId}-*` and returns the (possibly newly-
             // created) row id in `X-Conversation-Id`.
