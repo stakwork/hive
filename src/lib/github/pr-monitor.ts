@@ -724,13 +724,11 @@ export async function getOctokitForWorkspace(userId: string, owner: string): Pro
   return new Octokit({ auth: tokens.accessToken });
 }
 
-/**
- * Main monitoring function - checks all open PRs and handles issues
- *
- * @param maxPRs - Maximum number of PRs to check in one run (for rate limiting)
- * @returns Summary of the monitoring run
- */
-export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
+// ─── Shared types ────────────────────────────────────────────────────────────
+
+type PRRecord = Awaited<ReturnType<typeof findOpenPRArtifacts>>[number];
+
+export type MonitorStats = {
   checked: number;
   conflicts: number;
   ciFailures: number;
@@ -741,8 +739,10 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
   errors: number;
   agentTriggered: number;
   notified: number;
-}> {
-  const stats = {
+};
+
+function zeroedStats(): MonitorStats {
+  return {
     checked: 0,
     conflicts: 0,
     ciFailures: 0,
@@ -754,6 +754,373 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
     agentTriggered: 0,
     notified: 0,
   };
+}
+
+// ─── Per-PR processing helper ─────────────────────────────────────────────────
+
+/**
+ * Process a single PR record: check its status and handle conflicts/CI failures.
+ * Mutates `stats` in place. Throws on unexpected errors so the caller can catch.
+ */
+async function processOnePR(
+  pr: PRRecord,
+  stats: MonitorStats,
+  prLog: ReturnType<typeof createPrLogger>,
+): Promise<void> {
+  // Parse to get owner for auth
+  const parsed = parsePRUrl(pr.prUrl);
+  if (!parsed) {
+    stats.errors++;
+    return;
+  }
+
+  // Get authenticated client
+  const octokit = await getOctokitForWorkspace(pr.ownerId, parsed.owner);
+  if (!octokit) {
+    prLog.warn("Could not get Octokit client", {
+      taskId: pr.taskId,
+      owner: parsed.owner,
+    });
+    stats.errors++;
+    return;
+  }
+
+  // Check PR status
+  const result = await checkPR(octokit, pr.artifactId, pr.taskId, pr.prUrl);
+  if (!result) {
+    stats.errors++;
+    return;
+  }
+
+  stats.checked++;
+
+  prLog.info("PR check result", {
+    taskId: pr.taskId,
+    prNumber: result.prNumber,
+    repo: `${result.owner}/${result.repo}`,
+    state: result.state,
+    mergeable: result.mergeable,
+    ciStatus: result.ciStatus,
+    ciSummary: result.ciSummary,
+    prState: result.prState,
+    merged: result.merged,
+  });
+
+  // Handle closed/merged PRs
+  if (result.prState === "closed") {
+    const newStatus = result.merged ? "DONE" : "CANCELLED";
+    await updatePRArtifactProgress(
+      pr.artifactId,
+      {
+        state: "healthy",
+        lastCheckedAt: new Date().toISOString(),
+      },
+      newStatus,
+    );
+
+    // Update task status to DONE if PR was merged
+    if (result.merged) {
+      await db.task.update({
+        where: { id: pr.taskId },
+        data: { status: TaskStatus.DONE },
+      });
+      prLog.info("Updated task status to DONE for merged PR", {
+        taskId: pr.taskId,
+        prNumber: result.prNumber,
+      });
+
+      // Scorer pipeline: check if feature is complete (fire-and-forget)
+      try {
+        void db.task
+          .findUnique({
+            where: { id: pr.taskId },
+            select: { featureId: true },
+          })
+          ?.then((task) => {
+            if (task?.featureId) {
+              return import("@/lib/scorer/pipeline").then(
+                ({ checkAndTriggerFeatureCompletion }) =>
+                  checkAndTriggerFeatureCompletion(task.featureId!)
+              );
+            }
+          })
+          ?.catch((err: unknown) =>
+            prLog.error("Scorer pipeline error", { error: String(err) })
+          );
+      } catch {
+        // Scorer hook must never disrupt PR monitor flow
+      }
+
+      if (pr.podId) {
+        const releaseResult = await releaseTaskPod({
+          taskId: pr.taskId,
+          podId: pr.podId,
+          workspaceId: pr.workspaceId,
+          verifyOwnership: true,
+          clearTaskFields: true,
+          newWorkflowStatus: null,
+        });
+
+        if (releaseResult.success) {
+          prLog.info("Released pod for merged PR fallback", {
+            taskId: pr.taskId,
+            podId: pr.podId,
+            podDropped: releaseResult.podDropped,
+            taskCleared: releaseResult.taskCleared,
+          });
+        } else {
+          prLog.error("Failed to release pod for merged PR fallback", {
+            taskId: pr.taskId,
+            podId: pr.podId,
+            error: releaseResult.error,
+          });
+        }
+      }
+    }
+
+    stats.healthy++;
+    return;
+  }
+
+  // Build progress object
+  const progress: PullRequestProgress = {
+    state: result.state,
+    lastCheckedAt: new Date().toISOString(),
+    mergeable: result.mergeable,
+    ciStatus: result.ciStatus,
+    ciSummary: result.ciSummary,
+    problemDetails: result.problemDetails,
+    conflictFiles: result.conflictFiles,
+    failedChecks: result.failedChecks,
+    failedCheckLogs: result.failedCheckLogs,
+  };
+
+  // Check if state changed and requires action
+  const previousState = pr.progress?.state;
+  const stateChanged = previousState !== result.state;
+  const needsAgentFix = result.state === "conflict" || result.state === "ci_failure";
+
+  // Detect and reset stale 'in_progress' resolution status
+  // This happens when a fix attempt was triggered but never completed, and now the issue is resolved
+  const previousResolutionStatus = pr.progress?.resolution?.status;
+  const previousLastAttemptAt = pr.progress?.resolution?.lastAttemptAt;
+  const isStaleInProgress =
+    previousResolutionStatus === "in_progress" &&
+    previousLastAttemptAt &&
+    Date.now() - new Date(previousLastAttemptAt).getTime() > PR_FIX_STALE_TIMEOUT_MS;
+
+  if (isStaleInProgress) {
+    prLog.info("Detected stale in_progress resolution, resetting", {
+      taskId: pr.taskId,
+      prNumber: result.prNumber,
+      previousState,
+      currentState: result.state,
+      lastAttemptAt: previousLastAttemptAt,
+      staleTimeoutMs: PR_FIX_STALE_TIMEOUT_MS,
+    });
+  }
+
+  // Handle out_of_date: try auto-merge first (no agent needed)
+  if (result.state === "out_of_date") {
+    stats.outOfDate++;
+
+    // Check if out-of-date fix is enabled for this workspace
+    if (!pr.prMonitorConfig.prOutOfDateFixEnabled) {
+      prLog.info("PR is out of date but auto-fix disabled for workspace", {
+        taskId: pr.taskId,
+        prNumber: result.prNumber,
+        repo: `${result.owner}/${result.repo}`,
+      });
+      await updatePRArtifactProgress(pr.artifactId, progress);
+    } else {
+      const useRebase = pr.prMonitorConfig.prUseRebaseForUpdates;
+      prLog.info(`PR is out of date, attempting ${useRebase ? 'rebase' : 'merge'}`, {
+        taskId: pr.taskId,
+        prNumber: result.prNumber,
+        repo: `${result.owner}/${result.repo}`,
+        headBranch: result.headBranch,
+        baseBranch: result.baseBranch,
+        useRebase,
+      });
+
+      const updateResult = useRebase
+        ? await rebaseOntoBaseBranch(
+            octokit,
+            result.owner,
+            result.repo,
+            result.headBranch,
+            result.baseBranch,
+            result.prNumber,
+          )
+        : await mergeBaseBranch(
+            octokit,
+            result.owner,
+            result.repo,
+            result.headBranch,
+            result.baseBranch,
+          );
+
+      if (updateResult.success) {
+        stats.autoMerged++;
+        prLog.info(`Auto-${useRebase ? 'rebased' : 'merged'} base branch into PR`, {
+          taskId: pr.taskId,
+          prNumber: result.prNumber,
+          sha: updateResult.sha,
+          strategy: useRebase ? 'rebase' : 'merge',
+        });
+
+        // Update progress to checking (CI will run on new commit)
+        progress.state = "checking";
+        progress.problemDetails = undefined;
+        await updatePRArtifactProgress(pr.artifactId, progress);
+      } else {
+        // Auto-update failed (likely conflicts appeared) - update state and let next check handle it
+        prLog.warn(`Auto-${useRebase ? 'rebase' : 'merge'} failed`, {
+          taskId: pr.taskId,
+          prNumber: result.prNumber,
+          error: updateResult.error,
+          strategy: useRebase ? 'rebase' : 'merge',
+        });
+        await updatePRArtifactProgress(pr.artifactId, progress);
+      }
+    }
+  } else if (needsAgentFix) {
+    if (result.state === "conflict") {
+      stats.conflicts++;
+    } else {
+      stats.ciFailures++;
+    }
+
+    const currentAttempts = pr.progress?.resolution?.attempts || 0;
+    const lastAttemptAt = pr.progress?.resolution?.lastAttemptAt;
+    const cooldownElapsed = !lastAttemptAt || Date.now() - new Date(lastAttemptAt).getTime() > PR_FIX_COOLDOWN_MS;
+
+    // Check if we've exceeded max attempts
+    if (currentAttempts >= PR_FIX_MAX_ATTEMPTS) {
+      progress.resolution = {
+        status: "gave_up",
+        attempts: currentAttempts,
+        lastAttemptAt: lastAttemptAt,
+        lastError: `Max fix attempts (${PR_FIX_MAX_ATTEMPTS}) exceeded`,
+      };
+      prLog.warn("PR fix max attempts exceeded", {
+        taskId: pr.taskId,
+        prNumber: result.prNumber,
+        attempts: currentAttempts,
+        maxAttempts: PR_FIX_MAX_ATTEMPTS,
+      });
+    }
+
+    // Notify via Pusher and create chat message
+    prLog.info("Notifying PR status change", {
+      taskId: pr.taskId,
+      prNumber: result.prNumber,
+      state: result.state,
+      problemDetails: result.problemDetails,
+      hasPod: !!pr.podId,
+    });
+    await notifyPRStatusChange(pr.taskId, result.prNumber, result.state, result.problemDetails);
+    stats.notified++;
+
+    // Check if the specific fix type is enabled for this workspace
+    const isFixEnabledForState =
+      (result.state === "conflict" && pr.prMonitorConfig.prConflictFixEnabled) ||
+      (result.state === "ci_failure" && pr.prMonitorConfig.prCiFailureFixEnabled);
+
+    // Trigger an automatic fix for live-mode tasks (agent-mode tasks are excluded at query time)
+    // Trigger if: fix enabled, cooldown elapsed, not gave_up,
+    // and either state changed OR no existing resolution (stale was cleared / never dispatched)
+    const canAttemptFix = stateChanged || !pr.progress?.resolution || isStaleInProgress;
+    const shouldTriggerFix =
+      isFixEnabledForState &&
+      canAttemptFix &&
+      cooldownElapsed &&
+      progress.resolution?.status !== "gave_up";
+
+    if (shouldTriggerFix) {
+      const fixPrompt = buildFixPrompt(result);
+      prLog.info("Triggering PR fix", {
+        taskId: pr.taskId,
+        podId: pr.podId,
+        state: result.state,
+        prNumber: result.prNumber,
+        repo: `${result.owner}/${result.repo}`,
+        attempt: currentAttempts + 1,
+        maxAttempts: PR_FIX_MAX_ATTEMPTS,
+      });
+
+      const triggerResult = await triggerFix(pr.taskId, fixPrompt);
+      if (triggerResult.success) {
+        stats.agentTriggered++;
+        // Only mark resolution as in_progress if the fix was actually dispatched
+        progress.resolution = {
+          status: "in_progress",
+          attempts: currentAttempts + 1,
+          lastAttemptAt: new Date().toISOString(),
+        };
+      } else {
+        prLog.info("Fix trigger did not dispatch, will retry next run", {
+          taskId: pr.taskId,
+          prNumber: result.prNumber,
+          error: triggerResult.error,
+        });
+        // Don't set resolution — leave it unset so next cron run retries
+      }
+    } else if (pr.podId && canAttemptFix && !isFixEnabledForState) {
+      prLog.info("Skipping PR fix - fix type disabled for workspace", {
+        taskId: pr.taskId,
+        prNumber: result.prNumber,
+        state: result.state,
+        conflictFixEnabled: pr.prMonitorConfig.prConflictFixEnabled,
+        ciFailureFixEnabled: pr.prMonitorConfig.prCiFailureFixEnabled,
+      });
+    } else if (pr.podId && canAttemptFix && !cooldownElapsed) {
+      prLog.info("Skipping PR fix due to cooldown", {
+        taskId: pr.taskId,
+        prNumber: result.prNumber,
+        lastAttemptAt,
+        cooldownMs: PR_FIX_COOLDOWN_MS,
+      });
+    }
+
+    // Update artifact
+    await updatePRArtifactProgress(pr.artifactId, progress);
+  } else {
+    // Track checking (CI pending) vs truly healthy
+    if (result.state === "checking") {
+      stats.ciPending++;
+    } else {
+      stats.healthy++;
+    }
+
+    // If was problematic and is now healthy, mark as resolved
+    // Also clear stale in_progress resolutions
+    if (previousState === "conflict" || previousState === "ci_failure" || previousState === "out_of_date" || isStaleInProgress) {
+      progress.resolution = {
+        ...pr.progress?.resolution,
+        status: "resolved",
+        attempts: pr.progress?.resolution?.attempts || 0,
+      };
+      if (stateChanged) {
+        await notifyPRStatusChange(pr.taskId, result.prNumber, "healthy");
+        stats.notified++;
+      }
+    }
+
+    await updatePRArtifactProgress(pr.artifactId, progress);
+  }
+}
+
+// ─── Main monitoring function ─────────────────────────────────────────────────
+
+/**
+ * Main monitoring function - checks all open PRs and handles issues
+ *
+ * @param maxPRs - Maximum number of PRs to check in one run (for rate limiting)
+ * @returns Summary of the monitoring run
+ */
+export async function monitorOpenPRs(maxPRs: number = 20): Promise<MonitorStats> {
+  const stats = zeroedStats();
 
   // Query is already limited at the DB level for efficiency
   const openPRs = await findOpenPRArtifacts(maxPRs);
@@ -771,348 +1138,7 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
     });
     const featureId = taskMeta?.featureId ?? null;
     try {
-      // Parse to get owner for auth
-      const parsed = parsePRUrl(pr.prUrl);
-      if (!parsed) {
-        stats.errors++;
-        continue;
-      }
-
-      // Get authenticated client
-      const octokit = await getOctokitForWorkspace(pr.ownerId, parsed.owner);
-      if (!octokit) {
-        prLog.warn("Could not get Octokit client", {
-          taskId: pr.taskId,
-          owner: parsed.owner,
-        });
-        stats.errors++;
-        continue;
-      }
-
-      // Check PR status
-      const result = await checkPR(octokit, pr.artifactId, pr.taskId, pr.prUrl);
-      if (!result) {
-        stats.errors++;
-        continue;
-      }
-
-      stats.checked++;
-
-      prLog.info("PR check result", {
-        taskId: pr.taskId,
-        prNumber: result.prNumber,
-        repo: `${result.owner}/${result.repo}`,
-        state: result.state,
-        mergeable: result.mergeable,
-        ciStatus: result.ciStatus,
-        ciSummary: result.ciSummary,
-        prState: result.prState,
-        merged: result.merged,
-      });
-
-      // Handle closed/merged PRs
-      if (result.prState === "closed") {
-        const newStatus = result.merged ? "DONE" : "CANCELLED";
-        await updatePRArtifactProgress(
-          pr.artifactId,
-          {
-            state: "healthy",
-            lastCheckedAt: new Date().toISOString(),
-          },
-          newStatus,
-        );
-
-        // Update task status to DONE if PR was merged
-        if (result.merged) {
-          await db.task.update({
-            where: { id: pr.taskId },
-            data: { status: TaskStatus.DONE },
-          });
-          prLog.info("Updated task status to DONE for merged PR", {
-            taskId: pr.taskId,
-            prNumber: result.prNumber,
-          });
-
-          // Scorer pipeline: check if feature is complete (fire-and-forget)
-          try {
-            void db.task
-              .findUnique({
-                where: { id: pr.taskId },
-                select: { featureId: true },
-              })
-              ?.then((task) => {
-                if (task?.featureId) {
-                  return import("@/lib/scorer/pipeline").then(
-                    ({ checkAndTriggerFeatureCompletion }) =>
-                      checkAndTriggerFeatureCompletion(task.featureId!)
-                  );
-                }
-              })
-              ?.catch((err: unknown) =>
-                prLog.error("Scorer pipeline error", { error: String(err) })
-              );
-          } catch {
-            // Scorer hook must never disrupt PR monitor flow
-          }
-
-          if (pr.podId) {
-            const releaseResult = await releaseTaskPod({
-              taskId: pr.taskId,
-              podId: pr.podId,
-              workspaceId: pr.workspaceId,
-              verifyOwnership: true,
-              clearTaskFields: true,
-              newWorkflowStatus: null,
-            });
-
-            if (releaseResult.success) {
-              prLog.info("Released pod for merged PR fallback", {
-                taskId: pr.taskId,
-                podId: pr.podId,
-                podDropped: releaseResult.podDropped,
-                taskCleared: releaseResult.taskCleared,
-              });
-            } else {
-              prLog.error("Failed to release pod for merged PR fallback", {
-                taskId: pr.taskId,
-                podId: pr.podId,
-                error: releaseResult.error,
-              });
-            }
-          }
-        }
-
-        stats.healthy++;
-        continue;
-      }
-
-      // Build progress object
-      const progress: PullRequestProgress = {
-        state: result.state,
-        lastCheckedAt: new Date().toISOString(),
-        mergeable: result.mergeable,
-        ciStatus: result.ciStatus,
-        ciSummary: result.ciSummary,
-        problemDetails: result.problemDetails,
-        conflictFiles: result.conflictFiles,
-        failedChecks: result.failedChecks,
-        failedCheckLogs: result.failedCheckLogs,
-      };
-
-      // Check if state changed and requires action
-      const previousState = pr.progress?.state;
-      const stateChanged = previousState !== result.state;
-      const needsAgentFix = result.state === "conflict" || result.state === "ci_failure";
-
-      // Detect and reset stale 'in_progress' resolution status
-      // This happens when a fix attempt was triggered but never completed, and now the issue is resolved
-      const previousResolutionStatus = pr.progress?.resolution?.status;
-      const previousLastAttemptAt = pr.progress?.resolution?.lastAttemptAt;
-      const isStaleInProgress =
-        previousResolutionStatus === "in_progress" &&
-        previousLastAttemptAt &&
-        Date.now() - new Date(previousLastAttemptAt).getTime() > PR_FIX_STALE_TIMEOUT_MS;
-
-      if (isStaleInProgress) {
-        prLog.info("Detected stale in_progress resolution, resetting", {
-          taskId: pr.taskId,
-          prNumber: result.prNumber,
-          previousState,
-          currentState: result.state,
-          lastAttemptAt: previousLastAttemptAt,
-          staleTimeoutMs: PR_FIX_STALE_TIMEOUT_MS,
-        });
-      }
-
-      // Handle out_of_date: try auto-merge first (no agent needed)
-      if (result.state === "out_of_date") {
-        stats.outOfDate++;
-
-        // Check if out-of-date fix is enabled for this workspace
-        if (!pr.prMonitorConfig.prOutOfDateFixEnabled) {
-          prLog.info("PR is out of date but auto-fix disabled for workspace", {
-            taskId: pr.taskId,
-            prNumber: result.prNumber,
-            repo: `${result.owner}/${result.repo}`,
-          });
-          await updatePRArtifactProgress(pr.artifactId, progress);
-        } else {
-          const useRebase = pr.prMonitorConfig.prUseRebaseForUpdates;
-          prLog.info(`PR is out of date, attempting ${useRebase ? 'rebase' : 'merge'}`, {
-            taskId: pr.taskId,
-            prNumber: result.prNumber,
-            repo: `${result.owner}/${result.repo}`,
-            headBranch: result.headBranch,
-            baseBranch: result.baseBranch,
-            useRebase,
-          });
-
-          const updateResult = useRebase
-            ? await rebaseOntoBaseBranch(
-                octokit,
-                result.owner,
-                result.repo,
-                result.headBranch,
-                result.baseBranch,
-                result.prNumber,
-              )
-            : await mergeBaseBranch(
-                octokit,
-                result.owner,
-                result.repo,
-                result.headBranch,
-                result.baseBranch,
-              );
-
-          if (updateResult.success) {
-            stats.autoMerged++;
-            prLog.info(`Auto-${useRebase ? 'rebased' : 'merged'} base branch into PR`, {
-              taskId: pr.taskId,
-              prNumber: result.prNumber,
-              sha: updateResult.sha,
-              strategy: useRebase ? 'rebase' : 'merge',
-            });
-
-            // Update progress to checking (CI will run on new commit)
-            progress.state = "checking";
-            progress.problemDetails = undefined;
-            await updatePRArtifactProgress(pr.artifactId, progress);
-          } else {
-            // Auto-update failed (likely conflicts appeared) - update state and let next check handle it
-            prLog.warn(`Auto-${useRebase ? 'rebase' : 'merge'} failed`, {
-              taskId: pr.taskId,
-              prNumber: result.prNumber,
-              error: updateResult.error,
-              strategy: useRebase ? 'rebase' : 'merge',
-            });
-            await updatePRArtifactProgress(pr.artifactId, progress);
-          }
-        }
-      } else if (needsAgentFix) {
-        if (result.state === "conflict") {
-          stats.conflicts++;
-        } else {
-          stats.ciFailures++;
-        }
-
-        const currentAttempts = pr.progress?.resolution?.attempts || 0;
-        const lastAttemptAt = pr.progress?.resolution?.lastAttemptAt;
-        const cooldownElapsed = !lastAttemptAt || Date.now() - new Date(lastAttemptAt).getTime() > PR_FIX_COOLDOWN_MS;
-
-        // Check if we've exceeded max attempts
-        if (currentAttempts >= PR_FIX_MAX_ATTEMPTS) {
-          progress.resolution = {
-            status: "gave_up",
-            attempts: currentAttempts,
-            lastAttemptAt: lastAttemptAt,
-            lastError: `Max fix attempts (${PR_FIX_MAX_ATTEMPTS}) exceeded`,
-          };
-          prLog.warn("PR fix max attempts exceeded", {
-            taskId: pr.taskId,
-            prNumber: result.prNumber,
-            attempts: currentAttempts,
-            maxAttempts: PR_FIX_MAX_ATTEMPTS,
-          });
-        }
-
-        // Notify via Pusher and create chat message
-        prLog.info("Notifying PR status change", {
-          taskId: pr.taskId,
-          prNumber: result.prNumber,
-          state: result.state,
-          problemDetails: result.problemDetails,
-          hasPod: !!pr.podId,
-        });
-        await notifyPRStatusChange(pr.taskId, result.prNumber, result.state, result.problemDetails);
-        stats.notified++;
-
-        // Check if the specific fix type is enabled for this workspace
-        const isFixEnabledForState =
-          (result.state === "conflict" && pr.prMonitorConfig.prConflictFixEnabled) ||
-          (result.state === "ci_failure" && pr.prMonitorConfig.prCiFailureFixEnabled);
-
-        // Trigger an automatic fix for live-mode tasks (agent-mode tasks are excluded at query time)
-        // Trigger if: fix enabled, cooldown elapsed, not gave_up,
-        // and either state changed OR no existing resolution (stale was cleared / never dispatched)
-        const canAttemptFix = stateChanged || !pr.progress?.resolution || isStaleInProgress;
-        const shouldTriggerFix =
-          isFixEnabledForState &&
-          canAttemptFix &&
-          cooldownElapsed &&
-          progress.resolution?.status !== "gave_up";
-
-        if (shouldTriggerFix) {
-          const fixPrompt = buildFixPrompt(result);
-          prLog.info("Triggering PR fix", {
-            taskId: pr.taskId,
-            podId: pr.podId,
-            state: result.state,
-            prNumber: result.prNumber,
-            repo: `${result.owner}/${result.repo}`,
-            attempt: currentAttempts + 1,
-            maxAttempts: PR_FIX_MAX_ATTEMPTS,
-          });
-
-          const triggerResult = await triggerFix(pr.taskId, fixPrompt);
-          if (triggerResult.success) {
-            stats.agentTriggered++;
-            // Only mark resolution as in_progress if the fix was actually dispatched
-            progress.resolution = {
-              status: "in_progress",
-              attempts: currentAttempts + 1,
-              lastAttemptAt: new Date().toISOString(),
-            };
-          } else {
-            prLog.info("Fix trigger did not dispatch, will retry next run", {
-              taskId: pr.taskId,
-              prNumber: result.prNumber,
-              error: triggerResult.error,
-            });
-            // Don't set resolution — leave it unset so next cron run retries
-          }
-        } else if (pr.podId && canAttemptFix && !isFixEnabledForState) {
-          prLog.info("Skipping PR fix - fix type disabled for workspace", {
-            taskId: pr.taskId,
-            prNumber: result.prNumber,
-            state: result.state,
-            conflictFixEnabled: pr.prMonitorConfig.prConflictFixEnabled,
-            ciFailureFixEnabled: pr.prMonitorConfig.prCiFailureFixEnabled,
-          });
-        } else if (pr.podId && canAttemptFix && !cooldownElapsed) {
-          prLog.info("Skipping PR fix due to cooldown", {
-            taskId: pr.taskId,
-            prNumber: result.prNumber,
-            lastAttemptAt,
-            cooldownMs: PR_FIX_COOLDOWN_MS,
-          });
-        }
-
-        // Update artifact
-        await updatePRArtifactProgress(pr.artifactId, progress);
-      } else {
-        // Track checking (CI pending) vs truly healthy
-        if (result.state === "checking") {
-          stats.ciPending++;
-        } else {
-          stats.healthy++;
-        }
-
-        // If was problematic and is now healthy, mark as resolved
-        // Also clear stale in_progress resolutions
-        if (previousState === "conflict" || previousState === "ci_failure" || previousState === "out_of_date" || isStaleInProgress) {
-          progress.resolution = {
-            ...pr.progress?.resolution,
-            status: "resolved",
-            attempts: pr.progress?.resolution?.attempts || 0,
-          };
-          if (stateChanged) {
-            await notifyPRStatusChange(pr.taskId, result.prNumber, "healthy");
-            stats.notified++;
-          }
-        }
-
-        await updatePRArtifactProgress(pr.artifactId, progress);
-      }
+      await processOnePR(pr, stats, prLog);
     } catch (error) {
       prLog.error("Error processing PR", { taskId: pr.taskId, error: String(error) });
       stats.errors++;
@@ -1124,6 +1150,128 @@ export async function monitorOpenPRs(maxPRs: number = 20): Promise<{
   log.info("Monitoring run complete", stats);
   return stats;
 }
+
+// ─── Single-PR helpers (webhook-driven) ──────────────────────────────────────
+
+/**
+ * Find a single PR artifact by its exact URL, without the healthy-cooldown gate.
+ * Webhook events imply fresh state so we always want to re-check.
+ * Returns the first match or null.
+ */
+async function findSinglePRArtifact(prUrl: string): Promise<PRRecord | null> {
+  const artifacts = await db.$queryRaw<
+    Array<{
+      id: string;
+      content: import("@/lib/chat").PullRequestContent;
+      task_id: string;
+      pod_id: string | null;
+      workspace_id: string;
+      owner_id: string;
+      last_checked_at: string | null;
+      pr_monitor_enabled: boolean;
+      pr_conflict_fix_enabled: boolean;
+      pr_ci_failure_fix_enabled: boolean;
+      pr_out_of_date_fix_enabled: boolean;
+      pr_use_rebase_for_updates: boolean;
+    }>
+  >`
+    SELECT DISTINCT ON (a.content->>'url')
+      a.id,
+      a.content,
+      t.id as task_id,
+      t.pod_id,
+      t.workspace_id,
+      w.owner_id,
+      a.content->'progress'->>'lastCheckedAt' as last_checked_at,
+      COALESCE(jc.pr_monitor_enabled, false) as pr_monitor_enabled,
+      COALESCE(jc.pr_conflict_fix_enabled, false) as pr_conflict_fix_enabled,
+      COALESCE(jc.pr_ci_failure_fix_enabled, false) as pr_ci_failure_fix_enabled,
+      COALESCE(jc.pr_out_of_date_fix_enabled, false) as pr_out_of_date_fix_enabled,
+      COALESCE(jc.pr_use_rebase_for_updates, false) as pr_use_rebase_for_updates
+    FROM artifacts a
+    JOIN chat_messages m ON a.message_id = m.id
+    JOIN tasks t ON m.task_id = t.id
+    JOIN workspaces w ON t.workspace_id = w.id
+    LEFT JOIN janitor_configs jc ON jc.workspace_id = w.id
+    WHERE
+      a.type = 'PULL_REQUEST'
+      AND t.deleted = false
+      AND t.archived = false
+      AND t.mode != 'agent'
+      AND COALESCE(jc.pr_monitor_enabled, false) = true
+      AND a.content->>'url' IS NOT NULL
+      AND a.content->>'url' LIKE 'https://github.com/%'
+      AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
+      AND COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'gave_up'
+      AND (
+        COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'in_progress'
+        OR a.content->'progress'->'resolution'->>'lastAttemptAt' IS NULL
+        OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - INTERVAL '30 minutes'
+      )
+      AND a.content->>'url' = ${prUrl}
+    ORDER BY a.content->>'url', a.created_at DESC
+  `;
+
+  if (artifacts.length === 0) return null;
+
+  const artifact = artifacts[0];
+  return {
+    artifactId: artifact.id,
+    taskId: artifact.task_id,
+    prUrl: artifact.content.url,
+    workspaceId: artifact.workspace_id,
+    ownerId: artifact.owner_id,
+    podId: artifact.pod_id,
+    progress: artifact.content.progress,
+    prMonitorConfig: {
+      prMonitorEnabled: artifact.pr_monitor_enabled,
+      prConflictFixEnabled: artifact.pr_conflict_fix_enabled,
+      prCiFailureFixEnabled: artifact.pr_ci_failure_fix_enabled,
+      prOutOfDateFixEnabled: artifact.pr_out_of_date_fix_enabled,
+      prUseRebaseForUpdates: artifact.pr_use_rebase_for_updates,
+    },
+  };
+}
+
+/**
+ * Monitor a single PR by URL — called by the GitHub webhook handler for
+ * immediate event-driven checks instead of waiting for the next cron cycle.
+ *
+ * @param prUrl - The full GitHub PR HTML URL, e.g. https://github.com/owner/repo/pull/42
+ * @returns Same stats shape as `monitorOpenPRs`
+ */
+export async function monitorSinglePR(prUrl: string): Promise<MonitorStats> {
+  const stats = zeroedStats();
+
+  const record = await findSinglePRArtifact(prUrl);
+  if (!record) {
+    log.info("[PRMonitor] monitorSinglePR: no tracked artifact found", { prUrl });
+    return stats;
+  }
+
+  log.info("[PRMonitor] monitorSinglePR: artifact found, checking PR", { prUrl, taskId: record.taskId });
+
+  const prLog = createPrLogger(record.taskId);
+  const taskMeta = await db.task.findUnique({
+    where: { id: record.taskId },
+    select: { featureId: true },
+  });
+  const featureId = taskMeta?.featureId ?? null;
+
+  try {
+    await processOnePR(record, stats, prLog);
+  } catch (e) {
+    prLog.error("Error in monitorSinglePR", { error: String(e) });
+    stats.errors++;
+  } finally {
+    prLog.flush(featureId, record.workspaceId);
+  }
+
+  log.info("[PRMonitor] monitorSinglePR complete", { prUrl, stats });
+  return stats;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Trigger the agent to fix a PR issue in "agent" mode (server-side, no streaming)
