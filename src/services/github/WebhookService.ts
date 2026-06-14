@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { EncryptionService } from "@/lib/encryption";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { updateRepoHook } from "@/services/github/api/webhooks";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -22,7 +23,7 @@ export class WebhookService extends BaseServiceClass {
     repositoryUrl,
     callbackUrl,
     repositoryName,
-    events = ["push", "pull_request", "deployment_status"],
+    events = ["push", "pull_request", "deployment_status", "check_run", "workflow_run"],
     active = true,
   }: {
     userId: string;
@@ -121,7 +122,7 @@ export class WebhookService extends BaseServiceClass {
     workspaceId,
     repositoryUrl,
     callbackUrl,
-    events = ["push", "pull_request", "deployment_status"],
+    events = ["push", "pull_request", "deployment_status", "check_run", "workflow_run"],
     active = true,
     workspaceSlug,
   }: {
@@ -163,6 +164,17 @@ export class WebhookService extends BaseServiceClass {
 
       if (webhookExists) {
         const storedSecret = encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret);
+        // Patch events to include check_run + workflow_run if not yet done (idempotent).
+        void updateRepoHook({
+          token,
+          owner,
+          repo,
+          hookId: webhookId,
+          events,
+          active: true,
+        }).catch((patchErr) =>
+          console.warn("[WebhookService] Failed to patch webhook events (non-blocking)", { webhookId, error: patchErr })
+        );
         console.log("=> Using existing webhook for workspace", repoRec.id);
         return { id: webhookId, secret: storedSecret };
       }
