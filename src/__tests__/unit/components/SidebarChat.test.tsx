@@ -114,6 +114,34 @@ vi.mock("@/hooks/useSpeechRecognition", () => ({
   }),
 }));
 
+vi.mock("@/lib/upload-image-to-s3", () => ({
+  uploadFileToS3: vi.fn(),
+}));
+
+vi.mock("@/components/ui/textarea", () => ({
+  Textarea: React.forwardRef(
+    (
+      {
+        children,
+        isDragging: _d,
+        isUploading: _u,
+        ...props
+      }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+        children?: React.ReactNode;
+        isDragging?: boolean;
+        isUploading?: boolean;
+      },
+      ref: React.Ref<HTMLTextAreaElement>,
+    ) => (
+      <div className="relative w-full">
+        <textarea ref={ref} {...props}>
+          {children}
+        </textarea>
+      </div>
+    ),
+  ),
+}));
+
 vi.mock("@/hooks/useControlKeyHold", () => ({
   useControlKeyHold: vi.fn(),
 }));

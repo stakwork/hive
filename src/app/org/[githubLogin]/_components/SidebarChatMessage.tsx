@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown, { type Components } from "react-markdown";
+import { FileIcon } from "lucide-react";
+import type { CanvasAttachment } from "../_state/canvasChatStore";
 
 /**
  * Sidebar-flavored chat bubble. Forked from
@@ -43,6 +45,7 @@ interface SidebarChatMessageProps {
     role: "user" | "assistant";
     content: string;
     timestamp: Date;
+    attachments?: CanvasAttachment[];
   };
   isStreaming?: boolean;
 }
@@ -55,6 +58,12 @@ export function SidebarChatMessage({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  // Click-to-enlarge state for image attachments
+  const [enlargedImage, setEnlargedImage] = useState<{
+    url: string;
+    alt: string;
+  } | null>(null);
 
   /**
    * Markdown link interceptor. Recognizes hrefs that are pure
@@ -121,52 +130,133 @@ export function SidebarChatMessage({
     };
   }, [router, pathname, searchParams]);
 
-  if (!message.content.trim()) {
+  const hasContent = message.content.trim();
+  const hasAttachments =
+    message.attachments && message.attachments.length > 0;
+
+  if (!hasContent && !hasAttachments) {
     return null;
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
-    >
-      <div
-        className={`${
-          isUser ? "max-w-[85%]" : "w-full"
-        }`}
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        className={`flex w-full flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}
       >
-        <div
-          className={`rounded-2xl px-3 py-2 shadow-sm ${
-            isUser
-              ? "bg-primary text-primary-foreground inline-block"
-              : "bg-muted/40"
-          }`}
-        >
-          {isStreaming ? (
+        {/* Text bubble */}
+        {hasContent && (
+          <div className={`${isUser ? "max-w-[85%]" : "w-full"}`}>
             <div
-              className={`text-sm whitespace-pre-wrap break-words ${
-                isUser ? "text-primary-foreground" : "text-foreground/90"
-              }`}
-            >
-              {message.content}
-            </div>
-          ) : (
-            <div
-              className={`prose prose-sm max-w-none break-words ${
+              className={`rounded-2xl px-3 py-2 shadow-sm ${
                 isUser
-                  ? "[&>*]:!text-primary-foreground [&_*]:!text-primary-foreground"
-                  : "dark:prose-invert [&>*]:!text-foreground/90 [&_*]:!text-foreground/90"
+                  ? "bg-primary text-primary-foreground inline-block"
+                  : "bg-muted/40"
               }`}
             >
-              <ReactMarkdown components={markdownComponents}>
-                {message.content}
-              </ReactMarkdown>
+              {isStreaming ? (
+                <div
+                  className={`text-sm whitespace-pre-wrap break-words ${
+                    isUser ? "text-primary-foreground" : "text-foreground/90"
+                  }`}
+                >
+                  {message.content}
+                </div>
+              ) : (
+                <div
+                  className={`prose prose-sm max-w-none break-words ${
+                    isUser
+                      ? "[&>*]:!text-primary-foreground [&_*]:!text-primary-foreground"
+                      : "dark:prose-invert [&>*]:!text-foreground/90 [&_*]:!text-foreground/90"
+                  }`}
+                >
+                  <ReactMarkdown components={markdownComponents}>
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+        )}
+
+        {/* Attachments */}
+        {hasAttachments && (
+          <div className="grid grid-cols-2 gap-1.5 max-w-[85%]">
+            {message.attachments!.map((att) => {
+              const url = `/api/upload/presigned-url?s3Key=${encodeURIComponent(att.path)}`;
+              if (att.mimeType.startsWith("image/")) {
+                return (
+                  <div
+                    key={att.path}
+                    className="relative rounded-lg overflow-hidden border cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() =>
+                      setEnlargedImage({ url, alt: att.filename })
+                    }
+                    data-testid={`attachment-image-${att.filename}`}
+                  >
+                    <img
+                      src={url}
+                      alt={att.filename}
+                      className="w-full h-auto object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                );
+              }
+              if (att.mimeType.startsWith("video/")) {
+                return (
+                  <div
+                    key={att.path}
+                    className="relative rounded-lg overflow-hidden border col-span-2"
+                    data-testid={`attachment-video-${att.filename}`}
+                  >
+                    <video
+                      src={url}
+                      controls
+                      className="w-full rounded-lg max-h-48"
+                      preload="metadata"
+                    />
+                  </div>
+                );
+              }
+              return (
+                <div
+                  key={att.path}
+                  className="relative rounded-lg overflow-hidden border"
+                  data-testid={`attachment-file-${att.filename}`}
+                >
+                  <a
+                    href={url}
+                    download={att.filename}
+                    className="flex items-center gap-2 text-xs text-muted-foreground p-2.5 hover:bg-muted"
+                  >
+                    <FileIcon className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{att.filename}</span>
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
+
+      {/* Click-to-enlarge dialog */}
+      {enlargedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => setEnlargedImage(null)}
+          data-testid="enlarged-image-dialog"
+        >
+          <img
+            src={enlargedImage.url}
+            alt={enlargedImage.alt}
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
-      </div>
-    </motion.div>
+      )}
+    </>
   );
 }

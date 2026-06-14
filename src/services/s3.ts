@@ -248,6 +248,13 @@ export class S3Service {
     return `voice-signatures/${userId}/signature.wav`
   }
 
+  generateCanvasUploadPath(workspaceId: string, filename: string): string {
+    const timestamp = Date.now()
+    const randomId = Math.random().toString(36).substring(2, 15)
+    const sanitized = filename.replace(/[^a-zA-Z0-9.-]/g, '_')
+    return `uploads/${workspaceId}/canvas/${timestamp}_${randomId}_${sanitized}`
+  }
+
   generateWhiteboardImagePath(
     workspaceId: string,
     whiteboardId: string,
