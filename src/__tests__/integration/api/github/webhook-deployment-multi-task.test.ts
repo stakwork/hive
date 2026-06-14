@@ -15,6 +15,11 @@ import { createWebhookTestScenario, computeValidWebhookSignature, createWebhookR
 import { createTestTask, createTestChatMessage, createTestArtifact } from "@/__tests__/support/factories/task.factory";
 import { resetDatabase } from "@/__tests__/support/utilities/database";
 
+// Mock pr-monitor to prevent it loading @octokit/rest transitively through route.ts
+vi.mock("@/lib/github/pr-monitor", () => ({
+  monitorSinglePR: vi.fn().mockResolvedValue({}),
+}));
+
 // IMPORTANT: Mock Octokit BEFORE importing the route handler (for dynamic imports)
 // Create mock at module level so it persists across all Octokit instances
 const mockCompareCommits = vi.fn();
