@@ -9,7 +9,10 @@ const uploadRequestSchema = z.object({
   filename: z.string().min(1, 'Filename is required'),
   contentType: z.string().min(1, 'Content type is required'),
   size: z.number().min(1, 'File size must be greater than 0'),
-  taskId: z.string().min(1, 'Task ID is required'),
+  taskId: z.string().optional(),
+  workspaceId: z.string().optional(),
+}).refine(d => !!(d.taskId || d.workspaceId), {
+  message: 'Either taskId or workspaceId is required',
 })
 
 /**
@@ -109,10 +112,24 @@ export async function POST(request: NextRequest) {
     const validatedData = uploadRequestSchema.parse(body)
     const { filename, contentType, size, taskId } = validatedData
 
-    // Get task with workspace and swarm information
+    // workspaceId-only branch (canvas uploads)
+    if (validatedData.workspaceId && !taskId) {
+      const { workspaceId } = validatedData
+      // IDOR: verify caller has write access to the workspace BEFORE any S3 call
+      const access = await validateWorkspaceAccessById(workspaceId, userId)
+      if (!access?.canWrite) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      const s3Path = getS3Service().generateCanvasUploadPath(workspaceId, filename)
+      const presignedUrl = await getS3Service().generatePresignedUploadUrl(s3Path, contentType, 300)
+      return NextResponse.json({ presignedUrl, s3Path })
+    }
+
+    // Get task with workspace and swarm information (taskId is required here — the
+    // workspaceId-only branch above would have returned already if taskId were absent)
     const task = await db.task.findFirst({
       where: {
-        id: taskId,
+        id: taskId!,
         deleted: false,
       },
       select: {
@@ -167,7 +184,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate S3 path
-    const s3Path = getS3Service().generateS3Path(workspaceId, swarmId, taskId, filename)
+    const s3Path = getS3Service().generateS3Path(workspaceId, swarmId, taskId!, filename)
 
     // Generate presigned upload URL
     const presignedUrl = await getS3Service().generatePresignedUploadUrl(

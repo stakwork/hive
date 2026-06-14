@@ -78,6 +78,18 @@ export interface ToolCall {
 }
 
 /**
+ * A file attachment uploaded by the user before sending a canvas chat message.
+ * Persisted in SharedConversation JSON so it survives reload and live-sync.
+ */
+export interface CanvasAttachment {
+  /** S3 path (key) — used to generate a presigned download URL. */
+  path: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
+/**
  * Marks a `CanvasChatMessage` row whose origin is NOT the canvas
  * conversation itself. The fan-out worker
  * (`src/services/canvas-planner-fanout.ts`) writes inbound rows
@@ -188,6 +200,8 @@ export interface CanvasChatMessage {
   approval?: ApprovalIntent;
   /** User clicked Reject on a proposal. Set on user messages only. */
   rejection?: RejectionIntent;
+  /** Files attached by the user before send. Persisted in SharedConversation JSON. */
+  attachments?: CanvasAttachment[];
   /**
    * Synthetic assistant message describing an approval outcome. Set by
    * `/api/ask/quick` after `handleApproval` creates the DB row; carries
@@ -764,8 +778,30 @@ export function toModelMessages(
   messages: CanvasChatMessage[],
 ): ModelMessage[] {
   return messages
-    .filter((m) => m.content.trim() || m.toolCalls)
+    .filter((m) => m.content.trim() || m.toolCalls || m.attachments?.length)
     .flatMap((m): ModelMessage[] => {
+      // Multimodal: user messages with image attachments get a content array
+      if (m.role === "user" && m.attachments?.length) {
+        const imageAttachments = m.attachments.filter((a) =>
+          a.mimeType.startsWith("image/"),
+        );
+        if (imageAttachments.length > 0) {
+          const contentParts: Array<
+            { type: "text"; text: string } | { type: "image"; image: string }
+          > = [];
+          if (m.content.trim()) {
+            contentParts.push({ type: "text", text: m.content });
+          }
+          for (const a of imageAttachments) {
+            contentParts.push({
+              type: "image",
+              image: `/api/upload/presigned-url?s3Key=${encodeURIComponent(a.path)}`,
+            });
+          }
+          return [{ role: "user", content: contentParts as never }];
+        }
+      }
+
       if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
         const out: ModelMessage[] = [];
         out.push({
