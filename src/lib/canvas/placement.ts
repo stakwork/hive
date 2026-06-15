@@ -219,6 +219,47 @@ function computeCandidate(
 }
 
 /**
+ * Grid-scan the user's visible canvas area and return the first
+ * non-overlapping position for a new card.
+ *
+ * Walks the viewport in `cardW + padding` / `cardH + padding` steps
+ * (row-major order), returning the first slot where `collides()` is
+ * false. Returns `null` when every grid position is occupied —
+ * callers are responsible for the fallback (usually legacy `{40,40}`).
+ *
+ * Upper bounds are clamped so the card's right/bottom edge never
+ * exits the visible area:
+ *   maxX = canvasX + canvasW - cardW
+ *   maxY = canvasY + canvasH - cardH
+ */
+export function findFreeSlotInViewport(
+  vpBounds: {
+    canvasX: number;
+    canvasY: number;
+    canvasW: number;
+    canvasH: number;
+  },
+  existingNodes: CanvasNode[],
+  cardW: number,
+  cardH: number,
+  padding = 20,
+): { x: number; y: number } | null {
+  const STEP_X = cardW + padding;
+  const STEP_Y = cardH + padding;
+  const maxX = vpBounds.canvasX + vpBounds.canvasW - cardW;
+  const maxY = vpBounds.canvasY + vpBounds.canvasH - cardH;
+
+  for (let y = vpBounds.canvasY + padding; y <= maxY; y += STEP_Y) {
+    for (let x = vpBounds.canvasX + padding; x <= maxX; x += STEP_X) {
+      if (!collides({ x, y }, { w: cardW, h: cardH }, existingNodes, "")) {
+        return { x, y };
+      }
+    }
+  }
+  return null; // viewport fully packed — caller falls back to legacy behaviour
+}
+
+/**
  * Axis-aligned bounding-box collision check between the candidate
  * slot and every existing node on the canvas. We exclude the anchor
  * itself from the check (it's allowed to "touch" — `right-of:X`
