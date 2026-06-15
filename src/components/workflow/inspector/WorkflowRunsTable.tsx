@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { ExternalLink } from "lucide-react";
 import { useWorkflowRuns, type WorkflowRun } from "@/hooks/useWorkflowRuns";
 
 const MAX_RUN_NAME_LEN = 40;
@@ -114,11 +115,14 @@ export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) 
                       href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="underline text-blue-600 hover:text-blue-800"
+                      className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 group"
                     >
-                      {run.name.length > MAX_RUN_NAME_LEN
-                        ? run.name.slice(0, MAX_RUN_NAME_LEN) + "…"
-                        : run.name}
+                      <span className="truncate">
+                        {run.name.length > MAX_RUN_NAME_LEN
+                          ? run.name.slice(0, MAX_RUN_NAME_LEN) + "…"
+                          : run.name}
+                      </span>
+                      <ExternalLink className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </a>
                   </TooltipTrigger>
                   {run.name.length > MAX_RUN_NAME_LEN && (
