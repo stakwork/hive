@@ -3,10 +3,11 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Workflow, Loader2, ArrowLeft, ExternalLink } from "lucide-react";
+import { Workflow, Loader2, ArrowLeft, ExternalLink, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -61,6 +62,8 @@ export default function WorkflowInspectorPage() {
   const [customSelectedIds, setCustomSelectedIds] = useState<string[]>([]);
   const [selectedStep, setSelectedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const [runTransitions, setRunTransitions] = useState<Record<string, WorkflowTransition> | null>(null);
 
   const { versions, isLoading: isLoadingVersions } = useWorkflowVersions(
     slug || null,
@@ -123,6 +126,26 @@ export default function WorkflowInspectorPage() {
       setIsCreatingTask(false);
     }
   };
+
+  // Fetch run transitions when a run is selected
+  useEffect(() => {
+    if (!selectedRunId) {
+      setRunTransitions(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/stakwork/workflow/${selectedRunId}`)
+      .then((r) => r.json())
+      .then((result) => {
+        if (!cancelled) {
+          setRunTransitions(
+            (result?.workflowData as Record<string, unknown>)?.transitions as Record<string, WorkflowTransition> ?? null
+          );
+        }
+      })
+      .catch(() => { if (!cancelled) setRunTransitions(null); });
+    return () => { cancelled = true; };
+  }, [selectedRunId]);
 
   const handleStepClick = useCallback((step: WorkflowTransition) => {
     setSelectedStep(step);
@@ -212,6 +235,18 @@ export default function WorkflowInspectorPage() {
               isLoading={isLoadingVersions}
               workflowName={workflowName}
             />
+            {selectedRunId && (
+              <div className="flex items-center gap-2 mt-2">
+                <Badge variant="secondary">Run #{selectedRunId}</Badge>
+                <button
+                  onClick={() => { setSelectedRunId(null); setRunTransitions(null); }}
+                  className="p-0.5 hover:bg-muted rounded"
+                  aria-label="Exit run view"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
           <div className="flex-1 overflow-hidden">
             {parsedWorkflowData ? (
@@ -221,7 +256,7 @@ export default function WorkflowInspectorPage() {
                   workflowData: parsedWorkflowData,
                   show_only: true,
                   mode: "workflow",
-                  projectId: "",
+                  projectId: selectedRunId ? String(selectedRunId) : "",
                   isAdmin: false,
                   workflowId: String(workflowIdNum),
                   workflowVersion: selectedVersionId ? String(selectedVersionId) : "",
@@ -235,6 +270,7 @@ export default function WorkflowInspectorPage() {
                 step={selectedStep}
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
+                runTransitions={runTransitions ?? undefined}
               />
               </>
             ) : isLoadingVersions ? (
@@ -268,7 +304,12 @@ export default function WorkflowInspectorPage() {
                 {slug && (
                   <>
                     <WorkflowStatsPanel slug={slug} workflowId={workflowIdNum} />
-                    <WorkflowRunsTable slug={slug} workflowId={workflowIdNum} />
+                    <WorkflowRunsTable
+                      slug={slug}
+                      workflowId={workflowIdNum}
+                      onRunSelect={(id) => setSelectedRunId(id)}
+                      selectedRunId={selectedRunId ?? undefined}
+                    />
                   </>
                 )}
               </TabsContent>

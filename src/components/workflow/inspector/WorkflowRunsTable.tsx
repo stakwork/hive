@@ -19,6 +19,8 @@ const MAX_RUN_NAME_LEN = 40;
 interface WorkflowRunsTableProps {
   slug: string;
   workflowId: number;
+  onRunSelect?: (runId: number) => void;
+  selectedRunId?: number;
 }
 
 function statusVariant(
@@ -46,7 +48,7 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
-export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) {
+export function WorkflowRunsTable({ slug, workflowId, onRunSelect, selectedRunId }: WorkflowRunsTableProps) {
   const { runs, isLoading } = useWorkflowRuns(slug, workflowId);
 
   if (isLoading) {
@@ -106,7 +108,11 @@ export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) 
         </TableHeader>
         <TableBody>
           {runs.map((run) => (
-            <TableRow key={run.id}>
+            <TableRow
+              key={run.id}
+              onClick={() => onRunSelect?.(run.id)}
+              className={`${run.id === selectedRunId ? "bg-muted" : ""} ${onRunSelect ? "cursor-pointer" : ""}`}
+            >
               <TableCell>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -115,6 +121,7 @@ export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) 
                       target="_blank"
                       rel="noreferrer"
                       className="underline text-blue-600 hover:text-blue-800"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {run.name.length > MAX_RUN_NAME_LEN
                         ? run.name.slice(0, MAX_RUN_NAME_LEN) + "…"

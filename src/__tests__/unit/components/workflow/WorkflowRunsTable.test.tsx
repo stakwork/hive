@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { WorkflowRunsTable } from "@/components/workflow/inspector/WorkflowRunsTable";
 import type { WorkflowRun } from "@/hooks/useWorkflowRuns";
 
@@ -30,8 +30,8 @@ vi.mock("@/components/ui/tooltip", () => ({
 }));
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-function renderTable() {
-  return render(<WorkflowRunsTable slug="test-ws" workflowId={42} />);
+function renderTable(extraProps: Partial<React.ComponentProps<typeof WorkflowRunsTable>> = {}) {
+  return render(<WorkflowRunsTable slug="test-ws" workflowId={42} {...extraProps} />);
 }
 
 function setupRuns(runs: WorkflowRun[], isLoading = false) {
@@ -181,6 +181,37 @@ describe("WorkflowRunsTable", () => {
       );
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noreferrer");
+    });
+  });
+
+  describe("row selection", () => {
+    it("calls onRunSelect with run.id when a data row is clicked", () => {
+      setupRuns(MOCK_RUNS);
+      const onRunSelect = vi.fn();
+      renderTable({ onRunSelect });
+      const rows = screen.getAllByRole("row").slice(1); // skip header
+      fireEvent.click(rows[0]);
+      expect(onRunSelect).toHaveBeenCalledWith(MOCK_RUNS[0].id);
+    });
+
+    it("applies bg-muted class only to the selected row", () => {
+      setupRuns(MOCK_RUNS);
+      renderTable({ onRunSelect: vi.fn(), selectedRunId: MOCK_RUNS[0].id });
+      const rows = screen.getAllByRole("row").slice(1);
+      // Check for the standalone `bg-muted` class (not hover/data modifiers like hover:bg-muted/50)
+      const classesRow0 = rows[0].className.split(" ");
+      const classesRow1 = rows[1].className.split(" ");
+      expect(classesRow0).toContain("bg-muted");
+      expect(classesRow1).not.toContain("bg-muted");
+    });
+
+    it("does not call onRunSelect when the run name link is clicked", () => {
+      setupRuns(MOCK_RUNS);
+      const onRunSelect = vi.fn();
+      renderTable({ onRunSelect });
+      const link = screen.getByRole("link", { name: "Run #1001" });
+      fireEvent.click(link);
+      expect(onRunSelect).not.toHaveBeenCalled();
     });
   });
 });
