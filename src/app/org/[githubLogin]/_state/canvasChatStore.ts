@@ -347,6 +347,34 @@ interface CanvasChatState {
    */
   pendingInputDraft: string | null;
 
+  // ─── Canvas viewport (written by OrgCanvasBackground on every pan/zoom) ─
+  /**
+   * The live viewport state from the canvas renderer, plus the pixel
+   * dimensions of the canvas container element. Written by
+   * `OrgCanvasBackground.onViewportChange` so that `ProposalCard`
+   * can compute canvas-space bounds for viewport-aware node placement
+   * without prop drilling.
+   *
+   * `null` when the canvas is not mounted (before first render or
+   * after unmount). All consumers must handle null gracefully.
+   */
+  canvasViewport: {
+    x: number;
+    y: number;
+    zoom: number;
+    containerW: number;
+    containerH: number;
+  } | null;
+  setCanvasViewport: (
+    v: {
+      x: number;
+      y: number;
+      zoom: number;
+      containerW: number;
+      containerH: number;
+    } | null,
+  ) => void;
+
   // ─── Reserved slots (empty in PR 1; canvas may already select these) ─
   proposals: Record<string, CanvasProposal>;
   subAgentRuns: Record<string, SubAgentRun>;
@@ -471,6 +499,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       ephemeralSeedCounts: {},
       locallyAuthoredTurnIds: new Set<string>(),
       pendingInputDraft: null,
+      canvasViewport: null,
       proposals: {},
       subAgentRuns: {},
       artifacts: {},
@@ -759,6 +788,9 @@ export const useCanvasChatStore = create<CanvasChatState>()(
 
       setPendingInputDraft: (draft) =>
         set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
+
+      setCanvasViewport: (v) =>
+        set({ canvasViewport: v }, false, "setCanvasViewport"),
     }),
     { name: "canvas-chat-store" },
   ),

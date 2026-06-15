@@ -2817,6 +2817,14 @@ export function OrgCanvasBackground({
     onLinkedConnectionIdsChange?.(linkedConnectionIds);
   }, [linkedConnectionIds, onLinkedConnectionIdsChange]);
 
+  // Clear the viewport slot in the canvas chat store on unmount so stale
+  // coordinates from a previous canvas session never leak into the next.
+  useEffect(() => {
+    return () => {
+      useCanvasChatStore.getState().setCanvasViewport(null);
+    };
+  }, []);
+
   // Anchor the canvas container to the viewport but leave `rightInset`
   // pixels of empty space on the right so the library-owned FAB + future
   // toolbar affordances sit to the LEFT of the sidebar. The background
@@ -3140,6 +3148,14 @@ export function OrgCanvasBackground({
           rootLabel={orgName || githubLogin}
           onViewportChange={(vp) => {
             currentViewportRef.current = vp;
+            const rect = canvasContainerRef.current?.getBoundingClientRect();
+            useCanvasChatStore.getState().setCanvasViewport({
+              x: vp.x,
+              y: vp.y,
+              zoom: vp.zoom,
+              containerW: rect?.width ?? 0,
+              containerH: rect?.height ?? 0,
+            });
           }}
           collaborators={collaborators}
         />
