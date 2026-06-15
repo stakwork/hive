@@ -19,6 +19,9 @@ const updateJanitorConfigSchema = z.object({
   prOutOfDateFixEnabled: z.boolean().optional(),
   prUseMergeForUpdates: z.boolean().optional(),
   prUseRebaseForUpdates: z.boolean().optional(),
+  // Stale PR Task Janitor settings
+  stalePrTasksEnabled: z.boolean().optional(),
+  stalePrTaskThresholdDays: z.number().int().min(1).max(365).optional(),
 });
 
 export async function GET(
