@@ -46,6 +46,32 @@ describe("askToolsMulti", () => {
     });
   });
 
+  describe("stakwork__search_workflows tool", () => {
+    it("is registered for a workspace with slug 'stakwork'", () => {
+      const tools = askToolsMulti(
+        [ws("stakwork", { swarmUrl: "https://stakwork.sphinx.chat:3355" })],
+        "api-key",
+      );
+      expect(tools).toHaveProperty("stakwork__search_workflows");
+    });
+
+    it("is absent for non-stakwork workspaces", () => {
+      const tools = askToolsMulti([ws("other"), ws("another")], "api-key");
+      expect(tools).not.toHaveProperty("other__search_workflows");
+      expect(tools).not.toHaveProperty("another__search_workflows");
+    });
+
+    it("is only registered for the stakwork workspace when mixed", () => {
+      const tools = askToolsMulti(
+        [ws("other"), ws("stakwork", { swarmUrl: "https://stakwork.sphinx.chat:3355" }), ws("third")],
+        "api-key",
+      );
+      expect(tools).toHaveProperty("stakwork__search_workflows");
+      expect(tools).not.toHaveProperty("other__search_workflows");
+      expect(tools).not.toHaveProperty("third__search_workflows");
+    });
+  });
+
   describe("per-workspace tool registration", () => {
     it("registers a slug-prefixed logs_agent for each workspace", () => {
       const tools = askToolsMulti([ws("alpha"), ws("beta")], "api-key");

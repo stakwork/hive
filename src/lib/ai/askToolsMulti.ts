@@ -398,6 +398,38 @@ export function askToolsMulti(
       },
     });
 
+    // search_workflows — gated to the "stakwork" workspace only.
+    if (ws.slug === "stakwork") {
+      const swarmHost = new URL(ws.swarmUrl).hostname;
+      const jarvisBase = `https://${swarmHost}:8444`;
+      allTools[`${prefix}__search_workflows`] = tool({
+        description: `[${ws.slug}] Search Stakwork for workflows by keyword. Returns [{ id, name, description }].`,
+        inputSchema: z.object({
+          query: z.string().describe("Workflow search term"),
+        }),
+        execute: async ({ query }: { query: string }) => {
+          try {
+            const res = await fetch(
+              `${jarvisBase}/v2/nodes?q=${encodeURIComponent(query)}&type=Workflow&domains=workflow`,
+              { headers: { "x-api-token": ws.swarmApiKey, "Content-Type": "application/json" } },
+            );
+            if (!res.ok) return `Could not search workflows for ${ws.slug}`;
+            const data = await res.json();
+            return (data.nodes ?? []).map(
+              (n: { id: string; properties?: { name?: string; description?: string } }) => ({
+                id: n.id,
+                name: n.properties?.name,
+                description: n.properties?.description,
+              }),
+            );
+          } catch (e) {
+            console.error(`Error searching workflows for ${ws.slug}:`, e);
+            return `Could not search workflows for ${ws.slug}`;
+          }
+        },
+      });
+    }
+
     // logs_agent — deep, run-grounded analysis of agent execution logs.
     // Heavier than `${prefix}__search_logs` (a quick Lucene keyword
     // search); prefer search_logs for simple lookups.
