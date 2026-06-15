@@ -15,6 +15,7 @@ import {
   recordTurnTokens,
 } from "@/lib/ai/publicChatBudget";
 import { db } from "@/lib/db";
+import { getS3Service } from "@/services/s3";
 import {
   handleApproval,
   handleRejection,
@@ -145,9 +146,6 @@ export async function POST(request: NextRequest) {
       // live-sync merge by this prefix. Absent → legacy client-driven
       // persistence (dashboard chat, public viewers, older clients).
       turnId,
-      // Optional file attachments from canvas chat. Used to inject image
-      // parts into the last user message so the LLM receives visuals.
-      attachments,
     } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -300,31 +298,68 @@ export async function POST(request: NextRequest) {
       })
       .filter((m): m is ModelMessage => m !== null);
 
-    // Inject image attachment parts into the last user message so the LLM receives visuals.
-    // Only for canvas chat (attachments field present); safe to mutate since convertedMessages
-    // is a fresh array built above.
-    if (Array.isArray(attachments) && attachments.length > 0) {
-      const imageAttachments = (attachments as Array<{ path: string; mimeType: string }>).filter(
-        (a) => typeof a.mimeType === "string" && a.mimeType.startsWith("image/"),
-      );
-      if (imageAttachments.length > 0) {
-        const lastUserIdx = [...convertedMessages]
-          .reverse()
-          .findIndex((m) => m.role === "user");
-        if (lastUserIdx !== -1) {
-          const realIdx = convertedMessages.length - 1 - lastUserIdx;
-          const msg = convertedMessages[realIdx];
-          const text = typeof msg.content === "string" ? msg.content : "";
-          convertedMessages[realIdx] = {
-            role: "user",
-            content: [
-              ...(text ? [{ type: "text" as const, text }] : []),
-              ...imageAttachments.map((a) => ({
-                type: "image" as const,
-                image: `/api/upload/presigned-url?s3Key=${encodeURIComponent(a.path)}`,
-              })),
-            ],
-          } as ModelMessage;
+    // Resolve image parts to fetchable URLs so the LLM receives visuals.
+    //
+    // The client (`toModelMessages`) embeds image attachments as
+    // `{ type: "image", image: "/api/upload/presigned-url?s3Key=..." }` for
+    // EVERY user turn that has one — including past turns in the history. That
+    // value is a *relative* URL: the AI SDK only treats a string as a fetchable
+    // URL when `new URL(...)` parses it; a relative path throws and is then
+    // mis-read as raw base64 → Anthropic rejects it ("invalid base64 data").
+    // So we must rewrite EVERY such part across the whole message array (not
+    // just the latest turn), swapping the relative path for an ABSOLUTE signed
+    // S3 URL the SDK can actually download.
+    {
+      const s3 = getS3Service();
+      // Map a relative `/api/upload/presigned-url?s3Key=<key>` value to its key.
+      const extractS3Key = (image: unknown): string | null => {
+        if (typeof image !== "string") return null;
+        if (!image.startsWith("/api/upload/presigned-url")) return null;
+        try {
+          // Parse against a dummy base since the value is path-only.
+          const key = new URL(image, "http://x").searchParams.get("s3Key");
+          return key || null;
+        } catch {
+          return null;
+        }
+      };
+      // Resolve each distinct key once (a key can repeat across turns).
+      const keysToResolve = new Set<string>();
+      for (const m of convertedMessages) {
+        if (!Array.isArray(m.content)) continue;
+        for (const part of m.content as Array<{ type?: string; image?: unknown }>) {
+          if (part?.type !== "image") continue;
+          const key = extractS3Key(part.image);
+          if (key) keysToResolve.add(key);
+        }
+      }
+      if (keysToResolve.size > 0) {
+        const resolved = new Map<string, URL>();
+        await Promise.all(
+          [...keysToResolve].map(async (key) => {
+            try {
+              const url = await s3.generatePresignedDownloadUrl(key);
+              resolved.set(key, new URL(url));
+            } catch (err) {
+              console.error(
+                `[ask/quick] failed to resolve image attachment ${key}:`,
+                err,
+              );
+            }
+          }),
+        );
+        for (const m of convertedMessages) {
+          if (!Array.isArray(m.content)) continue;
+          m.content = (m.content as Array<{ type?: string; image?: unknown }>)
+            .map((part) => {
+              if (part?.type !== "image") return part;
+              const key = extractS3Key(part.image);
+              if (!key) return part;
+              const url = resolved.get(key);
+              // Drop parts we couldn't resolve rather than ship a bad URL.
+              return url ? { ...part, image: url } : null;
+            })
+            .filter((p) => p !== null) as typeof m.content;
         }
       }
     }
