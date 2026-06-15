@@ -174,6 +174,16 @@ export default function WorkflowInspectorPage() {
                 Workflows
               </Link>
             </Button>
+            <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+              <a
+                href={`https://jobs.stakwork.com/admin/workflows/${workflowIdNum}/edit`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink className="w-4 h-4 mr-1" />
+                View in Stakwork
+              </a>
+            </Button>
             <Button onClick={handlePlanFromWorkflow} variant="outline" size="sm">
               Plan from this Workflow
             </Button>
