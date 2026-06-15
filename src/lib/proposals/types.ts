@@ -148,6 +148,14 @@ export interface FeatureProposalPayload {
    * `dependsOnFeatureIds`.
    */
   dependsOnProposalIds?: string[];
+
+  /**
+   * Per-feature auto-respond override. null = inherit global
+   * (`User.canvasAutonomousTurns`). Set at proposal time from the
+   * user's current global preference; the ProposalCard toggle lets
+   * the user override it before approving.
+   */
+  autoRespond?: boolean | null;
 }
 
 /**

@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { Check, X, ExternalLink, Loader2, Lightbulb, Info } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import ReactMarkdown from "react-markdown";
 import {
   PROPOSE_FEATURE_TOOL,
@@ -103,6 +104,13 @@ export function ProposalCard({
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
 
+  // Feature-only: per-feature auto-respond toggle.
+  // Initialized from the proposal payload (which is seeded from the
+  // user's global `canvasAutonomousTurns` preference at propose time).
+  const [autoRespond, setAutoRespond] = useState<boolean>(
+    proposal.kind === "feature" ? (proposal.payload.autoRespond ?? false) : false,
+  );
+
   // Milestone-only: which features are currently checked for attach.
   // Initialized from `proposal.payload.featureIds` (the agent's
   // suggestion). The user can uncheck/re-check before approving;
@@ -143,9 +151,12 @@ export function ProposalCard({
         payload = { name: editedTitle } as Partial<InitiativeProposalPayload>;
       }
     } else if (proposal.kind === "feature") {
-      if (editedTitle !== initialTitle) {
-        payload = { title: editedTitle } as Partial<FeatureProposalPayload>;
-      }
+      // autoRespond is always forwarded (unconditionally) so `false` is
+      // never silently dropped — the server must receive an explicit value.
+      payload = {
+        ...(editedTitle !== initialTitle && { title: editedTitle }),
+        autoRespond,
+      } as Partial<FeatureProposalPayload>;
     } else {
       const titleChanged = editedTitle !== initialTitle;
       const featuresChanged =
@@ -254,7 +265,20 @@ export function ProposalCard({
             </div>
           )}
           {proposal.kind === "feature" && (
-            <FeatureMeta payload={proposal.payload} meta={proposal.meta} />
+            <>
+              <FeatureMeta payload={proposal.payload} meta={proposal.meta} />
+              <div className="mt-1.5 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  Auto-respond to planner
+                </span>
+                <Switch
+                  checked={autoRespond}
+                  onCheckedChange={setAutoRespond}
+                  disabled={!isPending}
+                  aria-label="Auto-respond to planner"
+                />
+              </div>
+            </>
           )}
           {proposal.kind === "milestone" && (
             <MilestoneMeta

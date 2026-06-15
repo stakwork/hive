@@ -1013,6 +1013,16 @@ export function buildInitiativeTools(
       }),
       execute: async (input): Promise<ProposalOutput | { error: string }> => {
         try {
+          // Seed the auto-respond default from the calling user's global
+          // preference. The ProposalCard toggle lets the user override
+          // this before approving; the value is forwarded unconditionally
+          // in the approval intent so `false` is never silently dropped.
+          const callingUser = await db.user.findUnique({
+            where: { id: userId },
+            select: { canvasAutonomousTurns: true },
+          });
+          const autoRespondDefault = callingUser?.canvasAutonomousTurns ?? false;
+
           // Resolve slug → cuid + validate workspace ↔ org ownership.
           // The agent works in slugs (human-readable, surfaced in the
           // prompt and in tool prefixes); the DB and stored proposal
@@ -1209,6 +1219,7 @@ export function buildInitiativeTools(
               ...(input.placement && {
                 placement: input.placement as Placement,
               }),
+              autoRespond: autoRespondDefault,
             },
             meta,
             ...(input.rationale && { rationale: input.rationale }),

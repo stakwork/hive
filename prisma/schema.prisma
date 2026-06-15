@@ -861,6 +861,13 @@ model Feature {
    * as a no-op.
    */
   parentCanvasConversationId String?         @map("parent_canvas_conversation_id")
+  /**
+   * Per-feature auto-respond override for the canvas agent.
+   * null  = inherit global (`User.canvasAutonomousTurns`)
+   * true  = always auto-respond for this feature (even if global is off)
+   * false = never auto-respond for this feature (even if global is on)
+   */
+  autoRespond         Boolean?              @map("auto_respond")
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
   assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])

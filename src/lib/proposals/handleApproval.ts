@@ -601,6 +601,7 @@ async function approveFeature(args: {
       ...(resolvedInitiativeId && { initiativeId: resolvedInitiativeId }),
       ...(merged.milestoneId && { milestoneId: merged.milestoneId }),
       ...(uniqueDeps.length > 0 && { dependsOnFeatureIds: uniqueDeps }),
+      autoRespond: merged.autoRespond ?? null,
     });
 
     // Stamp ownership: this canvas conversation now "owns" the new

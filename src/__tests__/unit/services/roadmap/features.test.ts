@@ -648,6 +648,11 @@ describe("createFeature", () => {
           assigneeId: null,
           isFastTrack: false,
           model: null,
+          // Per-feature autonomous-turn override. Defaults to null
+          // when the caller omits it — see `createFeature` in
+          // services/roadmap/features.ts and the three-way gate in
+          // services/canvas-agent-autoturn.ts.
+          autoRespond: null,
           // Canvas anchors default to null when the caller doesn't
           // pass them — see `createFeature`'s "most specific place
           // wins" resolution in services/roadmap/features.ts.
