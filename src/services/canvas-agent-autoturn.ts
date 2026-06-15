@@ -600,20 +600,6 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     return;
   }
 
-  // ── Per-user opt-in ──────────────────────────────────────────────
-  // The normal gate (the master kill switch above only hard-disables
-  // platform-wide). The auto-turn acts as the conversation owner, so the
-  // owner's `canvasAutonomousTurns` preference decides. Default off — the
-  // user enables it from the gear menu on the Agent chat panel.
-  if (!conversation.user?.canvasAutonomousTurns) {
-    console.log("[canvas-autoturn] skipped (owner opt-out)", {
-      conversationId,
-      featureId,
-      wakeReason,
-    });
-    return;
-  }
-
   // Load the plan-stage flags alongside the title. We compute a compact
   // status line (which stages are populated + workflowStatus) and inject
   // THAT into the wake message — not the full plan text. The full
@@ -632,6 +618,7 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
         requirements: true,
         architecture: true,
         workflowStatus: true,
+        autoRespond: true,
         workspace: { select: { slug: true } },
       },
     }),
@@ -641,6 +628,28 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     console.log("[canvas-autoturn] feature gone; skipping", { featureId });
     return;
   }
+
+  // ── Three-way auto-respond gate ───────────────────────────────────
+  // 1. feature.autoRespond === false → skip (even if global is on).
+  // 2. feature.autoRespond === true  → proceed (even if global is off).
+  // 3. feature.autoRespond === null  → fall back to global preference.
+  const effectiveAutoRespond =
+    feature.autoRespond !== null && feature.autoRespond !== undefined
+      ? feature.autoRespond
+      : conversation.user?.canvasAutonomousTurns ?? false;
+
+  if (!effectiveAutoRespond) {
+    console.log("[canvas-autoturn] skipped (autoRespond off)", {
+      conversationId,
+      featureId,
+      source:
+        feature.autoRespond !== null && feature.autoRespond !== undefined
+          ? "feature"
+          : "global",
+    });
+    return;
+  }
+
   const tasksGenerated = taskCount > 0;
 
   // ── Pipeline-finished short-circuit ──────────────────────────────

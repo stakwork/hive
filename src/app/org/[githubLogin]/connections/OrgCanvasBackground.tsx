@@ -140,11 +140,6 @@ type DirtyMap = Map<string, CanvasData>;
 
 type LastAction =
   | {
-      kind: "blob";
-      canvasRef: string | undefined; // undefined = root
-      prev: CanvasData; // snapshot before the mutation
-    }
-  | {
       kind: "hide"; // user hid a live node → undo = show
       canvasRef: string | undefined;
       id: string;
@@ -992,7 +987,6 @@ export function OrgCanvasBackground({
       if (!canvasRef) {
         const current = rootRef.current;
         if (!current) return;
-        lastActionRef.current = { kind: "blob", canvasRef, prev: current };
         const next = mutate(current);
         setRoot(next);
         markDirty(undefined, next);
@@ -1000,7 +994,6 @@ export function OrgCanvasBackground({
       }
       const current = subCanvasesRef.current[canvasRef];
       if (!current) return;
-      lastActionRef.current = { kind: "blob", canvasRef, prev: current };
       const next = mutate(current);
       setSubCanvases((prev) => ({ ...prev, [canvasRef]: next }));
       markDirty(canvasRef, next);
@@ -2029,20 +2022,6 @@ export function OrgCanvasBackground({
     const action = lastActionRef.current;
     if (!action) return;
     lastActionRef.current = null; // consume — ctrl-z twice is a no-op
-
-    if (action.kind === "blob") {
-      if (!action.canvasRef) {
-        setRoot(action.prev);
-        markDirty(undefined, action.prev);
-      } else {
-        setSubCanvases((prev) => ({
-          ...prev,
-          [action.canvasRef!]: action.prev,
-        }));
-        markDirty(action.canvasRef, action.prev);
-      }
-      return;
-    }
 
     if (action.kind === "hide") {
       // Undo a hide → reuse the existing handleRestoreLive path exactly
