@@ -8,17 +8,39 @@ vi.mock("@/lib/db", () => ({
     task: {
       updateMany: vi.fn(),
     },
+    workspace: {
+      findUnique: vi.fn(),
+    },
   },
+}));
+
+// Mock pr-monitor exports used by the janitor
+vi.mock("@/lib/github/pr-monitor", () => ({
+  parsePRUrl: vi.fn((url: string) => {
+    const m = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+    if (!m) return null;
+    return { owner: m[1], repo: m[2], prNumber: parseInt(m[3], 10) };
+  }),
+  getOctokitForWorkspace: vi.fn(),
 }));
 
 import { findStalePRTasks, archiveStalePRTasks } from "@/lib/github/stale-pr-janitor";
 import { db } from "@/lib/db";
+import { getOctokitForWorkspace } from "@/lib/github/pr-monitor";
 
 const mockDb = db as unknown as {
   $queryRaw: ReturnType<typeof vi.fn>;
   $executeRaw: ReturnType<typeof vi.fn>;
   task: { updateMany: ReturnType<typeof vi.fn> };
+  workspace: { findUnique: ReturnType<typeof vi.fn> };
 };
+
+const mockGetOctokitForWorkspace = getOctokitForWorkspace as ReturnType<typeof vi.fn>;
+
+const makeMockOctokit = () => ({
+  pulls: { update: vi.fn().mockResolvedValue({}) },
+  issues: { createComment: vi.fn().mockResolvedValue({}) },
+});
 
 const sampleRow = {
   artifact_id: "art-1",
@@ -131,12 +153,16 @@ describe("archiveStalePRTasks", () => {
     vi.clearAllMocks();
     mockDb.task.updateMany.mockResolvedValue({ count: 2 });
     mockDb.$executeRaw.mockResolvedValue(2);
+    mockDb.workspace.findUnique.mockResolvedValue({ ownerId: "owner-1" });
   });
 
   it("returns archivedCount from updateMany result", async () => {
+    const octokit = makeMockOctokit();
+    mockGetOctokitForWorkspace.mockResolvedValue(octokit);
+
     const tasks = [
-      { taskId: "task-1", artifactId: "art-1" },
-      { taskId: "task-2", artifactId: "art-2" },
+      { taskId: "task-1", artifactId: "art-1", prUrl: "https://github.com/org/repo/pull/42", workspaceId: "ws-1" },
+      { taskId: "task-2", artifactId: "art-2", prUrl: "https://github.com/org/repo/pull/43", workspaceId: "ws-1" },
     ];
 
     const result = await archiveStalePRTasks(tasks);
@@ -145,9 +171,12 @@ describe("archiveStalePRTasks", () => {
   });
 
   it("calls task.updateMany with correct task IDs and archived=true", async () => {
+    const octokit = makeMockOctokit();
+    mockGetOctokitForWorkspace.mockResolvedValue(octokit);
+
     const tasks = [
-      { taskId: "task-1", artifactId: "art-1" },
-      { taskId: "task-2", artifactId: "art-2" },
+      { taskId: "task-1", artifactId: "art-1", prUrl: "https://github.com/org/repo/pull/42", workspaceId: "ws-1" },
+      { taskId: "task-2", artifactId: "art-2", prUrl: "https://github.com/org/repo/pull/43", workspaceId: "ws-1" },
     ];
 
     await archiveStalePRTasks(tasks);
@@ -159,21 +188,224 @@ describe("archiveStalePRTasks", () => {
   });
 
   it("calls $executeRaw to cancel artifacts", async () => {
-    const tasks = [{ taskId: "task-1", artifactId: "art-1" }];
+    const octokit = makeMockOctokit();
+    mockGetOctokitForWorkspace.mockResolvedValue(octokit);
+
+    const tasks = [
+      { taskId: "task-1", artifactId: "art-1", prUrl: "https://github.com/org/repo/pull/42", workspaceId: "ws-1" },
+    ];
 
     await archiveStalePRTasks(tasks);
 
     expect(mockDb.$executeRaw).toHaveBeenCalledTimes(1);
-    // Verify artifact IDs are passed via the interpolated values in the tagged template
     const callJson = JSON.stringify(mockDb.$executeRaw.mock.calls[0]);
     expect(callJson).toContain("art-1");
   });
 
-  it("returns archivedCount of 0 for empty array without hitting DB", async () => {
+  it("returns archivedCount of 0 and closedPrCount of 0 for empty array without hitting DB", async () => {
     const result = await archiveStalePRTasks([]);
 
     expect(result.archivedCount).toBe(0);
+    expect(result.closedPrCount).toBe(0);
     expect(mockDb.task.updateMany).not.toHaveBeenCalled();
     expect(mockDb.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  // --- New tests for GitHub PR closure ---
+
+  it("happy path: closes PRs and posts comments, returns correct closedPrCount", async () => {
+    const octokit = makeMockOctokit();
+    mockGetOctokitForWorkspace.mockResolvedValue(octokit);
+    mockDb.task.updateMany.mockResolvedValue({ count: 2 });
+
+    const tasks = [
+      {
+        taskId: "task-1",
+        artifactId: "art-1",
+        prUrl: "https://github.com/org/repo/pull/42",
+        workspaceId: "ws-1",
+        state: "ci_failure" as const,
+        stuckSinceDays: 10,
+      },
+      {
+        taskId: "task-2",
+        artifactId: "art-2",
+        prUrl: "https://github.com/org/repo/pull/43",
+        workspaceId: "ws-1",
+        state: "conflict" as const,
+        stuckSinceDays: 5,
+      },
+    ];
+
+    const result = await archiveStalePRTasks(tasks);
+
+    expect(result.closedPrCount).toBe(2);
+    expect(result.archivedCount).toBe(2);
+
+    expect(octokit.pulls.update).toHaveBeenCalledTimes(2);
+    expect(octokit.pulls.update).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: "org", repo: "repo", pull_number: 42, state: "closed" }),
+    );
+    expect(octokit.pulls.update).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: "org", repo: "repo", pull_number: 43, state: "closed" }),
+    );
+
+    expect(octokit.issues.createComment).toHaveBeenCalledTimes(2);
+    const [firstCommentCall] = octokit.issues.createComment.mock.calls;
+    expect(firstCommentCall[0].body).toContain("Stale CI Task Janitor");
+    expect(firstCommentCall[0].body).toContain("archived");
+  });
+
+  it("GitHub API error: archival still completes, closedPrCount is 0, error is logged", async () => {
+    const octokit = makeMockOctokit();
+    octokit.pulls.update.mockRejectedValue(new Error("GitHub API error"));
+    mockGetOctokitForWorkspace.mockResolvedValue(octokit);
+    mockDb.task.updateMany.mockResolvedValue({ count: 1 });
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const tasks = [
+      {
+        taskId: "task-1",
+        artifactId: "art-1",
+        prUrl: "https://github.com/org/repo/pull/42",
+        workspaceId: "ws-1",
+        state: "ci_failure" as const,
+      },
+    ];
+
+    const result = await archiveStalePRTasks(tasks);
+
+    expect(result.archivedCount).toBe(1);
+    expect(result.closedPrCount).toBe(0);
+    expect(mockDb.task.updateMany).toHaveBeenCalledTimes(1);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to close GitHub PR"),
+      expect.any(Error),
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it("token not found (getOctokitForWorkspace returns null): archival completes, closedPrCount is 0", async () => {
+    mockGetOctokitForWorkspace.mockResolvedValue(null);
+    mockDb.task.updateMany.mockResolvedValue({ count: 1 });
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const tasks = [
+      {
+        taskId: "task-1",
+        artifactId: "art-1",
+        prUrl: "https://github.com/org/repo/pull/42",
+        workspaceId: "ws-1",
+        state: "ci_failure" as const,
+      },
+    ];
+
+    const result = await archiveStalePRTasks(tasks);
+
+    expect(result.archivedCount).toBe(1);
+    expect(result.closedPrCount).toBe(0);
+    expect(mockDb.task.updateMany).toHaveBeenCalledTimes(1);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("No GitHub token available"),
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it("malformed PR URL: task archived, no Octokit call made, warning logged", async () => {
+    const octokit = makeMockOctokit();
+    mockGetOctokitForWorkspace.mockResolvedValue(octokit);
+    mockDb.task.updateMany.mockResolvedValue({ count: 1 });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const tasks = [
+      {
+        taskId: "task-1",
+        artifactId: "art-1",
+        prUrl: "not-a-valid-url",
+        workspaceId: "ws-1",
+        state: "ci_failure" as const,
+      },
+    ];
+
+    const result = await archiveStalePRTasks(tasks);
+
+    expect(result.archivedCount).toBe(1);
+    expect(result.closedPrCount).toBe(0);
+    expect(octokit.pulls.update).not.toHaveBeenCalled();
+    expect(octokit.issues.createComment).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("malformed PR URL"),
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it("partial failure: archivedCount equals total, closedPrCount equals success count only", async () => {
+    const octokitSuccess = makeMockOctokit();
+    const octokitFail = makeMockOctokit();
+    octokitFail.pulls.update.mockRejectedValue(new Error("rate limited"));
+
+    // First call succeeds, second fails
+    mockGetOctokitForWorkspace
+      .mockResolvedValueOnce(octokitSuccess)
+      .mockResolvedValueOnce(octokitFail);
+
+    // Each workspace has its own workspace.findUnique call
+    mockDb.workspace.findUnique.mockResolvedValue({ ownerId: "owner-1" });
+    mockDb.task.updateMany.mockResolvedValue({ count: 2 });
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const tasks = [
+      {
+        taskId: "task-1",
+        artifactId: "art-1",
+        prUrl: "https://github.com/org/repo/pull/42",
+        workspaceId: "ws-1",
+        state: "ci_failure" as const,
+      },
+      {
+        taskId: "task-2",
+        artifactId: "art-2",
+        prUrl: "https://github.com/org/repo/pull/43",
+        workspaceId: "ws-2",
+        state: "conflict" as const,
+      },
+    ];
+
+    const result = await archiveStalePRTasks(tasks);
+
+    expect(result.archivedCount).toBe(2);
+    expect(result.closedPrCount).toBe(1);
+
+    consoleSpy.mockRestore();
+  });
+
+  it("comment body includes reason and days stuck when provided", async () => {
+    const octokit = makeMockOctokit();
+    mockGetOctokitForWorkspace.mockResolvedValue(octokit);
+    mockDb.task.updateMany.mockResolvedValue({ count: 1 });
+
+    const tasks = [
+      {
+        taskId: "task-1",
+        artifactId: "art-1",
+        prUrl: "https://github.com/org/repo/pull/42",
+        workspaceId: "ws-1",
+        state: "conflict" as const,
+        stuckSinceDays: 14,
+      },
+    ];
+
+    await archiveStalePRTasks(tasks);
+
+    const commentBody = octokit.issues.createComment.mock.calls[0][0].body as string;
+    expect(commentBody).toContain("merge conflict");
+    expect(commentBody).toContain("14 days");
   });
 });
