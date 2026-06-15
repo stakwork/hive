@@ -71,8 +71,8 @@ export async function POST(request: NextRequest) {
     }
 
     // execute mode
-    const { archivedCount } = await archiveStalePRTasks(tasks);
-    return NextResponse.json({ archivedCount, tasks });
+    const { archivedCount, closedPrCount } = await archiveStalePRTasks(tasks);
+    return NextResponse.json({ archivedCount, closedPrCount, tasks });
   } catch (error) {
     console.error("Error in admin stale-pr-tasks janitor:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
