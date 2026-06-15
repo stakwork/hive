@@ -1000,4 +1000,162 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
       );
     });
   });
+
+  describe("orgId branch", () => {
+    async function createOrgSetup() {
+      return await db.$transaction(async (tx) => {
+        const orgOwner = await tx.user.create({
+          data: {
+            id: generateUniqueId("org-owner"),
+            email: `org-owner-${generateUniqueId()}@example.com`,
+            name: "Org Owner",
+          },
+        });
+
+        const sourceControlOrg = await tx.sourceControlOrg.create({
+          data: {
+            githubLogin: `test-org-${generateUniqueId()}`,
+            githubInstallationId: Math.floor(Math.random() * 1_000_000),
+          },
+        });
+
+        const workspace = await tx.workspace.create({
+          data: {
+            id: generateUniqueId("org-workspace"),
+            name: "Org Workspace",
+            slug: generateUniqueId("org-workspace"),
+            ownerId: orgOwner.id,
+            sourceControlOrgId: sourceControlOrg.id,
+          },
+        });
+
+        return { orgOwner, sourceControlOrg, workspace };
+      });
+    }
+
+    test("returns 400 when none of taskId, workspaceId, or orgId are provided", async () => {
+      const { orgOwner } = await createOrgSetup();
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        orgOwner,
+        {
+          filename: "photo.jpg",
+          contentType: "image/jpeg",
+          size: 1024,
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toBe("Invalid request data");
+    });
+
+    test("returns 403 when caller is not a member of the org", async () => {
+      const { sourceControlOrg } = await createOrgSetup();
+
+      const nonMember = await db.user.create({
+        data: {
+          id: generateUniqueId("non-member-org"),
+          email: `non-member-org-${generateUniqueId()}@example.com`,
+          name: "Non Member Org",
+        },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        nonMember,
+        {
+          orgId: sourceControlOrg.githubLogin,
+          filename: "photo.jpg",
+          contentType: "image/jpeg",
+          size: 1024,
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error).toBe("Forbidden");
+      expect(mockS3Service.generatePresignedUploadUrl).not.toHaveBeenCalled();
+    });
+
+    test("returns 200 with presignedUrl and s3Path starting with orgs/ for org member", async () => {
+      const { orgOwner, sourceControlOrg } = await createOrgSetup();
+
+      const orgId = sourceControlOrg.githubLogin;
+      const s3Path = `orgs/${orgId}/canvas/ts_abc_photo.jpg`;
+
+      (mockS3Service as Record<string, unknown>).generateOrgUploadPath = vi
+        .fn()
+        .mockReturnValue(s3Path);
+      vi.mocked(mockS3Service.generatePresignedUploadUrl).mockResolvedValue(
+        "https://s3.example.com/presigned?sig=ok",
+      );
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        orgOwner,
+        {
+          orgId,
+          filename: "photo.jpg",
+          contentType: "image/jpeg",
+          size: 1024,
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.presignedUrl).toBe("https://s3.example.com/presigned?sig=ok");
+      expect(data.s3Path).toMatch(/^orgs\//);
+    });
+
+    test("GET returns 404 when caller is not a member of the org named in s3Key", async () => {
+      const { sourceControlOrg } = await createOrgSetup();
+
+      const nonMember = await db.user.create({
+        data: {
+          id: generateUniqueId("non-member-get-org"),
+          email: `non-member-get-org-${generateUniqueId()}@example.com`,
+          name: "Non Member GET Org",
+        },
+      });
+
+      const s3Key = `orgs/${sourceControlOrg.githubLogin}/canvas/ts_abc_photo.jpg`;
+
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        { id: nonMember.id, email: nonMember.email, name: nonMember.name },
+        { s3Key },
+      );
+
+      const response = await GET(request);
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error).toBe("Workspace not found or access denied");
+      expect(mockS3Service.generatePresignedDownloadUrl).not.toHaveBeenCalled();
+    });
+
+    test("GET redirects to presigned URL when caller is a member of the org named in s3Key", async () => {
+      const { orgOwner, sourceControlOrg } = await createOrgSetup();
+
+      const s3Key = `orgs/${sourceControlOrg.githubLogin}/canvas/ts_abc_photo.jpg`;
+
+      mockS3Service.generatePresignedDownloadUrl.mockResolvedValueOnce(
+        "https://s3.example.com/presigned-download?sig=org-ok",
+      );
+
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        { id: orgOwner.id, email: orgOwner.email, name: orgOwner.name },
+        { s3Key },
+      );
+
+      const response = await GET(request);
+      expect([301, 302, 303, 307, 308]).toContain(response.status);
+      expect(mockS3Service.generatePresignedDownloadUrl).toHaveBeenCalledWith(s3Key, 300);
+    });
+  });
 });

@@ -29,6 +29,14 @@ export async function uploadFileToS3(
       contentType: file.type,
       size: file.size,
     };
+  } else if ("orgId" in context) {
+    endpoint = "/api/upload/presigned-url";
+    body = {
+      orgId: context.orgId,
+      filename: file.name,
+      contentType: file.type,
+      size: file.size,
+    };
   } else if ("workspaceId" in context) {
     endpoint = "/api/upload/presigned-url";
     body = {
