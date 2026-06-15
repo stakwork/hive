@@ -9,6 +9,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 
 /**
  * StartTasksSlot — the canvas-chat "Tasks" status card.
@@ -57,9 +58,26 @@ type TaskStatusValue =
   | "CANCELLED"
   | "BLOCKED";
 
+interface PrArtifactView {
+  content: {
+    url: string;
+    status: "IN_PROGRESS" | "DONE" | "CANCELLED";
+    progress?: {
+      ciStatus?: "pending" | "success" | "failure";
+      ciSummary?: string;
+    };
+  };
+}
+
 interface TaskView {
   title: string;
   status: TaskStatusValue;
+  prArtifact?: {
+    url: string;
+    status: "IN_PROGRESS" | "DONE" | "CANCELLED";
+    ciStatus?: "pending" | "success" | "failure";
+    ciSummary?: string;
+  } | null;
 }
 
 interface TaskCounts {
@@ -72,8 +90,18 @@ interface TaskCounts {
 
 interface FeatureTasksResponse {
   data?: {
-    phases?: { tasks?: { title?: string | null; status?: string | null }[] }[];
-    tasks?: { title?: string | null; status?: string | null }[];
+    phases?: {
+      tasks?: {
+        title?: string | null;
+        status?: string | null;
+        prArtifact?: PrArtifactView | null;
+      }[];
+    }[];
+    tasks?: {
+      title?: string | null;
+      status?: string | null;
+      prArtifact?: PrArtifactView | null;
+    }[];
   } | null;
 }
 
@@ -84,10 +112,22 @@ interface FeatureTasksResponse {
  */
 function buildTaskList(feature: NonNullable<FeatureTasksResponse["data"]>): TaskView[] {
   const out: TaskView[] = [];
-  const push = (t: { title?: string | null; status?: string | null }) => {
+  const push = (t: {
+    title?: string | null;
+    status?: string | null;
+    prArtifact?: PrArtifactView | null;
+  }) => {
     out.push({
       title: t.title?.trim() || "Untitled task",
       status: (t.status as TaskStatusValue) ?? "TODO",
+      prArtifact: t.prArtifact
+        ? {
+            url: t.prArtifact.content.url,
+            status: t.prArtifact.content.status,
+            ciStatus: t.prArtifact.content.progress?.ciStatus,
+            ciSummary: t.prArtifact.content.progress?.ciSummary,
+          }
+        : null,
     });
   };
   for (const phase of feature.phases ?? []) {
@@ -335,6 +375,14 @@ export function StartTasksSlot({
                     >
                       {t.title}
                     </span>
+                    {t.prArtifact && (
+                      <PRStatusBadge
+                        url={t.prArtifact.url}
+                        status={t.prArtifact.status}
+                        ciStatus={t.prArtifact.ciStatus}
+                        ciSummary={t.prArtifact.ciSummary}
+                      />
+                    )}
                   </li>
                 );
               })}
