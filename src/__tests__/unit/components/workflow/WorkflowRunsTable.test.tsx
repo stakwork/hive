@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { WorkflowRunsTable } from "@/components/workflow/inspector/WorkflowRunsTable";
 import type { WorkflowRun } from "@/hooks/useWorkflowRuns";
 
@@ -30,8 +30,8 @@ vi.mock("@/components/ui/tooltip", () => ({
 }));
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-function renderTable() {
-  return render(<WorkflowRunsTable slug="test-ws" workflowId={42} />);
+function renderTable(extraProps: Partial<React.ComponentProps<typeof WorkflowRunsTable>> = {}) {
+  return render(<WorkflowRunsTable slug="test-ws" workflowId={42} {...extraProps} />);
 }
 
 function setupRuns(runs: WorkflowRun[], isLoading = false) {
@@ -83,17 +83,16 @@ describe("WorkflowRunsTable", () => {
     expect(screen.getByText("No runs recorded yet.")).toBeInTheDocument();
   });
 
-  it("renders run rows with correct link href and target", () => {
+  it("renders 'Open' links with correct href and target", () => {
     setupRuns(MOCK_RUNS);
     renderTable();
 
-    const link = screen.getByRole("link", { name: "Run #1001" });
-    expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute(
+    const links = screen.getAllByRole("link", { name: /open/i });
+    expect(links[0]).toHaveAttribute(
       "href",
       "https://jobs.stakwork.com/admin/projects/1001",
     );
-    expect(link).toHaveAttribute("target", "_blank");
+    expect(links[0]).toHaveAttribute("target", "_blank");
   });
 
   it("renders status badge text matching run status", () => {
@@ -143,14 +142,10 @@ describe("WorkflowRunsTable", () => {
       setupRuns([LONG_NAME_RUN]);
       renderTable();
 
-      // The rendered link text should be truncated (first 40 chars + ellipsis)
+      // The rendered name cell text should be truncated (first 40 chars + ellipsis)
       const truncated = LONG_NAME.slice(0, 40) + "…";
-      const link = screen.getByRole("link", { name: truncated });
-      expect(link).toBeInTheDocument();
-      expect(link).toHaveAttribute(
-        "href",
-        `https://jobs.stakwork.com/admin/projects/${LONG_NAME_RUN.id}`,
-      );
+      const nameCell = screen.getByText(truncated);
+      expect(nameCell).toBeInTheDocument();
 
       // Tooltip content should show the full name
       const tooltip = screen.getByTestId("tooltip-content");
@@ -161,26 +156,56 @@ describe("WorkflowRunsTable", () => {
       setupRuns([MOCK_RUNS[0]]); // "Run #1001" — well under 40 chars
       renderTable();
 
-      // The link text should be the full name, unmodified
-      const link = screen.getByRole("link", { name: "Run #1001" });
-      expect(link).toBeInTheDocument();
-      expect(link).toHaveTextContent("Run #1001");
+      // The name cell text should be the full name, unmodified
+      const nameCell = screen.getByText("Run #1001");
+      expect(nameCell).toBeInTheDocument();
 
       // No TooltipContent rendered
       expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
     });
 
-    it("link still navigates to the correct Stakwork URL even when truncated", () => {
+    it("'Open' link navigates to the correct Stakwork URL even when name is truncated", () => {
       setupRuns([LONG_NAME_RUN]);
       renderTable();
 
-      const link = screen.getByRole("link", { name: LONG_NAME.slice(0, 40) + "…" });
+      const link = screen.getByRole("link", { name: /open/i });
       expect(link).toHaveAttribute(
         "href",
         `https://jobs.stakwork.com/admin/projects/${LONG_NAME_RUN.id}`,
       );
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noreferrer");
+    });
+  });
+
+  describe("row selection", () => {
+    it("calls onRunSelect with run.id when a data row is clicked", () => {
+      setupRuns(MOCK_RUNS);
+      const onRunSelect = vi.fn();
+      renderTable({ onRunSelect });
+      const rows = screen.getAllByRole("row").slice(1); // skip header
+      fireEvent.click(rows[0]);
+      expect(onRunSelect).toHaveBeenCalledWith(MOCK_RUNS[0].id);
+    });
+
+    it("applies bg-muted class only to the selected row", () => {
+      setupRuns(MOCK_RUNS);
+      renderTable({ onRunSelect: vi.fn(), selectedRunId: MOCK_RUNS[0].id });
+      const rows = screen.getAllByRole("row").slice(1);
+      // Check for the standalone `bg-muted` class (not hover/data modifiers like hover:bg-muted/50)
+      const classesRow0 = rows[0].className.split(" ");
+      const classesRow1 = rows[1].className.split(" ");
+      expect(classesRow0).toContain("bg-muted");
+      expect(classesRow1).not.toContain("bg-muted");
+    });
+
+    it("does not call onRunSelect when the 'Open' link is clicked", () => {
+      setupRuns(MOCK_RUNS);
+      const onRunSelect = vi.fn();
+      renderTable({ onRunSelect });
+      const links = screen.getAllByRole("link", { name: /open/i });
+      fireEvent.click(links[0]);
+      expect(onRunSelect).not.toHaveBeenCalled();
     });
   });
 });
