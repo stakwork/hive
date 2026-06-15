@@ -287,6 +287,13 @@ export async function createFeature(
      * array.
      */
     dependsOnFeatureIds?: string[];
+    /**
+     * Per-feature auto-respond override for the canvas autoturn agent.
+     * null  = inherit global (`User.canvasAutonomousTurns`)
+     * true  = always auto-respond for this feature
+     * false = never auto-respond for this feature
+     */
+    autoRespond?: boolean | null;
   }
 ) {
   const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
@@ -392,6 +399,7 @@ export async function createFeature(
       initiativeId: resolvedInitiativeId,
       milestoneId: resolvedMilestoneId,
       dependsOnFeatureIds: data.dependsOnFeatureIds ?? [],
+      autoRespond: data.autoRespond ?? null,
       createdById: userId,
       updatedById: userId,
       phases: {
