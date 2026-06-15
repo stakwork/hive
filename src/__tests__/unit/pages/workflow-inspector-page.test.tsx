@@ -57,15 +57,27 @@ vi.mock("@/components/workflow/inspector/WorkflowVersionList", () => ({
 vi.mock("@/components/workflow/inspector/SummariseChangesButton", () => ({
   SummariseChangesButton: ({
     onCustomModeToggle,
+    isCustomMode,
   }: {
     onCustomModeToggle: (enabled: boolean) => void;
+    isCustomMode: boolean;
   }) => (
-    <button
-      data-testid="summarise-btn"
-      onClick={() => onCustomModeToggle(true)}
-    >
-      Summarise
-    </button>
+    <>
+      <button
+        data-testid="summarise-btn"
+        onClick={() => onCustomModeToggle(true)}
+      >
+        Summarise
+      </button>
+      {isCustomMode && (
+        <button
+          data-testid="summarise-cancel-btn"
+          onClick={() => onCustomModeToggle(false)}
+        >
+          Cancel
+        </button>
+      )}
+    </>
   ),
 }));
 vi.mock("@/components/workflow/inspector/WorkflowStatsPanel", () => ({
@@ -237,6 +249,26 @@ describe("WorkflowInspectorPage — custom picker mode (SummariseChangesButton)"
 
     await waitFor(() => {
       expect(screen.getByTestId("version-list").getAttribute("data-selectable")).toBe("true");
+    });
+  });
+
+  it("deactivates selectable mode when Cancel calls onCustomModeToggle(false)", async () => {
+    await renderWithVersions([makeVersion("v1"), makeVersion("v2")]);
+
+    // Enter custom mode
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("summarise-btn"));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("version-list").getAttribute("data-selectable")).toBe("true");
+    });
+
+    // Cancel — exits custom mode
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("summarise-cancel-btn"));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("version-list").getAttribute("data-selectable")).toBe("false");
     });
   });
 });
