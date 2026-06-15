@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { Sidebar } from '@/components/Sidebar';
@@ -1167,14 +1167,13 @@ describe('StadeumBrandHeader', () => {
     const images = screen.getAllByAltText('Stadeum logo');
     expect(images.length).toBeGreaterThan(0);
 
-    // Fire the error event on the first image
-    images[0].dispatchEvent(new Event('error', { bubbles: true }));
-
-    // After error the image should be removed from that sidebar instance
-    await waitFor(() => {
-      // The wordmark should still be visible
-      expect(screen.getAllByText('Stadeum').length).toBeGreaterThan(0);
+    // Fire the error event on the first image via React's synthetic event system
+    await act(async () => {
+      fireEvent.error(images[0]);
     });
+
+    // The wordmark should still be visible
+    expect(screen.getAllByText('Stadeum').length).toBeGreaterThan(0);
 
     // The specific image that errored should no longer be in the DOM
     // (React removes it when imgError state becomes true)
