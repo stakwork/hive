@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { toast } from "sonner";
 import { LogDetailContent } from "@/components/agent-logs/LogDetailContent";
 import { FlagAsEvalModal } from "@/components/evals/FlagAsEvalModal";
-import type { ParsedMessage, AgentLogStats } from "@/lib/utils/agent-log-stats";
+import type { ParsedMessage, AgentLogStats, AgentRunConfig } from "@/lib/utils/agent-log-stats";
 
 interface LogMeta {
   id: string;
@@ -28,6 +28,7 @@ export default function AgentLogDetailPage() {
 
   const [conversation, setConversation] = useState<ParsedMessage[] | null>(null);
   const [stats, setStats] = useState<AgentLogStats | null>(null);
+  const [config, setConfig] = useState<AgentRunConfig | null>(null);
   const [rawContent, setRawContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export default function AgentLogDetailPage() {
         if (data.conversation && Array.isArray(data.conversation) && data.conversation.length > 0) {
           setConversation(data.conversation);
           setStats(data.stats ?? null);
+          setConfig(data.config ?? null);
         } else {
           setRawContent(JSON.stringify(data, null, 2));
         }
@@ -122,6 +124,7 @@ export default function AgentLogDetailPage() {
         variant="page"
         conversation={conversation}
         stats={stats}
+        config={config}
         rawContent={rawContent}
         loading={loading}
         error={error}
