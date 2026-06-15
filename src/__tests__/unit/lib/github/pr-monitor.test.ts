@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix, createPrLogger } from "@/lib/github/pr-monitor";
+import { mergeBaseBranch, rebaseOntoBaseBranch, triggerAgentModeFix, triggerLiveModeFix, createPrLogger, monitorSinglePR } from "@/lib/github/pr-monitor";
 import type { Octokit } from "@octokit/rest";
 import { ChatRole, ChatStatus } from "@prisma/client";
 
@@ -1644,5 +1644,166 @@ describe("createPrLogger", () => {
     expect(put).not.toHaveBeenCalled();
     expect(db.agentLog.create).not.toHaveBeenCalled();
     expect(pusherServer.trigger).not.toHaveBeenCalled();
+  });
+});
+
+// ─── monitorSinglePR Tests ─────────────────────────────────────────────────────
+
+describe("monitorSinglePR", () => {
+  const prUrl = "https://github.com/org/repo/pull/42";
+
+  // Helper to build a raw artifact row matching what db.$queryRaw returns
+  function makeSingleArtifactRow(overrides: {
+    url?: string;
+    progress?: Record<string, unknown>;
+    pr_conflict_fix_enabled?: boolean;
+    pr_ci_failure_fix_enabled?: boolean;
+  } = {}) {
+    return {
+      id: "artifact-single-1",
+      content: {
+        url: overrides.url ?? prUrl,
+        status: "IN_PROGRESS",
+        progress: overrides.progress ?? undefined,
+      },
+      task_id: "task-single-1",
+      pod_id: null,
+      workspace_id: "ws-single-1",
+      owner_id: "owner-single-1",
+      last_checked_at: null,
+      pr_monitor_enabled: true,
+      pr_conflict_fix_enabled: overrides.pr_conflict_fix_enabled ?? false,
+      pr_ci_failure_fix_enabled: overrides.pr_ci_failure_fix_enabled ?? false,
+      pr_out_of_date_fix_enabled: false,
+      pr_use_rebase_for_updates: false,
+    };
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    // Default: task lookup returns featureId
+    vi.mocked(db.task.findUnique).mockResolvedValue({
+      id: "task-single-1",
+      featureId: "feature-single-1",
+      mode: "live",
+      workflowStatus: "COMPLETED",
+      createdById: "creator-1",
+      workspace: { ownerId: "owner-single-1", slug: "test-ws" },
+    } as any);
+
+    // Default: artifact update succeeds
+    vi.mocked(db.artifact.findUnique).mockResolvedValue({
+      content: {
+        url: prUrl,
+        status: "IN_PROGRESS",
+      },
+    } as any);
+    vi.mocked(db.artifact.update).mockResolvedValue({} as any);
+
+    // Default Octokit: returns healthy PR
+    const { Octokit } = await import("@octokit/rest");
+    vi.mocked(Octokit).mockImplementation(() => ({
+      pulls: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            state: "open",
+            merged: false,
+            mergeable: true,
+            mergeable_state: "clean",
+            head: { ref: "feature/test", sha: "head-sha" },
+            base: { ref: "main", sha: "base-sha" },
+          },
+        }),
+        updateBranch: vi.fn(),
+      },
+      repos: {
+        compareCommits: vi.fn().mockResolvedValue({ data: { ahead_by: 0 } }),
+        merge: vi.fn(),
+      },
+    }));
+
+    // Default CI: passing
+    const { fetchCIStatus } = await import("@/lib/github/pr-ci");
+    vi.mocked(fetchCIStatus).mockResolvedValue({
+      status: "success",
+      summary: "All checks passed",
+      failedChecks: [],
+      failedCheckLogs: {},
+    });
+  });
+
+  it("returns zeroed stats and does not call checkPR when no artifact is found", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([]);
+
+    const stats = await monitorSinglePR(prUrl);
+
+    expect(stats).toEqual({
+      checked: 0,
+      conflicts: 0,
+      ciFailures: 0,
+      ciPending: 0,
+      outOfDate: 0,
+      autoMerged: 0,
+      healthy: 0,
+      errors: 0,
+      agentTriggered: 0,
+      notified: 0,
+    });
+
+    // Artifact update should never be called
+    expect(db.artifact.update).not.toHaveBeenCalled();
+  });
+
+  it("returns stats.healthy === 1 and stats.checked === 1 for a healthy PR", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([makeSingleArtifactRow()]);
+
+    const stats = await monitorSinglePR(prUrl);
+
+    expect(stats.checked).toBe(1);
+    expect(stats.healthy).toBe(1);
+    expect(stats.errors).toBe(0);
+    expect(stats.ciFailures).toBe(0);
+  });
+
+  it("returns stats.ciFailures === 1 when CI is failing", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([
+      makeSingleArtifactRow({ pr_ci_failure_fix_enabled: true }),
+    ]);
+
+    const { fetchCIStatus } = await import("@/lib/github/pr-ci");
+    vi.mocked(fetchCIStatus).mockResolvedValue({
+      status: "failure",
+      summary: "Tests failed",
+      failedChecks: ["unit-tests"],
+      failedCheckLogs: {},
+    });
+
+    const stats = await monitorSinglePR(prUrl);
+
+    expect(stats.checked).toBe(1);
+    expect(stats.ciFailures).toBe(1);
+    expect(stats.healthy).toBe(0);
+  });
+
+  it("returns zeroed stats (same as no artifact) when pr_monitor_enabled filter excludes the record", async () => {
+    // The SQL query filters COALESCE(jc.pr_monitor_enabled, false) = true,
+    // so a disabled workspace returns no rows — identical to "not found" case
+    vi.mocked(db.$queryRaw).mockResolvedValue([]);
+
+    const stats = await monitorSinglePR(prUrl);
+
+    expect(stats).toMatchObject({
+      checked: 0,
+      conflicts: 0,
+      ciFailures: 0,
+      ciPending: 0,
+      outOfDate: 0,
+      autoMerged: 0,
+      healthy: 0,
+      errors: 0,
+      agentTriggered: 0,
+      notified: 0,
+    });
   });
 });
