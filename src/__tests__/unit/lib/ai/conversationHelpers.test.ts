@@ -13,6 +13,7 @@ import { describe, test, expect } from "vitest";
 import {
   generateTitle,
   getMessagePreview,
+  TITLE_MAX_LENGTH,
   UNTITLED_CONVERSATION,
 } from "@/lib/ai/conversationHelpers";
 
@@ -37,10 +38,23 @@ describe("generateTitle", () => {
     );
   });
 
-  test("truncates long titles to 50 chars + ellipsis", () => {
-    const long = "a".repeat(80);
+  test("caps long titles at TITLE_MAX_LENGTH with no ellipsis", () => {
+    const long = "a".repeat(TITLE_MAX_LENGTH + 50);
     const title = generateTitle([{ role: "user", content: long }]);
-    expect(title).toBe("a".repeat(50) + "...");
+    expect(title).toBe("a".repeat(TITLE_MAX_LENGTH));
+    expect(title.endsWith("...")).toBe(false);
+  });
+
+  test("keeps titles under the cap intact (no ellipsis)", () => {
+    const text = "a".repeat(60);
+    expect(generateTitle([{ role: "user", content: text }])).toBe(text);
+  });
+
+  test("collapses internal whitespace to a single line", () => {
+    const messages = [
+      { role: "user", content: "line one\n\n  line two\ttabbed" },
+    ];
+    expect(generateTitle(messages)).toBe("line one line two tabbed");
   });
 
   test("supports array-shaped content with a text part", () => {

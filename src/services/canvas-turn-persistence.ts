@@ -44,12 +44,26 @@ export interface StoredToolCall {
   errorText?: string;
 }
 
+/**
+ * A user-uploaded file attached to a message (image/doc). Mirrors the
+ * render-side `CanvasAttachment` shape (`canvasChatStore.ts`): `path` is the
+ * S3 key the client turns into a presigned download URL. Persisted in the
+ * `SharedConversation.messages` JSON so attachments survive reload.
+ */
+export interface StoredAttachment {
+  path: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 export interface StoredMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp?: string;
   toolCalls?: StoredToolCall[];
+  attachments?: StoredAttachment[];
   source?: { kind: string; featureId?: string; plannerMessageId?: string };
   // Approval-flow metadata round-tripping through the JSON. Untyped here
   // (the canonical types live in `src/lib/proposals/types.ts`); the
