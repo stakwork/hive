@@ -391,8 +391,8 @@ describe("POST /api/webhook/agent-logs — Jarvis graph write (best-effort)", ()
         agent: "plan-agent-abc",
         workspace_id: workspace.id,
         feature_id: feature.id,
-        logs: [],
-        // no model field
+        messages: [{ role: "assistant", content: "Hello" }],
+        // no model field, no config.model
       })
     );
 
@@ -400,7 +400,7 @@ describe("POST /api/webhook/agent-logs — Jarvis graph write (best-effort)", ()
     expect(sessionCall.node_data).not.toHaveProperty("model");
   });
 
-  test("includes model in node_data when provided in request body", async () => {
+  test("includes model in node_data when provided as legacy body.model", async () => {
     const { workspace, feature } = testData;
 
     await POST(
@@ -408,12 +408,149 @@ describe("POST /api/webhook/agent-logs — Jarvis graph write (best-effort)", ()
         agent: "plan-agent-abc",
         workspace_id: workspace.id,
         feature_id: feature.id,
-        logs: [],
+        messages: [{ role: "assistant", content: "Hello" }],
         model: "claude-3-5-sonnet",
       })
     );
 
     const sessionCall = mockAddNode.mock.calls[1][1];
     expect(sessionCall.node_data.model).toBe("claude-3-5-sonnet");
+  });
+
+  test("prefers config.model over legacy body.model for AgentSession node_data", async () => {
+    const { workspace, feature } = testData;
+
+    await POST(
+      buildRequest({
+        agent: "plan-agent-abc",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        messages: [{ role: "assistant", content: "Hello" }],
+        model: "legacy-model",
+        config: { model: "claude-sonnet-4-6", provider: "anthropic" },
+      })
+    );
+
+    const sessionCall = mockAddNode.mock.calls[1][1];
+    expect(sessionCall.node_data.model).toBe("claude-sonnet-4-6");
+  });
+});
+
+// ── New payload shape + config persistence tests ──────────────────────────────
+
+describe("POST /api/webhook/agent-logs — new payload shape & config persistence", () => {
+  let testData: Awaited<ReturnType<typeof createTestSetup>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    process.env.API_TOKEN = "test-token";
+    mockGetJarvisConfig.mockResolvedValue(null); // skip Jarvis writes for these tests
+    testData = await createTestSetup();
+  });
+
+  afterEach(async () => {
+    await db.agentLog.deleteMany({ where: { workspaceId: testData.workspace.id } });
+    await db.feature.deleteMany({ where: { workspaceId: testData.workspace.id } });
+    await db.workspace.deleteMany({ where: { id: testData.workspace.id } });
+    await db.user.deleteMany({ where: { id: testData.owner.id } });
+  });
+
+  test("POST with new { messages, config, sessionId } shape → 201, DB row has config and sessionId", async () => {
+    const { workspace, feature } = testData;
+    const config = {
+      model: "claude-sonnet-4-6",
+      provider: "anthropic",
+      source: "repo_agent",
+      repos: [{ name: "stakwork/hive" }],
+      temperature: 0,
+    };
+
+    const response = await POST(
+      buildRequest({
+        agent: "plan-agent-new",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        messages: [{ role: "user", content: "Hello" }],
+        sessionId: "sess-abc-123",
+        config,
+      })
+    );
+
+    expect(response.status).toBe(201);
+
+    const agentLog = await db.agentLog.findFirst({
+      where: { agent: "plan-agent-new", workspaceId: workspace.id },
+      select: { config: true, sessionId: true },
+    });
+
+    expect(agentLog).not.toBeNull();
+    expect(agentLog?.sessionId).toBe("sess-abc-123");
+    expect(agentLog?.config).toMatchObject({
+      model: "claude-sonnet-4-6",
+      provider: "anthropic",
+    });
+  });
+
+  test("POST with legacy { logs } shape → 201, config is null on DB row", async () => {
+    const { workspace, feature } = testData;
+
+    const response = await POST(
+      buildRequest({
+        agent: "plan-agent-legacy",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        logs: [{ role: "assistant", content: "Hello" }],
+        // no config, no sessionId
+      })
+    );
+
+    expect(response.status).toBe(201);
+
+    const agentLog = await db.agentLog.findFirst({
+      where: { agent: "plan-agent-legacy", workspaceId: workspace.id },
+      select: { config: true, sessionId: true },
+    });
+
+    expect(agentLog).not.toBeNull();
+    expect(agentLog?.config).toBeNull();
+    expect(agentLog?.sessionId).toBeNull();
+  });
+
+  test("POST missing both messages and logs → 400", async () => {
+    const { workspace, feature } = testData;
+
+    const response = await POST(
+      buildRequest({
+        agent: "plan-agent-bad",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        // no messages, no logs
+      })
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toMatch(/messages/i);
+  });
+
+  test("POST with config.model present → Jarvis AgentSession node_data contains correct model", async () => {
+    const { workspace, feature } = testData;
+    const MOCK_JARVIS_CONFIG = { jarvisUrl: "https://jarvis.example.com", apiKey: "jarvis-key" };
+    mockGetJarvisConfig.mockResolvedValue(MOCK_JARVIS_CONFIG);
+    mockAddNode.mockResolvedValue({ success: true, ref_id: "mock-ref" });
+    mockAddEdge.mockResolvedValue({ success: true });
+
+    await POST(
+      buildRequest({
+        agent: "plan-agent-config-model",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        messages: [{ role: "user", content: "Hi" }],
+        config: { model: "claude-opus-4", provider: "anthropic" },
+      })
+    );
+
+    const sessionCall = mockAddNode.mock.calls[1][1];
+    expect(sessionCall.node_data.model).toBe("claude-opus-4");
   });
 });

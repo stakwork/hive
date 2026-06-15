@@ -1085,6 +1085,8 @@ model AgentLog {
   featureId     String?      @map("feature_id")
   startedAt     DateTime?    @map("started_at")
   completedAt   DateTime?    @map("completed_at")
+  sessionId     String?      @map("session_id")
+  config        Json? // full config object from payload: { model, provider, source, repos, tools, toolsConfig, temperature, schema, providerConfig }
   stats         Json? // cached parsed blob stats: { totalMessages, estimatedTokens, durationSeconds, totalToolCalls, toolFrequency, bashFrequency, developerShellFrequency, conversationPreview }
   feature       Feature?     @relation(fields: [featureId], references: [id])
   stakworkRun   StakworkRun? @relation(fields: [stakworkRunId], references: [id])
