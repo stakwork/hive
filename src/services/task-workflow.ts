@@ -886,7 +886,7 @@ export async function callStakworkAPI(params: {
 
   // Build Stakwork payload (replicating StakworkWorkflowPayload structure)
   const stakworkPayload = {
-    name: `hive-task-${taskId}`,
+    name: mode === "plan_mode" ? `hive-plan-${featureId ?? taskId}` : `hive-task-${taskId}`,
     workflow_id: parseInt(workflowId),
     webhook_url: workflowWebhookUrl,
     workflow_params: {
