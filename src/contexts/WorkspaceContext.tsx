@@ -5,6 +5,7 @@ import React, {
   ReactNode,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import type {
@@ -77,6 +78,8 @@ export function WorkspaceProvider({
   const [error, setError] = useState<string | null>(null);
   // Don't persist the loaded slug - start fresh on each mount
   const [currentLoadedSlug, setCurrentLoadedSlug] = useState<string>("");
+  const [refreshTick, setRefreshTick] = useState(0);
+  const lastHandledRefreshTickRef = useRef(0);
 
   // Task notifications state
   const [waitingForInputCount, setWaitingForInputCount] = useState<number>(0);
@@ -146,33 +149,12 @@ export function WorkspaceProvider({
     }
   }, [fetchTaskNotifications, workspace?.slug]);
 
-  // Refresh current workspace — re-fetches silently without setting loading,
-  // so the UI doesn't flash a spinner for a same-slug refresh.
+  // Refresh current workspace without triggering the loading spinner.
+  // Bumps refreshTick; the load effect below re-fetches silently for the
+  // same slug (no setLoading), so the UI doesn't flash a spinner.
   const refreshCurrentWorkspace = useCallback(async () => {
-    const currentSlug = workspace?.slug;
-    if (!currentSlug) return;
-
-    setError(null);
-    try {
-      const response = await fetch(`/api/workspaces/${currentSlug}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 404 || response.status === 403) {
-          setWorkspace(null);
-          setCurrentLoadedSlug("");
-          setError("Workspace not found or access denied");
-          return;
-        }
-        throw new Error(data.error || "Failed to fetch workspace");
-      }
-
-      setWorkspace(data.workspace);
-      await fetchTaskNotifications(currentSlug);
-    } catch (err) {
-      console.error(`Failed to refresh workspace ${currentSlug}:`, err);
-    }
-  }, [workspace?.slug, fetchTaskNotifications]);
+    setRefreshTick((n) => n + 1);
+  }, []);
 
   // Update workspace data locally
   const updateWorkspace = useCallback((updates: Partial<WorkspaceWithAccess>) => {
@@ -235,8 +217,11 @@ export function WorkspaceProvider({
     }
 
 
-    // Only fetch if we have a slug and haven't loaded it yet
-    if (currentSlug && currentSlug !== currentLoadedSlug) {
+    const isPendingRefresh = refreshTick > lastHandledRefreshTickRef.current;
+
+    // Only fetch if slug changed or a refresh was explicitly requested
+    if (currentSlug && (currentSlug !== currentLoadedSlug || isPendingRefresh)) {
+      if (isPendingRefresh) lastHandledRefreshTickRef.current = refreshTick;
       const isSameWorkspace = workspace?.slug === currentSlug;
 
       const fetchCurrentWorkspace = async () => {
@@ -278,7 +263,7 @@ export function WorkspaceProvider({
 
       fetchCurrentWorkspace();
     }
-  }, [pathname, status, initialSlug, currentLoadedSlug, fetchTaskNotifications]); // Remove workspace from dependencies to prevent loops
+  }, [pathname, status, initialSlug, currentLoadedSlug, refreshTick, fetchTaskNotifications]); // Remove workspace from dependencies to prevent loops
 
   // Refresh notification count when pathname changes (user navigates between pages)
   useEffect(() => {
