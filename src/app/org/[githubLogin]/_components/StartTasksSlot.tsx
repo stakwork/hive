@@ -110,10 +110,11 @@ function countTasks(tasks: TaskView[]): TaskCounts {
   return { done, inProgress, pending, total: done + inProgress + pending };
 }
 
-/** Tailwind bg for a task's status — done purple, running orange, pending grey. */
+/** Tailwind bg for a task's status — done emerald, running amber, pending grey.
+ * Matches the app-wide task status dots (see CompactTasksList STATUS_DOT). */
 const STATUS_BG: Record<"done" | "inProgress" | "pending", string> = {
-  done: "bg-purple-500",
-  inProgress: "bg-orange-500",
+  done: "bg-emerald-500",
+  inProgress: "bg-amber-500",
   pending: "bg-zinc-300 dark:bg-zinc-600",
 };
 
