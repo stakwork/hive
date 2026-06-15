@@ -53,6 +53,8 @@ import {
   CopyButton,
   LogDetailContent,
   getToolResultValue,
+  extractReasoning,
+  extractTextContent,
 } from "@/components/agent-logs/LogDetailContent";
 import type { ParsedMessage } from "@/lib/utils/agent-log-stats";
 
@@ -81,6 +83,95 @@ describe("unescapeLogString", () => {
 
   test("handles multiple escape sequences in one string", () => {
     expect(unescapeLogString("a\\nb\\tc")).toBe("a\nb\tc");
+  });
+});
+
+// ─── extractReasoning ────────────────────────────────────────────────────────
+
+describe("extractReasoning", () => {
+  test("returns joined text from multiple reasoning parts in content[]", () => {
+    const msg: ParsedMessage = {
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "Step one." },
+        { type: "reasoning", text: "Step two." },
+        { type: "text", text: "Answer." },
+      ],
+    };
+    expect(extractReasoning(msg)).toBe("Step one.\nStep two.");
+  });
+
+  test("falls back to top-level reasoning string when no reasoning parts in array", () => {
+    const msg: ParsedMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "Answer." }],
+      reasoning: "top-level reasoning fallback",
+    };
+    expect(extractReasoning(msg)).toBe("top-level reasoning fallback");
+  });
+
+  test("returns null when neither reasoning parts nor top-level reasoning exist", () => {
+    const msg: ParsedMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "Answer." }],
+    };
+    expect(extractReasoning(msg)).toBeNull();
+  });
+
+  test("returns null for string content with no top-level reasoning", () => {
+    const msg: ParsedMessage = {
+      role: "assistant",
+      content: "just a string",
+    };
+    expect(extractReasoning(msg)).toBeNull();
+  });
+
+  test("never reads providerOptions or signature fields", () => {
+    const msg = {
+      role: "assistant",
+      content: [{ type: "text", text: "Answer." }],
+      providerOptions: { anthropic: { signature: "secret" } },
+    } as ParsedMessage & { providerOptions: unknown };
+    // extractReasoning should not see any providerOptions content
+    expect(extractReasoning(msg)).toBeNull();
+  });
+});
+
+// ─── extractTextContent ───────────────────────────────────────────────────────
+
+describe("extractTextContent", () => {
+  test("no longer returns the top-level reasoning field as fallback", () => {
+    const msg: ParsedMessage = {
+      role: "assistant",
+      content: [],
+      reasoning: "this is reasoning only",
+    };
+    // extractTextContent should return null, not the reasoning string
+    expect(extractTextContent(msg)).toBeNull();
+  });
+
+  test("still returns string content", () => {
+    const msg: ParsedMessage = { role: "assistant", content: "plain text" };
+    expect(extractTextContent(msg)).toBe("plain text");
+  });
+
+  test("still returns text parts from content array", () => {
+    const msg: ParsedMessage = {
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "thinking" },
+        { type: "text", text: "answer" },
+      ],
+    };
+    expect(extractTextContent(msg)).toBe("answer");
+  });
+
+  test("returns null when content array has only reasoning parts", () => {
+    const msg: ParsedMessage = {
+      role: "assistant",
+      content: [{ type: "reasoning", text: "only reasoning" }],
+    };
+    expect(extractTextContent(msg)).toBeNull();
   });
 });
 

@@ -39,7 +39,7 @@ export function unescapeLogString(str: string): string {
 }
 
 export function extractTextContent(message: ParsedMessage): string | null {
-  const { content, reasoning } = message;
+  const { content } = message;
 
   if (typeof content === "string" && content) return content;
 
@@ -55,7 +55,25 @@ export function extractTextContent(message: ParsedMessage): string | null {
     if (textParts.length > 0) return textParts.join("\n");
   }
 
-  // Fall back to reasoning field (used by some agent formats)
+  return null;
+}
+
+export function extractReasoning(message: ParsedMessage): string | null {
+  const { content, reasoning } = message;
+
+  if (Array.isArray(content)) {
+    const reasoningParts = content
+      .filter(
+        (part): part is { type: string; text?: string } =>
+          part != null && typeof part === "object" && "text" in part && part.type === "reasoning",
+      )
+      .map((p) => p.text)
+      .filter(Boolean);
+
+    if (reasoningParts.length > 0) return reasoningParts.join("\n");
+  }
+
+  // Fall back to top-level reasoning string
   if (typeof reasoning === "string" && reasoning) return reasoning;
 
   return null;
@@ -169,6 +187,41 @@ export function SystemMessageBubble({ message }: { message: ParsedMessage }) {
 }
 
 // ---------------------------------------------------------------------------
+// ReasoningSection — collapsed by default, muted/italic left-border styling
+// ---------------------------------------------------------------------------
+
+export function ReasoningSection({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const charCount = text.length;
+
+  return (
+    <div className="mb-2 text-xs text-muted-foreground/70 italic border-l-2 border-muted pl-3 py-1">
+      <button
+        onClick={() => setExpanded((s) => !s)}
+        className="flex w-full items-center gap-2 text-left hover:text-muted-foreground transition-colors"
+      >
+        {expanded ? (
+          <ChevronDown className="w-3 h-3 shrink-0" />
+        ) : (
+          <ChevronRight className="w-3 h-3 shrink-0" />
+        )}
+        <span className="font-medium not-italic">Reasoning</span>
+        <Badge variant="secondary" className="text-xs px-1.5 py-0 ml-1 not-italic font-normal">
+          {charCount.toLocaleString()} chars
+        </Badge>
+      </button>
+      {expanded && (
+        <div className="mt-2 not-italic">
+          <MarkdownRenderer variant="assistant" size="compact">
+            {unescapeLogString(text)}
+          </MarkdownRenderer>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ToolCallItem — expanded by default; optionally renders paired result inline
 // ---------------------------------------------------------------------------
 
@@ -267,6 +320,7 @@ export function MessageBubble({
 
   const { role, content } = message;
   const textContent = extractTextContent(message);
+  const reasoning = extractReasoning(message);
   const toolCalls = extractToolCalls(content);
   const toolResults = extractToolResults(content);
   const openaiToolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
@@ -295,8 +349,8 @@ export function MessageBubble({
       })),
   ];
 
-  // Tool-only messages (no text content)
-  if (isAssistant && !textContent && allToolCallNames.length > 0) {
+  // Tool-only messages (no text content, no reasoning)
+  if (isAssistant && !textContent && !reasoning && allToolCallNames.length > 0) {
     return (
       <div className="flex gap-2 items-start">
         <div className="shrink-0 mt-0.5 w-6 h-6 rounded-full bg-muted flex items-center justify-center">
@@ -391,12 +445,12 @@ export function MessageBubble({
   }
 
   // Skip messages with no displayable content
-  if (!textContent) return null;
+  if (!textContent && !reasoning) return null;
 
   // Long-text truncation for assistant and user messages
-  const isLong = (isAssistant || isUser) && textContent.length > LONG_TEXT_THRESHOLD;
+  const isLong = (isAssistant || isUser) && !!textContent && textContent.length > LONG_TEXT_THRESHOLD;
   const displayedText =
-    isLong && !showMore ? textContent.slice(0, LONG_TEXT_THRESHOLD) : textContent;
+    isLong && !showMore ? textContent!.slice(0, LONG_TEXT_THRESHOLD) : textContent ?? "";
 
   return (
     <div className={cn("flex gap-2 items-start", isUser && "flex-row-reverse")}>
@@ -434,16 +488,21 @@ export function MessageBubble({
           </>
         ) : (
           <>
-            <MarkdownRenderer variant="assistant" size="compact">
-              {displayedText}
-            </MarkdownRenderer>
-            {isLong && (
-              <button
-                onClick={() => setShowMore((s) => !s)}
-                className="mt-1 text-xs text-primary hover:underline"
-              >
-                {showMore ? "Show less" : "Show more"}
-              </button>
+            {reasoning && <ReasoningSection text={reasoning} />}
+            {textContent && (
+              <>
+                <MarkdownRenderer variant="assistant" size="compact">
+                  {displayedText}
+                </MarkdownRenderer>
+                {isLong && (
+                  <button
+                    onClick={() => setShowMore((s) => !s)}
+                    className="mt-1 text-xs text-primary hover:underline"
+                  >
+                    {showMore ? "Show less" : "Show more"}
+                  </button>
+                )}
+              </>
             )}
           </>
         )}
