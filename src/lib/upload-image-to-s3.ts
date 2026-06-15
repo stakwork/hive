@@ -12,7 +12,11 @@ export interface UploadedFileResult {
 
 export async function uploadFileToS3(
   file: File,
-  context: { featureId: string } | { taskId: string } | { workspaceId: string },
+  context:
+    | { featureId: string }
+    | { taskId: string }
+    | { workspaceId: string }
+    | { orgId: string },
 ): Promise<UploadedFileResult> {
   let endpoint: string;
   let body: Record<string, unknown>;
@@ -25,10 +29,26 @@ export async function uploadFileToS3(
       contentType: file.type,
       size: file.size,
     };
+  } else if ("orgId" in context) {
+    endpoint = "/api/upload/presigned-url";
+    body = {
+      orgId: context.orgId,
+      filename: file.name,
+      contentType: file.type,
+      size: file.size,
+    };
   } else if ("workspaceId" in context) {
     endpoint = "/api/upload/presigned-url";
     body = {
       workspaceId: context.workspaceId,
+      filename: file.name,
+      contentType: file.type,
+      size: file.size,
+    };
+  } else if ("orgId" in context) {
+    endpoint = "/api/upload/presigned-url";
+    body = {
+      orgId: context.orgId,
       filename: file.name,
       contentType: file.type,
       size: file.size,

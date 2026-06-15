@@ -476,6 +476,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           onSend={handleSend}
           disabled={isLoading}
           workspaceId={workspaceId}
+          orgId={githubLogin}
         />
       </div>
     </div>
@@ -572,6 +573,8 @@ interface SidebarChatInputProps {
   disabled?: boolean;
   /** Workspace id for the S3 upload context. */
   workspaceId: string;
+  /** Fallback org id when workspaceId is absent (org canvas context). */
+  orgId?: string;
 }
 
 /**
@@ -586,6 +589,7 @@ function SidebarChatInput({
   onSend,
   disabled = false,
   workspaceId,
+  orgId,
 }: SidebarChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
@@ -670,7 +674,8 @@ function SidebarChatInput({
         ),
       );
       try {
-        const result = await uploadFileToS3(pf.file, { workspaceId });
+        const uploadContext = workspaceId ? { workspaceId } : { orgId: orgId! };
+        const result = await uploadFileToS3(pf.file, uploadContext);
         setPendingFiles((prev) =>
           prev.map((f) =>
             f.id === pf.id
@@ -688,7 +693,7 @@ function SidebarChatInput({
         toast.error(`Failed to upload ${pf.filename}`, { description: msg });
       }
     },
-    [workspaceId],
+    [workspaceId, orgId],
   );
 
   const handleFiles = useCallback(

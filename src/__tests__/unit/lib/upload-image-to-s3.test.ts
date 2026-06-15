@@ -135,4 +135,61 @@ describe("uploadFileToS3", () => {
       expect(body).not.toHaveProperty("taskId");
     });
   });
+
+  describe("{ orgId } context", () => {
+    it("POSTs to /api/upload/presigned-url with orgId in body", async () => {
+      const file = makeFile("canvas-photo.png", "image/png");
+      mockPresignedSuccess("orgs/my-org/canvas/ts_abc_canvas-photo.png", "https://s3.example.com/presigned");
+
+      await uploadFileToS3(file, { orgId: "my-org" });
+
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe("/api/upload/presigned-url");
+      expect(init?.method).toBe("POST");
+      const body = JSON.parse(init?.body as string);
+      expect(body.orgId).toBe("my-org");
+      expect(body.filename).toBe("canvas-photo.png");
+      expect(body.contentType).toBe("image/png");
+      expect(body).not.toHaveProperty("workspaceId");
+      expect(body).not.toHaveProperty("taskId");
+      expect(body).not.toHaveProperty("featureId");
+    });
+
+    it("PUTs the file to the presigned URL returned", async () => {
+      const file = makeFile("org-image.jpg");
+      const presignedUrl = "https://s3.example.com/org-presigned?sig=xyz";
+      mockPresignedSuccess("orgs/my-org/canvas/ts_abc_org-image.jpg", presignedUrl);
+
+      await uploadFileToS3(file, { orgId: "my-org" });
+
+      const [putUrl, putInit] = mockFetch.mock.calls[1];
+      expect(putUrl).toBe(presignedUrl);
+      expect(putInit?.method).toBe("PUT");
+      expect(putInit?.headers?.["Content-Type"]).toBe("image/jpeg");
+    });
+
+    it("returns UploadedFileResult with correct fields", async () => {
+      const file = makeFile("org-pic.webp", "image/webp", 2048);
+      mockPresignedSuccess("orgs/my-org/canvas/ts_rand_org-pic.webp", "https://s3.example.com/p");
+
+      const result = await uploadFileToS3(file, { orgId: "my-org" });
+
+      expect(result).toEqual({
+        path: "orgs/my-org/canvas/ts_rand_org-pic.webp",
+        filename: "org-pic.webp",
+        mimeType: "image/webp",
+        size: file.size,
+      });
+    });
+
+    it("throws when the presigned-url endpoint returns a non-OK response", async () => {
+      const file = makeFile();
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: "Forbidden" }),
+      });
+
+      await expect(uploadFileToS3(file, { orgId: "bad-org" })).rejects.toThrow("Forbidden");
+    });
+  });
 });
