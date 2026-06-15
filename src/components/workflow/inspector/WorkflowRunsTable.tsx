@@ -121,7 +121,6 @@ export function WorkflowRunsTable({ slug, workflowId, onRunSelect, selectedRunId
                       href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
                       target="_blank"
                       rel="noreferrer"
-<<<<<<< HEAD
                       className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 group"
                       onClick={(e) => e.stopPropagation()}
                     >
