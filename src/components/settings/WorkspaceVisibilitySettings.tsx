@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -8,14 +8,10 @@ import { Globe } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
-interface WorkspaceVisibilitySettingsProps {
-  isPublicViewable: boolean;
-}
-
-export function WorkspaceVisibilitySettings({ isPublicViewable }: WorkspaceVisibilitySettingsProps) {
-  const [enabled, setEnabled] = useState(isPublicViewable);
-  const [saving, setSaving] = useState(false);
+export function WorkspaceVisibilitySettings() {
   const { slug, workspace, refreshCurrentWorkspace } = useWorkspace();
+  const [enabled, setEnabled] = useState(workspace?.isPublicViewable ?? false);
+  const [saving, setSaving] = useState(false);
 
   const handleToggle = async (checked: boolean) => {
     if (!slug || !workspace) return;

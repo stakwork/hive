@@ -32,10 +32,9 @@ interface SettingsTabsProps {
   workspaceName: string;
   workspaceSlug: string;
   isOwner: boolean;
-  isPublicViewable?: boolean;
 }
 
-export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwner, isPublicViewable = false }: SettingsTabsProps) {
+export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwner }: SettingsTabsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { id, refreshCurrentWorkspace } = useWorkspace();
@@ -135,7 +134,7 @@ export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwne
       <TabsContent value="general">
         <div className="max-w-2xl space-y-6 mt-6">
           <WorkspaceSettings />
-          {isOwner && <WorkspaceVisibilitySettings isPublicViewable={isPublicViewable} />}
+          {isOwner && <WorkspaceVisibilitySettings />}
           <WorkspaceMembers canAdmin />
           {isOwner && <DeleteWorkspace workspaceSlug={workspaceSlug} workspaceName={workspaceName} />}
         </div>
