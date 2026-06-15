@@ -71,6 +71,7 @@ function hydrateServerMessages(raw: unknown[]): CanvasChatMessage[] {
       toolCalls: m.toolCalls as CanvasChatMessage["toolCalls"],
       timeline: m.timeline as CanvasChatMessage["timeline"],
       artifactIds: m.artifactIds as string[] | undefined,
+      attachments: m.attachments as CanvasChatMessage["attachments"],
       approval: m.approval as CanvasChatMessage["approval"],
       rejection: m.rejection as CanvasChatMessage["rejection"],
       approvalResult: m.approvalResult as CanvasChatMessage["approvalResult"],

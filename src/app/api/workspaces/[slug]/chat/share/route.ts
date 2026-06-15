@@ -2,39 +2,9 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { CreateSharedConversationRequest, SharedConversationResponse } from "@/types/shared-conversation";
+import { generateTitle } from "@/lib/ai/conversationHelpers";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
-
-// Helper to generate title from first user message
-function generateTitle(messages: any[]): string {
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return "Untitled Conversation";
-  }
-
-  // Find first user message
-  const firstUserMessage = messages.find((msg: any) => msg.role === "user");
-  if (!firstUserMessage) {
-    return "Untitled Conversation";
-  }
-
-  // Extract text content from message
-  let text = "";
-  if (typeof firstUserMessage.content === "string") {
-    text = firstUserMessage.content;
-  } else if (Array.isArray(firstUserMessage.content)) {
-    // Handle multi-part messages
-    const textPart = firstUserMessage.content.find((part: any) => part.type === "text");
-    text = textPart?.text || "";
-  }
-
-  // Take first 50 chars and add ellipsis if needed
-  const trimmed = text.trim();
-  if (trimmed.length === 0) {
-    return "Untitled Conversation";
-  }
-  
-  return trimmed.length > 50 ? trimmed.substring(0, 50) + "..." : trimmed;
-}
 
 // Helper to get last message timestamp
 function getLastMessageTimestamp(messages: any[]): Date | null {
