@@ -133,6 +133,8 @@ export async function GET(request: NextRequest) {
           taskId: true,
           featureId: true,
           createdAt: true,
+          sessionId: true,
+          config: true,
           stakworkRun: {
             select: {
               feature: {
@@ -153,8 +155,11 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Flatten the feature title from either the StakworkRun relation or direct feature relation
-    const flattenedLogs = logs.map(({ stakworkRun, feature, ...log }) => ({
+    // and expose model from config for at-a-glance display
+    const flattenedLogs = logs.map(({ stakworkRun, feature, config, ...log }) => ({
       ...log,
+      config: config ?? null,
+      model: (config as Record<string, unknown> | null)?.model as string | null ?? null,
       featureTitle: stakworkRun?.feature?.title ?? feature?.title ?? null,
     }));
 

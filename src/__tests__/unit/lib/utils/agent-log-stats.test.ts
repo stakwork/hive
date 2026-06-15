@@ -5,6 +5,9 @@ import { parseAgentLogStats } from "@/lib/utils/agent-log-stats";
 const bare = (messages: unknown[]) => JSON.stringify(messages);
 // Helper to build a JSON string from { messages: [...] } wrapper
 const wrapped = (messages: unknown[]) => JSON.stringify({ messages });
+// Helper to build a JSON string from the new { sessionId, messages, config } shape
+const newShape = (messages: unknown[], config?: unknown, sessionId?: string) =>
+  JSON.stringify({ sessionId: sessionId ?? "sess-1", messages, config });
 
 describe("parseAgentLogStats", () => {
   describe("input formats", () => {
@@ -400,6 +403,82 @@ describe("parseAgentLogStats", () => {
     it("developerShellFrequency is {} in the empty/zero-stats result", () => {
       const { stats } = parseAgentLogStats(bare([]));
       expect(stats.developerShellFrequency).toEqual({});
+    });
+  });
+
+  describe("config extraction", () => {
+    const sampleMessages = [
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi" },
+    ];
+
+    it("extracts config from new { sessionId, messages, config } shape", () => {
+      const config = {
+        model: "claude-sonnet-4-6",
+        provider: "anthropic",
+        source: "repo_agent",
+        repos: [{ name: "stakwork/hive" }],
+        temperature: 0,
+        tools: { bash: true },
+        toolsConfig: {},
+        schema: null,
+        providerConfig: {},
+      };
+      const input = newShape(sampleMessages, config);
+      const result = parseAgentLogStats(input);
+      expect(result.config).toMatchObject({
+        model: "claude-sonnet-4-6",
+        provider: "anthropic",
+        source: "repo_agent",
+        temperature: 0,
+      });
+      expect(result.config?.repos).toHaveLength(1);
+    });
+
+    it("handles partial config — missing fields are simply absent, no error", () => {
+      const partialConfig = { model: "gpt-4o", repos: [] };
+      const input = newShape(sampleMessages, partialConfig);
+      const result = parseAgentLogStats(input);
+      expect(result.config).toBeDefined();
+      expect(result.config?.model).toBe("gpt-4o");
+      expect(result.config?.provider).toBeUndefined();
+      expect(result.config?.repos).toEqual([]);
+    });
+
+    it("returns config=undefined for legacy bare-array blob", () => {
+      const input = bare(sampleMessages);
+      const result = parseAgentLogStats(input);
+      expect(result.config).toBeUndefined();
+    });
+
+    it("returns config=undefined for legacy { messages } blob (no config key)", () => {
+      const input = wrapped(sampleMessages);
+      const result = parseAgentLogStats(input);
+      expect(result.config).toBeUndefined();
+    });
+
+    it("returns config=undefined when config key is null (null normalized to undefined)", () => {
+      const input = JSON.stringify({ sessionId: "s1", messages: sampleMessages, config: null });
+      const result = parseAgentLogStats(input);
+      // null config is normalized to undefined via ?? operator
+      expect(result.config).toBeUndefined();
+    });
+
+    it("still returns valid conversation and stats alongside config", () => {
+      const config = { model: "claude-opus-4", provider: "anthropic" };
+      const input = newShape(sampleMessages, config);
+      const result = parseAgentLogStats(input);
+      expect(result.conversation).toHaveLength(2);
+      expect(result.stats.totalMessages).toBe(2);
+      expect(result.config?.model).toBe("claude-opus-4");
+    });
+
+    it("returns config when messages array is empty (zero-stat result still carries config)", () => {
+      const config = { model: "gpt-4o" };
+      const input = newShape([], config);
+      const result = parseAgentLogStats(input);
+      expect(result.stats.totalMessages).toBe(0);
+      expect(result.config?.model).toBe("gpt-4o");
     });
   });
 
