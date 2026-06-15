@@ -214,8 +214,12 @@ export function WorkspaceProvider({
 
     // Only fetch if we have a slug and haven't loaded it yet
     if (currentSlug && currentSlug !== currentLoadedSlug) {
+      const isSameWorkspace = workspace?.slug === currentSlug;
+
       const fetchCurrentWorkspace = async () => {
-        setLoading(true);
+        if (!isSameWorkspace) {
+          setLoading(true); // Only show spinner for initial load / new workspace nav
+        }
         setError(null);
 
         try {
