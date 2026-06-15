@@ -39,11 +39,9 @@ function statusVariant(
       return "secondary";
     case "active":
       return "outline";
+    case "completed":
+      return "default";
   }
-}
-
-function isCompletedStatus(status: WorkflowRun["status"]): boolean {
-  return status === "finished" || status === "error" || status === "halted";
 }
 
 function formatDuration(startedAt: string | null, finishedAt: string | null): string {
@@ -138,7 +136,6 @@ export function WorkflowRunsTable({
           {runs.map((run) => {
             const runIdStr = String(run.id);
             const isFlagged = flaggedRunIds.has(runIdStr);
-            const completed = isCompletedStatus(run.status);
 
             return (
               <TableRow
@@ -188,28 +185,16 @@ export function WorkflowRunsTable({
                   {isFlagged ? (
                     <Flag className="h-4 w-4 text-orange-500 fill-orange-500 mx-auto" aria-label="Eval captured" />
                   ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Capture eval"
-                            disabled={!completed}
-                            onClick={() => setFlaggingRunId(runIdStr)}
-                            className="h-7 w-7"
-                            aria-label="Capture eval"
-                          >
-                            <Flag className="h-4 w-4" />
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      {!completed && (
-                        <TooltipContent>
-                          Run must be complete to capture an eval.
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Capture eval"
+                      onClick={() => setFlaggingRunId(runIdStr)}
+                      className="h-7 w-7"
+                      aria-label="Capture eval"
+                    >
+                      <Flag className="h-4 w-4" />
+                    </Button>
                   )}
                 </TableCell>
 
