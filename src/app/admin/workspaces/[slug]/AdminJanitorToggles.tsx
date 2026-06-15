@@ -3,8 +3,13 @@
 import { useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { JANITOR_CONFIG } from "@/lib/constants/janitor";
 import { JanitorType } from "@prisma/client";
+import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { StalePRTask } from "@/lib/github/stale-pr-janitor";
 
 interface AdminJanitorTogglesProps {
   workspaceId: string;
@@ -26,6 +31,8 @@ interface JanitorConfig {
   prOutOfDateFixEnabled: boolean;
   prUseMergeForUpdates: boolean;
   prUseRebaseForUpdates: boolean;
+  stalePrTasksEnabled: boolean;
+  stalePrTaskThresholdDays: number;
 }
 
 const ADDITIONAL_TOGGLE_LABELS: Record<string, string> = {
@@ -38,6 +45,7 @@ const ADDITIONAL_TOGGLE_LABELS: Record<string, string> = {
   prOutOfDateFixEnabled: "Auto-update Branches",
   prUseMergeForUpdates: "Merge Strategy",
   prUseRebaseForUpdates: "Rebase Strategy",
+  stalePrTasksEnabled: "Stale CI Task Janitor",
 };
 
 export default function AdminJanitorToggles({
@@ -45,6 +53,12 @@ export default function AdminJanitorToggles({
 }: AdminJanitorTogglesProps) {
   const [config, setConfig] = useState<JanitorConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [thresholdInput, setThresholdInput] = useState("7");
+
+  // Stale janitor run state
+  const [runLoading, setRunLoading] = useState<"idle" | "previewing" | "archiving">("idle");
+  const [staleResults, setStaleResults] = useState<StalePRTask[] | null>(null);
+  const [resultsOpen, setResultsOpen] = useState(false);
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -54,6 +68,7 @@ export default function AdminJanitorToggles({
         );
         const data = await response.json();
         setConfig(data.config);
+        setThresholdInput(String(data.config?.stalePrTaskThresholdDays ?? 7));
       } catch (error) {
         console.error("Failed to fetch janitor config:", error);
       } finally {
@@ -73,15 +88,81 @@ export default function AdminJanitorToggles({
     try {
       await fetch(`/api/admin/workspaces/${workspaceId}/janitors`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [field]: value }),
       });
     } catch (error) {
       console.error("Failed to update janitor config:", error);
       // Revert on error
       setConfig({ ...config, [field]: !value });
+    }
+  };
+
+  const handleThresholdSave = async () => {
+    if (!config) return;
+    const val = parseInt(thresholdInput, 10);
+    if (isNaN(val) || val < 1 || val > 365) {
+      setThresholdInput(String(config.stalePrTaskThresholdDays));
+      return;
+    }
+    const prev = config.stalePrTaskThresholdDays;
+    setConfig({ ...config, stalePrTaskThresholdDays: val });
+    try {
+      await fetch(`/api/admin/workspaces/${workspaceId}/janitors`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stalePrTaskThresholdDays: val }),
+      });
+    } catch {
+      setConfig({ ...config, stalePrTaskThresholdDays: prev });
+      setThresholdInput(String(prev));
+    }
+  };
+
+  const handleRunPreview = async () => {
+    setRunLoading("previewing");
+    try {
+      const res = await fetch(`/api/admin/janitor/stale-pr-tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "dry_run",
+          workspaceId,
+          thresholdDays: config?.stalePrTaskThresholdDays ?? 7,
+        }),
+      });
+      if (!res.ok) throw new Error("Preview failed");
+      const data = await res.json();
+      setStaleResults(data.tasks ?? []);
+      setResultsOpen(true);
+    } catch {
+      console.error("Failed to preview stale tasks");
+    } finally {
+      setRunLoading("idle");
+    }
+  };
+
+  const handleArchiveAll = async () => {
+    setRunLoading("archiving");
+    try {
+      const res = await fetch(`/api/admin/janitor/stale-pr-tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "execute",
+          workspaceId,
+          thresholdDays: config?.stalePrTaskThresholdDays ?? 7,
+        }),
+      });
+      if (!res.ok) throw new Error("Archive failed");
+      const data = await res.json();
+      setStaleResults(null);
+      setResultsOpen(false);
+      console.log(`Archived ${data.archivedCount} stale tasks`);
+    } catch {
+      console.error("Failed to archive stale tasks");
+    } finally {
+      setRunLoading("idle");
     }
   };
 
@@ -113,8 +194,11 @@ export default function AdminJanitorToggles({
     });
   });
 
-  // Add additional toggles
-  Object.entries(ADDITIONAL_TOGGLE_LABELS).forEach(([field, label]) => {
+  // Add additional toggles (excluding stalePrTasksEnabled — rendered separately below)
+  const additionalToggleEntries = Object.entries(ADDITIONAL_TOGGLE_LABELS).filter(
+    ([field]) => field !== "stalePrTasksEnabled"
+  );
+  additionalToggleEntries.forEach(([field, label]) => {
     toggles.push({
       field: field as keyof JanitorConfig,
       label,
@@ -130,11 +214,91 @@ export default function AdminJanitorToggles({
           </label>
           <Switch
             id={field}
-            checked={config[field]}
+            checked={config[field] as boolean}
             onCheckedChange={(checked) => handleToggle(field, checked)}
           />
         </div>
       ))}
+
+      {/* Stale CI Task Janitor — separate section with threshold + run controls */}
+      <div className="border rounded-lg p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium">Stale CI Task Janitor</label>
+          <Switch
+            checked={config.stalePrTasksEnabled}
+            onCheckedChange={(checked) => handleToggle("stalePrTasksEnabled", checked)}
+          />
+        </div>
+
+        {config.stalePrTasksEnabled && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Threshold (days):</span>
+            <Input
+              type="number"
+              min={1}
+              max={365}
+              value={thresholdInput}
+              onChange={(e) => setThresholdInput(e.target.value)}
+              onBlur={handleThresholdSave}
+              onKeyDown={(e) => e.key === "Enter" && handleThresholdSave()}
+              className="w-20 h-7 text-sm"
+            />
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleRunPreview}
+            disabled={runLoading !== "idle"}
+          >
+            {runLoading === "previewing" && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+            Run Janitor Now
+          </Button>
+
+          {staleResults && staleResults.length > 0 && (
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleArchiveAll}
+              disabled={runLoading !== "idle"}
+            >
+              {runLoading === "archiving" && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+              Archive {staleResults.length} task{staleResults.length !== 1 ? "s" : ""}
+            </Button>
+          )}
+
+          {staleResults && (
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 ml-auto"
+              onClick={() => setResultsOpen((o) => !o)}
+            >
+              {resultsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {staleResults.length === 0 ? "No stale tasks" : `${staleResults.length} found`}
+            </button>
+          )}
+        </div>
+
+        {resultsOpen && staleResults && staleResults.length > 0 && (
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {staleResults.map((task) => (
+              <div key={task.taskId} className="flex items-center gap-2 text-xs">
+                <Badge
+                  variant={task.state === "ci_failure" ? "destructive" : "outline"}
+                  className={`shrink-0 ${task.state === "conflict" ? "bg-amber-500 text-white border-0" : ""}`}
+                >
+                  {task.state === "ci_failure" ? "CI" : "Conflict"}
+                </Badge>
+                <span className="truncate flex-1 font-medium" title={task.taskTitle}>
+                  {task.taskTitle}
+                </span>
+                <span className="shrink-0 text-muted-foreground">{Math.round(task.stuckSinceDays)}d</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
