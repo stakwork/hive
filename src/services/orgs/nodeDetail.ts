@@ -175,6 +175,7 @@ export async function loadNodeDetail(
           // chat can hydrate its `inputDisabled` gate without a
           // second per-node fetch to `/api/features/[id]`.
           workflowStatus: true,
+          parentCanvasConversationId: true,
           assignee: { select: { id: true, name: true, image: true } },
           workspace: { select: { slug: true } },
           _count: {
@@ -195,6 +196,7 @@ export async function loadNodeDetail(
           status: feat.status,
           priority: feat.priority,
           workflowStatus: feat.workflowStatus,
+          parentCanvasConversationId: feat.parentCanvasConversationId,
           assignee: feat.assignee,
           workspaceSlug: feat.workspace.slug,
           taskCount: feat._count.tasks,
