@@ -461,3 +461,229 @@ describe("ProposalDetailsDialog — milestone", () => {
     expect(screen.getAllByText("(unlinked)").length).toBeGreaterThan(0);
   });
 });
+
+// ── sortProposalsByDependency ─────────────────────────────────────────────────
+
+import { sortProposalsByDependency } from "@/app/org/[githubLogin]/_components/ProposalCard";
+
+describe("sortProposalsByDependency", () => {
+  function makeFeature(
+    id: string,
+    dependsOnProposalIds?: string[],
+  ): Extract<ProposalOutput, { kind: "feature" }> {
+    return {
+      kind: "feature",
+      proposalId: id,
+      payload: {
+        title: id,
+        workspaceId: "ws-1",
+        ...(dependsOnProposalIds ? { dependsOnProposalIds } : {}),
+      },
+    } as Extract<ProposalOutput, { kind: "feature" }>;
+  }
+
+  it("returns single proposal unchanged", () => {
+    const p = makeFeature("A");
+    expect(sortProposalsByDependency([p])).toEqual([p]);
+  });
+
+  it("returns proposals with no deps in original order", () => {
+    const a = makeFeature("A");
+    const b = makeFeature("B");
+    const c = makeFeature("C");
+    const result = sortProposalsByDependency([a, b, c]);
+    expect(result.map((p) => p.proposalId)).toEqual(["A", "B", "C"]);
+  });
+
+  it("places blocker before dependent in a simple A→B chain", () => {
+    const b = makeFeature("B", ["A"]);
+    const a = makeFeature("A");
+    // Input order: B (depends on A), A (blocker)
+    const result = sortProposalsByDependency([b, a]);
+    expect(result.map((p) => p.proposalId)).toEqual(["A", "B"]);
+  });
+
+  it("sorts linear chain A→B→C into correct order regardless of input", () => {
+    const c = makeFeature("C", ["B"]);
+    const a = makeFeature("A");
+    const b = makeFeature("B", ["A"]);
+    const result = sortProposalsByDependency([c, b, a]);
+    expect(result.map((p) => p.proposalId)).toEqual(["A", "B", "C"]);
+  });
+
+  it("handles diamond: A blocks B and C, both block D", () => {
+    const d = makeFeature("D", ["B", "C"]);
+    const c = makeFeature("C", ["A"]);
+    const b = makeFeature("B", ["A"]);
+    const a = makeFeature("A");
+    const result = sortProposalsByDependency([d, c, b, a]);
+    const order = result.map((p) => p.proposalId);
+    // A must come first, D must come last
+    expect(order[0]).toBe("A");
+    expect(order[order.length - 1]).toBe("D");
+    // B and C must come before D
+    expect(order.indexOf("B")).toBeLessThan(order.indexOf("D"));
+    expect(order.indexOf("C")).toBeLessThan(order.indexOf("D"));
+  });
+
+  it("falls back to original order on cycle", () => {
+    // A → B → A (cycle)
+    const a = makeFeature("A", ["B"]);
+    const b = makeFeature("B", ["A"]);
+    const original = [a, b];
+    const result = sortProposalsByDependency(original);
+    expect(result).toEqual(original);
+  });
+
+  it("ignores cross-message deps (IDs not in the batch)", () => {
+    const a = makeFeature("A", ["external-id-not-in-batch"]);
+    const b = makeFeature("B");
+    // A has a dep on an ID not in this batch — should not affect order
+    const result = sortProposalsByDependency([a, b]);
+    expect(result.map((p) => p.proposalId)).toEqual(["A", "B"]);
+  });
+
+  it("non-feature proposals (initiative/milestone) are treated as roots", () => {
+    const initiative: Extract<ProposalOutput, { kind: "initiative" }> = {
+      kind: "initiative",
+      proposalId: "init-1",
+      payload: { name: "My Initiative" },
+    } as Extract<ProposalOutput, { kind: "initiative" }>;
+    const feat = makeFeature("feat-1");
+    const result = sortProposalsByDependency([initiative, feat]);
+    // Both are roots — original order preserved
+    expect(result.map((p) => p.proposalId)).toEqual(["init-1", "feat-1"]);
+  });
+});
+
+// ── ProposalCard — allBlockersApproved (approve button gating) ────────────────
+
+describe("ProposalCard — approve button blocked by pending blocker", () => {
+  function makeMessages(approvedIds: string[] = []) {
+    return approvedIds.map((proposalId) => ({
+      role: "assistant" as const,
+      approvalResult: {
+        proposalId,
+        kind: "feature" as const,
+        createdEntityId: `entity-${proposalId}`,
+        landedOn: "root",
+      },
+    }));
+  }
+
+  function renderWithBlocker(blockerApproved: boolean) {
+    const messages = makeMessages(blockerApproved ? ["blocker-id"] : []);
+    vi.mocked(
+      vi.importActual as unknown as typeof vi.mock,
+    );
+
+    // Re-configure the store mock for this test group
+    const storeMock = {
+      useCanvasChatStore: (selector: (s: any) => any) =>
+        selector({
+          activeConversationId: "conv-1",
+          conversations: {
+            "conv-1": {
+              messages,
+              context: { currentCanvasRef: "root" },
+            },
+          },
+        }),
+    };
+
+    vi.doMock(
+      "@/app/org/[githubLogin]/_state/canvasChatStore",
+      () => storeMock,
+    );
+
+    const proposal = makeFeatureProposal({
+      proposalId: "dependent-id",
+      payload: {
+        title: "Dependent Feature",
+        workspaceId: "ws-1",
+        dependsOnProposalIds: ["blocker-id"],
+      },
+    });
+
+    return render(
+      <ProposalCard
+        proposal={proposal}
+        messageId="msg-x"
+        githubLogin="myorg"
+      />,
+    );
+  }
+
+  it("approve button is disabled when blocker is pending (not yet approved)", () => {
+    // Use static mock (empty messages = blocker is pending)
+    const proposal = makeFeatureProposal({
+      proposalId: "dep-1",
+      payload: {
+        title: "Dep",
+        workspaceId: "ws-1",
+        dependsOnProposalIds: ["blocker-1"],
+      },
+    });
+    const { getByTitle } = render(
+      <ProposalCard proposal={proposal} messageId="msg-b" githubLogin="myorg" />,
+    );
+    const approveBtn = getByTitle("Approve blocking features first");
+    expect(approveBtn).toBeTruthy();
+    expect((approveBtn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("approve button has tooltip 'Approve blocking features first' when blocked", () => {
+    const proposal = makeFeatureProposal({
+      proposalId: "dep-2",
+      payload: {
+        title: "Dep2",
+        workspaceId: "ws-1",
+        dependsOnProposalIds: ["blocker-2"],
+      },
+    });
+    const { getByTitle } = render(
+      <ProposalCard proposal={proposal} messageId="msg-c" githubLogin="myorg" />,
+    );
+    expect(getByTitle("Approve blocking features first")).toBeTruthy();
+  });
+
+  it("approve button is enabled when proposal has no dependsOnProposalIds", () => {
+    const proposal = makeFeatureProposal({
+      proposalId: "no-deps",
+      payload: {
+        title: "Independent",
+        workspaceId: "ws-1",
+      },
+    });
+    const { getByTitle } = render(
+      <ProposalCard proposal={proposal} messageId="msg-e" githubLogin="myorg" />,
+    );
+    const approveBtn = getByTitle("Approve");
+    expect((approveBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("approve button is enabled when proposal has empty dependsOnProposalIds", () => {
+    const proposal = makeFeatureProposal({
+      proposalId: "empty-deps",
+      payload: {
+        title: "Empty deps",
+        workspaceId: "ws-1",
+        dependsOnProposalIds: [],
+      },
+    });
+    const { getByTitle } = render(
+      <ProposalCard proposal={proposal} messageId="msg-f" githubLogin="myorg" />,
+    );
+    const approveBtn = getByTitle("Approve");
+    expect((approveBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("non-feature proposals (initiative) are never blocked", () => {
+    const proposal = makeInitiativeProposal();
+    const { getByTitle } = render(
+      <ProposalCard proposal={proposal} messageId="msg-g" githubLogin="myorg" />,
+    );
+    const approveBtn = getByTitle("Approve");
+    expect((approveBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+});
