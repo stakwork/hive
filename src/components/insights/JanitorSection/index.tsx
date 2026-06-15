@@ -77,7 +77,7 @@ export function JanitorSection({
   const getJanitorState = (janitor: JanitorItem): boolean => {
     if (comingSoon || janitor.comingSoon) return false;
     if (janitor.configKey && janitorConfig) {
-      return janitorConfig[janitor.configKey] || false;
+      return Boolean(janitorConfig[janitor.configKey]);
     }
     return false;
   };

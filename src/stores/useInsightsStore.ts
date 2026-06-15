@@ -35,7 +35,7 @@ const initialState = {
 type InsightsStore = {
   // State
   recommendations: Recommendation[];
-  janitorConfig: Record<string, boolean> | null;
+  janitorConfig: Record<string, boolean | number> | null;
   loading: boolean;
   recommendationsLoading: boolean;
   showAll: boolean;
