@@ -761,6 +761,81 @@ describe("askTools", () => {
     });
   });
 
+  describe("stakwork__search_workflows tool", () => {
+    const stakworkSwarmUrl = "https://stakwork.sphinx.chat:3355";
+    const stakworkAuth = {
+      workspaceId: "ws-stakwork",
+      workspaceSlug: "stakwork",
+      userId: "user-1",
+    };
+
+    it("is present when workspaceSlug is 'stakwork'", () => {
+      const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
+      expect(tools).toHaveProperty("stakwork__search_workflows");
+    });
+
+    it("is absent when workspaceSlug is not 'stakwork'", () => {
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, {
+        workspaceId: "ws-other",
+        workspaceSlug: "other-workspace",
+        userId: "user-1",
+      });
+      expect(tools).not.toHaveProperty("stakwork__search_workflows");
+    });
+
+    it("is absent when no workspaceAuth is provided", () => {
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey);
+      expect(tools).not.toHaveProperty("stakwork__search_workflows");
+    });
+
+    it("maps a successful response to [{ id, name, description }]", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          nodes: [{ id: "123", properties: { name: "My Workflow", description: "Does things" } }],
+        }),
+      });
+
+      const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
+      const result = await tools.stakwork__search_workflows.execute({ query: "my workflow" });
+
+      expect(result).toEqual([{ id: "123", name: "My Workflow", description: "Does things" }]);
+    });
+
+    it("hits the correct Jarvis URL with the right headers", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ nodes: [] }),
+      });
+
+      const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
+      await tools.stakwork__search_workflows.execute({ query: "test query" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://stakwork.sphinx.chat:8444/v2/nodes?q=test%20query&type=Workflow&domains=workflow",
+        { headers: { "x-api-token": mockSwarmApiKey, "Content-Type": "application/json" } },
+      );
+    });
+
+    it("returns error string on non-OK HTTP response", async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 500 });
+
+      const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
+      const result = await tools.stakwork__search_workflows.execute({ query: "test" });
+
+      expect(result).toBe("Could not search workflows");
+    });
+
+    it("returns error string when fetch throws", async () => {
+      mockFetch.mockRejectedValue(new Error("network failure"));
+
+      const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
+      const result = await tools.stakwork__search_workflows.execute({ query: "test" });
+
+      expect(result).toBe("Could not search workflows");
+    });
+  });
+
   describe("error handling", () => {
     it("handles errors gracefully without throwing", async () => {
       mockFetch.mockRejectedValue(new Error("Critical failure"));
