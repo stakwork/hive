@@ -146,10 +146,33 @@ export function WorkspaceProvider({
     }
   }, [fetchTaskNotifications, workspace?.slug]);
 
-  // Refresh current workspace - simplified to just re-trigger the effect
+  // Refresh current workspace — re-fetches silently without setting loading,
+  // so the UI doesn't flash a spinner for a same-slug refresh.
   const refreshCurrentWorkspace = useCallback(async () => {
-    setCurrentLoadedSlug(""); // Clear the loaded slug to force refetch
-  }, []);
+    const currentSlug = workspace?.slug;
+    if (!currentSlug) return;
+
+    setError(null);
+    try {
+      const response = await fetch(`/api/workspaces/${currentSlug}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 404 || response.status === 403) {
+          setWorkspace(null);
+          setCurrentLoadedSlug("");
+          setError("Workspace not found or access denied");
+          return;
+        }
+        throw new Error(data.error || "Failed to fetch workspace");
+      }
+
+      setWorkspace(data.workspace);
+      await fetchTaskNotifications(currentSlug);
+    } catch (err) {
+      console.error(`Failed to refresh workspace ${currentSlug}:`, err);
+    }
+  }, [workspace?.slug, fetchTaskNotifications]);
 
   // Update workspace data locally
   const updateWorkspace = useCallback((updates: Partial<WorkspaceWithAccess>) => {
