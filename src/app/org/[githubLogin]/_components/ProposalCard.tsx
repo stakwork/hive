@@ -277,7 +277,7 @@ export function ProposalCard({
           {proposal.kind === "feature" && (
             <>
               <FeatureMeta payload={proposal.payload} meta={proposal.meta} />
-              <div className="mt-1.5 flex items-center justify-between gap-2">
+              <div className="mt-1 flex items-center justify-end gap-1.5">
                 <span className="text-[11px] text-muted-foreground">
                   Auto-respond to planner
                 </span>
