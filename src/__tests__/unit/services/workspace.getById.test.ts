@@ -103,6 +103,7 @@ describe("getWorkspaceById - Unit Tests", () => {
               branch: true,
               status: true,
               updatedAt: true,
+              allowAutoMerge: true,
             },
           },
         },

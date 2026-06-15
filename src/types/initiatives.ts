@@ -22,6 +22,8 @@ export interface MilestoneResponse {
   sequence: number;
   dueDate: string | null;
   completedAt: string | null;
+  assigneeId: string | null;
+  createdById: string | null;
   assignee: { id: string; name: string | null } | null;
   /** Canonical 1:N field. May be empty. Sorted by Feature.createdAt asc. */
   features: MilestoneFeatureRef[];

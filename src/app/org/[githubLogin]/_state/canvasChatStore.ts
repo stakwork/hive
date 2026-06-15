@@ -61,6 +61,8 @@ import type {
   ApprovalResult,
   RejectionIntent,
 } from "@/lib/proposals/types";
+import type { ClarifyingQuestion } from "@/types/stakwork";
+import type { StreamTimelineItem } from "@/types/streaming";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -73,6 +75,18 @@ export interface ToolCall {
   status: string;
   output?: unknown;
   errorText?: string;
+}
+
+/**
+ * A file attachment uploaded by the user before sending a canvas chat message.
+ * Persisted in SharedConversation JSON so it survives reload and live-sync.
+ */
+export interface CanvasAttachment {
+  /** S3 path (key) — used to generate a presigned download URL. */
+  path: string;
+  filename: string;
+  mimeType: string;
+  size: number;
 }
 
 /**
@@ -96,6 +110,17 @@ export type CanvasMessageSource =
       featureId: string;
       plannerMessageId: string;
       /**
+       * Feature display metadata at fan-out time, so an inbound-only run
+       * (the approval flow, where the canvas agent never made an outbound
+       * `send_to_feature_planner` call) can render the real feature name /
+       * workspace + a working "Open plan" link instead of "Unknown
+       * feature". All optional — rows written before this landed (and any
+       * future caller that omits them) fall back to the placeholder.
+       */
+      featureTitle?: string;
+      workspaceSlug?: string;
+      workspaceName?: string;
+      /**
        * The feature's `workflowStatus` at the moment the planner posted
        * (Phase 3). Lets `SubAgentRunCard` show a meaningful status pill
        * — `Running` (IN_PROGRESS), `Plan ready` (COMPLETED), `Failed`
@@ -105,16 +130,38 @@ export type CanvasMessageSource =
        */
       workflowStatus?: string;
       /**
-       * `true` when the planner message carried a `FORM` artifact — its
-       * explicit "a human must pick" signal (Phase 3). Drives the
-       * `Waiting for you` pill and, in Phase 4, surfaces the FORM via
-       * `PlannerFormSlot`.
+       * `true` when the planner message carried a clarifying-questions
+       * artifact (`PLAN` + `ask_clarifying_questions`) — its explicit
+       * "a human must pick" signal (Phase 3). Drives the `Waiting for
+       * you` pill and surfaces the FORM via `PlannerFormSlot`.
        */
       hasForm?: boolean;
+      /**
+       * The planner's clarifying-question list (Phase 4), embedded so
+       * `PlannerFormSlot` can render `ClarifyingQuestionsPreview`
+       * verbatim with no extra fetch. Present iff `hasForm` is `true`.
+       */
+      formQuestions?: ClarifyingQuestion[];
+      /**
+       * `true` when the planner just generated a task breakdown (a
+       * `TASKS` artifact). Gates the card's **Start Tasks** button,
+       * which reads the live ready-count from the feature itself.
+       */
+      hasTasks?: boolean;
     }
   // Added in Phase 4 — kept in the union now to make exhaustive
   // checks in switch statements complete from Phase 2 onward.
-  | { kind: "user-answered-planner-form"; featureId: string; plannerMessageId: string };
+  | { kind: "user-answered-planner-form"; featureId: string; plannerMessageId: string }
+  | {
+      kind: "research";
+      researchId: string;
+      slug: string;
+      topic: string;
+      title: string;
+      /** "ready" | "failed" — status at fan-out time */
+      status: string;
+      initiativeId?: string;
+    };
 
 export interface CanvasChatMessage {
   id: string;
@@ -122,6 +169,21 @@ export interface CanvasChatMessage {
   content: string;
   timestamp: Date;
   toolCalls?: ToolCall[];
+  /**
+   * Interleaved render timeline (text / reasoning / tool-call items) for
+   * an assistant turn, in the AI-SDK `StreamToolCall` shape — i.e. richer
+   * than `toolCalls` (carries `inputText` + the typed `ToolCallStatus`).
+   * `SidebarChat` renders this via `<StreamingMessage>` so tool calls show
+   * as expandable cards with names / args / outputs, in order with text.
+   *
+   * Populated by `useSendCanvasChatMessage` for streamed tool-call rows
+   * and round-trips through `SharedConversation.messages` JSON (so reload,
+   * share, and live-sync all keep the rich rendering). `toolCalls` stays
+   * the source of truth for the model context (`toModelMessages`) and the
+   * sub-agent projection (`getSubAgentRunsFromMessages`); `timeline` is the
+   * display layer only.
+   */
+  timeline?: StreamTimelineItem[];
   /**
    * Forward-compat: ids referencing entries in `state.artifacts`.
    * Empty in PR 1; populated when the first artifact type ships.
@@ -138,6 +200,8 @@ export interface CanvasChatMessage {
   approval?: ApprovalIntent;
   /** User clicked Reject on a proposal. Set on user messages only. */
   rejection?: RejectionIntent;
+  /** Files attached by the user before send. Persisted in SharedConversation JSON. */
+  attachments?: CanvasAttachment[];
   /**
    * Synthetic assistant message describing an approval outcome. Set by
    * `/api/ask/quick` after `handleApproval` creates the DB row; carries
@@ -156,7 +220,13 @@ export interface CanvasConversation {
   id: string;
   /** Server-side `SharedConversation.id`, if auto-save has created one. */
   serverConversationId: string | null;
-  /** Set when this conversation was forked from `?chat=<shareId>`. Informational. */
+  /**
+   * Provenance: the `?chat=<shareId>` this conversation originated
+   * from, if any. Informational only — by default we *join* that
+   * shared row (see `serverConversationId`), so this is not a fork
+   * marker today; it's retained for telemetry and a future explicit
+   * "Fork" action that would set this without adopting the server row.
+   */
   forkedFromShareId: string | null;
   messages: CanvasChatMessage[];
   isLoading: boolean;
@@ -247,6 +317,19 @@ interface CanvasChatState {
   ephemeralSeedCounts: Record<string, number>;
 
   /**
+   * Turn ids this client authored (sent via `useSendCanvasChatMessage`).
+   * Backend-driven persistence (docs/plans/backend-driven-canvas-turns.md):
+   * the SERVER writes each turn's rows under `${turnId}-u` / `${turnId}-a*`
+   * and broadcasts a Pusher nudge. The authoring tab is already showing its
+   * own optimistic stream for those turns, so `useCanvasChatAutoSave`'s
+   * live-sync filters server rows whose id starts with `${turnId}-` for any
+   * id in this set — preventing a double-render. Other tabs / a reopened tab
+   * have an empty set and merge the server rows normally. Grow-only per
+   * session (ids are unique; stale entries simply never match).
+   */
+  locallyAuthoredTurnIds: Set<string>;
+
+  /**
    * One-shot text the chat input should adopt the next time it
    * renders. `null` means "no draft pending"; non-null means "set
    * the textarea to this string, focus it, then clear this slot."
@@ -285,14 +368,25 @@ interface CanvasChatState {
    * how many leading seed messages to skip when computing the first
    * autosave delta. Set this to `seedMessages.length` for synthetic
    * messages that must not round-trip through `chat_conversations`.
+   *
+   * `serverConversationId` (default = null) adopts an existing
+   * `shared_conversations` row as this conversation's server row, so
+   * new turns PUT-append to it instead of POSTing a fresh row. This
+   * is the "share = drop in and continue the same conversation" path:
+   * landing on `?chat=<shareId>` passes the shared row's id here. Omit
+   * it to fork (start a brand-new row from the seed) — kept reachable
+   * for a future explicit "Fork" action.
    */
   startConversation: (
     context: ConversationContext,
     seedMessages?: CanvasChatMessage[],
     forkedFromShareId?: string,
     ephemeralSeedCount?: number,
+    serverConversationId?: string,
   ) => string;
   setActiveConversation: (conversationId: string | null) => void;
+  /** Record a turn id this client just sent (see `locallyAuthoredTurnIds`). */
+  markTurnAuthored: (turnId: string) => void;
   /** Update the context of the active conversation (canvas-scope changes). */
   updateActiveContext: (patch: Partial<ConversationContext>) => void;
   /** Wipe the active conversation's messages but keep the conversation row. */
@@ -309,6 +403,18 @@ interface CanvasChatState {
   appendUserMessage: (
     conversationId: string,
     message: CanvasChatMessage,
+  ) => void;
+  /**
+   * Replace a conversation's entire message list with the authoritative
+   * server copy. Used by the live-sync (`useCanvasChatAutoSave` Pusher
+   * nudge → refetch) to bring in server-appended rows (planner fan-out,
+   * autonomous canvas-agent turns, planner-form answers). Callers MUST
+   * only invoke this when the conversation has no unsaved local messages,
+   * so the server copy is a strict superset and nothing local is lost.
+   */
+  setConversationMessages: (
+    conversationId: string,
+    messages: CanvasChatMessage[],
   ) => void;
   /** Replace any messages whose id starts with `prefix` with `next`. */
   replaceAssistantStream: (
@@ -363,6 +469,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       conversations: {},
       activeConversationId: null,
       ephemeralSeedCounts: {},
+      locallyAuthoredTurnIds: new Set<string>(),
       pendingInputDraft: null,
       proposals: {},
       subAgentRuns: {},
@@ -374,11 +481,12 @@ export const useCanvasChatStore = create<CanvasChatState>()(
         seedMessages,
         forkedFromShareId,
         ephemeralSeedCount,
+        serverConversationId,
       ) => {
         const id = newConversationId();
         const conv: CanvasConversation = {
           id,
-          serverConversationId: null,
+          serverConversationId: serverConversationId ?? null,
           forkedFromShareId: forkedFromShareId ?? null,
           messages: seedMessages ?? [],
           isLoading: false,
@@ -403,6 +511,18 @@ export const useCanvasChatStore = create<CanvasChatState>()(
 
       setActiveConversation: (conversationId) =>
         set({ activeConversationId: conversationId }, false, "setActiveConversation"),
+
+      markTurnAuthored: (turnId) =>
+        set(
+          (s) => {
+            if (s.locallyAuthoredTurnIds.has(turnId)) return s;
+            const next = new Set(s.locallyAuthoredTurnIds);
+            next.add(turnId);
+            return { locallyAuthoredTurnIds: next };
+          },
+          false,
+          "markTurnAuthored",
+        ),
 
       updateActiveContext: (patch) =>
         set(
@@ -501,6 +621,22 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           },
           false,
           "appendUserMessage",
+        ),
+
+      setConversationMessages: (conversationId, messages) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: { ...conv, messages },
+              },
+            };
+          },
+          false,
+          "setConversationMessages",
         ),
 
       replaceAssistantStream: (conversationId, prefix, next) =>
@@ -642,8 +778,30 @@ export function toModelMessages(
   messages: CanvasChatMessage[],
 ): ModelMessage[] {
   return messages
-    .filter((m) => m.content.trim() || m.toolCalls)
+    .filter((m) => m.content.trim() || m.toolCalls || m.attachments?.length)
     .flatMap((m): ModelMessage[] => {
+      // Multimodal: user messages with image attachments get a content array
+      if (m.role === "user" && m.attachments?.length) {
+        const imageAttachments = m.attachments.filter((a) =>
+          a.mimeType.startsWith("image/"),
+        );
+        if (imageAttachments.length > 0) {
+          const contentParts: Array<
+            { type: "text"; text: string } | { type: "image"; image: string }
+          > = [];
+          if (m.content.trim()) {
+            contentParts.push({ type: "text", text: m.content });
+          }
+          for (const a of imageAttachments) {
+            contentParts.push({
+              type: "image",
+              image: `/api/upload/presigned-url?s3Key=${encodeURIComponent(a.path)}`,
+            });
+          }
+          return [{ role: "user", content: contentParts as never }];
+        }
+      }
+
       if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
         const out: ModelMessage[] = [];
         out.push({

@@ -21,6 +21,7 @@ import {
   Mic,
   PenLine,
   Phone,
+  ScrollText,
   Server,
   Settings,
   Share2,
@@ -31,7 +32,7 @@ import {
 import { PiGraphFill } from "react-icons/pi";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useVoiceStore } from "@/stores/useVoiceStore";
 
 import { Badge } from "@/components/ui/badge";
@@ -166,6 +167,36 @@ function VoiceIndicator({ slug, onNavigate }: { slug: string | null; onNavigate:
   );
 }
 
+const STADEUM_LOGO_URL =
+  "https://stakwork-uploads.s3.us-east-1.amazonaws.com/admin_customers/admin/stadeum_logo.jpeg";
+
+function StadeumBrandHeader() {
+  const [imgError, setImgError] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    const handler = () => setImgError(true);
+    img.addEventListener("error", handler);
+    return () => img.removeEventListener("error", handler);
+  }, []);
+
+  return (
+    <div className="flex items-center gap-2.5 px-4 py-3 border-b shrink-0">
+      {!imgError && (
+        <img
+          ref={imgRef}
+          src={STADEUM_LOGO_URL}
+          alt="Stadeum logo"
+          className="w-7 h-7 rounded object-contain"
+        />
+      )}
+      <span className="font-semibold text-sm tracking-tight">Stadeum</span>
+    </div>
+  );
+}
+
 function SidebarContent({
   navigationItems,
   pathname,
@@ -206,6 +237,7 @@ function SidebarContent({
 
   return (
     <div className="flex flex-col h-full">
+      <StadeumBrandHeader />
       {/* Workspace Switcher — public viewers see a non-interactive
           label (no workspaces list to switch between). */}
       <WorkspaceSwitcher onWorkspaceChange={() => null} readOnly={isPublicViewer} />
@@ -304,6 +336,7 @@ function SidebarContent({
                         <li key={child.href} className="py-1">
                           <Link
                             href={childHref}
+                            prefetch={false}
                             data-testid={`nav-${child.label.toLowerCase().replace(/\s+/g, '-')}`}
                             className={`w-full text-left text-sm py-1 px-2 rounded-md transition-colors flex items-center ${
                               isChildActive
@@ -456,6 +489,7 @@ export function Sidebar({ user }: SidebarProps) {
       href: "/stak-toolkit",
       children: [
         { icon: FileText, label: "Prompts", href: "/prompts" },
+        { icon: ScrollText, label: "Scripts", href: "/scripts" },
         { icon: Workflow, label: "Workflows", href: "/workflows" },
         { icon: KeyRound, label: "Secrets", href: "/secrets" },
       ],

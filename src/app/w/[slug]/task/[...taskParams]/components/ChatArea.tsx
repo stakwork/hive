@@ -19,6 +19,9 @@ import { TypingIndicator } from "@/components/chat/TypingIndicator";
 import { ChatInput } from "./ChatInput";
 import type { StreamContext } from "./WorkflowStatusBadge";
 import { ChatMessage } from "./ChatMessage";
+import { DateSeparator } from "./DateSeparator";
+import { findClarifyingReply } from "@/lib/utils/clarifying-questions";
+import { formatDaySeparatorLabel, isSameCalendarDay } from "@/lib/date-utils";
 import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
@@ -389,18 +392,24 @@ export function ChatArea({
             isPlanChat && !isLoading && !!suggestions?.length && !!onSuggestionSelect;
 
           return visibleMessages.map((msg, i) => {
-            const replyMessage = messages.find((m) => m.replyId === msg.id);
+            const prev = visibleMessages[i - 1];
+            const showSeparator = !prev || !isSameCalendarDay(prev.createdAt, msg.createdAt);
+            const replyMessage = findClarifyingReply(messages, msg.id);
             const dockChipsHere = showChips && i === lastAssistantIdx;
             return (
-              <ChatMessage
-                key={msg.id}
-                message={msg}
-                replyMessage={replyMessage}
-                onArtifactAction={onArtifactAction}
-                suggestions={dockChipsHere ? suggestions : undefined}
-                onSuggestionSelect={dockChipsHere ? onSuggestionSelect : undefined}
-                isSuperAdmin={isSuperAdmin}
-              />
+              <React.Fragment key={msg.id}>
+                {showSeparator && (
+                  <DateSeparator label={formatDaySeparatorLabel(msg.createdAt)} />
+                )}
+                <ChatMessage
+                  message={msg}
+                  replyMessage={replyMessage}
+                  onArtifactAction={onArtifactAction}
+                  suggestions={dockChipsHere ? suggestions : undefined}
+                  onSuggestionSelect={dockChipsHere ? onSuggestionSelect : undefined}
+                  isSuperAdmin={isSuperAdmin}
+                />
+              </React.Fragment>
             );
           });
         })()}

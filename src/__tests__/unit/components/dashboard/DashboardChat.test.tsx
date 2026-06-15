@@ -13,8 +13,12 @@ const mockUserId = "user-test-1";
 // Hoist processStream so it can be referenced inside vi.mock factories
 const mockProcessStreamFn = vi.hoisted(() => vi.fn());
 
+// Hoisted so individual tests can override it
+const mockSearchParamsGet = vi.hoisted(() => vi.fn().mockReturnValue(null));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
+  useSearchParams: () => ({ get: mockSearchParamsGet }),
 }));
 
 vi.mock("@/hooks/useWorkspace", () => ({
@@ -436,5 +440,129 @@ describe("DashboardChat — scroll indicator", () => {
     // Go back → userScrolledUp=true, showBackButton=false → latest-btn
     await userEvent.click(screen.getByTestId("back-btn"));
     await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
+  });
+});
+
+// ── ?chat= preload tests ──────────────────────────────────────────────────────
+describe("DashboardChat — ?chat= URL preload", () => {
+  const convId = "conv-preload-1";
+
+  const ownerConvResponse = {
+    id: convId,
+    userId: mockUserId, // same as session user → owner
+    messages: [
+      { id: "m1", role: "user", content: "Hello from history", timestamp: new Date().toISOString() },
+      { id: "m2", role: "assistant", content: "Hi there", timestamp: new Date().toISOString() },
+    ],
+    settings: { extraWorkspaceSlugs: [] },
+  };
+
+  const nonOwnerConvResponse = {
+    ...ownerConvResponse,
+    userId: "other-user-99", // different user → non-owner
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    mockProcessStreamFn.mockResolvedValue(undefined);
+    mockSearchParamsGet.mockReturnValue(null); // default: no chat param
+  });
+
+  test("auto-loads conversation for owner (continuable, not read-only)", async () => {
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "chat" ? convId : null
+    );
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(ownerConvResponse),
+    });
+
+    render(<DashboardChat />);
+
+    await waitFor(() => {
+      const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const preloadCall = calls.find((c: string[]) =>
+        c[0].includes(`/chat/conversations/${convId}`)
+      );
+      expect(preloadCall).toBeDefined();
+    });
+
+    // Read-only badge should NOT appear (owner gets continuable session)
+    await waitFor(() => {
+      expect(screen.queryByText("View only")).not.toBeInTheDocument();
+    });
+  });
+
+  test("marks conversation read-only for non-owner", async () => {
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "chat" ? convId : null
+    );
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(nonOwnerConvResponse),
+    });
+
+    render(<DashboardChat />);
+
+    await waitFor(() => {
+      expect(screen.getByText("View only")).toBeInTheDocument();
+    });
+  });
+
+  test("falls back to empty chat on API failure (non-2xx)", async () => {
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "chat" ? convId : null
+    );
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: () => Promise.resolve({ error: "Not found" }),
+    });
+
+    // Should render without throwing
+    render(<DashboardChat />);
+
+    await waitFor(() => {
+      // No messages rendered, no read-only badge
+      expect(screen.queryByText("View only")).not.toBeInTheDocument();
+    });
+  });
+
+  test("falls back to empty chat on network error", async () => {
+    mockSearchParamsGet.mockImplementation((key: string) =>
+      key === "chat" ? convId : null
+    );
+
+    global.fetch = vi.fn().mockRejectedValue(new Error("Network failure"));
+
+    render(<DashboardChat />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("View only")).not.toBeInTheDocument();
+    });
+  });
+
+  test("does not fetch when no ?chat param is present", async () => {
+    mockSearchParamsGet.mockReturnValue(null);
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({}),
+    });
+
+    render(<DashboardChat />);
+
+    // Brief delay to let any effects run
+    await new Promise((r) => setTimeout(r, 50));
+
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    const preloadCall = calls.find((c: string[]) =>
+      c[0]?.includes("/chat/conversations/")
+    );
+    expect(preloadCall).toBeUndefined();
   });
 });

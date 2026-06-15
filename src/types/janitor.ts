@@ -11,6 +11,9 @@ export interface JanitorConfigUpdate {
   recommendationSweepEnabled?: boolean;
   ticketSweepEnabled?: boolean;
   deduplicationEnabled?: boolean;
+  // Stale PR Task Janitor settings
+  stalePrTasksEnabled?: boolean;
+  stalePrTaskThresholdDays?: number;
   // PR Monitor settings
   prMonitorEnabled?: boolean;
   prConflictFixEnabled?: boolean;

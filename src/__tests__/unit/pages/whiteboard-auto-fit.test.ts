@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getInitialAppState } from "@/lib/excalidraw-config";
 
 /**
@@ -8,7 +8,51 @@ import { getInitialAppState } from "@/lib/excalidraw-config";
  * is first set. It schedules a `scrollToContent` call (via setTimeout) with
  * `fitToViewport: true` and `animate: false` so the canvas auto-fits all
  * content without animation on load.
+ *
+ * When a deep-link `element` param is present in the URL, auto-fit must be
+ * suppressed so Excalidraw's native scroll-to-element behaviour is preserved.
  */
+
+// Helper: replicates the auto-fit-on-load effect logic
+function runAutoFitEffect(
+  api: { scrollToContent: ReturnType<typeof vi.fn> } | null,
+  hasDeepLink: boolean,
+  hasElements: boolean
+): (() => void) | undefined {
+  if (!api) return;
+  if (hasDeepLink) return; // guard: deep link present — skip auto-fit
+  if (!hasElements) return; // empty whiteboard — stay at 100%
+  const timer = setTimeout(() => {
+    api.scrollToContent(undefined, {
+      fitToViewport: true,
+      viewportZoomFactor: 0.9,
+      animate: false,
+      duration: 0,
+    });
+  }, 100);
+  return () => clearTimeout(timer);
+}
+
+// Helper: replicates the version-change effect's initial-load path
+function runVersionChangeEffect(
+  api: { scrollToContent: ReturnType<typeof vi.fn>; updateScene: ReturnType<typeof vi.fn> } | null,
+  hasDeepLink: boolean,
+  isInitialLoad: boolean
+): void {
+  if (!api) return;
+  if (!isInitialLoad) return;
+  api.updateScene({ elements: [], appState: {} });
+  setTimeout(() => {
+    if (!hasDeepLink) {
+      api.scrollToContent(undefined, {
+        fitToViewport: true,
+        viewportZoomFactor: 0.9,
+        animate: true,
+        duration: 300,
+      });
+    }
+  }, 100);
+}
 
 describe("Whiteboard page — auto-fit on initial load", () => {
   let scrollToContent: ReturnType<typeof vi.fn>;
@@ -23,38 +67,10 @@ describe("Whiteboard page — auto-fit on initial load", () => {
   });
 
   it("calls scrollToContent with fitToViewport:true and animate:false after excalidrawAPI is set", () => {
-    // Simulate the useEffect body that runs when excalidrawAPI becomes available
     const excalidrawAPI = { scrollToContent };
+    const cleanup = runAutoFitEffect(excalidrawAPI, false, true);
 
-    // Replicate the effect:
-    // useEffect(() => {
-    //   if (!excalidrawAPI) return;
-    //   const timer = setTimeout(() => {
-    //     excalidrawAPI.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, animate: false, duration: 0 });
-    //   }, 100);
-    //   return () => clearTimeout(timer);
-    // }, [excalidrawAPI]);
-
-    let cleanup: (() => void) | undefined;
-    const runEffect = (api: typeof excalidrawAPI | null) => {
-      if (!api) return;
-      const timer = setTimeout(() => {
-        api.scrollToContent(undefined, {
-          fitToViewport: true,
-          viewportZoomFactor: 0.9,
-          animate: false,
-          duration: 0,
-        });
-      }, 100);
-      cleanup = () => clearTimeout(timer);
-    };
-
-    runEffect(excalidrawAPI);
-
-    // Before the timer fires, scrollToContent should not have been called
     expect(scrollToContent).not.toHaveBeenCalled();
-
-    // Advance past the 100ms delay
     vi.advanceTimersByTime(100);
 
     expect(scrollToContent).toHaveBeenCalledTimes(1);
@@ -69,66 +85,104 @@ describe("Whiteboard page — auto-fit on initial load", () => {
   });
 
   it("does not call scrollToContent when excalidrawAPI is null", () => {
-    const runEffect = (api: null) => {
-      if (!api) return;
-      setTimeout(() => {
-        (api as any).scrollToContent(undefined, { fitToViewport: true });
-      }, 100);
-    };
-
-    runEffect(null);
+    runAutoFitEffect(null, false, true);
     vi.advanceTimersByTime(200);
-
     expect(scrollToContent).not.toHaveBeenCalled();
   });
 
   it("cleans up the timeout on unmount before it fires", () => {
     const excalidrawAPI = { scrollToContent };
+    const cleanup = runAutoFitEffect(excalidrawAPI, false, true);
 
-    let cleanup: (() => void) | undefined;
-    const runEffect = (api: typeof excalidrawAPI) => {
-      const timer = setTimeout(() => {
-        api.scrollToContent(undefined, {
-          fitToViewport: true,
-          viewportZoomFactor: 0.9,
-          animate: false,
-          duration: 0,
-        });
-      }, 100);
-      cleanup = () => clearTimeout(timer);
-    };
-
-    runEffect(excalidrawAPI);
-
-    // Simulate unmount before timer fires
     cleanup?.();
-
     vi.advanceTimersByTime(200);
 
-    // scrollToContent should NOT have been called after cleanup
     expect(scrollToContent).not.toHaveBeenCalled();
   });
 
   it("uses animate:false (not animate:true) to avoid pan/zoom animation on initial load", () => {
     const excalidrawAPI = { scrollToContent };
-
-    const timer = setTimeout(() => {
-      excalidrawAPI.scrollToContent(undefined, {
-        fitToViewport: true,
-        viewportZoomFactor: 0.9,
-        animate: false,
-        duration: 0,
-      });
-    }, 100);
-
+    runAutoFitEffect(excalidrawAPI, false, true);
     vi.advanceTimersByTime(100);
 
     expect(scrollToContent).toHaveBeenCalledWith(
       undefined,
       expect.objectContaining({ animate: false })
     );
+  });
 
-    clearTimeout(timer);
+  // --- Deep-link guard tests ---
+
+  it("does NOT call scrollToContent when element deep-link is present", () => {
+    const excalidrawAPI = { scrollToContent };
+    runAutoFitEffect(excalidrawAPI, true /* hasDeepLink */, true);
+
+    vi.advanceTimersByTime(200);
+
+    expect(scrollToContent).not.toHaveBeenCalled();
+  });
+
+  it("still does NOT call scrollToContent when deep-link present and no elements", () => {
+    const excalidrawAPI = { scrollToContent };
+    runAutoFitEffect(excalidrawAPI, true /* hasDeepLink */, false);
+
+    vi.advanceTimersByTime(200);
+
+    expect(scrollToContent).not.toHaveBeenCalled();
+  });
+});
+
+describe("Whiteboard page — version-change effect on initial load", () => {
+  let scrollToContent: ReturnType<typeof vi.fn>;
+  let updateScene: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    scrollToContent = vi.fn();
+    updateScene = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("calls updateScene AND scrollToContent on initial load without deep-link", () => {
+    const api = { scrollToContent, updateScene };
+    runVersionChangeEffect(api, false /* hasDeepLink */, true /* isInitialLoad */);
+
+    expect(updateScene).toHaveBeenCalledTimes(1);
+    expect(scrollToContent).not.toHaveBeenCalled(); // not yet — still in timeout
+
+    vi.advanceTimersByTime(100);
+
+    expect(scrollToContent).toHaveBeenCalledTimes(1);
+    expect(scrollToContent).toHaveBeenCalledWith(undefined, {
+      fitToViewport: true,
+      viewportZoomFactor: 0.9,
+      animate: true,
+      duration: 300,
+    });
+  });
+
+  it("calls updateScene but SKIPS scrollToContent on initial load with deep-link", () => {
+    const api = { scrollToContent, updateScene };
+    runVersionChangeEffect(api, true /* hasDeepLink */, true /* isInitialLoad */);
+
+    expect(updateScene).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(200);
+
+    expect(scrollToContent).not.toHaveBeenCalled();
+  });
+
+  it("does not run at all when not initial load (programmaticUpdateCountRef > 0)", () => {
+    const api = { scrollToContent, updateScene };
+    runVersionChangeEffect(api, false /* hasDeepLink */, false /* isInitialLoad */);
+
+    vi.advanceTimersByTime(200);
+
+    expect(updateScene).not.toHaveBeenCalled();
+    expect(scrollToContent).not.toHaveBeenCalled();
   });
 });
 

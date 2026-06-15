@@ -51,15 +51,15 @@ import {
   buildPublicWorkspaceConfig,
   fetchConceptsForWorkspaces,
 } from "@/lib/ai/workspaceConfig";
-import { buildConnectionTools } from "@/lib/ai/connectionTools";
-import { buildCanvasTools } from "@/lib/ai/canvasTools";
-import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
-import { buildResearchTools, type CapturedSearchResult } from "@/lib/ai/researchTools";
+import type { CapturedSearchResult, DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import {
-  PROPOSE_FEATURE_TOOL,
-  PROPOSE_INITIATIVE_TOOL,
-  PROPOSE_MILESTONE_TOOL,
-} from "@/lib/proposals/types";
+  ALL_CAPABILITIES,
+  composeCapabilityPromptSuffix,
+  composeCapabilityTools,
+  composeWriteToolNames,
+  resolveCapabilities,
+  type OrgCapability,
+} from "@/lib/ai/capabilities";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
@@ -71,36 +71,34 @@ import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/push
 // ---------------------------------------------------------------------------
 // Write-mode tool names — stripped when `readonly: true` is requested.
 //
+// Derived from the capability registry (`writeToolNames` per capability)
+// so the strip set always tracks the tool families actually composed in.
 // All entries are bare names (no `{slug}__` namespace). When askToolsMulti
-// namespaces a single-WS tool, we never strip those — every name in this
-// set is an org-scoped tool produced by buildCanvasTools / buildResearchTools
-// / buildConnectionTools / buildInitiativeTools, which are NOT namespaced.
+// namespaces a single-WS tool, we never strip those — every name in the
+// set is an org-scoped capability tool, which is NOT namespaced.
 // ---------------------------------------------------------------------------
 
-const READONLY_STRIP_TOOL_NAMES: ReadonlySet<string> = new Set([
-  // canvasTools
-  "update_canvas",
-  "patch_canvas",
-  // researchTools
-  "save_research",
-  "update_research",
-  // connectionTools
-  "save_connection",
-  "update_connection",
-  // initiativeTools — DB writes
-  "assign_feature_to_initiative",
-  "assign_feature_to_workspace",
-  "unassign_feature_from_workspace",
-  // initiativeTools — proposals (emit cards; user approves)
-  PROPOSE_INITIATIVE_TOOL,
-  PROPOSE_FEATURE_TOOL,
-  PROPOSE_MILESTONE_TOOL,
-]);
+// Computed lazily, NOT at module scope: this module sits on an import
+// cycle (capabilities → tool factories → … → runCanvasAgent), so the
+// registry's bindings aren't initialized yet while this module body
+// evaluates. By first call time every module in the cycle is loaded.
+let defaultReadonlyStrip: ReadonlySet<string> | undefined;
+function getDefaultReadonlyStrip(): ReadonlySet<string> {
+  return (defaultReadonlyStrip ??= composeWriteToolNames(ALL_CAPABILITIES));
+}
 
-function filterReadonly(tools: ToolSet): ToolSet {
+export function filterReadonly(
+  tools: ToolSet,
+  keepWriteToolNames?: string[],
+  stripToolNames?: ReadonlySet<string>,
+): ToolSet {
+  const strip = stripToolNames ?? getDefaultReadonlyStrip();
   const out: ToolSet = {};
   for (const [name, def] of Object.entries(tools)) {
-    if (READONLY_STRIP_TOOL_NAMES.has(name)) continue;
+    if (strip.has(name)) {
+      // Spare tools the caller explicitly wants to keep even in readonly mode.
+      if (!keepWriteToolNames?.includes(name)) continue;
+    }
     out[name] = def;
   }
   return out;
@@ -150,11 +148,37 @@ export interface CanvasAgentHooks {
   onFinish?: (args: { usage: unknown }) => void | Promise<void>;
 }
 
+/**
+ * Cached swarm concept data, keyed to match the two `runCanvasAgent`
+ * branches. Exactly one shape is populated per conversation depending on
+ * whether it's single- or multi-workspace. Stored verbatim in the
+ * conversation's `settings.promptConcepts` for reuse across turns.
+ */
+export interface CachedConcepts {
+  /** Multi-workspace: concepts keyed by workspace slug. */
+  conceptsByWorkspace?: Record<string, Record<string, unknown>[]>;
+  /** Single-workspace: the flat concept/feature list. */
+  features?: Record<string, unknown>[];
+}
+
 export interface RunCanvasAgentOptions {
   /** NextAuth user id. Required unless `publicViewer` is set. */
   userId: string | null;
-  /** Org id (SourceControlOrg.id). When set, merges canvas/connection/initiative/research tools. */
+  /** Org id (SourceControlOrg.id). When set, merges the selected capabilities' org tools. */
   orgId?: string;
+  /**
+   * Org capability families to compose into the agent when `orgId` is
+   * set — each contributes its tools, its prompt snippet, and its
+   * readonly-strip names (see `src/lib/ai/capabilities.ts`). Defaults
+   * to the full set, i.e. the historical canvas-agent behavior. Pass a
+   * subset to run the same agent on surfaces that have no canvas —
+   * e.g. `["planner"]` for the per-feature Plan page, giving the agent
+   * `send_to_feature_planner` plus the per-workspace tools so it can
+   * help execute an existing plan without any canvas/propose tools.
+   * Note `"canvas"` implies `"research"` and `"connections"` (registry
+   * `includes`). Ignored when `orgId` is absent.
+   */
+  capabilities?: readonly OrgCapability[];
   /** Workspace slugs to expose to the agent. 1..20. */
   workspaceSlugs: string[];
   /** Public-viewer envelope (mutually exclusive with `userId` in practice). */
@@ -168,6 +192,27 @@ export interface RunCanvasAgentOptions {
   };
   /** User-visible chat messages, in AI SDK ModelMessage[] form. */
   messages: ModelMessage[];
+  /**
+   * Cached concepts from a previous turn of the SAME conversation. When
+   * provided, we SKIP the slow per-workspace `listConcepts` swarm
+   * round-trip (a swarm can be slow or offline, and re-fetching the
+   * concept list on every message adds that latency/failure to every
+   * turn) and feed these cached concepts to BOTH the prompt prefix and
+   * the tools instead.
+   *
+   * We deliberately cache the *concepts* (the expensive swarm result),
+   * NOT the rendered prefix — so the prefix is rebuilt fresh each turn,
+   * keeping the per-turn-dynamic canvas scope hint (current canvas /
+   * selected node) accurate. Rebuilding is pure string work; the swarm
+   * call is the only thing skipped. The cheap DB work
+   * (`buildWorkspaceConfigs`, for tool creds) still runs every turn.
+   *
+   * Shape mirrors the two code branches: `conceptsByWorkspace` (multi-
+   * workspace) or `features` (single-workspace). Null/undefined → fetch
+   * fresh from the swarm (and the caller should persist the returned
+   * `cacheableConcepts`).
+   */
+  cachedConcepts?: CachedConcepts | null;
   /**
    * Pre-validated `SharedConversation.id` for the active canvas
    * conversation. Forwarded to `buildInitiativeTools` so
@@ -188,6 +233,19 @@ export interface RunCanvasAgentOptions {
    */
   readonly?: boolean;
   /**
+   * Tool names to spare from the `readonly` strip. Only meaningful when
+   * `readonly: true`. Lets targeted workers (e.g. the research sub-agent)
+   * keep one write tool (e.g. `update_research`) while everything else is
+   * stripped. Names must match the exact tool name (no namespace prefix).
+   *
+   * **Important:** the spared tool must be one of the *internally-wired*
+   * tools (built inside `runCanvasAgent` with shared closures like
+   * `capturedWebSearchResults`). Passing an external tool name here that
+   * is NOT in the internal toolset is a no-op — the tool is already
+   * absent; nothing is restored.
+   */
+  keepWriteToolNames?: string[];
+  /**
    * When `true`, suppress the internal Pusher `HIGHLIGHT_NODES`
    * fan-out fired when the agent calls `learn_concept`. The HTTP
    * chat route leaves this `false` (default) so open chat clients
@@ -205,6 +263,13 @@ export interface RunCanvasAgentOptions {
    * collision with the built-in toolset (last spread wins).
    */
   additionalTools?: ToolSet;
+  /**
+   * Mutable collector for `dispatch_research` intents. When provided, the
+   * internally-wired `dispatch_research` tool will push each dispatched
+   * intent here so the caller's `after()` block can schedule workers.
+   * Sibling pattern to `capturedWebSearchResults`.
+   */
+  dispatchedResearch?: DispatchedResearchIntent[];
   /** Caller-owned side effects. */
   hooks?: CanvasAgentHooks;
 }
@@ -242,6 +307,25 @@ export interface RunCanvasAgentResult {
    * `readonly` was passed; useful for logging / metrics.
    */
   readonly: boolean;
+  /**
+   * The prefix messages actually used this turn (system prompt + seeded
+   * concepts), rebuilt fresh every turn with the current scope. Surfaced
+   * so the caller can persist a snapshot for the Agent Logs detail view
+   * ("what the model saw").
+   */
+  assembledPrefix: ModelMessage[];
+  /**
+   * The concepts used this turn, in cache shape. When `cacheHit` is
+   * false, the caller should persist this so the next turn can pass it
+   * back as `cachedConcepts` and skip the swarm fetch.
+   */
+  cacheableConcepts: CachedConcepts;
+  /**
+   * True when `cachedConcepts` was supplied and reused (the swarm fetch
+   * was skipped). False when concepts were fetched fresh this turn — the
+   * signal for the caller to persist `cacheableConcepts`.
+   */
+  cacheHit: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -396,12 +480,24 @@ export async function runCanvasAgent(
     publicViewer,
     scope,
     messages,
+    capabilities = ALL_CAPABILITIES,
     readonly = false,
+    keepWriteToolNames,
     silentPusher = false,
     hooks,
     currentCanvasConversationId,
     additionalTools,
+    dispatchedResearch,
+    cachedConcepts,
   } = opts;
+
+  // When cached concepts are supplied we skip the slow per-workspace
+  // `listConcepts` swarm round-trip and feed the cache to the prefix +
+  // tools instead. `buildWorkspaceConfigs` still runs (DB-only; needed
+  // for swarm creds), and the prefix is still rebuilt fresh each turn so
+  // the canvas scope hint stays accurate — only the swarm fetch (the one
+  // external/offline-prone HTTP call) is elided. Each branch checks its
+  // own cache shape below (`conceptsByWorkspace` vs `features`).
 
   if (!Array.isArray(workspaceSlugs) || workspaceSlugs.length === 0) {
     throw new Error("runCanvasAgent: workspaceSlugs must be a non-empty array");
@@ -429,6 +525,9 @@ export async function runCanvasAgent(
   let tools: ToolSet;
   let prefixMessages: ModelMessage[];
   let features: Record<string, unknown>[];
+  // Concept-cache bookkeeping, assigned per branch below.
+  let cacheHit = false;
+  let cacheableConcepts: CachedConcepts = {};
   let primarySwarmUrl: string;
   let primarySwarmApiKey: string;
   // Workspace + user identity for the **primary** slug (slugs[0]).
@@ -450,6 +549,15 @@ export async function runCanvasAgent(
   // (and unused) when no org-tool branch is built.
   const capturedWebSearchResults: CapturedSearchResult[] = [];
 
+  // Capability composition inputs, shared by both branches below.
+  // `orgCapabilities` is the `includes`-expanded selection in canonical
+  // order; the prompt suffix is the matching snippet concatenation
+  // (equal to getCanvasPromptSuffix() for the full set).
+  const orgCapabilities = resolveCapabilities(capabilities);
+  const orgPromptSuffix = orgId
+    ? composeCapabilityPromptSuffix(orgCapabilities)
+    : undefined;
+
   if (isMultiWorkspace) {
     // Multi-workspace mode is auth-only — public-viewer requests are
     // rejected by the caller before reaching here. The non-null
@@ -460,21 +568,31 @@ export async function runCanvasAgent(
       );
     }
     const workspaceConfigs = await buildWorkspaceConfigs(workspaceSlugs, userId);
-    const conceptsByWorkspace = await fetchConceptsForWorkspaces(workspaceConfigs);
+    // Cache hit → reuse cached concepts and skip the swarm fetch. The
+    // cached concepts still flow into `askToolsMulti` (so the 3+ workspace
+    // `read_concepts_for_repo` tool keeps working) AND into the prefix
+    // builder below.
+    const multiCacheHit = !!cachedConcepts?.conceptsByWorkspace;
+    const conceptsByWorkspace =
+      cachedConcepts?.conceptsByWorkspace ??
+      (await fetchConceptsForWorkspaces(workspaceConfigs));
 
     tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace);
 
     if (orgId) {
-      // Merge org-scoped tool families. The caller is responsible for
-      // having already validated org membership before calling us.
-      // Mirrored in the single-workspace branch below — keep these
-      // two sites in sync.
+      // Merge the selected capabilities' org tool families. The caller
+      // is responsible for having already validated org membership
+      // before calling us. Mirrored in the single-workspace branch
+      // below — keep these two sites in sync.
       tools = {
         ...tools,
-        ...buildConnectionTools(orgId, userId),
-        ...buildCanvasTools(orgId),
-        ...buildInitiativeTools(orgId, userId, currentCanvasConversationId),
-        ...buildResearchTools(orgId, userId, capturedWebSearchResults),
+        ...composeCapabilityTools(orgCapabilities, {
+          orgId,
+          userId,
+          currentCanvasConversationId,
+          capturedWebSearchResults,
+          dispatchedResearch,
+        }),
       };
     }
 
@@ -484,7 +602,9 @@ export async function runCanvasAgent(
     }
 
     // Initiative scope → look up visually-linked workspaces on root
-    // canvas. Only fires when the user is on `initiative:*`.
+    // canvas. Only fires when the user is on `initiative:*`. Runs every
+    // turn (even on a concept-cache hit) because it feeds the fresh scope
+    // hint — it's a cheap DB lookup, not a swarm call.
     let linkedWorkspaces: Array<{ id: string; slug: string; name: string }> = [];
     if (
       orgId &&
@@ -500,13 +620,18 @@ export async function runCanvasAgent(
       }
     }
 
+    // Always rebuilt fresh (cheap string work) so the scope hint reflects
+    // the user's CURRENT canvas/selection, even on a concept-cache hit.
     prefixMessages = getMultiWorkspacePrefixMessages(
       workspaceConfigs,
       conceptsByWorkspace,
       [],
       orgId,
       buildScopeHint(scope, linkedWorkspaces),
+      orgPromptSuffix,
     );
+    cacheHit = multiCacheHit;
+    cacheableConcepts = { conceptsByWorkspace };
     primarySwarmUrl = workspaceConfigs[0].swarmUrl;
     primarySwarmApiKey = workspaceConfigs[0].swarmApiKey;
     primaryWorkspaceId = workspaceConfigs[0].workspaceId;
@@ -531,16 +656,24 @@ export async function runCanvasAgent(
     // pre-seeded features) instead of throwing a 500. Mirrors the
     // multi-workspace path's `fetchConceptsForWorkspaces`, which
     // already swallows per-workspace failures.
-    let concepts: Record<string, unknown> = {};
-    try {
-      concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
-    } catch (e) {
-      console.error(
-        `[runCanvasAgent] Failed to pre-fetch concepts for ${ws.slug}; continuing without them:`,
-        e,
-      );
+    // Cache hit → reuse cached features and skip the swarm fetch.
+    const singleCacheHit = !!cachedConcepts?.features;
+    if (singleCacheHit) {
+      features = cachedConcepts!.features!;
+    } else {
+      let concepts: Record<string, unknown> = {};
+      try {
+        concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
+      } catch (e) {
+        console.error(
+          `[runCanvasAgent] Failed to pre-fetch concepts for ${ws.slug}; continuing without them:`,
+          e,
+        );
+      }
+      features = (concepts.features as Record<string, unknown>[]) || [];
     }
-    features = (concepts.features as Record<string, unknown>[]) || [];
+    cacheHit = singleCacheHit;
+    cacheableConcepts = { features };
 
     // Single-workspace + orgId: an org-scope caller (e.g. the org-MCP
     // `org_agent` tool, or the org SidebarChat for an org that
@@ -556,13 +689,17 @@ export async function runCanvasAgent(
     if (orgId && userId) {
       tools = {
         ...tools,
-        ...buildConnectionTools(orgId, userId),
-        ...buildCanvasTools(orgId),
-        ...buildInitiativeTools(orgId, userId, currentCanvasConversationId),
-        ...buildResearchTools(orgId, userId, capturedWebSearchResults),
+        ...composeCapabilityTools(orgCapabilities, {
+          orgId,
+          userId,
+          currentCanvasConversationId,
+          capturedWebSearchResults,
+          dispatchedResearch,
+        }),
       };
     }
 
+    // Always rebuilt fresh so the scope hint stays current on cache hits.
     prefixMessages = getQuickAskPrefixMessages(
       features,
       ws.repoUrls,
@@ -570,8 +707,13 @@ export async function runCanvasAgent(
       ws.description,
       ws.members,
       orgId
-        ? { orgId, scope: buildScopeHint(scope, []) }
+        ? {
+            orgId,
+            scope: buildScopeHint(scope, []),
+            promptSuffix: orgPromptSuffix,
+          }
         : undefined,
+      ws.currentUserGithubUsername,
     );
     primarySwarmUrl = ws.swarmUrl;
     primarySwarmApiKey = ws.swarmApiKey;
@@ -583,7 +725,14 @@ export async function runCanvasAgent(
   }
 
   if (readonly) {
-    tools = filterReadonly(tools);
+    // Strip set derived from the composed capabilities — a tool family
+    // we never merged contributes nothing, so the strip always matches
+    // what's actually present.
+    tools = filterReadonly(
+      tools,
+      keepWriteToolNames,
+      orgId ? composeWriteToolNames(orgCapabilities) : undefined,
+    );
   }
 
   // Merge caller-supplied extra tools AFTER the readonly strip so they
@@ -715,6 +864,25 @@ export async function runCanvasAgent(
         await hooks.onFinish({ usage });
       }
     },
+    // Surface errors that occur DURING streaming (after the 200 response
+    // headers are already sent). Without this, the AI SDK silently masks
+    // the failure into a generic error part and the real cause (e.g. an
+    // Anthropic `invalid_request_error` from an oversized request, or a
+    // tool throwing) never lands in the logs — the stream just goes quiet
+    // right after the `streamText:` line above. Log the full error so
+    // operators can diagnose; the message is also propagated to the client
+    // via `toUIMessageStreamResponse({ onError })` in the HTTP route.
+    onError: (event) => {
+      const err = (event as { error?: unknown })?.error ?? event;
+      console.error("[runCanvasAgent] streamText error:", {
+        workspaces: workspaceSlugs,
+        orgId: orgId ?? null,
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : undefined,
+        stack: err instanceof Error ? err.stack : undefined,
+        error: err,
+      });
+    },
   });
 
   return {
@@ -728,6 +896,9 @@ export async function runCanvasAgent(
     primaryWorkspaceId: primaryWorkspaceId!,
     primaryUserId: primaryUserId!,
     readonly,
+    assembledPrefix: prefixMessages,
+    cacheableConcepts,
+    cacheHit,
   };
 }
 

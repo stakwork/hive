@@ -16,7 +16,7 @@ type RouteParams = {
 };
 
 interface WorkflowVersion {
-  workflow_version_id: number;
+  workflow_version_id: string;
   workflow_id: number;
   workflow_json: string;
   workflow_name?: string;
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const versions: WorkflowVersion[] = nodes
       .filter((node: any) => node.properties?.workflow_version_id && getWorkflowJsonFromNode(node))
       .map((node: any) => ({
-        workflow_version_id: node.properties.workflow_version_id,
+        workflow_version_id: String(node.properties.workflow_version_id),
         workflow_id: node.properties.workflow_id,
         workflow_json: getWorkflowJsonFromNode(node),
         workflow_name: node.properties.workflow_name,
@@ -175,18 +175,59 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         node_type: "Workflow_version" as const,
       }));
 
-    // Sort by date_added_to_graph descending (newest first)
-    versions.sort((a, b) => {
-      return b.workflow_version_id - a.workflow_version_id;
-    });
+    // Resolve workflow_name: propagate from any version that has it,
+    // or fall back to the parent Workflow node.
+    const resolvedName =
+      versions.find((v) => v.workflow_name)?.workflow_name ??
+      (await fetchWorkflowNodeName(graphUrl, apiKey, workflowIdNum));
+
+    const versionsWithName = versions.map((v) => ({
+      ...v,
+      workflow_name: v.workflow_name ?? resolvedName,
+    }));
+
+    // Sort by workflow_version_id descending (newest first)
+    versionsWithName.sort((a, b) => Number(b.workflow_version_id) - Number(a.workflow_version_id));
 
     // Return up to 10 versions
-    const limitedVersions = versions.slice(0, 10);
+    const limitedVersions = versionsWithName.slice(0, 10);
 
     return NextResponse.json({ success: true, data: { versions: limitedVersions } }, { status: 200 });
   } catch (error) {
     console.error("[Workflow Versions] GET error:", error);
     console.error("[Workflow Versions] Error stack:", error instanceof Error ? error.stack : "No stack trace");
     return NextResponse.json({ success: false, error: "Failed to fetch workflow versions" }, { status: 500 });
+  }
+}
+
+async function fetchWorkflowNodeName(
+  graphUrl: string,
+  apiKey: string,
+  workflowId: number,
+): Promise<string | undefined> {
+  try {
+    const res = await fetch(`${graphUrl}/api/graph/search/attributes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-token": apiKey,
+      },
+      body: JSON.stringify({
+        top_node_count: 1,
+        node_type: ["Workflow"],
+        include_properties: true,
+        limit: 1,
+        skip: 0,
+        skip_cache: true,
+        search_filters: [
+          { attribute: "workflow_id", value: workflowId, comparator: "=" },
+        ],
+      }),
+    });
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return (data.nodes?.[0]?.properties?.workflow_name as string | undefined) ?? undefined;
+  } catch {
+    return undefined;
   }
 }

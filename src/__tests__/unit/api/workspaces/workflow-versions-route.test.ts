@@ -182,7 +182,237 @@ describe("GET /api/workspaces/[slug]/workflows/[workflowId]/versions", () => {
       const data = await res.json();
       expect(data.success).toBe(true);
       expect(data.data.versions).toHaveLength(1);
-      expect(data.data.versions[0].workflow_version_id).toBe(1);
+      expect(data.data.versions[0].workflow_version_id).toBe("1");
+    });
+
+    it("should coerce numeric workflow_version_id to string", async () => {
+      // graph API returns workflow_version_id as a number
+      const numericVersionNode = {
+        ref_id: "ref-1",
+        date_added_to_graph: "2024-01-01T00:00:00Z",
+        properties: {
+          workflow_version_id: 42, // number, not string
+          workflow_id: 10,
+          workflow_json: '{"steps":[]}',
+          workflow_name: "My Workflow",
+          date_added_to_graph: "2024-01-01T00:00:00Z",
+          published_at: null,
+        },
+      };
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ nodes: [numericVersionNode] }),
+      } as any);
+
+      const res = await GET(makeRequest(), {
+        params: Promise.resolve({ slug: "test-workspace", workflowId: "10" }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.data.versions).toHaveLength(1);
+      // Must be a string so .substring() calls in WorkflowVersionList/Selector don't crash
+      expect(typeof data.data.versions[0].workflow_version_id).toBe("string");
+      expect(data.data.versions[0].workflow_version_id).toBe("42");
+    });
+
+    it("should sort versions newest-first by numeric value of workflow_version_id", async () => {
+      const multiVersionNodes = [
+        {
+          ref_id: "ref-1",
+          date_added_to_graph: "2024-01-01T00:00:00Z",
+          properties: {
+            workflow_version_id: 3,
+            workflow_id: 10,
+            workflow_json: '{"steps":[]}',
+            published_at: null,
+          },
+        },
+        {
+          ref_id: "ref-2",
+          date_added_to_graph: "2024-01-02T00:00:00Z",
+          properties: {
+            workflow_version_id: 1,
+            workflow_id: 10,
+            workflow_json: '{"steps":[]}',
+            published_at: null,
+          },
+        },
+        {
+          ref_id: "ref-3",
+          date_added_to_graph: "2024-01-03T00:00:00Z",
+          properties: {
+            workflow_version_id: 2,
+            workflow_id: 10,
+            workflow_json: '{"steps":[]}',
+            published_at: null,
+          },
+        },
+      ];
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ nodes: multiVersionNodes }),
+      } as any);
+
+      const res = await GET(makeRequest(), {
+        params: Promise.resolve({ slug: "test-workspace", workflowId: "10" }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.data.versions.map((v: any) => v.workflow_version_id)).toEqual(["3", "2", "1"]);
+    });
+  });
+
+  describe("workflow_name resolution", () => {
+    beforeEach(() => {
+      vi.mocked(getServerSession).mockResolvedValue({ user: mockUser } as any);
+    });
+
+    it("propagates workflow_name from versions that already have it", async () => {
+      // mockVersionNode already has workflow_name: "My Workflow"
+      const res = await GET(makeRequest(), {
+        params: Promise.resolve({ slug: "test-workspace", workflowId: "10" }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.data.versions[0].workflow_name).toBe("My Workflow");
+    });
+
+    it("falls back to parent Workflow node name when version nodes lack workflow_name", async () => {
+      const nodeWithoutName = {
+        ref_id: "ref-no-name",
+        date_added_to_graph: "2024-01-01T00:00:00Z",
+        properties: {
+          workflow_version_id: 5,
+          workflow_id: 10,
+          workflow_json: '{"steps":[]}',
+          // workflow_name intentionally absent
+          published_at: null,
+        },
+      };
+
+      // First call: version search → node without name
+      // Second call: Workflow node search → returns the name
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [nodeWithoutName] }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            nodes: [{ properties: { workflow_name: "Recovered Name" } }],
+          }),
+        } as any);
+
+      const res = await GET(makeRequest(), {
+        params: Promise.resolve({ slug: "test-workspace", workflowId: "10" }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.data.versions[0].workflow_name).toBe("Recovered Name");
+    });
+
+    it("returns versions without errors when both version nodes and Workflow node lack a name", async () => {
+      const nodeWithoutName = {
+        ref_id: "ref-no-name",
+        date_added_to_graph: "2024-01-01T00:00:00Z",
+        properties: {
+          workflow_version_id: 5,
+          workflow_id: 10,
+          workflow_json: '{"steps":[]}',
+          published_at: null,
+        },
+      };
+
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [nodeWithoutName] }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [] }), // Workflow node has no name
+        } as any);
+
+      const res = await GET(makeRequest(), {
+        params: Promise.resolve({ slug: "test-workspace", workflowId: "10" }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.data.versions).toHaveLength(1);
+      expect(data.data.versions[0].workflow_name).toBeUndefined();
+    });
+
+    it("returns versions without errors when secondary Workflow node fetch fails (non-200)", async () => {
+      const nodeWithoutName = {
+        ref_id: "ref-no-name",
+        date_added_to_graph: "2024-01-01T00:00:00Z",
+        properties: {
+          workflow_version_id: 5,
+          workflow_id: 10,
+          workflow_json: '{"steps":[]}',
+          published_at: null,
+        },
+      };
+
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [nodeWithoutName] }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+        } as any);
+
+      const res = await GET(makeRequest(), {
+        params: Promise.resolve({ slug: "test-workspace", workflowId: "10" }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.data.versions).toHaveLength(1);
+    });
+
+    it("returns versions without errors when secondary Workflow node fetch throws", async () => {
+      const nodeWithoutName = {
+        ref_id: "ref-no-name",
+        date_added_to_graph: "2024-01-01T00:00:00Z",
+        properties: {
+          workflow_version_id: 5,
+          workflow_id: 10,
+          workflow_json: '{"steps":[]}',
+          published_at: null,
+        },
+      };
+
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: [nodeWithoutName] }),
+        } as any)
+        .mockRejectedValueOnce(new Error("Network failure"));
+
+      const res = await GET(makeRequest(), {
+        params: Promise.resolve({ slug: "test-workspace", workflowId: "10" }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.data.versions).toHaveLength(1);
     });
   });
 });

@@ -268,7 +268,7 @@ jobs:
         with:
           node-version: "22"
 
-      - run: npm install --global vercel@latest
+      - run: npm install --global vercel@53.4.0
       - run: vercel pull --yes --environment=preview --git-branch=${{ steps.slot.outputs.preview_branch }} --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################
@@ -333,6 +333,10 @@ jobs:
             "20260319000000_add_created_by_id_to_whiteboards" \
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='whiteboards' AND column_name='created_by_id';"
 
+          resolve_migration \
+            "20260302183303_add_plan_updated_at_to_feature" \
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='features' AND column_name='plan_updated_at';"
+
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
@@ -345,6 +349,20 @@ jobs:
           # base branch before the rename migration ran.
           echo "Pre-resolving migration 20260401174012 as applied..."
           npx prisma migrate resolve --applied "20260401174012" 2>&1 || true
+
+          # Resolve 20260302183303_add_plan_updated_at_to_feature.
+          # The column was already present on this Neon DB from a prior run; the
+          # migration SQL now uses IF NOT EXISTS so re-running is safe. If the column
+          # exists mark it applied; otherwise roll back so Prisma re-runs it.
+          echo "Resolving 20260302183303_add_plan_updated_at_to_feature..."
+          PLAN_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='features' AND column_name='plan_updated_at';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+          if [ "$PLAN_COL" = "1" ]; then
+            echo "  plan_updated_at column exists — marking as applied"
+            npx prisma migrate resolve --applied "20260302183303_add_plan_updated_at_to_feature" 2>&1 || true
+          else
+            echo "  plan_updated_at column absent — rolling back for Prisma to re-run"
+            npx prisma migrate resolve --rolled-back "20260302183303_add_plan_updated_at_to_feature" 2>&1 || true
+          fi
 
           # If 20260517120000_add_macaroon_org_and_trust_fields is stuck in a failed
           # state (from a prior run that hit the duplicate-column error), roll it back
@@ -416,6 +434,13 @@ jobs:
             echo "⚠️  Migration attempt $attempt failed, waiting 15s before retry..."
             # Re-resolve before each retry in case the previous attempt re-failed it
             npx prisma migrate resolve --applied "20260401174012" 2>&1 || true
+            # Resolve plan_updated_at migration: column already exists on this DB
+            PLAN_COL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='features' AND column_name='plan_updated_at';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$PLAN_COL" = "1" ]; then
+              npx prisma migrate resolve --applied "20260302183303_add_plan_updated_at_to_feature" 2>&1 || true
+            else
+              npx prisma migrate resolve --rolled-back "20260302183303_add_plan_updated_at_to_feature" 2>&1 || true
+            fi
             npx prisma migrate resolve --rolled-back "20260517120000_add_macaroon_org_and_trust_fields" 2>&1 || true
             npx prisma migrate resolve --rolled-back "20260411162658_add_connection_model" 2>&1 || true
             npx prisma migrate resolve --applied "20260411162658_add_connection_model" 2>&1 || true

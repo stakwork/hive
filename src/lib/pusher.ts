@@ -32,6 +32,14 @@ export const getWorkspaceChannelName = (workspaceSlug: string) => `workspace-${w
 export const getFeatureChannelName = (featureId: string) => `feature-${featureId}`;
 export const getWhiteboardChannelName = (whiteboardId: string) => `whiteboard-${whiteboardId}`;
 export const getOrgChannelName = (githubLogin: string) => `org-${githubLogin}`;
+// Per-canvas-conversation channel. The org canvas chat subscribes to this
+// for its active `SharedConversation` so server-side appends (planner
+// fan-out, autonomous canvas-agent turns, planner-form answers) push to an
+// open browser live, with no polling.
+export const getCanvasConversationChannelName = (conversationId: string) =>
+  `canvas-conversation-${conversationId}`;
+// Per-user channel for profile activity nudges
+export const getUserChannelName = (userId: string) => `user-${userId}`;
 
 // Event names
 export const PUSHER_EVENTS = {
@@ -82,4 +90,96 @@ export const PUSHER_EVENTS = {
   CANVAS_SELECTION_UPDATE: "canvas-selection-update",
   // Agent log upserted for a feature — triggers live Logs tab updates in plan view
   AGENT_LOG_UPDATED: "agent-log-updated",
+  // A canvas conversation's `messages` JSON changed server-side (planner
+  // fan-out, autonomous canvas-agent turn, or a planner-form answer). The
+  // payload is a lightweight nudge `{ conversationId, reason }`; the client
+  // refetches the conversation and merges in the new rows (avoids Pusher's
+  // 10KB-per-message cap and keeps a single source of truth).
+  CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",
+  // Per-user profile activity feed nudge
+  ACTIVITY_UPDATED: "activity-updated",
+  // Workflow version summary ready (AI-generated summary delivered via webhook)
+  WORKFLOW_SUMMARY_READY: "workflow-summary-ready",
 } as const;
+
+/**
+ * Reason a canvas conversation changed — purely informational, lets the
+ * client log / debug which server path fired the nudge.
+ */
+export type CanvasConversationUpdateReason =
+  | "planner"
+  | "autoturn"
+  | "form-answer"
+  | "research"
+  // A human appended a message to a shared conversation. Fires from the
+  // autosave PUT so other people sitting on the same shared room refetch
+  // and see the new turn live.
+  | "user-message"
+  // A user-driven canvas-agent turn was persisted server-side (the
+  // `/api/ask/quick` org path, in `after()`). The authoring tab filters
+  // its own turn out of the merge by id prefix; other viewers / a
+  // reopened tab live-sync it in.
+  | "user-turn"
+  // A feature's planner workflow reached a new (often terminal) status
+  // AFTER its message already fanned out — the stakwork webhook updated
+  // the latest planner row's `source.workflowStatus` in place (same id).
+  // The client reconciles existing planner rows' `source` from the
+  // server copy so the `SubAgentRunCard` pill re-derives live.
+  | "workflow-status";
+
+/**
+ * Fire-and-forget broadcast that a canvas conversation's `messages` JSON
+ * changed. Server-side append sites call this AFTER their write commits so
+ * an open browser refetches and shows the new rows immediately. Never
+ * throws — a Pusher outage must not break the underlying write.
+ */
+export function notifyCanvasConversationUpdated(
+  conversationId: string,
+  reason: CanvasConversationUpdateReason,
+): void {
+  // Wrapped in try/catch because `pusherServer.trigger` can throw
+  // *synchronously* (not just reject) — e.g. when the PUSHER_* env vars are
+  // unset the HMAC signing throws before a promise is ever returned (the case
+  // on CI, where leaking that throw would 500 the underlying write). The
+  // `.catch` only covers async rejections, so we need both.
+  try {
+    void pusherServer
+      .trigger(
+        getCanvasConversationChannelName(conversationId),
+        PUSHER_EVENTS.CANVAS_CONVERSATION_UPDATED,
+        { conversationId, reason, at: Date.now() },
+      )
+      .catch((err) => {
+        console.error(
+          "[pusher] notifyCanvasConversationUpdated failed (non-fatal):",
+          err,
+        );
+      });
+  } catch (err) {
+    console.error(
+      "[pusher] notifyCanvasConversationUpdated threw (non-fatal):",
+      err,
+    );
+  }
+}
+
+/**
+ * Fire-and-forget broadcast that the user's profile activity feed has new
+ * items. Creation endpoints call this AFTER their write commits so an open
+ * /profile page refetches without a manual refresh. Never throws — a Pusher
+ * outage must not break the underlying creation request.
+ */
+export function notifyActivityUpdated(userId: string): void {
+  try {
+    void pusherServer
+      .trigger(getUserChannelName(userId), PUSHER_EVENTS.ACTIVITY_UPDATED, {
+        userId,
+        at: Date.now(),
+      })
+      .catch((err) => {
+        console.error("[pusher] notifyActivityUpdated failed (non-fatal):", err);
+      });
+  } catch (err) {
+    console.error("[pusher] notifyActivityUpdated threw (non-fatal):", err);
+  }
+}

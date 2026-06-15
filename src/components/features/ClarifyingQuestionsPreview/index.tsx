@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { HelpCircle, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,11 +35,12 @@ function getMermaidCode(artifact: QuestionArtifact): string | null {
   if (
     typeof artifact.data === "object" &&
     artifact.data !== null &&
-    !Array.isArray(artifact.data) &&
-    typeof (artifact.data as Record<string, unknown>).code === "string" &&
-    ((artifact.data as Record<string, unknown>).code as string).trim().length > 0
+    !Array.isArray(artifact.data)
   ) {
-    return (artifact.data as Record<string, unknown>).code as string;
+    const firstString = Object.values(artifact.data as Record<string, unknown>).find(
+      (v) => typeof v === "string" && (v as string).trim().length > 0
+    );
+    if (firstString) return firstString as string;
   }
   return null;
 }
@@ -197,6 +198,8 @@ export function ClarifyingQuestionsPreview({
     isValidArtifact(currentQuestion.questionArtifact) &&
     currentQuestion.questionArtifact.type !== "color_swatch";
 
+  const isComparisonTableArtifact = isValidComparisonTableArtifact(currentQuestion?.questionArtifact);
+
   const updateAnswer = (update: Partial<Answer>) => {
     setAnswers((prev) => ({
       ...prev,
@@ -265,6 +268,14 @@ export function ClarifyingQuestionsPreview({
       handleNext();
     }
   };
+
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (showReview) {
+      submitButtonRef.current?.focus();
+    }
+  }, [showReview]);
 
   const getSelectedColor = (
     question: ClarifyingQuestion,
@@ -345,7 +356,8 @@ export function ClarifyingQuestionsPreview({
                 {currentQuestion.question}
               </h3>
 
-              {options &&
+              {!isComparisonTableArtifact &&
+                options &&
                 (currentQuestion.type === "single_choice" ||
                   currentQuestion.type === "multiple_choice") && (
                   <div className="space-y-2 mb-3">
@@ -401,6 +413,9 @@ export function ClarifyingQuestionsPreview({
               <QuestionArtifactRenderer
                 artifact={currentQuestion.questionArtifact!}
                 className="h-full"
+                selectedOptions={currentAnswer.selections}
+                onSelect={handleOptionSelect}
+                questionType={currentQuestion.type as "single_choice" | "multiple_choice"}
               />
             </div>
           </div>
@@ -516,6 +531,7 @@ export function ClarifyingQuestionsPreview({
           )}
 
           <Button
+            ref={submitButtonRef}
             size="sm"
             variant="default"
             onClick={handleNext}

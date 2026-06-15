@@ -37,6 +37,7 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: process.env.NEXT_SKIP_TYPE_CHECK === "true",
   },
+
   serverExternalPackages: ["sharp", "zod"],
   images: {
     remotePatterns: [

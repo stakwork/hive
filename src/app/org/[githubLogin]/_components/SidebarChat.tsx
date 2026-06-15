@@ -1,27 +1,53 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Send, Share2, X } from "lucide-react";
+import { FileIcon, Loader2, Mic, MicOff, Paperclip, RefreshCw, Send, Share2, X } from "lucide-react";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useControlKeyHold } from "@/hooks/useControlKeyHold";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CanvasHistoryPopover } from "./CanvasHistoryPopover";
+import { CanvasAgentSettingsPopover } from "./CanvasAgentSettingsPopover";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
-import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
+import { StreamingMessage } from "@/components/streaming";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { SidebarChatMessage } from "./SidebarChatMessage";
 import { ProposalCard, getProposalsFromMessage } from "./ProposalCard";
+import {
+  PROPOSE_FEATURE_TOOL,
+  PROPOSE_INITIATIVE_TOOL,
+  PROPOSE_MILESTONE_TOOL,
+} from "@/lib/proposals/types";
 import {
   SubAgentRunCard,
   getSubAgentRunsFromMessages,
 } from "./SubAgentRunCard";
+import {
+  ResearchRunCard,
+  getResearchRunsFromMessages,
+} from "./ResearchRunCard";
+import { PlannerFormSlot } from "./PlannerFormSlot";
+import { StartTasksSlot } from "./StartTasksSlot";
 import { AttentionList } from "./AttentionList";
 import type { AttentionItem } from "@/services/attention/topItems";
 import {
   useCanvasChatStore,
+  type CanvasAttachment,
   type CanvasChatMessage,
   type ToolCall,
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
+import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
 
 /**
  * Org-canvas sidebar chat. Renders the active conversation from the
@@ -66,9 +92,19 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       (activeId ? s.conversations[activeId]?.activeToolCalls : undefined) ??
       EMPTY_TOOL_CALLS,
   );
+  // The persisted row id. Sharing flips this row to `isShared` and hands
+  // out its id, so the sharer and every joiner live in the *same* room.
+  // Null until autosave has created the row — Share is gated on it.
+  const serverConversationId = useCanvasChatStore(
+    (s) =>
+      (activeId ? s.conversations[activeId]?.serverConversationId : null) ??
+      null,
+  );
+
+  const { id: workspaceId } = useWorkspace();
+  const { isActive } = useCanvasAgentActivity(activeId, workspaceId);
 
   const sendMessage = useSendCanvasChatMessage();
-  const inputClearRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Scroll the messages container (not the page) to the bottom on
@@ -80,12 +116,16 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
     el.scrollTop = el.scrollHeight;
   }, [messages, activeToolCalls, isLoading]);
 
-  const handleSend = async (content: string, clearInput: () => void) => {
+  const handleSend = async (
+    content: string,
+    attachments: CanvasAttachment[],
+    clearInput: () => void,
+  ) => {
     if (!activeId) return;
-    inputClearRef.current = clearInput;
     await sendMessage({
       conversationId: activeId,
       content,
+      attachments,
       onResponseStart: () => clearInput(),
     });
   };
@@ -95,40 +135,27 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   };
 
   const handleShare = async () => {
-    if (!activeId) return;
-    if (messages.length === 0) return;
+    if (!serverConversationId) return;
     try {
-      const firstUserMessage = messages.find(
-        (m) => m.role === "user" && m.content.trim(),
+      // Mark the LIVE conversation row as a shared room and hand out its
+      // id. No snapshot/fork: the sharer is already on this row, and
+      // anyone who opens `?chat=<id>` adopts the same row, so everyone
+      // appends to one conversation and live-sync keeps them in step.
+      const res = await fetch(
+        `/api/orgs/${githubLogin}/chat/conversations/${serverConversationId}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          // Empty delta — this PUT only flips the `isShared` flag.
+          body: JSON.stringify({ messages: [], isShared: true }),
+        },
       );
-      const title = firstUserMessage
-        ? firstUserMessage.content.slice(0, 50) +
-          (firstUserMessage.content.length > 50 ? "..." : "")
-        : "Shared Conversation";
-
-      const res = await fetch(`/api/org/${githubLogin}/chat/share`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages,
-          title,
-          // The endpoint requires this field; we have nothing to
-          // share. `[]` is truthy in JS so the falsy guard accepts it.
-          followUpQuestions: [],
-          source: "org-canvas",
-        }),
-      });
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "Failed to share conversation");
       }
-      const data = await res.json();
-      // Use the forking URL shape `?chat=<shareId>` rather than the
-      // standalone read-only viewer at `/chat/shared/<shareId>` that
-      // the server returns. The viewer page still works for anyone
-      // who lands on it directly.
-      const url = `${window.location.origin}/org/${githubLogin}?chat=${data.shareId}`;
+      const url = `${window.location.origin}/org/${githubLogin}?chat=${serverConversationId}`;
       await navigator.clipboard.writeText(url);
       toast.success("Share link copied to clipboard!");
     } catch (error) {
@@ -161,20 +188,97 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
     return byAnchor;
   }, [messages]);
 
+  // Group dispatched research runs by their anchor message, mirroring the
+  // subAgentRunsByAnchor pattern. Inbound fan-out rows win the anchor.
+  const researchRunsByAnchor = useMemo(() => {
+    const runs = getResearchRunsFromMessages(messages);
+    const byAnchor = new Map<string, typeof runs>();
+    for (const run of runs) {
+      const existing = byAnchor.get(run.anchorMessageId);
+      if (existing) existing.push(run);
+      else byAnchor.set(run.anchorMessageId, [run]);
+    }
+    return byAnchor;
+  }, [messages]);
+
+  // Render the SubAgentRunCard(s) anchored to a message. Extracted so it
+  // can render under BOTH a normal message AND a suppressed fan-out
+  // message (an inbound planner reply / form-answer — whose bubble is
+  // hidden but which is the anchor for an inbound-only run, e.g. the
+  // approval flow where the agent never made an outbound
+  // `send_to_feature_planner` call).
+  const renderSubAgentRuns = (runs: ReturnType<typeof getSubAgentRunsFromMessages>) => (
+    <div className="space-y-1.5">
+      {runs.map((run) => (
+        <div key={run.featureId} className="space-y-1.5">
+          <SubAgentRunCard run={run} />
+          {/*
+            Phase 4: an unanswered planner FORM surfaces OUTSIDE the
+            collapsed card so the user can answer it inline without
+            expanding or leaving canvas chat. Only the run with a
+            `pendingForm` renders a slot.
+          */}
+          {run.pendingForm && (
+            <PlannerFormSlot
+              githubLogin={githubLogin}
+              featureId={run.featureId}
+              featureTitle={run.featureTitle}
+              plannerMessageId={run.pendingForm.plannerMessageId}
+              questions={run.pendingForm.questions}
+            />
+          )}
+          {/*
+            Offer a Start Tasks button once the planner has replied at
+            all — NOT just when a reply carried a `TASKS` artifact.
+            Tasks created by the remote planner over MCP
+            (`create_task` / `create_feature_task`) hit the DB directly
+            with no artifact, no chat message, and no fan-out, so
+            `run.hasGeneratedTasks` (artifact-derived) stays false even
+            though real tasks exist. The slot itself reads the live
+            ready-count (`GET …/tasks/assign-all`) and renders nothing
+            when zero, so showing it for any answered run is safe — the
+            count is the artifact-independent source of truth. We pass
+            `revalidateKey` (the anchor, which moves on each new planner
+            reply) so a closing "tasks created" message re-queries the
+            count and surfaces the button live. Suppressed while a FORM
+            is pending — answer the planner first.
+          */}
+          {!run.pendingForm &&
+            run.messages.some((m) => m.direction === "in") && (
+              <StartTasksSlot
+                featureId={run.featureId}
+                featureTitle={run.featureTitle}
+                revalidateKey={run.anchorMessageId}
+              />
+            )}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="flex h-full flex-col min-h-0">
       <div className="flex items-center justify-between px-3 py-2 border-b">
-        <span className="text-xs font-medium text-muted-foreground">Agent</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground">Ask Jamie</span>
+          {isActive && (
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
+              aria-label="agent active"
+            />
+          )}
+        </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={handleShare}
-            disabled={!hasMessages}
+            disabled={!serverConversationId}
             title="Copy share link"
             className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <Share2 className="w-4 h-4" />
           </button>
+          <CanvasAgentSettingsPopover />
           <CanvasHistoryPopover githubLogin={githubLogin} />
           <button
             type="button"
@@ -212,30 +316,101 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               return null;
             }
 
+            const subAgentRuns = subAgentRunsByAnchor.get(message.id);
+
             // Fan-out messages from planners (and Phase 4's planner-
-            // form answers) render inside their `SubAgentRunCard`,
-            // not as top-level chat bubbles. They stay in the
-            // messages array so `getSubAgentRunsFromMessages` can
-            // walk them and so they round-trip through autosave /
-            // share. Same shape as the approval/rejection early-
-            // return above. See
+            // form answers) don't render as top-level chat bubbles —
+            // BUT they're the anchor for inbound-only runs (the approval
+            // flow: the agent never made an outbound
+            // `send_to_feature_planner` call, so the planner's reply is
+            // the only activity and thus the anchor). Suppress the
+            // bubble, but still render any SubAgentRunCard anchored
+            // here, otherwise the card disappears the moment the planner
+            // replies. They stay in the messages array so
+            // `getSubAgentRunsFromMessages` can walk them and so they
+            // round-trip through autosave / share. See
             // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
+            const researchRuns = researchRunsByAnchor.get(message.id);
+
             if (
               message.source?.kind === "planner" ||
-              message.source?.kind === "user-answered-planner-form"
+              message.source?.kind === "user-answered-planner-form" ||
+              message.source?.kind === "research"
             ) {
-              return null;
+              if (
+                (!subAgentRuns || subAgentRuns.length === 0) &&
+                (!researchRuns || researchRuns.length === 0)
+              )
+                return null;
+              return (
+                <div key={message.id} className="space-y-1.5">
+                  {subAgentRuns && renderSubAgentRuns(subAgentRuns)}
+                  {researchRuns?.map((run) => (
+                    <ResearchRunCard
+                      key={run.researchId}
+                      run={run}
+                      githubLogin={githubLogin}
+                    />
+                  ))}
+                </div>
+              );
             }
 
             const proposals = getProposalsFromMessage(message);
-            const subAgentRuns = subAgentRunsByAnchor.get(message.id);
+
+            // Collect tool-call IDs that produced a ProposalCard (successful
+            // proposal outputs only — failed calls stay in the timeline).
+            const proposalToolCallIds = new Set<string>();
+            if (proposals.length > 0) {
+              for (const tc of message.toolCalls ?? []) {
+                if (
+                  tc.toolName !== PROPOSE_FEATURE_TOOL &&
+                  tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
+                  tc.toolName !== PROPOSE_MILESTONE_TOOL
+                )
+                  continue;
+                const o = tc.output;
+                if (!o || typeof o !== "object" || "error" in o) continue;
+                proposalToolCallIds.add(tc.id);
+              }
+            }
+
+            const filteredTimeline =
+              proposalToolCallIds.size > 0
+                ? message.timeline?.filter(
+                    (item) =>
+                      item.type !== "toolCall" ||
+                      !proposalToolCallIds.has(item.id),
+                  )
+                : message.timeline;
+
+            // A streamed tool-call row carries a `timeline` (and empty
+            // text content). Render it as rich, expandable tool cards via
+            // the shared `<StreamingMessage>` — names, args, outputs, and
+            // live status, in order with any interleaved text. Plain text
+            // rows fall through to `SidebarChatMessage` so the bubble look
+            // and the `?r=`/`?c=` deep-link interceptor are preserved.
+            const hasTimeline = !!filteredTimeline?.length;
 
             return (
               <div key={message.id} className="space-y-1.5">
-                <SidebarChatMessage
-                  message={message}
-                  isStreaming={isMessageStreaming}
-                />
+                {hasTimeline ? (
+                  <div className="w-full text-foreground/90">
+                    <StreamingMessage
+                      message={{
+                        id: message.id,
+                        content: message.content,
+                        timeline: filteredTimeline,
+                        isStreaming: isMessageStreaming,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <SidebarChatMessage
+                    message={message}
+                    isStreaming={isMessageStreaming}
+                  />
+                )}
                 {proposals.length > 0 && (
                   <div className="space-y-1.5">
                     {proposals.map((p) => (
@@ -248,13 +423,18 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                     ))}
                   </div>
                 )}
-                {subAgentRuns && subAgentRuns.length > 0 && (
-                  <div className="space-y-1.5">
-                    {subAgentRuns.map((run) => (
-                      <SubAgentRunCard key={run.featureId} run={run} />
-                    ))}
-                  </div>
-                )}
+                {subAgentRuns &&
+                  subAgentRuns.length > 0 &&
+                  renderSubAgentRuns(subAgentRuns)}
+                {researchRuns &&
+                  researchRuns.length > 0 &&
+                  researchRuns.map((run) => (
+                    <ResearchRunCard
+                      key={run.researchId}
+                      run={run}
+                      githubLogin={githubLogin}
+                    />
+                  ))}
                 <MessageArtifacts artifactIds={message.artifactIds} />
               </div>
             );
@@ -288,14 +468,16 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               </div>
             </motion.div>
           )}
-          {activeToolCalls.length > 0 && (
-            <ToolCallIndicator toolCalls={activeToolCalls} />
-          )}
         </div>
       </div>
 
       <div className="border-t p-2">
-        <SidebarChatInput onSend={handleSend} disabled={isLoading} />
+        <SidebarChatInput
+          onSend={handleSend}
+          disabled={isLoading}
+          workspaceId={workspaceId}
+          orgId={githubLogin}
+        />
       </div>
     </div>
   );
@@ -364,62 +546,225 @@ function MessageArtifacts({ artifactIds }: { artifactIds?: string[] }) {
 
 const EMPTY_ARTIFACT_IDS: string[] = [];
 
+// ─── File attachment types ───────────────────────────────────────────────────
+
+interface PendingFile {
+  id: string;
+  file: File;
+  /** Object URL — revoke on remove/send to free memory. */
+  preview: string;
+  uploading: boolean;
+  error?: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  /** Set once upload completes; undefined while in-flight or errored. */
+  s3Path?: string;
+}
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 interface SidebarChatInputProps {
-  onSend: (message: string, clearInput: () => void) => Promise<void>;
+  onSend: (
+    message: string,
+    attachments: CanvasAttachment[],
+    clearInput: () => void,
+  ) => Promise<void>;
   disabled?: boolean;
+  /** Workspace id for the S3 upload context. */
+  workspaceId: string;
+  /** Fallback org id when workspaceId is absent (org canvas context). */
+  orgId?: string;
 }
 
 /**
- * Minimal chat input for the sidebar. Auto-growing textarea (1–6
- * rows), Enter-to-send, Shift+Enter for newline. Intentionally
- * separate from `DashboardChat/ChatInput` — the prop surface
- * diverges far enough that sharing would require ugly conditionals
- * (no image upload, no workspace pills, no `+ workspace` button).
+ * Minimal chat input for the sidebar. Auto-growing textarea (CSS
+ * field-sizing-content), Enter-to-send, Shift+Enter for newline.
+ * Supports file attachments via paperclip button, drag-and-drop,
+ * and clipboard paste. Intentionally separate from
+ * `DashboardChat/ChatInput` — the prop surface diverges enough that
+ * sharing would require ugly conditionals (workspace pills, etc.).
  */
-const MAX_ROWS = 5;
-const LINE_HEIGHT_PX = 20; // matches text-sm line-height
-const MAX_HEIGHT_PX = MAX_ROWS * LINE_HEIGHT_PX;
-
-function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
+function SidebarChatInput({
+  onSend,
+  disabled = false,
+  workspaceId,
+  orgId,
+}: SidebarChatInputProps) {
   const [input, setInput] = useState("");
-  const [height, setHeight] = useState<string>("auto");
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Derived — no extra state needed
+  const isUploading = pendingFiles.some((f) => f.uploading);
+
+  const {
+    isListening,
+    transcript,
+    isSupported,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useSpeechRecognition();
+
+  const preVoiceInputRef = useRef("");
+
+  // Append transcript to existing input (do not overwrite)
+  useEffect(() => {
+    if (transcript) {
+      const newValue = preVoiceInputRef.current
+        ? `${preVoiceInputRef.current} ${transcript}`.trim()
+        : transcript;
+      setInput(newValue);
+    }
+  }, [transcript]);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      stopListening();
+    } else {
+      preVoiceInputRef.current = input;
+      startListening();
+    }
+  }, [isListening, stopListening, startListening, input]);
+
+  useControlKeyHold({
+    onStart: () => {
+      preVoiceInputRef.current = input;
+      startListening();
+    },
+    onStop: stopListening,
+    enabled: isSupported && !disabled,
+  });
 
   // ─── Pending-draft consumption ─────────────────────────────────────
-  // Canvas affordances (e.g. the "+ Create connection" button on a
-  // selected edge) compose a message FOR the user by writing to
-  // `pendingInputDraft` in the store. We adopt the value once and
-  // immediately clear it so a tab-switch back to chat doesn't
-  // re-apply a stale draft. The textarea height is recomputed from
-  // the new content so multi-line drafts don't render as a single
-  // truncated row.
   const pendingDraft = useCanvasChatStore((s) => s.pendingInputDraft);
   useEffect(() => {
     if (pendingDraft === null) return;
     setInput(pendingDraft);
-    // Defer the focus + height-fit to the next frame so the textarea
-    // has the new value committed before we measure scrollHeight.
     requestAnimationFrame(() => {
       const el = inputRef.current;
       if (el) {
         el.focus();
-        // Move the caret to the end so the user can append context.
         el.selectionStart = el.selectionEnd = el.value.length;
-        el.style.height = "auto";
-        const newHeight = Math.min(el.scrollHeight, MAX_HEIGHT_PX);
-        setHeight(`${newHeight}px`);
       }
     });
     useCanvasChatStore.getState().setPendingInputDraft(null);
   }, [pendingDraft]);
 
+  // ─── Unmount cleanup — revoke all preview object URLs ──────────────
+  useEffect(() => {
+    return () => {
+      setPendingFiles((prev) => {
+        prev.forEach((f) => URL.revokeObjectURL(f.preview));
+        return [];
+      });
+    };
+  }, []);
+
+  // ─── File upload helpers ────────────────────────────────────────────
+
+  const uploadFile = useCallback(
+    async (pf: PendingFile) => {
+      setPendingFiles((prev) =>
+        prev.map((f) =>
+          f.id === pf.id ? { ...f, uploading: true, error: undefined } : f,
+        ),
+      );
+      try {
+        const uploadContext = workspaceId ? { workspaceId } : { orgId: orgId! };
+        const result = await uploadFileToS3(pf.file, uploadContext);
+        setPendingFiles((prev) =>
+          prev.map((f) =>
+            f.id === pf.id
+              ? { ...f, uploading: false, s3Path: result.path }
+              : f,
+          ),
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Upload failed";
+        setPendingFiles((prev) =>
+          prev.map((f) =>
+            f.id === pf.id ? { ...f, uploading: false, error: msg } : f,
+          ),
+        );
+        toast.error(`Failed to upload ${pf.filename}`, { description: msg });
+      }
+    },
+    [workspaceId, orgId],
+  );
+
+  const handleFiles = useCallback(
+    (files: FileList | File[]) => {
+      const arr = Array.from(files);
+      const newFiles: PendingFile[] = [];
+      for (const file of arr) {
+        if (file.size > MAX_FILE_SIZE) {
+          toast.error(`${file.name} exceeds 10 MB`);
+          continue;
+        }
+        newFiles.push({
+          id: crypto.randomUUID(),
+          file,
+          preview: URL.createObjectURL(file),
+          uploading: false,
+          filename: file.name,
+          mimeType: file.type,
+          size: file.size,
+        });
+      }
+      if (!newFiles.length) return;
+      setPendingFiles((prev) => [...prev, ...newFiles]);
+      newFiles.forEach((pf) => uploadFile(pf));
+    },
+    [uploadFile],
+  );
+
+  const removeFile = useCallback((id: string) => {
+    setPendingFiles((prev) => {
+      const f = prev.find((f) => f.id === id);
+      if (f) URL.revokeObjectURL(f.preview);
+      return prev.filter((f) => f.id !== id);
+    });
+  }, []);
+
+  // ─── Submit ─────────────────────────────────────────────────────────
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || disabled) return;
+
+    if (pendingFiles.some((f) => f.uploading)) {
+      toast.error("Please wait for uploads to finish");
+      return;
+    }
+    if (pendingFiles.some((f) => f.error)) {
+      toast.error("Remove failed uploads before sending");
+      return;
+    }
+
     const message = input.trim();
-    await onSend(message, () => {
-      setInput("");
-      setHeight("auto");
+    if (isListening) stopListening();
+    resetTranscript();
+    preVoiceInputRef.current = "";
+
+    const attachments: CanvasAttachment[] = pendingFiles
+      .filter((f) => f.s3Path)
+      .map((f) => ({
+        path: f.s3Path!,
+        filename: f.filename,
+        mimeType: f.mimeType,
+        size: f.size,
+      }));
+
+    // Revoke preview URLs and clear pending files
+    pendingFiles.forEach((f) => URL.revokeObjectURL(f.preview));
+    setPendingFiles([]);
+    setInput(""); // clear immediately on send
+
+    await onSend(message, attachments, () => {
       inputRef.current?.focus();
     });
   };
@@ -433,41 +778,220 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const newHeight = Math.min(el.scrollHeight, MAX_HEIGHT_PX);
-    setHeight(`${newHeight}px`);
   };
 
-  const overflowY =
-    height !== "auto" && parseInt(height) >= MAX_HEIGHT_PX ? "auto" : "hidden";
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const imageFiles = Array.from(e.clipboardData.items)
+      .filter((i) => i.type.startsWith("image/"))
+      .map((i) => i.getAsFile())
+      .filter(Boolean) as File[];
+    if (imageFiles.length) {
+      e.preventDefault();
+      handleFiles(imageFiles);
+    }
+  };
+
+  // ─── Drag-and-drop ──────────────────────────────────────────────────
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget === e.target) setIsDragging(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  };
+
+  // Button column count: send is always present, mic is conditional, paperclip is always present
+  // right-1.5 = send, right-9 = mic (when supported), right-[3.75rem] = paperclip (when mic present), right-9 = paperclip (when no mic)
+  const sendRight = "right-1.5";
+  const micRight = "right-9";
+  const paperclipRight = isSupported ? "right-[3.75rem]" : "right-9";
+  const textareaPaddingRight = isSupported
+    ? "pr-[calc(theme(space.7)*3+theme(space.5))]"
+    : "pr-[calc(theme(space.7)*2+theme(space.5))]";
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2">
-      <div className="relative flex-1 min-w-0">
-        <textarea
-          ref={inputRef}
-          placeholder="Ask the agent…"
-          value={input}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          disabled={disabled}
-          rows={1}
-          style={{ height, overflowY }}
-          className={`w-full px-3 py-2 pr-10 rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${
-            disabled ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-        />
-        <Button
-          type="submit"
-          size="icon"
-          disabled={!input.trim() || disabled}
-          className="absolute right-1.5 top-1/2 -translate-y-[60%] h-7 w-7 rounded-full"
+    <div className="flex flex-col gap-1.5">
+      {/* ── Pending file chips ─────────────────────────────────────────── */}
+      {pendingFiles.length > 0 && (
+        <div
+          className="grid grid-cols-3 gap-1.5 px-1 pb-1.5"
+          data-testid="pending-files-grid"
         >
-          <Send className="w-3.5 h-3.5" />
-        </Button>
-      </div>
-    </form>
+          {pendingFiles.map((pf) => (
+            <div
+              key={pf.id}
+              className={cn(
+                "relative rounded-lg border overflow-hidden bg-muted",
+                pf.error && "border-red-500",
+              )}
+              data-testid={`pending-file-${pf.id}`}
+            >
+              <div className="aspect-square relative">
+                {pf.mimeType.startsWith("image/") ? (
+                  <img
+                    src={pf.preview}
+                    alt={pf.filename}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <FileIcon className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                )}
+                {pf.uploading && (
+                  <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
+                    <Loader2
+                      className="h-5 w-5 animate-spin text-primary"
+                      data-testid={`uploading-spinner-${pf.id}`}
+                    />
+                  </div>
+                )}
+                {pf.error && (
+                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center gap-1 p-1">
+                    <p className="text-xs text-red-500 text-center">Failed</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-1.5 text-xs"
+                      onClick={() => uploadFile(pf)}
+                    >
+                      <RefreshCw className="h-2.5 w-2.5 mr-0.5" />
+                      Retry
+                    </Button>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeFile(pf.id)}
+                  data-testid={`remove-file-${pf.id}`}
+                  className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-background/80 hover:bg-background"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </div>
+              <div className="px-1 py-0.5 text-[10px] truncate text-center text-muted-foreground">
+                {pf.filename}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Input form ─────────────────────────────────────────────────── */}
+      <form
+        onSubmit={handleSubmit}
+        className="flex items-end gap-2"
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div className="relative flex-1 min-w-0">
+          <Textarea
+            ref={inputRef}
+            placeholder={isListening ? "Listening…" : "Ask the agent…"}
+            value={input}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            disabled={disabled}
+            isDragging={isDragging}
+            isUploading={isUploading}
+            rows={1}
+            className={`w-full px-3 py-2 ${textareaPaddingRight} rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-[color,border-color,box-shadow,opacity] resize-none field-sizing-content max-h-[100px] overflow-y-auto min-h-0 ${
+              disabled ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+          />
+
+          {/* Paperclip button */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={disabled}
+                  data-testid="paperclip-button"
+                  className={`absolute ${paperclipRight} top-1/2 -translate-y-[60%] h-7 w-7 rounded-full text-muted-foreground hover:text-foreground`}
+                >
+                  <Paperclip className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Attach file</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="*/*"
+            multiple
+            className="hidden"
+            data-testid="file-input"
+            onChange={(e) => {
+              if (e.target.files?.length) handleFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+
+          {/* Mic button */}
+          {isSupported && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={toggleListening}
+                    disabled={disabled}
+                    data-testid="mic-button"
+                    className={`absolute ${micRight} top-1/2 -translate-y-[60%] h-7 w-7 rounded-full ${
+                      isListening
+                        ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {isListening ? (
+                      <MicOff className="w-3.5 h-3.5" />
+                    ) : (
+                      <Mic className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {isListening
+                    ? "Stop recording"
+                    : "Start voice input (or hold Ctrl)"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {/* Send button */}
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!input.trim() || disabled || isUploading}
+            className={`absolute ${sendRight} top-1/2 -translate-y-[60%] h-7 w-7 rounded-full`}
+          >
+            <Send className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }

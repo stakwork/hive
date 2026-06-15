@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getJarvisUrl } from "@/lib/utils/swarm";
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     console.log(`[Evals Requirements POST] slug=${slug}, evalSetId=${evalSetId}, userId=${userOrResponse.id}`);
 
     const body = await request.json();
-    const { name, description, prompt_snippet, positive_cases, negative_cases, order } =
+    const { name, description, prompt_snippet, desirable_cases, undesirable_cases, order } =
       body ?? {};
 
     if (!name || typeof name !== "string" || !name.trim()) {
@@ -111,15 +112,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         { status: 400 },
       );
     }
-    if (!Array.isArray(positive_cases) || positive_cases.length === 0) {
+    if (!Array.isArray(desirable_cases) || desirable_cases.length === 0) {
       return NextResponse.json(
-        { error: "positive_cases must be a non-empty array" },
+        { error: "desirable_cases must be a non-empty array" },
         { status: 400 },
       );
     }
-    if (!Array.isArray(negative_cases) || negative_cases.length === 0) {
+    if (!Array.isArray(undesirable_cases) || undesirable_cases.length === 0) {
       return NextResponse.json(
-        { error: "negative_cases must be a non-empty array" },
+        { error: "undesirable_cases must be a non-empty array" },
         { status: 400 },
       );
     }
@@ -149,14 +150,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const config = { jarvisUrl, apiKey: swarmApiKey };
     console.log(`[Evals Requirements POST] Jarvis URL: ${jarvisUrl}`);
 
+    const id = randomUUID();
     const nodeResult = await addNode(config, {
       node_type: "EvalRequirement",
       node_data: {
+        id,
         name: name.trim(),
         description,
         prompt_snippet: prompt_snippet.trim(),
-        positive_cases,
-        negative_cases,
+        desirable_cases,
+        undesirable_cases,
       },
     });
     console.log(`[Evals Requirements POST] addNode result: success=${nodeResult.success}, ref_id=${nodeResult.ref_id ?? 'n/a'}, error=${nodeResult.error ?? 'none'}`);

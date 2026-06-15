@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { Prisma, PodUsageStatus, WorkflowStatus, NotificationTriggerType } from "@prisma/client";
 import {
@@ -537,25 +537,90 @@ export async function POST(request: NextRequest) {
       // Fan out the planner's ASSISTANT message to the canvas
       // conversation that owns this feature (if any). The fan-out
       // worker is failure-tolerant — it logs and swallows errors so
-      // a fan-out hiccup never blocks the webhook response. See
+      // a fan-out hiccup never blocks the webhook response. It appends
+      // the message, pushes a live Pusher nudge, and RETURNS the
+      // auto-turn wake reason (or null). See
       // `src/services/canvas-planner-fanout.ts` for the lock /
-      // idempotency model. Phase 3 will add the autonomous-canvas-
-      // agent invocation inside the worker, gated by
-      // `CANVAS_AUTONOMOUS_TURNS_ENABLED`.
+      // idempotency model.
       try {
         const fanOutFeature = await db.feature.findUnique({
           where: { id: featureId },
           select: {
             id: true,
+            title: true,
             parentCanvasConversationId: true,
             workspaceId: true,
+            // Echoed onto the planner row's `source` so an inbound-only
+            // SubAgentRunCard shows the real name / workspace / plan link
+            // instead of "Unknown feature".
+            workspace: { select: { slug: true, name: true } },
             // Phase 3: feeds the "actionable" check (terminal
             // workflow transitions wake the canvas agent).
             workflowStatus: true,
           },
         });
         if (fanOutFeature) {
-          await fanOutPlannerMessageToCanvas(fanOutFeature, chatMessage);
+          const wakeReason = await fanOutPlannerMessageToCanvas(
+            {
+              id: fanOutFeature.id,
+              parentCanvasConversationId:
+                fanOutFeature.parentCanvasConversationId,
+              workspaceId: fanOutFeature.workspaceId,
+              title: fanOutFeature.title,
+              workspaceSlug: fanOutFeature.workspace?.slug ?? null,
+              workspaceName: fanOutFeature.workspace?.name ?? null,
+              workflowStatus: fanOutFeature.workflowStatus,
+            },
+            chatMessage,
+          );
+          // Schedule the autonomous canvas-agent turn AFTER the webhook
+          // responds (Next.js `after()`), so the LLM turn (10–30s) never
+          // blocks the ack back to Stakwork or holds the request open.
+          // The turn itself is gated behind `CANVAS_AUTONOMOUS_TURNS_ENABLED`
+          // (off by default) and is failure-tolerant.
+          const conversationId = fanOutFeature.parentCanvasConversationId;
+          if (wakeReason && conversationId) {
+            console.log("[chat/response] scheduling canvas auto-turn", {
+              conversationId,
+              featureId: fanOutFeature.id,
+              plannerMessageId: chatMessage.id,
+              wakeReason,
+            });
+            after(async () => {
+              try {
+                const { invokeCanvasAgentOnPlannerMessage } = await import(
+                  "@/services/canvas-agent-autoturn"
+                );
+                await invokeCanvasAgentOnPlannerMessage({
+                  conversationId,
+                  featureId: fanOutFeature.id,
+                  plannerMessageId: chatMessage.id,
+                  wakeReason,
+                });
+              } catch (e) {
+                console.error(
+                  "[chat/response] canvas auto-turn (after) failed (non-fatal):",
+                  e,
+                );
+              }
+            });
+          } else {
+            // No turn scheduled — log WHY so this is diagnosable without
+            // any `[canvas-autoturn]` line appearing. Two distinct cases:
+            // the feature isn't owned by a canvas conversation, or the
+            // planner message wasn't classified as actionable (see the
+            // `[canvas-planner-fanout] classified planner message` log for
+            // the per-signal breakdown).
+            console.log("[chat/response] canvas auto-turn NOT scheduled", {
+              featureId: fanOutFeature.id,
+              plannerMessageId: chatMessage.id,
+              conversationId,
+              wakeReason,
+              reason: !conversationId
+                ? "feature not owned by a canvas conversation (no parentCanvasConversationId)"
+                : "planner message not actionable (see [canvas-planner-fanout] classification log)",
+            });
+          }
         }
       } catch (e) {
         console.error(
@@ -661,7 +726,11 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     console.error("Error creating chat response:", error);
-    return NextResponse.json({ error: "Failed to create chat response" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create chat response", detail },
+      { status: 500 },
+    );
   }
 }

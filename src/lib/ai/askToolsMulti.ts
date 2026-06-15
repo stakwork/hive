@@ -265,7 +265,7 @@ export function askToolsMulti(
 
     // search_logs (via MCP)
     allTools[`${prefix}__search_logs`] = tool({
-      description: `[${ws.slug}] Search application logs for ${ws.slug} using Quickwit. Supports Lucene query syntax.`,
+      description: `[${ws.slug}] Search application logs for ${ws.slug} using Quickwit. Supports Lucene query syntax. Does not support wildcards. IMPORTANT: every term MUST include a field prefix (e.g. "message:", "level:", "path:") — there is no default search field, so a bare query like "CLN" fails with a 400 error. To search a keyword use "message:CLN".`,
       inputSchema: z.object({
         query: z.string().describe("Lucene query string"),
         max_hits: z
@@ -394,6 +394,92 @@ export function askToolsMulti(
         } catch (e) {
           console.error(`Error checking status for ${ws.slug}:`, e);
           return `Could not check status for ${ws.slug}`;
+        }
+      },
+    });
+
+    // logs_agent — deep, run-grounded analysis of agent execution logs.
+    // Heavier than `${prefix}__search_logs` (a quick Lucene keyword
+    // search); prefer search_logs for simple lookups.
+    allTools[`${prefix}__logs_agent`] = tool({
+      description:
+        `[${ws.slug}] Invoke the Logs Agent for deep, run-grounded analysis of agent execution logs in ${ws.slug}. ` +
+        `Use when the user asks what happened during a run, on a swarm, to debug agent failures, or wants a synthesised explanation backed by real log data. ` +
+        `Heavier than ${prefix}__search_logs — prefer that for simple keyword lookups. ` +
+        `Optionally narrow to a specific feature or task via featureId/taskId.`,
+      inputSchema: z.object({
+        prompt: z.string().describe("The question or debugging query to send to the Logs Agent"),
+        featureId: z
+          .string()
+          .optional()
+          .describe("Optional feature ID to scope the analysis to runs attached to this feature"),
+        taskId: z
+          .string()
+          .optional()
+          .describe("Optional task ID to scope the analysis to runs attached to this task"),
+      }),
+      execute: async ({
+        prompt,
+        featureId,
+        taskId,
+      }: {
+        prompt: string;
+        featureId?: string;
+        taskId?: string;
+      }) => {
+        const scope = {
+          featureIds: featureId ? [featureId] : undefined,
+          taskIds: taskId ? [taskId] : undefined,
+        };
+
+        try {
+          // Lazy imports — these modules pull in heavy deps (Prisma,
+          // EncryptionService, swarm-access). Dynamic import keeps them
+          // out of every test worker that touches askToolsMulti.
+          const [{ runLogsAgent }, { logger }] = await Promise.all([
+            import("@/services/logs-agent"),
+            import("@/lib/logger"),
+          ]);
+
+          logger.info("[LogsAgent] logs_agent tool invoked from dashboard chat", "LogsAgent", {
+            workspace: ws.slug,
+            workspaceId: ws.workspaceId,
+            userId: ws.userId,
+            hasFeatureScope: !!featureId,
+            hasTaskScope: !!taskId,
+          });
+
+          const result = await runLogsAgent({
+            slug: ws.slug,
+            userId: ws.userId,
+            prompt,
+            scope,
+          });
+
+          if (result.success) {
+            return result.data.answer;
+          }
+
+          const { error } = result;
+          if (error.type === "TIMEOUT") {
+            return `The Logs Agent timed out before returning a result for ${ws.slug}. Please try again or narrow your query to a specific feature or task.`;
+          }
+          if (error.type === "AGENT_FAILED") {
+            return `The Logs Agent encountered an error for ${ws.slug}: ${error.message}`;
+          }
+          if (error.type === "ACCESS_DENIED") {
+            return `Access denied to the Logs Agent for ${ws.slug}.`;
+          }
+          if (error.type === "WORKSPACE_NOT_FOUND") {
+            return `Workspace ${ws.slug} not found — the Logs Agent could not be invoked.`;
+          }
+          if (error.type === "SWARM_NOT_ACTIVE" || error.type === "SWARM_NOT_CONFIGURED") {
+            return `The ${ws.slug} swarm is not active. The Logs Agent is unavailable.`;
+          }
+          return `The Logs Agent encountered an unexpected error for ${ws.slug}. Please try again.`;
+        } catch (e) {
+          console.error(`[LogsAgent] logs_agent tool unexpected error for ${ws.slug}`, String(e));
+          return `Could not invoke the Logs Agent for ${ws.slug}. Please try again.`;
         }
       },
     });

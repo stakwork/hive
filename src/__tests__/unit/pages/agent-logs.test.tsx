@@ -26,10 +26,27 @@ vi.mock("@/hooks/useWorkspace", () => ({
 }));
 
 vi.mock("@/components/agent-logs", () => ({
-  AgentLogsTable: ({ onRowClick }: { onRowClick: (id: string) => void }) => (
-    <button data-testid="row" onClick={() => onRowClick("log-abc")}>
-      Row
-    </button>
+  AgentLogsTable: ({
+    onRowClick,
+    showUserColumn,
+    logs,
+  }: {
+    onRowClick: (id: string) => void;
+    showUserColumn?: boolean;
+    logs?: Array<{ id: string; initiatorName?: string | null; initiatorImage?: string | null }>;
+  }) => (
+    <div>
+      {showUserColumn && <th data-testid="user-column-header">User</th>}
+      {showUserColumn &&
+        logs?.map((log) => (
+          <div key={log.id} data-testid="user-avatar-cell">
+            {log.initiatorName ?? "Anonymous"}
+          </div>
+        ))}
+      <button data-testid="row" onClick={() => onRowClick("log-abc")}>
+        Row
+      </button>
+    </div>
   ),
 }));
 
@@ -79,12 +96,30 @@ vi.mock("@/components/ui/table", () => ({
 vi.mock("next/link", () => ({
   default: ({ children, href }: any) => <a href={href}>{children}</a>,
 }));
+const TabsOnValueChangeCtx = React.createContext<((v: string) => void) | null>(null);
+vi.mock("@/components/ui/tabs", () => ({
+  Tabs: ({ children, value, onValueChange }: any) => (
+    <TabsOnValueChangeCtx.Provider value={onValueChange}>
+      <div data-active-tab={value}>{children}</div>
+    </TabsOnValueChangeCtx.Provider>
+  ),
+  TabsList: ({ children }: any) => <div role="tablist">{children}</div>,
+  TabsTrigger: ({ children, value }: any) => {
+    const onChange = React.useContext(TabsOnValueChangeCtx);
+    return (
+      <button role="tab" aria-label={children} onClick={() => onChange?.(value)} data-value={value}>
+        {children}
+      </button>
+    );
+  },
+}));
 vi.mock("lucide-react", () => ({
   FileText: () => null,
   Search: () => null,
   ChevronLeft: () => null,
   ChevronRight: () => null,
   MessageSquare: () => null,
+  ExternalLink: () => null,
 }));
 
 // --- Import page after all mocks are set up ---
@@ -261,5 +296,130 @@ describe("AgentLogsPage — row click navigation", () => {
 
     // No dialog should be present — navigation happens instead
     expect(screen.queryByTestId("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("AgentLogsPage — canvas tab showUserColumn", () => {
+  function mockCanvasFetch(items: object[]) {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("source=canvas")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            items,
+            pagination: { page: 1, limit: 20, total: items.length, totalPages: 1 },
+          }),
+        });
+      }
+      // Default: empty agent logs
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: [], hasMore: false }),
+      });
+    });
+  }
+
+  test("canvas tab passes showUserColumn=true to AgentLogsTable", async () => {
+    const user = userEvent.setup();
+    mockCanvasFetch([
+      {
+        id: "conv-1",
+        title: "Canvas Chat",
+        lastMessageAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        preview: null,
+        source: "org-canvas",
+        isShared: false,
+        creatorId: "user-1",
+        creatorName: "Alice Smith",
+        creatorImage: "https://example.com/alice.png",
+      },
+    ]);
+
+    render(<AgentLogsPage />);
+
+    // Switch to Canvas tab
+    const canvasTab = screen.getByRole("tab", { name: /canvas/i });
+    await user.click(canvasTab);
+
+    // User column header should be rendered (showUserColumn=true)
+    await waitFor(() =>
+      expect(screen.getByTestId("user-column-header")).toBeInTheDocument()
+    );
+
+    // Avatar cell should show initiator name
+    await waitFor(() =>
+      expect(screen.getByTestId("user-avatar-cell")).toHaveTextContent("Alice Smith")
+    );
+  });
+
+  test("anonymous canvas sessions render fallback text", async () => {
+    const user = userEvent.setup();
+    mockCanvasFetch([
+      {
+        id: "conv-anon",
+        title: "Anonymous Canvas Chat",
+        lastMessageAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        preview: null,
+        source: "org-canvas",
+        isShared: false,
+        creatorId: undefined,
+        creatorName: null,
+        creatorImage: null,
+      },
+    ]);
+
+    render(<AgentLogsPage />);
+
+    const canvasTab = screen.getByRole("tab", { name: /canvas/i });
+    await user.click(canvasTab);
+
+    // Avatar cell should show "Anonymous" fallback
+    await waitFor(() =>
+      expect(screen.getByTestId("user-avatar-cell")).toHaveTextContent("Anonymous")
+    );
+  });
+
+  test("chats tab does NOT render user column header (showUserColumn defaults false)", async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if ((url as string).includes("/chat/conversations")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            items: [
+              {
+                id: "chat-1",
+                title: "My Chat",
+                lastMessageAt: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                preview: null,
+                source: null,
+                isShared: false,
+              },
+            ],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+          }),
+        });
+      }
+      // Agent logs endpoint
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: [], hasMore: false }),
+      });
+    });
+
+    render(<AgentLogsPage />);
+
+    const chatsTab = screen.getByRole("tab", { name: /chats/i });
+    await user.click(chatsTab);
+
+    // User column header should NOT be rendered for chats tab
+    await waitFor(() => expect(screen.getByTestId("row")).toBeInTheDocument());
+    expect(screen.queryByTestId("user-column-header")).not.toBeInTheDocument();
   });
 });

@@ -50,6 +50,13 @@ model User {
   role                     UserRole                 @default(USER)
   timezone                 String?                  @default("UTC")
   locale                   String?                  @default("en")
+  // Per-user opt-in for the autonomous canvas-agent turns: when true,
+  // the canvas agent may respond to lower-level planner agents on its
+  // own (see `src/services/canvas-agent-autoturn.ts`). Toggled from the
+  // gear menu on the canvas Agent chat panel. Defaults off; the global
+  // `CANVAS_AUTONOMOUS_TURNS_ENABLED` env var is a master kill-switch
+  // layered above this flag.
+  canvasAutonomousTurns    Boolean                  @default(false) @map("canvas_autonomous_turns")
   createdAt                DateTime                 @default(now()) @map("created_at")
   updatedAt                DateTime                 @updatedAt @map("updated_at")
   deleted                  Boolean                  @default(false)
@@ -103,6 +110,7 @@ model User {
   createdSecrets           WorkspaceSecret[]        @relation("SecretCreator")
   initiativeAssignments    Initiative[]             @relation("InitiativeAssignee")
   milestoneAssignments     Milestone[]              @relation("MilestoneAssignee")
+  createdMilestones        Milestone[]              @relation("MilestoneCreator")
 
   @@index([createdAt])
   @@index([deleted])
@@ -249,6 +257,7 @@ model Workspace {
   diagrams                DiagramWorkspace[]
   discordChannels         DiscordChannel[]
   features                Feature[]
+  workflowSummaries       WorkflowSummary[]
   janitorConfig           JanitorConfig?
   janitorRecommendations  JanitorRecommendation[]
   repositories            Repository[]
@@ -700,6 +709,8 @@ model JanitorConfig {
   prUseRebaseForUpdates      Boolean      @default(false) @map("pr_use_rebase_for_updates")
   prUseMergeForUpdates       Boolean      @default(true) @map("pr_use_merge_for_updates")
   deduplicationEnabled       Boolean      @default(false) @map("deduplication_enabled")
+  stalePrTasksEnabled        Boolean      @default(false) @map("stale_pr_tasks_enabled")
+  stalePrTaskThresholdDays   Int          @default(7)     @map("stale_pr_task_threshold_days")
   workspace                  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   janitorRuns                JanitorRun[]
 
@@ -1510,6 +1521,7 @@ model LlmModel {
   createdAt            DateTime    @default(now()) @map("created_at")
   updatedAt            DateTime    @updatedAt @map("updated_at")
 
+  @@unique([name])
   @@index([provider])
   @@map("llm_models")
 }
@@ -1753,10 +1765,12 @@ model Milestone {
   dueDate      DateTime?       @map("due_date")
   completedAt  DateTime?       @map("completed_at")
   assigneeId   String?         @map("assignee_id")
+  createdById  String?         @map("creator_id")
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
   initiative   Initiative      @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
   assignee     User?           @relation("MilestoneAssignee", fields: [assigneeId], references: [id])
+  creator      User?           @relation("MilestoneCreator", fields: [createdById], references: [id])
   features     Feature[]
 
   @@unique([initiativeId, sequence])
@@ -1788,4 +1802,21 @@ model DiscordChannel {
 
   @@unique([workspaceId, channelId])
   @@map("discord_channels")
+}
+
+model WorkflowSummary {
+  id          String    @id @default(cuid())
+  workflowId  Int       @map("workflow_id")
+  workspaceId String    @map("workspace_id")
+  cacheKey    String    @map("cache_key")
+  versionIds  Json      @map("version_ids")
+  content     String?   @db.Text
+  status      String    @default("PENDING")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, cacheKey])
+  @@index([workspaceId])
+  @@map("workflow_summaries")
 }

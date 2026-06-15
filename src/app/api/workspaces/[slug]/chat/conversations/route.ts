@@ -37,7 +37,7 @@ export async function GET(
       );
     }
 
-    // Get workspace ID
+    // Get workspace ID (+ org link, for the canvas scope below)
     const workspace = await db.workspace.findFirst({
       where: {
         slug,
@@ -45,6 +45,7 @@ export async function GET(
       },
       select: {
         id: true,
+        sourceControlOrgId: true,
       },
     });
 
@@ -61,13 +62,39 @@ export async function GET(
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 100);
     const skip = (page - 1) * limit;
 
-    // Get conversations for this user in this workspace
-    const [conversations, total] = await Promise.all([
-      db.sharedConversation.findMany({
-        where: {
+    // Scope selection. Default lists this workspace's own chats. With
+    // `?source=canvas` we instead list the org-canvas conversations for
+    // the workspace's parent org (these are org-scoped — `workspaceId`
+    // is null on them — so they never match the workspace filter and
+    // are invisible to the default "Chats" tab). Canvas scope returns all
+    // users' sessions (no userId filter) so team members can see each
+    // other's canvas sessions. The Chats tab is still restricted to the
+    // calling user's own rows.
+    const scope = url.searchParams.get("source");
+    const isCanvasScope = scope === "canvas";
+
+    // A workspace not linked to an org has no canvas chats — short out.
+    if (isCanvasScope && !workspace.sourceControlOrgId) {
+      return NextResponse.json({
+        items: [],
+        pagination: { page, limit, total: 0, totalPages: 0 },
+      });
+    }
+
+    const where = isCanvasScope
+      ? {
+          sourceControlOrgId: workspace.sourceControlOrgId,
+          source: "org-canvas",
+        }
+      : {
           workspaceId: workspace.id,
           userId,
-        },
+        };
+
+    // Get conversations for this user in the selected scope
+    const [conversations, total] = await Promise.all([
+      db.sharedConversation.findMany({
+        where,
         orderBy: {
           lastMessageAt: "desc",
         },
@@ -82,14 +109,16 @@ export async function GET(
           isShared: true,
           createdAt: true,
           updatedAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            },
+          },
         },
       }),
-      db.sharedConversation.count({
-        where: {
-          workspaceId: workspace.id,
-          userId,
-        },
-      }),
+      db.sharedConversation.count({ where }),
     ]);
 
     // Transform to list items with preview
@@ -102,6 +131,9 @@ export async function GET(
       isShared: conv.isShared,
       createdAt: conv.createdAt.toISOString(),
       updatedAt: conv.updatedAt.toISOString(),
+      creatorId: conv.user?.id,
+      creatorName: conv.user?.name ?? null,
+      creatorImage: conv.user?.image ?? null,
     }));
 
     return NextResponse.json({

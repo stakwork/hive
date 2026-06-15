@@ -1,20 +1,17 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { Workflow, ArrowUp, Bug, Loader2 } from "lucide-react";
+import { Workflow, Bug, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkflowNodes } from "@/hooks/useWorkflowNodes";
-import { useWorkflowVersions } from "@/hooks/useWorkflowVersions";
 import { useRecentWorkflows } from "@/hooks/useRecentWorkflows";
-import { WorkflowVersionSelector } from "@/components/workflow/WorkflowVersionSelector";
-import { ArtifactType } from "@prisma/client";
-import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
+import { ArtifactType } from "@/lib/chat";
 
 const formatDate = (dateString: string) => {
   try {
@@ -29,6 +26,7 @@ const formatDate = (dateString: string) => {
 export default function WorkflowsPage() {
   const { slug } = useWorkspace();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { workflows } = useWorkflowNodes(slug, true);
   const {
     workflows: recentWorkflows,
@@ -38,8 +36,6 @@ export default function WorkflowsPage() {
 
   // Workflow ID input state
   const [workflowIdValue, setWorkflowIdValue] = useState("");
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Run detection state
@@ -82,12 +78,6 @@ export default function WorkflowsPage() {
     };
   }, [parsedWorkflowId]);
 
-  // Fetch workflow versions when a valid workflow ID is entered (debounced)
-  const { versions, isLoading: isLoadingVersions } = useWorkflowVersions(
-    slug || null,
-    debouncedWorkflowId
-  );
-
   // Parallel run resolution — check if ID is a Run/Project
   useEffect(() => {
     if (debouncedWorkflowId === null) {
@@ -102,117 +92,8 @@ export default function WorkflowsPage() {
       .finally(() => setIsResolvingRun(false));
   }, [debouncedWorkflowId]);
 
-  // Reset selected version when workflow ID changes
-  useEffect(() => {
-    setSelectedVersionId(null);
-  }, [debouncedWorkflowId]);
-
   const handleWorkflowInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setWorkflowIdValue(e.target.value);
-  };
-
-  const handleVersionSelect = useCallback((versionId: string) => {
-    setSelectedVersionId(versionId);
-  }, []);
-
-  const handleRecentWorkflowClick = useCallback((id: number) => {
-    setWorkflowIdValue(String(id));
-    // Focus the input so the user can see the autofilled value
-    setTimeout(() => {
-      inputRef.current?.focus();
-      inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 0);
-  }, []);
-
-  const handleSubmit = async () => {
-    if (!parsedWorkflowId || !selectedVersionId || !slug) return;
-
-    setIsSubmitting(true);
-
-    try {
-      const workflowId = parsedWorkflowId;
-      const workflowName = matchedWorkflow?.properties.workflow_name || `Workflow ${workflowId}`;
-
-      const selectedVersion = versions.find(
-        (v) => String(v.workflow_version_id) === String(selectedVersionId)
-      );
-
-      if (!selectedVersion) {
-        throw new Error("Selected version not found");
-      }
-
-      const workflowJson = selectedVersion.workflow_json || getWorkflowJsonFromNode(matchedWorkflow);
-      const workflowRefId = selectedVersion.ref_id;
-      const taskTitle = `${workflowName}${selectedVersionId ? ` v${String(selectedVersionId).substring(0, 8)}` : ''}`;
-
-      // Create a new task
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: taskTitle,
-          description: `Editing workflow ${workflowId}${selectedVersionId ? ` version ${String(selectedVersionId).substring(0, 8)}` : ''}`,
-          status: "active",
-          workspaceSlug: slug,
-          mode: "workflow_editor",
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create task: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      const newTaskId = result.data.id;
-
-      // Save workflow artifact to database
-      const saveResponse = await fetch(`/api/tasks/${newTaskId}/messages/save`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: `Loaded: ${taskTitle}\nSelect a step on the right as a starting point.`,
-          role: "ASSISTANT",
-          artifacts: [
-            {
-              type: ArtifactType.WORKFLOW,
-              content: {
-                workflowJson: workflowJson,
-                workflowId: workflowId,
-                workflowName: workflowName,
-                workflowRefId: workflowRefId,
-                workflowVersionId: selectedVersionId,
-              },
-            },
-          ],
-        }),
-      });
-
-      if (!saveResponse.ok) {
-        console.error("Failed to save workflow artifact:", await saveResponse.text());
-      }
-
-      // Dual-write WorkflowTask row so the task is linked to the workflow in the DB
-      await fetch(`/api/tasks/${newTaskId}/workflow-task`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workflowId,
-          workflowName,
-          workflowRefId,
-          workflowVersionId: selectedVersionId,
-        }),
-      });
-
-      // Navigate to task chat view
-      window.location.href = `/w/${slug}/task/${newTaskId}`;
-    } catch (error) {
-      console.error("Failed to create workflow task:", error);
-      setIsSubmitting(false);
-    }
   };
 
   const handleDebugRun = async () => {
@@ -277,8 +158,8 @@ export default function WorkflowsPage() {
   const isRun = runData !== null;
   const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
   const isRecentRun = isRun && (Date.now() - new Date(runData!.created_at).getTime()) < ONE_YEAR_MS;
-  const isWorkflow = versions.length > 0;
-  const isLoading = isResolvingRun || isLoadingVersions;
+  const isWorkflow = matchedWorkflow !== null;
+  const isLoading = isResolvingRun;
 
   const neitherFound = !isLoading && parsedWorkflowId !== null && !isRun && !isWorkflow;
   const bothFound    = !isLoading && parsedWorkflowId !== null && isRecentRun && isWorkflow;
@@ -318,19 +199,7 @@ export default function WorkflowsPage() {
                 </p>
               )}
 
-              {(isLoadingVersions || isWorkflow) && (
-                <WorkflowVersionSelector
-                  workflowName={
-                    matchedWorkflow?.properties.workflow_name || `Workflow ${parsedWorkflowId}`
-                  }
-                  versions={versions}
-                  selectedVersionId={selectedVersionId}
-                  onVersionSelect={handleVersionSelect}
-                  isLoading={isLoadingVersions}
-                />
-              )}
-
-              {/* Loading indicator while resolving run or versions */}
+              {/* Loading indicator while resolving run */}
               {isLoading && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -354,7 +223,7 @@ export default function WorkflowsPage() {
                   <div className="flex gap-2">
                     <Button
                       onClick={handleDebugRun}
-                      disabled={isDebugging || isSubmitting}
+                      disabled={isDebugging}
                       variant="outline"
                       className="flex-1"
                     >
@@ -366,29 +235,24 @@ export default function WorkflowsPage() {
                       Debug this run
                     </Button>
                     <Button
-                      onClick={handleSubmit}
-                      disabled={isSubmitting || isDebugging || !selectedVersionId}
+                      onClick={() => slug && router.push(`/w/${slug}/workflows/${parsedWorkflowId}`)}
+                      disabled={isDebugging}
                       variant="outline"
                       className="flex-1"
                     >
-                      {isSubmitting ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <ArrowUp className="w-4 h-4 mr-2" />
-                      )}
-                      Load Workflow
+                      Inspect Workflow
                     </Button>
                   </div>
                 </div>
               )}
 
-              {/* State: Only one found — single default button, no disambiguation */}
-              {!isLoading && !bothFound && (isRecentRun || (isWorkflow && selectedVersionId)) && (
+              {/* State: Only one found — single default button */}
+              {!isLoading && !bothFound && (isRecentRun || isWorkflow) && (
                 <div className="flex gap-2 mt-4">
                   {isRecentRun && (
                     <Button
                       onClick={handleDebugRun}
-                      disabled={isDebugging || isSubmitting}
+                      disabled={isDebugging}
                       variant="default"
                       className="flex-1"
                     >
@@ -400,19 +264,13 @@ export default function WorkflowsPage() {
                       Debug this run
                     </Button>
                   )}
-                  {isWorkflow && selectedVersionId && (
+                  {isWorkflow && !isRecentRun && (
                     <Button
-                      onClick={handleSubmit}
-                      disabled={isSubmitting || isDebugging}
+                      onClick={() => slug && router.push(`/w/${slug}/workflows/${parsedWorkflowId}`)}
                       variant="default"
                       className="flex-1"
                     >
-                      {isSubmitting ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <ArrowUp className="w-4 h-4 mr-2" />
-                      )}
-                      Load Workflow
+                      Inspect Workflow →
                     </Button>
                   )}
                 </div>
@@ -443,7 +301,7 @@ export default function WorkflowsPage() {
             {recentWorkflows.map((workflow) => (
               <button
                 key={workflow.id}
-                onClick={() => handleRecentWorkflowClick(workflow.id)}
+                onClick={() => slug && router.push(`/w/${slug}/workflows/${workflow.id}`)}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-md text-left hover:bg-muted/50 transition-colors border border-transparent hover:border-border"
               >
                 <span className="text-xs font-mono text-muted-foreground w-16 shrink-0">

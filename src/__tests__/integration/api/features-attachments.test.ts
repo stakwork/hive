@@ -142,14 +142,18 @@ describe("GET /api/features/[featureId]/attachments", () => {
 
     const data = await response.json();
     expect(data.attachments).toHaveLength(2);
-    expect(data.attachments[0]).toMatchObject({
+
+    const jpg = data.attachments.find((a: { filename: string }) => a.filename === "screenshot-1.jpg");
+    const png = data.attachments.find((a: { filename: string }) => a.filename === "screenshot-2.png");
+
+    expect(jpg).toMatchObject({
       filename: "screenshot-1.jpg",
       mimeType: "image/jpeg",
       taskId: testTask.id,
       taskTitle: "Test Task",
     });
-    expect(data.attachments[0].url).toBeDefined();
-    expect(data.attachments[1]).toMatchObject({
+    expect(jpg.url).toBeDefined();
+    expect(png).toMatchObject({
       filename: "screenshot-2.png",
       mimeType: "image/png",
       taskId: testTask.id,

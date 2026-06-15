@@ -91,6 +91,7 @@ export async function resetDatabase() {
     await db.fiatPayment.deleteMany();
     await db.workspaceMember.deleteMany();
     await db.workspace.deleteMany();
+    await db.llmModel.deleteMany();
     await db.session.deleteMany();
     await db.account.deleteMany();
     await db.gitHubAuth.deleteMany();
@@ -133,6 +134,7 @@ async function aggressiveReset() {
       "fiat_payments",
       "workspace_members",
       "workspaces",
+      "llm_models",
       "sessions",
       "accounts",
       "github_auth",

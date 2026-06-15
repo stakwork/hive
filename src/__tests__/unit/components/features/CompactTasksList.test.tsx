@@ -132,8 +132,14 @@ vi.mock("@/components/tasks/DeploymentStatusBadge", () => ({
 }));
 
 vi.mock("@/components/tasks/PRStatusBadge", () => ({
-  PRStatusBadge: ({ url, status }: any) => (
-    <div data-testid="pr-badge" data-url={url} data-status={status}>
+  PRStatusBadge: ({ url, status, ciStatus, ciSummary }: any) => (
+    <div
+      data-testid="pr-badge"
+      data-url={url}
+      data-status={status}
+      data-cistatus={ciStatus}
+      data-cisummary={ciSummary}
+    >
       PR
     </div>
   ),
@@ -1041,6 +1047,90 @@ describe("CompactTasksList", () => {
           expect.objectContaining({
             method: "PATCH",
             body: JSON.stringify({ status: "DONE" }),
+          })
+        );
+      });
+
+      fetchSpy.mockRestore();
+    });
+  });
+
+  describe("Unmark as Done action menu item", () => {
+    test("shows 'Unmark as Done' for DONE task", () => {
+      const task = createMockTask({ id: "task-done", status: "DONE" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("action-unmark-as-done")).toBeInTheDocument();
+    });
+
+    test("does NOT show 'Unmark as Done' for TODO task", () => {
+      const task = createMockTask({ id: "task-todo", status: "TODO" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("action-unmark-as-done")).not.toBeInTheDocument();
+    });
+
+    test("does NOT show 'Unmark as Done' for IN_PROGRESS task", () => {
+      const task = createMockTask({ id: "task-ip", status: "IN_PROGRESS" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("action-unmark-as-done")).not.toBeInTheDocument();
+    });
+
+    test("calls PATCH /api/tasks/:id with { status: 'TODO' } on click", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
+        if (typeof url === "string" && url.includes("/api/llm-models")) {
+          return Promise.resolve(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+      });
+      const task = createMockTask({ id: "task-done-click", status: "DONE" });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      screen.getByTestId("action-unmark-as-done").click();
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/tasks/task-done-click",
+          expect.objectContaining({
+            method: "PATCH",
+            body: JSON.stringify({ status: "TODO" }),
           })
         );
       });
@@ -2882,6 +2972,69 @@ describe("CompactTasksList", () => {
       const badge = screen.getByTestId("publish-badge");
       expect(badge.getAttribute("data-type")).toBe("PUBLISH_SCRIPT");
       expect(badge.getAttribute("data-published")).toBe("false");
+    });
+  });
+
+  describe("CI status on PR badge", () => {
+    test("passes ciStatus and ciSummary to PRStatusBadge when progress is present", () => {
+      const task = createMockTask({
+        id: "task-ci-success",
+        status: "IN_PROGRESS" as TaskStatus,
+        prArtifact: {
+          id: "pr-artifact-1",
+          type: "PULL_REQUEST",
+          content: {
+            url: "https://github.com/org/repo/pull/42",
+            status: "IN_PROGRESS" as const,
+            progress: {
+              ciStatus: "success" as const,
+              ciSummary: "5/5 passed",
+            },
+          },
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const badge = screen.getByTestId("pr-badge");
+      expect(badge.getAttribute("data-cistatus")).toBe("success");
+      expect(badge.getAttribute("data-cisummary")).toBe("5/5 passed");
+    });
+
+    test("renders PR badge without data-cistatus when progress is absent", () => {
+      const task = createMockTask({
+        id: "task-no-ci",
+        status: "IN_PROGRESS" as TaskStatus,
+        prArtifact: {
+          id: "pr-artifact-2",
+          type: "PULL_REQUEST",
+          content: {
+            url: "https://github.com/org/repo/pull/43",
+            status: "IN_PROGRESS" as const,
+          },
+        },
+      });
+      const feature = createMockFeature([task]);
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={vi.fn()}
+        />
+      );
+
+      const badge = screen.getByTestId("pr-badge");
+      expect(badge.getAttribute("data-cistatus")).toBeNull();
     });
   });
 });

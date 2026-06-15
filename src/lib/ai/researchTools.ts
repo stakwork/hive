@@ -58,6 +58,24 @@ export interface CapturedSearchResult {
 }
 
 /**
+ * A research dispatch intent captured when `dispatch_research` fires.
+ * Pushed into a mutable collector array (sibling to `webSearchResults`)
+ * so the route's `after()` block can schedule workers after the stream.
+ */
+export interface DispatchedResearchIntent {
+  researchId: string;
+  slug: string;
+  topic: string;
+  title: string;
+  summary: string;
+  prompt: string;
+  initiativeId?: string;
+  conversationId: string;
+  orgId: string;
+  userId: string;
+}
+
+/**
  * Build research tools for the canvas-chat agent. Always merged when
  * `orgId` is supplied to `/api/ask/quick`; the prompt suffix teaches
  * the agent when to reach for them (external/web research, vs
@@ -82,6 +100,8 @@ export function buildResearchTools(
   orgId: string,
   userId: string,
   webSearchResults: CapturedSearchResult[],
+  dispatchedResearch?: DispatchedResearchIntent[],
+  conversationId?: string,
 ): ToolSet {
   return {
     save_research: tool({
@@ -192,6 +212,140 @@ export function buildResearchTools(
           return {
             error:
               "Failed to save research. The slug may already be in use; try a different one.",
+          };
+        }
+      },
+    }),
+
+    dispatch_research: tool({
+      description:
+        "Delegate a deep research task to a background sub-agent and return immediately.\n\n" +
+        "Use `dispatch_research` when the request requires multiple web searches, synthesis, or a saved writeup " +
+        "(e.g. competitive analysis, technical deep-dives, multi-source comparisons). The sub-agent runs out-of-band " +
+        "and fans its result back into this conversation as its own card when done.\n\n" +
+        "**`dispatch_research` returns immediately** — don't wait for it; continue your turn. " +
+        "Tell the user: \"I've dispatched a research sub-agent on [topic]; it'll appear in this chat when ready.\"\n\n" +
+        "Use inline `web_search` + `save_research` / `update_research` for quick factual lookups " +
+        "where a background run would be overkill.\n\n" +
+        "Required fields:\n" +
+        "  - slug: short kebab-case identifier (e.g. 'stripe-connect-payouts', 'sse-vs-websockets').\n" +
+        "  - topic: the user's original wording of the research request.\n" +
+        "  - title: polished title for the right-panel viewer.\n" +
+        "  - summary: one sentence describing what this research will cover.\n" +
+        "  - prompt: detailed instructions for the sub-agent (what to search for, what to synthesize, how to structure the doc).\n\n" +
+        "Optional:\n" +
+        "  - initiativeId: pass when on an initiative sub-canvas so the research lands in the right place.",
+      inputSchema: z.object({
+        slug: z
+          .string()
+          .min(1)
+          .describe("Short kebab-case identifier, unique within the org."),
+        topic: z
+          .string()
+          .min(1)
+          .describe("The user's original wording of the research request."),
+        title: z
+          .string()
+          .min(1)
+          .describe("A polished title for the right-panel viewer header."),
+        summary: z
+          .string()
+          .min(1)
+          .describe("One-sentence overview of what the research will cover."),
+        prompt: z
+          .string()
+          .min(1)
+          .describe(
+            "Detailed instructions for the research sub-agent: what to search for, how to structure the doc, what sources to prioritize.",
+          ),
+        initiativeId: z
+          .string()
+          .optional()
+          .describe(
+            "Cuid of the initiative this research belongs to. Omit for org-wide research on the root canvas.",
+          ),
+      }),
+      execute: async ({
+        slug,
+        topic,
+        title,
+        summary,
+        prompt,
+        initiativeId,
+      }: {
+        slug: string;
+        topic: string;
+        title: string;
+        summary: string;
+        prompt: string;
+        initiativeId?: string;
+      }) => {
+        try {
+          // IDOR guard: validate initiativeId belongs to this org.
+          let resolvedInitiativeId: string | null = null;
+          if (initiativeId) {
+            const init = await db.initiative.findFirst({
+              where: { id: initiativeId, orgId },
+              select: { id: true },
+            });
+            if (init) resolvedInitiativeId = init.id;
+          }
+
+          const research = await db.research.create({
+            data: {
+              slug,
+              topic,
+              title,
+              summary,
+              orgId,
+              initiativeId: resolvedInitiativeId,
+              createdBy: userId,
+              // content is null — "researching" state; the sub-agent
+              // fills it in via update_research.
+              content: null,
+            },
+            select: { id: true, slug: true },
+          });
+
+          // Fire canvas updated so the node appears immediately.
+          const ref = resolvedInitiativeId
+            ? `initiative:${resolvedInitiativeId}`
+            : "";
+          await notifyCanvasUpdated(orgId, ref, "research-created", {
+            slug: research.slug,
+            researchId: research.id,
+          });
+
+          // Push dispatch intent into the collector (if provided) so the
+          // route's after() block can schedule the worker.
+          if (dispatchedResearch && conversationId) {
+            dispatchedResearch.push({
+              researchId: research.id,
+              slug: research.slug,
+              topic,
+              title,
+              summary,
+              prompt,
+              initiativeId: resolvedInitiativeId ?? undefined,
+              conversationId,
+              orgId,
+              userId,
+            });
+          }
+
+          return {
+            awaitingReply: true,
+            researchId: research.id,
+            slug: research.slug,
+            topic,
+            title,
+            status: "dispatched",
+          };
+        } catch (e) {
+          console.error("[researchTools] dispatch_research failed:", e);
+          return {
+            error:
+              "Failed to dispatch research. The slug may already be in use; try a different one.",
           };
         }
       },

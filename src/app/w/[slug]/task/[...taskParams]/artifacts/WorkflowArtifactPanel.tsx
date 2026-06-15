@@ -10,8 +10,7 @@ import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Upload, Loader2, CheckCircle2 } from "lucide-react";
-import { toast } from "sonner";
+import { ExternalLink } from "lucide-react";
 import { PromptsPanel } from "@/components/prompts";
 import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
 import { ProjectInfoCard } from "@/components/ProjectInfoCard";
@@ -28,14 +27,11 @@ interface WorkflowArtifactPanelProps {
   taskId?: string;
 }
 
-export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange, isSuperAdmin = false, taskId }: WorkflowArtifactPanelProps) {
+export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVersionChange, isSuperAdmin = false }: WorkflowArtifactPanelProps) {
   const { slug } = useWorkspace();
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork" | "children">("editor");
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [isPublished, setIsPublished] = useState(false);
-
   const handleStepClick = useCallback((step: WorkflowTransition) => {
     setClickedStep(step);
     setIsModalOpen(true);
@@ -98,12 +94,14 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
   // Merge data from all workflow artifacts, always using the LATEST values
   // This supports multiple executions and publishes - always shows the most recent:
-  // - workflowJson: Latest published workflow (for Editor tab)
-  // - originalWorkflowJson: Original workflow before changes (for Changes tab)
+  // - workflowJson: Latest published workflow (for Editor tab) — always last-wins
+  // - changesWorkflowJson: Only from agent-response artifacts (for Changes tab diff right-side)
+  // - originalWorkflowJson: Original workflow before changes (for Changes tab diff left-side)
   // - projectId: Latest execution project (for Stakwork tab)
   // - projectInfo: Project data for project debugger mode
   const mergedContent = useMemo(() => {
-    let workflowJson: string | undefined;
+    let workflowJson: string | undefined;          // Editor tab — always latest winner
+    let changesWorkflowJson: string | undefined;   // Changes tab — only from agent-response artifacts
     let originalWorkflowJson: string | undefined;
     let projectId: string | undefined;
     let workflowId: number | string | undefined;
@@ -117,6 +115,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     for (const artifact of activeArtifacts) {
       const content = artifact.content as WorkflowContent;
       if (content?.workflowJson) workflowJson = content.workflowJson;
+      // Only update changesWorkflowJson when the artifact has a real originalWorkflowJson
+      // (length > 100 distinguishes agent-response artifacts from run-start "" and publish artifacts without originalWorkflowJson)
+      if (
+        content?.workflowJson &&
+        content?.originalWorkflowJson &&
+        content.originalWorkflowJson.length > 100
+      ) {
+        changesWorkflowJson = content.workflowJson;
+      }
       if (content?.originalWorkflowJson) originalWorkflowJson = content.originalWorkflowJson;
       if (content?.projectId) projectId = content.projectId;
       if (content?.workflowId) workflowId = content.workflowId;
@@ -129,6 +136,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
 
     return {
       workflowJson,
+      changesWorkflowJson,
       originalWorkflowJson,
       projectId,
       workflowId,
@@ -140,7 +148,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     };
   }, [activeArtifacts]);
 
-  const { workflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
+  const { workflowJson, changesWorkflowJson, originalWorkflowJson, projectId, workflowId, projectInfo, debuggerProjectId, workflowVersionId } = mergedContent;
 
   // Detect if we're in project debugger context
   const isProjectDebuggerMode = !!(projectInfo && debuggerProjectId);
@@ -148,8 +156,8 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
   // Determine if we're in editor mode (workflowJson present)
   const isEditorMode = !!workflowJson;
 
-  // Check if we have changes to show
-  const hasChanges = !!(originalWorkflowJson && workflowJson);
+  // Check if we have changes to show (requires both a confirmed agent-response diff and an original)
+  const hasChanges = !!(originalWorkflowJson && changesWorkflowJson);
   // Always show Changes tab in editor mode (even without a prior version)
   const showChangesTab = isEditorMode;
 
@@ -158,50 +166,10 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
     if (!hasChanges) {
       return { changedStepIds: new Set<string>(), changedConnectionIds: new Set<string>() };
     }
-    return computeWorkflowDiff(originalWorkflowJson ?? null, workflowJson ?? null);
-  }, [hasChanges, originalWorkflowJson, workflowJson]);
+    return computeWorkflowDiff(originalWorkflowJson ?? null, changesWorkflowJson ?? null);
+  }, [hasChanges, originalWorkflowJson, changesWorkflowJson]);
 
-  const latestArtifactId = activeArtifacts[activeArtifacts.length - 1]?.id;
 
-  const handlePublish = async () => {
-    if (!mergedContent.workflowId) {
-      toast.error("Missing workflow ID");
-      return;
-    }
-    setIsPublishing(true);
-    try {
-      const res = await fetch('/api/workflow/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workflowId: mergedContent.workflowId,
-          workflowRefId: mergedContent.workflowRefId,
-          artifactId: latestArtifactId,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to publish workflow');
-      }
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || 'Failed to publish workflow');
-      setIsPublished(true);
-      toast.success('Workflow published successfully');
-      if (taskId) {
-        await fetch(`/api/tasks/${taskId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'DONE' }),
-        });
-      }
-    } catch (err) {
-      toast.error('Failed to publish workflow', {
-        description: err instanceof Error ? err.message : 'Unknown error',
-      });
-    } finally {
-      setIsPublishing(false);
-    }
-  };
 
 
 
@@ -315,22 +283,30 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
             </Select>
           </div>
         )}
-        {hasChanges && (
-          <div className="flex justify-end px-2 pb-1 flex-shrink-0">
-            <Button
-              size="sm"
-              onClick={handlePublish}
-              disabled={isPublishing || isPublished}
-              className={isPublished ? 'gap-2 bg-green-600 hover:bg-green-600 text-white' : 'gap-2'}
+        {workflowId && (
+          <div className="px-2 pt-1 pb-1 flex-shrink-0 flex items-center gap-2">
+            {workflowVersionId && (
+              <span
+                data-testid="workflow-version-badge"
+                className="font-mono text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded"
+              >
+                v{workflowVersionId}
+              </span>
+            )}
+            <a
+              data-testid="workflow-external-link"
+              href={
+                workflowVersionId
+                  ? `https://jobs.stakwork.com/admin/workflows/${workflowId}/edit?version=${workflowVersionId}`
+                  : `https://jobs.stakwork.com/admin/workflows/${workflowId}/edit`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Open in Stakwork"
             >
-              {isPublished ? (
-                <><CheckCircle2 className="w-4 h-4" />Published</>
-              ) : isPublishing ? (
-                <><Loader2 className="w-4 h-4 animate-spin" />Publishing...</>
-              ) : (
-                <><Upload className="w-4 h-4" />Publish</>
-              )}
-            </Button>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
           </div>
         )}
         <Tabs
@@ -377,7 +353,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
             <TabsContent value="changes" className="flex-1 overflow-hidden mt-0">
               <WorkflowChangesPanel
                 originalJson={originalWorkflowJson || null}
-                updatedJson={workflowJson || null}
+                updatedJson={changesWorkflowJson || (!originalWorkflowJson ? workflowJson : null) || null}
               />
             </TabsContent>
           )}

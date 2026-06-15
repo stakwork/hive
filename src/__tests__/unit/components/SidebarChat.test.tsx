@@ -1,152 +1,204 @@
 // @vitest-environment jsdom
+/**
+ * Unit tests for the SidebarChat component header activity indicator.
+ *
+ * Focuses on:
+ * 1. Renders pulsing amber dot when useCanvasAgentActivity returns isActive: true
+ * 2. Does not render the dot when isActive: false
+ */
+
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-// ── Mocks ─────────────────────────────────────────────────────────────────────
-
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, className }: React.HTMLAttributes<HTMLDivElement>) => (
-      <div className={className}>{children}</div>
-    ),
-    span: ({ children, className }: React.HTMLAttributes<HTMLSpanElement>) => (
-      <span className={className}>{children}</span>
-    ),
-  },
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+// ── Activity indicator hook mock ──────────────────────────────────────────────
+let mockIsActive = false;
+vi.mock("@/hooks/useCanvasAgentActivity", () => ({
+  useCanvasAgentActivity: () => ({ isActive: mockIsActive }),
 }));
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock("zustand/react/shallow", () => ({ useShallow: (fn: unknown) => fn }));
-vi.mock("lucide-react", () => ({
-  Send: () => <svg data-testid="send-icon" />,
-  Share2: () => <svg data-testid="share-icon" />,
-  X: () => <svg data-testid="x-icon" />,
-  History: () => <svg data-testid="history-icon" />,
-  PlusCircle: () => <svg data-testid="plus-icon" />,
+// ── Workspace hook mock ───────────────────────────────────────────────────────
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({ id: "ws-1" }),
 }));
 
-vi.mock("@/app/org/[githubLogin]/_components/CanvasHistoryPopover", () => ({
-  CanvasHistoryPopover: ({ githubLogin }: { githubLogin: string }) => (
-    <div data-testid="canvas-history-popover" data-login={githubLogin} />
+// ── Canvas chat store mock ────────────────────────────────────────────────────
+vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
+  useCanvasChatStore: vi.fn((selector: (s: unknown) => unknown) =>
+    selector({
+      activeConversationId: null,
+      conversations: {},
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    }),
   ),
+}));
+
+vi.mock("@/app/org/[githubLogin]/_state/useSendCanvasChatMessage", () => ({
+  useSendCanvasChatMessage: () => vi.fn(),
+}));
+
+// ── Sub-component mocks ───────────────────────────────────────────────────────
+vi.mock("@/app/org/[githubLogin]/_components/CanvasHistoryPopover", () => ({
+  CanvasHistoryPopover: () => null,
+}));
+vi.mock("@/app/org/[githubLogin]/_components/CanvasAgentSettingsPopover", () => ({
+  CanvasAgentSettingsPopover: () => null,
+}));
+vi.mock("@/app/org/[githubLogin]/_components/SidebarChatMessage", () => ({
+  SidebarChatMessage: () => null,
+}));
+vi.mock("@/app/org/[githubLogin]/_components/ProposalCard", () => ({
+  ProposalCard: () => null,
+  getProposalsFromMessage: () => [],
+}));
+vi.mock("@/app/org/[githubLogin]/_components/SubAgentRunCard", () => ({
+  SubAgentRunCard: () => null,
+  getSubAgentRunsFromMessages: () => [],
+}));
+vi.mock("@/app/org/[githubLogin]/_components/ResearchRunCard", () => ({
+  ResearchRunCard: () => null,
+  getResearchRunsFromMessages: () => [],
+}));
+vi.mock("@/app/org/[githubLogin]/_components/PlannerFormSlot", () => ({
+  PlannerFormSlot: () => null,
+}));
+vi.mock("@/app/org/[githubLogin]/_components/StartTasksSlot", () => ({
+  StartTasksSlot: () => null,
+}));
+vi.mock("@/app/org/[githubLogin]/_components/AttentionList", () => ({
+  AttentionList: () => null,
+}));
+
+vi.mock("@/components/streaming", () => ({
+  StreamingMessage: () => null,
 }));
 
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
     ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & { children?: React.ReactNode }) => (
-    <button {...props}>{children}</button>
+  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    children?: React.ReactNode;
+  }) => <button {...props}>{children}</button>,
+}));
+
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  TooltipTrigger: ({
+    children,
+    asChild,
+    ...rest
+  }: {
+    children: React.ReactNode;
+    asChild?: boolean;
+  } & React.HTMLAttributes<HTMLSpanElement>) =>
+    asChild ? <>{children}</> : <span {...rest}>{children}</span>,
+}));
+
+vi.mock("@/hooks/useSpeechRecognition", () => ({
+  useSpeechRecognition: () => ({
+    isListening: false,
+    transcript: "",
+    isSupported: false,
+    startListening: vi.fn(),
+    stopListening: vi.fn(),
+    resetTranscript: vi.fn(),
+  }),
+}));
+
+vi.mock("@/lib/upload-image-to-s3", () => ({
+  uploadFileToS3: vi.fn(),
+}));
+
+vi.mock("@/components/ui/textarea", () => ({
+  Textarea: React.forwardRef(
+    (
+      {
+        children,
+        isDragging: _d,
+        isUploading: _u,
+        ...props
+      }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+        children?: React.ReactNode;
+        isDragging?: boolean;
+        isUploading?: boolean;
+      },
+      ref: React.Ref<HTMLTextAreaElement>,
+    ) => (
+      <div className="relative w-full">
+        <textarea ref={ref} {...props}>
+          {children}
+        </textarea>
+      </div>
+    ),
   ),
 }));
 
-vi.mock("@/components/dashboard/DashboardChat/ToolCallIndicator", () => ({
-  ToolCallIndicator: ({ toolCalls }: { toolCalls: unknown[] }) => (
-    <div data-testid="tool-call-indicator">{toolCalls.length} tool calls</div>
+vi.mock("@/hooks/useControlKeyHold", () => ({
+  useControlKeyHold: vi.fn(),
+}));
+
+vi.mock("zustand/react/shallow", () => ({
+  useShallow: (fn: unknown) => fn,
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock("framer-motion", () => ({
+  motion: {
+    div: ({
+      children,
+      ...props
+    }: React.HTMLAttributes<HTMLDivElement> & {
+      children?: React.ReactNode;
+    }) => <div {...props}>{children}</div>,
+    span: ({
+      children,
+      ...props
+    }: React.HTMLAttributes<HTMLSpanElement> & {
+      children?: React.ReactNode;
+    }) => <span {...props}>{children}</span>,
+  },
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
   ),
 }));
 
-vi.mock("@/app/org/[githubLogin]/_components/SidebarChatMessage", () => ({
-  SidebarChatMessage: ({ message }: { message: { content: string } }) => (
-    <div data-testid="sidebar-chat-message">{message.content}</div>
-  ),
-}));
+// Lazy import AFTER all mocks are set up
+async function renderSidebarChat() {
+  const { SidebarChat } = await import(
+    "@/app/org/[githubLogin]/_components/SidebarChat"
+  );
+  return render(<SidebarChat githubLogin="test-org" />);
+}
 
-vi.mock("@/app/org/[githubLogin]/_components/ProposalCard", () => ({
-  ProposalCard: () => null,
-  getProposalsFromMessage: () => [],
-}));
-
-vi.mock("@/app/org/[githubLogin]/_components/AttentionList", () => ({
-  AttentionList: () => null,
-}));
-
-vi.mock("@/app/org/[githubLogin]/_state/useSendCanvasChatMessage", () => ({
-  useSendCanvasChatMessage: vi.fn(() => vi.fn()),
-}));
-
-// ── Store mock (mutable per-test) ─────────────────────────────────────────────
-
-const makeConversation = (
-  overrides: Partial<{ isLoading: boolean; activeToolCalls: unknown[]; messages: unknown[] }> = {},
-) => ({
-  messages: [],
-  isLoading: false,
-  activeToolCalls: [],
-  ...overrides,
-});
-
-let storeState = {
-  activeConversationId: "conv-1" as string | null,
-  conversations: { "conv-1": makeConversation() } as Record<string, ReturnType<typeof makeConversation>>,
-  artifacts: {} as Record<string, unknown>,
-  dismissedArtifactIds: {} as Record<string, boolean>,
-  pendingInputDraft: null as string | null,
-  clearActiveConversation: vi.fn(),
-  dismissArtifact: vi.fn(),
-  setPendingInputDraft: vi.fn(),
-};
-
-vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
-  useCanvasChatStore: vi.fn((selector: (s: typeof storeState) => unknown) =>
-    selector(storeState),
-  ),
-}));
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-import { SidebarChat } from "@/app/org/[githubLogin]/_components/SidebarChat";
-
-describe("SidebarChat — ellipsis loading indicator", () => {
+describe("SidebarChat — activity indicator", () => {
   beforeEach(() => {
-    storeState = {
-      activeConversationId: "conv-1",
-      conversations: { "conv-1": makeConversation() },
-      artifacts: {},
-      dismissedArtifactIds: {},
-      pendingInputDraft: null,
-      clearActiveConversation: vi.fn(),
-      dismissArtifact: vi.fn(),
-      setPendingInputDraft: vi.fn(),
-    };
+    vi.resetModules();
+    mockIsActive = false;
   });
 
-  it("renders animated ellipsis when isLoading=true and activeToolCalls=[]", () => {
-    storeState.conversations["conv-1"] = makeConversation({ isLoading: true, activeToolCalls: [] });
-    render(<SidebarChat githubLogin="test-org" />);
-
-    const dots = screen.getAllByText(".");
-    expect(dots).toHaveLength(3);
+  it("does not render pulsing dot when isActive is false", async () => {
+    mockIsActive = false;
+    await renderSidebarChat();
+    expect(screen.queryByLabelText("agent active")).toBeNull();
+    expect(screen.getByText("Ask Jamie")).toBeDefined();
   });
 
-  it("does not render ellipsis when isLoading=false", () => {
-    storeState.conversations["conv-1"] = makeConversation({ isLoading: false, activeToolCalls: [] });
-    render(<SidebarChat githubLogin="test-org" />);
-
-    expect(screen.queryAllByText(".")).toHaveLength(0);
-  });
-
-  it("does not render ellipsis when isLoading=true but activeToolCalls is non-empty", () => {
-    storeState.conversations["conv-1"] = makeConversation({
-      isLoading: true,
-      activeToolCalls: [{ id: "tc-1", name: "some_tool", status: "running" }],
-    });
-    render(<SidebarChat githubLogin="test-org" />);
-
-    expect(screen.queryAllByText(".")).toHaveLength(0);
-    expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
-  });
-
-  it("renders ToolCallIndicator instead of ellipsis when activeToolCalls is populated", () => {
-    storeState.conversations["conv-1"] = makeConversation({
-      isLoading: true,
-      activeToolCalls: [{ id: "tc-1", name: "canvas_tool", status: "running" }],
-    });
-    render(<SidebarChat githubLogin="test-org" />);
-
-    expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
-    expect(screen.queryAllByText(".")).toHaveLength(0);
+  it("renders pulsing dot when isActive is true", async () => {
+    mockIsActive = true;
+    await renderSidebarChat();
+    expect(screen.getByLabelText("agent active")).toBeDefined();
+    expect(screen.getByText("Ask Jamie")).toBeDefined();
   });
 });

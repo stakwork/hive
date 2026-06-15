@@ -14,9 +14,19 @@ import { describe, test, expect } from "vitest";
 import {
   getSubAgentRunsFromMessages,
   deriveCardStatus,
+  isDisplayableMessage,
 } from "@/app/org/[githubLogin]/_components/SubAgentRunCard";
+import {
+  getSubAgentRunsFromMessages as runsFromMessages,
+} from "@/app/org/[githubLogin]/_components/SubAgentRunCard";
+import type { RunMessage } from "@/app/org/[githubLogin]/_components/SubAgentRunCard";
 import type { CanvasChatMessage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
+import type { ClarifyingQuestion } from "@/types/stakwork";
 import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
+
+const QUESTIONS: ClarifyingQuestion[] = [
+  { question: "Stripe or Adyen?", type: "single_choice", options: ["Stripe", "Adyen"] },
+];
 
 const FEATURE_ID = "feat-1";
 
@@ -47,7 +57,12 @@ function outbound(id: string, message: string): CanvasChatMessage {
 function inbound(
   id: string,
   content: string,
-  extra: { workflowStatus?: string; hasForm?: boolean } = {},
+  extra: {
+    workflowStatus?: string;
+    hasForm?: boolean;
+    formQuestions?: ClarifyingQuestion[];
+    hasTasks?: boolean;
+  } = {},
 ): CanvasChatMessage {
   return {
     id,
@@ -59,6 +74,21 @@ function inbound(
       featureId: FEATURE_ID,
       plannerMessageId: id,
       ...extra,
+    },
+  };
+}
+
+/** A `user-answered-planner-form` row referencing the planner message `pmId`. */
+function answered(id: string, pmId: string): CanvasChatMessage {
+  return {
+    id,
+    role: "user",
+    content: "Answered: Stripe",
+    timestamp: new Date(),
+    source: {
+      kind: "user-answered-planner-form",
+      featureId: FEATURE_ID,
+      plannerMessageId: pmId,
     },
   };
 }
@@ -131,5 +161,136 @@ describe("deriveCardStatus — inbound latest", () => {
       label: "Replied",
       tone: "replied",
     });
+  });
+});
+
+describe("getSubAgentRunsFromMessages — Phase 4 pending FORM", () => {
+  test("inbound FORM with questions → pendingForm set + Waiting for you", () => {
+    const messages = [
+      inbound("p1", "Which provider?", { hasForm: true, formQuestions: QUESTIONS }),
+    ];
+    const runs = runsFromMessages(messages);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].pendingForm).toEqual({
+      plannerMessageId: "p1",
+      questions: QUESTIONS,
+    });
+    expect(deriveCardStatus(runs[0])).toEqual({
+      label: "Waiting for you",
+      tone: "waiting",
+    });
+  });
+
+  test("answered FORM → pendingForm cleared + answer entry rendered", () => {
+    const messages = [
+      inbound("p1", "Which provider?", { hasForm: true, formQuestions: QUESTIONS }),
+      answered("a1", "p1"),
+    ];
+    const runs = runsFromMessages(messages);
+    expect(runs[0].pendingForm).toBeUndefined();
+    // The answer shows as an outbound form-answer entry in the thread.
+    const last = runs[0].messages[runs[0].messages.length - 1];
+    expect(last.formAnswer).toBe(true);
+    expect(last.direction).toBe("out");
+    // Pill no longer says "Waiting for you".
+    expect(deriveCardStatus(runs[0]).label).toBe("Answered · waiting for planner");
+  });
+
+  test("inbound without formQuestions → no pendingForm", () => {
+    const runs = runsFromMessages([
+      inbound("p1", "just a status", { workflowStatus: "IN_PROGRESS" }),
+    ]);
+    expect(runs[0].pendingForm).toBeUndefined();
+  });
+});
+
+describe("getSubAgentRunsFromMessages — Start Tasks gating", () => {
+  test("inbound TASKS artifact → hasGeneratedTasks true (sticky)", () => {
+    const runs = runsFromMessages([
+      inbound("p1", "Here are the tasks", {
+        workflowStatus: "COMPLETED",
+        hasTasks: true,
+      }),
+      inbound("p2", "follow-up status"),
+    ]);
+    expect(runs[0].hasGeneratedTasks).toBe(true);
+  });
+
+  test("no TASKS artifact → hasGeneratedTasks false", () => {
+    const runs = runsFromMessages([
+      inbound("p1", "architecture done", { workflowStatus: "COMPLETED" }),
+    ]);
+    expect(runs[0].hasGeneratedTasks).toBe(false);
+  });
+});
+
+describe("isDisplayableMessage — thread filter", () => {
+  function makeMessage(overrides: Partial<RunMessage>): RunMessage {
+    return {
+      messageId: "m1",
+      messageIndex: 0,
+      direction: "in",
+      text: "",
+      status: "sent",
+      ...overrides,
+    };
+  }
+
+  test("outbound entry always passes filter", () => {
+    expect(isDisplayableMessage(makeMessage({ direction: "out", text: "" }))).toBe(true);
+  });
+
+  test("inbound with prose text passes filter", () => {
+    expect(isDisplayableMessage(makeMessage({ direction: "in", text: "Here is an update" }))).toBe(true);
+  });
+
+  test("inbound with hasForm passes filter", () => {
+    expect(isDisplayableMessage(makeMessage({ direction: "in", text: "", hasForm: true }))).toBe(true);
+  });
+
+  test("inbound with hasTasks passes filter", () => {
+    expect(isDisplayableMessage(makeMessage({ direction: "in", text: "", hasTasks: true }))).toBe(true);
+  });
+
+  test("inbound with workflowStatus COMPLETED passes filter", () => {
+    expect(isDisplayableMessage(makeMessage({ direction: "in", text: "", workflowStatus: "COMPLETED" }))).toBe(true);
+  });
+
+  test("inbound with no text, no form, no tasks, non-COMPLETED status is excluded", () => {
+    expect(isDisplayableMessage(makeMessage({
+      direction: "in",
+      text: "",
+      hasForm: false,
+      hasTasks: false,
+      workflowStatus: "IN_PROGRESS",
+    }))).toBe(false);
+  });
+
+  test("inbound with no text, no form, no tasks, and undefined workflowStatus is excluded", () => {
+    expect(isDisplayableMessage(makeMessage({
+      direction: "in",
+      text: "",
+    }))).toBe(false);
+  });
+
+  test("inbound with whitespace-only text is excluded", () => {
+    expect(isDisplayableMessage(makeMessage({
+      direction: "in",
+      text: "   ",
+      workflowStatus: "IN_PROGRESS",
+    }))).toBe(false);
+  });
+
+  test("thread filters out noisy fallback entries from run.messages", () => {
+    const runs = runsFromMessages([
+      outbound("m1", "Please generate the plan"),
+      inbound("p1", "", { workflowStatus: "IN_PROGRESS" }), // noisy — no text, not COMPLETED
+      inbound("p2", "", { workflowStatus: "COMPLETED" }),   // kept — COMPLETED
+    ]);
+    const displayMessages = runs[0].messages.filter(isDisplayableMessage);
+    // outbound + COMPLETED inbound kept; IN_PROGRESS empty inbound dropped
+    expect(displayMessages).toHaveLength(2);
+    expect(displayMessages[0].direction).toBe("out");
+    expect(displayMessages[1].workflowStatus).toBe("COMPLETED");
   });
 });

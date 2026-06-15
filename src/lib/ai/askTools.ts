@@ -295,10 +295,12 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
       },
     }),
     search_logs: tool({
-      description: `Search application logs using Quickwit. Supports Lucene query syntax. Does not support wildcards. 
+      description: `Search application logs using Quickwit. Supports Lucene query syntax. Does not support wildcards.
+IMPORTANT: every term MUST include a field prefix (e.g. "message:", "level:", "path:"). There is no default search field, so a bare query like "CLN" will fail with a 400 error ("query requires a default search field"). To search for a keyword, use "message:CLN".
 Example queries:
 - "path:pool AND path:status" (for searching endpoint like /api/pool/[slug]/status)
-- "message:AuthenticationError",
+- "message:AuthenticationError"
+- "message:CLN AND level:ERROR"
 - "level:ERROR"
 `,
       inputSchema: z.object({
@@ -438,7 +440,7 @@ function buildWorkspaceTools(
     logs_agent: tool({
       description:
         "Invoke the Logs Agent to perform deep, run-grounded analysis of agent execution logs for this workspace. " +
-        "Use this when the user asks about what happened during a run, debugging agent failures, or wants a synthesised explanation backed by real log data. " +
+        "Use this when the user asks about what happened during a run, on a swarm, debugging agent failures, or wants a synthesised explanation backed by real log data. " +
         "Heavier than `search_logs` (which does a quick Lucene keyword search) — prefer `search_logs` for simple keyword lookups. " +
         "Optionally narrow the analysis to a specific feature or task by supplying featureId/taskId.",
       inputSchema: z.object({

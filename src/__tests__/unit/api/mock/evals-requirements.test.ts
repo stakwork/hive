@@ -36,8 +36,8 @@ describe("GET /api/mock/evals/[evalSetId]/requirements", () => {
       expect(node.ref_id).toBeDefined();
       expect(node.properties.name).toBeDefined();
       expect(node.properties.prompt_snippet).toBeDefined();
-      expect(Array.isArray(node.properties.positive_cases)).toBe(true);
-      expect(Array.isArray(node.properties.negative_cases)).toBe(true);
+      expect(Array.isArray(node.properties.desirable_cases)).toBe(true);
+      expect(Array.isArray(node.properties.undesirable_cases)).toBe(true);
       expect(typeof node.properties.order).toBe("number");
     }
   });
@@ -89,8 +89,8 @@ describe("POST /api/mock/evals/[evalSetId]/requirements", () => {
       name: "Test Req",
       description: "A description",
       prompt_snippet: "When asked to do X",
-      positive_cases: ["Does X correctly"],
-      negative_cases: ["Fails silently"],
+      desirable_cases: ["Does X correctly"],
+      undesirable_cases: ["Fails silently"],
     };
     const request = makePostRequest("eval-set-1", body);
     const response = await POST(request);

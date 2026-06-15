@@ -382,6 +382,7 @@ function MilestonesTable({
       sequence: parseInt(form.sequence, 10),
       dueDate: form.dueDate || undefined,
       completedAt: form.completedAt || undefined,
+      assigneeId: form.assigneeId || undefined,
     };
     const res = await fetch(baseUrl, {
       method: "POST",
@@ -404,6 +405,7 @@ function MilestonesTable({
       sequence: parseInt(form.sequence, 10),
       dueDate: form.dueDate || undefined,
       completedAt: form.completedAt || undefined,
+      assigneeId: form.assigneeId || null,
     };
     const res = await fetch(`${baseUrl}/${editTarget.id}`, {
       method: "PATCH",
@@ -567,6 +569,7 @@ function MilestonesTable({
         defaultSequence={addDefaultSequence}
         usedSequences={addUsedSequences}
         onSave={handleAdd}
+        githubLogin={githubLogin}
       />
 
       {/* Edit dialog */}
@@ -576,6 +579,7 @@ function MilestonesTable({
         initial={editTarget}
         usedSequences={editUsedSequences}
         onSave={handleEdit}
+        githubLogin={githubLogin}
       />
 
       {/* Insert before/after dialog */}
@@ -588,6 +592,7 @@ function MilestonesTable({
         defaultSequence={insertSequence}
         usedSequences={insertUsedSequences}
         onSave={handleAdd}
+        githubLogin={githubLogin}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>

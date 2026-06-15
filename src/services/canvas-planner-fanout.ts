@@ -37,14 +37,78 @@
  */
 
 import { db } from "@/lib/db";
-import { ArtifactType, WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus } from "@prisma/client";
 import type { Artifact, ChatMessage } from "@prisma/client";
+import { isClarifyingQuestions } from "@/types/stakwork";
+import type { ClarifyingQuestion } from "@/types/stakwork";
+import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 // Type-only import — the runtime `invokeCanvasAgentOnPlannerMessage` is
-// loaded lazily (dynamic `import()` below) so this webhook-path module
+// loaded by the webhook route (in `after()`), NOT here, so this module
 // doesn't statically pull in `runCanvasAgent`'s heavy module graph
-// (bifrost, pods, encryption, …). The auto-turn machinery is gated off
-// by default and only needed on actionable messages.
+// (bifrost, pods, encryption, …). We just report whether an auto-turn
+// is warranted; the caller schedules it off the request's critical path.
 import type { AutoTurnWakeReason } from "@/services/canvas-agent-autoturn";
+
+/**
+ * Extract the planner's clarifying-question list from a message, if it
+ * carries one.
+ *
+ * **Important representation note.** A feature planner asks the user a
+ * structured question via a `PLAN`-typed artifact whose JSON content
+ * passes `isClarifyingQuestions` (`tool_use === "ask_clarifying_questions"`,
+ * `content: ClarifyingQuestion[]`) — the exact shape
+ * `ClarifyingQuestionsPreview` renders and `FeaturePlanChat` /
+ * `FeaturePlanChatMessage` detect. This is NOT an `ArtifactType.FORM`
+ * (that's the *task* chat's form representation). Returns the questions
+ * array (≥1) or `null` when the message has no clarifying-questions
+ * artifact.
+ */
+export function extractClarifyingQuestions(
+  plannerMessage: { artifacts: Artifact[] },
+): ClarifyingQuestion[] | null {
+  for (const a of plannerMessage.artifacts) {
+    if (a.type === "PLAN" && isClarifyingQuestions(a.content)) {
+      const questions = a.content.content;
+      if (Array.isArray(questions) && questions.length > 0) return questions;
+    }
+  }
+  return null;
+}
+
+/**
+ * Did this planner message carry a `TASKS` artifact — i.e. the planner
+ * just generated a task breakdown? Surfaced as `source.hasTasks` so the
+ * card can offer a **Start Tasks** button (which fetches the live
+ * ready-count and POSTs to `…/tasks/assign-all`). Like the other
+ * signals, a snapshot: the actual count is read live by the card.
+ */
+export function plannerMessageHasTasks(
+  plannerMessage: { artifacts: Artifact[] },
+): boolean {
+  return plannerMessage.artifacts.some((a) => a.type === "TASKS");
+}
+
+/**
+ * Did this planner message carry a *real* plan — a `PLAN` artifact that
+ * is NOT the clarifying-questions variant? This is the "the planner
+ * delivered a plan ready for review" signal: it's exactly what fires the
+ * `PLAN_AWAITING_APPROVAL` notification, and it's the substantive
+ * deliverable the canvas agent should react to (read it, and if it's
+ * solid, nudge the planner to generate tasks).
+ *
+ * A clarifying-questions message is *also* `PLAN`-typed (see
+ * `extractClarifyingQuestions`), so we exclude it here — that case is
+ * handled separately as the stronger `"form"` signal. The result: this
+ * returns true only for genuine plan summaries, not for the question
+ * variant and not for pure-prose status chatter (which has no artifact).
+ */
+export function plannerMessageHasPlan(
+  plannerMessage: { artifacts: Artifact[] },
+): boolean {
+  return plannerMessage.artifacts.some(
+    (a) => a.type === "PLAN" && !isClarifyingQuestions(a.content),
+  );
+}
 
 /** Subset of `Feature` the fan-out needs. */
 export interface FanOutFeatureRef {
@@ -53,12 +117,29 @@ export interface FanOutFeatureRef {
   /** Carried for future use (e.g. workspace-scoped logging). Not read in v1. */
   workspaceId: string;
   /**
+   * Feature title + workspace display info, echoed onto the planner
+   * row's `source` so an inbound-only `SubAgentRunCard` (the approval
+   * flow) shows the real name + a working plan link instead of
+   * "Unknown feature". Optional for backwards-compat with existing
+   * callers/tests; absent → the card falls back to the placeholder.
+   */
+  title?: string | null;
+  workspaceSlug?: string | null;
+  workspaceName?: string | null;
+  /**
    * The feature's live workflow status, used by the Phase 3 "actionable"
    * check to decide whether a planner message warrants an autonomous
    * canvas-agent turn. Optional for backwards-compat with existing
    * callers/tests; absent → workflow-transition wakeups don't fire.
    */
   workflowStatus?: WorkflowStatus | null;
+  /**
+   * Non-null when the feature has an associated Stakwork project, meaning
+   * agent logs are available. Optional for backwards-compat; absent →
+   * `hasLogs` is omitted from the fan-out source (treated as unknown/false
+   * by the client refresh hook).
+   */
+  stakworkProjectId?: string | null;
 }
 
 /** Subset of `ChatMessage` the fan-out needs. Artifacts are eagerly loaded. */
@@ -83,13 +164,39 @@ type CanvasMessageRow = {
     featureId: string;
     plannerMessageId: string;
     /**
+     * Feature display metadata, echoed so an inbound-only
+     * `SubAgentRunCard` renders the real name / workspace / plan link.
+     * Omitted when the caller didn't supply them.
+     */
+    featureTitle?: string;
+    workspaceSlug?: string;
+    workspaceName?: string;
+    /**
      * Feature `workflowStatus` at fan-out time (Phase 3). Drives the
      * `SubAgentRunCard` status pill. Stringified enum value; omitted
      * when the caller didn't supply it.
      */
     workflowStatus?: string;
-    /** `true` when the planner message carried a `FORM` artifact (Phase 3). */
+    /**
+     * `true` when the planner message carried a clarifying-questions
+     * artifact (`PLAN` + `ask_clarifying_questions`) — Phase 3. Drives
+     * the `Waiting for you` pill.
+     */
     hasForm?: boolean;
+    /**
+     * The clarifying-question list (Phase 4), embedded so the canvas
+     * conversation is self-contained — `PlannerFormSlot` renders this
+     * verbatim via `ClarifyingQuestionsPreview` with no extra fetch,
+     * and it round-trips through share / fork / iOS like every other
+     * message field. Present iff `hasForm` is `true`.
+     */
+    formQuestions?: ClarifyingQuestion[];
+    /**
+     * `true` when the planner message carried a `TASKS` artifact — it
+     * just generated a task breakdown. Gates the card's **Start Tasks**
+     * button (which reads the live ready-count itself).
+     */
+    hasTasks?: boolean;
   };
   /** Empty for v1; Phase 3 may populate when surfacing artifacts. */
   artifactIds?: string[];
@@ -108,20 +215,24 @@ type CanvasMessageRow = {
  *   - The conversation's `messages` JSON has one new entry with the
  *     `source.plannerMessageId === plannerMessage.id`.
  *   - `lastMessageAt` is bumped to the planner message's timestamp.
+ *   - A `CANVAS_CONVERSATION_UPDATED` Pusher nudge fires so an open
+ *     browser shows the planner message immediately.
  *
- * Returns nothing — fire-and-forget by design. Callers should not
- * await the result blocking the user-facing webhook response, but in
- * practice the work is a single short transaction (<10ms typical)
- * so awaiting is fine.
+ * **Returns the auto-turn wake reason** (or `null`). The caller (the
+ * Stakwork webhook route) is responsible for scheduling the actual
+ * `invokeCanvasAgentOnPlannerMessage` in `after()` — off the webhook's
+ * critical path — so the LLM turn never blocks the response to
+ * Stakwork. The append + Pusher nudge are the only synchronous work
+ * here (a single short transaction, <10ms typical).
  */
 export async function fanOutPlannerMessageToCanvas(
   feature: FanOutFeatureRef,
   plannerMessage: FanOutPlannerMessage,
-): Promise<void> {
+): Promise<AutoTurnWakeReason | null> {
   // No owning conversation → nothing to fan out to. Common case for
   // features created from the per-feature plan page that have never
   // been touched by a canvas agent.
-  if (!feature.parentCanvasConversationId) return;
+  if (!feature.parentCanvasConversationId) return null;
 
   const conversationId = feature.parentCanvasConversationId;
 
@@ -162,9 +273,8 @@ export async function fanOutPlannerMessageToCanvas(
         return;
       }
 
-      const hasForm = plannerMessage.artifacts.some(
-        (a) => a.type === ArtifactType.FORM,
-      );
+      const formQuestions = extractClarifyingQuestions(plannerMessage);
+      const hasTasks = plannerMessageHasTasks(plannerMessage);
 
       const newRow: CanvasMessageRow = {
         // The canvas chat treats messages as identified by their own
@@ -178,13 +288,29 @@ export async function fanOutPlannerMessageToCanvas(
           kind: "planner",
           featureId: feature.id,
           plannerMessageId: plannerMessage.id,
-          // Phase 3 status-pill signal. Both optional — only set when
-          // we actually have the value, so the card distinguishes
-          // "unknown" (legacy/absent) from a real state.
+          // Feature display metadata so an inbound-only card (approval
+          // flow) shows the real name / workspace / plan link instead
+          // of "Unknown feature". Only set when present.
+          ...(feature.title ? { featureTitle: feature.title } : {}),
+          ...(feature.workspaceSlug
+            ? { workspaceSlug: feature.workspaceSlug }
+            : {}),
+          ...(feature.workspaceName
+            ? { workspaceName: feature.workspaceName }
+            : {}),
+          // Phase 3/4 status-pill + inline-FORM signal. All optional —
+          // only set when present, so the card distinguishes "unknown"
+          // (legacy/absent) from a real state.
           ...(feature.workflowStatus
             ? { workflowStatus: feature.workflowStatus }
             : {}),
-          ...(hasForm ? { hasForm: true } : {}),
+          ...(formQuestions
+            ? { hasForm: true, formQuestions }
+            : {}),
+          ...(hasTasks ? { hasTasks: true } : {}),
+          // Log-availability snapshot at fan-out time. Absent on old
+          // rows; `useSubAgentStatusRefresh` backfills it on refresh.
+          ...(feature.stakworkProjectId ? { hasLogs: true } : {}),
         },
       };
 
@@ -200,28 +326,49 @@ export async function fanOutPlannerMessageToCanvas(
       didAppend = true;
     });
 
-    // Phase 3: if the freshly-appended planner message is "actionable",
-    // wake the canvas agent to triage it. `invokeCanvasAgentOnPlannerMessage`
-    // is itself gated behind `CANVAS_AUTONOMOUS_TURNS_ENABLED` (off by
-    // default), so in production this is a logged no-op until flipped
-    // on. Runs AFTER the append commits so the agent reads a
-    // conversation that already includes this message. Awaited so the
-    // worker's failure-tolerance (the outer try/catch) covers it too;
-    // the agent turn is itself failure-tolerant and won't throw.
-    if (didAppend) {
-      const wakeReason = actionableWakeReason(feature, plannerMessage);
-      if (wakeReason) {
-        const { invokeCanvasAgentOnPlannerMessage } = await import(
-          "@/services/canvas-agent-autoturn"
-        );
-        await invokeCanvasAgentOnPlannerMessage({
-          conversationId,
-          featureId: feature.id,
-          plannerMessageId: plannerMessage.id,
-          wakeReason,
-        });
-      }
-    }
+    // Re-delivery / double-fire → no fresh append → nothing to push or
+    // wake on.
+    if (!didAppend) return null;
+
+    // Push the planner message to an open browser immediately (live
+    // chat). Fire-and-forget; never blocks the webhook.
+    notifyCanvasConversationUpdated(conversationId, "planner");
+
+    // If the message is "actionable", report the wake reason so the
+    // caller can schedule the autonomous canvas-agent turn in `after()`
+    // (off the webhook's critical path). The turn itself is gated behind
+    // `CANVAS_AUTONOMOUS_TURNS_ENABLED` (off by default).
+    const wakeReason = actionableWakeReason(feature, plannerMessage);
+
+    // ALWAYS log the classification — incl. when `wakeReason` is null —
+    // so "the agent didn't auto-respond" is diagnosable from Vercel logs
+    // WITHOUT a turn ever being scheduled (a null reason means no
+    // `[canvas-autoturn]` line will ever appear). Surfaces each raw
+    // signal so the exact reason is obvious (e.g. a planner that asks a
+    // question mid-message but ends on a period → `endsWithQuestionMark:
+    // false` → not actionable via the trailing-`?` heuristic).
+    const trimmed = plannerMessage.message.trim();
+    console.log("[canvas-planner-fanout] classified planner message", {
+      featureId: feature.id,
+      plannerMessageId: plannerMessage.id,
+      conversationId,
+      wakeReason,
+      signals: {
+        hasClarifyingForm: !!extractClarifyingQuestions(plannerMessage),
+        workflowStatus: feature.workflowStatus ?? null,
+        endsWithQuestionMark: trimmed.endsWith("?"),
+        messagePreview: trimmed.slice(-80),
+      },
+      ...(wakeReason
+        ? {}
+        : {
+            notActionable:
+              "no clarifying-questions FORM, non-terminal workflowStatus, " +
+              "and message does not end with '?' — auto-turn NOT scheduled",
+          }),
+    });
+
+    return wakeReason;
   } catch (e) {
     // Non-fatal: the planner's own write succeeded; the canvas
     // conversation is just incomplete for this one message. The user
@@ -235,6 +382,7 @@ export async function fanOutPlannerMessageToCanvas(
         error: e instanceof Error ? e.message : String(e),
       },
     );
+    return null;
   }
 }
 
@@ -245,26 +393,38 @@ export async function fanOutPlannerMessageToCanvas(
  * turn). Mirrors the precise definition in
  * `docs/plans/canvas-agent-manages-planners.md` Phase 3:
  *
- *   1. A `FORM` artifact (planner's explicit "a human must pick"). →
- *      `"form"`. Deterministic.
+ *   1. A clarifying-questions artifact — `PLAN` + `ask_clarifying_questions`
+ *      (planner's explicit "a human must pick"). → `"form"`.
+ *      Deterministic. (NOT `ArtifactType.FORM`, which is the task
+ *      chat's representation — feature planners use the PLAN variant.)
  *   2. The feature's `workflowStatus` is terminal
  *      (`COMPLETED` / `FAILED` / `HALTED` / `ERROR`). → mapped reason.
  *      Deterministic.
- *   3. The message text ends with `?` (heuristic for "asked a question
+ *   3. The message carried a real `PLAN` artifact (a plan ready for
+ *      review — the same signal that fires `PLAN_AWAITING_APPROVAL`).
+ *      → `"completed"`. Deterministic, and independent of the
+ *      `workflowStatus` race: the plan-message webhook and the
+ *      run-completion webhook arrive separately, so the feature may
+ *      still read `IN_PROGRESS` when the plan lands. Keying off the
+ *      artifact catches "plan is done, keep it moving" reliably. The
+ *      `"completed"` prompt branch guards against premature task-pushing
+ *      (it only nudges when brief/requirements/architecture are all
+ *      populated), so an intermediate plan just gets read, not actioned.
+ *   4. The message text ends with `?` (heuristic for "asked a question
  *      without a FORM"). → `"question"`. Fragile-but-cheap; a false
  *      positive costs one extra turn the agent can `stay_silent` on.
  *
  * FORM takes precedence over the others (it's the strongest signal).
+ * Note we deliberately do NOT wake on a bare `TASKS` artifact: once
+ * tasks are generated the next step ("Start Tasks") is the user's
+ * button, so a turn there is just noise.
  */
 export function actionableWakeReason(
   feature: FanOutFeatureRef,
   plannerMessage: FanOutPlannerMessage,
 ): AutoTurnWakeReason | null {
-  // 1. FORM artifact.
-  const hasForm = plannerMessage.artifacts.some(
-    (a) => a.type === ArtifactType.FORM,
-  );
-  if (hasForm) return "form";
+  // 1. Clarifying-questions artifact (PLAN + ask_clarifying_questions).
+  if (extractClarifyingQuestions(plannerMessage)) return "form";
 
   // 2. Terminal workflow status.
   switch (feature.workflowStatus) {
@@ -279,8 +439,100 @@ export function actionableWakeReason(
       break;
   }
 
-  // 3. Trailing-`?` question heuristic.
+  // 3. A real plan artifact — a plan ready for review. Treated as
+  // `completed` so the agent reads it and keeps it moving.
+  if (plannerMessageHasPlan(plannerMessage)) return "completed";
+
+  // 4. Trailing-`?` question heuristic.
   if (plannerMessage.message.trim().endsWith("?")) return "question";
 
   return null;
+}
+
+/**
+ * Refresh the latest planner row's `source.workflowStatus` in a
+ * feature's owning canvas conversation, in place.
+ *
+ * **Why this exists.** The `SubAgentRunCard` pill reads a *frozen*
+ * `source.workflowStatus` snapshot taken when the planner's message
+ * fanned out (`fanOutPlannerMessageToCanvas`). But a feature's terminal
+ * status (`COMPLETED` / `FAILED` / …) is written by a *different*
+ * webhook (`/api/stakwork/webhook`) that typically fires a few seconds
+ * AFTER the planner message already landed — so the snapshot freezes at
+ * `IN_PROGRESS` and the pill is stuck on "Running" forever. This patches
+ * the snapshot the moment the real status arrives.
+ *
+ * It updates the row **in place** (same id, only `source.workflowStatus`)
+ * so fresh loads / reopened tabs / shares / iOS all read the correct
+ * status. Because the client live-sync merge is append-only (it can't
+ * refresh an existing id), the matching `notifyCanvasConversationUpdated`
+ * nudge is paired with a client `reconcilePlannerSources` step
+ * (`canvasChatPersistence.ts`) that swaps the refreshed `source` into an
+ * already-open tab — so the pill flips live, with no reload.
+ *
+ * Idempotent and failure-tolerant, like the fan-out: a no-op when the
+ * conversation is gone, when there's no planner row for the feature, or
+ * when the status already matches. Never throws — the feature's own
+ * `workflowStatus` write is the source of truth; this derived surface
+ * self-heals on the next fresh load if the patch is missed.
+ */
+export async function syncPlannerWorkflowStatusToCanvas(
+  conversationId: string,
+  featureId: string,
+  workflowStatus: WorkflowStatus,
+): Promise<void> {
+  try {
+    let changed = false;
+    await db.$transaction(async (tx) => {
+      // Same row-level lock the fan-out + autosave PUT use — serialize
+      // against a concurrent append so we don't clobber it.
+      const locked = await tx.$queryRaw<{ messages: unknown }[]>`
+        SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+      `;
+      if (locked.length === 0) return; // conversation deleted → no-op
+
+      const messages = Array.isArray(locked[0].messages)
+        ? (locked[0].messages as CanvasMessageRow[])
+        : [];
+
+      // The pill derives from the run's LATEST inbound planner entry, so
+      // only the newest planner row for this feature matters.
+      let idx = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const s = messages[i]?.source;
+        if (s?.kind === "planner" && s.featureId === featureId) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx === -1) return; // no fanned-out planner row yet → nothing to patch
+      if (messages[idx].source.workflowStatus === workflowStatus) return; // already current
+
+      const updated = messages.map((m, i) =>
+        i === idx
+          ? { ...m, source: { ...m.source, workflowStatus } }
+          : m,
+      );
+
+      await tx.sharedConversation.update({
+        where: { id: conversationId },
+        data: { messages: updated as unknown as never },
+      });
+      changed = true;
+    });
+
+    if (changed) {
+      notifyCanvasConversationUpdated(conversationId, "workflow-status");
+    }
+  } catch (e) {
+    console.error(
+      "[canvas-planner-fanout] syncPlannerWorkflowStatusToCanvas failed (non-fatal):",
+      {
+        conversationId,
+        featureId,
+        workflowStatus,
+        error: e instanceof Error ? e.message : String(e),
+      },
+    );
+  }
 }

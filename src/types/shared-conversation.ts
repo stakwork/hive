@@ -2,6 +2,19 @@
 
 export interface ConversationSettings {
   extraWorkspaceSlugs?: string[];
+  // Cached swarm concepts (the expensive `listConcepts` result) for
+  // org-canvas conversations. Written server-side by `/api/ask/quick` on
+  // the first turn and reused on later turns to skip the swarm fetch. The
+  // prompt prefix is rebuilt fresh each turn (so the canvas scope hint
+  // stays accurate) — this is just the concept data it's seeded with.
+  // Shape: `CachedConcepts` from runCanvasAgent; typed loosely here since
+  // this module is shared with the client.
+  promptConcepts?: unknown;
+  // Read-only snapshot of the fully rendered prompt prefix (system prompt
+  // + seeded concepts) from the most recent cache write, for display in
+  // the Agent Logs chat detail view. Never shown in the live chat. AI SDK
+  // `ModelMessage[]` shape.
+  promptPrefix?: unknown[];
 }
 
 export interface SharedConversationData {
@@ -55,6 +68,7 @@ export interface ConversationListItem {
   updatedAt: string;
   creatorName?: string | null;
   creatorId?: string;
+  creatorImage?: string | null;
 }
 
 // Full conversation detail for GET /conversations/[id]
@@ -68,6 +82,7 @@ export interface UpdateConversationRequest {
   title?: string; // Optional: update title
   source?: string; // Optional: update source
   settings?: ConversationSettings; // Optional: update chat settings
+  isShared?: boolean; // Optional: mark the conversation as a shared room (owner only)
 }
 
 // Recent chat list item for GET /recent

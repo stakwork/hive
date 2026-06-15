@@ -5,6 +5,10 @@ import { GET as getRequirements, POST as createRequirement } from "@/app/api/wor
 import { PUT as updateRequirement, DELETE as deleteRequirement } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/route";
 import { POST as linkRuns } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/runs/route";
 import { GET as getSessions } from "@/app/api/workspaces/[slug]/evals/sessions/route";
+import { GET as getAgentRoles } from "@/app/api/workspaces/[slug]/evals/agent-roles/route";
+import { GET as getTriggers, POST as createTrigger } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers/route";
+import { GET as getTriggerOutputs } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers/[triggerId]/outputs/route";
+import { POST as runTrigger } from "@/app/api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers/[triggerId]/run/route";
 import {
   createTestUser,
   createTestWorkspace,
@@ -554,8 +558,8 @@ describe("Evals API — Integration Tests", () => {
       name: "Req 1",
       description: "desc",
       prompt_snippet: "When the agent is asked to...",
-      positive_cases: ["The agent responds correctly"],
-      negative_cases: ["The agent ignores the instruction"],
+      desirable_cases: ["The agent responds correctly"],
+      undesirable_cases: ["The agent ignores the instruction"],
     };
 
     describe("Success", () => {
@@ -588,10 +592,11 @@ describe("Evals API — Integration Tests", () => {
           expect.objectContaining({
             node_type: "EvalRequirement",
             node_data: expect.objectContaining({
+              id: expect.any(String),
               name: "Req 1",
               prompt_snippet: validBody.prompt_snippet,
-              positive_cases: validBody.positive_cases,
-              negative_cases: validBody.negative_cases,
+              desirable_cases: validBody.desirable_cases,
+              undesirable_cases: validBody.undesirable_cases,
             }),
           }),
         );
@@ -679,7 +684,7 @@ describe("Evals API — Integration Tests", () => {
         expect(nodesService.addNode).not.toHaveBeenCalled();
       });
 
-      test("rejects empty positive_cases array", async () => {
+      test("rejects empty desirable_cases array", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
@@ -688,18 +693,18 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
           owner,
-          { ...validBody, positive_cases: [] },
+          { ...validBody, desirable_cases: [] },
         );
 
         const response = await createRequirement(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }),
         });
 
-        await expectError(response, "positive_cases must be a non-empty array", 400);
+        await expectError(response, "desirable_cases must be a non-empty array", 400);
         expect(nodesService.addNode).not.toHaveBeenCalled();
       });
 
-      test("rejects empty negative_cases array", async () => {
+      test("rejects empty undesirable_cases array", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
@@ -708,14 +713,14 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
           owner,
-          { ...validBody, negative_cases: [] },
+          { ...validBody, undesirable_cases: [] },
         );
 
         const response = await createRequirement(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }),
         });
 
-        await expectError(response, "negative_cases must be a non-empty array", 400);
+        await expectError(response, "undesirable_cases must be a non-empty array", 400);
         expect(nodesService.addNode).not.toHaveBeenCalled();
       });
     });
@@ -1296,8 +1301,8 @@ describe("Evals API — Integration Tests", () => {
       name: "Check output",
       description: "Verifies correct output",
       prompt_snippet: "Summarize this text",
-      positive_cases: ["Good summary"],
-      negative_cases: ["Bad summary"],
+      desirable_cases: ["Good summary"],
+      undesirable_cases: ["Bad summary"],
     };
 
     describe("Success", () => {
@@ -1375,7 +1380,7 @@ describe("Evals API — Integration Tests", () => {
         await expectError(response, "prompt_snippet is required", 400);
       });
 
-      test("returns 400 when positive_cases is empty", async () => {
+      test("returns 400 when desirable_cases is empty", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
@@ -1384,17 +1389,17 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPutRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
           owner,
-          { ...validReqBody, positive_cases: [] },
+          { ...validReqBody, desirable_cases: [] },
         );
 
         const response = await updateRequirement(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
         });
 
-        await expectError(response, "positive_cases must be a non-empty array", 400);
+        await expectError(response, "desirable_cases must be a non-empty array", 400);
       });
 
-      test("returns 400 when negative_cases is empty", async () => {
+      test("returns 400 when undesirable_cases is empty", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
@@ -1403,14 +1408,14 @@ describe("Evals API — Integration Tests", () => {
         const request = createAuthenticatedPutRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
           owner,
-          { ...validReqBody, negative_cases: [] },
+          { ...validReqBody, undesirable_cases: [] },
         );
 
         const response = await updateRequirement(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
         });
 
-        await expectError(response, "negative_cases must be a non-empty array", 400);
+        await expectError(response, "undesirable_cases must be a non-empty array", 400);
       });
     });
 
@@ -1501,6 +1506,829 @@ describe("Evals API — Integration Tests", () => {
         });
 
         await expectError(response, "Swarm not configured", 400);
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/workspaces/[slug]/evals/sessions — role_ref_id filter (new)
+  // ---------------------------------------------------------------------------
+  describe("GET /api/workspaces/[slug]/evals/sessions — role_ref_id filter", () => {
+    test("filters sessions via HAS_SESSION edge when role_ref_id is provided", async () => {
+      const owner = await createTestUser();
+      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+      await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+      const mockNodes = [
+        { ref_id: "s-role-1", node_type: "AgentSession", properties: { name: "Role Session" } },
+      ];
+
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ nodes: mockNodes }),
+      } as any);
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/evals/sessions?role_ref_id=role-abc`,
+        owner,
+      );
+
+      const response = await getSessions(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.data.nodes).toHaveLength(1);
+
+      // Confirm the edge-expand URL was used (HAS_SESSION)
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(fetchCall).toContain("role-abc");
+      expect(fetchCall).toContain("HAS_SESSION");
+    });
+
+    test("returns 502 when Jarvis fails on role_ref_id path", async () => {
+      const owner = await createTestUser();
+      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+      await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+      } as any);
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/evals/sessions?role_ref_id=role-abc`,
+        owner,
+      );
+
+      const response = await getSessions(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(502);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/workspaces/[slug]/evals/agent-roles
+  // ---------------------------------------------------------------------------
+  describe("GET /api/workspaces/[slug]/evals/agent-roles", () => {
+    describe("Success", () => {
+      test("returns agent role nodes", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const mockRoles = [
+          { ref_id: "r-1", node_type: "AgentRole", properties: { name: "Code Reviewer" } },
+          { ref_id: "r-2", node_type: "AgentRole", properties: { name: "QA Agent" } },
+        ];
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: mockRoles, total: 2 }),
+        } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/agent-roles`,
+          owner,
+        );
+
+        const response = await getAgentRoles(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.data.nodes).toHaveLength(2);
+        expect(data.data.total).toBe(2);
+      });
+
+      test("filters by name when name param is provided", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const allRoles = [
+          { ref_id: "r-1", node_type: "AgentRole", properties: { name: "Code Reviewer" } },
+          { ref_id: "r-2", node_type: "AgentRole", properties: { name: "QA Agent" } },
+        ];
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: allRoles }),
+        } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/agent-roles?name=qa`,
+          owner,
+        );
+
+        const response = await getAgentRoles(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        // Only the QA Agent matches
+        expect(data.data.nodes).toHaveLength(1);
+        expect(data.data.nodes[0].ref_id).toBe("r-2");
+      });
+    });
+
+    describe("Auth failures", () => {
+      test("rejects unauthenticated requests", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+
+        const request = createGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/agent-roles`,
+        );
+
+        const response = await getAgentRoles(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectUnauthorized(response);
+      });
+
+      test("rejects non-member", async () => {
+        const owner = await createTestUser();
+        const nonMember = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/agent-roles`,
+          nonMember,
+        );
+
+        const response = await getAgentRoles(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectForbidden(response, "Access denied");
+      });
+    });
+
+    describe("Swarm not configured", () => {
+      test("returns 400 when workspace has no swarm", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/agent-roles`,
+          owner,
+        );
+
+        const response = await getAgentRoles(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectError(response, "Swarm not configured", 400);
+      });
+    });
+
+    describe("Upstream failure", () => {
+      test("returns 502 when Jarvis returns non-ok", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+        } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/agent-roles`,
+          owner,
+        );
+
+        const response = await getAgentRoles(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        expect(response.status).toBe(502);
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers
+  // ---------------------------------------------------------------------------
+  describe("GET /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers", () => {
+    describe("Success", () => {
+      test("returns trigger nodes with outputs", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const mockTrigger = { ref_id: "t-1", node_type: "EvalTrigger", properties: { agent: "Reviewer" } };
+        const mockOutput = { ref_id: "o-1", node_type: "EvalTriggerOutput", properties: { result: "pass" } };
+
+        global.fetch = vi.fn()
+          // First call: fetch triggers
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ nodes: [mockTrigger] }),
+          } as any)
+          // Second call: fetch outputs for t-1
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ nodes: [mockOutput] }),
+          } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          owner,
+        );
+
+        const response = await getTriggers(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.data.nodes).toHaveLength(1);
+        expect(data.data.nodes[0].ref_id).toBe("t-1");
+        expect(data.data.nodes[0].outputs).toHaveLength(1);
+        expect(data.data.nodes[0].outputs[0].ref_id).toBe("o-1");
+      });
+
+      test("returns empty outputs array when output fetch fails", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const mockTrigger = { ref_id: "t-1", node_type: "EvalTrigger", properties: {} };
+
+        global.fetch = vi.fn()
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ nodes: [mockTrigger] }),
+          } as any)
+          .mockResolvedValueOnce({ ok: false, status: 503 } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          owner,
+        );
+
+        const response = await getTriggers(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.data.nodes[0].outputs).toEqual([]);
+      });
+    });
+
+    describe("Auth failures", () => {
+      test("rejects unauthenticated requests", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+
+        const request = createGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+        );
+
+        const response = await getTriggers(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectUnauthorized(response);
+      });
+
+      test("rejects non-member", async () => {
+        const owner = await createTestUser();
+        const nonMember = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          nonMember,
+        );
+
+        const response = await getTriggers(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectForbidden(response, "Access denied");
+      });
+    });
+
+    describe("Upstream failure", () => {
+      test("returns 502 when Jarvis trigger fetch fails", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        global.fetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 503 } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          owner,
+        );
+
+        const response = await getTriggers(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(502);
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers
+  // ---------------------------------------------------------------------------
+  describe("POST /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers", () => {
+    const validTriggerBody = {
+      agent: "Code Reviewer",
+      start_point: "PR opened",
+      end_point: "Review submitted",
+      environment: "staging",
+      session_ref_id: "session-abc",
+      run_count: 3,
+    };
+
+    describe("Success", () => {
+      test("creates trigger node and required edges", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "trigger-xyz" });
+        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
+        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          owner,
+          validTriggerBody,
+        );
+
+        const response = await createTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.data.ref_id).toBe("trigger-xyz");
+
+        expect(nodesService.addNode).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({ node_type: "EvalTrigger" }),
+        );
+        expect(nodesService.addEdge).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({ edge: { edge_type: "HAS_TRIGGER" } }),
+        );
+        expect(nodesService.addEdge).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({ edge: { edge_type: "EVALUATED" } }),
+        );
+      });
+    });
+
+    describe("Validation", () => {
+      test.each([
+        ["agent", { ...validTriggerBody, agent: "" }],
+        ["start_point", { ...validTriggerBody, start_point: "  " }],
+        ["end_point", { ...validTriggerBody, end_point: undefined }],
+        ["environment", { ...validTriggerBody, environment: "" }],
+        ["session_ref_id", { ...validTriggerBody, session_ref_id: "  " }],
+      ])("returns 400 when %s is missing/empty", async (field, body) => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          owner,
+          body as object,
+        );
+
+        const response = await createTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(400);
+        const data = await response.json();
+        expect(data.error).toContain(field);
+      });
+    });
+
+    describe("Auth failures", () => {
+      test("rejects unauthenticated requests", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+
+        const request = createPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          validTriggerBody,
+        );
+
+        const response = await createTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectUnauthorized(response);
+      });
+
+      test("rejects non-member", async () => {
+        const owner = await createTestUser();
+        const nonMember = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          nonMember,
+          validTriggerBody,
+        );
+
+        const response = await createTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        await expectForbidden(response, "Access denied");
+      });
+    });
+
+    describe("Service failures", () => {
+      test("returns 502 when addNode fails", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({
+          success: false,
+          error: "Jarvis unavailable",
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          owner,
+          validTriggerBody,
+        );
+
+        const response = await createTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(502);
+      });
+
+      test("returns 502 when HAS_TRIGGER edge fails", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "t-1" });
+        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: false, error: "Edge failed" });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          owner,
+          validTriggerBody,
+        );
+
+        const response = await createTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(502);
+      });
+
+      test("returns 502 when EVALUATED edge fails", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "t-1" });
+        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
+        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: false, error: "Edge failed" });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          owner,
+          validTriggerBody,
+        );
+
+        const response = await createTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(502);
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers/[triggerId]/outputs
+  // ---------------------------------------------------------------------------
+  describe("GET /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers/[triggerId]/outputs", () => {
+    describe("Success", () => {
+      test("returns output nodes for a trigger", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const mockOutputs = [
+          { ref_id: "o-1", node_type: "EvalTriggerOutput", properties: { result: "pass", score: 0.9 } },
+          { ref_id: "o-2", node_type: "EvalTriggerOutput", properties: { result: "fail", score: 0.1 } },
+        ];
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: mockOutputs }),
+        } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/outputs`,
+          owner,
+        );
+
+        const response = await getTriggerOutputs(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.data.nodes).toHaveLength(2);
+        expect(data.data.total).toBe(2);
+      });
+    });
+
+    describe("Auth failures", () => {
+      test("rejects unauthenticated requests", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+
+        const request = createGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/outputs`,
+        );
+
+        const response = await getTriggerOutputs(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        await expectUnauthorized(response);
+      });
+
+      test("rejects non-member", async () => {
+        const owner = await createTestUser();
+        const nonMember = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/outputs`,
+          nonMember,
+        );
+
+        const response = await getTriggerOutputs(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        await expectForbidden(response, "Access denied");
+      });
+    });
+
+    describe("Upstream failure", () => {
+      test("returns 502 when Jarvis returns non-ok", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        global.fetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 503 } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/outputs`,
+          owner,
+        );
+
+        const response = await getTriggerOutputs(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        expect(response.status).toBe(502);
+      });
+    });
+
+    describe("Swarm not configured", () => {
+      test("returns 400 when workspace has no swarm", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/outputs`,
+          owner,
+        );
+
+        const response = await getTriggerOutputs(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        await expectError(response, "Swarm not configured", 400);
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers/[triggerId]/run
+  // ---------------------------------------------------------------------------
+  describe("POST /api/workspaces/[slug]/evals/[evalSetId]/requirements/[reqId]/triggers/[triggerId]/run", () => {
+    describe("Success", () => {
+      test("triggers eval workflow via Stakwork and returns project_id", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
+        process.env.STAKWORK_API_KEY = "test-stakwork-key";
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ project_id: "proj-abc" }),
+        } as any);
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
+          owner,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.project_id).toBe("proj-abc");
+      });
+    });
+
+    describe("Configuration errors", () => {
+      test("returns 400 when STAKWORK_EVAL_WORKFLOW_ID is not set", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        delete process.env.STAKWORK_EVAL_WORKFLOW_ID;
+        process.env.STAKWORK_API_KEY = "test-stakwork-key";
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
+          owner,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        await expectError(response, "STAKWORK_EVAL_WORKFLOW_ID", 400);
+      });
+
+      test("returns 400 when STAKWORK_API_KEY is not set", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
+        delete process.env.STAKWORK_API_KEY;
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
+          owner,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        await expectError(response, "STAKWORK_API_KEY", 400);
+      });
+    });
+
+    describe("Auth failures", () => {
+      test("rejects unauthenticated requests", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+
+        const request = createPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        await expectUnauthorized(response);
+      });
+
+      test("rejects non-member", async () => {
+        const owner = await createTestUser();
+        const nonMember = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
+          nonMember,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        await expectForbidden(response, "Access denied");
+      });
+    });
+
+    describe("Swarm not configured", () => {
+      test("returns 400 when workspace has no swarm", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
+          owner,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        await expectError(response, "Swarm not configured", 400);
+      });
+    });
+
+    describe("Upstream failure", () => {
+      test("returns 502 when Stakwork returns non-ok", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
+        process.env.STAKWORK_API_KEY = "test-stakwork-key";
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          text: async () => "Internal Server Error",
+        } as any);
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
+          owner,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        expect(response.status).toBe(502);
       });
     });
   });

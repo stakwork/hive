@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { MilestoneResponse } from "@/types/initiatives";
+import type { OrgMemberResponse } from "@/types/workspace";
 
 export interface MilestoneForm {
   name: string;
@@ -40,6 +41,7 @@ export interface MilestoneForm {
   sequence: string;
   dueDate: string;
   completedAt: string;
+  assigneeId: string;
 }
 
 export const emptyMilestoneForm = (
@@ -51,6 +53,7 @@ export const emptyMilestoneForm = (
   sequence: defaultSequence !== undefined ? String(defaultSequence) : "",
   dueDate: "",
   completedAt: "",
+  assigneeId: "",
 });
 
 export function milestoneToForm(m: MilestoneResponse): MilestoneForm {
@@ -63,6 +66,7 @@ export function milestoneToForm(m: MilestoneResponse): MilestoneForm {
     sequence: String(m.sequence),
     dueDate: toDateInput(m.dueDate),
     completedAt: toDateInput(m.completedAt),
+    assigneeId: m.assignee?.id ?? "",
   };
 }
 
@@ -88,6 +92,11 @@ export interface MilestoneDialogProps {
    * non-empty `error` keeps the dialog open and surfaces the message.
    */
   onSave: (form: MilestoneForm) => Promise<{ error?: string }>;
+  /**
+   * GitHub org login — used to fetch org members for the owner picker.
+   * When omitted the owner picker is hidden.
+   */
+  githubLogin?: string;
 }
 
 export function MilestoneDialog({
@@ -97,10 +106,12 @@ export function MilestoneDialog({
   defaultSequence,
   usedSequences,
   onSave,
+  githubLogin,
 }: MilestoneDialogProps) {
   const [form, setForm] = useState<MilestoneForm>(emptyMilestoneForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [members, setMembers] = useState<OrgMemberResponse[]>([]);
 
   useEffect(() => {
     if (open) {
@@ -110,6 +121,19 @@ export function MilestoneDialog({
       setError(null);
     }
   }, [open, initial, defaultSequence]);
+
+  // Lazily fetch org members when the dialog opens (only if githubLogin provided)
+  useEffect(() => {
+    if (!open || !githubLogin) return;
+    const p = fetch(`/api/orgs/${githubLogin}/members`);
+    if (!p || typeof p.then !== "function") return;
+    p
+      .then((r) => (r.ok ? r.json() : Promise.resolve([])))
+      .then((data: unknown) =>
+        setMembers(Array.isArray(data) ? (data as OrgMemberResponse[]) : []),
+      )
+      .catch(() => setMembers([]));
+  }, [open, githubLogin]);
 
   const set = <K extends keyof MilestoneForm>(
     key: K,
@@ -224,6 +248,27 @@ export function MilestoneDialog({
               />
             </div>
           </div>
+          {githubLogin && (
+            <div className="grid gap-1.5">
+              <Label>Owner</Label>
+              <Select
+                value={form.assigneeId || "__none__"}
+                onValueChange={(v) => set("assigneeId", v === "__none__" ? "" : v)}
+              >
+                <SelectTrigger aria-label="Owner">
+                  <SelectValue placeholder="— No owner —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— No owner —</SelectItem>
+                  {members.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name ?? m.githubUsername ?? m.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter>

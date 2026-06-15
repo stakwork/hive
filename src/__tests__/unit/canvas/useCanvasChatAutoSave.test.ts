@@ -3,6 +3,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { create } from "zustand";
 
+// Backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
+// the SERVER is the single writer. This hook NO LONGER POSTs/PUTs — it only
+// live-syncs server-appended rows on a Pusher nudge, filtering out rows for
+// turns THIS tab authored (it's already showing them optimistically). These
+// tests cover that contract.
+
 // ── Store factory ──────────────────────────────────────────────────────────
 
 type ConvContext = {
@@ -16,12 +22,14 @@ type ConvContext = {
   selectedNodeIds: string[];
 };
 
+type Msg = { id: string; role: string; content: string };
+
 type ConvState = {
   activeConversationId: string | null;
   conversations: Record<
     string,
     {
-      messages: Array<{ id: string; role: string; content: string }>;
+      messages: Msg[];
       isLoading: boolean;
       isStreaming: boolean;
       serverConversationId: string | null;
@@ -29,7 +37,9 @@ type ConvState = {
     }
   >;
   ephemeralSeedCounts: Record<string, number>;
+  locallyAuthoredTurnIds: Set<string>;
   setServerConversationId: (conversationId: string, serverId: string) => void;
+  setConversationMessages: (conversationId: string, messages: Msg[]) => void;
 };
 
 function makeStore(initial?: Partial<ConvState>) {
@@ -37,6 +47,7 @@ function makeStore(initial?: Partial<ConvState>) {
     activeConversationId: null,
     conversations: {},
     ephemeralSeedCounts: {},
+    locallyAuthoredTurnIds: new Set<string>(),
     setServerConversationId: (conversationId, serverId) =>
       set((s) => ({
         conversations: {
@@ -47,9 +58,45 @@ function makeStore(initial?: Partial<ConvState>) {
           },
         },
       })),
+    setConversationMessages: (conversationId, messages) =>
+      set((s) => ({
+        conversations: {
+          ...s.conversations,
+          [conversationId]: {
+            ...s.conversations[conversationId],
+            messages,
+          },
+        },
+      })),
     ...initial,
   }));
 }
+
+// ── Pusher mock (live-sync) ────────────────────────────────────────────────
+// Captures the bound `CANVAS_CONVERSATION_UPDATED` handler so tests can
+// simulate a server-side nudge.
+const { fakePusher } = vi.hoisted(() => {
+  const handlers: Record<string, (...a: unknown[]) => void> = {};
+  const channel = {
+    bind: (ev: string, h: (...a: unknown[]) => void) => {
+      handlers[ev] = h;
+    },
+    unbind_all: () => {},
+  };
+  const client = { subscribe: () => channel, unsubscribe: () => {} };
+  return {
+    fakePusher: {
+      client,
+      fire: (ev: string) => handlers[ev]?.(),
+    },
+  };
+});
+
+vi.mock("@/lib/pusher", () => ({
+  getPusherClient: () => fakePusher.client,
+  getCanvasConversationChannelName: (id: string) => `canvas-conversation-${id}`,
+  PUSHER_EVENTS: { CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated" },
+}));
 
 // The hook imports `useCanvasChatStore` directly; we replace the module with
 // a factory that returns a fresh store per test.
@@ -59,7 +106,6 @@ function makeStore(initial?: Partial<ConvState>) {
 var _store: ReturnType<typeof makeStore>;
 
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => {
-  const zustand = require("zustand");
   // Will be overwritten in beforeEach
   _store = makeStore();
   const proxy: any = new Proxy(() => {}, {
@@ -79,11 +125,11 @@ import { useCanvasChatAutoSave } from "@/app/org/[githubLogin]/_state/useCanvasC
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-function makeMsg(role: "user" | "assistant", id = "m1") {
+function makeMsg(role: "user" | "assistant", id = "m1"): Msg {
   return { id, role, content: "Hello" };
 }
 
-const baseContext = {
+const baseContext: ConvContext = {
   workspaceSlug: null,
   workspaceSlugs: [],
   orgId: "org-1",
@@ -96,7 +142,7 @@ const baseContext = {
 
 function makeConv(
   overrides: Partial<{
-    messages: ReturnType<typeof makeMsg>[];
+    messages: Msg[];
     isLoading: boolean;
     isStreaming: boolean;
     serverConversationId: string | null;
@@ -112,16 +158,16 @@ function makeConv(
   };
 }
 
-function buildFetch(responseId: string) {
+function fetchReturning(messages: Msg[]) {
   return vi.fn().mockResolvedValue({
     ok: true,
-    json: () => Promise.resolve({ id: responseId }),
+    json: () => Promise.resolve({ messages }),
   });
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-describe("useCanvasChatAutoSave", () => {
+describe("useCanvasChatAutoSave (live-sync)", () => {
   beforeEach(() => {
     _store = makeStore();
     vi.clearAllMocks();
@@ -131,238 +177,193 @@ describe("useCanvasChatAutoSave", () => {
     vi.restoreAllMocks();
   });
 
-  it("does not fetch when githubLogin is null/empty", () => {
+  it("does nothing when githubLogin is null/empty", () => {
     const fetchSpy = vi.fn();
     global.fetch = fetchSpy;
 
-    // Set up a conversation with a message
     _store.setState({
       activeConversationId: "conv-1",
       conversations: {
-        "conv-1": makeConv({ messages: [makeMsg("user")] }),
+        "conv-1": makeConv({
+          messages: [makeMsg("user")],
+          serverConversationId: "server-1",
+        }),
       },
     });
 
     renderHook(() => useCanvasChatAutoSave({ githubLogin: null }));
 
-    // Trigger the subscription by updating the store
     act(() => {
-      _store.setState((s) => ({ ...s })); // no-op update
+      _store.setState((s) => ({ ...s }));
     });
 
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("POSTs to org endpoint on first message (no serverConversationId)", async () => {
-    const fetchSpy = buildFetch("server-id-1");
+  it("never POSTs/PUTs — persistence is server-side now", async () => {
+    const fetchSpy = vi.fn();
     global.fetch = fetchSpy;
 
     _store.setState({
       activeConversationId: "conv-1",
       conversations: { "conv-1": makeConv() },
-      ephemeralSeedCounts: {},
     });
 
     renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
 
-    // Simulate: message added, not loading
+    // A new user message + assistant reply appended locally — old hook would
+    // POST then PUT. New hook writes nothing.
     await act(async () => {
       _store.setState({
         conversations: {
-          "conv-1": makeConv({ messages: [makeMsg("user", "m1")] }),
+          "conv-1": makeConv({
+            messages: [makeMsg("user", "m1"), makeMsg("assistant", "m2")],
+          }),
         },
       });
-      // Let microtasks settle
       await Promise.resolve();
     });
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/orgs/my-org/chat/conversations",
-      expect.objectContaining({ method: "POST" }),
-    );
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("PUTs to org endpoint on subsequent messages (serverConversationId set)", async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({}),
-    });
-    global.fetch = fetchSpy;
-
+  it("on a nudge, refetches and merges server-appended rows when idle", async () => {
     _store.setState({
       activeConversationId: "conv-1",
       conversations: {
-        "conv-1": makeConv({ messages: [makeMsg("user", "m1")], serverConversationId: "already-saved" }),
+        "conv-1": makeConv({
+          messages: [makeMsg("user", "m1"), makeMsg("assistant", "a1")],
+          serverConversationId: "server-1",
+        }),
       },
-      ephemeralSeedCounts: { "conv-1": 1 }, // m1 already saved
     });
+
+    const serverMessages: Msg[] = [
+      { id: "m1", role: "user", content: "Hello" },
+      { id: "a1", role: "assistant", content: "Hi" },
+      {
+        id: "planner-x",
+        role: "assistant",
+        content: "Plan ready",
+        // @ts-expect-error extra field tolerated by hydration
+        source: { kind: "planner", featureId: "f1", plannerMessageId: "x" },
+      },
+    ];
+    const fetchSpy = fetchReturning(serverMessages);
+    global.fetch = fetchSpy;
 
     renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
 
-    // Simulate: assistant reply added
+    // Trigger subscription, then fire the nudge.
+    act(() => {
+      _store.setState((s) => ({ ...s }));
+    });
     await act(async () => {
-      _store.setState({
-        conversations: {
-          "conv-1": makeConv({
-            messages: [makeMsg("user", "m1"), makeMsg("assistant", "m2")],
-            serverConversationId: "already-saved",
-          }),
-        },
-      });
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
       await Promise.resolve();
     });
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/orgs/my-org/chat/conversations/already-saved",
-      expect.objectContaining({ method: "PUT" }),
+      "/api/orgs/my-org/chat/conversations/server-1",
     );
+    const msgs = _store.getState().conversations["conv-1"].messages;
+    expect(msgs).toHaveLength(3);
+    expect(msgs[2].id).toBe("planner-x");
   });
 
-  it("does not save while isStreaming=true (stream in progress)", async () => {
-    const fetchSpy = vi.fn();
-    global.fetch = fetchSpy;
-
+  it("filters out server rows for turns THIS tab authored (no double-render)", async () => {
+    // The tab authored `turn-1` (it's showing its own optimistic stream
+    // under `local-*` ids). The server persisted that turn as `turn-1-u` /
+    // `turn-1-a0`, and separately fanned out a planner row.
     _store.setState({
       activeConversationId: "conv-1",
-      conversations: { "conv-1": makeConv() },
+      conversations: {
+        "conv-1": makeConv({
+          messages: [
+            { id: "local-u", role: "user", content: "Q" },
+            { id: "local-a", role: "assistant", content: "A (streamed)" },
+          ],
+          serverConversationId: "server-1",
+        }),
+      },
+      locallyAuthoredTurnIds: new Set(["turn-1"]),
     });
 
-    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+    const serverMessages: Msg[] = [
+      { id: "turn-1-u", role: "user", content: "Q" },
+      { id: "turn-1-a0", role: "assistant", content: "A (server)" },
+      { id: "planner-x", role: "assistant", content: "Plan ready" },
+    ];
+    global.fetch = fetchReturning(serverMessages);
 
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
     act(() => {
-      _store.setState({
-        conversations: {
-          "conv-1": makeConv({ messages: [makeMsg("user", "m1")], isStreaming: true }),
-        },
-      });
+      _store.setState((s) => ({ ...s }));
+    });
+    await act(async () => {
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    const msgs = _store.getState().conversations["conv-1"].messages;
+    const ids = msgs.map((m) => m.id);
+    // Local optimistic rows kept; the planner row (not authored) merged in;
+    // the authored turn's server rows filtered out.
+    expect(ids).toEqual(["local-u", "local-a", "planner-x"]);
+    expect(ids).not.toContain("turn-1-u");
+    expect(ids).not.toContain("turn-1-a0");
   });
 
-  it("saves even if isLoading=true as long as isStreaming=false", async () => {
-    // isLoading flips to false on first chunk (UX) but isStreaming stays true
-    // until the stream fully finishes. This test verifies the save gate only
-    // cares about isStreaming, not isLoading.
-    const fetchSpy = buildFetch("srv-x");
-    global.fetch = fetchSpy;
-
+  it("defers a mid-stream nudge and syncs once the stream settles", async () => {
     _store.setState({
       activeConversationId: "conv-1",
-      conversations: { "conv-1": makeConv() },
+      conversations: {
+        "conv-1": makeConv({
+          messages: [makeMsg("user", "m1")],
+          serverConversationId: "server-1",
+          isStreaming: true,
+        }),
+      },
     });
 
-    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+    global.fetch = fetchReturning([
+      { id: "m1", role: "user", content: "Hello" },
+      { id: "planner-y", role: "assistant", content: "Update" },
+    ]);
 
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+    act(() => {
+      _store.setState((s) => ({ ...s }));
+    });
+
+    // Nudge arrives mid-stream → must NOT fetch/merge yet.
+    await act(async () => {
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    // Stream settles → deferred sync runs.
     await act(async () => {
       _store.setState({
         conversations: {
           "conv-1": makeConv({
             messages: [makeMsg("user", "m1")],
-            isLoading: true,   // first-chunk UX flip — still "loading" visually
-            isStreaming: false, // but stream is done
-          }),
-        },
-      });
-      await Promise.resolve();
-    });
-
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/orgs/my-org/chat/conversations",
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-
-  it("does NOT save while isStreaming=true even if isLoading=false", async () => {
-    // Guard against a regression where isLoading-false alone would let
-    // mid-stream saves through.
-    const fetchSpy = vi.fn();
-    global.fetch = fetchSpy;
-
-    _store.setState({
-      activeConversationId: "conv-1",
-      conversations: { "conv-1": makeConv() },
-    });
-
-    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
-
-    act(() => {
-      _store.setState({
-        conversations: {
-          "conv-1": makeConv({
-            messages: [makeMsg("user", "m1")],
-            isLoading: false,  // first-chunk flip has happened
-            isStreaming: true,  // but stream still in flight
-          }),
-        },
-      });
-    });
-
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("fires once isStreaming flips to false after being true", async () => {
-    const fetchSpy = buildFetch("srv-y");
-    global.fetch = fetchSpy;
-
-    _store.setState({
-      activeConversationId: "conv-1",
-      conversations: { "conv-1": makeConv() },
-    });
-
-    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
-
-    // Stream in progress — should not save
-    act(() => {
-      _store.setState({
-        conversations: {
-          "conv-1": makeConv({
-            messages: [makeMsg("user", "m1"), makeMsg("assistant", "m2")],
-            isStreaming: true,
-          }),
-        },
-      });
-    });
-    expect(fetchSpy).not.toHaveBeenCalled();
-
-    // Stream completes — should now save
-    await act(async () => {
-      _store.setState({
-        conversations: {
-          "conv-1": makeConv({
-            messages: [makeMsg("user", "m1"), makeMsg("assistant", "m2")],
+            serverConversationId: "server-1",
             isStreaming: false,
           }),
         },
       });
       await Promise.resolve();
-    });
-
-    expect(fetchSpy).toHaveBeenCalledOnce();
-  });
-
-  it("calls the org endpoint (not the workspace endpoint)", async () => {
-    const fetchSpy = buildFetch("srv-1");
-    global.fetch = fetchSpy;
-
-    _store.setState({
-      activeConversationId: "conv-1",
-      conversations: { "conv-1": makeConv() },
-    });
-
-    renderHook(() => useCanvasChatAutoSave({ githubLogin: "acme-corp" }));
-
-    await act(async () => {
-      _store.setState({
-        conversations: {
-          "conv-1": makeConv({ messages: [makeMsg("user", "m1")] }),
-        },
-      });
       await Promise.resolve();
     });
 
-    const [url] = fetchSpy.mock.calls[0] as [string, ...unknown[]];
-    expect(url).toMatch(/\/api\/orgs\/acme-corp\/chat\/conversations/);
-    expect(url).not.toMatch(/\/api\/workspaces\//);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/orgs/my-org/chat/conversations/server-1",
+    );
+    const msgs = _store.getState().conversations["conv-1"].messages;
+    expect(msgs.map((m) => m.id)).toContain("planner-y");
   });
 });

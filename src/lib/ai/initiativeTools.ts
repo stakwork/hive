@@ -22,6 +22,7 @@ import {
   PROPOSE_MILESTONE_TOOL,
   SEND_TO_FEATURE_PLANNER_TOOL,
 } from "@/lib/proposals/types";
+import { jamieName } from "@/lib/constants/jamie";
 
 /**
  * Shared zod schema for the `placement` field on every propose tool.
@@ -570,8 +571,8 @@ export function buildInitiativeTools(
     // periodically) or message a different feature first.
     //
     // **Attribution.** The message lands in the feature's chat as
-    // sent by the canvas chat's user, prefixed with `[via canvas
-    // agent]` so the planner can recognize the cross-feature context.
+    // sent by the canvas chat's user, prefixed with `[Jamie]`
+    // so the planner can recognize the cross-feature context.
     // The prompt teaches the agent to lead with the reason it's
     // reaching out (e.g. *"We're aligning auth across three features
     // — please use `userId` as the canonical name."*).
@@ -618,8 +619,8 @@ export function buildInitiativeTools(
               "framing of WHY you're reaching out from the canvas " +
               "(cross-feature alignment, propagating a decision, " +
               "etc.) so the planner has context. The system " +
-              "automatically prefixes your message with `[via canvas " +
-              "agent]` so the planner can recognize this isn't a " +
+              "automatically prefixes your message with `[Jamie]`" +
+              "so the planner can recognize this isn't a " +
               "direct user reply.",
           ),
       }),
@@ -730,7 +731,7 @@ export function buildInitiativeTools(
           // the canvas agent, not a direct user reply. The planner's
           // prompt can be taught to weigh canvas-agent messages as
           // cross-feature coordination signals.
-          const prefixedMessage = `[via canvas agent] ${message}`;
+          const prefixedMessage = `[${jamieName}] ${message}`;
 
           // `skipOrgContextScout: true` — the canvas agent already
           // has org-wide context (that's why it's reaching out across

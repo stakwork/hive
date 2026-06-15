@@ -13,6 +13,7 @@ import { CompactTasksList } from "@/components/features/CompactTasksList";
 import { VerifyPanel } from "@/app/w/[slug]/plan/[featureId]/components/VerifyPanel";
 import { LogsArtifactPanel } from "@/components/agent-logs/LogsArtifactPanel";
 import type { ConversationMessage } from "@/hooks/useStreamedAgentLog";
+import type { AgentEventsStatus } from "@/hooks/useAgentEvents";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -45,7 +46,7 @@ interface ArtifactsPanelProps {
   sectionHighlights?: SectionHighlights | null;
   browserRefreshTrigger?: number;
   isSuperAdmin?: boolean;
-  streamingLog?: { agent: string; conversation: ConversationMessage[] } | null;
+  streamingLog?: { agent: string; conversation: ConversationMessage[]; status: AgentEventsStatus } | null;
   isAgentActive?: boolean;
 }
 
@@ -399,6 +400,7 @@ export function ArtifactsPanel({
             onArtifactChange={handleUserTabSelect}
             headerAction={renderGenerateTasksButton()}
             disabledTabs={hasAttachments ? [] : ["VERIFY"]}
+            isPlanMode={!!planData}
           />
         </motion.div>
 

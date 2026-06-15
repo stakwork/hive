@@ -368,8 +368,8 @@ export async function POST(request: NextRequest) {
       const status = rawStatus >= 200 && rawStatus <= 599 ? rawStatus : 500;
       const errorMessage = "message" in error ? error.message : "Failed to create swarm";
 
-      console.log(`[SWARM_CREATE] Returning structured error - status: ${status}, message: ${errorMessage}`);
-      return NextResponse.json({ success: false, message: errorMessage }, { status });
+      console.log(`[SWARM_CREATE] Returning structured error - status: ${status}, message: ${message}`);
+      return NextResponse.json({ success: false, message }, { status });
     }
 
     console.log(`[SWARM_CREATE] Returning generic error for workspace ${workspaceId}`);

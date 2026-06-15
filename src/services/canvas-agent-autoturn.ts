@@ -17,17 +17,23 @@
  *   - **Stay silent:** call the `stay_silent` tool (terminal no-op).
  *
  * There is deliberately NO policy extractor / classifier here — the
- * agent is the classifier. The synthetic system message below only
+ * agent is the classifier. The synthetic wake message below only
  * supplies *context* (which feature, which wake reason); the prompt
- * paragraph in `getCanvasPromptSuffix` teaches the agent how to behave
- * when the wakeup is machine-driven.
+ * paragraph in `getPlannerCapabilitySnippet` teaches the agent how to
+ * behave when the wakeup is machine-driven.
  *
- * **Kill switch.** Gated behind `CANVAS_AUTONOMOUS_TURNS_ENABLED`
- * (default off). When off, this function is a logged no-op — Phase 2's
- * fan-out still copies planner messages into the conversation (the
- * audit trail is real either way), only the *autonomous action* layer
- * is suppressed. Flip the env to `"true"` to enable; flip back to
- * disable without a redeploy.
+ * **Gating.** Two layers, both default to a no-op:
+ *   1. A per-user opt-in (`User.canvasAutonomousTurns`, default off),
+ *      toggled from the gear menu on the canvas Agent chat panel. The
+ *      auto-turn acts AS the conversation owner, so the owner's flag is
+ *      the one that governs.
+ *   2. A global master kill switch — `CANVAS_AUTONOMOUS_TURNS_ENABLED`.
+ *      Setting it to `"false"` hard-disables the feature platform-wide
+ *      (incident response) regardless of any user's opt-in. Anything
+ *      else defers to the per-user flag.
+ * When suppressed, this function is a logged no-op — Phase 2's fan-out
+ * still copies planner messages into the conversation (the audit trail
+ * is real either way), only the *autonomous action* layer is off.
  *
  * Reuses `runCanvasAgent` end-to-end — no new agent logic.
  */
@@ -35,7 +41,13 @@
 import { tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
+import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
+import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
+import {
+  messagesFromSteps,
+  appendTurnMessages,
+  type StoredMessage,
+} from "@/services/canvas-turn-persistence";
 
 /** Why the agent was woken. Surfaced verbatim in the synthetic prompt. */
 export type AutoTurnWakeReason =
@@ -102,28 +114,49 @@ function buildStaySilentTool(ctx: {
   };
 }
 
-// ───────────────────────────────────────────────────────────────────
-// Stored-message types (the `CanvasChatMessage` JSON shape inside
-// `SharedConversation.messages`). Kept loose — the column is `Json`
-// and the canonical render-side type lives in `canvasChatStore.ts`.
-// ───────────────────────────────────────────────────────────────────
+// Stored-message types (`StoredMessage` / `StoredToolCall`) and the
+// turn writer (`messagesFromSteps` / `appendTurnMessages`) now live in
+// `@/services/canvas-turn-persistence` so the user-driven `/api/ask/quick`
+// path and this auto-turn path share one persistence code path.
 
-interface StoredToolCall {
-  id: string;
-  toolName: string;
-  input?: unknown;
-  status?: string;
-  output?: unknown;
-  errorText?: string;
-}
+/**
+ * Loop-breaker cap: maximum consecutive `send_to_feature_planner` calls
+ * to ONE feature's planner with no human message in between before
+ * auto-turns for that feature are force-skipped. A legitimate
+ * fully-delegated run needs ~3–4 (requirements → architecture → tasks,
+ * plus an answered clarifying question); anything past this cap means
+ * the agent and the planner are cycling, and every extra round costs an
+ * LLM turn plus a Stakwork run.
+ */
+export const MAX_CONSECUTIVE_PLANNER_ASKS = 6;
 
-interface StoredMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp?: string;
-  toolCalls?: StoredToolCall[];
-  source?: { kind: string; featureId?: string; plannerMessageId?: string };
+/**
+ * Count how many `send_to_feature_planner` calls targeting `featureId`
+ * appear in the transcript tail, scanning backwards and stopping at the
+ * first human (`user`-role) row. Planner fan-out rows and the agent's
+ * own text rows are skipped, not counted — only actual asks count. A
+ * human message resets the window to zero: the loop breaker exists to
+ * stop *unattended* cycles, and a user who's actively steering should
+ * never be throttled.
+ */
+export function countTrailingPlannerAsks(
+  messages: StoredMessage[],
+  featureId: string,
+): number {
+  let count = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "user") break;
+    for (const tc of m.toolCalls ?? []) {
+      if (
+        tc.toolName === SEND_TO_FEATURE_PLANNER_TOOL &&
+        (tc.input as { featureId?: string } | undefined)?.featureId === featureId
+      ) {
+        count++;
+      }
+    }
+  }
+  return count;
 }
 
 /**
@@ -182,143 +215,103 @@ function toModelMessages(messages: StoredMessage[]): ModelMessage[] {
     });
 }
 
+/** Tool names stripped from the persisted transcript (control signals). */
+const AUTOTURN_STRIP_TOOLS: ReadonlySet<string> = new Set([STAY_SILENT_TOOL]);
+
 /**
- * Reconstruct the agent's output as `CanvasChatMessage`-shaped rows
- * from the finished stream's `steps`. Mirrors the client-side timeline
- * split in `useSendCanvasChatMessage.ts`: text becomes a text message,
- * tool calls become a tool-call message (so `SubAgentRunCard` can
- * extract `send_to_feature_planner` calls as outbound thread entries).
+ * Build the short, context-only synthetic wake message that tells the
+ * agent WHY it was woken. It does NOT state the user's policy — the
+ * agent reads that from the conversation itself.
  *
- * The `stay_silent` tool call is stripped — it's a control signal, not
- * a transcript entry. A turn that did nothing but `stay_silent`
- * produces an empty array, and the caller appends nothing.
+ * Role is `user`, NOT `system`, on purpose. `runCanvasAgent` already
+ * prepends its own leading `system` prompt followed by assistant/tool
+ * concept-seeding messages (see `getMultiWorkspacePrefixMessages`). A
+ * second `system` message injected here lands *after* those, so the
+ * provider sees "multiple system messages separated by user/assistant
+ * messages" and Anthropic throws `AI_UnsupportedFunctionalityError`,
+ * aborting the whole auto-turn. (The user-driven `/api/ask/quick` path
+ * never hits this because its `messages` start with a `user` turn.)
+ * Do NOT change this back to `system`.
+ *
+ * Placement is load-bearing too: the caller appends this message at the
+ * TAIL of the model message list, AFTER the full transcript — so the
+ * planner's reply is the last *assistant* entry and THIS user message is
+ * the last entry overall. That matters because Anthropic treats a
+ * conversation ending on an assistant turn as a *prefill to continue*,
+ * not a prompt to act on: the model just extends the planner's text
+ * (echoing earlier assistant chatter, skipping every tool call) instead
+ * of running its wake instructions. We learned this the hard way — an
+ * earlier version put the wake note at the HEAD, the array ended on the
+ * planner's assistant turn, and the agent reliably emitted a stale
+ * narration row with zero tool calls (no `read_feature`, no
+ * `send_to_feature_planner`) — i.e. did nothing. Ending on this `user`
+ * turn mirrors the working `/api/ask/quick` path, which always ends on
+ * the user's just-typed message. Do NOT move this back to the head.
  */
-function messagesFromSteps(
-  steps: Array<{
-    text?: string;
-    toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
-    toolResults?: Array<{ toolCallId: string; output?: unknown; result?: unknown }>;
-  }>,
-  plannerMessageId: string,
-): StoredMessage[] {
-  const rows: StoredMessage[] = [];
-  let idx = 0;
-  const nextId = () => `autoturn-${plannerMessageId}-${idx++}`;
-  const now = new Date().toISOString();
-
-  for (const step of steps) {
-    if (step.text && step.text.trim()) {
-      rows.push({
-        id: nextId(),
-        role: "assistant",
-        content: step.text,
-        timestamp: now,
-      });
-    }
-
-    const calls = step.toolCalls ?? [];
-    if (calls.length === 0) continue;
-
-    const resultByCallId = new Map(
-      (step.toolResults ?? []).map((r) => [r.toolCallId, r] as const),
-    );
-
-    const toolCalls: StoredToolCall[] = calls
-      .filter((tc) => tc.toolName !== STAY_SILENT_TOOL)
-      .map((tc) => {
-        const r = resultByCallId.get(tc.toolCallId);
-        const output = r ? (r.output ?? r.result) : undefined;
-        const isError =
-          !!output &&
-          typeof output === "object" &&
-          "error" in (output as Record<string, unknown>);
-        return {
-          id: tc.toolCallId,
-          toolName: tc.toolName,
-          input: tc.input,
-          output,
-          status:
-            output === undefined
-              ? "input-available"
-              : isError
-                ? "output-error"
-                : "output-available",
-          ...(isError ? { errorText: "Tool call failed" } : {}),
-        };
-      });
-
-    if (toolCalls.length > 0) {
-      rows.push({
-        id: nextId(),
-        role: "assistant",
-        content: "",
-        timestamp: now,
-        toolCalls,
-      });
-    }
-  }
-
-  return rows;
+/** The current plan snapshot, loaded fresh each turn in `runAutoTurn`. */
+interface PlanSnapshot {
+  brief: string | null;
+  requirements: string | null;
+  architecture: string | null;
+  workflowStatus: string | null;
+  /**
+   * Whether any tasks already exist for this feature. The `completed`
+   * decision is "pick the next stage" and tasks are the LAST stage —
+   * without this signal the agent can't tell "plan done, push for tasks"
+   * apart from "everything done, stop", and it loops forever re-asking
+   * the planner to generate tasks it already generated.
+   */
+  tasksGenerated: boolean;
 }
 
-/**
- * Append agent-produced rows into the canvas conversation under the
- * same row-level lock the fan-out worker and the autosave PUT use, so
- * all three writers serialize on the conversation row. Idempotent on
- * the `autoturn-<plannerMessageId>-` id prefix.
- */
-async function appendAutoTurnMessages(
-  conversationId: string,
-  rows: StoredMessage[],
-  plannerMessageId: string,
-): Promise<void> {
-  if (rows.length === 0) return;
-  const idPrefix = `autoturn-${plannerMessageId}-`;
-
-  await db.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ messages: unknown }[]>`
-      SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
-    `;
-    if (locked.length === 0) return; // conversation deleted mid-turn
-
-    const existing = Array.isArray(locked[0].messages)
-      ? (locked[0].messages as StoredMessage[])
-      : [];
-
-    // Idempotency: if a prior run for this planner message already
-    // committed rows, don't double-append.
-    const alreadyAppended = existing.some(
-      (m) => typeof m.id === "string" && m.id.startsWith(idPrefix),
-    );
-    if (alreadyAppended) return;
-
-    await tx.sharedConversation.update({
-      where: { id: conversationId },
-      data: {
-        messages: [...existing, ...rows] as unknown as never,
-        lastMessageAt: new Date(),
-      },
-    });
-  });
+/** Render one plan stage as a labelled section, or a clear "not yet written" marker. */
+function renderStage(label: string, body: string | null): string {
+  const trimmed = body?.trim();
+  return trimmed
+    ? `### ${label}\n${trimmed}`
+    : `### ${label}\n_(not yet written)_`;
 }
 
-/**
- * Build the short, context-only synthetic system message that tells
- * the agent WHY it was woken. It does NOT state the user's policy —
- * the agent reads that from the conversation itself.
- */
 function buildWakeMessage(
   featureTitle: string,
+  featureId: string,
+  plan: PlanSnapshot,
   wakeReason: AutoTurnWakeReason,
 ): ModelMessage {
+  // Inject the WHOLE current plan, fresh each turn, so the agent reviews
+  // the underling planner's actual work like a real human lead would —
+  // not a guess, not a stale assumption. This snapshot is ephemeral: the
+  // wake message is never persisted to the conversation (only the agent's
+  // own output rows are), so re-injecting the full plan every turn does
+  // NOT accumulate copies in history — each turn sees exactly one current
+  // snapshot and it's thrown away after the call. This also removes the
+  // need for the agent to call `read_feature` (and the bug where it
+  // guessed a wrong id, got "Feature not found", and confabulated a
+  // "feature was just created" state). `featureId` is still surfaced so a
+  // `send_to_feature_planner` reply / chat-history read targets the right
+  // feature.
+  const planBlock =
+    `Current plan snapshot for **${featureTitle}** ` +
+    `(featureId: \`${featureId}\`, workflowStatus: ` +
+    `${plan.workflowStatus ?? "unknown"}):\n\n` +
+    `${renderStage("Brief", plan.brief)}\n\n` +
+    `${renderStage("Requirements", plan.requirements)}\n\n` +
+    `${renderStage("Architecture", plan.architecture)}\n\n` +
+    `### Tasks\n${
+      plan.tasksGenerated
+        ? "_(already generated — do NOT ask the planner to generate tasks)_"
+        : "_(not yet generated)_"
+    }`;
   return {
-    role: "system",
+    role: "user",
     content:
       `You were invoked because the planner for feature **${featureTitle}** ` +
-      `just posted a message (wake reason: ${wakeReason}). The planner's ` +
-      "message is the most recent assistant entry in this conversation, " +
-      "marked with `source.kind === \"planner\"`.\n\n" +
-      "Follow the user's standing instructions in this conversation. " +
+      `just posted a message (wake reason: ${wakeReason}). That planner ` +
+      "message is the most recent assistant entry above this one — read " +
+      "it as the thing you're reacting to now.\n\n" +
+      `${planBlock}\n\n` +
+      "Review that plan the way a lead reviews an underling's work, then " +
+      "follow the user's standing instructions in this conversation. " +
       "Decide one of:\n" +
       "- **Auto-respond:** call `send_to_feature_planner` with your answer. " +
       "Don't write a separate chat message.\n" +
@@ -335,8 +328,33 @@ function buildWakeMessage(
           "that defeats the planner's escalation. Choose **escalate** (a " +
           "one-paragraph note pointing at the question) or **stay silent** " +
           "(the FORM surfaces to the user directly anyway)."
-        : "Default toward escalation or silence unless the user's " +
-          "instructions clearly grant you the autonomy to answer."),
+        : wakeReason === "completed"
+          ? plan.tasksGenerated
+            ? "This wake reason is `completed`, and the `Tasks` stage above " +
+              "shows tasks are ALREADY generated — the pipeline you drive is " +
+              "finished. **NEVER ask the planner to generate tasks again**; " +
+              "it will just reply that they exist and you'll be woken in a " +
+              "pointless loop. Starting tasks is the user's button, not " +
+              "yours. Call `stay_silent` unless the planner's message raises " +
+              "something genuinely new that the user's standing instructions " +
+              "ask you to handle."
+            : "This wake reason is `completed`: the planner finished a run. " +
+              "The snapshot above IS the current state — trust it over any " +
+              "assumption that the feature is new (by the time you're woken " +
+              "the planner has already run). If `Brief`, `Requirements`, and " +
+              "`Architecture` are all written and the architecture looks " +
+              "sound, **keep it moving — auto-respond with " +
+              "`send_to_feature_planner` telling it to generate the tasks now** " +
+              "(unless the user asked to review the plan first). If instead a " +
+              "stage is still missing, ask only for the SINGLE next stage " +
+              "(requirements, then architecture, then tasks) — the planner runs " +
+              "one stage per turn and silently ignores a second ask, so never " +
+              "batch (e.g. 'write the architecture and generate the tasks'). " +
+              "One ask per round-trip; you'll be woken again when it lands. A " +
+              "finished plan that just sits waiting is the failure mode. Don't " +
+              "try to *start* tasks — that's the user's button."
+          : "Default toward escalation or silence unless the user's " +
+            "instructions clearly grant you the autonomy to answer."),
   };
 }
 
@@ -352,12 +370,16 @@ export async function invokeCanvasAgentOnPlannerMessage(
 ): Promise<void> {
   const { conversationId, featureId, plannerMessageId, wakeReason } = args;
 
-  // ── Kill switch ──────────────────────────────────────────────────
-  // Off by default. When off, this is a logged no-op (Phase 2 fan-out
-  // is unaffected). Documented in
+  // ── Master kill switch ───────────────────────────────────────────
+  // `CANVAS_AUTONOMOUS_TURNS_ENABLED=false` hard-disables the feature
+  // platform-wide (incident response / ops), regardless of any user's
+  // opt-in. Anything else defers to the per-user flag checked in
+  // `runAutoTurn` (`User.canvasAutonomousTurns`, default off). Phase 3
+  // shipped this as the *only* gate; it is now a master override layered
+  // above the user preference. Documented in
   // `docs/plans/canvas-agent-manages-planners.md` Phase 3.
-  if (process.env.CANVAS_AUTONOMOUS_TURNS_ENABLED !== "true") {
-    console.log("[canvas-autoturn] skipped (disabled via env)", {
+  if (process.env.CANVAS_AUTONOMOUS_TURNS_ENABLED === "false") {
+    console.log("[canvas-autoturn] skipped (master kill switch)", {
       conversationId,
       featureId,
       wakeReason,
@@ -365,31 +387,43 @@ export async function invokeCanvasAgentOnPlannerMessage(
     return;
   }
 
-  // Best-effort per-conversation advisory lock so two planners
-  // replying near-simultaneously don't both wake the agent on the
-  // same conversation and double-respond.
+  // Concurrency control: a per-PLANNER-MESSAGE claim, NOT a per-conversation
+  // lock.
   //
-  // CAVEAT: Postgres session advisory locks are tied to a connection.
-  // Under Prisma's connection pool, the `pg_try_advisory_lock` and the
-  // `pg_advisory_unlock` may land on different pooled connections, so
-  // this is *best-effort*, not a hard mutex. That's an acceptable v1
-  // tradeoff: the feature is gated behind a kill switch, the worst case
-  // is one redundant auto-turn (the agent reads the full conversation
-  // and can `stay_silent`), and the lock is never held across the LLM
-  // call (which would pin a DB connection for the whole turn). A
-  // hardened version (a dedicated lock service or a row-lease) is a
-  // future seam.
-  const lockKeySql = `canvas-autoturn:${conversationId}`;
-  let lockAcquired = false;
+  // History: this used a Postgres session advisory lock
+  // (`pg_try_advisory_lock`) keyed on the *conversation*, held across the
+  // whole LLM turn, released with a separate `pg_advisory_unlock`. That was
+  // doubly broken:
+  //   1. LEAK — a session lock belongs to the exact pooled connection that
+  //      took it; the separate unlock query often ran on a *different*
+  //      pooled connection, where it's a no-op. The lock never released and
+  //      stayed held (in a frozen lambda's connection) until that
+  //      connection was recycled.
+  //   2. HEAD-OF-LINE DROP — keyed per conversation, so a leaked (or merely
+  //      in-flight) lock from one stage's turn blocked the NEXT stage's
+  //      turn, and the contended turn was silently dropped with no retry. A
+  //      finished plan's "completed" wake vanished because an earlier
+  //      stage's turn had leaked the conversation lock.
+  //
+  // The invariant we actually need is narrow: don't let two deliveries of
+  // the SAME planner message both run the turn (the agent's
+  // `send_to_feature_planner` fires mid-stream, before the append-time
+  // idempotency dedup can catch it). Different planner messages — even in
+  // the same conversation — SHOULD run concurrently. So we claim per
+  // `plannerMessageId`, using the conversation row lock (correct,
+  // connection-safe, auto-released at COMMIT), and we NEVER silently drop a
+  // needed turn: a lost claim means some other run already owns this exact
+  // message. The claim is crash-safe — a stale claim (a run that died
+  // mid-turn) expires after `AUTOTURN_CLAIM_STALE_MS` so the wake can be
+  // retried rather than wedged forever.
+  let claimed = false;
   try {
-    const lockRows = await db.$queryRaw<{ locked: boolean }[]>`
-      SELECT pg_try_advisory_lock(hashtext(${lockKeySql})) AS locked
-    `;
-    lockAcquired = lockRows[0]?.locked === true;
-    if (!lockAcquired) {
-      console.log("[canvas-autoturn] lock held; skipping", {
+    claimed = await claimAutoTurn(conversationId, plannerMessageId);
+    if (!claimed) {
+      console.log("[canvas-autoturn] message already claimed/handled; skipping", {
         conversationId,
         featureId,
+        plannerMessageId,
         wakeReason,
       });
       return;
@@ -405,14 +439,122 @@ export async function invokeCanvasAgentOnPlannerMessage(
       error: e instanceof Error ? e.message : String(e),
     });
   } finally {
-    if (lockAcquired) {
-      try {
-        await db.$queryRaw`SELECT pg_advisory_unlock(hashtext(${lockKeySql}))`;
-      } catch (e) {
-        console.error("[canvas-autoturn] advisory unlock failed:", e);
-      }
+    if (claimed) {
+      await releaseAutoTurnClaim(conversationId, plannerMessageId).catch((e) =>
+        console.error("[canvas-autoturn] claim release failed:", e),
+      );
     }
   }
+}
+
+/**
+ * A claim that has sat unreleased longer than this is treated as stale
+ * (the owning run crashed before its `finally` released it) and may be
+ * re-claimed, so a dead turn never wedges a planner message forever. Sized
+ * comfortably above the worst-case turn wall-clock (LLM + tool round-trips)
+ * so it never expires a genuinely in-flight turn.
+ */
+const AUTOTURN_CLAIM_STALE_MS = 5 * 60 * 1000;
+
+/** Shape of the per-message claim bag stored under `settings.autoTurnClaims`. */
+type AutoTurnClaims = Record<string, { claimedAt: number }>;
+
+/**
+ * Atomically claim a planner message for an auto-turn. Returns `true` iff
+ * THIS caller won the claim and should run the turn.
+ *
+ * Serialized by the conversation row lock (`SELECT … FOR UPDATE`), the same
+ * mechanism `appendTurnMessages` and the fan-out use — so it's correct
+ * under Prisma's connection pool (the whole check-and-set runs in one
+ * interactive transaction on one connection, and the lock auto-releases at
+ * COMMIT; nothing is held across the LLM call). Bails when:
+ *   - the conversation row is gone,
+ *   - the turn already COMPLETED (a real `autoturn-<id>-*` output row
+ *     exists in `messages`), or
+ *   - a non-stale claim for this message already exists (a live concurrent
+ *     run owns it).
+ * Otherwise it records `{ claimedAt: now }` and returns `true`.
+ *
+ * The claim lives in `settings.autoTurnClaims` (not a `messages` row) so it
+ * never pollutes the rendered transcript. The read-modify-write is safe
+ * against concurrent `settings` writers because they all serialize on this
+ * same row lock; we re-read the latest committed `settings` under the lock
+ * and write the full object back, preserving sibling keys (`promptConcepts`,
+ * `extraWorkspaceSlugs`). One benign edge: the client autosave PUT replaces
+ * `settings` wholesale with the client's copy (which has no `autoTurnClaims`),
+ * so an autosave landing mid-turn can erase a live claim. The fallout is
+ * minor and self-correcting — at worst a redelivered SAME message re-runs
+ * once; the planner ignores a repeated ask and `appendTurnMessages`'
+ * `idPrefix` dedup still blocks duplicate output rows. The leak/drop bug this
+ * replaces was the real hazard; this claim is the narrow belt-and-suspenders.
+ */
+async function claimAutoTurn(
+  conversationId: string,
+  plannerMessageId: string,
+): Promise<boolean> {
+  const idPrefix = `autoturn-${plannerMessageId}-`;
+  let won = false;
+  await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ messages: unknown; settings: unknown }[]>`
+      SELECT messages, settings FROM shared_conversations
+      WHERE id = ${conversationId} FOR UPDATE
+    `;
+    if (locked.length === 0) return; // conversation deleted
+
+    // Already completed? A committed output row is the permanent dedup.
+    const messages = Array.isArray(locked[0].messages)
+      ? (locked[0].messages as StoredMessage[])
+      : [];
+    if (messages.some((m) => typeof m.id === "string" && m.id.startsWith(idPrefix))) {
+      return;
+    }
+
+    const settings = (locked[0].settings ?? {}) as {
+      autoTurnClaims?: AutoTurnClaims;
+    };
+    const claims: AutoTurnClaims = { ...(settings.autoTurnClaims ?? {}) };
+    const existing = claims[plannerMessageId];
+    if (existing && Date.now() - existing.claimedAt < AUTOTURN_CLAIM_STALE_MS) {
+      return; // a live run already owns this message
+    }
+
+    claims[plannerMessageId] = { claimedAt: Date.now() };
+    await tx.sharedConversation.update({
+      where: { id: conversationId },
+      data: { settings: { ...settings, autoTurnClaims: claims } as never },
+    });
+    won = true;
+  });
+  return won;
+}
+
+/**
+ * Release a claim recorded by {@link claimAutoTurn}. Best-effort and
+ * idempotent — the stale-timeout in `claimAutoTurn` is the backstop if this
+ * never runs (e.g. the process died). Serialized by the same row lock so it
+ * doesn't clobber a concurrent `settings` writer.
+ */
+async function releaseAutoTurnClaim(
+  conversationId: string,
+  plannerMessageId: string,
+): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ settings: unknown }[]>`
+      SELECT settings FROM shared_conversations
+      WHERE id = ${conversationId} FOR UPDATE
+    `;
+    if (locked.length === 0) return;
+    const settings = (locked[0].settings ?? {}) as {
+      autoTurnClaims?: AutoTurnClaims;
+    };
+    if (!settings.autoTurnClaims?.[plannerMessageId]) return;
+    const claims: AutoTurnClaims = { ...settings.autoTurnClaims };
+    delete claims[plannerMessageId];
+    await tx.sharedConversation.update({
+      where: { id: conversationId },
+      data: { settings: { ...settings, autoTurnClaims: claims } as never },
+    });
+  });
 }
 
 /**
@@ -433,6 +575,10 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
       messages: true,
       settings: true,
       workspace: { select: { slug: true } },
+      // The owner's per-user opt-in. The auto-turn acts AS this user, so
+      // their preference is the one that governs. Loaded here (one query)
+      // and gated below.
+      user: { select: { canvasAutonomousTurns: true } },
     },
   });
 
@@ -454,12 +600,69 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     return;
   }
 
-  const feature = await db.feature.findUnique({
-    where: { id: featureId },
-    select: { title: true, workspace: { select: { slug: true } } },
-  });
+  // ── Per-user opt-in ──────────────────────────────────────────────
+  // The normal gate (the master kill switch above only hard-disables
+  // platform-wide). The auto-turn acts as the conversation owner, so the
+  // owner's `canvasAutonomousTurns` preference decides. Default off — the
+  // user enables it from the gear menu on the Agent chat panel.
+  if (!conversation.user?.canvasAutonomousTurns) {
+    console.log("[canvas-autoturn] skipped (owner opt-out)", {
+      conversationId,
+      featureId,
+      wakeReason,
+    });
+    return;
+  }
+
+  // Load the plan-stage flags alongside the title. We compute a compact
+  // status line (which stages are populated + workflowStatus) and inject
+  // THAT into the wake message — not the full plan text. The full
+  // brief/requirements/architecture bodies are already in the persisted
+  // planner messages in history, so re-injecting them would just
+  // duplicate context every turn. The status line is the deterministic
+  // signal the `completed` decision actually needs (pick the next stage),
+  // and the agent can still `read_feature` with the real id below if it
+  // wants to inspect a stage's quality.
+  const [feature, taskCount] = await Promise.all([
+    db.feature.findUnique({
+      where: { id: featureId },
+      select: {
+        title: true,
+        brief: true,
+        requirements: true,
+        architecture: true,
+        workflowStatus: true,
+        workspace: { select: { slug: true } },
+      },
+    }),
+    db.task.count({ where: { featureId } }),
+  ]);
   if (!feature) {
     console.log("[canvas-autoturn] feature gone; skipping", { featureId });
+    return;
+  }
+  const tasksGenerated = taskCount > 0;
+
+  // ── Pipeline-finished short-circuit ──────────────────────────────
+  // Once every stage is written AND tasks exist, a `completed` wake has
+  // nothing left to drive: the next step ("Start Tasks") is explicitly
+  // the user's button. Skip BEFORE the LLM call — deterministically.
+  // Without this, the wake classifier (which treats a terminal
+  // `workflowStatus` as actionable on EVERY planner message, not just
+  // the transition) re-wakes the agent on the planner's "tasks already
+  // exist" reply, the `completed` prompt re-asks for tasks, and the two
+  // agents ping-pong forever — each round burning an LLM turn plus a
+  // Stakwork run. Other wake reasons (`form`, `failed`, `halted`,
+  // `question`) still get a turn: those can carry genuinely new work.
+  const allStagesWritten =
+    !!feature.brief?.trim() &&
+    !!feature.requirements?.trim() &&
+    !!feature.architecture?.trim();
+  if (wakeReason === "completed" && allStagesWritten && tasksGenerated) {
+    console.log(
+      "[canvas-autoturn] skipped (plan complete and tasks already generated — nothing to drive)",
+      { conversationId, featureId, plannerMessageId },
+    );
     return;
   }
 
@@ -470,6 +673,7 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
   // is available to the agent). Deduped, capped at 20.
   const settings = (conversation.settings ?? {}) as {
     extraWorkspaceSlugs?: unknown;
+    promptConcepts?: unknown;
   };
   const extraSlugs = Array.isArray(settings.extraWorkspaceSlugs)
     ? settings.extraWorkspaceSlugs.filter(
@@ -506,16 +710,70 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     return;
   }
 
+  // ── Loop breaker (belt-and-suspenders) ───────────────────────────
+  // The pipeline-finished short-circuit above kills the known
+  // generate-tasks loop deterministically; this guards against any
+  // FUTURE semantic loop (e.g. a planner whose replies keep ending in
+  // `?` ping-ponging with the `question` wake). Legit autonomous runs
+  // send at most ~4 consecutive asks to one planner (requirements →
+  // architecture → tasks, plus an answered question); past the cap,
+  // something is cycling — force-skip and leave it to the user.
+  const trailingAsks = countTrailingPlannerAsks(storedMessages, featureId);
+  if (trailingAsks >= MAX_CONSECUTIVE_PLANNER_ASKS) {
+    console.error(
+      "[canvas-autoturn] LOOP BREAKER tripped — too many consecutive " +
+        "auto-turn asks to one planner with no human message between; " +
+        "skipping this wake. The user can prompt the canvas agent manually.",
+      { conversationId, featureId, plannerMessageId, wakeReason, trailingAsks },
+    );
+    return;
+  }
+
+  // The wake message goes at the TAIL, after the full transcript, so the
+  // model message list ends on a `user` turn (mirroring the user-driven
+  // `/api/ask/quick` path). Ending on the planner's trailing *assistant*
+  // turn instead puts Anthropic into prefill/continuation mode and the
+  // agent does nothing — see `buildWakeMessage`'s doc comment.
   const modelMessages: ModelMessage[] = [
-    buildWakeMessage(feature.title, wakeReason),
     ...toModelMessages(storedMessages),
+    buildWakeMessage(
+      feature.title,
+      featureId,
+      {
+        brief: feature.brief,
+        requirements: feature.requirements,
+        architecture: feature.architecture,
+        workflowStatus: feature.workflowStatus,
+        tasksGenerated,
+      },
+      wakeReason,
+    ),
   ];
 
-  const { result } = await runCanvasAgent({
+  // Reuse the concepts the user-driven `/api/ask/quick` path already
+  // fetched + persisted to `settings.promptConcepts` for this
+  // conversation (see `loadOrgCanvasPromptCache` /
+  // `persistOrgCanvasPromptCache` in that route). Without this the
+  // auto-turn re-hits every workspace's swarm `list_concepts` on every
+  // wakeup — slow, and a hard failure when a swarm is offline (the
+  // `ConnectTimeoutError`s you see in the logs). A cache hit skips the
+  // swarm fetch entirely. Falls back to a fresh fetch when the cache is
+  // absent (e.g. the conversation never had a user turn). NOTE: this
+  // does NOT skip `buildWorkspaceConfigs` (the per-workspace PAT/swarm
+  // lookups) — those run every turn regardless, since the toolset needs
+  // live swarm credentials.
+  const cachedConcepts =
+    settings.promptConcepts &&
+    typeof settings.promptConcepts === "object"
+      ? (settings.promptConcepts as CachedConcepts)
+      : null;
+
+  const { result, cacheableConcepts, cacheHit } = await runCanvasAgent({
     userId: conversation.userId,
     orgId: conversation.sourceControlOrgId,
     workspaceSlugs,
     messages: modelMessages,
+    cachedConcepts,
     // Machine-driven, no live UI subscriber on this turn — suppress the
     // "researching" highlight Pusher fan-out.
     silentPusher: true,
@@ -526,6 +784,21 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     additionalTools: buildStaySilentTool({ conversationId, featureId }),
   });
 
+  // Self-heal the concept cache. On a MISS the auto-turn just paid for a
+  // fresh per-swarm `list_concepts` fetch — persist it so the NEXT
+  // auto-turn (or user turn) reuses it instead of re-hitting every swarm.
+  // Without this the auto-turn would re-fetch on every wakeup whenever the
+  // conversation hadn't yet had a cache-populating user turn. Guarded on
+  // `hasConcepts` so a swarm outage (empty result) never poisons the cache
+  // into permanently serving nothing. Fire-and-forget — never block the
+  // turn on a cache write. Mirrors `persistOrgCanvasPromptCache` in
+  // `/api/ask/quick/route.ts` (same race-safe jsonb `||` merge).
+  if (!cacheHit && hasConcepts(cacheableConcepts)) {
+    void persistPromptConcepts(conversationId, cacheableConcepts).catch((e) =>
+      console.error("[canvas-autoturn] prompt-cache persist failed:", e),
+    );
+  }
+
   // Drive the stream to completion (executes tool calls server-side,
   // e.g. `send_to_feature_planner`). `.text` auto-consumes; `.steps`
   // then resolves with the full tool-call trace.
@@ -534,10 +807,16 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
 
   const rows = messagesFromSteps(
     steps as Parameters<typeof messagesFromSteps>[0],
-    plannerMessageId,
+    idPrefix,
+    AUTOTURN_STRIP_TOOLS,
   );
 
-  await appendAutoTurnMessages(conversationId, rows, plannerMessageId);
+  await appendTurnMessages({
+    conversationId,
+    rows,
+    idPrefix,
+    reason: "autoturn",
+  });
 
   console.log("[canvas-autoturn] completed", {
     conversationId,
@@ -546,4 +825,41 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
     wakeReason,
     appendedRows: rows.length,
   });
+}
+
+/**
+ * True when a cache holds at least one concept. Defensive: never cache an
+ * empty result (a swarm outage yields an empty list, and caching that
+ * would poison the cache into permanently serving nothing). Mirrors the
+ * `hasConcepts` guard in `/api/ask/quick/route.ts`.
+ */
+function hasConcepts(c: CachedConcepts): boolean {
+  if (Array.isArray(c.features)) return c.features.length > 0;
+  if (c.conceptsByWorkspace) {
+    return Object.values(c.conceptsByWorkspace).some(
+      (list) => Array.isArray(list) && list.length > 0,
+    );
+  }
+  return false;
+}
+
+/**
+ * Persist freshly-fetched concepts to `settings.promptConcepts` so the
+ * next turn (auto or user-driven) reuses them and skips the per-swarm
+ * `list_concepts` fetch. Uses a single jsonb `||` merge (not
+ * read-modify-write) so it's race-free against the client autosave's
+ * concurrent `settings` writes — both sides merge into the same blob
+ * instead of overwriting it. Sibling of `persistOrgCanvasPromptCache` in
+ * `/api/ask/quick/route.ts`.
+ */
+async function persistPromptConcepts(
+  conversationId: string,
+  concepts: CachedConcepts,
+): Promise<void> {
+  const patch = JSON.stringify({ promptConcepts: concepts });
+  await db.$executeRaw`
+    UPDATE shared_conversations
+    SET settings = COALESCE(settings, '{}'::jsonb) || ${patch}::jsonb
+    WHERE id = ${conversationId}
+  `;
 }

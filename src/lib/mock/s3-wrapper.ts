@@ -115,6 +115,20 @@ export class S3MockWrapper {
     return `uploads/${workspaceId}/${swarmId}/${taskId}/${timestamp}_${randomId}_${sanitizedFilename}`;
   }
 
+  generateCanvasUploadPath(workspaceId: string, filename: string): string {
+    const timestamp = Date.now()
+    const randomId = Math.random().toString(36).substring(2, 15)
+    const sanitized = filename.replace(/[^a-zA-Z0-9.-]/g, '_')
+    return `uploads/${workspaceId}/canvas/${timestamp}_${randomId}_${sanitized}`
+  }
+
+  generateOrgUploadPath(orgId: string, filename: string): string {
+    const timestamp = Date.now()
+    const randomId = Math.random().toString(36).substring(2, 15)
+    const sanitized = filename.replace(/[^a-zA-Z0-9.-]/g, '_')
+    return `orgs/${orgId}/canvas/${timestamp}_${randomId}_${sanitized}`
+  }
+
   /**
    * Generate workspace logo path
    */
