@@ -86,7 +86,7 @@ vi.mock("@/components/ui/resizable", () => ({
   ResizableHandle: () => <div />,
 }));
 vi.mock("@/components/ui/page-header", () => ({
-  PageHeader: ({ title }: any) => <div>{title}</div>,
+  PageHeader: ({ title, actions }: any) => <div>{title}{actions}</div>,
 }));
 vi.mock("@/components/ui/tabs", () => ({
   Tabs: ({ children }: any) => <div>{children}</div>,
@@ -189,6 +189,26 @@ describe("WorkflowInspectorPage — auto-select version on load", () => {
     await waitFor(() => {
       expect(screen.getByTestId("version-selector").getAttribute("data-selected")).toBe("v3");
     });
+  });
+});
+
+describe("WorkflowInspectorPage — View in Stakwork link", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVersions = [];
+    mockIsLoading = true;
+  });
+
+  it("renders a link to jobs.stakwork.com with the correct workflow ID", async () => {
+    await renderWithVersions([makeVersion("v1", true)]);
+
+    const link = screen.getByRole("link", { name: /view in stakwork/i });
+    expect(link).toBeDefined();
+    expect(link.getAttribute("href")).toBe(
+      "https://jobs.stakwork.com/admin/workflows/42/edit",
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 });
 
