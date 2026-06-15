@@ -22,6 +22,13 @@ const variants = [
       started_at: "2024-03-17T09:00:00.000Z",
       finished_at: "2024-03-17T09:15:00.000Z",
     },
+    {
+      id: 1003,
+      name: "Run #1003",
+      status: "completed",
+      started_at: "2024-03-16T08:00:00.000Z",
+      finished_at: "2024-03-16T08:45:00.000Z",
+    },
   ],
   [
     {
