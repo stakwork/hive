@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { SidebarChatMessage } from "./SidebarChatMessage";
-import { ProposalCard, getProposalsFromMessage } from "./ProposalCard";
+import { ProposalCard, getProposalsFromMessage, sortProposalsByDependency } from "./ProposalCard";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
@@ -413,7 +413,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 )}
                 {proposals.length > 0 && (
                   <div className="space-y-1.5">
-                    {proposals.map((p) => (
+                    {sortProposalsByDependency(proposals).map((p) => (
                       <ProposalCard
                         key={p.proposalId}
                         proposal={p}
