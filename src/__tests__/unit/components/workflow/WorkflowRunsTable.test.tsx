@@ -83,17 +83,16 @@ describe("WorkflowRunsTable", () => {
     expect(screen.getByText("No runs recorded yet.")).toBeInTheDocument();
   });
 
-  it("renders run rows with correct link href and target", () => {
+  it("renders 'Open' links with correct href and target", () => {
     setupRuns(MOCK_RUNS);
     renderTable();
 
-    const link = screen.getByRole("link", { name: "Run #1001" });
-    expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute(
+    const links = screen.getAllByRole("link", { name: /open/i });
+    expect(links[0]).toHaveAttribute(
       "href",
       "https://jobs.stakwork.com/admin/projects/1001",
     );
-    expect(link).toHaveAttribute("target", "_blank");
+    expect(links[0]).toHaveAttribute("target", "_blank");
   });
 
   it("renders status badge text matching run status", () => {
@@ -143,14 +142,10 @@ describe("WorkflowRunsTable", () => {
       setupRuns([LONG_NAME_RUN]);
       renderTable();
 
-      // The rendered link text should be truncated (first 40 chars + ellipsis)
+      // The rendered name cell text should be truncated (first 40 chars + ellipsis)
       const truncated = LONG_NAME.slice(0, 40) + "…";
-      const link = screen.getByRole("link", { name: truncated });
-      expect(link).toBeInTheDocument();
-      expect(link).toHaveAttribute(
-        "href",
-        `https://jobs.stakwork.com/admin/projects/${LONG_NAME_RUN.id}`,
-      );
+      const nameCell = screen.getByText(truncated);
+      expect(nameCell).toBeInTheDocument();
 
       // Tooltip content should show the full name
       const tooltip = screen.getByTestId("tooltip-content");
@@ -161,20 +156,19 @@ describe("WorkflowRunsTable", () => {
       setupRuns([MOCK_RUNS[0]]); // "Run #1001" — well under 40 chars
       renderTable();
 
-      // The link text should be the full name, unmodified
-      const link = screen.getByRole("link", { name: "Run #1001" });
-      expect(link).toBeInTheDocument();
-      expect(link).toHaveTextContent("Run #1001");
+      // The name cell text should be the full name, unmodified
+      const nameCell = screen.getByText("Run #1001");
+      expect(nameCell).toBeInTheDocument();
 
       // No TooltipContent rendered
       expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
     });
 
-    it("link still navigates to the correct Stakwork URL even when truncated", () => {
+    it("'Open' link navigates to the correct Stakwork URL even when name is truncated", () => {
       setupRuns([LONG_NAME_RUN]);
       renderTable();
 
-      const link = screen.getByRole("link", { name: LONG_NAME.slice(0, 40) + "…" });
+      const link = screen.getByRole("link", { name: /open/i });
       expect(link).toHaveAttribute(
         "href",
         `https://jobs.stakwork.com/admin/projects/${LONG_NAME_RUN.id}`,
@@ -205,12 +199,12 @@ describe("WorkflowRunsTable", () => {
       expect(classesRow1).not.toContain("bg-muted");
     });
 
-    it("does not call onRunSelect when the run name link is clicked", () => {
+    it("does not call onRunSelect when the 'Open' link is clicked", () => {
       setupRuns(MOCK_RUNS);
       const onRunSelect = vi.fn();
       renderTable({ onRunSelect });
-      const link = screen.getByRole("link", { name: "Run #1001" });
-      fireEvent.click(link);
+      const links = screen.getAllByRole("link", { name: /open/i });
+      fireEvent.click(links[0]);
       expect(onRunSelect).not.toHaveBeenCalled();
     });
   });
