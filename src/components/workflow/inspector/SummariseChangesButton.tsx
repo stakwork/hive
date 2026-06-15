@@ -33,6 +33,7 @@ export interface SummariseChangesButtonProps {
   customSelectedIds: string[];
   onCustomModeToggle: (enabled: boolean) => void;
   onCustomSelectionConfirm: () => void;
+  isCustomMode: boolean;
 }
 
 export function SummariseChangesButton({
@@ -41,6 +42,7 @@ export function SummariseChangesButton({
   workflowId,
   customSelectedIds,
   onCustomModeToggle,
+  isCustomMode,
 }: SummariseChangesButtonProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogState, setDialogState] = useState<"loading" | "error" | "content">("loading");
@@ -215,15 +217,18 @@ export function SummariseChangesButton({
           </Tooltip>
         </TooltipProvider>
 
-        {/* When custom mode is active, show a confirm button */}
-        {customSelectedIds.length >= 2 && (
-          <Button
-            size="sm"
-            variant="default"
-            onClick={triggerWithCustomIds}
-          >
-            Generate Summary ({customSelectedIds.length} selected)
-          </Button>
+        {/* When custom mode is active, show Cancel and optionally Generate Summary */}
+        {isCustomMode && (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => onCustomModeToggle(false)}>
+              Cancel
+            </Button>
+            {customSelectedIds.length >= 2 && (
+              <Button size="sm" variant="default" onClick={triggerWithCustomIds}>
+                Generate Summary ({customSelectedIds.length} selected)
+              </Button>
+            )}
+          </>
         )}
       </div>
 
