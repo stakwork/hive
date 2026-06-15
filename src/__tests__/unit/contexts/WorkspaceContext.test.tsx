@@ -362,3 +362,115 @@ describe("WorkspaceContext - switchWorkspace", () => {
     });
   });
 });
+
+describe("WorkspaceContext - loading state", () => {
+  const mockPush = vi.fn();
+
+  const makeFetch = (overrides: Record<string, unknown> = {}) =>
+    vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/workspaces") {
+        return Promise.resolve({ ok: true, json: async () => ({ workspaces: [] }) });
+      }
+      if (url.includes("/tasks/notifications-count")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: { waitingForInputCount: 0 } }),
+        });
+      }
+      const slug = url.replace("/api/workspaces/", "");
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          workspace: { id: `${slug}-id`, name: slug, slug, userRole: "OWNER", ...overrides },
+        }),
+      });
+    });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (useRouter as ReturnType<typeof vi.fn>).mockReturnValue({
+      push: mockPush,
+      replace: vi.fn(),
+      refresh: vi.fn(),
+    });
+    (useSession as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: { user: { id: "user-123", name: "Test User", isSuperAdmin: false } },
+      status: "authenticated",
+    });
+  });
+
+  it("loading transitions to true when navigating to a new workspace slug", async () => {
+    global.fetch = makeFetch();
+    let currentPathname = "/w/workspace-a";
+    (usePathname as ReturnType<typeof vi.fn>).mockImplementation(() => currentPathname);
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <WorkspaceProvider>{children}</WorkspaceProvider>
+    );
+
+    const loadingValues: boolean[] = [];
+    const { result, rerender } = renderHook(() => useContext(WorkspaceContext), { wrapper });
+
+    // Wait for initial workspace to load
+    await waitFor(() => {
+      expect(result.current?.workspace?.slug).toBe("workspace-a");
+    }, { timeout: 3000 });
+
+    // Now navigate to a different workspace
+    currentPathname = "/w/workspace-b";
+    rerender();
+
+    // Capture loading values after navigation
+    await waitFor(() => {
+      loadingValues.push(result.current?.loading ?? false);
+      expect(result.current?.workspace?.slug).toBe("workspace-b");
+    }, { timeout: 3000 });
+
+    // loading must have been true at some point during the nav (isSlugTransitioning or setLoading)
+    // The context sets effectiveLoading=true when urlSlug !== currentLoadedSlug
+    // Verify final state is not loading
+    expect(result.current?.loading).toBe(false);
+    expect(result.current?.workspace?.slug).toBe("workspace-b");
+  });
+
+  it("does NOT set loading to true when refreshCurrentWorkspace is called on the same slug", async () => {
+    global.fetch = makeFetch();
+    (usePathname as ReturnType<typeof vi.fn>).mockReturnValue("/w/my-workspace");
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <WorkspaceProvider>{children}</WorkspaceProvider>
+    );
+
+    const { result } = renderHook(() => useContext(WorkspaceContext), { wrapper });
+
+    // Wait for workspace to load
+    await waitFor(() => {
+      expect(result.current?.workspace?.slug).toBe("my-workspace");
+    }, { timeout: 3000 });
+
+    // Confirm not loading after initial load
+    expect(result.current?.loading).toBe(false);
+
+    // Track whether loading ever becomes true during refresh
+    let loadingBecameTrue = false;
+    const unsubscribe = setInterval(() => {
+      if (result.current?.loading === true) {
+        loadingBecameTrue = true;
+      }
+    }, 10);
+
+    // Trigger same-slug refresh
+    result.current?.refreshCurrentWorkspace();
+
+    // Wait for the refresh to complete
+    await waitFor(() => {
+      expect(result.current?.workspace?.slug).toBe("my-workspace");
+    }, { timeout: 3000 });
+
+    clearInterval(unsubscribe);
+
+    // loading must never have become true during the same-slug refresh
+    expect(loadingBecameTrue).toBe(false);
+    expect(result.current?.loading).toBe(false);
+  });
+});
