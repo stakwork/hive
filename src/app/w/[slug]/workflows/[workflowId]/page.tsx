@@ -65,6 +65,7 @@ export default function WorkflowInspectorPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [runTransitions, setRunTransitions] = useState<Record<string, WorkflowTransition> | null>(null);
+  const [capturedEvalCount, setCapturedEvalCount] = useState(0);
 
   const { versions, isLoading: isLoadingVersions } = useWorkflowVersions(
     slug || null,
@@ -314,11 +315,20 @@ export default function WorkflowInspectorPage() {
                 {slug && (
                   <>
                     <WorkflowStatsPanel slug={slug} workflowId={workflowIdNum} />
+                    <div className="flex items-center gap-2 px-4 pt-2">
+                      <span className="text-sm font-medium">Runs</span>
+                      {capturedEvalCount > 0 && (
+                        <Badge variant="secondary">
+                          {capturedEvalCount} eval{capturedEvalCount !== 1 ? "s" : ""} captured
+                        </Badge>
+                      )}
+                    </div>
                     <WorkflowRunsTable
                       slug={slug}
                       workflowId={workflowIdNum}
                       onRunSelect={(id) => setSelectedRunId(id)}
                       selectedRunId={selectedRunId ?? undefined}
+                      onEvalCaptured={() => setCapturedEvalCount((c) => c + 1)}
                     />
                   </>
                 )}

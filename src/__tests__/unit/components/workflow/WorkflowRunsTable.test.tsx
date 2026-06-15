@@ -1,9 +1,40 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { WorkflowRunsTable } from "@/components/workflow/inspector/WorkflowRunsTable";
 import type { WorkflowRun } from "@/hooks/useWorkflowRuns";
+
+// ── mock FlagRunEvalModal ─────────────────────────────────────────────────────
+const mockFlagRunEvalModal = vi.fn();
+vi.mock("@/components/evals/FlagRunEvalModal", () => ({
+  FlagRunEvalModal: (props: {
+    open: boolean;
+    onOpenChange: (v: boolean) => void;
+    slug: string;
+    workflowId: string;
+    runId: string;
+    onCaptured: () => void;
+  }) => {
+    mockFlagRunEvalModal(props);
+    return props.open ? (
+      <div data-testid={`flag-modal-${props.runId}`}>
+        <button
+          data-testid={`flag-modal-capture-${props.runId}`}
+          onClick={() => props.onCaptured()}
+        >
+          Capture
+        </button>
+        <button
+          data-testid={`flag-modal-close-${props.runId}`}
+          onClick={() => props.onOpenChange(false)}
+        >
+          Close
+        </button>
+      </div>
+    ) : null;
+  },
+}));
 
 // ── mock useWorkflowRuns ──────────────────────────────────────────────────────
 const mockUseWorkflowRuns = vi.fn();
@@ -62,6 +93,14 @@ const LONG_NAME_RUN: WorkflowRun = {
   status: "finished",
   started_at: "2024-04-01T10:00:00.000Z",
   finished_at: "2024-04-01T10:05:00.000Z",
+};
+
+const ACTIVE_RUN: WorkflowRun = {
+  id: 1003,
+  name: "Active Run",
+  status: "active",
+  started_at: "2024-04-01T10:00:00.000Z",
+  finished_at: null,
 };
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -206,6 +245,109 @@ describe("WorkflowRunsTable", () => {
       const links = screen.getAllByRole("link", { name: /open/i });
       fireEvent.click(links[0]);
       expect(onRunSelect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("flag button (eval capture)", () => {
+    it("renders an Actions column header", () => {
+      setupRuns(MOCK_RUNS);
+      renderTable();
+      expect(screen.getByRole("columnheader", { name: /actions/i })).toBeInTheDocument();
+    });
+
+    it("renders a flag button for each completed run", () => {
+      setupRuns(MOCK_RUNS);
+      renderTable();
+      const flagBtns = screen.getAllByRole("button", { name: /capture eval/i });
+      // MOCK_RUNS[0]=finished (enabled), MOCK_RUNS[1]=error (enabled)
+      expect(flagBtns).toHaveLength(2);
+    });
+
+    it("flag button is disabled for active (non-completed) runs", () => {
+      setupRuns([ACTIVE_RUN]);
+      renderTable();
+      const btn = screen.getByRole("button", { name: /capture eval/i });
+      expect(btn).toBeDisabled();
+    });
+
+    it("clicking a flag button opens the FlagRunEvalModal for that run", () => {
+      setupRuns(MOCK_RUNS);
+      renderTable();
+      const flagBtns = screen.getAllByRole("button", { name: /capture eval/i });
+      fireEvent.click(flagBtns[0]);
+      expect(
+        screen.getByTestId(`flag-modal-${MOCK_RUNS[0].id}`)
+      ).toBeInTheDocument();
+    });
+
+    it("modal receives correct props (slug, workflowId, runId)", () => {
+      setupRuns([MOCK_RUNS[0]]);
+      renderTable();
+      fireEvent.click(screen.getByRole("button", { name: /capture eval/i }));
+      expect(mockFlagRunEvalModal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          slug: "test-ws",
+          workflowId: "42",
+          runId: String(MOCK_RUNS[0].id),
+          open: true,
+        })
+      );
+    });
+
+    it("after onCaptured fires, shows filled flag icon instead of button", () => {
+      setupRuns([MOCK_RUNS[0]]);
+      renderTable();
+
+      // open modal
+      fireEvent.click(screen.getByRole("button", { name: /capture eval/i }));
+      // simulate capture
+      fireEvent.click(
+        screen.getByTestId(`flag-modal-capture-${MOCK_RUNS[0].id}`)
+      );
+
+      // flag button should be gone
+      expect(
+        screen.queryByRole("button", { name: /capture eval/i })
+      ).not.toBeInTheDocument();
+      // filled flag indicator should be present
+      expect(screen.getByLabelText("Eval captured")).toBeInTheDocument();
+    });
+
+    it("calls onEvalCaptured prop when a capture is confirmed", () => {
+      setupRuns([MOCK_RUNS[0]]);
+      const onEvalCaptured = vi.fn();
+      renderTable({ onEvalCaptured });
+
+      fireEvent.click(screen.getByRole("button", { name: /capture eval/i }));
+      fireEvent.click(
+        screen.getByTestId(`flag-modal-capture-${MOCK_RUNS[0].id}`)
+      );
+
+      expect(onEvalCaptured).toHaveBeenCalledOnce();
+    });
+
+    it("modal closes without flagging when the close button is clicked", () => {
+      setupRuns([MOCK_RUNS[0]]);
+      const onEvalCaptured = vi.fn();
+      renderTable({ onEvalCaptured });
+
+      fireEvent.click(screen.getByRole("button", { name: /capture eval/i }));
+      expect(
+        screen.getByTestId(`flag-modal-${MOCK_RUNS[0].id}`)
+      ).toBeInTheDocument();
+
+      fireEvent.click(
+        screen.getByTestId(`flag-modal-close-${MOCK_RUNS[0].id}`)
+      );
+
+      expect(
+        screen.queryByTestId(`flag-modal-${MOCK_RUNS[0].id}`)
+      ).not.toBeInTheDocument();
+      expect(onEvalCaptured).not.toHaveBeenCalled();
+      // flag button restored
+      expect(
+        screen.getByRole("button", { name: /capture eval/i })
+      ).toBeInTheDocument();
     });
   });
 });
