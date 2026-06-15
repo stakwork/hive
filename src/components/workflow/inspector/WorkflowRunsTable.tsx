@@ -20,6 +20,8 @@ const MAX_RUN_NAME_LEN = 40;
 interface WorkflowRunsTableProps {
   slug: string;
   workflowId: number;
+  onRunSelect?: (runId: number) => void;
+  selectedRunId?: number;
 }
 
 function statusVariant(
@@ -47,7 +49,7 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
-export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) {
+export function WorkflowRunsTable({ slug, workflowId, onRunSelect, selectedRunId }: WorkflowRunsTableProps) {
   const { runs, isLoading } = useWorkflowRuns(slug, workflowId);
 
   if (isLoading) {
@@ -61,6 +63,7 @@ export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) 
               <TableHead>Started At</TableHead>
               <TableHead>Finished At</TableHead>
               <TableHead>Duration</TableHead>
+              <TableHead className="w-24">View in Stak</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -80,6 +83,9 @@ export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) 
                 </TableCell>
                 <TableCell>
                   <Skeleton className="h-4 w-full" />
+                </TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-8" />
                 </TableCell>
               </TableRow>
             ))}
@@ -103,27 +109,24 @@ export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) 
             <TableHead>Started At</TableHead>
             <TableHead>Finished At</TableHead>
             <TableHead>Duration</TableHead>
+            <TableHead className="w-24">View in Stak</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {runs.map((run) => (
-            <TableRow key={run.id}>
+            <TableRow
+              key={run.id}
+              onClick={() => onRunSelect?.(run.id)}
+              className={`${run.id === selectedRunId ? "bg-muted" : ""} ${onRunSelect ? "cursor-pointer" : ""}`}
+            >
               <TableCell>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <a
-                      href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 group"
-                    >
-                      <span className="truncate">
-                        {run.name.length > MAX_RUN_NAME_LEN
-                          ? run.name.slice(0, MAX_RUN_NAME_LEN) + "…"
-                          : run.name}
-                      </span>
-                      <ExternalLink className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </a>
+                    <span className="text-sm font-medium truncate block max-w-[180px]">
+                      {run.name.length > MAX_RUN_NAME_LEN
+                        ? run.name.slice(0, MAX_RUN_NAME_LEN) + "…"
+                        : run.name}
+                    </span>
                   </TooltipTrigger>
                   {run.name.length > MAX_RUN_NAME_LEN && (
                     <TooltipContent>{run.name}</TooltipContent>
@@ -141,6 +144,18 @@ export function WorkflowRunsTable({ slug, workflowId }: WorkflowRunsTableProps) 
               </TableCell>
               <TableCell className="text-sm">
                 {formatDuration(run.started_at, run.finished_at)}
+              </TableCell>
+              <TableCell>
+                <a
+                  href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-blue-600 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open
+                </a>
               </TableCell>
             </TableRow>
           ))}

@@ -36,9 +36,22 @@ export interface AgentLogStats {
   developerShellFrequency: Record<string, number>;
 }
 
+export interface AgentRunConfig {
+  model?: string;
+  provider?: string;
+  source?: string;
+  repos?: unknown[];
+  tools?: unknown;
+  toolsConfig?: unknown;
+  temperature?: number;
+  schema?: unknown;
+  providerConfig?: unknown;
+}
+
 export interface AgentLogStatsResult {
   conversation: ParsedMessage[];
   stats: AgentLogStats;
+  config?: AgentRunConfig; // undefined for legacy blobs
 }
 
 export function isValidMessage(msg: unknown): msg is ParsedMessage {
@@ -70,6 +83,12 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
     return emptyResult;
   }
 
+  // Extract config from new { sessionId, messages, config } shape; normalize null → undefined
+  const runConfig: AgentRunConfig | undefined =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (((parsed as Record<string, unknown>).config as AgentRunConfig | null | undefined) ?? undefined)
+      : undefined;
+
   // Handle bare array or { messages: [...] } wrapper
   let candidates: unknown[] | null = null;
   if (Array.isArray(parsed)) {
@@ -78,10 +97,10 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
     candidates = (parsed as Record<string, unknown>).messages as unknown[];
   }
 
-  if (!candidates || candidates.length === 0) return emptyResult;
+  if (!candidates || candidates.length === 0) return { ...emptyResult, config: runConfig };
 
   const conversation = candidates.filter(isValidMessage);
-  if (conversation.length === 0) return emptyResult;
+  if (conversation.length === 0) return { ...emptyResult, config: runConfig };
 
   // Token estimation: total chars across role + content fields ÷ 4
   let totalChars = 0;
@@ -165,5 +184,6 @@ export function parseAgentLogStats(content: string): AgentLogStatsResult {
       bashFrequency,
       developerShellFrequency,
     },
+    config: runConfig,
   };
 }
