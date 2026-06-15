@@ -22,14 +22,12 @@ export default defineConfig({
             ["**/hooks/**/*.test.ts", "jsdom"],
           ],
     globals: true,
-    // Run integration tests sequentially to avoid database conflicts.
-    // forks pool spawns a single child process (singleFork: true) which
-    // inherits NODE_OPTIONS from the parent — including the --max-old-space-size
-    // set by CI — so the child never hits the default ~1.5 GB V8 heap limit.
-    // vmThreads/threads worker threads do not inherit NODE_OPTIONS and reject
-    // --max-old-space-size in execArgv, causing ERR_WORKER_INVALID_EXEC_ARGV.
-    // A single fork also ensures Prisma's native library engine is initialised
-    // once, avoiding the "Engine is not yet connected" race seen with multiple forks.
+    // Run integration tests sequentially in a single forked child process.
+    // Using "forks" + singleFork means the child process properly inherits
+    // NODE_OPTIONS (including --max-old-space-size) from the environment,
+    // unlike vmThreads workers which don't receive V8 heap flags.
+    // singleFork ensures Prisma's library engine is initialised exactly once,
+    // avoiding the "Engine is not yet connected" race seen with multiple forks.
     pool: testSuite === "integration" ? "forks" : "threads",
     poolOptions: testSuite === "integration" ? {
       forks: {

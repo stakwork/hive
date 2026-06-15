@@ -366,8 +366,7 @@ export async function POST(request: NextRequest) {
     ) {
       const rawStatus = (error as { status: number }).status;
       const status = rawStatus >= 200 && rawStatus <= 599 ? rawStatus : 500;
-      const errorMessage = "message" in error ? (error as { message?: unknown }).message : undefined;
-      const message = typeof errorMessage === "string" && errorMessage ? errorMessage : "Failed to create swarm";
+      const errorMessage = "message" in error ? error.message : "Failed to create swarm";
 
       console.log(`[SWARM_CREATE] Returning structured error - status: ${status}, message: ${message}`);
       return NextResponse.json({ success: false, message }, { status });
