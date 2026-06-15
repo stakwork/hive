@@ -45,6 +45,86 @@ vi.mock("date-fns", () => ({
 
 import { MessageBubble } from "@/components/agent-logs/LogDetailContent";
 import type { ParsedMessage } from "@/lib/utils/agent-log-stats";
+import userEvent from "@testing-library/user-event";
+
+// Add missing mocks needed by ReasoningSection
+vi.mock("@/lib/utils", () => ({
+  cn: (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(" "),
+}));
+
+vi.mock("lucide-react", () => ({
+  Loader2: () => React.createElement("span", { "data-testid": "loader" }),
+  User: () => React.createElement("span", { "data-testid": "icon-user" }),
+  Bot: () => React.createElement("span", { "data-testid": "icon-bot" }),
+  Wrench: () => React.createElement("span", { "data-testid": "icon-wrench" }),
+  Code2: () => React.createElement("span", { "data-testid": "icon-code" }),
+  ChevronDown: () => React.createElement("span", { "data-testid": "chevron-down" }),
+  ChevronRight: () => React.createElement("span", { "data-testid": "chevron-right" }),
+  Copy: () => React.createElement("span", { "data-testid": "icon-copy" }),
+  Check: () => React.createElement("span", { "data-testid": "icon-check" }),
+}));
+
+describe("MessageBubble reasoning rendering", () => {
+  it("shows a collapsed Reasoning toggle for content with reasoning block", async () => {
+    const user = userEvent.setup();
+    const message: ParsedMessage = {
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "Thinking hard..." },
+        { type: "text", text: "Final answer." },
+      ],
+    };
+    render(React.createElement(MessageBubble, { message }));
+
+    // "Reasoning" toggle should be visible
+    expect(screen.getByText("Reasoning")).toBeDefined();
+    // Collapsed by default — body not rendered yet
+    expect(screen.queryByText("Thinking hard...")).toBeNull();
+
+    // Expand it
+    await user.click(screen.getByText("Reasoning"));
+    expect(screen.getByText("Thinking hard...")).toBeDefined();
+  });
+
+  it("still renders when message has only a reasoning block (no text part)", () => {
+    const message: ParsedMessage = {
+      role: "assistant",
+      content: [{ type: "reasoning", text: "Only reasoning here." }],
+    };
+    const { container } = render(React.createElement(MessageBubble, { message }));
+    expect(container.firstChild).not.toBeNull();
+    expect(screen.getByText("Reasoning")).toBeDefined();
+  });
+
+  it("never shows providerOptions or signature content", () => {
+    const message: ParsedMessage = {
+      role: "assistant",
+      content: [
+        { type: "text", text: "Answer text." },
+      ],
+      providerOptions: { anthropic: { signature: "secret-signature-value" } },
+    } as ParsedMessage & { providerOptions: unknown };
+    render(React.createElement(MessageBubble, { message }));
+
+    expect(screen.queryByText(/providerOptions/)).toBeNull();
+    expect(screen.queryByText(/secret-signature-value/)).toBeNull();
+    expect(screen.queryByText(/signature/)).toBeNull();
+  });
+
+  it("renders reasoning from top-level reasoning string fallback", async () => {
+    const user = userEvent.setup();
+    const message: ParsedMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "Answer." }],
+      reasoning: "fallback reasoning text",
+    };
+    render(React.createElement(MessageBubble, { message }));
+
+    expect(screen.getByText("Reasoning")).toBeDefined();
+    await user.click(screen.getByText("Reasoning"));
+    expect(screen.getByText("fallback reasoning text")).toBeDefined();
+  });
+});
 
 describe("MessageBubble timestamp rendering", () => {
   it("renders HH:mm label and tooltip when timestamp is present on a user message", () => {
