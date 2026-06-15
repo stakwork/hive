@@ -195,7 +195,7 @@ export function OrgRightPanel({
             don't restart when the user flips back. */}
         <TabBody hidden={tab !== "details"}>
           {selectedNode ? (
-            <NodeDetail node={selectedNode} githubLogin={githubLogin} />
+            <NodeDetail node={selectedNode} githubLogin={githubLogin} onSwitchToChat={() => setTab("chat")} />
           ) : selectedNodes.length >= 2 ? (
             <MultiNodeDetail nodes={selectedNodes} internalEdges={selectedNodesInternalEdges} githubLogin={githubLogin} />
           ) : (

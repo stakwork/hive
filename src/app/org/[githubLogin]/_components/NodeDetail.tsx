@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Loader2 } from "lucide-react";
+import { ArrowUpRight, Loader2, MessageSquare } from "lucide-react";
+import { useCanvasChatStore } from "../_state/canvasChatStore";
 import type { CanvasNode } from "system-canvas";
 import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
@@ -39,6 +40,7 @@ export interface NodeDetail {
 interface NodeDetailProps {
   node: CanvasNode;
   githubLogin: string;
+  onSwitchToChat?: () => void;
 }
 
 /**
@@ -49,24 +51,41 @@ interface NodeDetailProps {
  * switching to the Connections tab leaves the node selected (the
  * canvas keeps showing it as selected) but routes the panel away.
  */
-export function NodeDetail({ node, githubLogin }: NodeDetailProps) {
+export function NodeDetail({ node, githubLogin, onSwitchToChat }: NodeDetailProps) {
   const liveMatch = LIVE_PREFIX_RE.exec(node.id);
   const isLive = liveMatch !== null;
+  const [convId, setConvId] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="px-4 pt-4 pb-3 border-b">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-          {(node.category ?? "node").toUpperCase()}
-        </div>
-        <div className="font-medium truncate mt-0.5">
-          {node.text || (node.category === "note" ? "Note" : node.id)}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+              {(node.category ?? "node").toUpperCase()}
+            </div>
+            <div className="font-medium truncate mt-0.5">
+              {node.text || (node.category === "note" ? "Note" : node.id)}
+            </div>
+          </div>
+          {convId && (
+            <button
+              onClick={() => {
+                useCanvasChatStore.getState().setActiveConversation(convId);
+                onSwitchToChat?.();
+              }}
+              className="flex items-center gap-1 text-xs text-primary hover:underline shrink-0 mt-0.5"
+            >
+              <MessageSquare className="h-3 w-3" />
+              View in Chat
+            </button>
+          )}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
         {isLive ? (
-          <LiveNodeBody nodeId={node.id} githubLogin={githubLogin} />
+          <LiveNodeBody nodeId={node.id} githubLogin={githubLogin} onConversationIdResolved={setConvId} />
         ) : (
           <AuthoredNodeBody node={node} />
         )}
@@ -95,9 +114,11 @@ export function AuthoredNodeBody({ node }: { node: CanvasNode }) {
 export function LiveNodeBody({
   nodeId,
   githubLogin,
+  onConversationIdResolved,
 }: {
   nodeId: string;
   githubLogin: string;
+  onConversationIdResolved?: (id: string | null) => void;
 }) {
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +129,7 @@ export function LiveNodeBody({
     setLoading(true);
     setError(null);
     setDetail(null);
+    onConversationIdResolved?.(null);
     fetch(
       `/api/orgs/${githubLogin}/canvas/node/${encodeURIComponent(nodeId)}`,
     )
@@ -118,7 +140,15 @@ export function LiveNodeBody({
           return;
         }
         const body = (await res.json()) as NodeDetail;
-        if (!cancelled) setDetail(body);
+        if (!cancelled) {
+          setDetail(body);
+          if (body.kind === "feature") {
+            const extras = (body.extras ?? {}) as Record<string, unknown>;
+            onConversationIdResolved?.(
+              (extras.parentCanvasConversationId as string | null) ?? null,
+            );
+          }
+        }
       })
       .catch(() => {
         if (!cancelled) setError("Failed to load.");
