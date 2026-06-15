@@ -8,6 +8,7 @@ import { getAllJanitorItems } from "@/lib/constants/janitor";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useInsightsStore } from "@/stores/useInsightsStore";
 import {
+  AlertTriangle,
   BookOpen,
   Bot,
   CheckCircle2,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { redirect } from "next/navigation";
 import { useEffect } from "react";
+import { StaleCITaskJanitorCard } from "@/components/insights/StaleCITaskJanitorCard";
 
 // Get all janitor items and separate them by category
 const allJanitors = getAllJanitorItems();
@@ -134,7 +136,7 @@ const prMonitorJanitors: JanitorItem[] = [
 export default function DefenseJanitorsPage() {
   const canAccessDefense = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
   const { workspace } = useWorkspace();
-  const { fetchJanitorConfig, reset } = useInsightsStore();
+  const { fetchJanitorConfig, janitorConfig, reset } = useInsightsStore();
 
   if (!canAccessDefense) {
     redirect("/");
@@ -170,6 +172,25 @@ export default function DefenseJanitorsPage() {
           icon={<TestTube className="h-5 w-5 text-blue-500" />}
           janitors={testingJanitors}
         />
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <h2 className="text-lg font-semibold">PR Health</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Detect and archive tasks permanently stuck in CI failure or merge conflict state.
+          </p>
+          {workspace && (
+            <StaleCITaskJanitorCard
+              slug={workspace.slug}
+              initialConfig={{
+                stalePrTasksEnabled: (janitorConfig?.stalePrTasksEnabled as boolean) ?? false,
+                stalePrTaskThresholdDays: (janitorConfig?.stalePrTaskThresholdDays as number) ?? 7,
+              }}
+            />
+          )}
+        </div>
 
         <JanitorSection
           title="PR Monitor"
