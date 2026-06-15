@@ -286,6 +286,7 @@ export default function WorkflowInspectorPage() {
                     workspaceSlug={slug}
                     workflowId={workflowIdNum}
                     customSelectedIds={customSelectedIds}
+                    isCustomMode={customPickerActive}
                     onCustomModeToggle={(enabled) => {
                       setCustomPickerActive(enabled);
                       if (!enabled) setCustomSelectedIds([]);
