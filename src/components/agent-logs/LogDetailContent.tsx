@@ -14,11 +14,13 @@ import type {
   ToolCallContent,
   ToolResultContent,
   AgentLogStats,
+  AgentRunConfig,
 } from "@/lib/utils/agent-log-stats";
 
 export interface LogDetailContentProps {
   conversation: ParsedMessage[] | null;
   stats: AgentLogStats | null;
+  config?: AgentRunConfig | null;
   rawContent: string;
   loading: boolean;
   error: string | null;
@@ -532,6 +534,85 @@ export function MessageBubble({
   );
 }
 
+// ---------------------------------------------------------------------------
+// RunConfigPanel — collapsible panel showing high-signal run config fields
+// ---------------------------------------------------------------------------
+
+function getRepoIdentifiers(repos: unknown[]): string[] {
+  return repos
+    .map((r) => {
+      if (r && typeof r === "object") {
+        const obj = r as Record<string, unknown>;
+        return (obj.name ?? obj.url ?? obj.id ?? null) as string | null;
+      }
+      if (typeof r === "string") return r;
+      return null;
+    })
+    .filter((v): v is string => v !== null && v !== "");
+}
+
+function getToolNames(tools: unknown): string[] {
+  if (!tools || typeof tools !== "object" || Array.isArray(tools)) return [];
+  return Object.entries(tools as Record<string, unknown>)
+    .filter(([, v]) => !!v)
+    .map(([k]) => k);
+}
+
+export function RunConfigPanel({ config }: { config: AgentRunConfig }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const repoIds = Array.isArray(config.repos) ? getRepoIdentifiers(config.repos) : [];
+  const toolNames = getToolNames(config.tools);
+
+  const rows: { label: string; value: string }[] = [];
+  if (config.model) rows.push({ label: "Model", value: config.model });
+  if (config.provider) rows.push({ label: "Provider", value: config.provider });
+  if (config.source) rows.push({ label: "Source", value: config.source });
+  if (config.temperature !== undefined && config.temperature !== null) {
+    rows.push({ label: "Temp", value: String(config.temperature) });
+  }
+  if (repoIds.length > 0) rows.push({ label: "Repos", value: repoIds.join(", ") });
+  if (toolNames.length > 0) rows.push({ label: "Tools", value: toolNames.join(", ") });
+
+  if (rows.length === 0 && !expanded) return null;
+
+  return (
+    <div className="mb-3 rounded-md border bg-muted/30 px-3 py-2 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-foreground uppercase tracking-wide">
+          Run Config
+        </span>
+      </div>
+      {rows.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          {rows.map(({ label, value }) => (
+            <div key={label} className="flex items-start gap-1.5 min-w-0">
+              <span className="text-xs text-muted-foreground shrink-0">{label}:</span>
+              <span className="text-xs font-mono text-foreground truncate" title={value}>
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div>
+        <button
+          onClick={() => setExpanded((s) => !s)}
+          className="text-xs text-primary hover:underline flex items-center gap-0.5"
+        >
+          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {expanded ? "Hide raw config" : "Show raw config"}
+        </button>
+        {expanded && (
+          <pre className="mt-2 text-xs font-mono bg-muted rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap break-words">
+            {JSON.stringify(config, null, 2)}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function StatsBar({ stats }: { stats: AgentLogStats }) {
   const [showBash, setShowBash] = useState(false);
   const [showDeveloperShell, setShowDeveloperShell] = useState(false);
@@ -620,6 +701,7 @@ export function StatsBar({ stats }: { stats: AgentLogStats }) {
 export function LogDetailContent({
   conversation,
   stats,
+  config,
   rawContent,
   loading,
   error,
@@ -647,6 +729,7 @@ export function LogDetailContent({
 
       {!loading && !error && hasContent && (
         <>
+          {config && <RunConfigPanel config={config} />}
           {stats && <StatsBar stats={stats} />}
           <ScrollArea
             className={cn(
