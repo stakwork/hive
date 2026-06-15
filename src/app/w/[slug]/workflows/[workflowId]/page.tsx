@@ -56,6 +56,7 @@ export default function WorkflowInspectorPage() {
   const workflowIdNum = workflowIdRaw ? parseInt(workflowIdRaw, 10) : NaN;
 
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [historyVersionId, setHistoryVersionId] = useState<string | null>(null);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [customPickerActive, setCustomPickerActive] = useState(false);
   const [customSelectedIds, setCustomSelectedIds] = useState<string[]>([]);
@@ -75,9 +76,19 @@ export default function WorkflowInspectorPage() {
     }
   }, [versions, selectedVersionId]);
 
+  // Auto-initialize historyVersionId to the predecessor of the main selected version
+  useEffect(() => {
+    if (selectedVersionId && versions.length > 0) {
+      const idx = versions.findIndex((v) => v.workflow_version_id === selectedVersionId);
+      const prev = versions[idx + 1] ?? null;
+      setHistoryVersionId(prev?.workflow_version_id ?? null);
+    }
+  }, [selectedVersionId, versions]);
+
   // Reset selection and custom picker when workflowId changes
   useEffect(() => {
     setSelectedVersionId(null);
+    setHistoryVersionId(null);
     setCustomPickerActive(false);
     setCustomSelectedIds([]);
   }, [workflowIdNum]);
@@ -105,11 +116,10 @@ export default function WorkflowInspectorPage() {
   }, [parsedWorkflowData]);
   const hasChildWorkflows = childWorkflows.length > 0;
 
-  const previousVersion = useMemo(() => {
-    if (!selectedVersion) return null;
-    const idx = versions.indexOf(selectedVersion);
-    return versions[idx + 1] ?? null;
-  }, [versions, selectedVersion]);
+  const historyVersion = useMemo(
+    () => versions.find((v) => v.workflow_version_id === historyVersionId) ?? null,
+    [versions, historyVersionId],
+  );
 
   const handleOpenInEditor = async () => {
     if (!selectedVersion || !slug) return;
@@ -287,8 +297,8 @@ export default function WorkflowInspectorPage() {
                 )}
                 <WorkflowVersionList
                   versions={versions}
-                  selectedVersionId={selectedVersionId}
-                  onVersionSelect={setSelectedVersionId}
+                  selectedVersionId={historyVersionId}
+                  onVersionSelect={setHistoryVersionId}
                   selectable={customPickerActive}
                   selectedIds={customSelectedIds}
                   onSelectionChange={setCustomSelectedIds}
@@ -296,7 +306,7 @@ export default function WorkflowInspectorPage() {
                 {selectedVersion && !customPickerActive && (
                   <WorkflowVersionDiff
                     currentJson={selectedVersion.workflow_json}
-                    previousJson={previousVersion?.workflow_json ?? null}
+                    previousJson={historyVersion?.workflow_json ?? null}
                   />
                 )}
               </TabsContent>

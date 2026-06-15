@@ -33,26 +33,31 @@ vi.mock("@/components/workflow/WorkflowVersionSelector", () => ({
     <div data-testid="version-selector" data-selected={selectedVersionId ?? ""} />
   ),
 }));
+let capturedOnVersionSelect: ((id: string) => void) | null = null;
+
 vi.mock("@/components/workflow/inspector/WorkflowVersionList", () => ({
   WorkflowVersionList: ({
     selectedVersionId,
     selectable,
     selectedIds,
     onSelectionChange,
-    onCustomSelectionConfirm,
+    onVersionSelect,
   }: {
     selectedVersionId: string | null;
     selectable?: boolean;
     selectedIds?: string[];
     onSelectionChange?: (ids: string[]) => void;
-    onCustomSelectionConfirm?: () => void;
-  }) => (
-    <div
-      data-testid="version-list"
-      data-selected={selectedVersionId ?? ""}
-      data-selectable={selectable ? "true" : "false"}
-    />
-  ),
+    onVersionSelect?: (id: string) => void;
+  }) => {
+    capturedOnVersionSelect = onVersionSelect ?? null;
+    return (
+      <div
+        data-testid="version-list"
+        data-selected={selectedVersionId ?? ""}
+        data-selectable={selectable ? "true" : "false"}
+      />
+    );
+  },
 }));
 vi.mock("@/components/workflow/inspector/SummariseChangesButton", () => ({
   SummariseChangesButton: ({
@@ -75,7 +80,19 @@ vi.mock("@/components/workflow/inspector/WorkflowParamsTable", () => ({
   WorkflowParamsTable: () => <div />,
 }));
 vi.mock("@/components/workflow/inspector/WorkflowVersionDiff", () => ({
-  WorkflowVersionDiff: () => <div />,
+  WorkflowVersionDiff: ({
+    currentJson,
+    previousJson,
+  }: {
+    currentJson: string | null;
+    previousJson: string | null;
+  }) => (
+    <div
+      data-testid="version-diff"
+      data-current={currentJson ?? ""}
+      data-previous={previousJson ?? ""}
+    />
+  ),
 }));
 vi.mock("@/components/prompts", () => ({
   PromptsPanel: () => <div />,
@@ -101,10 +118,10 @@ vi.mock("@/lib/workflow/create-workflow-editor-task", () => ({
 }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 
-const makeVersion = (id: string, published = false): WorkflowVersion => ({
+const makeVersion = (id: string, published = false, workflowJson = "{}"): WorkflowVersion => ({
   workflow_version_id: id,
   workflow_id: 42,
-  workflow_json: "{}",
+  workflow_json: workflowJson,
   workflow_name: "Test Workflow",
   date_added_to_graph: "1700000000",
   published,
@@ -217,6 +234,89 @@ describe("WorkflowInspectorPage — custom picker mode (SummariseChangesButton)"
 
     await waitFor(() => {
       expect(screen.getByTestId("version-list").getAttribute("data-selectable")).toBe("true");
+    });
+  });
+});
+
+describe("WorkflowInspectorPage — History tab independent selection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVersions = [];
+    mockIsLoading = true;
+    capturedOnVersionSelect = null;
+  });
+
+  it("selecting a version in the History tab does NOT change the main version-selector", async () => {
+    await renderWithVersions([
+      makeVersion("v3", true),  // auto-selected as active
+      makeVersion("v2", false),
+      makeVersion("v1", false),
+    ]);
+
+    // Main selector should be on v3 (the active/published version)
+    await waitFor(() => {
+      expect(screen.getByTestId("version-selector").getAttribute("data-selected")).toBe("v3");
+    });
+
+    // Simulate clicking v1 in the History tab's WorkflowVersionList
+    await act(async () => {
+      capturedOnVersionSelect?.("v1");
+    });
+
+    // Main selector must remain on v3
+    await waitFor(() => {
+      expect(screen.getByTestId("version-selector").getAttribute("data-selected")).toBe("v3");
+    });
+
+    // History list should now show v1 as selected
+    expect(screen.getByTestId("version-list").getAttribute("data-selected")).toBe("v1");
+  });
+
+  it("changing the main version auto-sets historyVersionId to the predecessor and updates WorkflowVersionDiff", async () => {
+    await renderWithVersions([
+      makeVersion("v3", true, '{"name":"v3"}'),
+      makeVersion("v2", false, '{"name":"v2"}'),
+      makeVersion("v1", false, '{"name":"v1"}'),
+    ]);
+
+    // Auto-select should pick v3 (published); predecessor is v2
+    await waitFor(() => {
+      expect(screen.getByTestId("version-selector").getAttribute("data-selected")).toBe("v3");
+    });
+
+    // Diff: current = v3's json, previous = v2's json (predecessor)
+    await waitFor(() => {
+      const diff = screen.getByTestId("version-diff");
+      expect(diff.getAttribute("data-current")).toBe('{"name":"v3"}');
+      expect(diff.getAttribute("data-previous")).toBe('{"name":"v2"}');
+    });
+  });
+
+  it("clicking a non-default version in History updates WorkflowVersionDiff previousJson without changing main view", async () => {
+    await renderWithVersions([
+      makeVersion("v3", true, '{"name":"v3"}'),
+      makeVersion("v2", false, '{"name":"v2"}'),
+      makeVersion("v1", false, '{"name":"v1"}'),
+    ]);
+
+    // Wait for auto-select
+    await waitFor(() => {
+      expect(screen.getByTestId("version-selector").getAttribute("data-selected")).toBe("v3");
+    });
+
+    // Default history selection is v2 (predecessor of v3); now explicitly pick v1
+    await act(async () => {
+      capturedOnVersionSelect?.("v1");
+    });
+
+    // Main selector must still be v3
+    expect(screen.getByTestId("version-selector").getAttribute("data-selected")).toBe("v3");
+
+    // Diff should now compare v3 (main) vs v1 (explicit history pick)
+    await waitFor(() => {
+      const diff = screen.getByTestId("version-diff");
+      expect(diff.getAttribute("data-current")).toBe('{"name":"v3"}');
+      expect(diff.getAttribute("data-previous")).toBe('{"name":"v1"}');
     });
   });
 });
