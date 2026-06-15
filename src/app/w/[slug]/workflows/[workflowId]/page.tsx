@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Workflow, Loader2, ArrowLeft, ExternalLink } from "lucide-react";
@@ -19,6 +19,7 @@ import { WorkflowParamsTable } from "@/components/workflow/inspector/WorkflowPar
 import { WorkflowVersionList } from "@/components/workflow/inspector/WorkflowVersionList";
 import { WorkflowVersionDiff } from "@/components/workflow/inspector/WorkflowVersionDiff";
 import { SummariseChangesButton } from "@/components/workflow/inspector/SummariseChangesButton";
+import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { createWorkflowEditorTask } from "@/lib/workflow/create-workflow-editor-task";
 import { PromptsPanel } from "@/components/prompts";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
@@ -58,6 +59,8 @@ export default function WorkflowInspectorPage() {
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [customPickerActive, setCustomPickerActive] = useState(false);
   const [customSelectedIds, setCustomSelectedIds] = useState<string[]>([]);
+  const [selectedStep, setSelectedStep] = useState<WorkflowTransition | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const { versions, isLoading: isLoadingVersions } = useWorkflowVersions(
     slug || null,
@@ -120,6 +123,11 @@ export default function WorkflowInspectorPage() {
       setIsCreatingTask(false);
     }
   };
+
+  const handleStepClick = useCallback((step: WorkflowTransition) => {
+    setSelectedStep(step);
+    setIsModalOpen(true);
+  }, []);
 
   const handlePlanFromWorkflow = () => {
     if (!slug) return;
@@ -197,6 +205,7 @@ export default function WorkflowInspectorPage() {
           </div>
           <div className="flex-1 overflow-hidden">
             {parsedWorkflowData ? (
+              <>
               <WorkflowComponent
                 props={{
                   workflowData: parsedWorkflowData,
@@ -209,8 +218,15 @@ export default function WorkflowInspectorPage() {
                   defaultZoomLevel: 0.65,
                   useAssistantDimensions: false,
                   rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
+                  onStepClick: handleStepClick,
                 }}
               />
+              <StepDetailsModal
+                step={selectedStep}
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+              />
+              </>
             ) : isLoadingVersions ? (
               <div className="flex items-center justify-center h-full text-muted-foreground text-sm gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" />

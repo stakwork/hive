@@ -9,7 +9,7 @@ interface StepDetailsModalProps {
   step: WorkflowTransition | null;
   isOpen: boolean;
   onClose: () => void;
-  onSelect: () => void;
+  onSelect?: () => void;
 }
 
 const STEP_TYPE_ICONS: Record<StepType, React.ReactNode> = {
@@ -170,10 +170,12 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetail
             <X className="h-4 w-4 mr-2" />
             Cancel
           </Button>
-          <Button onClick={onSelect}>
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            Select Step
-          </Button>
+          {onSelect && (
+            <Button onClick={onSelect}>
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Select Step
+            </Button>
+          )}
         </div>
       </div>
     </div>
