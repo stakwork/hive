@@ -6,7 +6,20 @@
 /** Placeholder title for a conversation with no usable first user message. */
 export const UNTITLED_CONVERSATION = "Untitled Conversation";
 
-/** Generate a title from the first user message (max 50 chars). */
+/**
+ * Upper bound for stored titles. This is a storage guard, not a display
+ * concern — UIs truncate titles visually (CSS `truncate`) so the title is
+ * stored whole (no trailing ellipsis) up to this generous single-line cap.
+ */
+export const TITLE_MAX_LENGTH = 200;
+
+/**
+ * Generate a title from the first user message.
+ *
+ * The full message text is used (whitespace collapsed to a single line) up to
+ * {@link TITLE_MAX_LENGTH} characters, with no trailing ellipsis. Display
+ * surfaces are responsible for visually truncating long titles.
+ */
 export function generateTitle(messages: unknown[]): string {
   if (!Array.isArray(messages) || messages.length === 0) {
     return UNTITLED_CONVERSATION;
@@ -24,9 +37,9 @@ export function generateTitle(messages: unknown[]): string {
     text = textPart?.text || "";
   }
 
-  const trimmed = text.trim();
-  if (!trimmed) return UNTITLED_CONVERSATION;
-  return trimmed.length > 50 ? trimmed.substring(0, 50) + "..." : trimmed;
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return UNTITLED_CONVERSATION;
+  return normalized.slice(0, TITLE_MAX_LENGTH);
 }
 
 /** Return a short preview string from the first user message. */

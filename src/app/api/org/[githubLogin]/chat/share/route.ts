@@ -1,30 +1,9 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { CreateSharedConversationRequest, SharedConversationResponse } from "@/types/shared-conversation";
+import { generateTitle } from "@/lib/ai/conversationHelpers";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
-
-function generateTitle(messages: any[]): string {
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return "Untitled Conversation";
-  }
-  const firstUserMessage = messages.find((msg: any) => msg.role === "user");
-  if (!firstUserMessage) {
-    return "Untitled Conversation";
-  }
-  let text = "";
-  if (typeof firstUserMessage.content === "string") {
-    text = firstUserMessage.content;
-  } else if (Array.isArray(firstUserMessage.content)) {
-    const textPart = firstUserMessage.content.find((part: any) => part.type === "text");
-    text = textPart?.text || "";
-  }
-  const trimmed = text.trim();
-  if (trimmed.length === 0) {
-    return "Untitled Conversation";
-  }
-  return trimmed.length > 50 ? trimmed.substring(0, 50) + "..." : trimmed;
-}
 
 function getLastMessageTimestamp(messages: any[]): Date | null {
   if (!Array.isArray(messages) || messages.length === 0) {

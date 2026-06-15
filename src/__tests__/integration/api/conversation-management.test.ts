@@ -354,7 +354,7 @@ describe("Conversation Management API Integration Tests", () => {
         expect(data.title).toBe("How do I implement authentication in Next.js?");
       });
 
-      test("should truncate long titles to 50 chars", async () => {
+      test("should store the full title up to the 200-char cap (no ellipsis)", async () => {
         const { testUser, testWorkspace } = await createTestUserWithWorkspace();
 
         getMockedSession().mockResolvedValue(
@@ -375,7 +375,34 @@ describe("Conversation Management API Integration Tests", () => {
 
         expect(response.status).toBe(201);
         const data = await response.json();
-        expect(data.title).toBe("A".repeat(50) + "...");
+        // Titles are no longer truncated at the storage layer (UIs truncate
+        // visually); under the 200-char cap the full message is stored.
+        expect(data.title).toBe("A".repeat(100));
+      });
+
+      test("should cap very long titles at 200 chars with no ellipsis", async () => {
+        const { testUser, testWorkspace } = await createTestUserWithWorkspace();
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(testUser)
+        );
+
+        const longMessage = "A".repeat(250);
+        const request = createPostRequest(
+          `http://localhost:3000/api/workspaces/${testWorkspace.slug}/chat/conversations`,
+          {
+            messages: [{ role: "user", content: longMessage }],
+          }
+        );
+
+        const response = await POST_CREATE(request, {
+          params: Promise.resolve({ slug: testWorkspace.slug }),
+        });
+
+        expect(response.status).toBe(201);
+        const data = await response.json();
+        expect(data.title).toBe("A".repeat(200));
+        expect(data.title.endsWith("...")).toBe(false);
       });
 
       test("should use provided title if specified", async () => {

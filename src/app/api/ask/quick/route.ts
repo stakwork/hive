@@ -37,6 +37,7 @@ import {
   messagesFromSteps,
   appendTurnMessages,
   type StoredMessage,
+  type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
@@ -146,6 +147,11 @@ export async function POST(request: NextRequest) {
       // live-sync merge by this prefix. Absent → legacy client-driven
       // persistence (dashboard chat, public viewers, older clients).
       turnId,
+      // User-uploaded file attachments for THIS turn's user message
+      // (`CanvasAttachment[]` — `{ path, filename, mimeType, size }`).
+      // The model sees them as image parts embedded in `messages`; this
+      // top-level copy is what we persist so they survive reload.
+      attachments,
     } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -432,14 +438,59 @@ export async function POST(request: NextRequest) {
     // ============================================================
     const turnIdStr: string | null =
       typeof turnId === "string" && turnId.length > 0 ? turnId : null;
+    // The latest user turn's text. With an image attachment the content is
+    // a multi-part array (`{type:"text"} + {type:"image"}`), so pull the
+    // text part out — otherwise a string content collapses to "" and the
+    // whole message (text + image) is skipped from persistence.
     const newUserContent = (() => {
       const last = convertedMessages[convertedMessages.length - 1];
-      return last && last.role === "user" && typeof last.content === "string"
-        ? last.content
-        : "";
+      if (!last || last.role !== "user") return "";
+      if (typeof last.content === "string") return last.content;
+      if (Array.isArray(last.content)) {
+        return last.content
+          .filter(
+            (p): p is { type: "text"; text: string } =>
+              !!p && typeof p === "object" && (p as { type?: unknown }).type === "text",
+          )
+          .map((p) => p.text)
+          .join("\n");
+      }
+      return "";
     })();
+    // Normalize the top-level attachments the client forwarded into the
+    // stored shape so the image survives reload. Defensive: drop anything
+    // missing the required fields.
+    const userAttachments: StoredAttachment[] = Array.isArray(attachments)
+      ? (attachments as unknown[]).flatMap((a) => {
+          if (!a || typeof a !== "object") return [];
+          const r = a as Record<string, unknown>;
+          if (
+            typeof r.path !== "string" ||
+            typeof r.filename !== "string" ||
+            typeof r.mimeType !== "string" ||
+            typeof r.size !== "number"
+          ) {
+            return [];
+          }
+          return [
+            {
+              path: r.path,
+              filename: r.filename,
+              mimeType: r.mimeType,
+              size: r.size,
+            },
+          ];
+        })
+      : [];
     let canvasConversationRowId: string | null = null;
-    if (orgId && userId && turnIdStr && newUserContent.trim()) {
+    // Persist when there's text OR an attachment — an image-only turn has
+    // no text but still must be saved.
+    if (
+      orgId &&
+      userId &&
+      turnIdStr &&
+      (newUserContent.trim() || userAttachments.length > 0)
+    ) {
       canvasConversationRowId = await persistCanvasUserMessage({
         orgId,
         userId,
@@ -449,6 +500,7 @@ export async function POST(request: NextRequest) {
         existingRowId: promptCache?.rowId ?? null,
         turnId: turnIdStr,
         content: newUserContent,
+        attachments: userAttachments,
         workspaceSlugs: slugs,
       });
     }
@@ -893,16 +945,25 @@ async function persistCanvasUserMessage(args: {
   existingRowId: string | null;
   turnId: string;
   content: string;
+  attachments?: StoredAttachment[];
   workspaceSlugs: string[];
 }): Promise<string> {
-  const { orgId, userId, existingRowId, turnId, content, workspaceSlugs } =
-    args;
+  const {
+    orgId,
+    userId,
+    existingRowId,
+    turnId,
+    content,
+    attachments,
+    workspaceSlugs,
+  } = args;
 
   const userRow: StoredMessage = {
     id: `${turnId}-u`,
     role: "user",
     content,
     timestamp: new Date().toISOString(),
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
   };
 
   if (existingRowId) {

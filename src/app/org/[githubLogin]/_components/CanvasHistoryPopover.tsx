@@ -86,6 +86,7 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
           toolCalls: m.toolCalls,
           timeline: m.timeline,
           artifactIds: m.artifactIds,
+          attachments: m.attachments,
           approval: m.approval,
           rejection: m.rejection,
           approvalResult: m.approvalResult,
