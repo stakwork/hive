@@ -559,6 +559,7 @@ interface PendingFileTest {
 function TestSidebarChatInputWithAttachments({
   onSend,
   workspaceId = "ws-1",
+  orgId,
   disabled = false,
 }: {
   onSend: (
@@ -567,6 +568,7 @@ function TestSidebarChatInputWithAttachments({
     clear: () => void,
   ) => Promise<void>;
   workspaceId?: string;
+  orgId?: string;
   disabled?: boolean;
 }) {
   const [input, setInput] = React.useState("");
@@ -586,7 +588,8 @@ function TestSidebarChatInputWithAttachments({
         ),
       );
       try {
-        const result = await mockUploadFileToS3(pf.file, { workspaceId });
+        const uploadContext = workspaceId ? { workspaceId } : { orgId: orgId! };
+        const result = await mockUploadFileToS3(pf.file, uploadContext);
         setPendingFiles((prev) =>
           prev.map((f) =>
             f.id === pf.id
@@ -606,7 +609,7 @@ function TestSidebarChatInputWithAttachments({
         });
       }
     },
-    [workspaceId],
+    [workspaceId, orgId],
   );
 
   const handleFiles = React.useCallback(
@@ -974,6 +977,60 @@ describe("SidebarChatInput — file attachments", () => {
     await waitFor(() => {
       expect(mockUploadFileToS3).toHaveBeenCalledWith(expect.any(File), {
         workspaceId: "custom-ws",
+      });
+    });
+  });
+
+  it("uses orgId context when workspaceId is empty and orgId is set", async () => {
+    mockUploadFileToS3.mockResolvedValue({
+      path: "orgs/my-org/canvas/dropped.png",
+      filename: "dropped.png",
+      mimeType: "image/png",
+      size: 7,
+    });
+
+    render(
+      <TestSidebarChatInputWithAttachments
+        onSend={vi.fn()}
+        workspaceId=""
+        orgId="my-org"
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("trigger-drop"));
+    });
+
+    await waitFor(() => {
+      expect(mockUploadFileToS3).toHaveBeenCalledWith(expect.any(File), {
+        orgId: "my-org",
+      });
+    });
+  });
+
+  it("uses workspaceId context when both workspaceId and orgId are set (no regression)", async () => {
+    mockUploadFileToS3.mockResolvedValue({
+      path: "uploads/ws-priority/canvas/dropped.png",
+      filename: "dropped.png",
+      mimeType: "image/png",
+      size: 7,
+    });
+
+    render(
+      <TestSidebarChatInputWithAttachments
+        onSend={vi.fn()}
+        workspaceId="ws-priority"
+        orgId="some-org"
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("trigger-drop"));
+    });
+
+    await waitFor(() => {
+      expect(mockUploadFileToS3).toHaveBeenCalledWith(expect.any(File), {
+        workspaceId: "ws-priority",
       });
     });
   });
