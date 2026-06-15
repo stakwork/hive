@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import type { Octokit } from "@octokit/rest";
+import { parsePRUrl, getOctokitForWorkspace } from "@/lib/github/pr-monitor";
 
 export interface StalePRTask {
   taskId: string;
@@ -104,15 +106,128 @@ export async function findStalePRTasks(opts: FindStalePRTasksOptions): Promise<S
 }
 
 /**
+ * Resolves an Octokit instance for the owner of a workspace, by workspace ID.
+ * Returns null if the workspace is not found or the token is unavailable.
+ */
+export async function getOctokitForWorkspaceById(
+  workspaceId: string,
+  owner: string,
+): Promise<Octokit | null> {
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { ownerId: true },
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  return getOctokitForWorkspace(workspace.ownerId, owner);
+}
+
+/**
+ * Closes a GitHub PR and posts an explanatory comment.
+ * Throws on failure so the caller can catch and count.
+ */
+export async function closeGitHubPR(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  state: "ci_failure" | "conflict",
+  stuckSinceDays?: number,
+): Promise<void> {
+  await octokit.pulls.update({ owner, repo, pull_number: prNumber, state: "closed" });
+
+  const reason = state === "ci_failure" ? "a CI failure" : "a merge conflict";
+  const daysClause =
+    stuckSinceDays !== undefined ? ` for ${Math.round(stuckSinceDays)} days` : "";
+  const body =
+    `This PR was automatically closed by the Hive Stale CI Task Janitor because it has been stuck in ${reason} state${daysClause}. ` +
+    `The associated task has been archived.`;
+
+  await octokit.issues.createComment({ owner, repo, issue_number: prNumber, body });
+}
+
+/**
  * Archive tasks that are permanently stuck in CI failure or merge conflict state.
  * Marks the tasks as archived and sets the PR artifact status to CANCELLED
  * so findOpenPRArtifacts stops picking them up in the next cron cycle.
+ *
+ * Also closes the corresponding GitHub PR and posts a comment before archiving.
+ * GitHub failures are logged but do not block the DB archival step.
  */
 export async function archiveStalePRTasks(
-  tasks: Array<{ taskId: string; artifactId: string }>,
-): Promise<{ archivedCount: number }> {
+  tasks: Array<{
+    taskId: string;
+    artifactId: string;
+    prUrl: string;
+    workspaceId: string;
+    stuckSinceDays?: number;
+    state?: "ci_failure" | "conflict";
+  }>,
+): Promise<{ archivedCount: number; closedPrCount: number }> {
   if (tasks.length === 0) {
-    return { archivedCount: 0 };
+    return { archivedCount: 0, closedPrCount: 0 };
+  }
+
+  let closedPrCount = 0;
+
+  // Group by workspaceId so we only fetch one Octokit per workspace
+  const byWorkspace = new Map<string, typeof tasks>();
+  for (const task of tasks) {
+    const group = byWorkspace.get(task.workspaceId) ?? [];
+    group.push(task);
+    byWorkspace.set(task.workspaceId, group);
+  }
+
+  for (const [workspaceId, group] of byWorkspace) {
+    for (const task of group) {
+      const parsed = parsePRUrl(task.prUrl);
+      if (!parsed) {
+        console.warn(
+          `[stale-pr-janitor] Skipping GitHub closure — malformed PR URL: ${task.prUrl} (task ${task.taskId})`,
+        );
+        continue;
+      }
+
+      const { owner, repo, prNumber } = parsed;
+
+      let octokit: Octokit | null = null;
+      try {
+        octokit = await getOctokitForWorkspaceById(workspaceId, owner);
+      } catch (err) {
+        console.error(
+          `[stale-pr-janitor] Failed to resolve Octokit for workspace ${workspaceId}:`,
+          err,
+        );
+      }
+
+      if (!octokit) {
+        console.error(
+          `[stale-pr-janitor] No GitHub token available for workspace ${workspaceId} — skipping closure of ${task.prUrl}`,
+        );
+        continue;
+      }
+
+      try {
+        await closeGitHubPR(
+          octokit,
+          owner,
+          repo,
+          prNumber,
+          (task.state as "ci_failure" | "conflict") ?? "ci_failure",
+          task.stuckSinceDays,
+        );
+        console.log(`[stale-pr-janitor] Closed GitHub PR: ${task.prUrl}`);
+        closedPrCount++;
+      } catch (err) {
+        console.error(
+          `[stale-pr-janitor] Failed to close GitHub PR ${task.prUrl}:`,
+          err,
+        );
+      }
+    }
   }
 
   const taskIds = tasks.map((t) => t.taskId);
@@ -130,5 +245,5 @@ export async function archiveStalePRTasks(
     `,
   ]);
 
-  return { archivedCount: updateResult.count };
+  return { archivedCount: updateResult.count, closedPrCount };
 }
