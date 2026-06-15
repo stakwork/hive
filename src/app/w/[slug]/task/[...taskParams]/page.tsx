@@ -470,6 +470,21 @@ export default function TaskChatPage() {
 
           if (matchedContexts.length > 0) {
             setCurrentWorkflowContext(matchedContexts[matchedContexts.length - 1]);
+          } else if (result.data.task?.workflowTask) {
+            // No WORKFLOW artifact found — seed context from WorkflowTask DB record.
+            // Covers SCRIPT/SKILL/PROMPT tasks and new-workflow tasks that never had
+            // an artifact seeded. Uses "new" for null workflowId, matching the
+            // handleNewWorkflow convention the workflow-editor API already accepts.
+            const wt = result.data.task.workflowTask as {
+              workflowId?: string | number | null;
+              workflowName?: string | null;
+              workflowRefId?: string | null;
+            };
+            setCurrentWorkflowContext({
+              workflowId: wt.workflowId ?? "new",
+              workflowName: wt.workflowName ?? "New Workflow",
+              workflowRefId: wt.workflowRefId ?? "",
+            });
           }
         }
 
