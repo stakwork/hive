@@ -1813,6 +1813,29 @@ model DiscordChannel {
   @@map("discord_channels")
 }
 
+enum DeferredChatActionStatus {
+  PENDING
+  FIRED
+  CANCELLED
+  FAILED
+}
+
+model DeferredChatAction {
+  id             String                   @id @default(cuid())
+  conversationId String                   @map("conversation_id")
+  orgId          String                   @map("org_id")
+  userId         String                   @map("user_id")
+  query          String
+  description    String
+  fireAt         DateTime                 @map("fire_at")
+  status         DeferredChatActionStatus @default(PENDING)
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  firedAt        DateTime?                @map("fired_at")
+
+  @@index([status, fireAt])
+  @@map("deferred_chat_actions")
+}
+
 model WorkflowSummary {
   id          String    @id @default(cuid())
   workflowId  Int       @map("workflow_id")
