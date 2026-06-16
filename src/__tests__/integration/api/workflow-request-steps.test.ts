@@ -258,45 +258,43 @@ describe("GET .../runs/[runId]/request-steps", () => {
       mockIsDevelopmentMode.mockReturnValue(false);
 
       const projectJson = {
-        transitions: [
-          {
-            unique_id: "llm_generate_title",
-            display_name: "Generate Title",
-            attributes: {
-              url: "https://api.openai.com/v1/chat/completions",
-              request_params: { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
-            },
-            output: {
+        workflowData: {
+          transitions: {
+            llm_generate_title: {
+              unique_id: "llm_generate_title",
+              display_name: "Generate Title",
+              attributes: {
+                url: "https://api.openai.com/v1/chat/completions",
+                raw_input_params: { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
+              },
               output: {
                 response: {
                   choices: [{ message: { content: "Great title!" } }],
                 },
               },
             },
-          },
-          {
-            unique_id: "llm_evaluate",
-            display_name: "Evaluate Quality",
-            step: {
-              attributes: {
-                url: "https://api.anthropic.com/v1/messages",
-                request_params: { model: "claude-3-5-sonnet-20241022", messages: [] },
+            llm_evaluate: {
+              unique_id: "llm_evaluate",
+              display_name: "Evaluate Quality",
+              step: {
+                attributes: {
+                  url: "https://api.anthropic.com/v1/messages",
+                  raw_input_params: { model: "claude-3-5-sonnet-20241022", messages: [] },
+                },
               },
-            },
-            output: {
               output: {
                 response: {
                   content: [{ text: "The output looks correct." }],
                 },
               },
             },
+            non_llm_step: {
+              unique_id: "non_llm_step",
+              name: "some_other_step",
+              attributes: { url: "https://internal.example.com/transform" },
+            },
           },
-          {
-            unique_id: "non_llm_step",
-            name: "some_other_step",
-            attributes: { url: "https://internal.example.com/transform" },
-          },
-        ],
+        },
       };
 
       mockFetch.mockResolvedValue({
@@ -336,15 +334,15 @@ describe("GET .../runs/[runId]/request-steps", () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
-          transitions: [
-            {
-              unique_id: "llm_step_with_pv",
-              display_name: "My Step",
-              attributes: {
-                url: "https://api.openai.com/v1/chat/completions",
-                request_params: { model: "gpt-4o", messages: [] },
-              },
-              output: {
+          workflowData: {
+            transitions: {
+              llm_step_with_pv: {
+                unique_id: "llm_step_with_pv",
+                display_name: "My Step",
+                attributes: {
+                  url: "https://api.openai.com/v1/chat/completions",
+                  raw_input_params: { model: "gpt-4o", messages: [] },
+                },
                 output: {
                   prompt_version_id: "pv-abc",
                   prompt_name: "My Prompt",
@@ -352,7 +350,7 @@ describe("GET .../runs/[runId]/request-steps", () => {
                 },
               },
             },
-          ],
+          },
         }),
       });
 
@@ -376,21 +374,21 @@ describe("GET .../runs/[runId]/request-steps", () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
-          transitions: [
-            {
-              unique_id: "llm_step_no_pv",
-              display_name: "My Step",
-              attributes: {
-                url: "https://api.openai.com/v1/chat/completions",
-                request_params: { model: "gpt-4o", messages: [] },
-              },
-              output: {
+          workflowData: {
+            transitions: {
+              llm_step_no_pv: {
+                unique_id: "llm_step_no_pv",
+                display_name: "My Step",
+                attributes: {
+                  url: "https://api.openai.com/v1/chat/completions",
+                  raw_input_params: { model: "gpt-4o", messages: [] },
+                },
                 output: {
                   response: { choices: [{ message: { content: "hello" } }] },
                 },
               },
             },
-          ],
+          },
         }),
       });
 
@@ -415,12 +413,12 @@ describe("GET .../runs/[runId]/request-steps", () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
-          transitions: [
-            {
-              unique_id: "llm_step",
-              name: "LLM Step",
-              attributes: { url: "https://api.openai.com/v1/chat/completions" },
-              output: {
+          workflowData: {
+            transitions: {
+              llm_step: {
+                unique_id: "llm_step",
+                name: "LLM Step",
+                attributes: { url: "https://api.openai.com/v1/chat/completions" },
                 output: {
                   response: {
                     choices: [{ message: { content: longContent } }],
@@ -428,7 +426,7 @@ describe("GET .../runs/[runId]/request-steps", () => {
                 },
               },
             },
-          ],
+          },
         }),
       });
 

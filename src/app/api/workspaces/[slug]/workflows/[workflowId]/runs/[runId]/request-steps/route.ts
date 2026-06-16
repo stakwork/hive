@@ -5,86 +5,18 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { logger } from "@/lib/logger";
+import {
+  normalizeTransitions,
+  isLlmStep,
+  extractStepFromTransition,
+} from "@/lib/stakwork/transitions";
 
 export const runtime = "nodejs";
 
 type RouteParams = {
   params: Promise<{ slug: string; workflowId: string; runId: string }>;
 };
-
-/** LLM provider API URL patterns */
-const LLM_API_PATTERNS: Array<{ pattern: string; provider: string }> = [
-  { pattern: "api.openai.com", provider: "openai" },
-  { pattern: "api.anthropic.com", provider: "anthropic" },
-  { pattern: "api.cohere.ai", provider: "cohere" },
-  { pattern: "generativelanguage.googleapis.com", provider: "google" },
-  { pattern: "api.mistral.ai", provider: "mistral" },
-  { pattern: "api.together.xyz", provider: "together" },
-];
-
-function inferProvider(url: string): string | null {
-  for (const { pattern, provider } of LLM_API_PATTERNS) {
-    if (url.includes(pattern)) return provider;
-  }
-  return null;
-}
-
-function isLlmStep(transition: Record<string, unknown>): boolean {
-  const url =
-    (transition?.step as Record<string, unknown> | undefined)?.attributes &&
-    ((transition.step as Record<string, unknown>).attributes as Record<string, unknown>)?.url;
-  const urlFallback = (transition?.attributes as Record<string, unknown> | undefined)?.url;
-  const requestUrl = (url ?? urlFallback ?? "") as string;
-  return LLM_API_PATTERNS.some(({ pattern }) => requestUrl.includes(pattern));
-}
-
-function extractStepFromTransition(transition: Record<string, unknown>) {
-  const stepAttrs = (
-    (transition?.step as Record<string, unknown> | undefined)?.attributes as
-      | Record<string, unknown>
-      | undefined
-  );
-  const topAttrs = transition?.attributes as Record<string, unknown> | undefined;
-
-  const requestUrl =
-    ((stepAttrs?.url ?? topAttrs?.url) as string | undefined) ?? "";
-  const requestParams =
-    (stepAttrs?.request_params ?? topAttrs?.request_params) as
-      | Record<string, unknown>
-      | undefined;
-  const output = (transition?.output as Record<string, unknown> | undefined)?.output as
-    | Record<string, unknown>
-    | undefined;
-  const response = output?.response as Record<string, unknown> | undefined;
-
-  const rawPreview =
-    (
-      (response?.choices as Array<Record<string, unknown>> | undefined)?.[0]?.message as
-        | Record<string, unknown>
-        | undefined
-    )?.content ??
-    ((response?.content as Array<Record<string, unknown>> | undefined)?.[0]?.text as
-      | string
-      | undefined) ??
-    null;
-
-  const preview =
-    typeof rawPreview === "string" ? rawPreview.slice(0, 120) : null;
-
-  const prompt_version_id = (output?.prompt_version_id as string | undefined) ?? null;
-  const prompt_name = (output?.prompt_name as string | undefined) ?? null;
-
-  return {
-    stepId: (transition.unique_id ?? transition.id) as string,
-    name: (transition.display_name ?? transition.name) as string,
-    model: (requestParams?.model as string | undefined) ?? null,
-    provider: inferProvider(requestUrl),
-    endpoint_url: requestUrl || null,
-    preview,
-    prompt_version_id,
-    prompt_name,
-  };
-}
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
@@ -159,39 +91,70 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Prod: fetch project JSON from Stakwork
-    const projectRes = await fetch(
-      `${config.STAKWORK_BASE_URL}/projects/${runIdNum}.json`,
-      {
-        headers: {
-          Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+    let projectData: unknown;
+    try {
+      const projectRes = await fetch(
+        `${config.STAKWORK_BASE_URL}/projects/${runIdNum}.json`,
+        {
+          headers: {
+            Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+          },
         },
-      },
-    );
+      );
 
-    if (!projectRes.ok) {
-      const bodyText = await projectRes.text().catch(() => "(unreadable)");
-      console.error("[RequestSteps] upstream error fetching project JSON", {
-        status: projectRes.status,
+      if (!projectRes.ok) {
+        const bodyText = await projectRes.text().catch(() => "(unreadable)");
+        logger.error("[RequestSteps] upstream error fetching project JSON", "REQUEST_STEPS", {
+          status: projectRes.status,
+          workflowId: workflowIdNum,
+          runId: runIdNum,
+          body: bodyText,
+        });
+        return NextResponse.json(
+          { success: true, data: { steps: [], unavailable: true } },
+          { status: 200 },
+        );
+      }
+
+      projectData = await projectRes.json();
+    } catch (err) {
+      logger.error("[RequestSteps] failed to fetch or parse project JSON", "REQUEST_STEPS", {
         workflowId: workflowIdNum,
         runId: runIdNum,
-        body: bodyText,
+        error: String(err),
       });
-      return NextResponse.json({ success: true, data: { steps: [] } }, { status: 200 });
+      return NextResponse.json(
+        { success: true, data: { steps: [], unavailable: true } },
+        { status: 200 },
+      );
     }
 
-    const projectData = await projectRes.json();
-    const transitions: Array<Record<string, unknown>> = projectData?.transitions ?? [];
+    const transitions = normalizeTransitions(projectData);
 
-    const steps = transitions
-      .filter(isLlmStep)
-      .map(extractStepFromTransition);
+    if (typeof projectData === "object" && projectData !== null && !Array.isArray(transitions)) {
+      logger.warn("[RequestSteps] normalizeTransitions returned unexpected type", "REQUEST_STEPS", {
+        workflowId: workflowIdNum,
+        runId: runIdNum,
+        type: typeof transitions,
+      });
+    }
+
+    const steps = transitions.filter(isLlmStep).map(extractStepFromTransition);
+
+    if (steps.length === 0 && transitions.length > 0) {
+      logger.warn("[RequestSteps] non-empty transitions yielded zero LLM steps — possible shape drift", "REQUEST_STEPS", {
+        workflowId: workflowIdNum,
+        runId: runIdNum,
+        transitionCount: transitions.length,
+      });
+    }
 
     return NextResponse.json({ success: true, data: { steps } });
   } catch (error) {
-    console.error("[RequestSteps] GET error:", error);
+    logger.error("[RequestSteps] GET error", "REQUEST_STEPS", { error: String(error) });
     return NextResponse.json(
-      { success: false, error: "Failed to fetch request steps" },
-      { status: 500 },
+      { success: true, data: { steps: [], unavailable: true } },
+      { status: 200 },
     );
   }
 }

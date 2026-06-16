@@ -6,26 +6,15 @@ import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { config } from "@/config/env";
 import { logger } from "@/lib/logger";
+import {
+  normalizeTransitions,
+  inferProvider,
+  extractStepFromTransition,
+} from "@/lib/stakwork/transitions";
 
 export const runtime = "nodejs";
 
 type RouteParams = { params: Promise<{ slug: string; workflowId: string }> };
-
-const LLM_API_PATTERNS = [
-  { pattern: "api.openai.com", provider: "openai" },
-  { pattern: "api.anthropic.com", provider: "anthropic" },
-  { pattern: "api.cohere.ai", provider: "cohere" },
-  { pattern: "generativelanguage.googleapis.com", provider: "google" },
-  { pattern: "api.mistral.ai", provider: "mistral" },
-  { pattern: "api.together.xyz", provider: "together" },
-];
-
-function inferProvider(url: string): string | null {
-  for (const { pattern, provider } of LLM_API_PATTERNS) {
-    if (url.includes(pattern)) return provider;
-  }
-  return null;
-}
 
 function handleSwarmAccessError(error: { type: string }) {
   const errorMap: Record<string, { message: string; status: number }> = {
@@ -213,46 +202,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
         if (projectRes.ok) {
           const projectData = await projectRes.json();
-          const transitions: Array<Record<string, unknown>> = projectData?.transitions ?? [];
+          const transitions = normalizeTransitions(projectData);
           const transition = transitions.find(
             (t) => (t.unique_id ?? t.id) === step_id,
           );
 
           if (transition) {
-            const stepAttrs = (
-              (transition?.step as Record<string, unknown> | undefined)?.attributes as
-                | Record<string, unknown>
-                | undefined
-            );
+            const extracted = extractStepFromTransition(transition);
+            stepName = extracted.name || step_id;
+            model = extracted.model;
+            provider = extracted.provider;
+            endpoint_url = extracted.endpoint_url;
+            prompt_snapshot = JSON.stringify(extracted.messages);
+
+            // Snapshot tools if present (from raw_input_params)
             const topAttrs = transition?.attributes as Record<string, unknown> | undefined;
-            const requestParams =
-              (stepAttrs?.request_params ?? topAttrs?.request_params) as
-                | Record<string, unknown>
-                | undefined;
-            const requestUrl =
-              ((stepAttrs?.url ?? topAttrs?.url) as string | undefined) ?? "";
-
-            stepName = ((transition.display_name ?? transition.name) as string | undefined) ?? step_id;
-            model = (requestParams?.model as string | undefined) ?? null;
-            provider = inferProvider(requestUrl);
-            endpoint_url = requestUrl || null;
-
-            // Snapshot messages/tools
-            const messages = requestParams?.messages ?? [];
-            const tools = requestParams?.tools ?? null;
-            prompt_snapshot = JSON.stringify(messages);
+            const stepAttrs = (transition?.step as Record<string, unknown> | undefined)
+              ?.attributes as Record<string, unknown> | undefined;
+            const rawInputParams = (topAttrs?.raw_input_params ??
+              stepAttrs?.raw_input_params) as Record<string, unknown> | undefined;
+            const tools = rawInputParams?.tools ?? null;
             tool_call_trace = tools !== null ? JSON.stringify(tools) : null;
-
-            // Handle output — may be raw or S3 URL
-            const output = (transition?.output as Record<string, unknown> | undefined)?.output as
-              | Record<string, unknown>
-              | undefined;
-            const response = output?.response;
-            // output_type check
-            const outputType = (transition?.output as Record<string, unknown> | undefined)?.output_type;
-            if (outputType !== "raw" && typeof response === "string") {
-              // S3 URL — store as-is; prompt_snapshot already captured above
-            }
           }
         }
       } catch (err) {
