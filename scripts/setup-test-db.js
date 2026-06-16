@@ -30,12 +30,7 @@ async function setupTestDatabase() {
     // Run Prisma migrations
     console.log("📦 Running Prisma migrations...");
     execSync("npx prisma migrate deploy", {
-      env: {
-        ...process.env,
-        DATABASE_URL: TEST_DATABASE_URL,
-        // Local test DB has no pooler, so the migration engine's directUrl mirrors it
-        DIRECT_URL: TEST_DATABASE_URL,
-      },
+      env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
       stdio: "inherit",
     });
 
