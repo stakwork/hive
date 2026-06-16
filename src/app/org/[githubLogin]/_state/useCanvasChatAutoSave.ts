@@ -75,6 +75,7 @@ function hydrateServerMessages(raw: unknown[]): CanvasChatMessage[] {
       approval: m.approval as CanvasChatMessage["approval"],
       rejection: m.rejection as CanvasChatMessage["rejection"],
       approvalResult: m.approvalResult as CanvasChatMessage["approvalResult"],
+      deferredCheck: m.deferredCheck as CanvasChatMessage["deferredCheck"],
       source: m.source as CanvasChatMessage["source"],
     }));
 }

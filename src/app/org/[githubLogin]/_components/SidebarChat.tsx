@@ -46,6 +46,7 @@ import {
   type ToolCall,
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+import { useAutomationInbox } from "../_state/useAutomationInbox";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
@@ -76,6 +77,9 @@ interface SidebarChatProps {
 }
 
 export function SidebarChat({ githubLogin }: SidebarChatProps) {
+  // Auto-open the most recent unseen automation run, if any, once on load.
+  useAutomationInbox(githubLogin);
+
   // ─── Selectors — narrow on purpose ─────────────────────────────────
   // Each selector returns a primitive or a stable reference so
   // streaming text-deltas don't trigger re-renders in selectors that
@@ -293,7 +297,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           >
             <Share2 className="w-4 h-4" />
           </button>
-          <CanvasAgentSettingsPopover />
+          <CanvasAgentSettingsPopover githubLogin={githubLogin} />
           <CanvasHistoryPopover githubLogin={githubLogin} />
           <button
             type="button"
