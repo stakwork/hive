@@ -22,6 +22,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
           provider: "openai",
           endpoint_url: "https://api.openai.com/v1/chat/completions",
           preview: "SKIP",
+          prompt_version_id: "mock-pv-1",
+          prompt_name: "Generate Title v2",
         },
         {
           stepId: "llm_evaluate_quality",
@@ -30,6 +32,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
           provider: "anthropic",
           endpoint_url: "https://api.anthropic.com/v1/messages",
           preview: "The output looks correct.",
+          prompt_version_id: null,
+          prompt_name: null,
         },
       ],
     },

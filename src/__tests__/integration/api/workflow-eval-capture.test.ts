@@ -466,6 +466,62 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(edgeTypes).toContain("EVALUATED");
     });
 
+    test("EvalTrigger node_data has prompt_version_id when provided in body", async () => {
+      const { user, workspace } = await createTestFixtures();
+
+      // EvalSet not found
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+      // Project JSON
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => projectJsonFixture });
+      vi.mocked(nodesService.addNode)
+        .mockResolvedValueOnce({ success: true, ref_id: "evalset-ref" })
+        .mockResolvedValueOnce({ success: true, ref_id: "req-ref" })
+        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref" });
+      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+      // Run lookup
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+
+      const bodyWithPv = { ...validBody, prompt_version_id: "pv-xyz" };
+      const request = makeRequest(workspace.slug, "42", bodyWithPv, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
+      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      expect(triggerCall).toBeDefined();
+      expect(triggerCall![1].node_data.prompt_version_id).toBe("pv-xyz");
+    });
+
+    test("EvalTrigger node_data prompt_version_id is null when omitted from body", async () => {
+      const { user, workspace } = await createTestFixtures();
+
+      // EvalSet not found
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+      // Project JSON
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => projectJsonFixture });
+      vi.mocked(nodesService.addNode)
+        .mockResolvedValueOnce({ success: true, ref_id: "evalset-ref" })
+        .mockResolvedValueOnce({ success: true, ref_id: "req-ref" })
+        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref" });
+      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+      // Run lookup
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+
+      // validBody has no prompt_version_id
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
+      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      expect(triggerCall).toBeDefined();
+      expect(triggerCall![1].node_data.prompt_version_id).toBeNull();
+    });
+
     test("EVALUATED edge is skipped gracefully when Run node not found", async () => {
       const { user, workspace } = await createTestFixtures();
 

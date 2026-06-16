@@ -129,6 +129,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const {
       run_id,
       step_id,
+      prompt_version_id,
       requirement,
       reason,
       desirable_cases,
@@ -137,6 +138,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     } = body as {
       run_id?: string;
       step_id?: string;
+      prompt_version_id?: string;
       requirement?: string;
       reason?: string;
       desirable_cases?: string[];
@@ -275,6 +277,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         tool_call_trace,
         feedback_note: reason ?? null,
         check: check ?? null,
+        prompt_version_id: prompt_version_id ?? null,
       },
     });
 

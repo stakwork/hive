@@ -3,10 +3,27 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getBaseUrl } from "@/lib/utils";
+import { getJarvisUrl } from "@/lib/utils/swarm";
 
 type RouteParams = {
   params: Promise<{ slug: string; evalSetId: string; reqId: string; triggerId: string }>;
 };
+
+async function fetchEvalTriggerNodeData(
+  jarvisConfig: { jarvisUrl: string; apiKey: string },
+  triggerId: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const url = `${jarvisConfig.jarvisUrl}/v2/nodes?type=EvalTrigger&ref_id=${encodeURIComponent(triggerId)}`;
+    const res = await fetch(url, { headers: { "x-api-token": jarvisConfig.apiKey } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const nodes: Array<{ node_data?: Record<string, unknown> }> = data?.nodes ?? [];
+    return nodes[0]?.node_data ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function handleSwarmAccessError(error: { type: string }) {
   const errorMap: Record<string, { message: string; status: number }> = {
@@ -62,6 +79,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    const { swarmName, swarmApiKey } = swarmAccessResult.data;
+    const jarvisConfig = { jarvisUrl: getJarvisUrl(swarmName), apiKey: swarmApiKey };
+
+    // Fetch EvalTrigger node data to get prompt_version_id (non-fatal)
+    const triggerNodeData = await fetchEvalTriggerNodeData(jarvisConfig, triggerId);
+    const promptVersionId = (triggerNodeData?.prompt_version_id as string | undefined) ?? null;
+
     const stakworkBaseUrl =
       process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1";
 
@@ -77,7 +101,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       sourceHiveUrl: baseUrl,
     };
 
-    const stakworkPayload = {
+    const stakworkPayload: Record<string, unknown> = {
       name: `hive-eval-trigger-${triggerId}`,
       workflow_id: parseInt(evalWorkflowId, 10),
       webhook_url: workflowWebhookUrl,
@@ -89,6 +113,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         },
       },
     };
+
+    if (promptVersionId) {
+      stakworkPayload.version_overrides = { [triggerId]: promptVersionId };
+    }
 
     const stakworkRes = await fetch(`${stakworkBaseUrl}/projects`, {
       method: "POST",

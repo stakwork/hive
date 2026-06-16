@@ -24,6 +24,8 @@ interface RequestStep {
   provider: string | null;
   endpoint_url: string | null;
   preview: string | null;
+  prompt_version_id: string | null;
+  prompt_name: string | null;
 }
 
 interface FlagRunEvalModalProps {
@@ -99,6 +101,7 @@ export function FlagRunEvalModal({
           body: JSON.stringify({
             run_id: runId,
             step_id: selectedStep.stepId,
+            prompt_version_id: selectedStep.prompt_version_id,
             requirement: requirement.trim(),
             reason: reason.trim() || undefined,
             desirable_cases: positiveCases,
@@ -163,7 +166,7 @@ export function FlagRunEvalModal({
                         )}
                         <div className="min-w-0 flex-1">
                           <div className="font-medium">{s.name}</div>
-                          <div className="flex gap-1.5 mt-0.5">
+                          <div className="flex gap-1.5 mt-0.5 flex-wrap">
                             {s.model && (
                               <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground">
                                 {s.model}
@@ -172,6 +175,11 @@ export function FlagRunEvalModal({
                             {s.provider && (
                               <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground">
                                 {s.provider}
+                              </span>
+                            )}
+                            {s.prompt_name && (
+                              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground">
+                                {s.prompt_name}
                               </span>
                             )}
                           </div>

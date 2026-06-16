@@ -328,6 +328,84 @@ describe("GET .../runs/[runId]/request-steps", () => {
       expect(step2.preview).toBe("The output looks correct.");
     });
 
+    test("returns prompt_version_id and prompt_name when present in output", async () => {
+      const { user, workspace } = await createTestFixtures();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      mockIsDevelopmentMode.mockReturnValue(false);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          transitions: [
+            {
+              unique_id: "llm_step_with_pv",
+              display_name: "My Step",
+              attributes: {
+                url: "https://api.openai.com/v1/chat/completions",
+                request_params: { model: "gpt-4o", messages: [] },
+              },
+              output: {
+                output: {
+                  prompt_version_id: "pv-abc",
+                  prompt_name: "My Prompt",
+                  response: { choices: [{ message: { content: "hello" } }] },
+                },
+              },
+            },
+          ],
+        }),
+      });
+
+      const request = makeRequest(workspace.slug, "42", "1001");
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42", runId: "1001" }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.data.steps).toHaveLength(1);
+      expect(data.data.steps[0].prompt_version_id).toBe("pv-abc");
+      expect(data.data.steps[0].prompt_name).toBe("My Prompt");
+    });
+
+    test("returns null prompt_version_id and prompt_name when absent in output", async () => {
+      const { user, workspace } = await createTestFixtures();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      mockIsDevelopmentMode.mockReturnValue(false);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          transitions: [
+            {
+              unique_id: "llm_step_no_pv",
+              display_name: "My Step",
+              attributes: {
+                url: "https://api.openai.com/v1/chat/completions",
+                request_params: { model: "gpt-4o", messages: [] },
+              },
+              output: {
+                output: {
+                  response: { choices: [{ message: { content: "hello" } }] },
+                },
+              },
+            },
+          ],
+        }),
+      });
+
+      const request = makeRequest(workspace.slug, "42", "1001");
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42", runId: "1001" }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.data.steps).toHaveLength(1);
+      expect(data.data.steps[0].prompt_version_id).toBeNull();
+      expect(data.data.steps[0].prompt_name).toBeNull();
+    });
+
     test("truncates preview to 120 chars", async () => {
       const { user, workspace } = await createTestFixtures();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));

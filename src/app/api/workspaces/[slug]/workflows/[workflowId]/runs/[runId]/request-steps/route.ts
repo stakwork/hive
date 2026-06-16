@@ -71,6 +71,9 @@ function extractStepFromTransition(transition: Record<string, unknown>) {
   const preview =
     typeof rawPreview === "string" ? rawPreview.slice(0, 120) : null;
 
+  const prompt_version_id = (output?.prompt_version_id as string | undefined) ?? null;
+  const prompt_name = (output?.prompt_name as string | undefined) ?? null;
+
   return {
     stepId: (transition.unique_id ?? transition.id) as string,
     name: (transition.display_name ?? transition.name) as string,
@@ -78,6 +81,8 @@ function extractStepFromTransition(transition: Record<string, unknown>) {
     provider: inferProvider(requestUrl),
     endpoint_url: requestUrl || null,
     preview,
+    prompt_version_id,
+    prompt_name,
   };
 }
 
