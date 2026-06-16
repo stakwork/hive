@@ -41,6 +41,10 @@
     {
       "path": "/api/cron/llm-model-sync",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/deferred-chat-actions",
+      "schedule": "* * * * *"
     }
   ]
 }

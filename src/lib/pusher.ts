@@ -125,7 +125,12 @@ export type CanvasConversationUpdateReason =
   // the latest planner row's `source.workflowStatus` in place (same id).
   // The client reconciles existing planner rows' `source` from the
   // server copy so the `SubAgentRunCard` pill re-derives live.
-  | "workflow-status";
+  | "workflow-status"
+  // A deferred check was cancelled by the user via the DeferredCheckCard.
+  | "deferred-check-cancelled"
+  // A deferred check was fired by the cron dispatcher and the result
+  // has been appended to the conversation.
+  | "deferred-check-fired";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON
