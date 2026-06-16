@@ -175,6 +175,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
           if (task.id === update.taskId) {
             return {
               ...task,
+              ...(optimisticUpdates[task.id] ?? {}),   // preserve pending optimistic values
               ...(update.newTitle !== undefined && { title: update.newTitle }),
               ...(update.status !== undefined && { status: update.status as TaskStatus }),
               ...(update.workflowStatus !== undefined && { workflowStatus: update.workflowStatus as WorkflowStatus | null }),
@@ -185,7 +186,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       }));
       onUpdate({ ...feature, phases: updatedPhases });
     },
-    [feature, onUpdate]
+    [feature, optimisticUpdates, onUpdate]
   );
 
   const handlePRStatusChange = useCallback(
