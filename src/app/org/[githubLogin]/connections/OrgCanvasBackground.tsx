@@ -140,11 +140,6 @@ type DirtyMap = Map<string, CanvasData>;
 
 type LastAction =
   | {
-      kind: "blob";
-      canvasRef: string | undefined; // undefined = root
-      prev: CanvasData; // snapshot before the mutation
-    }
-  | {
       kind: "hide"; // user hid a live node → undo = show
       canvasRef: string | undefined;
       id: string;
@@ -992,7 +987,6 @@ export function OrgCanvasBackground({
       if (!canvasRef) {
         const current = rootRef.current;
         if (!current) return;
-        lastActionRef.current = { kind: "blob", canvasRef, prev: current };
         const next = mutate(current);
         setRoot(next);
         markDirty(undefined, next);
@@ -1000,7 +994,6 @@ export function OrgCanvasBackground({
       }
       const current = subCanvasesRef.current[canvasRef];
       if (!current) return;
-      lastActionRef.current = { kind: "blob", canvasRef, prev: current };
       const next = mutate(current);
       setSubCanvases((prev) => ({ ...prev, [canvasRef]: next }));
       markDirty(canvasRef, next);
@@ -2030,20 +2023,6 @@ export function OrgCanvasBackground({
     if (!action) return;
     lastActionRef.current = null; // consume — ctrl-z twice is a no-op
 
-    if (action.kind === "blob") {
-      if (!action.canvasRef) {
-        setRoot(action.prev);
-        markDirty(undefined, action.prev);
-      } else {
-        setSubCanvases((prev) => ({
-          ...prev,
-          [action.canvasRef!]: action.prev,
-        }));
-        markDirty(action.canvasRef, action.prev);
-      }
-      return;
-    }
-
     if (action.kind === "hide") {
       // Undo a hide → reuse the existing handleRestoreLive path exactly
       await handleRestoreLive(action.id);
@@ -2838,6 +2817,14 @@ export function OrgCanvasBackground({
     onLinkedConnectionIdsChange?.(linkedConnectionIds);
   }, [linkedConnectionIds, onLinkedConnectionIdsChange]);
 
+  // Clear the viewport slot in the canvas chat store on unmount so stale
+  // coordinates from a previous canvas session never leak into the next.
+  useEffect(() => {
+    return () => {
+      useCanvasChatStore.getState().setCanvasViewport(null);
+    };
+  }, []);
+
   // Anchor the canvas container to the viewport but leave `rightInset`
   // pixels of empty space on the right so the library-owned FAB + future
   // toolbar affordances sit to the LEFT of the sidebar. The background
@@ -3161,6 +3148,14 @@ export function OrgCanvasBackground({
           rootLabel={orgName || githubLogin}
           onViewportChange={(vp) => {
             currentViewportRef.current = vp;
+            const rect = canvasContainerRef.current?.getBoundingClientRect();
+            useCanvasChatStore.getState().setCanvasViewport({
+              x: vp.x,
+              y: vp.y,
+              zoom: vp.zoom,
+              containerW: rect?.width ?? 0,
+              containerH: rect?.height ?? 0,
+            });
           }}
           collaborators={collaborators}
         />

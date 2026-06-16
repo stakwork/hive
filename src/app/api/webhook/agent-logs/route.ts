@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { pusherServer, getFeatureChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
@@ -36,14 +37,31 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { agent, workspace_id, logs } = body;
-    const model = body.model ? String(body.model) : undefined;
+    const { agent, workspace_id } = body;
+    // Support both new shape (messages) and legacy shape (logs)
+    const messages: unknown = body.messages ?? body.logs;
+    const sessionId: string | undefined = body.sessionId ? String(body.sessionId) : undefined;
+    const config: Record<string, unknown> | undefined =
+      body.config && typeof body.config === "object" && !Array.isArray(body.config)
+        ? (body.config as Record<string, unknown>)
+        : undefined;
+    // Model: prefer config.model, fall back to legacy body.model
+    const model: string | undefined = config?.model
+      ? String(config.model)
+      : body.model
+        ? String(body.model)
+        : undefined;
     // Stakwork sends project IDs as integers
     const stakwork_run_id = body.stakwork_run_id
       ? Number(body.stakwork_run_id)
       : undefined;
     const task_id = body.task_id ? String(body.task_id) : undefined;
     const feature_id = body.feature_id ? String(body.feature_id) : undefined;
+
+    console.info("[agent-logs] payload shape", {
+      isLegacy: !body.messages,
+      hasConfig: !!body.config,
+    });
 
     // Validate required fields
     if (!agent || typeof agent !== "string") {
@@ -60,9 +78,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!logs) {
+    if (!messages) {
       return NextResponse.json(
-        { error: "Missing 'logs' field" },
+        { error: "Missing 'messages' (or legacy 'logs') field" },
         { status: 400 }
       );
     }
@@ -132,7 +150,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const logContent = typeof logs === "string" ? logs : JSON.stringify(logs);
+    // Store full payload as blob: new shape { sessionId, messages, config } or legacy { messages }
+    const blobPayload = {
+      ...(sessionId ? { sessionId } : {}),
+      messages,
+      ...(config ? { config } : {}),
+    };
+    const logContent = JSON.stringify(blobPayload);
 
     // Upload to Vercel Blob
     const blobPath = `agent-logs/${workspace_id}/${resolvedStakworkRunId || task_id || feature_id}/${agent}.json`;
@@ -159,7 +183,11 @@ export async function POST(request: NextRequest) {
     const agentLog = existing
       ? await db.agentLog.update({
           where: { id: existing.id },
-          data: { blobUrl: blob.url },
+          data: {
+            blobUrl: blob.url,
+            sessionId: sessionId ?? null,
+            config: config as Prisma.InputJsonValue | undefined,
+          },
         })
       : await db.agentLog.create({
           data: {
@@ -169,6 +197,8 @@ export async function POST(request: NextRequest) {
             taskId: task_id || null,
             featureId: feature_id || null,
             workspaceId: workspace_id,
+            sessionId: sessionId ?? null,
+            config: config as Prisma.InputJsonValue | undefined,
           },
         });
 

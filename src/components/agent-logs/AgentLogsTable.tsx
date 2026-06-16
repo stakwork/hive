@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Download } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import type { AgentLogRecord } from "@/types/agent-logs";
 
 interface AgentLogsTableProps {
@@ -75,6 +76,7 @@ export function AgentLogsTable({ logs, onRowClick, onDownload, showUserColumn = 
             <TableHead>Timestamp</TableHead>
             {showUserColumn && <TableHead>User</TableHead>}
             <TableHead>Agent Name</TableHead>
+            <TableHead>Model</TableHead>
             <TableHead>Feature</TableHead>
             <TableHead className="w-10" />
           </TableRow>
@@ -105,6 +107,11 @@ export function AgentLogsTable({ logs, onRowClick, onDownload, showUserColumn = 
                 </TableCell>
               )}
               <TableCell className="font-medium">{log.agent}</TableCell>
+              <TableCell>
+                {log.model
+                  ? <Badge variant="secondary" className="text-xs font-mono">{log.model}</Badge>
+                  : <span className="text-muted-foreground">—</span>}
+              </TableCell>
               <TableCell className="text-muted-foreground">
                 {log.featureTitle
                   ? log.featureTitle.length > 20

@@ -104,18 +104,29 @@ describe("invokeCanvasAgentOnPlannerMessage — gating", () => {
     expect(db.sharedConversation.findUnique).not.toHaveBeenCalled();
   });
 
-  test("per-user opt-out: env unset → loads conversation but no agent", async () => {
+  test("per-user opt-out: env unset → loads conversation and feature but no agent", async () => {
     delete process.env[ENV_KEY];
     (
       db.sharedConversation.findUnique as ReturnType<typeof vi.fn>
     ).mockResolvedValue(conversationWith(false));
+    // Feature has null autoRespond → falls back to global (false) → skip.
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      title: "Test",
+      brief: null,
+      requirements: null,
+      architecture: null,
+      workflowStatus: null,
+      autoRespond: null,
+      workspace: { slug: "ws" },
+    });
 
     await invokeCanvasAgentOnPlannerMessage(args);
 
     // It gets past the master switch (lock taken, conversation loaded)…
     expect(db.sharedConversation.findUnique).toHaveBeenCalledOnce();
-    // …but the owner opt-out stops it before the feature lookup / agent.
-    expect(db.feature.findUnique).not.toHaveBeenCalled();
+    // …feature is now loaded (three-way gate), but the null autoRespond
+    // falls back to global=false → agent still skipped.
+    expect(db.feature.findUnique).toHaveBeenCalledOnce();
     expect(runCanvasAgent).not.toHaveBeenCalled();
   });
 
@@ -531,5 +542,126 @@ describe("actionableWakeReason", () => {
         makeMessage({ message: "Still working on the architecture pass." }),
       ),
     ).toBeNull();
+  });
+});
+
+describe("invokeCanvasAgentOnPlannerMessage — three-way autoRespond gate", () => {
+  const ENV_KEY = "CANVAS_AUTONOMOUS_TURNS_ENABLED";
+  const original = process.env[ENV_KEY];
+
+  const args = {
+    conversationId: "conv-1",
+    featureId: "feat-1",
+    plannerMessageId: "msg-1",
+    wakeReason: "completed" as const,
+  };
+
+  /** A conversation owned by a real user/org with the specified global flag. */
+  const makeConversation = (canvasAutonomousTurns: boolean) => ({
+    id: "conv-1",
+    userId: "user-1",
+    sourceControlOrgId: "org-1",
+    workspaceId: "ws-1",
+    messages: [],
+    settings: {},
+    workspace: { slug: "ws" },
+    user: { canvasAutonomousTurns },
+  });
+
+  /** A minimal feature with the specified autoRespond value. */
+  const makeFeature = (autoRespond: boolean | null) => ({
+    title: "Test Feature",
+    brief: null,
+    requirements: null,
+    architecture: null,
+    workflowStatus: null,
+    autoRespond,
+    workspace: { slug: "ws" },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env[ENV_KEY];
+    // Default: claim succeeds, no tasks exist.
+    (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: unknown) => unknown) =>
+        fn({
+          $queryRaw: vi.fn().mockResolvedValue([{ messages: [], settings: {} }]),
+          sharedConversation: { update: vi.fn().mockResolvedValue({}) },
+        }),
+    );
+    (db.task.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+  });
+
+  afterEach(() => {
+    if (original === undefined) delete process.env[ENV_KEY];
+    else process.env[ENV_KEY] = original;
+  });
+
+  test("feature.autoRespond=false + global=true → skips (feature override wins)", async () => {
+    (db.sharedConversation.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeConversation(true), // global ON
+    );
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeFeature(false), // feature explicitly OFF
+    );
+
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    // Feature override (false) wins over global (true) → agent NOT called.
+    expect(runCanvasAgent).not.toHaveBeenCalled();
+  });
+
+  test("feature.autoRespond=true + global=false → proceeds (feature override wins)", async () => {
+    (db.sharedConversation.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeConversation(false), // global OFF
+    );
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeFeature(true), // feature explicitly ON
+    );
+    // Mock agent run so it doesn't error out.
+    (runCanvasAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      result: { text: Promise.resolve(""), steps: Promise.resolve([]) },
+      cacheableConcepts: {},
+      cacheHit: false,
+    });
+
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    // Feature override (true) wins over global (false) → agent IS called.
+    expect(runCanvasAgent).toHaveBeenCalledOnce();
+  });
+
+  test("feature.autoRespond=null + global=true → proceeds (falls back to global)", async () => {
+    (db.sharedConversation.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeConversation(true), // global ON
+    );
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeFeature(null), // feature inherits global
+    );
+    (runCanvasAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      result: { text: Promise.resolve(""), steps: Promise.resolve([]) },
+      cacheableConcepts: {},
+      cacheHit: false,
+    });
+
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    // null → falls back to global (true) → agent IS called.
+    expect(runCanvasAgent).toHaveBeenCalledOnce();
+  });
+
+  test("feature.autoRespond=null + global=false → skips (falls back to global)", async () => {
+    (db.sharedConversation.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeConversation(false), // global OFF
+    );
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeFeature(null), // feature inherits global
+    );
+
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    // null → falls back to global (false) → agent NOT called.
+    expect(runCanvasAgent).not.toHaveBeenCalled();
   });
 });

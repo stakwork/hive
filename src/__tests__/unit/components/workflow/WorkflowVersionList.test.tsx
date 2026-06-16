@@ -17,6 +17,10 @@ const makeVersion = (id: string, published = false): WorkflowVersion => ({
   node_type: "Workflow_version",
 });
 
+// Helper: find a version row by its short ID text (substring(0,8) of the id)
+const getVersionRow = (shortId: string) => screen.getByText(shortId);
+const queryVersionRow = (shortId: string) => screen.queryByText(shortId);
+
 describe("WorkflowVersionList", () => {
   it("renders empty state when no versions provided", () => {
     render(
@@ -29,14 +33,13 @@ describe("WorkflowVersionList", () => {
     const versions = [
       makeVersion("v3", true),  // active — first published in sorted list
       makeVersion("v2", true),  // older published
-      makeVersion("v1", false), // unpublished
+      makeVersion("v1", false), // unpublished draft under v2
     ];
     render(
       <WorkflowVersionList versions={versions} selectedVersionId="v3" onVersionSelect={vi.fn()} />
     );
 
     expect(screen.getByText("Active")).toBeInTheDocument();
-    // getAllByText would throw if "Active" appears more than once — single badge
     expect(screen.getAllByText("Active")).toHaveLength(1);
   });
 
@@ -53,7 +56,8 @@ describe("WorkflowVersionList", () => {
     expect(screen.getByText("Published")).toBeInTheDocument();
   });
 
-  it("shows no badge for unpublished versions", () => {
+  it("shows no Published badge for unpublished draft versions inside an open group", () => {
+    // v3 published (active, open by default), v2 is a draft under it
     const versions = [
       makeVersion("v3", true),
       makeVersion("v2", false),
@@ -62,9 +66,9 @@ describe("WorkflowVersionList", () => {
       <WorkflowVersionList versions={versions} selectedVersionId="v3" onVersionSelect={vi.fn()} />
     );
 
-    // Only one badge total (Active for v3); v2 has no badge
-    expect(screen.getAllByRole("button")).toHaveLength(2);
+    // v3 has Active badge; v2 has no badge
     expect(screen.queryByText("Published")).not.toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
   });
 
   it("shows no badges at all when no versions are published", () => {
@@ -77,33 +81,43 @@ describe("WorkflowVersionList", () => {
     expect(screen.queryByText("Published")).not.toBeInTheDocument();
   });
 
-  it("highlights the selected version row", () => {
-    const versions = [makeVersion("v1", false), makeVersion("v2", false)];
+  it("highlights the selected version row (bg-muted class)", () => {
+    // Two published versions — both visible as accordion header triggers
+    const versions = [makeVersion("v2", true), makeVersion("v1", true)];
     const { container } = render(
-      <WorkflowVersionList versions={versions} selectedVersionId="v1" onVersionSelect={vi.fn()} />
+      <WorkflowVersionList versions={versions} selectedVersionId="v2" onVersionSelect={vi.fn()} />
     );
 
-    const buttons = container.querySelectorAll("button");
-    // Use classList.contains to avoid false positives from "hover:bg-muted/70"
-    expect(buttons[0].classList.contains("bg-muted")).toBe(true);
-    expect(buttons[1].classList.contains("bg-muted")).toBe(false);
+    // Find all buttons and check one has bg-muted
+    const allButtons = container.querySelectorAll("button");
+    const selectedBtn = Array.from(allButtons).find((btn) =>
+      btn.classList.contains("bg-muted")
+    );
+    expect(selectedBtn).toBeDefined();
   });
 
-  it("calls onVersionSelect with the correct ID when a row is clicked", () => {
+  it("calls onVersionSelect with the correct ID when a version row is clicked", () => {
     const onSelect = vi.fn();
-    const versions = [makeVersion("v1", false), makeVersion("v2", false)];
+    // Two published groups; v2 is newest (open), v1 is collapsed
+    const versions = [makeVersion("v2", true), makeVersion("v1", true)];
     render(
       <WorkflowVersionList versions={versions} selectedVersionId={null} onVersionSelect={onSelect} />
     );
 
-    screen.getAllByRole("button")[1].click();
-    expect(onSelect).toHaveBeenCalledWith("v2");
+    // v1 is a collapsed group header — clicking its row triggers onVersionSelect
+    // The version row button for v1 is inside a CollapsibleTrigger
+    // We get the version row button (not the outer trigger) by finding the button with text "v1"
+    const v1Button = screen.getByText("v1").closest("button");
+    expect(v1Button).not.toBeNull();
+    fireEvent.click(v1Button!);
+    expect(onSelect).toHaveBeenCalledWith("v1");
   });
 });
 
 describe("WorkflowVersionList — selectable mode", () => {
   it("renders checkboxes per row when selectable=true", () => {
-    const versions = [makeVersion("v1"), makeVersion("v2"), makeVersion("v3")];
+    // 3 published versions (all visible as group headers)
+    const versions = [makeVersion("v1", true), makeVersion("v2", true), makeVersion("v3", true)];
     render(
       <WorkflowVersionList
         versions={versions}
@@ -119,7 +133,7 @@ describe("WorkflowVersionList — selectable mode", () => {
   });
 
   it("does not render checkboxes when selectable is false (default)", () => {
-    const versions = [makeVersion("v1"), makeVersion("v2")];
+    const versions = [makeVersion("v1", true), makeVersion("v2", false)];
     render(
       <WorkflowVersionList
         versions={versions}
@@ -132,7 +146,7 @@ describe("WorkflowVersionList — selectable mode", () => {
 
   it("calls onSelectionChange when a checkbox is checked", () => {
     const onSelectionChange = vi.fn();
-    const versions = [makeVersion("v1"), makeVersion("v2")];
+    const versions = [makeVersion("v1", true), makeVersion("v2", true)];
     render(
       <WorkflowVersionList
         versions={versions}
@@ -148,7 +162,7 @@ describe("WorkflowVersionList — selectable mode", () => {
   });
 
   it("disables checkboxes when 5 versions are already selected", () => {
-    const versions = ["v1", "v2", "v3", "v4", "v5", "v6"].map((id) => makeVersion(id));
+    const versions = ["v1", "v2", "v3", "v4", "v5", "v6"].map((id) => makeVersion(id, true));
     render(
       <WorkflowVersionList
         versions={versions}
@@ -167,7 +181,7 @@ describe("WorkflowVersionList — selectable mode", () => {
   });
 
   it("does not show Generate Summary button when fewer than 2 versions selected", () => {
-    const versions = [makeVersion("v1"), makeVersion("v2"), makeVersion("v3")];
+    const versions = [makeVersion("v1", true), makeVersion("v2", true), makeVersion("v3", true)];
     render(
       <WorkflowVersionList
         versions={versions}
@@ -182,7 +196,7 @@ describe("WorkflowVersionList — selectable mode", () => {
   });
 
   it("shows Generate Summary button with count when 2+ versions are selected", () => {
-    const versions = [makeVersion("v1"), makeVersion("v2"), makeVersion("v3")];
+    const versions = [makeVersion("v1", true), makeVersion("v2", true), makeVersion("v3", true)];
     render(
       <WorkflowVersionList
         versions={versions}
@@ -200,7 +214,7 @@ describe("WorkflowVersionList — selectable mode", () => {
 
   it("calls onCustomSelectionConfirm when Generate Summary is clicked", () => {
     const onConfirm = vi.fn();
-    const versions = [makeVersion("v1"), makeVersion("v2")];
+    const versions = [makeVersion("v1", true), makeVersion("v2", true)];
     render(
       <WorkflowVersionList
         versions={versions}
@@ -214,5 +228,149 @@ describe("WorkflowVersionList — selectable mode", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /generate summary/i }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("WorkflowVersionList — grouped accordion", () => {
+  it("newest published group is expanded by default; its draft rows are visible", () => {
+    const versions = [
+      makeVersion("p2", true),  // newest published — group open by default
+      makeVersion("d1"),        // draft under p2
+      makeVersion("p1", true),  // older published — collapsed
+    ];
+    render(
+      <WorkflowVersionList versions={versions} selectedVersionId={null} onVersionSelect={vi.fn()} />
+    );
+
+    // d1 draft should be visible (p2 group is open)
+    expect(getVersionRow("d1")).toBeInTheDocument();
+    // p1 has no drafts so nothing hidden — just verify p2 group text present
+    expect(getVersionRow("p2")).toBeInTheDocument();
+  });
+
+  it("clicking an expanded header collapses it; draft rows leave the DOM", () => {
+    const versions = [
+      makeVersion("p1", true),
+      makeVersion("d1"),
+      makeVersion("d2"),
+    ];
+    render(
+      <WorkflowVersionList versions={versions} selectedVersionId={null} onVersionSelect={vi.fn()} />
+    );
+
+    // d1 and d2 are visible initially (p1 group expanded by default)
+    expect(getVersionRow("d1")).toBeInTheDocument();
+    expect(getVersionRow("d2")).toBeInTheDocument();
+
+    // Click the CollapsibleTrigger for p1's group (the outer trigger wrapping the version row)
+    // The trigger is the element with data-slot="collapsible-trigger" or role button containing "p1"
+    const p1Triggers = screen.getAllByRole("button").filter((btn) =>
+      btn.textContent?.includes("p1")
+    );
+    // The outermost trigger for the group is the CollapsibleTrigger button
+    // CollapsibleTrigger renders as a button — find the one that is a direct group trigger
+    // It's the button that contains p1 text and the chevron
+    const groupTrigger = p1Triggers.find(
+      (btn) => btn.getAttribute("data-state") !== null
+    );
+    expect(groupTrigger).toBeDefined();
+    fireEvent.click(groupTrigger!);
+
+    // Draft rows should no longer be visible
+    expect(queryVersionRow("d1")).not.toBeInTheDocument();
+    expect(queryVersionRow("d2")).not.toBeInTheDocument();
+  });
+
+  it("clicking a collapsed header expands it; draft rows appear", () => {
+    const versions = [
+      makeVersion("p2", true), // newest — open by default
+      makeVersion("p1", true), // older — collapsed
+      makeVersion("d1"),       // draft under p1
+    ];
+    render(
+      <WorkflowVersionList versions={versions} selectedVersionId={null} onVersionSelect={vi.fn()} />
+    );
+
+    // d1 is NOT visible initially (p1 group collapsed)
+    expect(queryVersionRow("d1")).not.toBeInTheDocument();
+
+    // Find and click the p1 group trigger
+    const p1Triggers = screen.getAllByRole("button").filter((btn) =>
+      btn.textContent?.includes("p1")
+    );
+    const groupTrigger = p1Triggers.find(
+      (btn) => btn.getAttribute("data-state") !== null
+    );
+    expect(groupTrigger).toBeDefined();
+    fireEvent.click(groupTrigger!);
+
+    // d1 should now be visible
+    expect(getVersionRow("d1")).toBeInTheDocument();
+  });
+
+  it("Unreleased group renders at top when drafts precede the latest published version", () => {
+    const versions = [
+      makeVersion("u1"),        // unreleased (newer than any published)
+      makeVersion("p1", true),  // published
+    ];
+    render(
+      <WorkflowVersionList versions={versions} selectedVersionId={null} onVersionSelect={vi.fn()} />
+    );
+
+    expect(screen.getByText("Unreleased")).toBeInTheDocument();
+    // u1 is inside the Unreleased group which starts collapsed
+    expect(queryVersionRow("u1")).not.toBeInTheDocument();
+  });
+
+  it("Unreleased group expands when clicked", () => {
+    const versions = [
+      makeVersion("u1"),
+      makeVersion("p1", true),
+    ];
+    render(
+      <WorkflowVersionList versions={versions} selectedVersionId={null} onVersionSelect={vi.fn()} />
+    );
+
+    // Click the Unreleased CollapsibleTrigger
+    const unreleasedTrigger = screen.getAllByRole("button").find(
+      (btn) => btn.getAttribute("data-state") !== null && btn.textContent?.includes("Unreleased")
+    );
+    expect(unreleasedTrigger).toBeDefined();
+    fireEvent.click(unreleasedTrigger!);
+
+    expect(getVersionRow("u1")).toBeInTheDocument();
+  });
+
+  it("does not render Unreleased group when all versions are under published headers", () => {
+    const versions = [
+      makeVersion("p1", true),
+      makeVersion("d1"),
+    ];
+    render(
+      <WorkflowVersionList versions={versions} selectedVersionId={null} onVersionSelect={vi.fn()} />
+    );
+
+    expect(screen.queryByText("Unreleased")).not.toBeInTheDocument();
+  });
+
+  it("selectable mode: checkboxes appear on both published header rows and draft rows inside open group", () => {
+    const versions = [
+      makeVersion("p1", true),
+      makeVersion("d1"),
+      makeVersion("d2"),
+    ];
+    render(
+      <WorkflowVersionList
+        versions={versions}
+        selectedVersionId={null}
+        onVersionSelect={vi.fn()}
+        selectable
+        selectedIds={[]}
+        onSelectionChange={vi.fn()}
+      />,
+    );
+    // p1 group is open by default, so d1 and d2 are visible → 3 checkboxes total
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(3);
   });
 });

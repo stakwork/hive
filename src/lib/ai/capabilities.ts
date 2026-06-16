@@ -109,7 +109,7 @@ const CANVAS_INITIATIVE_TOOL_NAMES = [
   PROPOSE_MILESTONE_TOOL,
 ] as const;
 
-const PLANNER_TOOL_NAMES = ["send_to_feature_planner"] as const;
+const PLANNER_TOOL_NAMES = ["send_to_feature_planner", "read_user_activity"] as const;
 
 /** Canonical composition order — also the prompt snippet order. */
 export const ALL_CAPABILITIES: readonly OrgCapability[] = [

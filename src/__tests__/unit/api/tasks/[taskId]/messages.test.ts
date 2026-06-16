@@ -634,5 +634,57 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       expect(response.status).toBe(200);
       expect(data.data.task).toHaveProperty("sourceType", "USER");
     });
+
+    test("should include workflowTask fields when task has a WorkflowTask record", async () => {
+      const taskWithWorkflowTask = {
+        ...mockTask,
+        workflowTask: {
+          workflowId: 42,
+          workflowName: "My Script",
+          workflowRefId: "ref-abc",
+          workflowTaskType: "SCRIPT",
+        },
+      };
+      (db.task.findFirst as Mock).mockResolvedValue(taskWithWorkflowTask);
+      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+
+      const request = createAuthenticatedRequest(
+        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ taskId: mockTaskId }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.task.workflowTask).toEqual({
+        workflowId: 42,
+        workflowName: "My Script",
+        workflowRefId: "ref-abc",
+        workflowTaskType: "SCRIPT",
+      });
+    });
+
+    test("should return null for workflowTask when task has no WorkflowTask record", async () => {
+      const taskWithoutWorkflowTask = {
+        ...mockTask,
+        workflowTask: null,
+      };
+      (db.task.findFirst as Mock).mockResolvedValue(taskWithoutWorkflowTask);
+      (db.chatMessage.findMany as Mock).mockResolvedValue([]);
+
+      const request = createAuthenticatedRequest(
+        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ taskId: mockTaskId }),
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.task.workflowTask).toBeNull();
+    });
   });
 });

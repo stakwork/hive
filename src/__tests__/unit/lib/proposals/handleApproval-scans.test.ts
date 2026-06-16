@@ -22,7 +22,7 @@ vi.mock("@/lib/db", () => ({
     initiative: { create: vi.fn(), findFirst: vi.fn() },
     workspace: { findFirst: vi.fn() },
     milestone: { findFirst: vi.fn() },
-    feature: { findFirst: vi.fn() },
+    feature: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
   },
 }));
 
@@ -31,6 +31,7 @@ vi.mock("@/lib/canvas", () => ({
   setLivePosition: vi.fn(),
   featureProjectsOn: vi.fn(),
   mostSpecificRef: vi.fn(),
+  resolvePlacement: vi.fn().mockReturnValue(null),
   ROOT_REF: "",
   notifyFeatureReassignmentRefresh: vi.fn(),
 }));
@@ -39,8 +40,13 @@ vi.mock("@/services/roadmap", () => ({
   createFeature: vi.fn(),
 }));
 
+vi.mock("@/services/roadmap/feature-dependency", () => ({
+  detectFeatureDependencyCycle: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
 import { handleApproval, handleRejection } from "@/lib/proposals/handleApproval";
 import { db } from "@/lib/db";
+import { createFeature } from "@/services/roadmap";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -239,5 +245,103 @@ describe("handleRejection", () => {
       ok: false,
       error: expect.stringContaining("not found"),
     });
+  });
+});
+
+describe("approveFeature — autoRespond wiring", () => {
+  /** Minimal workspace / initiative mocks so approveFeature reaches createFeature. */
+  function setupWorkspaceMock() {
+    (db.workspace.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "ws_1",
+    });
+    // No initiative, no milestone, no dependency checks needed for these tests.
+  }
+
+  it("writes autoRespond: true to the Feature row when intent payload has true", async () => {
+    setupWorkspaceMock();
+    (createFeature as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "feat_new",
+    });
+
+    const messages = [
+      proposeFeatureMessage("p_feat", {
+        title: "My feature",
+        workspaceId: "ws_1",
+      }),
+    ];
+
+    await handleApproval({
+      orgId: "org_1",
+      userId: "user_1",
+      messages,
+      intent: {
+        proposalId: "p_feat",
+        payload: { autoRespond: true },
+      },
+    });
+
+    expect(createFeature).toHaveBeenCalledWith(
+      "user_1",
+      expect.objectContaining({ autoRespond: true }),
+    );
+  });
+
+  it("writes autoRespond: false to the Feature row when intent payload has false", async () => {
+    setupWorkspaceMock();
+    (createFeature as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "feat_new",
+    });
+
+    const messages = [
+      proposeFeatureMessage("p_feat2", {
+        title: "My feature",
+        workspaceId: "ws_1",
+      }),
+    ];
+
+    await handleApproval({
+      orgId: "org_1",
+      userId: "user_1",
+      messages,
+      intent: {
+        proposalId: "p_feat2",
+        payload: { autoRespond: false },
+      },
+    });
+
+    expect(createFeature).toHaveBeenCalledWith(
+      "user_1",
+      expect.objectContaining({ autoRespond: false }),
+    );
+  });
+
+  it("writes autoRespond: null to the Feature row when intent payload omits autoRespond", async () => {
+    setupWorkspaceMock();
+    (createFeature as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "feat_new",
+    });
+
+    const messages = [
+      proposeFeatureMessage("p_feat3", {
+        title: "My feature",
+        workspaceId: "ws_1",
+      }),
+    ];
+
+    await handleApproval({
+      orgId: "org_1",
+      userId: "user_1",
+      messages,
+      intent: {
+        proposalId: "p_feat3",
+        // No autoRespond in payload — should default to null
+        payload: { title: "My feature" } as Partial<import("@/lib/proposals/types").FeatureProposalPayload>,
+      },
+    });
+
+    expect(createFeature).toHaveBeenCalledWith(
+      "user_1",
+      expect.objectContaining({ autoRespond: null }),
+    );
   });
 });

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { updateFeature } from "@/services/roadmap";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
+import { getUserActivityFeed } from "@/services/roadmap/user-activity";
 import {
   assignFeatureOnCanvas,
   notifyFeatureAssignmentRefreshByOrg,
@@ -1013,6 +1014,16 @@ export function buildInitiativeTools(
       }),
       execute: async (input): Promise<ProposalOutput | { error: string }> => {
         try {
+          // Seed the auto-respond default from the calling user's global
+          // preference. The ProposalCard toggle lets the user override
+          // this before approving; the value is forwarded unconditionally
+          // in the approval intent so `false` is never silently dropped.
+          const callingUser = await db.user.findUnique({
+            where: { id: userId },
+            select: { canvasAutonomousTurns: true },
+          });
+          const autoRespondDefault = callingUser?.canvasAutonomousTurns ?? false;
+
           // Resolve slug → cuid + validate workspace ↔ org ownership.
           // The agent works in slugs (human-readable, surfaced in the
           // prompt and in tool prefixes); the DB and stored proposal
@@ -1209,6 +1220,7 @@ export function buildInitiativeTools(
               ...(input.placement && {
                 placement: input.placement as Placement,
               }),
+              autoRespond: autoRespondDefault,
             },
             meta,
             ...(input.rationale && { rationale: input.rationale }),
@@ -1420,6 +1432,46 @@ export function buildInitiativeTools(
           const message =
             e instanceof Error ? e.message : "Failed to propose milestone";
           return { error: message };
+        }
+      },
+    }),
+
+    // ─── read_user_activity ───────────────────────────────────────────────
+    read_user_activity: tool({
+      description:
+        "Query the current user's recent activity feed (tasks, plans, chats, milestones) " +
+        "across all orgs and workspaces. Use this to understand what the user has been " +
+        "working on before making cross-feature suggestions, or when the user asks " +
+        "'what have I been up to?'. Returns an array of ActivityItem objects sorted " +
+        "newest-first.",
+      inputSchema: z.object({
+        category: z
+          .enum(["task", "plan", "chat", "milestone"])
+          .optional()
+          .describe("Filter by activity type. Omit to return all categories."),
+        q: z
+          .string()
+          .optional()
+          .describe("Case-insensitive title search. Omit to skip filtering."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(40)
+          .optional()
+          .describe("Max results to return. Default 20, max 40."),
+      }),
+      execute: async ({ category, q, limit }) => {
+        try {
+          const items = await getUserActivityFeed({
+            userId,
+            category: category ?? null,
+            q,
+            limit,
+          });
+          return { items };
+        } catch (e) {
+          return { error: "Failed to load activity feed" };
         }
       },
     }),

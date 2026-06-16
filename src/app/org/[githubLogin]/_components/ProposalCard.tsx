@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { Check, X, ExternalLink, Loader2, Lightbulb, Info } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import ReactMarkdown from "react-markdown";
 import {
   PROPOSE_FEATURE_TOOL,
@@ -103,6 +104,13 @@ export function ProposalCard({
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
 
+  // Feature-only: per-feature auto-respond toggle.
+  // Initialized from the proposal payload (which is seeded from the
+  // user's global `canvasAutonomousTurns` preference at propose time).
+  const [autoRespond, setAutoRespond] = useState<boolean>(
+    proposal.kind === "feature" ? (proposal.payload.autoRespond ?? false) : false,
+  );
+
   // Milestone-only: which features are currently checked for attach.
   // Initialized from `proposal.payload.featureIds` (the agent's
   // suggestion). The user can uncheck/re-check before approving;
@@ -126,6 +134,16 @@ export function ProposalCard({
   const isApproved = status.status === "approved";
   const isRejected = status.status === "rejected";
 
+  // Disabled when any in-batch or cross-message blocker is not yet approved.
+  const allBlockersApproved = useMemo(() => {
+    if (proposal.kind !== "feature") return true;
+    const blockerIds = proposal.payload.dependsOnProposalIds;
+    if (!blockerIds?.length) return true;
+    return blockerIds.every(
+      (id) => getProposalStatus(messages, id).status === "approved",
+    );
+  }, [messages, proposal]);
+
   const handleApprove = async () => {
     if (!activeId || !isPending) return;
 
@@ -143,9 +161,12 @@ export function ProposalCard({
         payload = { name: editedTitle } as Partial<InitiativeProposalPayload>;
       }
     } else if (proposal.kind === "feature") {
-      if (editedTitle !== initialTitle) {
-        payload = { title: editedTitle } as Partial<FeatureProposalPayload>;
-      }
+      // autoRespond is always forwarded (unconditionally) so `false` is
+      // never silently dropped — the server must receive an explicit value.
+      payload = {
+        ...(editedTitle !== initialTitle && { title: editedTitle }),
+        autoRespond,
+      } as Partial<FeatureProposalPayload>;
     } else {
       const titleChanged = editedTitle !== initialTitle;
       const featuresChanged =
@@ -159,15 +180,31 @@ export function ProposalCard({
       }
     }
 
+    // Read the live canvas viewport from the store (safe to call outside
+    // React render — this is a click handler). Compute canvas-space bounds:
+    //   canvasX = -vpX / zoom  (left edge of visible area in canvas coords)
+    //   canvasY = -vpY / zoom  (top edge)
+    //   canvasW = containerW / zoom  (visible width in canvas coords)
+    //   canvasH = containerH / zoom  (visible height in canvas coords)
+    const cv = useCanvasChatStore.getState().canvasViewport;
+    const viewportState =
+      cv && cv.zoom > 0
+        ? {
+            canvasX: -cv.x / cv.zoom,
+            canvasY: -cv.y / cv.zoom,
+            canvasW: cv.containerW / cv.zoom,
+            canvasH: cv.containerH / cv.zoom,
+          }
+        : undefined;
+
     const intent: ApprovalIntent = {
       proposalId: proposal.proposalId,
       ...(payload && { payload }),
       currentRef: currentRef || "",
-      // Viewport hint defaults to a static "near origin" point. Future
-      // drag-from-chat will override this with drop coords; until then
-      // the projector falls back to its auto-layout slot when the
-      // overlay isn't legal anyway, so the value rarely matters.
+      // Legacy safety-net fallback for the server (used when viewportState
+      // is absent or findFreeSlotInViewport returns null on a packed canvas).
       viewport: { x: 40, y: 40 },
+      ...(viewportState && { viewportState }),
     };
 
     await sendMessage({
@@ -254,7 +291,20 @@ export function ProposalCard({
             </div>
           )}
           {proposal.kind === "feature" && (
-            <FeatureMeta payload={proposal.payload} meta={proposal.meta} />
+            <>
+              <FeatureMeta payload={proposal.payload} meta={proposal.meta} />
+              <div className="mt-1 flex items-center justify-end gap-1.5">
+                <span className="text-[11px] text-muted-foreground">
+                  Auto-respond to planner
+                </span>
+                <Switch
+                  checked={autoRespond}
+                  onCheckedChange={setAutoRespond}
+                  disabled={!isPending}
+                  aria-label="Auto-respond to planner"
+                />
+              </div>
+            </>
           )}
           {proposal.kind === "milestone" && (
             <MilestoneMeta
@@ -314,8 +364,12 @@ export function ProposalCard({
               <button
                 type="button"
                 onClick={handleApprove}
-                disabled={!isPending || isInFlight}
-                title="Approve"
+                disabled={!isPending || isInFlight || !allBlockersApproved}
+                title={
+                  !allBlockersApproved
+                    ? "Approve blocking features first"
+                    : "Approve"
+                }
                 className="flex h-6 w-6 items-center justify-center rounded text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
               >
                 {isInFlight ? (
@@ -780,4 +834,58 @@ export function getProposalsFromMessage(
     out.push(o as ProposalOutput);
   }
   return out;
+}
+
+/**
+ * Topologically sorts a list of proposals so that blockers appear before
+ * their dependents. Only intra-batch dependencies are considered — cross-
+ * message blockers are already ordered by message history.
+ *
+ * Uses Kahn's algorithm. Falls back to the original order if a cycle is
+ * detected (shouldn't happen in practice, but never block rendering).
+ */
+export function sortProposalsByDependency(
+  proposals: ProposalOutput[],
+): ProposalOutput[] {
+  if (proposals.length <= 1) return proposals;
+
+  // Index of proposal IDs present in this batch.
+  const ids = new Set(proposals.map((p) => p.proposalId));
+
+  // in-degree: number of blockers present in THIS batch.
+  // blockedBy: blocker proposalId → list of dependent proposalIds it unblocks.
+  const inDegree = new Map<string, number>();
+  const blockedBy = new Map<string, string[]>();
+
+  for (const p of proposals) {
+    if (!inDegree.has(p.proposalId)) inDegree.set(p.proposalId, 0);
+    const deps =
+      p.kind === "feature" ? (p.payload.dependsOnProposalIds ?? []) : [];
+    for (const dep of deps) {
+      if (!ids.has(dep)) continue; // cross-message dep — skip
+      inDegree.set(p.proposalId, (inDegree.get(p.proposalId) ?? 0) + 1);
+      const list = blockedBy.get(dep) ?? [];
+      list.push(p.proposalId);
+      blockedBy.set(dep, list);
+    }
+  }
+
+  const byId = new Map(proposals.map((p) => [p.proposalId, p]));
+  const queue = proposals.filter(
+    (p) => (inDegree.get(p.proposalId) ?? 0) === 0,
+  );
+  const sorted: ProposalOutput[] = [];
+
+  while (queue.length) {
+    const node = queue.shift()!;
+    sorted.push(node);
+    for (const depId of blockedBy.get(node.proposalId) ?? []) {
+      const newDeg = (inDegree.get(depId) ?? 0) - 1;
+      inDegree.set(depId, newDeg);
+      if (newDeg === 0) queue.push(byId.get(depId)!);
+    }
+  }
+
+  // Cycle guard — return original order if sort is incomplete.
+  return sorted.length === proposals.length ? sorted : proposals;
 }

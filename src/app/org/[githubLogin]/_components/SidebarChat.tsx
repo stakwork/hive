@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { SidebarChatMessage } from "./SidebarChatMessage";
-import { ProposalCard, getProposalsFromMessage } from "./ProposalCard";
+import { ProposalCard, getProposalsFromMessage, sortProposalsByDependency } from "./ProposalCard";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
@@ -48,6 +48,7 @@ import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
+import { StreamScrollIndicator } from "@/components/dashboard/DashboardChat/StreamScrollIndicator";
 
 /**
  * Org-canvas sidebar chat. Renders the active conversation from the
@@ -106,15 +107,28 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 
   const sendMessage = useSendCanvasChatMessage();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const isProgrammaticScrollRef = useRef(false);
 
-  // Scroll the messages container (not the page) to the bottom on
-  // updates. `scrollTop = scrollHeight` instead of `scrollIntoView`
-  // so the page never gets dragged when a streaming delta lands.
+  // Scroll to bottom on updates unless the user has manually scrolled up.
   useEffect(() => {
+    if (!userScrolledUp) {
+      isProgrammaticScrollRef.current = true;
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, activeToolCalls, isLoading, userScrolledUp]);
+
+  const handleScroll = () => {
+    if (isProgrammaticScrollRef.current) {
+      isProgrammaticScrollRef.current = false;
+      return;
+    }
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages, activeToolCalls, isLoading]);
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 50;
+    setUserScrolledUp(!atBottom);
+  };
 
   const handleSend = async (
     content: string,
@@ -292,7 +306,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto relative px-4 py-3">
         {!hasMessages && activeToolCalls.length === 0 && (
           <div className="h-full flex items-center justify-center px-4 text-center text-muted-foreground text-sm">
             Ask the agent about anything on this canvas.
@@ -413,7 +427,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 )}
                 {proposals.length > 0 && (
                   <div className="space-y-1.5">
-                    {proposals.map((p) => (
+                    {sortProposalsByDependency(proposals).map((p) => (
                       <ProposalCard
                         key={p.proposalId}
                         proposal={p}
@@ -468,7 +482,24 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               </div>
             </motion.div>
           )}
+          <div ref={messagesEndRef} />
         </div>
+        <StreamScrollIndicator
+          isStreaming={isLoading}
+          userScrolledUp={userScrolledUp}
+          showBackButton={false}
+          onStreamingClick={() => {
+            isProgrammaticScrollRef.current = true;
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            setUserScrolledUp(false);
+          }}
+          onLatestClick={() => {
+            isProgrammaticScrollRef.current = true;
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            setUserScrolledUp(false);
+          }}
+          onBackClick={() => {}}
+        />
       </div>
 
       <div className="border-t p-2">
@@ -476,6 +507,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           onSend={handleSend}
           disabled={isLoading}
           workspaceId={workspaceId}
+          orgId={githubLogin}
         />
       </div>
     </div>
@@ -572,6 +604,8 @@ interface SidebarChatInputProps {
   disabled?: boolean;
   /** Workspace id for the S3 upload context. */
   workspaceId: string;
+  /** Fallback org id when workspaceId is absent (org canvas context). */
+  orgId?: string;
 }
 
 /**
@@ -586,6 +620,7 @@ function SidebarChatInput({
   onSend,
   disabled = false,
   workspaceId,
+  orgId,
 }: SidebarChatInputProps) {
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
@@ -670,7 +705,8 @@ function SidebarChatInput({
         ),
       );
       try {
-        const result = await uploadFileToS3(pf.file, { workspaceId });
+        const uploadContext = workspaceId ? { workspaceId } : { orgId: orgId! };
+        const result = await uploadFileToS3(pf.file, uploadContext);
         setPendingFiles((prev) =>
           prev.map((f) =>
             f.id === pf.id
@@ -688,7 +724,7 @@ function SidebarChatInput({
         toast.error(`Failed to upload ${pf.filename}`, { description: msg });
       }
     },
-    [workspaceId],
+    [workspaceId, orgId],
   );
 
   const handleFiles = useCallback(

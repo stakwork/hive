@@ -62,6 +62,9 @@ export async function seedAgentLogs() {
     stakworkRunId: string | null;
     taskId: string | null;
     createdAt: Date;
+    sessionId?: string | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    config?: any;
   }> = [];
 
   console.log("📝 Generating log content and uploading to blob storage...");
@@ -86,6 +89,55 @@ export async function seedAgentLogs() {
         : null;
 
     const agent = agents[i % agents.length];
+
+    // Varied configs for new blob shape (index 3 = partial, index 4 = legacy)
+    const configs = [
+      {
+        model: "claude-sonnet-4-6",
+        provider: "anthropic",
+        source: "repo_agent",
+        repos: [{ name: "stakwork/hive" }],
+        temperature: 0,
+        tools: { bash: true, files: true },
+        toolsConfig: {},
+        schema: null,
+        providerConfig: {},
+      },
+      {
+        model: "gpt-4o",
+        provider: "openai",
+        source: "task_agent",
+        repos: [],
+        temperature: 0.2,
+        tools: {},
+        toolsConfig: {},
+        schema: null,
+        providerConfig: {},
+      },
+      {
+        model: "claude-opus-4",
+        provider: "anthropic",
+        source: "repo_agent",
+        repos: [{ name: "stakwork/workspaces" }, { name: "stakwork/ggnn" }],
+        temperature: 0,
+        tools: { files: true, bash: true },
+        toolsConfig: {},
+        schema: null,
+        providerConfig: {},
+      },
+      // Partial config (repos: [], schema: null) — exercises graceful-partial rendering
+      {
+        model: "claude-haiku-3",
+        provider: "anthropic",
+        source: "review_agent",
+        repos: [],
+        temperature: null as unknown as number,
+        tools: { bash: true },
+        toolsConfig: {},
+        schema: null,
+        providerConfig: {},
+      },
+    ];
 
     // Create varied log content (some short, some long)
     const messageCount = Math.floor(Math.random() * 10) + 1;
@@ -151,25 +203,17 @@ export async function seedAgentLogs() {
       });
     }
 
-    // Create sample log content
-    const logContent = {
-      messages,
-      metadata: {
-        agent,
-        workspaceId: workspace.id,
-        workspaceName: workspace.name,
-        stakworkRunId,
-        taskId,
-        index: i,
-        duration_ms: Math.floor(Math.random() * 30000) + 5000,
-        tokens_used: Math.floor(Math.random() * 10000) + 1000,
-      },
-      summary: {
-        total_messages: messages.length,
-        has_tool_calls: includeToolCalls,
-        status: Math.random() > 0.1 ? "completed" : "failed",
-      },
-    };
+    // Create sample log content — new { sessionId, messages, config } shape.
+    // Last entry (i === logsToCreate - 1) uses legacy { messages } shape for backward-compat testing.
+    const isLegacyShape = i === logsToCreate - 1;
+    const runConfig = configs[i % configs.length];
+    const logContent = isLegacyShape
+      ? { messages }
+      : {
+          sessionId: `seed-session-${i}`,
+          messages,
+          config: runConfig,
+        };
 
     try {
       // Upload to blob storage
@@ -186,6 +230,8 @@ export async function seedAgentLogs() {
         stakworkRunId,
         taskId,
         createdAt,
+        sessionId: isLegacyShape ? null : `seed-session-${i}`,
+        config: isLegacyShape ? null : runConfig,
       });
 
       // Show progress every 10 logs

@@ -423,3 +423,4 @@ describe("AgentLogsPage — canvas tab showUserColumn", () => {
     expect(screen.queryByTestId("user-column-header")).not.toBeInTheDocument();
   });
 });
+

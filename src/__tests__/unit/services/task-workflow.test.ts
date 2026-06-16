@@ -18,6 +18,9 @@ vi.mock("@/lib/db", () => ({
       create: vi.fn(),
       update: vi.fn(),
     },
+    workspace: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
@@ -2767,13 +2770,13 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       });
     });
 
-    test("should set payload name to 'hive-task-<taskId>'", async () => {
+    test("should set payload name to 'hive-task-<taskId>' for non-plan modes", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => TestDataFactory.createStakworkSuccessResponse(),
       } as Response);
 
-      const params = TestDataFactory.createCallStakworkAPIParams();
+      const params = TestDataFactory.createCallStakworkAPIParams({ mode: "live" });
 
       const { callStakworkAPI } = await import("@/services/task-workflow");
       await callStakworkAPI(params);
@@ -2781,6 +2784,28 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const fetchCall = mockFetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1]?.body as string);
       expect(payload.name).toBe("hive-task-test-task-id");
+    });
+
+    test("should set payload name to 'hive-plan-<featureId>' for plan_mode", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+      mockDb.workspace.findUnique.mockResolvedValue({ slug: "test-workspace" } as any);
+
+      const featureId = "test-feature-id";
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        mode: "plan_mode",
+        featureId,
+        taskId: featureId,
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      expect(payload.name).toBe(`hive-plan-${featureId}`);
     });
 
     test("should normalize taskSource to lowercase", async () => {
