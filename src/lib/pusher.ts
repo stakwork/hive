@@ -130,7 +130,10 @@ export type CanvasConversationUpdateReason =
   | "deferred-check-cancelled"
   // A deferred check was fired by the cron dispatcher and the result
   // has been appended to the conversation.
-  | "deferred-check-fired";
+  | "deferred-check-fired"
+  // A recurring automation fired: the cron created a fresh org-canvas
+  // conversation and appended the agent's response to it.
+  | "automation";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON
