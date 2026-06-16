@@ -421,6 +421,15 @@ export async function checkPR(
       state = "checking";
     }
 
+    // Check if PR is behind base branch before evaluating CI — a rebase will invalidate any in-progress CI run anyway
+    if (state === "healthy" && prData.mergeable === true) {
+      const isBehind = await isPRBehindBase(octokit, owner, repo, prData.base.ref, prData.head.ref);
+      if (isBehind) {
+        state = "out_of_date";
+        problemDetails = `PR branch is behind ${prData.base.ref} and needs to be updated`;
+      }
+    }
+
     // Check for CI status (conflict takes precedence)
     if (state === "healthy") {
       if (ciResult.status === "failure") {
@@ -429,15 +438,6 @@ export async function checkPR(
       } else if (ciResult.status === "pending") {
         // CI is still running - use "checking" state so we re-check soon
         state = "checking";
-      }
-    }
-
-    // Check if PR is behind base branch (only if otherwise healthy and CI passed)
-    if (state === "healthy" && prData.mergeable === true) {
-      const isBehind = await isPRBehindBase(octokit, owner, repo, prData.base.ref, prData.head.ref);
-      if (isBehind) {
-        state = "out_of_date";
-        problemDetails = `PR branch is behind ${prData.base.ref} and needs to be updated`;
       }
     }
 
