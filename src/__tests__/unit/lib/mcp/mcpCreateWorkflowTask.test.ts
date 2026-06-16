@@ -172,3 +172,41 @@ describe("mcpCreateWorkflowTask — creator attribution", () => {
     );
   });
 });
+
+describe("mcpCreateWorkflowTask — dependsOnTaskIds", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDbFeature.findUnique.mockResolvedValue({
+      workspaceId: "ws-1",
+      createdById: "feature-creator-1",
+    });
+    mockCreateTicket.mockResolvedValue(BASE_TASK);
+  });
+
+  it("forwards non-empty dependsOnTaskIds to createTicket", async () => {
+    await mcpCreateWorkflowTask(
+      AUTH,
+      "feature-1",
+      { title: "Workflow dep task", dependsOnTaskIds: ["task-a", "task-b"] },
+      { workflowTaskType: "SKILL" },
+    );
+
+    expect(mockCreateTicket).toHaveBeenCalledWith(
+      "feature-1",
+      "feature-creator-1",
+      expect.objectContaining({ dependsOnTaskIds: ["task-a", "task-b"] }),
+    );
+  });
+
+  it("passes undefined dependsOnTaskIds when not provided", async () => {
+    await mcpCreateWorkflowTask(
+      AUTH,
+      "feature-1",
+      { title: "No deps" },
+      { workflowTaskType: "WORKFLOW" },
+    );
+
+    const call = mockCreateTicket.mock.calls[0][2];
+    expect(call.dependsOnTaskIds).toBeUndefined();
+  });
+});

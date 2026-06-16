@@ -8,7 +8,6 @@ import { getAllJanitorItems } from "@/lib/constants/janitor";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useInsightsStore } from "@/stores/useInsightsStore";
 import {
-  AlertTriangle,
   BookOpen,
   Bot,
   CheckCircle2,
@@ -173,14 +172,12 @@ export default function DefenseJanitorsPage() {
           janitors={testingJanitors}
         />
 
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-500" />
-            <h2 className="text-lg font-semibold">PR Health</h2>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Detect and archive tasks permanently stuck in CI failure or merge conflict state.
-          </p>
+        <JanitorSection
+          title="PR Monitor"
+          description="Automatically monitor and fix issues with open pull requests"
+          icon={<GitPullRequest className="h-5 w-5 text-purple-500" />}
+          janitors={prMonitorJanitors}
+        >
           {workspace && (
             <StaleCITaskJanitorCard
               slug={workspace.slug}
@@ -190,14 +187,7 @@ export default function DefenseJanitorsPage() {
               }}
             />
           )}
-        </div>
-
-        <JanitorSection
-          title="PR Monitor"
-          description="Automatically monitor and fix issues with open pull requests"
-          icon={<GitPullRequest className="h-5 w-5 text-purple-500" />}
-          janitors={prMonitorJanitors}
-        />
+        </JanitorSection>
 
         <JanitorSection
           title="Maintainability"

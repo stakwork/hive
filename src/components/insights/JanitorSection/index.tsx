@@ -31,6 +31,7 @@ export interface JanitorSectionProps {
   icon: ReactNode;
   janitors: JanitorItem[];
   comingSoon?: boolean;
+  children?: ReactNode;
 }
 
 const getStatusBadge = (isOn: boolean, itemComingSoon: boolean, sectionComingSoon: boolean) => {
@@ -48,7 +49,8 @@ export function JanitorSection({
   description,
   icon,
   janitors,
-  comingSoon = false
+  comingSoon = false,
+  children
 }: JanitorSectionProps) {
   const { workspace } = useWorkspace();
   const open = useModal();
@@ -298,6 +300,7 @@ export function JanitorSection({
             );
           })}
         </div>
+        {children && <div className="mt-4">{children}</div>}
       </CardContent>
     </Card>
   );

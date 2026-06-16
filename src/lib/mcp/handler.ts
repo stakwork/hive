@@ -460,6 +460,12 @@ function createServer(
           .describe(
             "Repository URL (matched against the workspace's repos). Use when you only have the URL, not the cuid. Exactly one of repositoryId/repositoryUrl must be provided.",
           ),
+        dependsOnTaskIds: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "IDs of tasks this task depends on. The dependency chart on the Feature page is only shown when at least one task has dependencies.",
+          ),
         creator: z
           .string()
           .optional()
@@ -476,6 +482,7 @@ function createServer(
         priority,
         repositoryId,
         repositoryUrl,
+        dependsOnTaskIds,
         creator,
       }: {
         featureId: string;
@@ -484,6 +491,7 @@ function createServer(
         priority?: string;
         repositoryId?: string;
         repositoryUrl?: string;
+        dependsOnTaskIds?: string[];
         creator?: string;
       },
       extra,
@@ -497,7 +505,7 @@ function createServer(
       return mcpCreateFeatureTask(
         result.auth!,
         featureId,
-        { title, description, priority },
+        { title, description, priority, dependsOnTaskIds },
         { repositoryId, repositoryUrl },
         creator,
       );
@@ -575,6 +583,12 @@ function createServer(
           .describe(
             "The Stakwork execution type for this workflow task: SKILL (routed work unit), WORKFLOW (sub-workflow runner), SCRIPT (Python Lambda), or PROMPT (reusable text template). Omit if unknown.",
           ),
+        dependsOnTaskIds: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "IDs of tasks this task depends on. The dependency chart on the Feature page is only shown when at least one task has dependencies.",
+          ),
         creator: z
           .string()
           .optional()
@@ -593,6 +607,7 @@ function createServer(
         workflowName,
         workflowRefId,
         workflowTaskType,
+        dependsOnTaskIds,
         creator,
       }: {
         featureId: string;
@@ -603,6 +618,7 @@ function createServer(
         workflowName?: string;
         workflowRefId?: string;
         workflowTaskType?: "SKILL" | "WORKFLOW" | "SCRIPT" | "PROMPT";
+        dependsOnTaskIds?: string[];
         creator?: string;
       },
       extra,
@@ -616,7 +632,7 @@ function createServer(
       return mcpCreateWorkflowTask(
         result.auth!,
         featureId,
-        { title, description, priority },
+        { title, description, priority, dependsOnTaskIds },
         { workflowId, workflowName, workflowRefId, workflowTaskType },
         creator,
       );
@@ -628,7 +644,7 @@ function createServer(
     {
       title: "Update Task",
       description:
-        "Update an existing task's title, description, and/or priority. Only these three fields are updatable — status, workflow status, and feature attachment are intentionally excluded. Pass only the fields you want to change.",
+        "Update an existing task's title, description, priority, and/or dependsOnTaskIds. Only these four fields are updatable — status, workflow status, and feature attachment are intentionally excluded. Pass only the fields you want to change.",
       inputSchema: {
         taskId: z.string().describe("The ID of the task to update"),
         title: z
@@ -645,6 +661,12 @@ function createServer(
           .enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"])
           .optional()
           .describe("New priority (LOW, MEDIUM, HIGH, CRITICAL)."),
+        dependsOnTaskIds: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Replace the full list of task IDs this task depends on. Pass an empty array [] to clear all dependencies.",
+          ),
         editor: z
           .string()
           .optional()
@@ -659,12 +681,14 @@ function createServer(
         title,
         description,
         priority,
+        dependsOnTaskIds,
         editor,
       }: {
         taskId: string;
         title?: string;
         description?: string;
         priority?: string;
+        dependsOnTaskIds?: string[];
         editor?: string;
       },
       extra,
@@ -672,7 +696,7 @@ function createServer(
       const authExtra = extra.authInfo?.extra as McpAuthExtra | undefined;
       const result = await getWorkspaceAuth(authExtra, "update_task", editor);
       if (result.error) return result.error;
-      return mcpUpdateTask(result.auth!, taskId, { title, description, priority });
+      return mcpUpdateTask(result.auth!, taskId, { title, description, priority, dependsOnTaskIds });
     },
   );
 
