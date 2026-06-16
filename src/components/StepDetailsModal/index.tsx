@@ -117,12 +117,12 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
 
   return (
     <div
-      className="absolute inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-background rounded-lg shadow-lg border w-full max-w-2xl max-h-[80vh] flex flex-col m-4">
+      <div className="bg-background rounded-lg shadow-lg border w-[75vw] max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-3">
