@@ -13,9 +13,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { ExternalLink, Flag } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ExternalLink, Flag, MoreVertical, Bug, Loader2 } from "lucide-react";
 import { useWorkflowRuns, type WorkflowRun } from "@/hooks/useWorkflowRuns";
 import { FlagRunEvalModal } from "@/components/evals/FlagRunEvalModal";
+import { startDebugRun } from "@/lib/workflow/debugRun";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const MAX_RUN_NAME_LEN = 40;
 
@@ -64,6 +73,7 @@ export function WorkflowRunsTable({
   const { runs, isLoading } = useWorkflowRuns(slug, workflowId);
   const [flaggingRunId, setFlaggingRunId] = useState<string | null>(null);
   const [flaggedRunIds, setFlaggedRunIds] = useState<Set<string>>(new Set());
+  const [debuggingRunId, setDebuggingRunId] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -76,7 +86,6 @@ export function WorkflowRunsTable({
               <TableHead>Started At</TableHead>
               <TableHead>Finished At</TableHead>
               <TableHead>Duration</TableHead>
-              <TableHead className="w-24">View in Stak</TableHead>
               <TableHead className="w-16">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -101,9 +110,6 @@ export function WorkflowRunsTable({
                 <TableCell>
                   <Skeleton className="h-4 w-8" />
                 </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-8" />
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -116,8 +122,6 @@ export function WorkflowRunsTable({
     return <p className="text-sm text-muted-foreground p-4">No runs recorded yet.</p>;
   }
 
-  const workflowIdStr = String(workflowId);
-
   return (
     <div className="p-4">
       <Table>
@@ -128,7 +132,6 @@ export function WorkflowRunsTable({
             <TableHead>Started At</TableHead>
             <TableHead>Finished At</TableHead>
             <TableHead>Duration</TableHead>
-            <TableHead className="w-24">View in Stak</TableHead>
             <TableHead className="w-16">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -136,6 +139,7 @@ export function WorkflowRunsTable({
           {runs.map((run) => {
             const runIdStr = String(run.id);
             const isFlagged = flaggedRunIds.has(runIdStr);
+            const isDebugging = debuggingRunId === runIdStr;
 
             return (
               <TableRow
@@ -169,49 +173,94 @@ export function WorkflowRunsTable({
                 <TableCell className="text-sm">
                   {formatDuration(run.started_at, run.finished_at)}
                 </TableCell>
-                <TableCell>
-                  <a
-                    href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-blue-600 transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Open
-                  </a>
-                </TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
-                  {isFlagged ? (
-                    <Flag className="h-4 w-4 text-orange-500 fill-orange-500 mx-auto" aria-label="Eval captured" />
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Capture eval"
-                      onClick={() => setFlaggingRunId(runIdStr)}
-                      className="h-7 w-7"
-                      aria-label="Capture eval"
-                    >
-                      <Flag className="h-4 w-4" />
-                    </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Run actions">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {/* Open in Stak */}
+                      <DropdownMenuItem asChild>
+                        <a
+                          href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Open in Stak
+                        </a>
+                      </DropdownMenuItem>
+
+                      {/* Flag for eval */}
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isFlagged) setFlaggingRunId(runIdStr);
+                        }}
+                        disabled={isFlagged}
+                      >
+                        <Flag
+                          className={cn(
+                            "h-4 w-4 mr-2",
+                            isFlagged && "fill-orange-500 text-orange-500",
+                          )}
+                        />
+                        {isFlagged ? "Eval captured" : "Flag for eval"}
+                      </DropdownMenuItem>
+
+                      {/* Debug run */}
+                      <DropdownMenuItem
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          // Open blank tab synchronously to avoid popup blockers
+                          const tab = window.open("", "_blank");
+                          setDebuggingRunId(runIdStr);
+                          try {
+                            const taskId = await startDebugRun({
+                              slug,
+                              workflowId,
+                              runId: run.id,
+                            });
+                            if (tab) tab.location.href = `/w/${slug}/task/${taskId}`;
+                          } catch {
+                            tab?.close();
+                            toast.error("Failed to start debug session");
+                          } finally {
+                            setDebuggingRunId(null);
+                          }
+                        }}
+                        disabled={isDebugging}
+                      >
+                        {isDebugging ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Bug className="h-4 w-4 mr-2" />
+                        )}
+                        Debug run
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {flaggingRunId === runIdStr && (
+                    <FlagRunEvalModal
+                      open={true}
+                      onOpenChange={(o) => {
+                        if (!o) setFlaggingRunId(null);
+                      }}
+                      slug={slug}
+                      workflowId={String(workflowId)}
+                      runId={runIdStr}
+                      onCaptured={() => {
+                        setFlaggedRunIds((prev) => new Set(prev).add(runIdStr));
+                        setFlaggingRunId(null);
+                        onEvalCaptured?.();
+                      }}
+                    />
                   )}
                 </TableCell>
-
-                {flaggingRunId === runIdStr && (
-                  <FlagRunEvalModal
-                    open={true}
-                    onOpenChange={(o) => { if (!o) setFlaggingRunId(null); }}
-                    slug={slug}
-                    workflowId={workflowIdStr}
-                    runId={runIdStr}
-                    onCaptured={() => {
-                      setFlaggedRunIds((prev) => new Set(prev).add(runIdStr));
-                      setFlaggingRunId(null);
-                      onEvalCaptured?.();
-                    }}
-                  />
-                )}
               </TableRow>
             );
           })}
