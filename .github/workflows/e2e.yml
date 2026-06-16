@@ -75,6 +75,7 @@ jobs:
       - name: Build app and setup database
         env:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+          DIRECT_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
           NEXTAUTH_URL: http://localhost:3000
           NEXTAUTH_SECRET: fake_secret
           JWT_SECRET: fake_secret
