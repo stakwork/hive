@@ -176,8 +176,13 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
           ctx.currentCanvasConversationId,
         ),
       promptSnippet: getResearchCapabilitySnippet,
-      // dispatch_research survives readonly mode (pre-registry parity).
-      writeToolNames: ["save_research", "update_research"],
+      // dispatch_research creates a Research row, so it's a write tool and
+      // MUST be stripped in readonly mode. Critically, the research
+      // sub-agent (`canvas-research-worker.ts`) runs readonly with only
+      // `update_research` kept — if dispatch_research survived, the
+      // sub-agent (whose prompt hands it the slug) could re-dispatch
+      // itself, colliding on the unique (org_id, slug) constraint (P2002).
+      writeToolNames: ["save_research", "dispatch_research", "update_research"],
     },
     connections: {
       buildTools: (ctx) => buildConnectionTools(ctx.orgId, ctx.userId),
