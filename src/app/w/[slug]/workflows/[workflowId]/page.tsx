@@ -25,6 +25,7 @@ import { createWorkflowEditorTask } from "@/lib/workflow/create-workflow-editor-
 import { PromptsPanel } from "@/components/prompts";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import type { WorkflowTransition } from "@/types/stakwork/workflow";
+import { mergeWorkflowRunStatus } from "@/lib/utils/merge-workflow-run-status";
 
 function parseWorkflowJson(workflowJson: string | null | undefined): Record<string, unknown> | null {
   if (!workflowJson) return null;
@@ -111,27 +112,7 @@ export default function WorkflowInspectorPage() {
 
   const mergedWorkflowData = useMemo(() => {
     if (!parsedWorkflowData || !runTransitions) return parsedWorkflowData;
-    const baseTransitions = parsedWorkflowData.transitions as
-      | Record<string, WorkflowTransition>
-      | undefined;
-    if (!baseTransitions) return parsedWorkflowData;
-
-    const mergedTransitions = Object.fromEntries(
-      Object.entries(baseTransitions).map(([key, step]) => {
-        const runStep = runTransitions[key];
-        if (!runStep) return [key, step];
-        return [
-          key,
-          {
-            ...step,
-            status: runStep.status,
-            last_transition_state: runStep.last_transition_state,
-          },
-        ];
-      }),
-    );
-
-    return { ...parsedWorkflowData, transitions: mergedTransitions };
+    return mergeWorkflowRunStatus(parsedWorkflowData, runTransitions);
   }, [parsedWorkflowData, runTransitions]);
 
   const childWorkflows = useMemo(() => {
