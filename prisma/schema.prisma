@@ -112,6 +112,7 @@ model User {
   initiativeAssignments    Initiative[]             @relation("InitiativeAssignee")
   milestoneAssignments     Milestone[]              @relation("MilestoneAssignee")
   createdMilestones        Milestone[]              @relation("MilestoneCreator")
+  automations              Automation[]
 
   @@index([createdAt])
   @@index([deleted])
@@ -192,6 +193,7 @@ model SourceControlOrg {
   canvases             Canvas[]
   initiatives          Initiative[]
   researches           Research[]
+  automations          Automation[]
 
   @@index([githubLogin])
   @@index([githubInstallationId])
@@ -1838,6 +1840,44 @@ model DeferredChatAction {
 
   @@index([status, fireAt])
   @@map("deferred_chat_actions")
+}
+
+/// A recurring scheduled prompt for the org canvas chat. The per-minute
+/// automation cron (`/api/cron/automations`) finds rows whose `nextRunAt`
+/// has passed, creates a brand-new org-canvas `SharedConversation`, runs the
+/// canvas agent with `prompt`, then advances `nextRunAt` to the next
+/// occurrence of `timeOfDay` in `timezone`. The freshly-created conversation
+/// is recorded on `lastRunConversationId` with `lastRunSeenAt = null` so the
+/// canvas page can auto-open the most recent unseen run on load.
+model Automation {
+  id                    String    @id @default(cuid())
+  sourceControlOrgId    String    @map("source_control_org_id")
+  userId                String    @map("user_id")
+  name                  String
+  prompt                String
+  /// 24-hour wall-clock time "HH:MM", interpreted in `timezone`.
+  timeOfDay             String    @map("time_of_day")
+  /// IANA timezone, e.g. "America/Los_Angeles". The wall-clock `timeOfDay`
+  /// is resolved against this zone (DST-aware) to compute `nextRunAt`.
+  timezone              String    @default("UTC")
+  enabled               Boolean   @default(true)
+  /// UTC instant of the next scheduled fire. Indexed for the cron sweep.
+  nextRunAt             DateTime  @map("next_run_at")
+  lastRunAt             DateTime? @map("last_run_at")
+  /// The org-canvas SharedConversation created by the most recent run.
+  lastRunConversationId String?   @map("last_run_conversation_id")
+  /// Null while the most recent run hasn't been surfaced to the user yet;
+  /// set once the canvas auto-opens (or the user dismisses) that run.
+  lastRunSeenAt         DateTime? @map("last_run_seen_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceControlOrg SourceControlOrg @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
+
+  @@index([enabled, nextRunAt])
+  @@index([sourceControlOrgId, userId])
+  @@map("automations")
 }
 
 model WorkflowSummary {

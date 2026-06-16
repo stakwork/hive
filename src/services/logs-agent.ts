@@ -79,9 +79,10 @@ export async function runLogsAgent(
   let swarmUrl: string;
   let swarmApiKey: string;
   let swarmName: string;
+  let poolName: string;
 
   if (accessResult.success) {
-    ({ swarmUrl, swarmApiKey, swarmName } = accessResult.data);
+    ({ swarmUrl, swarmApiKey, swarmName, poolName } = accessResult.data);
   } else if (accessResult.error.type === "SWARM_API_KEY_MISSING") {
     const ws = await db.workspace.findFirst({
       where: { slug, deleted: false },
@@ -94,7 +95,7 @@ export async function runLogsAgent(
     if (!fallback.success) {
       return { success: false, error: { type: "SWARM_NOT_ACTIVE" } };
     }
-    ({ swarmUrl, swarmApiKey, swarmName } = fallback.data);
+    ({ swarmUrl, swarmApiKey, swarmName, poolName } = fallback.data);
   } else {
     const { error } = accessResult;
     type KnownType =
@@ -255,6 +256,7 @@ export async function runLogsAgent(
   const agentBody: Record<string, unknown> = {
     prompt: prompt.trim(),
     swarmName,
+    poolName,
     sessionId: sessionId || undefined,
     sessionConfig: {
       truncateToolResults: false,

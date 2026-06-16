@@ -435,8 +435,8 @@ export function askToolsMulti(
     // search); prefer search_logs for simple lookups.
     allTools[`${prefix}__logs_agent`] = tool({
       description:
-        `[${ws.slug}] Invoke the Logs Agent for deep, run-grounded analysis of agent execution logs in ${ws.slug}. ` +
-        `Use when the user asks what happened during a run, on a swarm, to debug agent failures, or wants a synthesised explanation backed by real log data. ` +
+        `[${ws.slug}] Invoke the Logs Agent for deep, run-grounded analysis of infra, sandbox, and agent execution logs in ${ws.slug}. ` +
+        `Use when the user asks what happened during a run, on a swarm, on a pod/sandbox, to debug agent failures, or wants a synthesised explanation backed by real log data. ` +
         `Heavier than ${prefix}__search_logs — prefer that for simple keyword lookups. ` +
         `Optionally narrow to a specific feature or task via featureId/taskId.`,
       inputSchema: z.object({
