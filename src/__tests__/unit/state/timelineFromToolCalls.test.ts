@@ -8,6 +8,7 @@
  * identically to live ones.
  */
 
+import { describe, it, expect } from "vitest";
 import {
   timelineFromToolCalls,
   type ToolCall,
