@@ -28,6 +28,26 @@ import {
 } from "@/services/canvas-turn-persistence";
 import { generateTitle } from "@/lib/ai/conversationHelpers";
 import { computeNextRunAt } from "@/lib/automations/schedule";
+import { isApiError } from "@/types/errors";
+
+/**
+ * Best-effort, human-readable message for any thrown value. Plain
+ * `ApiError` objects (thrown by `buildWorkspaceConfigs` et al.) are not
+ * `Error` instances, so `String(err)` would yield "[object Object]" —
+ * unwrap them here so prod logs surface the real cause.
+ */
+function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (isApiError(err)) return `${err.kind}: ${err.message}`;
+  if (typeof err === "object" && err !== null) {
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
+}
 
 const LOG_PREFIX = "[Automations]";
 const MAX_PER_RUN = 10;
@@ -40,13 +60,33 @@ export interface AutomationDispatchResult {
 }
 
 /**
- * All non-deleted workspace slugs under an org, capped at MAX_WORKSPACE_SLUGS.
+ * Canvas-ready workspace slugs under an org, capped at MAX_WORKSPACE_SLUGS.
+ *
+ * Mirrors `buildWorkspaceConfigs`'s acceptance criteria (and the
+ * `orgContextScout` filter): a workspace is only included if it
+ *   (a) is accessible to the automation's user (owner or active member),
+ *   (b) has a configured swarm with a swarmUrl, and
+ *   (c) has at least one repository.
+ * Passing a slug that fails any of these makes `runCanvasAgent` throw
+ * inside the tool-assembly path, which would abort the whole org
+ * automation. Filtering at the source keeps the run robust against
+ * half-configured workspaces (e.g. a "testing" workspace with no swarm).
  */
 async function resolveOrgWorkspaceSlugs(
   sourceControlOrgId: string,
+  userId: string,
 ): Promise<string[]> {
   const workspaces = await db.workspace.findMany({
-    where: { sourceControlOrgId, deletedAt: null },
+    where: {
+      sourceControlOrgId,
+      deletedAt: null,
+      OR: [
+        { ownerId: userId },
+        { members: { some: { userId, leftAt: null } } },
+      ],
+      swarm: { swarmUrl: { not: null } },
+      repositories: { some: {} },
+    },
     select: { slug: true },
     orderBy: { createdAt: "asc" },
     take: MAX_WORKSPACE_SLUGS,
@@ -159,6 +199,7 @@ export async function dispatchDueAutomations(): Promise<AutomationDispatchResult
       // ── Resolve workspace scope ──────────────────────────────────────
       const workspaceSlugs = await resolveOrgWorkspaceSlugs(
         automation.sourceControlOrgId,
+        automation.userId,
       );
       if (workspaceSlugs.length === 0) {
         throw new Error(
@@ -258,7 +299,7 @@ export async function dispatchDueAutomations(): Promise<AutomationDispatchResult
       );
       result.fired++;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = describeError(err);
       console.error(
         `${LOG_PREFIX} FAILED automationId=${automation.id} error=${message}`,
       );
