@@ -71,6 +71,16 @@ export interface StoredMessage {
   approval?: unknown;
   rejection?: unknown;
   approvalResult?: unknown;
+  /**
+   * Populated when this assistant message confirmed a `schedule_check`
+   * tool call. Mirrors `CanvasChatMessage.deferredCheck` in the store.
+   */
+  deferredCheck?: {
+    id: string;
+    description: string;
+    fireAt: string;
+    status: "PENDING" | "FIRED" | "CANCELLED" | "FAILED";
+  };
 }
 
 type StepLike = {
@@ -107,13 +117,21 @@ export function messagesFromSteps(
   const now = new Date().toISOString();
 
   for (const step of steps) {
+    // Extract any schedule_check result from this step so it can be
+    // attached to the text row as `deferredCheck` metadata.
+    const deferredCheck = extractDeferredCheckFromStep(step);
+
     if (step.text && step.text.trim()) {
-      rows.push({
+      const textRow: StoredMessage = {
         id: nextId(),
         role: "assistant",
         content: step.text,
         timestamp: now,
-      });
+      };
+      if (deferredCheck) {
+        textRow.deferredCheck = deferredCheck;
+      }
+      rows.push(textRow);
     }
 
     const calls = step.toolCalls ?? [];
@@ -148,17 +166,58 @@ export function messagesFromSteps(
       });
 
     if (toolCalls.length > 0) {
-      rows.push({
+      const toolRow: StoredMessage = {
         id: nextId(),
         role: "assistant",
         content: "",
         timestamp: now,
         toolCalls,
-      });
+      };
+      // If there was no text in this step, attach deferredCheck to the
+      // tool-call row instead so the card is always anchored somewhere.
+      if (deferredCheck && rows[rows.length - 1]?.deferredCheck == null) {
+        toolRow.deferredCheck = deferredCheck;
+      }
+      rows.push(toolRow);
     }
   }
 
   return rows;
+}
+
+/**
+ * Scan a single step for a completed `schedule_check` tool result and
+ * return the parsed `deferredCheck` metadata, or `undefined` if none.
+ */
+function extractDeferredCheckFromStep(
+  step: StepLike,
+): StoredMessage["deferredCheck"] | undefined {
+  const calls = step.toolCalls ?? [];
+  const results = step.toolResults ?? [];
+
+  const scheduleCall = calls.find((tc) => tc.toolName === "schedule_check");
+  if (!scheduleCall) return undefined;
+
+  const result = results.find((r) => r.toolCallId === scheduleCall.toolCallId);
+  if (!result) return undefined;
+
+  const output = (result.output ?? result.result) as Record<string, unknown> | undefined;
+  if (
+    !output ||
+    typeof output !== "object" ||
+    typeof output.deferredActionId !== "string" ||
+    typeof output.fireAt !== "string" ||
+    typeof output.description !== "string"
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: output.deferredActionId,
+    description: output.description,
+    fireAt: output.fireAt,
+    status: "PENDING",
+  };
 }
 
 /**
