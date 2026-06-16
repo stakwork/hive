@@ -109,6 +109,31 @@ export default function WorkflowInspectorPage() {
     [selectedVersion],
   );
 
+  const mergedWorkflowData = useMemo(() => {
+    if (!parsedWorkflowData || !runTransitions) return parsedWorkflowData;
+    const baseTransitions = parsedWorkflowData.transitions as
+      | Record<string, WorkflowTransition>
+      | undefined;
+    if (!baseTransitions) return parsedWorkflowData;
+
+    const mergedTransitions = Object.fromEntries(
+      Object.entries(baseTransitions).map(([key, step]) => {
+        const runStep = runTransitions[key];
+        if (!runStep) return [key, step];
+        return [
+          key,
+          {
+            ...step,
+            status: runStep.status,
+            last_transition_state: runStep.last_transition_state,
+          },
+        ];
+      }),
+    );
+
+    return { ...parsedWorkflowData, transitions: mergedTransitions };
+  }, [parsedWorkflowData, runTransitions]);
+
   const childWorkflows = useMemo(() => {
     if (!parsedWorkflowData?.transitions) return [];
     return (Object.values(parsedWorkflowData.transitions) as WorkflowTransition[])
@@ -264,7 +289,7 @@ export default function WorkflowInspectorPage() {
               <>
               <WorkflowComponent
                 props={{
-                  workflowData: parsedWorkflowData,
+                  workflowData: mergedWorkflowData,
                   show_only: true,
                   mode: "workflow",
                   projectId: selectedRunId ? String(selectedRunId) : "",
