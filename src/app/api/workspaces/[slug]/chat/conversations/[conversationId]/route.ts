@@ -86,16 +86,16 @@ export async function GET(
     // Fallback: an org-canvas conversation for this workspace's parent
     // org. These are org-scoped (`workspaceId` null) so they miss the
     // query above — but the Canvas tab links here, so resolve them too.
-    // Restricted to the caller's own rows (mirrors the canvas list
-    // scope); 404 stays indistinguishable from "missing" for IDOR
-    // safety.
+    // Access is already gated by `validateWorkspaceAccess` above, so
+    // any caller is an authenticated workspace member — IDOR safety is
+    // preserved at that layer. No per-user filter here keeps this
+    // consistent with the list endpoint, which shows all users' sessions.
     if (!conversation && workspace.sourceControlOrgId) {
       conversation = await db.sharedConversation.findFirst({
         where: {
           id: conversationId,
           sourceControlOrgId: workspace.sourceControlOrgId,
           source: "org-canvas",
-          userId,
         },
         select: conversationSelect,
       });
