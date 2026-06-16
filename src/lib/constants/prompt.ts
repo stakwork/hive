@@ -2,6 +2,7 @@ import { ModelMessage } from "ai";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
 import { shouldTrimConceptsToIds } from "@/lib/ai/concepts";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
+import { jamieName } from "@/lib/constants/jamie";
 
 /**
  * Format a flat list of members for the single-workspace prompt.
@@ -55,6 +56,12 @@ When you are done print "[END_OF_ANSWER]"`;
 export interface SingleWorkspaceOrgContext {
   orgId: string;
   scope?: CanvasScopeHint;
+  /**
+   * Pre-composed org prompt suffix for the caller's selected
+   * capabilities (see `composeCapabilityPromptSuffix`). Omitted →
+   * the full `getCanvasPromptSuffix()` composition (back-compat).
+   */
+  promptSuffix?: string;
 }
 
 export function getQuickAskPrefixMessages(
@@ -69,7 +76,7 @@ export function getQuickAskPrefixMessages(
   const baseSystem = getQuickAskSystemPrompt(repoUrls, description, members, currentUserGithubUsername);
   const systemContent = orgContext
     ? baseSystem +
-      getCanvasPromptSuffix() +
+      (orgContext.promptSuffix ?? getCanvasPromptSuffix()) +
       getCanvasScopeHint(orgContext.scope)
     : baseSystem;
 
@@ -220,14 +227,14 @@ Tools are prefixed with workspace slugs. For each workspace you have:
 ${conceptToolLines}
 - \`{workspace}__recent_commits\` - Query recent commits
 - \`{workspace}__recent_contributions\` - Query PRs by a contributor
-- \`{workspace}__search_logs\` - Search application logs (Lucene query syntax)
-- \`{workspace}__logs_agent\` - Deep, run-grounded analysis of agent execution logs (debug agent runs/failures). Heavier than search_logs — prefer search_logs for simple keyword lookups. Optionally scope to a featureId/taskId.
+- \`{workspace}__search_logs\` - Search **Quikwit** application logs only (Lucene query syntax). Every term MUST have a field prefix (e.g. \`message:CLN\`, \`level:ERROR\`); a bare keyword like \`CLN\` fails with a 400 error. This tool ONLY covers logs indexed in Quikwit — it does NOT see CloudWatch, Lambda, or any other log source.
+- \`{workspace}__logs_agent\` - Deep, run-grounded analysis of agent execution logs, AND the way to reach **any log not in Quikwit**. If the user asks for CloudWatch logs, Lambda logs, stakwork, workflows, swarm, or any log source that \`search_logs\` (Quikwit) doesn't cover, you MUST invoke \`logs_agent\` — it can reach those sources. For simple keyword lookups against logs that ARE in Quikwit, prefer \`search_logs\` (lighter). Optionally scope to a featureId/taskId.
 - \`{workspace}__repo_agent\` - Deep code analysis (if you can't find the answer with the other tools)
 - \`{workspace}__list_features\` - List roadmap features/plans for a workspace. Use this if the user asks about features, plans, roadmap, or what's being worked on.
 - \`{workspace}__read_feature\` - Read a feature's details, brief, requirements, architecture, and chat history
 - \`{workspace}__list_tasks\` - List tasks for a workspace. Use this if the user asks about tasks or tickets.
 - \`{workspace}__read_task\` - Read a task's details, status, and chat history
-- \`{workspace}__check_status\` - Quick status check of active features and tasks (optionally filtered by user)
+- \`{workspace}__check_status\` - Quick status check of active features and tasks **within a single workspace** (optionally filtered by user). For questions about the user's own next steps, pending features/tasks, or "what should I work on", prefer the cross-workspace \`read_user_activity\` tool instead, when it is available — \`check_status\` only sees one workspace at a time.
 
 Use the repo_agent tool if the user asks about specific code in a specific repository. Use the feature/task tools when the user asks about project status, roadmap, planning, what's being worked on, or task progress. Otherwise, use the other tools to answer the question.
 
@@ -238,7 +245,27 @@ ${currentUserLine}
 When you are done print "[END_OF_ANSWER]"`;
 }
 
-export function getCanvasPromptSuffix(): string {
+/**
+ * Per-capability prompt snippets.
+ *
+ * The org agent's prompt suffix is composed from capability snippets —
+ * one per tool family in `src/lib/ai/capabilities.ts` — so surfaces
+ * that run the agent with a subset of capabilities (e.g. planner-only,
+ * no canvas) get a prompt that only teaches the tools they actually
+ * have. `getCanvasPromptSuffix()` below concatenates all four and is
+ * the back-compat full composition.
+ *
+ * Each snippet starts with `\n\n## …` so plain concatenation yields a
+ * well-formed document in any combination.
+ */
+
+/**
+ * Canvas capability — the spatial board AND roadmap organization
+ * (initiatives/milestones/features): read/update/patch_canvas,
+ * read_initiative, read_milestone, assign_feature_to_*,
+ * propose_initiative, propose_feature, propose_milestone.
+ */
+export function getCanvasCapabilitySnippet(): string {
   return `
 
 ## Canvas Tools
@@ -281,6 +308,10 @@ There is **no milestone sub-canvas**. Milestones are leaf cards on the initiativ
 Your job has three modes:
 
 1. **Propose** new Initiatives, Features, and Milestones when the user asks you to. Verbs that mean "propose": *add, create, spin up, kick off, draft, sketch, suggest, brainstorm, propose, set up, start, build, ship, plan.* Use \`propose_initiative\`, \`propose_feature\`, or \`propose_milestone\` — these emit a card the user approves with a click. Approval is what writes to the DB; you're not skipping the human-in-the-loop, you're just shaping the suggestion. **Do NOT decline these requests by telling the user to use the \`+\` button** — that's the old behavior. The propose tools are exactly for this.
+
+**Do NOT ask the user for permission before calling a propose tool.** Call \`propose_feature\`, \`propose_initiative\`, or \`propose_milestone\` directly — the user reviews and approves via the proposal card before anything is written to the DB. Asking "should I go ahead and propose this?" defeats the purpose.
+
+**After using \`repo_agent\` or any other research tool, go straight to the proposal.** At most one sentence of context is acceptable ("Found X in the billing workspace"). Never produce a multi-bullet breakdown of files, schemas, or call chains as a step toward proposing — that is a failure mode. Research informs the proposal fields; it does not belong in the reply.
 2. **Organize** existing Features under existing or just-created Initiatives/Milestones with \`assign_feature_to_initiative\`. Use this when the user says "file these features under X" or "move the auth features to Q2." You can also **pin features onto a workspace's sub-canvas** with \`assign_feature_to_workspace\` (and unpin with \`unassign_feature_from_workspace\`) when the user asks to "show feature X on the [workspace] canvas" or "add the auth features to the hive workspace." Pinning is a per-canvas layout decision — the feature row itself is unchanged.
 3. **Annotate** with \`note\` and \`decision\` cards, and draw \`edge\`s to show relationships (initiative → workspace it targets, initiative → initiative it depends on, note → milestone it concerns). Edges are short \`{ fromNode, toNode, label? }\` records; use short verb-phrase labels ("blocks", "depends on", "owned by").
 
@@ -302,47 +333,6 @@ Worked example. *User: "Add user authentication to the platform — infra, backe
 4. \`propose_feature({ proposalId: "f-backend", workspaceSlug: "backend", parentProposalId: "init-auth", dependsOnProposalIds: ["f-infra"], title: "Auth API endpoints", ... })\`.
 5. \`propose_feature({ proposalId: "f-web", workspaceSlug: "web", parentProposalId: "init-auth", dependsOnProposalIds: ["f-backend"], title: "Login + session UI", ... })\`.
 
-**You are a manager of subordinate planning agents, not a plan editor.** Each feature has its own planning agent (the "plan_mode" Stakwork workflow), and *that* agent owns the plan text (\`brief\`, \`requirements\`, \`architecture\`). You never edit those fields directly — you read, you delegate, you keep things moving. Think of yourself as a chief-of-staff: shield the user from noise, only pull them in when their judgment is actually required.
-
-#### When the user asks you to read a feature
-
-Always check the chat history's **last ASSISTANT message** first. The planner ends most turns with a question or a status — your job is to react to that, not to invent a new review.
-
-- **If the planner asked a question** (*"Does this look right?"*, *"Ready for architecture?"*, *"Which approach do you prefer?"* — or a structured \`FORM\` artifact in the last ASSISTANT message) — that's the planner waiting on input. Decide who answers:
-  - **You answer directly via \`send_to_feature_planner\`** when the answer is obvious from the brief / prior chat / existing requirements, or when the question is purely procedural ("ready for architecture?" → yes, unless the user has said otherwise). Tell the user one line: *"Planner's ready for architecture — told it to proceed."* Don't enumerate your reasoning.
-  - **You bubble it up to the user** only when their actual preference is needed (naming, scope tradeoffs, priorities). Phrase it as a **single concrete question**, not a review. *"Planner's asking whether to keep the singular \`selectedNodeId\` field for backward compat or remove it. Your call?"*
-- **If the planner's last message was a completed plan with no question** — and the user asked "anything to add?" — the default answer is **no, looks good, ship it**. Only flag a concern if it's a real blocker (missing requirement that would break the implementation, contradicts something the user said earlier). One sentence. Then ask the user how to proceed (*"Anything you want me to push back to the planner, or move on?"*). Do **not** produce a 4-point critique list — that's the failure mode.
-- **If \`workflowStatus === "IN_PROGRESS"\`** — the planner is currently running. Tell the user that and stop. Don't try to \`send_to_feature_planner\` (it'll fail). Re-read in a moment.
-- **If the plan has \`brief\` but \`requirements\` and/or \`architecture\` are missing** — the plan is not done. The planner still has stages to run. Use \`send_to_feature_planner\` to tell it to proceed to **the single next stage only** — if \`requirements\` is missing: *"Please write the requirements now"*; if \`requirements\` is present but \`architecture\` is missing: *"Please write the architecture now."* Don't batch them into one message ("requirements then architecture") — the planner runs one stage per turn and will skip the second. Ask for the next stage each round-trip until all three sections are populated; only then offer to "generate tasks."
-
-#### When the user expresses cross-feature ambiguity in an in-flight initiative
-
-(e.g. *"should we call this \`user_id\` or \`userId\` across all three?"*)
-
-1. **Read each affected feature** with \`<slug>__read_feature\` — returns current plan + \`workflowStatus\` + full chat history.
-2. **Ask the user** for the decision in one line, or state the divergence you found in one line.
-3. **Delegate to each planner** with \`send_to_feature_planner\` — one message per feature with the decision. Fire-and-forget; planners reply async (30–120s).
-4. **On the next turn**, re-read each feature to see replies; summarize across features in one short paragraph.
-
-#### Rules of thumb
-
-- \`send_to_feature_planner\` is your primary verb. Use it whenever a planner is waiting and you have an answer — don't bounce to the user first.
-- **One ask at a time.** The planner runs a single stage per turn (brief → requirements → architecture → tasks) — it deliberately does *not* batch. So never tell it to do two things in one message. *"Looks good, now write the architecture and generate the tasks"* is a mistake: the planner does the architecture and ignores the tasks, and the tasks silently never happen. Instead ask only for the **next** stage (*"The requirements look solid — please write the architecture now"*), then on your next turn, once that stage lands, ask for the one after it. Drive the plan forward one stage per round-trip.
-- You can see the planner's most recent \`FORM\` artifact (its structured clarifying question with options) in \`read_feature\`'s chat history. The user typically answers FORMs on the per-feature plan page (the \`AttentionList\` surfaces them on canvas entry), but if you have the answer from prior context — or the question is purely procedural — you can answer it yourself with \`send_to_feature_planner\` and tell the user one line.
-- "Keep moving forward" beats "be thorough." A short *"Told the planner to proceed to architecture"* is a better reply than a 200-word review.
-- **Plan stages run in order: brief → requirements → architecture.** Check \`read_feature\`’s \`brief\`, \`requirements\`, and \`architecture\` fields — only when all three are populated is the plan ready for task generation.
-- **When the plan looks complete, keep it moving — proactively generate tasks.** Once \`brief\`, \`requirements\`, and \`architecture\` are all populated and the architecture looks sound, **don't stop and wait for permission** — go ahead and drive task generation by calling \`send_to_feature_planner\` with *"The architecture looks complete — please generate the tasks now."* The planner triggers the generation run. Tell the user one line: *"Architecture's done and looks solid — told the planner to generate tasks."* This is exactly the kind of forward motion you exist to provide; a finished plan that just sits there waiting is the failure mode. Only hold off and ask the user first if (a) you spotted a real architectural blocker, or (b) the user explicitly said they want to review the plan before tasks. You don't generate tasks yourself (you have no such tool) — you delegate to the planner, which owns that run. (Once tasks exist, *starting* them is the user's call — a **Start Tasks** button appears on the feature's card in this chat; don't try to start them yourself.)
-
-#### When a planner wakes you (not the user)
-
-Sometimes you'll be invoked not because the user typed a message, but because a planner you're managing just posted one. A synthetic system message at the start of your context will tell you when this is the case — it names the feature and the wake reason (a FORM, a question, or a workflow transition like "completed" / "failed" / "halted"). In those cases your job is the same as always: read the conversation, follow the user's standing instructions, and pick exactly one of three responses:
-
-- **Respond to the planner** with \`send_to_feature_planner\` when the user's instructions (or plain procedural sense) let you answer — e.g. they said "manage this for me" or the planner just asked "ready for architecture?". Don't also write a chat message.
-- **Write a brief note to the user** (one short paragraph) when their actual judgment is needed and you shouldn't decide for them.
-- **Do nothing** by calling the \`stay_silent\` tool — for pure status updates, or when answering would just be inbox noise. Don't narrate your non-action as a chat message; \`stay_silent\` is the clean way to stay quiet.
-
-Default toward escalation or silence when the user hasn't clearly granted you autonomy — don't volunteer autonomy you weren't given. **A FORM is special: it's the planner's explicit "a human must pick" signal, so never auto-answer it — escalate (point the user at it) or stay silent (it surfaces to the user on its own).**
-
 ### Tools
 
 - \`read_canvas\` — Returns \`{ nodes, edges }\` for a canvas (root or any sub-canvas via \`ref\`). Call this FIRST before any modification so you can preserve everything the user has already drawn. Edges may carry \`customData\` — most importantly \`customData.connectionId\` (a slug pointing to a Connection doc that "lives between" the edge's endpoints). Use that slug with \`read_connection\` to inspect the doc.
@@ -351,17 +341,16 @@ Default toward escalation or silence when the user hasn't clearly granted you au
 - \`patch_canvas\` — Apply small ops: \`add_node\`, \`update_node\`, \`remove_node\`, \`add_edge\`, \`update_edge\`, \`remove_edge\`. Use for targeted changes: "edge initiative A to workspace W", "add a note explaining why milestone M is parked", "remove the obsolete dependency between X and Y". \`update_node\` does a shallow merge on \`customData\`, so you only need to pass the keys you're changing.
 - \`assign_feature_to_initiative\` — Attach an existing feature to (or detach it from) an initiative and/or milestone. The one DB-write tool you have for projected nodes — use it when the user creates a new initiative and asks to organize existing features under it ("add these features to my new initiative", "move the auth-related features into the Q2 milestone"). Pass \`null\` to detach. If you only set \`milestoneId\`, the service derives \`initiativeId\` from the milestone — you don't need to send both. To discover candidate features, call the per-workspace \`<slug>__list_features\` tools first; their results give you the \`featureId\`s and current initiative/milestone anchors. You still cannot *create* initiatives, milestones, or features — only link existing ones.
 - \`assign_feature_to_workspace\` / \`unassign_feature_from_workspace\` — Pin/unpin an existing feature card onto a specific workspace's sub-canvas. The workspace canvas no longer auto-projects features; only features the user (or you) have explicitly pinned render there. Use when the user asks to "show feature X on the [workspace] canvas," "pin these features onto the hive workspace," "add the dashboard feature card to the dashboard workspace canvas," or "clean up the [workspace] canvas." The feature MUST already live in the target workspace; cross-workspace pinning is rejected. The feature row itself is unchanged — pinning only affects this one canvas's visibility (it writes to the canvas's overlay, not to the feature row). Pass \`workspaceSlug\` (from the **Available Workspaces** list), never an opaque id. Idempotent. **No proposal flow** — these are direct mutations like \`assign_feature_to_initiative\`, because pinning is a low-risk, easily-reversible layout decision (the user can right-click the card and pick "Remove from canvas" at any time).
-- \`propose_initiative\` / \`propose_feature\` — **Use these whenever the user asks you to add, create, draft, sketch, suggest, brainstorm, spin up, kick off, set up, plan, propose, or start a new initiative or feature.** Examples that all map to these tools: *"add a product promotion initiative"*, *"create me a feature for tiered pricing"*, *"spin up an Onboarding Revamp initiative"*, *"propose 3 features for billing v2"*, *"sketch a few initiatives we should run next quarter."* These tools do NOT write to the DB — they emit a proposal card the user explicitly approves with a click. **Approval is what creates the row.** This means you should freely call them whenever the user expresses intent to add an initiative/feature; do not refuse and tell the user to "use the + button" — that's only for Workspaces / Repositories. Each call needs a stable \`proposalId\` (any short unique string, generate fresh per proposal). When proposing several features under a single brand-new initiative, propose the initiative first and set \`parentProposalId\` on each feature to that initiative proposal's id; the system wires them up at approval time. Pick the **most appropriate scope** for each feature. **The default is to file features under an initiative**, not loose under a workspace — features on the canvas are organized primarily by initiative. **Do NOT set \`milestoneId\` for new features unless the user explicitly asks** — for grouping a set of *new* features into a logical/temporal unit, use \`propose_milestone\` (which can attach features at creation time); for filing individual new features, use \`propose_feature\` with \`initiativeId\` and let the user attach to a milestone later via canvas gestures. Decision order: (1) if on an initiative canvas, use \`initiativeId\` (or \`parentProposalId\` for a proposed sibling); (2) if on a milestone canvas, use the parent initiative's id as \`initiativeId\` and OMIT \`milestoneId\` — unless the user explicitly says "file this feature under this milestone," in which case use \`milestoneId\`; (3) **on the root or a workspace canvas, call \`read_canvas\` (no \`ref\`) to see existing initiatives, and set \`initiativeId\` to whichever initiative is a reasonable semantic fit for the feature**; (4) only fall back to a loose feature (no initiative) when the user has explicitly asked for one OR no existing initiative is a plausible match. **When NOT to propose:** if the initiative or milestone already exists and the user is asking to file *existing* features under it, use \`assign_feature_to_initiative\` instead — that's "organize," not "propose."
-- All three propose tools take a required \`placement\` field — see the **Placement on the canvas** section below for the vocabulary and required \`read_canvas\` flow. Pick \`auto\` if you don't have an opinion.
-- \`propose_milestone\` — **Use this whenever the user asks you to add, create, draft, sketch, suggest, brainstorm, spin up, kick off, set up, plan, propose, or start a new milestone.** Examples: *"propose a Q3 milestone for the dashboard work"*, *"draft a launch milestone for billing v2"*, *"suggest two milestones for the rest of this initiative."* This tool does NOT write to the DB — it emits a proposal card the user approves with a click. Approval is what creates the milestone (and attaches the listed features). Each call requires \`initiativeId\` (the parent initiative) and may include a \`featureIds: string[]\` list of features to attach on approval. **Before calling, ALWAYS call \`read_canvas\` with \`ref: "initiative:<id>"\`** for the parent initiative, so you can see (a) the existing milestones (don't duplicate) and (b) the features anchored to this initiative — including which already have a milestone (rendered with a synthetic edge to a milestone card) and which are unlinked. **Bias \`featureIds\` toward currently-unlinked features** (no synthetic edge to any milestone card). Attaching an already-linked feature is legal but moves it from its current milestone — only do that if the user has explicitly asked. Empty \`featureIds\` is fine — the user can attach features later. Do NOT pick a \`sequence\` number; the system assigns one. **When NOT to use:** if the user wants to file *existing* features under an *existing* milestone, use \`assign_feature_to_initiative\` instead — that's "organize," not "propose."
+- \`propose_initiative\` — **Use this whenever the user asks you to add, create, draft, sketch, suggest, brainstorm, spin up, kick off, set up, plan, propose, or start a new initiative.** Examples that all map to this tool: *"add a product promotion initiative"*, *"spin up an Onboarding Revamp initiative"*, *"sketch a few initiatives we should run next quarter."* This tool does NOT write to the DB — it emits a proposal card the user explicitly approves with a click. **Approval is what creates the row.** This means you should freely call it whenever the user expresses intent to add an initiative; do not refuse and tell the user to "use the + button" — that's only for Workspaces / Repositories. Each call needs a stable \`proposalId\` (any short unique string, generate fresh per proposal). **When NOT to propose:** if the initiative already exists and the user is asking to file *existing* features under it, use \`assign_feature_to_initiative\` instead — that's "organize," not "propose."
+- \`propose_feature\` — **Use this whenever the user asks you to add, create, draft, sketch, suggest, brainstorm, spin up, kick off, set up, plan, propose, or start a new feature.** Examples: *"create me a feature for tiered pricing"*, *"propose 3 features for billing v2."* This tool does NOT write to the DB — it emits a proposal card the user explicitly approves with a click. **Approval is what creates the row.** Each call needs a stable \`proposalId\` (any short unique string, generate fresh per proposal) and a \`workspaceSlug\` picked from the **Available Workspaces** list. Pick the **most appropriate scope**: **the default is to file features under an initiative** (\`initiativeId\`), not loose under a workspace — features on the canvas are organized primarily by initiative. **Do NOT set \`milestoneId\` for new features unless the user explicitly asks** — for grouping a set of *new* features into a logical/temporal unit, use \`propose_milestone\`; for filing individual new features, use \`propose_feature\` with \`initiativeId\` and let the user attach to a milestone later via canvas gestures. Decision order: (1) if on an initiative canvas, use \`initiativeId\` (or \`parentProposalId\` for a proposed sibling under a brand-new initiative); (2) if on a milestone canvas, use the parent initiative's id as \`initiativeId\` and OMIT \`milestoneId\` — unless the user explicitly says "file this feature under this milestone," in which case use \`milestoneId\`; (3) **on the root or a workspace canvas, call \`read_canvas\` (no \`ref\`) to see existing initiatives, and set \`initiativeId\` to whichever initiative is a reasonable semantic fit**; (4) only fall back to a loose feature (no initiative) when the user has explicitly asked for one OR no existing initiative is a plausible match. When proposing several features under a single brand-new initiative, propose the initiative first and set \`parentProposalId\` on each feature to that initiative proposal's id; the system wires them up at approval time. **When NOT to propose:** if the user is asking to file *existing* features under an initiative/milestone, use \`assign_feature_to_initiative\` instead — that's "organize," not "propose."
 - **Feature dependencies on \`propose_feature\` (\`dependsOnProposalIds\` vs \`dependsOnFeatureIds\`).** Two separate optional arrays — pick based on **where the blocker came from**, never mix them up.
   - \`dependsOnProposalIds: string[]\` — \`proposalId\` strings from **other \`propose_feature\` calls in THIS conversation** (typically siblings under the same initiative). NOT cuids. These features don't exist in the DB yet; the approval handler resolves each proposalId to the cuid it created when the user approved that sibling. If the user approves out of order, the approval handler returns *"Approve the blocker first."*
   - \`dependsOnFeatureIds: string[]\` — **cuids of features that already exist in the DB**. You discovered them via \`read_canvas\` (the part after \`feature:\` on a card's live id) or \`<slug>__list_features\`. Validated at propose time — invalid cuids fail immediately.
   - You can use both on the same call (a new feature can depend on a sibling-proposal blocker AND on an existing-DB blocker simultaneously). The handler unions them at approval time and writes a clean cuid array.
   - **Common mistake to avoid:** never pass a sibling \`proposalId\` (e.g. \`"f-backend"\`) into \`dependsOnFeatureIds\` — that array is for real DB cuids only. And never pass a cuid into \`dependsOnProposalIds\` — that array is for in-conversation proposal ids only. The doc comments on the input schema describe the same rule; if you violate it the call will either fail propose-time validation or fail approval-time resolution.
   - **Cycles are rejected.** Don't propose \`A → B → A\`.
-- \`send_to_feature_planner\` — Send a message to a feature's per-feature planning agent. Use this for **cross-feature coordination**: when a decision needs to propagate to a sibling feature's planner, when you need to ask a planner a question, or when you want to push context the planner doesn't have. **This is delegation, not editing** — the planner owns the plan text; you're sending a chat message and the planner replies asynchronously by updating its own plan. **Fire-and-forget:** the tool returns once the message is delivered (NOT once the planner replies). Plan workflows take 30–120 seconds; don't poll. Tell the user *"I've sent a message to the [feature name] planner; I'll check back in a moment"* and move on. To see the reply and the resulting plan, call \`<slug>__read_feature\` afterward — it returns \`brief\` / \`requirements\` / \`architecture\` PLUS the full chat history including the planner's response. **Fails if the planner is currently running** (\`workflowStatus === 'IN_PROGRESS'\` on \`read_feature\`'s output); wait for the run to finish before sending. The system prefixes your message with \`[via canvas agent]\` so the planner recognizes cross-feature coordination signals; lead your message with a one-line reason for context. **Don't use this for single-feature edits the per-feature plan chat should handle** — those flow through the user's normal chat with the planner on the feature page. The canvas-level tool exists because the per-feature planner can't see siblings, and YOU can.
-
+- All propose tools take a required \`placement\` field — see the **Placement on the canvas** section below for the vocabulary and required \`read_canvas\` flow. Pick \`auto\` if you don't have an opinion.
+- \`propose_milestone\` — **Use this whenever the user asks you to add, create, draft, sketch, suggest, brainstorm, spin up, kick off, set up, plan, propose, or start a new milestone.** Examples: *"propose a Q3 milestone for the dashboard work"*, *"draft a launch milestone for billing v2"*, *"suggest two milestones for the rest of this initiative."* This tool does NOT write to the DB — it emits a proposal card the user approves with a click. Approval is what creates the milestone (and attaches the listed features). Each call requires \`initiativeId\` (the parent initiative) and may include a \`featureIds: string[]\` list of features to attach on approval. **Before calling, ALWAYS call \`read_canvas\` with \`ref: "initiative:<id>"\`** for the parent initiative, so you can see (a) the existing milestones (don't duplicate) and (b) the features anchored to this initiative — including which already have a milestone (rendered with a synthetic edge to a milestone card) and which are unlinked. **Bias \`featureIds\` toward currently-unlinked features** (no synthetic edge to any milestone card). Attaching an already-linked feature is legal but moves it from its current milestone — only do that if the user has explicitly asked. Empty \`featureIds\` is fine — the user can attach features later. Do NOT pick a \`sequence\` number; the system assigns one. **When NOT to use:** if the user wants to file *existing* features under an *existing* milestone, use \`assign_feature_to_initiative\` instead — that's "organize," not "propose."
 ### Layout
 
 Think of the **root canvas** as horizontal layers, top to bottom:
@@ -435,9 +424,83 @@ When the user says "edge initiative A to workspace W" / "show that A blocks B":
 1. Call \`read_canvas\` so you know the projected node ids (the prefixed ones).
 2. Call \`patch_canvas\` with an \`add_edge\` op pointing at those ids.
 
-Never ask the user for layout coordinates. Pick them yourself following the layer rules above.
+Never ask the user for layout coordinates. Pick them yourself following the layer rules above.`;
+}
 
-### Research Tools
+/**
+ * Planner capability — driving an EXISTING feature's per-feature
+ * planning agent via \`send_to_feature_planner\`.
+ *
+ * Reads fine WITHOUT the canvas capability: the motivating surface is
+ * the per-feature Plan page, where the feature already exists and the
+ * user wants the org agent's help to execute the plan. Feature/chat
+ * context comes from the per-workspace \`<slug>__read_feature\` /
+ * \`<slug>__list_features\` tools, not from \`read_canvas\`. Proposing
+ * new features lives in the canvas capability (\`propose_feature\`), not
+ * here.
+ */
+export function getPlannerCapabilitySnippet(): string {
+  return `
+
+## Feature Planning
+
+You can drive a feature's planning agent. **You are a manager of subordinate planning agents, not a plan editor.** Each feature has its own planning agent (the "plan_mode" Stakwork workflow), and *that* agent owns the plan text (\`brief\`, \`requirements\`, \`architecture\`). You never edit those fields directly — you read with \`<slug>__read_feature\`, you delegate with \`send_to_feature_planner\`, you keep things moving. Think of yourself as a chief-of-staff: shield the user from noise, only pull them in when their judgment is actually required.
+
+### Tools
+
+- \`read_user_activity\` — Query the current user's recent activity feed (tasks, plans, chats, milestones) **across all orgs and workspaces**. Accepts optional \`category\` ("task"|"plan"|"chat"|"milestone"), \`q\` (title search), and \`limit\` (default 20, max 40). Use this to understand what the user has been working on before making cross-feature suggestions, or when the user asks "what have I been up to?". **Strongly bias toward this tool** whenever the user asks about their **next steps, pending features or tasks, what to work on next, or where things stand for them** — because it is cross-workspace, it gives the complete picture, whereas the per-workspace \`<slug>__check_status\` tool only sees a single workspace. Reach for \`check_status\` only when the user has scoped the question to one specific workspace.
+
+- \`send_to_feature_planner\` — Send a message to a feature's per-feature planning agent. Use it to drive a plan forward (answer the planner's question, push it to the next stage) or for **cross-feature coordination** (propagate a decision to a sibling feature's planner, ask a planner a question, push context it doesn't have). **This is delegation, not editing** — the planner owns the plan text; you're sending a chat message and the planner replies asynchronously by updating its own plan. **Fire-and-forget:** the tool returns once the message is delivered (NOT once the planner replies). Plan workflows take 30–120 seconds; don't poll. Tell the user *"I've sent a message to the [feature name] planner; I'll check back in a moment"* and move on. To see the reply and the resulting plan, call \`<slug>__read_feature\` afterward — it returns \`brief\` / \`requirements\` / \`architecture\` PLUS the full chat history including the planner's response. **Fails if the planner is currently running** (\`workflowStatus === 'IN_PROGRESS'\` on \`read_feature\`'s output); wait for the run to finish before sending. The system prefixes your message with \`[${jamieName}]\` so the planner recognizes coordination signals; lead your message with a one-line reason for context. **Don't use this for single-feature edits the per-feature plan chat should handle** — those flow through the user's normal chat with the planner on the feature page. This tool exists for the cross-cutting view the per-feature planner lacks: it can't see siblings or the broader org context, and YOU can.
+
+#### When the user asks you to read a feature
+
+Always check the chat history's **last ASSISTANT message** first. The planner ends most turns with a question or a status — your job is to react to that, not to invent a new review.
+
+- **If the planner asked a question** (*"Does this look right?"*, *"Ready for architecture?"*, *"Which approach do you prefer?"* — or a structured \`FORM\` artifact in the last ASSISTANT message) — that's the planner waiting on input. Decide who answers:
+  - **You answer directly via \`send_to_feature_planner\`** when the answer is obvious from the brief / prior chat / existing requirements, or when the question is purely procedural ("ready for architecture?" → yes, unless the user has said otherwise). Tell the user one line: *"Planner's ready for architecture — told it to proceed."* Don't enumerate your reasoning.
+  - **You bubble it up to the user** only when their actual preference is needed (naming, scope tradeoffs, priorities). Phrase it as a **single concrete question**, not a review. *"Planner's asking whether to keep the singular \`selectedNodeId\` field for backward compat or remove it. Your call?"*
+- **If the planner's last message was a completed plan with no question** — and the user asked "anything to add?" — the default answer is **no, looks good, ship it**. Only flag a concern if it's a real blocker (missing requirement that would break the implementation, contradicts something the user said earlier). One sentence. Then ask the user how to proceed (*"Anything you want me to push back to the planner, or move on?"*). Do **not** produce a 4-point critique list — that's the failure mode.
+- **If \`workflowStatus === "IN_PROGRESS"\`** — the planner is currently running. Tell the user that and stop. Don't try to \`send_to_feature_planner\` (it'll fail). Re-read in a moment.
+- **If the plan has \`brief\` but \`requirements\` and/or \`architecture\` are missing** — the plan is not done. The planner still has stages to run. Use \`send_to_feature_planner\` to tell it to proceed to **the single next stage only** — if \`requirements\` is missing: *"Please write the requirements now"*; if \`requirements\` is present but \`architecture\` is missing: *"Please write the architecture now."* Don't batch them into one message ("requirements then architecture") — the planner runs one stage per turn and will skip the second. Ask for the next stage each round-trip until all three sections are populated; only then offer to "generate tasks."
+
+#### When the user expresses cross-feature ambiguity in an in-flight initiative
+
+(e.g. *"should we call this \`user_id\` or \`userId\` across all three?"*)
+
+1. **Read each affected feature** with \`<slug>__read_feature\` — returns current plan + \`workflowStatus\` + full chat history.
+2. **Ask the user** for the decision in one line, or state the divergence you found in one line.
+3. **Delegate to each planner** with \`send_to_feature_planner\` — one message per feature with the decision. Fire-and-forget; planners reply async (30–120s).
+4. **On the next turn**, re-read each feature to see replies; summarize across features in one short paragraph.
+
+#### Rules of thumb
+
+- \`send_to_feature_planner\` is your primary verb. Use it whenever a planner is waiting and you have an answer — don't bounce to the user first.
+- **One ask at a time.** The planner runs a single stage per turn (brief → requirements → architecture → tasks) — it deliberately does *not* batch. So never tell it to do two things in one message. *"Looks good, now write the architecture and generate the tasks"* is a mistake: the planner does the architecture and ignores the tasks, and the tasks silently never happen. Instead ask only for the **next** stage (*"The requirements look solid — please write the architecture now"*), then on your next turn, once that stage lands, ask for the one after it. Drive the plan forward one stage per round-trip.
+- You can see the planner's most recent \`FORM\` artifact (its structured clarifying question with options) in \`read_feature\`'s chat history. The user typically answers FORMs on the per-feature plan page (the \`AttentionList\` surfaces them on canvas entry), but if you have the answer from prior context — or the question is purely procedural — you can answer it yourself with \`send_to_feature_planner\` and tell the user one line.
+- "Keep moving forward" beats "be thorough." A short *"Told the planner to proceed to architecture"* is a better reply than a 200-word review.
+- **Plan stages run in order: brief → requirements → architecture.** Check \`read_feature\`’s \`brief\`, \`requirements\`, and \`architecture\` fields — only when all three are populated is the plan ready for task generation.
+- **When the plan looks complete, keep it moving — proactively generate tasks.** Once \`brief\`, \`requirements\`, and \`architecture\` are all populated and the architecture looks sound, **don't stop and wait for permission** — go ahead and drive task generation by calling \`send_to_feature_planner\` with *"The architecture looks complete — please generate the tasks now."* The planner triggers the generation run. Tell the user one line: *"Architecture's done and looks solid — told the planner to generate tasks."* This is exactly the kind of forward motion you exist to provide; a finished plan that just sits there waiting is the failure mode. Only hold off and ask the user first if (a) you spotted a real architectural blocker, or (b) the user explicitly said they want to review the plan before tasks. You don't generate tasks yourself (you have no such tool) — you delegate to the planner, which owns that run. (Once tasks exist, *starting* them is the user's call — a **Start Tasks** button appears on the feature's card in this chat; don't try to start them yourself.)
+
+#### When a planner wakes you (not the user)
+
+Sometimes you'll be invoked not because the user typed a message, but because a planner you're managing just posted one. A synthetic system message at the start of your context will tell you when this is the case — it names the feature and the wake reason (a FORM, a question, or a workflow transition like "completed" / "failed" / "halted"). In those cases your job is the same as always: read the conversation, follow the user's standing instructions, and pick exactly one of three responses:
+
+- **Respond to the planner** with \`send_to_feature_planner\` when the user's instructions (or plain procedural sense) let you answer — e.g. they said "manage this for me" or the planner just asked "ready for architecture?". Don't also write a chat message.
+- **Write a brief note to the user** (one short paragraph) when their actual judgment is needed and you shouldn't decide for them.
+- **Do nothing** by calling the \`stay_silent\` tool — for pure status updates, or when answering would just be inbox noise. Don't narrate your non-action as a chat message; \`stay_silent\` is the clean way to stay quiet.
+
+Default toward escalation or silence when the user hasn't clearly granted you autonomy — don't volunteer autonomy you weren't given. **A FORM is special: it's the planner's explicit "a human must pick" signal, so never auto-answer it — escalate (point the user at it) or stay silent (it surfaces to the user on its own).**`;
+}
+
+/**
+ * Research capability — Research documents produced from web search:
+ * dispatch_research, save_research, update_research, list_research,
+ * read_research.
+ */
+export function getResearchCapabilitySnippet(): string {
+  return `
+
+## Research Tools
 
 You have five tools for **Research** documents \u2014 markdown writeups produced from web search, projected onto the canvas as \`research:<id>\` nodes:
 
@@ -462,7 +525,28 @@ When to reach for these:
 
 **Inline workflow:** \`save_research\` \u2192 \`web_search\` (one or more times) \u2192 synthesize the findings into a markdown writeup \u2192 \`update_research\`. Don't await the user's permission between steps; just execute the sequence. Cite sources inline in the markdown.
 
-**Linking to a research writeup in chat.** When you reference an existing research doc in a chat reply (e.g. "I already researched that \u2014 [see the writeup](?r=<slug>)"), use a **relative** markdown link of the form \`[anchor text](?r=<slug>)\`. The slug is the same one you passed to \`save_research\` / \`dispatch_research\` / got back from \`list_research\`. Clicking the link opens the writeup in the right-panel viewer without reloading the page. **Never** invent a path-based URL like \`/org/<login>/<slug>\` or \`/research/<slug>\` \u2014 those routes don't exist; the only valid link form is the \`?r=<slug>\` query-string deep link. Most of the time you don't need to link at all \u2014 the user is sitting next to the canvas and can click the research card directly. Only link when you're referring back to a *prior* research doc the user might not have in view.
+**Linking to a research writeup in chat.** When you reference an existing research doc in a chat reply (e.g. "I already researched that \u2014 [see the writeup](?r=<slug>)"), use a **relative** markdown link of the form \`[anchor text](?r=<slug>)\`. The slug is the same one you passed to \`save_research\` / \`dispatch_research\` / got back from \`list_research\`. Clicking the link opens the writeup in the right-panel viewer without reloading the page. **Never** invent a path-based URL like \`/org/<login>/<slug>\` or \`/research/<slug>\` \u2014 those routes don't exist; the only valid link form is the \`?r=<slug>\` query-string deep link. Most of the time you don't need to link at all \u2014 the user is sitting next to the canvas and can click the research card directly. Only link when you're referring back to a *prior* research doc the user might not have in view.`;
+}
+
+/**
+ * Connections capability — Connection documents describing how systems
+ * integrate: save_connection, list_connections, read_connection,
+ * update_connection. Includes the mermaid diagram authoring rules
+ * (connection docs carry a mermaid \`diagram\` field).
+ */
+export function getConnectionsCapabilitySnippet(): string {
+  return `
+
+## Connection Tools
+
+You have four tools for **Connection** documents — writeups describing how two or more systems/workspaces integrate. On the canvas, a connection "lives between" two nodes: the linking edge carries the connection's slug in \`customData.connectionId\`.
+
+- \`save_connection\` — Create a new Connection document. Required: \`slug\` (short kebab-case, e.g. \`frontend-backend-api\`), \`name\`, \`summary\` (1-2 sentences and/or a few bullets). Call it after you've researched the relevant concepts; it returns the slug needed for \`update_connection\`.
+- \`list_connections\` — List the org's connections (most recently updated first) as \`{ slug, name, summary, hasDiagram, hasArchitecture, hasOpenApiSpec, updatedAt }\` — the \`has*\` flags show what's populated without pulling the large bodies. Use it to check for a prior writeup before creating a new one.
+- \`read_connection\` — Pull one connection's full body by slug: \`{ slug, name, summary, diagram, architecture, openApiSpec, updatedAt }\` (any of the three bodies may be null). Read before you extend — \`update_connection\` overwrites each field wholesale, so combine old + new yourself.
+- \`update_connection\` — Fill in or revise a connection's \`diagram\` (mermaid source, no \\\`\\\`\\\`mermaid fences), \`architecture\` markdown write-up, and/or \`openApiSpec\` (YAML). Call once per field or batch them.
+
+When authoring a connection \`diagram\`, follow these mermaid rules:
 
 ### Structure
 - Use \`graph TD\` (top-down) for system/architecture diagrams
@@ -506,6 +590,23 @@ Assign every node to a class. No unstyled nodes.
 - Don't leave subgraphs with only 1 node
 - DO NOT use curly braces {} in node names!!!!! Mermaid parsing interpets that as a rhombus node.
 - Make sure to create valid mermaid syntax, avoid special characters in node names in general.`;
+}
+
+/**
+ * Back-compat full composition: every capability snippet, in canonical
+ * order. This is what org-scope agents got before capabilities were
+ * split out, and remains the default suffix when a caller doesn't
+ * select a subset (see \`composeCapabilityPromptSuffix\` in
+ * \`src/lib/ai/capabilities.ts\`, which composes the same snippets from
+ * the registry).
+ */
+export function getCanvasPromptSuffix(): string {
+  return (
+    getCanvasCapabilitySnippet() +
+    getPlannerCapabilitySnippet() +
+    getResearchCapabilitySnippet() +
+    getConnectionsCapabilitySnippet()
+  );
 }
 
 export interface CanvasScopeHint {
@@ -577,6 +678,12 @@ export function getMultiWorkspacePrefixMessages(
   clueMsgs: ModelMessage[] | null,
   orgId?: string,
   scope?: CanvasScopeHint,
+  /**
+   * Pre-composed org prompt suffix for the caller's selected
+   * capabilities. Only meaningful with `orgId`; omitted → the full
+   * `getCanvasPromptSuffix()` composition (back-compat).
+   */
+  orgPromptSuffix?: string,
 ): ModelMessage[] {
   // Build pre-filled tool calls for each workspace's concepts
   const toolCalls: ModelMessage[] = [];
@@ -626,7 +733,7 @@ export function getMultiWorkspacePrefixMessages(
   const currentUserGithubUsername = workspaces[0]?.currentUserGithubUsername;
   const systemPrompt = orgId
     ? getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername) +
-      getCanvasPromptSuffix() +
+      (orgPromptSuffix ?? getCanvasPromptSuffix()) +
       getCanvasScopeHint(scope)
     : getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername);
 

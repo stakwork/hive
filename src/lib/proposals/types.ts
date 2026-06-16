@@ -148,6 +148,14 @@ export interface FeatureProposalPayload {
    * `dependsOnFeatureIds`.
    */
   dependsOnProposalIds?: string[];
+
+  /**
+   * Per-feature auto-respond override. null = inherit global
+   * (`User.canvasAutonomousTurns`). Set at proposal time from the
+   * user's current global preference; the ProposalCard toggle lets
+   * the user override it before approving.
+   */
+  autoRespond?: boolean | null;
 }
 
 /**
@@ -320,6 +328,28 @@ export interface ApprovalIntent {
     | Partial<MilestoneProposalPayload>;
   currentRef?: string;
   viewport?: { x: number; y: number };
+  /**
+   * Canvas-space bounds of the user's current viewport at the moment
+   * they clicked Approve. Computed from the live canvas viewport state
+   * (`canvasViewport` in `canvasChatStore`) by `ProposalCard`.
+   *
+   * Coordinates are in canvas space:
+   *   canvasX/canvasY = top-left corner of visible area  (-vpX / zoom)
+   *   canvasW/canvasH = visible width/height              (containerW / zoom)
+   *
+   * Used by `handleApproval` to call `findFreeSlotInViewport` and place
+   * newly approved nodes within the user's visible area instead of at
+   * the hardcoded `{ x: 40, y: 40 }` fallback.
+   *
+   * Absent when `canvasViewport` is null (canvas not mounted) — callers
+   * must fall back gracefully to the legacy `viewport` field.
+   */
+  viewportState?: {
+    canvasX: number;
+    canvasY: number;
+    canvasW: number;
+    canvasH: number;
+  };
 }
 
 /** Set on a user message when the user clicks Reject. */

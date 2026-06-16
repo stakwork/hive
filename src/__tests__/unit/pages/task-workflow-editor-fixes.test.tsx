@@ -1376,3 +1376,136 @@ describe('WorkflowArtifactPanel — multi-workflow selector', () => {
     });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// workflow_editor context restore — DB fallback
+// ─────────────────────────────────────────────────────────────────────────────
+describe('workflow_editor context restore — DB fallback', () => {
+  type WorkflowContext = {
+    workflowId: string | number;
+    workflowName: string;
+    workflowRefId: string;
+    workflowVersionId?: string;
+  };
+
+  type WorkflowTaskRecord = {
+    workflowId: string | number | null;
+    workflowName: string | null;
+    workflowRefId: string | null;
+    workflowTaskType: string;
+  };
+
+  /**
+   * Simulates the DB fallback branch added to loadTaskMessages:
+   *   else if (result.data.task?.workflowTask) { ... }
+   */
+  function simulateLoadTaskMessagesDbFallback(opts: {
+    taskMode: string;
+    workflowTask: WorkflowTaskRecord | null;
+    artifactWorkflowContexts: WorkflowContext[];
+    setCurrentWorkflowContext: ReturnType<typeof vi.fn>;
+  }) {
+    const { taskMode, workflowTask, artifactWorkflowContexts, setCurrentWorkflowContext } = opts;
+
+    if (taskMode !== 'workflow_editor') return;
+
+    // Existing artifact-scan path
+    if (artifactWorkflowContexts.length > 0) {
+      setCurrentWorkflowContext(artifactWorkflowContexts[artifactWorkflowContexts.length - 1]);
+      return;
+    }
+
+    // DB fallback (the new branch)
+    if (workflowTask) {
+      setCurrentWorkflowContext({
+        workflowId: workflowTask.workflowId ?? 'new',
+        workflowName: workflowTask.workflowName ?? 'New Workflow',
+        workflowRefId: workflowTask.workflowRefId ?? '',
+      });
+    }
+  }
+
+  it('SCRIPT task with null workflowId seeds context with workflowId: "new" and default name/refId', () => {
+    const setCurrentWorkflowContext = vi.fn();
+
+    simulateLoadTaskMessagesDbFallback({
+      taskMode: 'workflow_editor',
+      workflowTask: {
+        workflowId: null,
+        workflowName: null,
+        workflowRefId: null,
+        workflowTaskType: 'SCRIPT',
+      },
+      artifactWorkflowContexts: [],
+      setCurrentWorkflowContext,
+    });
+
+    expect(setCurrentWorkflowContext).toHaveBeenCalledOnce();
+    expect(setCurrentWorkflowContext).toHaveBeenCalledWith({
+      workflowId: 'new',
+      workflowName: 'New Workflow',
+      workflowRefId: '',
+    });
+  });
+
+  it('SCRIPT task with a real workflowId seeds context with those exact values', () => {
+    const setCurrentWorkflowContext = vi.fn();
+
+    simulateLoadTaskMessagesDbFallback({
+      taskMode: 'workflow_editor',
+      workflowTask: {
+        workflowId: 42,
+        workflowName: 'My Script',
+        workflowRefId: 'ref-xyz',
+        workflowTaskType: 'SCRIPT',
+      },
+      artifactWorkflowContexts: [],
+      setCurrentWorkflowContext,
+    });
+
+    expect(setCurrentWorkflowContext).toHaveBeenCalledOnce();
+    expect(setCurrentWorkflowContext).toHaveBeenCalledWith({
+      workflowId: 42,
+      workflowName: 'My Script',
+      workflowRefId: 'ref-xyz',
+    });
+  });
+
+  it('workflow_editor task with no workflowTask record and no artifacts leaves context null', () => {
+    const setCurrentWorkflowContext = vi.fn();
+
+    simulateLoadTaskMessagesDbFallback({
+      taskMode: 'workflow_editor',
+      workflowTask: null,
+      artifactWorkflowContexts: [],
+      setCurrentWorkflowContext,
+    });
+
+    // Neither the artifact path nor the DB fallback fires — context stays null
+    expect(setCurrentWorkflowContext).not.toHaveBeenCalled();
+  });
+
+  it('artifact-scan path still wins when WORKFLOW artifacts are present (no regression)', () => {
+    const setCurrentWorkflowContext = vi.fn();
+    const artifactContext: WorkflowContext = {
+      workflowId: 99,
+      workflowName: 'Artifact Workflow',
+      workflowRefId: 'ref-artifact',
+    };
+
+    simulateLoadTaskMessagesDbFallback({
+      taskMode: 'workflow_editor',
+      workflowTask: {
+        workflowId: 42,
+        workflowName: 'DB Workflow',
+        workflowRefId: 'ref-db',
+        workflowTaskType: 'WORKFLOW',
+      },
+      artifactWorkflowContexts: [artifactContext],
+      setCurrentWorkflowContext,
+    });
+
+    expect(setCurrentWorkflowContext).toHaveBeenCalledOnce();
+    expect(setCurrentWorkflowContext).toHaveBeenCalledWith(artifactContext);
+  });
+});

@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Workflow, Loader2, ArrowLeft, ExternalLink } from "lucide-react";
+import { Workflow, Loader2, ArrowLeft, ExternalLink, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -19,6 +20,7 @@ import { WorkflowParamsTable } from "@/components/workflow/inspector/WorkflowPar
 import { WorkflowVersionList } from "@/components/workflow/inspector/WorkflowVersionList";
 import { WorkflowVersionDiff } from "@/components/workflow/inspector/WorkflowVersionDiff";
 import { SummariseChangesButton } from "@/components/workflow/inspector/SummariseChangesButton";
+import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { createWorkflowEditorTask } from "@/lib/workflow/create-workflow-editor-task";
 import { PromptsPanel } from "@/components/prompts";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
@@ -55,9 +57,15 @@ export default function WorkflowInspectorPage() {
   const workflowIdNum = workflowIdRaw ? parseInt(workflowIdRaw, 10) : NaN;
 
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [historyVersionId, setHistoryVersionId] = useState<string | null>(null);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [customPickerActive, setCustomPickerActive] = useState(false);
   const [customSelectedIds, setCustomSelectedIds] = useState<string[]>([]);
+  const [selectedStep, setSelectedStep] = useState<WorkflowTransition | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const [runTransitions, setRunTransitions] = useState<Record<string, WorkflowTransition> | null>(null);
+  const [capturedEvalCount, setCapturedEvalCount] = useState(0);
 
   const { versions, isLoading: isLoadingVersions } = useWorkflowVersions(
     slug || null,
@@ -72,9 +80,19 @@ export default function WorkflowInspectorPage() {
     }
   }, [versions, selectedVersionId]);
 
+  // Auto-initialize historyVersionId to the predecessor of the main selected version
+  useEffect(() => {
+    if (selectedVersionId && versions.length > 0) {
+      const idx = versions.findIndex((v) => v.workflow_version_id === selectedVersionId);
+      const prev = versions[idx + 1] ?? null;
+      setHistoryVersionId(prev?.workflow_version_id ?? null);
+    }
+  }, [selectedVersionId, versions]);
+
   // Reset selection and custom picker when workflowId changes
   useEffect(() => {
     setSelectedVersionId(null);
+    setHistoryVersionId(null);
     setCustomPickerActive(false);
     setCustomSelectedIds([]);
   }, [workflowIdNum]);
@@ -102,11 +120,10 @@ export default function WorkflowInspectorPage() {
   }, [parsedWorkflowData]);
   const hasChildWorkflows = childWorkflows.length > 0;
 
-  const previousVersion = useMemo(() => {
-    if (!selectedVersion) return null;
-    const idx = versions.indexOf(selectedVersion);
-    return versions[idx + 1] ?? null;
-  }, [versions, selectedVersion]);
+  const historyVersion = useMemo(
+    () => versions.find((v) => v.workflow_version_id === historyVersionId) ?? null,
+    [versions, historyVersionId],
+  );
 
   const handleOpenInEditor = async () => {
     if (!selectedVersion || !slug) return;
@@ -120,6 +137,31 @@ export default function WorkflowInspectorPage() {
       setIsCreatingTask(false);
     }
   };
+
+  // Fetch run transitions when a run is selected
+  useEffect(() => {
+    if (!selectedRunId) {
+      setRunTransitions(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/stakwork/workflow/${selectedRunId}`)
+      .then((r) => r.json())
+      .then((result) => {
+        if (!cancelled) {
+          setRunTransitions(
+            (result?.workflowData as Record<string, unknown>)?.transitions as Record<string, WorkflowTransition> ?? null
+          );
+        }
+      })
+      .catch(() => { if (!cancelled) setRunTransitions(null); });
+    return () => { cancelled = true; };
+  }, [selectedRunId]);
+
+  const handleStepClick = useCallback((step: WorkflowTransition) => {
+    setSelectedStep(step);
+    setIsModalOpen(true);
+  }, []);
 
   const handlePlanFromWorkflow = () => {
     if (!slug) return;
@@ -166,6 +208,16 @@ export default function WorkflowInspectorPage() {
                 Workflows
               </Link>
             </Button>
+            <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+              <a
+                href={`https://jobs.stakwork.com/admin/workflows/${workflowIdNum}/edit`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink className="w-4 h-4 mr-1" />
+                View in Stakwork
+              </a>
+            </Button>
             <Button onClick={handlePlanFromWorkflow} variant="outline" size="sm">
               Plan from this Workflow
             </Button>
@@ -194,23 +246,44 @@ export default function WorkflowInspectorPage() {
               isLoading={isLoadingVersions}
               workflowName={workflowName}
             />
+            {selectedRunId && (
+              <div className="flex items-center gap-2 mt-2">
+                <Badge variant="secondary">Run #{selectedRunId}</Badge>
+                <button
+                  onClick={() => { setSelectedRunId(null); setRunTransitions(null); }}
+                  className="p-0.5 hover:bg-muted rounded"
+                  aria-label="Exit run view"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
           <div className="flex-1 overflow-hidden">
             {parsedWorkflowData ? (
+              <>
               <WorkflowComponent
                 props={{
                   workflowData: parsedWorkflowData,
                   show_only: true,
                   mode: "workflow",
-                  projectId: "",
+                  projectId: selectedRunId ? String(selectedRunId) : "",
                   isAdmin: false,
                   workflowId: String(workflowIdNum),
                   workflowVersion: selectedVersionId ? String(selectedVersionId) : "",
                   defaultZoomLevel: 0.65,
                   useAssistantDimensions: false,
                   rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
+                  onStepClick: handleStepClick,
                 }}
               />
+              <StepDetailsModal
+                step={selectedStep}
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                runTransitions={runTransitions ?? undefined}
+              />
+              </>
             ) : isLoadingVersions ? (
               <div className="flex items-center justify-center h-full text-muted-foreground text-sm gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -242,7 +315,21 @@ export default function WorkflowInspectorPage() {
                 {slug && (
                   <>
                     <WorkflowStatsPanel slug={slug} workflowId={workflowIdNum} />
-                    <WorkflowRunsTable slug={slug} workflowId={workflowIdNum} />
+                    <div className="flex items-center gap-2 px-4 pt-2">
+                      <span className="text-sm font-medium">Runs</span>
+                      {capturedEvalCount > 0 && (
+                        <Badge variant="secondary">
+                          {capturedEvalCount} eval{capturedEvalCount !== 1 ? "s" : ""} captured
+                        </Badge>
+                      )}
+                    </div>
+                    <WorkflowRunsTable
+                      slug={slug}
+                      workflowId={workflowIdNum}
+                      onRunSelect={(id) => setSelectedRunId(id)}
+                      selectedRunId={selectedRunId ?? undefined}
+                      onEvalCaptured={() => setCapturedEvalCount((c) => c + 1)}
+                    />
                   </>
                 )}
               </TabsContent>
@@ -260,6 +347,7 @@ export default function WorkflowInspectorPage() {
                     workspaceSlug={slug}
                     workflowId={workflowIdNum}
                     customSelectedIds={customSelectedIds}
+                    isCustomMode={customPickerActive}
                     onCustomModeToggle={(enabled) => {
                       setCustomPickerActive(enabled);
                       if (!enabled) setCustomSelectedIds([]);
@@ -271,8 +359,8 @@ export default function WorkflowInspectorPage() {
                 )}
                 <WorkflowVersionList
                   versions={versions}
-                  selectedVersionId={selectedVersionId}
-                  onVersionSelect={setSelectedVersionId}
+                  selectedVersionId={historyVersionId}
+                  onVersionSelect={setHistoryVersionId}
                   selectable={customPickerActive}
                   selectedIds={customSelectedIds}
                   onSelectionChange={setCustomSelectedIds}
@@ -280,7 +368,7 @@ export default function WorkflowInspectorPage() {
                 {selectedVersion && !customPickerActive && (
                   <WorkflowVersionDiff
                     currentJson={selectedVersion.workflow_json}
-                    previousJson={previousVersion?.workflow_json ?? null}
+                    previousJson={historyVersion?.workflow_json ?? null}
                   />
                 )}
               </TabsContent>

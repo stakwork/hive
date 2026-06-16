@@ -89,8 +89,10 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
       repositoryUrl: "https://github.com/testorg/testrepo",
     });
 
+    let prCounter = 0;
     // Helper: create a task → message → PR artifact
     async function seedPRArtifact(status: string, ageHours: number) {
+      prCounter++;
       const task = await createTestTask({
         workspaceId: workspace.id,
         createdById: regularUser.id,
@@ -104,7 +106,7 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
           messageId: message.id,
           type: "PULL_REQUEST",
           content: {
-            url: `https://github.com/testorg/testrepo/pull/${Math.floor(Math.random() * 9999)}`,
+            url: `https://github.com/testorg/testrepo/pull/${workspace.id}-${prCounter}`,
             repo: "testorg/testrepo",
             status,
             title: `Test PR (${status})`,
@@ -144,7 +146,9 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
       repositoryUrl: "https://github.com/testorg/bucketrepo",
     });
 
+    let prCounter = 0;
     async function seedDoneArtifact(ageHours: number) {
+      prCounter++;
       const task = await createTestTask({ workspaceId: workspace.id, createdById: regularUser.id });
       const message = await createTestChatMessage({ taskId: task.id, message: "test" });
       const createdAt = new Date(Date.now() - ageHours * 60 * 60 * 1000);
@@ -153,7 +157,7 @@ describe("GET /api/admin/workspaces/[id]/pr-stats (integration)", () => {
           messageId: message.id,
           type: "PULL_REQUEST",
           content: {
-            url: `https://github.com/testorg/bucketrepo/pull/${Math.floor(Math.random() * 9999)}`,
+            url: `https://github.com/testorg/bucketrepo/pull/${workspace.id}-${prCounter}`,
             repo: "testorg/bucketrepo",
             status: "DONE",
             title: "Test PR",

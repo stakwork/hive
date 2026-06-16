@@ -110,6 +110,7 @@ model User {
   createdSecrets           WorkspaceSecret[]        @relation("SecretCreator")
   initiativeAssignments    Initiative[]             @relation("InitiativeAssignee")
   milestoneAssignments     Milestone[]              @relation("MilestoneAssignee")
+  createdMilestones        Milestone[]              @relation("MilestoneCreator")
 
   @@index([createdAt])
   @@index([deleted])
@@ -708,6 +709,8 @@ model JanitorConfig {
   prUseRebaseForUpdates      Boolean      @default(false) @map("pr_use_rebase_for_updates")
   prUseMergeForUpdates       Boolean      @default(true) @map("pr_use_merge_for_updates")
   deduplicationEnabled       Boolean      @default(false) @map("deduplication_enabled")
+  stalePrTasksEnabled        Boolean      @default(false) @map("stale_pr_tasks_enabled")
+  stalePrTaskThresholdDays   Int          @default(7)     @map("stale_pr_task_threshold_days")
   workspace                  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   janitorRuns                JanitorRun[]
 
@@ -858,6 +861,13 @@ model Feature {
    * as a no-op.
    */
   parentCanvasConversationId String?         @map("parent_canvas_conversation_id")
+  /**
+   * Per-feature auto-respond override for the canvas agent.
+   * null  = inherit global (`User.canvasAutonomousTurns`)
+   * true  = always auto-respond for this feature (even if global is off)
+   * false = never auto-respond for this feature (even if global is on)
+   */
+  autoRespond         Boolean?              @map("auto_respond")
   agentLogs           AgentLog[]
   chatMessages        ChatMessage[]
   assignee            User?                 @relation("FeatureAssignee", fields: [assigneeId], references: [id])
@@ -1082,6 +1092,8 @@ model AgentLog {
   featureId     String?      @map("feature_id")
   startedAt     DateTime?    @map("started_at")
   completedAt   DateTime?    @map("completed_at")
+  sessionId     String?      @map("session_id")
+  config        Json? // full config object from payload: { model, provider, source, repos, tools, toolsConfig, temperature, schema, providerConfig }
   stats         Json? // cached parsed blob stats: { totalMessages, estimatedTokens, durationSeconds, totalToolCalls, toolFrequency, bashFrequency, developerShellFrequency, conversationPreview }
   feature       Feature?     @relation(fields: [featureId], references: [id])
   stakworkRun   StakworkRun? @relation(fields: [stakworkRunId], references: [id])
@@ -1762,10 +1774,12 @@ model Milestone {
   dueDate      DateTime?       @map("due_date")
   completedAt  DateTime?       @map("completed_at")
   assigneeId   String?         @map("assignee_id")
+  createdById  String?         @map("creator_id")
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
   initiative   Initiative      @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
   assignee     User?           @relation("MilestoneAssignee", fields: [assigneeId], references: [id])
+  creator      User?           @relation("MilestoneCreator", fields: [createdById], references: [id])
   features     Feature[]
 
   @@unique([initiativeId, sequence])
@@ -1797,6 +1811,29 @@ model DiscordChannel {
 
   @@unique([workspaceId, channelId])
   @@map("discord_channels")
+}
+
+enum DeferredChatActionStatus {
+  PENDING
+  FIRED
+  CANCELLED
+  FAILED
+}
+
+model DeferredChatAction {
+  id             String                   @id @default(cuid())
+  conversationId String                   @map("conversation_id")
+  orgId          String                   @map("org_id")
+  userId         String                   @map("user_id")
+  query          String
+  description    String
+  fireAt         DateTime                 @map("fire_at")
+  status         DeferredChatActionStatus @default(PENDING)
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  firedAt        DateTime?                @map("fired_at")
+
+  @@index([status, fireAt])
+  @@map("deferred_chat_actions")
 }
 
 model WorkflowSummary {

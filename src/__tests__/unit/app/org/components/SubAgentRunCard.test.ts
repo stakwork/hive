@@ -14,10 +14,12 @@ import { describe, test, expect } from "vitest";
 import {
   getSubAgentRunsFromMessages,
   deriveCardStatus,
+  isDisplayableMessage,
 } from "@/app/org/[githubLogin]/_components/SubAgentRunCard";
 import {
   getSubAgentRunsFromMessages as runsFromMessages,
 } from "@/app/org/[githubLogin]/_components/SubAgentRunCard";
+import type { RunMessage } from "@/app/org/[githubLogin]/_components/SubAgentRunCard";
 import type { CanvasChatMessage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
 import type { ClarifyingQuestion } from "@/types/stakwork";
 import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
@@ -219,5 +221,76 @@ describe("getSubAgentRunsFromMessages — Start Tasks gating", () => {
       inbound("p1", "architecture done", { workflowStatus: "COMPLETED" }),
     ]);
     expect(runs[0].hasGeneratedTasks).toBe(false);
+  });
+});
+
+describe("isDisplayableMessage — thread filter", () => {
+  function makeMessage(overrides: Partial<RunMessage>): RunMessage {
+    return {
+      messageId: "m1",
+      messageIndex: 0,
+      direction: "in",
+      text: "",
+      status: "sent",
+      ...overrides,
+    };
+  }
+
+  test("outbound entry always passes filter", () => {
+    expect(isDisplayableMessage(makeMessage({ direction: "out", text: "" }))).toBe(true);
+  });
+
+  test("inbound with prose text passes filter", () => {
+    expect(isDisplayableMessage(makeMessage({ direction: "in", text: "Here is an update" }))).toBe(true);
+  });
+
+  test("inbound with hasForm passes filter", () => {
+    expect(isDisplayableMessage(makeMessage({ direction: "in", text: "", hasForm: true }))).toBe(true);
+  });
+
+  test("inbound with hasTasks passes filter", () => {
+    expect(isDisplayableMessage(makeMessage({ direction: "in", text: "", hasTasks: true }))).toBe(true);
+  });
+
+  test("inbound with workflowStatus COMPLETED passes filter", () => {
+    expect(isDisplayableMessage(makeMessage({ direction: "in", text: "", workflowStatus: "COMPLETED" }))).toBe(true);
+  });
+
+  test("inbound with no text, no form, no tasks, non-COMPLETED status is excluded", () => {
+    expect(isDisplayableMessage(makeMessage({
+      direction: "in",
+      text: "",
+      hasForm: false,
+      hasTasks: false,
+      workflowStatus: "IN_PROGRESS",
+    }))).toBe(false);
+  });
+
+  test("inbound with no text, no form, no tasks, and undefined workflowStatus is excluded", () => {
+    expect(isDisplayableMessage(makeMessage({
+      direction: "in",
+      text: "",
+    }))).toBe(false);
+  });
+
+  test("inbound with whitespace-only text is excluded", () => {
+    expect(isDisplayableMessage(makeMessage({
+      direction: "in",
+      text: "   ",
+      workflowStatus: "IN_PROGRESS",
+    }))).toBe(false);
+  });
+
+  test("thread filters out noisy fallback entries from run.messages", () => {
+    const runs = runsFromMessages([
+      outbound("m1", "Please generate the plan"),
+      inbound("p1", "", { workflowStatus: "IN_PROGRESS" }), // noisy — no text, not COMPLETED
+      inbound("p2", "", { workflowStatus: "COMPLETED" }),   // kept — COMPLETED
+    ]);
+    const displayMessages = runs[0].messages.filter(isDisplayableMessage);
+    // outbound + COMPLETED inbound kept; IN_PROGRESS empty inbound dropped
+    expect(displayMessages).toHaveLength(2);
+    expect(displayMessages[0].direction).toBe("out");
+    expect(displayMessages[1].workflowStatus).toBe("COMPLETED");
   });
 });

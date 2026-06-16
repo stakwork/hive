@@ -8,6 +8,7 @@ import {
 } from "@/components/features/ClarifyingQuestionsPreview/AnsweredClarifyingQuestions";
 import type { ClarifyingQuestion } from "@/types/stakwork";
 import type { ChatMessage as ChatMessageType } from "@/lib/chat";
+import { jamieName } from "@/lib/constants/jamie";
 
 vi.mock("lucide-react", () => {
   const React = require("react");
@@ -91,7 +92,7 @@ describe("AnsweredClarifyingQuestions", () => {
   });
 
   describe("without Q&A formatted pairs (free-form / canvas-agent reply)", () => {
-    const freeFormMessage = baseMessage("[via canvas agent] Proceed with option A");
+    const freeFormMessage = baseMessage(`[${jamieName}] Proceed with option A`);
 
     it("renders a non-interactive div (no button)", () => {
       render(

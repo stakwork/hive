@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Send, Share2, X } from "lucide-react";
+import { FileIcon, Loader2, Mic, MicOff, Paperclip, RefreshCw, Send, Share2, X } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import {
@@ -17,8 +17,15 @@ import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { StreamingMessage } from "@/components/streaming";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { SidebarChatMessage } from "./SidebarChatMessage";
-import { ProposalCard, getProposalsFromMessage } from "./ProposalCard";
+import { ProposalCard, getProposalsFromMessage, sortProposalsByDependency } from "./ProposalCard";
+import {
+  PROPOSE_FEATURE_TOOL,
+  PROPOSE_INITIATIVE_TOOL,
+  PROPOSE_MILESTONE_TOOL,
+} from "@/lib/proposals/types";
 import {
   SubAgentRunCard,
   getSubAgentRunsFromMessages,
@@ -33,10 +40,15 @@ import { AttentionList } from "./AttentionList";
 import type { AttentionItem } from "@/services/attention/topItems";
 import {
   useCanvasChatStore,
+  type CanvasAttachment,
   type CanvasChatMessage,
   type ToolCall,
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
+import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
+import { StreamScrollIndicator } from "@/components/dashboard/DashboardChat/StreamScrollIndicator";
 
 /**
  * Org-canvas sidebar chat. Renders the active conversation from the
@@ -90,24 +102,45 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       null,
   );
 
+  const { id: workspaceId } = useWorkspace();
+  const { isActive } = useCanvasAgentActivity(activeId, workspaceId);
+
   const sendMessage = useSendCanvasChatMessage();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const isProgrammaticScrollRef = useRef(false);
 
-  // Scroll the messages container (not the page) to the bottom on
-  // updates. `scrollTop = scrollHeight` instead of `scrollIntoView`
-  // so the page never gets dragged when a streaming delta lands.
+  // Scroll to bottom on updates unless the user has manually scrolled up.
   useEffect(() => {
+    if (!userScrolledUp) {
+      isProgrammaticScrollRef.current = true;
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, activeToolCalls, isLoading, userScrolledUp]);
+
+  const handleScroll = () => {
+    if (isProgrammaticScrollRef.current) {
+      isProgrammaticScrollRef.current = false;
+      return;
+    }
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages, activeToolCalls, isLoading]);
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 50;
+    setUserScrolledUp(!atBottom);
+  };
 
-  const handleSend = async (content: string, clearInput: () => void) => {
+  const handleSend = async (
+    content: string,
+    attachments: CanvasAttachment[],
+    clearInput: () => void,
+  ) => {
     if (!activeId) return;
     await sendMessage({
       conversationId: activeId,
       content,
-      onResponseStart: () => clearInput(), // now only re-focuses, harmless to keep
+      attachments,
+      onResponseStart: () => clearInput(),
     });
   };
 
@@ -240,7 +273,15 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   return (
     <div className="flex h-full flex-col min-h-0">
       <div className="flex items-center justify-between px-3 py-2 border-b">
-        <span className="text-xs font-medium text-muted-foreground">Ask Jamie</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground">Ask Jamie</span>
+          {isActive && (
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
+              aria-label="agent active"
+            />
+          )}
+        </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -265,7 +306,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto relative px-4 py-3">
         {!hasMessages && activeToolCalls.length === 0 && (
           <div className="h-full flex items-center justify-center px-4 text-center text-muted-foreground text-sm">
             Ask the agent about anything on this canvas.
@@ -331,13 +372,39 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 
             const proposals = getProposalsFromMessage(message);
 
+            // Collect tool-call IDs that produced a ProposalCard (successful
+            // proposal outputs only — failed calls stay in the timeline).
+            const proposalToolCallIds = new Set<string>();
+            if (proposals.length > 0) {
+              for (const tc of message.toolCalls ?? []) {
+                if (
+                  tc.toolName !== PROPOSE_FEATURE_TOOL &&
+                  tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
+                  tc.toolName !== PROPOSE_MILESTONE_TOOL
+                )
+                  continue;
+                const o = tc.output;
+                if (!o || typeof o !== "object" || "error" in o) continue;
+                proposalToolCallIds.add(tc.id);
+              }
+            }
+
+            const filteredTimeline =
+              proposalToolCallIds.size > 0
+                ? message.timeline?.filter(
+                    (item) =>
+                      item.type !== "toolCall" ||
+                      !proposalToolCallIds.has(item.id),
+                  )
+                : message.timeline;
+
             // A streamed tool-call row carries a `timeline` (and empty
             // text content). Render it as rich, expandable tool cards via
             // the shared `<StreamingMessage>` — names, args, outputs, and
             // live status, in order with any interleaved text. Plain text
             // rows fall through to `SidebarChatMessage` so the bubble look
             // and the `?r=`/`?c=` deep-link interceptor are preserved.
-            const hasTimeline = !!message.timeline?.length;
+            const hasTimeline = !!filteredTimeline?.length;
 
             return (
               <div key={message.id} className="space-y-1.5">
@@ -347,7 +414,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                       message={{
                         id: message.id,
                         content: message.content,
-                        timeline: message.timeline,
+                        timeline: filteredTimeline,
                         isStreaming: isMessageStreaming,
                       }}
                     />
@@ -360,7 +427,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 )}
                 {proposals.length > 0 && (
                   <div className="space-y-1.5">
-                    {proposals.map((p) => (
+                    {sortProposalsByDependency(proposals).map((p) => (
                       <ProposalCard
                         key={p.proposalId}
                         proposal={p}
@@ -415,11 +482,33 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               </div>
             </motion.div>
           )}
+          <div ref={messagesEndRef} />
         </div>
+        <StreamScrollIndicator
+          isStreaming={isLoading}
+          userScrolledUp={userScrolledUp}
+          showBackButton={false}
+          onStreamingClick={() => {
+            isProgrammaticScrollRef.current = true;
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            setUserScrolledUp(false);
+          }}
+          onLatestClick={() => {
+            isProgrammaticScrollRef.current = true;
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            setUserScrolledUp(false);
+          }}
+          onBackClick={() => {}}
+        />
       </div>
 
       <div className="border-t p-2">
-        <SidebarChatInput onSend={handleSend} disabled={isLoading} />
+        <SidebarChatInput
+          onSend={handleSend}
+          disabled={isLoading}
+          workspaceId={workspaceId}
+          orgId={githubLogin}
+        />
       </div>
     </div>
   );
@@ -488,21 +577,59 @@ function MessageArtifacts({ artifactIds }: { artifactIds?: string[] }) {
 
 const EMPTY_ARTIFACT_IDS: string[] = [];
 
+// ─── File attachment types ───────────────────────────────────────────────────
+
+interface PendingFile {
+  id: string;
+  file: File;
+  /** Object URL — revoke on remove/send to free memory. */
+  preview: string;
+  uploading: boolean;
+  error?: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  /** Set once upload completes; undefined while in-flight or errored. */
+  s3Path?: string;
+}
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 interface SidebarChatInputProps {
-  onSend: (message: string, clearInput: () => void) => Promise<void>;
+  onSend: (
+    message: string,
+    attachments: CanvasAttachment[],
+    clearInput: () => void,
+  ) => Promise<void>;
   disabled?: boolean;
+  /** Workspace id for the S3 upload context. */
+  workspaceId: string;
+  /** Fallback org id when workspaceId is absent (org canvas context). */
+  orgId?: string;
 }
 
 /**
- * Minimal chat input for the sidebar. Auto-growing textarea (1–6
- * rows), Enter-to-send, Shift+Enter for newline. Intentionally
- * separate from `DashboardChat/ChatInput` — the prop surface
- * diverges far enough that sharing would require ugly conditionals
- * (no image upload, no workspace pills, no `+ workspace` button).
+ * Minimal chat input for the sidebar. Auto-growing textarea (CSS
+ * field-sizing-content), Enter-to-send, Shift+Enter for newline.
+ * Supports file attachments via paperclip button, drag-and-drop,
+ * and clipboard paste. Intentionally separate from
+ * `DashboardChat/ChatInput` — the prop surface diverges enough that
+ * sharing would require ugly conditionals (workspace pills, etc.).
  */
-function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
+function SidebarChatInput({
+  onSend,
+  disabled = false,
+  workspaceId,
+  orgId,
+}: SidebarChatInputProps) {
   const [input, setInput] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Derived — no extra state needed
+  const isUploading = pendingFiles.some((f) => f.uploading);
 
   const {
     isListening,
@@ -544,42 +671,132 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
   });
 
   // ─── Pending-draft consumption ─────────────────────────────────────
-  // Canvas affordances (e.g. the "+ Create connection" button on a
-  // selected edge) compose a message FOR the user by writing to
-  // `pendingInputDraft` in the store. We adopt the value once and
-  // immediately clear it so a tab-switch back to chat doesn't
-  // re-apply a stale draft. The textarea height is recomputed from
-  // the new content so multi-line drafts don't render as a single
-  // truncated row.
   const pendingDraft = useCanvasChatStore((s) => s.pendingInputDraft);
   useEffect(() => {
     if (pendingDraft === null) return;
     setInput(pendingDraft);
-    // Defer the focus + height-fit to the next frame so the textarea
-    // has the new value committed before we measure scrollHeight.
     requestAnimationFrame(() => {
       const el = inputRef.current;
       if (el) {
         el.focus();
-        // Move the caret to the end so the user can append context.
         el.selectionStart = el.selectionEnd = el.value.length;
       }
     });
     useCanvasChatStore.getState().setPendingInputDraft(null);
   }, [pendingDraft]);
 
+  // ─── Unmount cleanup — revoke all preview object URLs ──────────────
+  useEffect(() => {
+    return () => {
+      setPendingFiles((prev) => {
+        prev.forEach((f) => URL.revokeObjectURL(f.preview));
+        return [];
+      });
+    };
+  }, []);
+
+  // ─── File upload helpers ────────────────────────────────────────────
+
+  const uploadFile = useCallback(
+    async (pf: PendingFile) => {
+      setPendingFiles((prev) =>
+        prev.map((f) =>
+          f.id === pf.id ? { ...f, uploading: true, error: undefined } : f,
+        ),
+      );
+      try {
+        const uploadContext = workspaceId ? { workspaceId } : { orgId: orgId! };
+        const result = await uploadFileToS3(pf.file, uploadContext);
+        setPendingFiles((prev) =>
+          prev.map((f) =>
+            f.id === pf.id
+              ? { ...f, uploading: false, s3Path: result.path }
+              : f,
+          ),
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Upload failed";
+        setPendingFiles((prev) =>
+          prev.map((f) =>
+            f.id === pf.id ? { ...f, uploading: false, error: msg } : f,
+          ),
+        );
+        toast.error(`Failed to upload ${pf.filename}`, { description: msg });
+      }
+    },
+    [workspaceId, orgId],
+  );
+
+  const handleFiles = useCallback(
+    (files: FileList | File[]) => {
+      const arr = Array.from(files);
+      const newFiles: PendingFile[] = [];
+      for (const file of arr) {
+        if (file.size > MAX_FILE_SIZE) {
+          toast.error(`${file.name} exceeds 10 MB`);
+          continue;
+        }
+        newFiles.push({
+          id: crypto.randomUUID(),
+          file,
+          preview: URL.createObjectURL(file),
+          uploading: false,
+          filename: file.name,
+          mimeType: file.type,
+          size: file.size,
+        });
+      }
+      if (!newFiles.length) return;
+      setPendingFiles((prev) => [...prev, ...newFiles]);
+      newFiles.forEach((pf) => uploadFile(pf));
+    },
+    [uploadFile],
+  );
+
+  const removeFile = useCallback((id: string) => {
+    setPendingFiles((prev) => {
+      const f = prev.find((f) => f.id === id);
+      if (f) URL.revokeObjectURL(f.preview);
+      return prev.filter((f) => f.id !== id);
+    });
+  }, []);
+
+  // ─── Submit ─────────────────────────────────────────────────────────
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || disabled) return;
-    const message = input.trim();
-    if (isListening) {
-      stopListening();
+
+    if (pendingFiles.some((f) => f.uploading)) {
+      toast.error("Please wait for uploads to finish");
+      return;
     }
+    if (pendingFiles.some((f) => f.error)) {
+      toast.error("Remove failed uploads before sending");
+      return;
+    }
+
+    const message = input.trim();
+    if (isListening) stopListening();
     resetTranscript();
     preVoiceInputRef.current = "";
+
+    const attachments: CanvasAttachment[] = pendingFiles
+      .filter((f) => f.s3Path)
+      .map((f) => ({
+        path: f.s3Path!,
+        filename: f.filename,
+        mimeType: f.mimeType,
+        size: f.size,
+      }));
+
+    // Revoke preview URLs and clear pending files
+    pendingFiles.forEach((f) => URL.revokeObjectURL(f.preview));
+    setPendingFiles([]);
     setInput(""); // clear immediately on send
-    await onSend(message, () => {
-      inputRef.current?.focus(); // callback now only handles re-focus
+
+    await onSend(message, attachments, () => {
+      inputRef.current?.focus();
     });
   };
 
@@ -594,22 +811,140 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
     setInput(e.target.value);
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const imageFiles = Array.from(e.clipboardData.items)
+      .filter((i) => i.type.startsWith("image/"))
+      .map((i) => i.getAsFile())
+      .filter(Boolean) as File[];
+    if (imageFiles.length) {
+      e.preventDefault();
+      handleFiles(imageFiles);
+    }
+  };
+
+  // ─── Drag-and-drop ──────────────────────────────────────────────────
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget === e.target) setIsDragging(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  };
+
+  // Button column count: send is always present, mic is conditional, paperclip is always present
+  // right-1.5 = send, right-9 = mic (when supported), right-[3.75rem] = paperclip (when mic present), right-9 = paperclip (when no mic)
+  const sendRight = "right-1.5";
+  const micRight = "right-9";
+  const paperclipRight = isSupported ? "right-[3.75rem]" : "right-9";
+  const textareaPaddingRight = isSupported
+    ? "pr-[calc(theme(space.7)*3+theme(space.5))]"
+    : "pr-[calc(theme(space.7)*2+theme(space.5))]";
+
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2">
-      <div className="relative flex-1 min-w-0">
-        <textarea
-          ref={inputRef}
-          placeholder={isListening ? "Listening…" : "Ask the agent…"}
-          value={input}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          disabled={disabled}
-          rows={1}
-          className={`w-full px-3 py-2 ${isSupported ? "pr-16" : "pr-10"} rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-[color,border-color,box-shadow,opacity] resize-none field-sizing-content max-h-[100px] overflow-y-auto ${
-            disabled ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-        />
-        {isSupported && (
+    <div className="flex flex-col gap-1.5">
+      {/* ── Pending file chips ─────────────────────────────────────────── */}
+      {pendingFiles.length > 0 && (
+        <div
+          className="grid grid-cols-3 gap-1.5 px-1 pb-1.5"
+          data-testid="pending-files-grid"
+        >
+          {pendingFiles.map((pf) => (
+            <div
+              key={pf.id}
+              className={cn(
+                "relative rounded-lg border overflow-hidden bg-muted",
+                pf.error && "border-red-500",
+              )}
+              data-testid={`pending-file-${pf.id}`}
+            >
+              <div className="aspect-square relative">
+                {pf.mimeType.startsWith("image/") ? (
+                  <img
+                    src={pf.preview}
+                    alt={pf.filename}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <FileIcon className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                )}
+                {pf.uploading && (
+                  <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
+                    <Loader2
+                      className="h-5 w-5 animate-spin text-primary"
+                      data-testid={`uploading-spinner-${pf.id}`}
+                    />
+                  </div>
+                )}
+                {pf.error && (
+                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center gap-1 p-1">
+                    <p className="text-xs text-red-500 text-center">Failed</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-1.5 text-xs"
+                      onClick={() => uploadFile(pf)}
+                    >
+                      <RefreshCw className="h-2.5 w-2.5 mr-0.5" />
+                      Retry
+                    </Button>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeFile(pf.id)}
+                  data-testid={`remove-file-${pf.id}`}
+                  className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-background/80 hover:bg-background"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </div>
+              <div className="px-1 py-0.5 text-[10px] truncate text-center text-muted-foreground">
+                {pf.filename}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Input form ─────────────────────────────────────────────────── */}
+      <form
+        onSubmit={handleSubmit}
+        className="flex items-end gap-2"
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div className="relative flex-1 min-w-0">
+          <Textarea
+            ref={inputRef}
+            placeholder={isListening ? "Listening…" : "Ask the agent…"}
+            value={input}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            disabled={disabled}
+            isDragging={isDragging}
+            isUploading={isUploading}
+            rows={1}
+            className={`w-full px-3 py-2 ${textareaPaddingRight} rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-[color,border-color,box-shadow,opacity] resize-none field-sizing-content max-h-[100px] overflow-y-auto min-h-0 ${
+              disabled ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+          />
+
+          {/* Paperclip button */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -617,33 +952,77 @@ function SidebarChatInput({ onSend, disabled = false }: SidebarChatInputProps) {
                   type="button"
                   size="icon"
                   variant="ghost"
-                  onClick={toggleListening}
+                  onClick={() => fileInputRef.current?.click()}
                   disabled={disabled}
-                  data-testid="mic-button"
-                  className={`absolute right-9 top-1/2 -translate-y-[60%] h-7 w-7 rounded-full ${
-                    isListening
-                      ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
+                  data-testid="paperclip-button"
+                  className={`absolute ${paperclipRight} top-1/2 -translate-y-[60%] h-7 w-7 rounded-full text-muted-foreground hover:text-foreground`}
                 >
-                  {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                  <Paperclip className="w-3.5 h-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">
-                {isListening ? "Stop recording" : "Start voice input (or hold Ctrl)"}
-              </TooltipContent>
+              <TooltipContent side="top">Attach file</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        )}
-        <Button
-          type="submit"
-          size="icon"
-          disabled={!input.trim() || disabled}
-          className="absolute right-1.5 top-1/2 -translate-y-[60%] h-7 w-7 rounded-full"
-        >
-          <Send className="w-3.5 h-3.5" />
-        </Button>
-      </div>
-    </form>
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="*/*"
+            multiple
+            className="hidden"
+            data-testid="file-input"
+            onChange={(e) => {
+              if (e.target.files?.length) handleFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+
+          {/* Mic button */}
+          {isSupported && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={toggleListening}
+                    disabled={disabled}
+                    data-testid="mic-button"
+                    className={`absolute ${micRight} top-1/2 -translate-y-[60%] h-7 w-7 rounded-full ${
+                      isListening
+                        ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {isListening ? (
+                      <MicOff className="w-3.5 h-3.5" />
+                    ) : (
+                      <Mic className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {isListening
+                    ? "Stop recording"
+                    : "Start voice input (or hold Ctrl)"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {/* Send button */}
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!input.trim() || disabled || isUploading}
+            className={`absolute ${sendRight} top-1/2 -translate-y-[60%] h-7 w-7 rounded-full`}
+          >
+            <Send className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }

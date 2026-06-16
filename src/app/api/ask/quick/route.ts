@@ -15,6 +15,7 @@ import {
   recordTurnTokens,
 } from "@/lib/ai/publicChatBudget";
 import { db } from "@/lib/db";
+import { getS3Service } from "@/services/s3";
 import {
   handleApproval,
   handleRejection,
@@ -36,7 +37,9 @@ import {
   messagesFromSteps,
   appendTurnMessages,
   type StoredMessage,
+  type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
+import { buildDeferredCheckTools } from "@/lib/ai/deferredCheckTools";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
 // the org-canvas turn is persisted server-side in `after()` so it survives the
@@ -45,7 +48,7 @@ import {
 // closed-tab turn can be lost (Vercel doesn't kill in-flight functions on
 // deploy, and `runCanvasAgent` passes no abort signal, so a client disconnect
 // can't cancel generation).
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 /**
  * Provenance data types
@@ -145,6 +148,11 @@ export async function POST(request: NextRequest) {
       // live-sync merge by this prefix. Absent → legacy client-driven
       // persistence (dashboard chat, public viewers, older clients).
       turnId,
+      // User-uploaded file attachments for THIS turn's user message
+      // (`CanvasAttachment[]` — `{ path, filename, mimeType, size }`).
+      // The model sees them as image parts embedded in `messages`; this
+      // top-level copy is what we persist so they survive reload.
+      attachments,
     } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -297,12 +305,79 @@ export async function POST(request: NextRequest) {
       })
       .filter((m): m is ModelMessage => m !== null);
 
-    // Org-membership gating for the multi-workspace + orgId branch
-    // (canvas chat). Validated here in the route so `runCanvasAgent`
-    // can stay auth-agnostic — it trusts the caller. Matches the
-    // pre-refactor behavior: org tools are only merged in multi-WS
-    // mode, and only after this check.
-    if (orgId && isMultiWorkspace) {
+    // Resolve image parts to fetchable URLs so the LLM receives visuals.
+    //
+    // The client (`toModelMessages`) embeds image attachments as
+    // `{ type: "image", image: "/api/upload/presigned-url?s3Key=..." }` for
+    // EVERY user turn that has one — including past turns in the history. That
+    // value is a *relative* URL: the AI SDK only treats a string as a fetchable
+    // URL when `new URL(...)` parses it; a relative path throws and is then
+    // mis-read as raw base64 → Anthropic rejects it ("invalid base64 data").
+    // So we must rewrite EVERY such part across the whole message array (not
+    // just the latest turn), swapping the relative path for an ABSOLUTE signed
+    // S3 URL the SDK can actually download.
+    {
+      const s3 = getS3Service();
+      // Map a relative `/api/upload/presigned-url?s3Key=<key>` value to its key.
+      const extractS3Key = (image: unknown): string | null => {
+        if (typeof image !== "string") return null;
+        if (!image.startsWith("/api/upload/presigned-url")) return null;
+        try {
+          // Parse against a dummy base since the value is path-only.
+          const key = new URL(image, "http://x").searchParams.get("s3Key");
+          return key || null;
+        } catch {
+          return null;
+        }
+      };
+      // Resolve each distinct key once (a key can repeat across turns).
+      const keysToResolve = new Set<string>();
+      for (const m of convertedMessages) {
+        if (!Array.isArray(m.content)) continue;
+        for (const part of m.content as Array<{ type?: string; image?: unknown }>) {
+          if (part?.type !== "image") continue;
+          const key = extractS3Key(part.image);
+          if (key) keysToResolve.add(key);
+        }
+      }
+      if (keysToResolve.size > 0) {
+        const resolved = new Map<string, URL>();
+        await Promise.all(
+          [...keysToResolve].map(async (key) => {
+            try {
+              const url = await s3.generatePresignedDownloadUrl(key);
+              resolved.set(key, new URL(url));
+            } catch (err) {
+              console.error(
+                `[ask/quick] failed to resolve image attachment ${key}:`,
+                err,
+              );
+            }
+          }),
+        );
+        for (const m of convertedMessages) {
+          if (!Array.isArray(m.content)) continue;
+          m.content = (m.content as Array<{ type?: string; image?: unknown }>)
+            .map((part) => {
+              if (part?.type !== "image") return part;
+              const key = extractS3Key(part.image);
+              if (!key) return part;
+              const url = resolved.get(key);
+              // Drop parts we couldn't resolve rather than ship a bad URL.
+              return url ? { ...part, image: url } : null;
+            })
+            .filter((p) => p !== null) as typeof m.content;
+        }
+      }
+    }
+
+    // Org-membership gating for any request that carries an orgId
+    // (canvas chat, single- or multi-workspace). Validated here so
+    // `runCanvasAgent` can stay auth-agnostic — it trusts the caller.
+    // Must run before any DB write that uses orgId (persistCanvasUserMessage,
+    // buildDeferredCheckTools) to prevent IDOR: an unauthenticated or
+    // non-member caller could otherwise associate DB rows with an arbitrary org.
+    if (orgId) {
       const orgBelongsToCaller = await validateUserBelongsToOrg(
         orgId,
         userId!,
@@ -365,14 +440,59 @@ export async function POST(request: NextRequest) {
     // ============================================================
     const turnIdStr: string | null =
       typeof turnId === "string" && turnId.length > 0 ? turnId : null;
+    // The latest user turn's text. With an image attachment the content is
+    // a multi-part array (`{type:"text"} + {type:"image"}`), so pull the
+    // text part out — otherwise a string content collapses to "" and the
+    // whole message (text + image) is skipped from persistence.
     const newUserContent = (() => {
       const last = convertedMessages[convertedMessages.length - 1];
-      return last && last.role === "user" && typeof last.content === "string"
-        ? last.content
-        : "";
+      if (!last || last.role !== "user") return "";
+      if (typeof last.content === "string") return last.content;
+      if (Array.isArray(last.content)) {
+        return last.content
+          .filter(
+            (p): p is { type: "text"; text: string } =>
+              !!p && typeof p === "object" && (p as { type?: unknown }).type === "text",
+          )
+          .map((p) => p.text)
+          .join("\n");
+      }
+      return "";
     })();
+    // Normalize the top-level attachments the client forwarded into the
+    // stored shape so the image survives reload. Defensive: drop anything
+    // missing the required fields.
+    const userAttachments: StoredAttachment[] = Array.isArray(attachments)
+      ? (attachments as unknown[]).flatMap((a) => {
+          if (!a || typeof a !== "object") return [];
+          const r = a as Record<string, unknown>;
+          if (
+            typeof r.path !== "string" ||
+            typeof r.filename !== "string" ||
+            typeof r.mimeType !== "string" ||
+            typeof r.size !== "number"
+          ) {
+            return [];
+          }
+          return [
+            {
+              path: r.path,
+              filename: r.filename,
+              mimeType: r.mimeType,
+              size: r.size,
+            },
+          ];
+        })
+      : [];
     let canvasConversationRowId: string | null = null;
-    if (orgId && userId && turnIdStr && newUserContent.trim()) {
+    // Persist when there's text OR an attachment — an image-only turn has
+    // no text but still must be saved.
+    if (
+      orgId &&
+      userId &&
+      turnIdStr &&
+      (newUserContent.trim() || userAttachments.length > 0)
+    ) {
       canvasConversationRowId = await persistCanvasUserMessage({
         orgId,
         userId,
@@ -382,6 +502,7 @@ export async function POST(request: NextRequest) {
         existingRowId: promptCache?.rowId ?? null,
         turnId: turnIdStr,
         content: newUserContent,
+        attachments: userAttachments,
         workspaceSlugs: slugs,
       });
     }
@@ -452,6 +573,19 @@ export async function POST(request: NextRequest) {
           // open clients animate the researched node.
           silentPusher: false,
           dispatchedResearch,
+          // Inject the schedule_check tool when we have a fully-resolved
+          // canvas conversation (org + user + server-owned row). All three
+          // context values are server-side only — the LLM cannot override them.
+          ...(orgId && userId && (canvasConversationRowId ?? tokenAttributionRowId)
+            ? {
+                additionalTools: buildDeferredCheckTools({
+                  conversationId:
+                    (canvasConversationRowId ?? tokenAttributionRowId)!,
+                  orgId,
+                  userId,
+                }),
+              }
+            : {}),
           hooks: {
             onStepFinish: (sf) => {
               const conceptIds = extractConceptIdsFromStep(sf.content);
@@ -826,16 +960,25 @@ async function persistCanvasUserMessage(args: {
   existingRowId: string | null;
   turnId: string;
   content: string;
+  attachments?: StoredAttachment[];
   workspaceSlugs: string[];
 }): Promise<string> {
-  const { orgId, userId, existingRowId, turnId, content, workspaceSlugs } =
-    args;
+  const {
+    orgId,
+    userId,
+    existingRowId,
+    turnId,
+    content,
+    attachments,
+    workspaceSlugs,
+  } = args;
 
   const userRow: StoredMessage = {
     id: `${turnId}-u`,
     role: "user",
     content,
     timestamp: new Date().toISOString(),
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
   };
 
   if (existingRowId) {

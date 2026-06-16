@@ -32,7 +32,7 @@ import {
 import { PiGraphFill } from "react-icons/pi";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useVoiceStore } from "@/stores/useVoiceStore";
 
 import { Badge } from "@/components/ui/badge";
@@ -172,6 +172,7 @@ const STADEUM_LOGO_URL =
 
 function StadeumBrandHeader() {
   const [imgError, setImgError] = useState(false);
+
   return (
     <div className="flex items-center gap-2.5 px-4 py-3 border-b shrink-0">
       {!imgError && (

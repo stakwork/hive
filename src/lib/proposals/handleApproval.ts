@@ -34,8 +34,19 @@ import {
   mostSpecificRef,
   readAssignedFeatures,
   resolvePlacement,
+  findFreeSlotInViewport,
   ROOT_REF,
 } from "@/lib/canvas";
+import { readCanvas } from "@/lib/canvas/io";
+import {
+  INITIATIVE_W,
+  INITIATIVE_H,
+  FEATURE_W,
+  FEATURE_H,
+  MILESTONE_W,
+  MILESTONE_H,
+} from "@/lib/canvas/geometry";
+import type { CanvasNode } from "@/lib/canvas/types";
 import { createFeature } from "@/services/roadmap";
 import { detectFeatureDependencyCycle } from "@/services/roadmap/feature-dependency";
 import { notifyFeatureReassignmentRefresh } from "@/lib/canvas";
@@ -313,18 +324,39 @@ async function approveInitiative(args: {
       select: { id: true },
     });
 
-    // Initiatives project only on root. If the agent supplied a
-    // resolvable placement hint, land the new card there; otherwise
-    // the projector's auto-layout (initiative row on root) decides.
-    // No fallback to `intent.viewport` here — the human `+` flow
-    // for initiatives goes through the dialog, not through this
-    // approval path.
+    // Initiatives project only on root. Three-way priority:
+    //   (a) Agent's `placement` hint resolves cleanly → use it.
+    //   (b) Else, viewport-aware free slot → land within user's visible area.
+    //   (c) Else, no overlay → projector's auto-layout decides.
     const liveId = `initiative:${created.id}`;
-    const coords = await resolvePlacement(merged.placement, {
+    let coords = await resolvePlacement(merged.placement, {
       orgId,
       targetRef: ROOT_REF,
       newCategory: "initiative",
     });
+
+    // (b) No agent placement hint — try viewport-aware free slot
+    if (!coords && intent.viewportState) {
+      let rootNodes: CanvasNode[] = [];
+      try {
+        const rootCanvas = await readCanvas(orgId, ROOT_REF);
+        rootNodes = rootCanvas.nodes ?? [];
+      } catch {
+        // best-effort; empty list means no collision avoidance
+      }
+      coords = findFreeSlotInViewport(
+        intent.viewportState,
+        rootNodes,
+        INITIATIVE_W,
+        INITIATIVE_H,
+      );
+      if (!coords) {
+        console.warn(
+          "[handleApproval] viewport fully packed for initiative, falling back to auto-layout",
+        );
+      }
+    }
+
     if (coords) {
       try {
         await setLivePosition(orgId, ROOT_REF, liveId, coords);
@@ -601,6 +633,7 @@ async function approveFeature(args: {
       ...(resolvedInitiativeId && { initiativeId: resolvedInitiativeId }),
       ...(merged.milestoneId && { milestoneId: merged.milestoneId }),
       ...(uniqueDeps.length > 0 && { dependsOnFeatureIds: uniqueDeps }),
+      autoRespond: merged.autoRespond ?? null,
     });
 
     // Stamp ownership: this canvas conversation now "owns" the new
@@ -708,19 +741,29 @@ async function approveFeature(args: {
       landedOn = mostSpecificRef(featurePlacementPayload);
     }
 
-    // (a) Agent placement first — wins over `intent.viewport` because
+    // (a) Agent placement first — wins over viewport fallbacks because
     // the agent has typically read the canvas and picked a deliberate
-    // anchor; the viewport hint is a hardcoded `{40,40}` placeholder
-    // until drag-from-chat lands.
+    // anchor.
     let coords = await resolvePlacement(merged.placement, {
       orgId,
       targetRef: landedOn,
       newCategory: "feature",
     });
-    // (b) Fallback to user's viewport hint, but only when the user is
-    // looking at the canvas the feature actually lands on (matches
-    // the previous behavior for non-placement proposals).
-    if (!coords && intent.currentRef === landedOn && intent.viewport) {
+    // (b) No agent placement hint — try viewport-aware free slot so the
+    // card lands within the user's visible area instead of at {40,40}.
+    if (!coords && intent.viewportState) {
+      const canvasForCollision = await readCanvas(orgId, landedOn).catch(
+        () => ({ nodes: [] as CanvasNode[] }),
+      );
+      coords =
+        findFreeSlotInViewport(
+          intent.viewportState,
+          canvasForCollision.nodes ?? [],
+          FEATURE_W,
+          FEATURE_H,
+        ) ?? intent.viewport ?? null; // final { x:40, y:40 } safety net
+    } else if (!coords && intent.currentRef === landedOn && intent.viewport) {
+      // Legacy fallback: viewport hint from old clients without viewportState.
       coords = intent.viewport;
     }
     // **Skip the position write when the feature won't actually
@@ -1063,8 +1106,7 @@ async function approveMilestone(args: {
   // canvas a milestone projects on — milestones aren't drillable,
   // see CANVAS.md). Three-way priority:
   //   (a) Agent's `placement` hint resolves cleanly → use it.
-  //   (b) Else, user's click hint (`intent.viewport`) on the parent
-  //       initiative canvas → use it (mirrors the human `+` flow).
+  //   (b) Else, viewport-aware free slot → land within user's visible area.
   //   (c) Else, no overlay → projector auto-layout decides (timeline
   //       row left-to-right by sequence).
   const landedOn = `initiative:${merged.initiativeId}`;
@@ -1074,12 +1116,25 @@ async function approveMilestone(args: {
     targetRef: landedOn,
     newCategory: "milestone",
   });
-  if (
+  // (b) No agent placement hint — try viewport-aware free slot
+  if (!coords && intent.viewportState) {
+    const canvasForCollision = await readCanvas(orgId, landedOn).catch(
+      () => ({ nodes: [] as CanvasNode[] }),
+    );
+    coords =
+      findFreeSlotInViewport(
+        intent.viewportState,
+        canvasForCollision.nodes ?? [],
+        MILESTONE_W,
+        MILESTONE_H,
+      ) ?? intent.viewport ?? null; // final { x:40, y:40 } safety net
+  } else if (
     !coords &&
     intent.currentRef !== undefined &&
     intent.currentRef === landedOn &&
     intent.viewport
   ) {
+    // Legacy fallback: viewport hint from old clients without viewportState.
     coords = intent.viewport;
   }
   if (coords) {

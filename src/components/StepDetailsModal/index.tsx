@@ -3,13 +3,15 @@
 import React from "react";
 import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { WorkflowTransition, StepType, getStepType } from "@/types/stakwork/workflow";
 
 interface StepDetailsModalProps {
   step: WorkflowTransition | null;
   isOpen: boolean;
   onClose: () => void;
-  onSelect: () => void;
+  onSelect?: () => void;
+  runTransitions?: Record<string, WorkflowTransition>;
 }
 
 const STEP_TYPE_ICONS: Record<StepType, React.ReactNode> = {
@@ -86,7 +88,7 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetailsModalProps) {
+export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions }: StepDetailsModalProps) {
   if (!step || !isOpen) return null;
 
   const stepType = getStepType(step);
@@ -102,6 +104,11 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetail
 
   // Get step id from top level
   const stepId = step.id || step.display_id;
+
+  // Derive run step from runTransitions
+  const runStep = runTransitions
+    ? (runTransitions[step.id] ?? runTransitions[step.name] ?? null)
+    : undefined;
 
   // Check if we have any content to show
   const hasVars = Object.keys(stepVars).length > 0;
@@ -144,6 +151,40 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetail
             </Section>
           )}
 
+          {/* Run Output section */}
+          {runTransitions !== undefined && (
+            <Section title="Run Output">
+              {runStep ? (
+                <div className="space-y-2">
+                  {runStep.status?.step_state && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Status:</span>
+                      <Badge variant="outline">{runStep.status.step_state}</Badge>
+                    </div>
+                  )}
+                  {runStep.has_output && runStep.output !== undefined && (
+                    <Section title="Output">
+                      <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-40 whitespace-pre-wrap">
+                        {typeof runStep.output === "string"
+                          ? runStep.output
+                          : JSON.stringify(runStep.output, null, 2)}
+                      </pre>
+                    </Section>
+                  )}
+                  {runStep.log && (
+                    <Section title="Log">
+                      <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32 whitespace-pre-wrap">
+                        {runStep.log}
+                      </pre>
+                    </Section>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No run data for this step.</p>
+              )}
+            </Section>
+          )}
+
           {/* Variables (for SetVar and other steps with vars) */}
           {hasVars && (
             <Section title="Variables">
@@ -170,10 +211,12 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetail
             <X className="h-4 w-4 mr-2" />
             Cancel
           </Button>
-          <Button onClick={onSelect}>
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            Select Step
-          </Button>
+          {onSelect && (
+            <Button onClick={onSelect}>
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Select Step
+            </Button>
+          )}
         </div>
       </div>
     </div>

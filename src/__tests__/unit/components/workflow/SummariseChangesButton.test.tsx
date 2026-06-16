@@ -80,6 +80,7 @@ const defaultProps = {
   workspaceSlug: "my-ws",
   workflowId: 10,
   customSelectedIds: [],
+  isCustomMode: false,
   onCustomModeToggle: vi.fn(),
   onCustomSelectionConfirm: vi.fn(),
 };
@@ -290,5 +291,71 @@ describe("SummariseChangesButton", () => {
 
     fireEvent.click(screen.getByText("Custom Summary…"));
     expect(onCustomModeToggle).toHaveBeenCalledWith(true);
+  });
+
+  it("Cancel button is visible when isCustomMode=true with 0 selections, Generate Summary is not", () => {
+    render(
+      <SummariseChangesButton
+        {...defaultProps}
+        versions={[makeVersion("v1"), makeVersion("v2")]}
+        isCustomMode={true}
+        customSelectedIds={[]}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /generate summary/i })).not.toBeInTheDocument();
+  });
+
+  it("Cancel button is visible when isCustomMode=true with 1 selection, Generate Summary is not", () => {
+    render(
+      <SummariseChangesButton
+        {...defaultProps}
+        versions={[makeVersion("v1"), makeVersion("v2")]}
+        isCustomMode={true}
+        customSelectedIds={["v1"]}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /generate summary/i })).not.toBeInTheDocument();
+  });
+
+  it("Cancel and Generate Summary both visible when isCustomMode=true with 2+ selections", () => {
+    render(
+      <SummariseChangesButton
+        {...defaultProps}
+        versions={[makeVersion("v1"), makeVersion("v2")]}
+        isCustomMode={true}
+        customSelectedIds={["v1", "v2"]}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /generate summary/i })).toBeInTheDocument();
+  });
+
+  it("Cancel button is absent when isCustomMode=false", () => {
+    render(
+      <SummariseChangesButton
+        {...defaultProps}
+        versions={[makeVersion("v1"), makeVersion("v2")]}
+        isCustomMode={false}
+        customSelectedIds={[]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /cancel/i })).not.toBeInTheDocument();
+  });
+
+  it("clicking Cancel calls onCustomModeToggle(false)", () => {
+    const onCustomModeToggle = vi.fn();
+    render(
+      <SummariseChangesButton
+        {...defaultProps}
+        versions={[makeVersion("v1"), makeVersion("v2")]}
+        isCustomMode={true}
+        customSelectedIds={[]}
+        onCustomModeToggle={onCustomModeToggle}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onCustomModeToggle).toHaveBeenCalledWith(false);
   });
 });

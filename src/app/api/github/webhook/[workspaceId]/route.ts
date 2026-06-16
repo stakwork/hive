@@ -13,6 +13,7 @@ import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-
 import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
 import { createAndSendNotification } from "@/services/notifications";
 import { triggerLearningRun } from "@/services/learning-run";
+import { monitorSinglePR } from "@/lib/github/pr-monitor";
 
 function serializeWebhookError(error: unknown) {
   if (error instanceof Error) {
@@ -211,6 +212,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const prUrl = payload?.pull_request?.html_url;
       const prNumber = payload?.pull_request?.number;
       const mergedAt = payload?.pull_request?.merged_at;
+
+      // Trigger immediate PR monitor for opened/updated PRs
+      if (action === "opened" || action === "ready_for_review" || action === "synchronize") {
+        const prHtmlUrl: string | undefined = payload?.pull_request?.html_url;
+        console.log("[GithubWebhook] PR event triggering immediate monitor", {
+          delivery,
+          workspaceId: repository.workspaceId,
+          action,
+          prUrl: prHtmlUrl,
+        });
+        if (prHtmlUrl) {
+          void monitorSinglePR(prHtmlUrl).catch((err) =>
+            console.error("[GithubWebhook] monitorSinglePR failed (non-blocking)", { delivery, prUrl: prHtmlUrl, error: err })
+          );
+        }
+        return NextResponse.json({ success: true, triggered: !!prHtmlUrl }, { status: 202 });
+      }
 
       // Check if PR was closed (with or without merge)
       if (action === "closed" && prUrl) {
@@ -1246,6 +1264,44 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         });
         return NextResponse.json({ success: true }, { status: 202 });
       }
+    } else if (event === "check_run") {
+      const checkStatus: string | undefined = payload?.check_run?.status;
+      if (checkStatus === "completed") {
+        const pullRequests: Array<{ number: number }> = payload?.check_run?.pull_requests ?? [];
+        console.log("[GithubWebhook] check_run completed — triggering PR monitor", {
+          delivery,
+          workspaceId: repository.workspaceId,
+          conclusion: payload?.check_run?.conclusion,
+          prCount: pullRequests.length,
+        });
+        for (const pr of pullRequests) {
+          const prUrl = `https://github.com/${fullName}/pull/${pr.number}`;
+          void monitorSinglePR(prUrl).catch((err) =>
+            console.error("[GithubWebhook] monitorSinglePR (check_run) failed", { delivery, prUrl, error: err })
+          );
+        }
+      }
+      return NextResponse.json({ success: true }, { status: 202 });
+    } else if (event === "workflow_run") {
+      const workflowStatus: string | undefined = payload?.workflow_run?.status;
+      if (workflowStatus === "completed") {
+        const pullRequests: Array<{ number: number }> = payload?.workflow_run?.pull_requests ?? [];
+        const headRepoFullName: string | undefined =
+          payload?.workflow_run?.head_repository?.full_name ?? fullName;
+        console.log("[GithubWebhook] workflow_run completed — triggering PR monitor", {
+          delivery,
+          workspaceId: repository.workspaceId,
+          conclusion: payload?.workflow_run?.conclusion,
+          prCount: pullRequests.length,
+        });
+        for (const pr of pullRequests) {
+          const prUrl = `https://github.com/${headRepoFullName}/pull/${pr.number}`;
+          void monitorSinglePR(prUrl).catch((err) =>
+            console.error("[GithubWebhook] monitorSinglePR (workflow_run) failed", { delivery, prUrl, error: err })
+          );
+        }
+      }
+      return NextResponse.json({ success: true }, { status: 202 });
     } else {
       console.log("[GithubWebhook] Event type not handled, skipping", {
         delivery,

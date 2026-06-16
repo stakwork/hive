@@ -14,11 +14,13 @@ import type {
   ToolCallContent,
   ToolResultContent,
   AgentLogStats,
+  AgentRunConfig,
 } from "@/lib/utils/agent-log-stats";
 
 export interface LogDetailContentProps {
   conversation: ParsedMessage[] | null;
   stats: AgentLogStats | null;
+  config?: AgentRunConfig | null;
   rawContent: string;
   loading: boolean;
   error: string | null;
@@ -37,7 +39,7 @@ export function unescapeLogString(str: string): string {
 }
 
 export function extractTextContent(message: ParsedMessage): string | null {
-  const { content, reasoning } = message;
+  const { content } = message;
 
   if (typeof content === "string" && content) return content;
 
@@ -53,7 +55,25 @@ export function extractTextContent(message: ParsedMessage): string | null {
     if (textParts.length > 0) return textParts.join("\n");
   }
 
-  // Fall back to reasoning field (used by some agent formats)
+  return null;
+}
+
+export function extractReasoning(message: ParsedMessage): string | null {
+  const { content, reasoning } = message;
+
+  if (Array.isArray(content)) {
+    const reasoningParts = content
+      .filter(
+        (part): part is { type: string; text?: string } =>
+          part != null && typeof part === "object" && "text" in part && part.type === "reasoning",
+      )
+      .map((p) => p.text)
+      .filter(Boolean);
+
+    if (reasoningParts.length > 0) return reasoningParts.join("\n");
+  }
+
+  // Fall back to top-level reasoning string
   if (typeof reasoning === "string" && reasoning) return reasoning;
 
   return null;
@@ -167,6 +187,41 @@ export function SystemMessageBubble({ message }: { message: ParsedMessage }) {
 }
 
 // ---------------------------------------------------------------------------
+// ReasoningSection — collapsed by default, muted/italic left-border styling
+// ---------------------------------------------------------------------------
+
+export function ReasoningSection({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const charCount = text.length;
+
+  return (
+    <div className="mb-2 text-xs text-muted-foreground/70 italic border-l-2 border-muted pl-3 py-1">
+      <button
+        onClick={() => setExpanded((s) => !s)}
+        className="flex w-full items-center gap-2 text-left hover:text-muted-foreground transition-colors"
+      >
+        {expanded ? (
+          <ChevronDown className="w-3 h-3 shrink-0" />
+        ) : (
+          <ChevronRight className="w-3 h-3 shrink-0" />
+        )}
+        <span className="font-medium not-italic">Reasoning</span>
+        <Badge variant="secondary" className="text-xs px-1.5 py-0 ml-1 not-italic font-normal">
+          {charCount.toLocaleString()} chars
+        </Badge>
+      </button>
+      {expanded && (
+        <div className="mt-2 not-italic">
+          <MarkdownRenderer variant="assistant" size="compact">
+            {unescapeLogString(text)}
+          </MarkdownRenderer>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ToolCallItem — expanded by default; optionally renders paired result inline
 // ---------------------------------------------------------------------------
 
@@ -265,6 +320,7 @@ export function MessageBubble({
 
   const { role, content } = message;
   const textContent = extractTextContent(message);
+  const reasoning = extractReasoning(message);
   const toolCalls = extractToolCalls(content);
   const toolResults = extractToolResults(content);
   const openaiToolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
@@ -293,8 +349,8 @@ export function MessageBubble({
       })),
   ];
 
-  // Tool-only messages (no text content)
-  if (isAssistant && !textContent && allToolCallNames.length > 0) {
+  // Tool-only messages (no text content, no reasoning)
+  if (isAssistant && !textContent && !reasoning && allToolCallNames.length > 0) {
     return (
       <div className="flex gap-2 items-start">
         <div className="shrink-0 mt-0.5 w-6 h-6 rounded-full bg-muted flex items-center justify-center">
@@ -389,12 +445,12 @@ export function MessageBubble({
   }
 
   // Skip messages with no displayable content
-  if (!textContent) return null;
+  if (!textContent && !reasoning) return null;
 
   // Long-text truncation for assistant and user messages
-  const isLong = (isAssistant || isUser) && textContent.length > LONG_TEXT_THRESHOLD;
+  const isLong = (isAssistant || isUser) && !!textContent && textContent.length > LONG_TEXT_THRESHOLD;
   const displayedText =
-    isLong && !showMore ? textContent.slice(0, LONG_TEXT_THRESHOLD) : textContent;
+    isLong && !showMore ? textContent!.slice(0, LONG_TEXT_THRESHOLD) : textContent ?? "";
 
   return (
     <div className={cn("flex gap-2 items-start", isUser && "flex-row-reverse")}>
@@ -432,16 +488,21 @@ export function MessageBubble({
           </>
         ) : (
           <>
-            <MarkdownRenderer variant="assistant" size="compact">
-              {displayedText}
-            </MarkdownRenderer>
-            {isLong && (
-              <button
-                onClick={() => setShowMore((s) => !s)}
-                className="mt-1 text-xs text-primary hover:underline"
-              >
-                {showMore ? "Show less" : "Show more"}
-              </button>
+            {reasoning && <ReasoningSection text={reasoning} />}
+            {textContent && (
+              <>
+                <MarkdownRenderer variant="assistant" size="compact">
+                  {displayedText}
+                </MarkdownRenderer>
+                {isLong && (
+                  <button
+                    onClick={() => setShowMore((s) => !s)}
+                    className="mt-1 text-xs text-primary hover:underline"
+                  >
+                    {showMore ? "Show less" : "Show more"}
+                  </button>
+                )}
+              </>
             )}
           </>
         )}
@@ -467,6 +528,85 @@ export function MessageBubble({
             </TooltipTrigger>
             <TooltipContent>{new Date(message.timestamp).toLocaleString()}</TooltipContent>
           </Tooltip>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RunConfigPanel — collapsible panel showing high-signal run config fields
+// ---------------------------------------------------------------------------
+
+function getRepoIdentifiers(repos: unknown[]): string[] {
+  return repos
+    .map((r) => {
+      if (r && typeof r === "object") {
+        const obj = r as Record<string, unknown>;
+        return (obj.name ?? obj.url ?? obj.id ?? null) as string | null;
+      }
+      if (typeof r === "string") return r;
+      return null;
+    })
+    .filter((v): v is string => v !== null && v !== "");
+}
+
+function getToolNames(tools: unknown): string[] {
+  if (!tools || typeof tools !== "object" || Array.isArray(tools)) return [];
+  return Object.entries(tools as Record<string, unknown>)
+    .filter(([, v]) => !!v)
+    .map(([k]) => k);
+}
+
+export function RunConfigPanel({ config }: { config: AgentRunConfig }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const repoIds = Array.isArray(config.repos) ? getRepoIdentifiers(config.repos) : [];
+  const toolNames = getToolNames(config.tools);
+
+  const rows: { label: string; value: string }[] = [];
+  if (config.model) rows.push({ label: "Model", value: config.model });
+  if (config.provider) rows.push({ label: "Provider", value: config.provider });
+  if (config.source) rows.push({ label: "Source", value: config.source });
+  if (config.temperature !== undefined && config.temperature !== null) {
+    rows.push({ label: "Temp", value: String(config.temperature) });
+  }
+  if (repoIds.length > 0) rows.push({ label: "Repos", value: repoIds.join(", ") });
+  if (toolNames.length > 0) rows.push({ label: "Tools", value: toolNames.join(", ") });
+
+  if (rows.length === 0 && !expanded) return null;
+
+  return (
+    <div className="mb-3 rounded-md border bg-muted/30 px-3 py-2 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-foreground uppercase tracking-wide">
+          Run Config
+        </span>
+      </div>
+      {rows.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          {rows.map(({ label, value }) => (
+            <div key={label} className="flex items-start gap-1.5 min-w-0">
+              <span className="text-xs text-muted-foreground shrink-0">{label}:</span>
+              <span className="text-xs font-mono text-foreground truncate" title={value}>
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div>
+        <button
+          onClick={() => setExpanded((s) => !s)}
+          className="text-xs text-primary hover:underline flex items-center gap-0.5"
+        >
+          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {expanded ? "Hide raw config" : "Show raw config"}
+        </button>
+        {expanded && (
+          <pre className="mt-2 text-xs font-mono bg-muted rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap break-words">
+            {JSON.stringify(config, null, 2)}
+          </pre>
         )}
       </div>
     </div>
@@ -561,6 +701,7 @@ export function StatsBar({ stats }: { stats: AgentLogStats }) {
 export function LogDetailContent({
   conversation,
   stats,
+  config,
   rawContent,
   loading,
   error,
@@ -588,6 +729,7 @@ export function LogDetailContent({
 
       {!loading && !error && hasContent && (
         <>
+          {config && <RunConfigPanel config={config} />}
           {stats && <StatsBar stats={stats} />}
           <ScrollArea
             className={cn(

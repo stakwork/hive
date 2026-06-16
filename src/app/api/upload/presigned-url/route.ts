@@ -2,14 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getMiddlewareContext, requireAuth } from '@/lib/middleware/utils'
 import { getS3Service } from '@/services/s3'
 import { db } from '@/lib/db'
-import { validateWorkspaceAccessById } from '@/services/workspace'
+import { validateWorkspaceAccessById, validateUserBelongsToOrg } from '@/services/workspace'
 import { z } from 'zod'
 
 const uploadRequestSchema = z.object({
   filename: z.string().min(1, 'Filename is required'),
   contentType: z.string().min(1, 'Content type is required'),
   size: z.number().min(1, 'File size must be greater than 0'),
-  taskId: z.string().min(1, 'Task ID is required'),
+  taskId: z.string().optional(),
+  workspaceId: z.string().optional(),
+  orgId: z.string().optional(),
+}).refine(d => !!(d.taskId || d.workspaceId || d.orgId), {
+  message: 'One of taskId, workspaceId, or orgId is required',
 })
 
 /**
@@ -26,11 +30,15 @@ const uploadRequestSchema = z.object({
  *   - features/<workspaceId>/...
  *   - diagrams/<workspaceId>/...
  */
-function extractWorkspaceIdFromS3Key(s3Key: string): string | null {
+type S3KeyInfo =
+  | { type: 'workspace'; id: string }
+  | { type: 'org'; id: string }
+
+function extractS3KeyInfo(s3Key: string): S3KeyInfo | null {
   const parts = s3Key.split('/').filter(Boolean)
   if (parts.length < 2) return null
-  const [prefix, workspaceId] = parts
-  const ALLOWED_PREFIXES = new Set([
+  const [prefix, id] = parts
+  const WORKSPACE_PREFIXES = new Set([
     'uploads',
     'workspace-logos',
     'whiteboards',
@@ -38,8 +46,9 @@ function extractWorkspaceIdFromS3Key(s3Key: string): string | null {
     'features',
     'diagrams',
   ])
-  if (!ALLOWED_PREFIXES.has(prefix)) return null
-  return workspaceId || null
+  if (WORKSPACE_PREFIXES.has(prefix)) return { type: 'workspace', id: id || '' }
+  if (prefix === 'orgs') return { type: 'org', id: id || '' }
+  return null
 }
 
 export async function GET(request: NextRequest) {
@@ -60,24 +69,33 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // IDOR hardening: s3Keys follow a `<prefix>/<workspaceId>/...` layout.
-    // Parse the workspaceId out of the key and require membership before
-    // minting a presigned download URL — otherwise any signed-in user can
-    // exfiltrate any other workspace's attachments/artifacts/feature media.
-    const workspaceId = extractWorkspaceIdFromS3Key(s3Key)
-    if (!workspaceId) {
+    // IDOR hardening: s3Keys follow a `<prefix>/<id>/...` layout.
+    // Parse the key info and require membership before minting a presigned
+    // download URL — otherwise any signed-in user can exfiltrate attachments.
+    const keyInfo = extractS3KeyInfo(s3Key)
+    if (!keyInfo || !keyInfo.id) {
       return NextResponse.json(
         { error: 'Workspace not found or access denied' },
         { status: 404 }
       )
     }
 
-    const access = await validateWorkspaceAccessById(workspaceId, userId)
-    if (!access.hasAccess || !access.canRead) {
-      return NextResponse.json(
-        { error: 'Workspace not found or access denied' },
-        { status: 404 }
-      )
+    if (keyInfo.type === 'org') {
+      const isMember = await validateUserBelongsToOrg(keyInfo.id, userId, 'githubLogin')
+      if (!isMember) {
+        return NextResponse.json(
+          { error: 'Workspace not found or access denied' },
+          { status: 404 }
+        )
+      }
+    } else {
+      const access = await validateWorkspaceAccessById(keyInfo.id, userId)
+      if (!access.hasAccess || !access.canRead) {
+        return NextResponse.json(
+          { error: 'Workspace not found or access denied' },
+          { status: 404 }
+        )
+      }
     }
 
     // Generate presigned download URL
@@ -109,10 +127,36 @@ export async function POST(request: NextRequest) {
     const validatedData = uploadRequestSchema.parse(body)
     const { filename, contentType, size, taskId } = validatedData
 
-    // Get task with workspace and swarm information
+    // orgId-only branch (org/initiative canvas uploads)
+    if (validatedData.orgId && !validatedData.workspaceId && !taskId) {
+      const { orgId } = validatedData
+      const isMember = await validateUserBelongsToOrg(orgId, userId, 'githubLogin')
+      if (!isMember) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      const s3Path = getS3Service().generateOrgUploadPath(orgId, filename)
+      const presignedUrl = await getS3Service().generatePresignedUploadUrl(s3Path, contentType, 300)
+      return NextResponse.json({ presignedUrl, s3Path })
+    }
+
+    // workspaceId-only branch (canvas uploads)
+    if (validatedData.workspaceId && !taskId) {
+      const { workspaceId } = validatedData
+      // IDOR: verify caller has write access to the workspace BEFORE any S3 call
+      const access = await validateWorkspaceAccessById(workspaceId, userId)
+      if (!access?.canWrite) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      const s3Path = getS3Service().generateCanvasUploadPath(workspaceId, filename)
+      const presignedUrl = await getS3Service().generatePresignedUploadUrl(s3Path, contentType, 300)
+      return NextResponse.json({ presignedUrl, s3Path })
+    }
+
+    // Get task with workspace and swarm information (taskId is required here — the
+    // workspaceId-only branch above would have returned already if taskId were absent)
     const task = await db.task.findFirst({
       where: {
-        id: taskId,
+        id: taskId!,
         deleted: false,
       },
       select: {
@@ -167,7 +211,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate S3 path
-    const s3Path = getS3Service().generateS3Path(workspaceId, swarmId, taskId, filename)
+    const s3Path = getS3Service().generateS3Path(workspaceId, swarmId, taskId!, filename)
 
     // Generate presigned upload URL
     const presignedUrl = await getS3Service().generatePresignedUploadUrl(

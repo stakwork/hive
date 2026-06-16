@@ -68,6 +68,7 @@ export interface ConversationListItem {
   updatedAt: string;
   creatorName?: string | null;
   creatorId?: string;
+  creatorImage?: string | null;
 }
 
 // Full conversation detail for GET /conversations/[id]

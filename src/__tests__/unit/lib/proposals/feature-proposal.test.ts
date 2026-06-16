@@ -21,6 +21,7 @@ vi.mock("@/lib/db", () => ({
     milestone: { findFirst: vi.fn() },
     workspace: { findFirst: vi.fn() },
     feature: { findUnique: vi.fn(), findMany: vi.fn() },
+    user: { findUnique: vi.fn() },
   },
 }));
 
@@ -41,6 +42,9 @@ import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: user has global auto-respond off. Individual tests override as needed.
+  (db.user.findUnique as unknown as { mockResolvedValue: (v: unknown) => void })
+    .mockResolvedValue({ canvasAutonomousTurns: false });
 });
 
 function getTool() {
@@ -162,5 +166,58 @@ describe("buildInitiativeTools.propose_feature — meta resolution", () => {
       milestoneId: "ms_1",
     })) as { error?: string };
     expect(out.error).toMatch(/milestone does not belong/i);
+  });
+});
+
+describe("buildInitiativeTools.propose_feature — autoRespond seeding", () => {
+  it("seeds autoRespond: true when user has canvasAutonomousTurns: true", async () => {
+    (db.user.findUnique as unknown as { mockResolvedValue: (v: unknown) => void })
+      .mockResolvedValue({ canvasAutonomousTurns: true });
+    (db.workspace.findFirst as unknown as { mockResolvedValue: (v: unknown) => void })
+      .mockResolvedValue({ id: "ws_1", name: "Hive", slug: "hive" });
+    const out = (await getTool().execute({
+      proposalId: "p_auto1",
+      title: "Auto feature",
+      initialMessage: "Build the auto feature.",
+      workspaceSlug: "hive",
+    })) as ProposalOutput;
+    expect(out.kind).toBe("feature");
+    if (out.kind === "feature") {
+      expect(out.payload.autoRespond).toBe(true);
+    }
+  });
+
+  it("seeds autoRespond: false when user has canvasAutonomousTurns: false", async () => {
+    (db.user.findUnique as unknown as { mockResolvedValue: (v: unknown) => void })
+      .mockResolvedValue({ canvasAutonomousTurns: false });
+    (db.workspace.findFirst as unknown as { mockResolvedValue: (v: unknown) => void })
+      .mockResolvedValue({ id: "ws_1", name: "Hive", slug: "hive" });
+    const out = (await getTool().execute({
+      proposalId: "p_auto2",
+      title: "Manual feature",
+      initialMessage: "Build the manual feature.",
+      workspaceSlug: "hive",
+    })) as ProposalOutput;
+    expect(out.kind).toBe("feature");
+    if (out.kind === "feature") {
+      expect(out.payload.autoRespond).toBe(false);
+    }
+  });
+
+  it("seeds autoRespond: false when user is not found", async () => {
+    (db.user.findUnique as unknown as { mockResolvedValue: (v: unknown) => void })
+      .mockResolvedValue(null);
+    (db.workspace.findFirst as unknown as { mockResolvedValue: (v: unknown) => void })
+      .mockResolvedValue({ id: "ws_1", name: "Hive", slug: "hive" });
+    const out = (await getTool().execute({
+      proposalId: "p_auto3",
+      title: "Unknown user feature",
+      initialMessage: "Build it.",
+      workspaceSlug: "hive",
+    })) as ProposalOutput;
+    expect(out.kind).toBe("feature");
+    if (out.kind === "feature") {
+      expect(out.payload.autoRespond).toBe(false);
+    }
   });
 });

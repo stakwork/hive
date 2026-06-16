@@ -8,13 +8,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Download } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import type { AgentLogRecord } from "@/types/agent-logs";
 
 interface AgentLogsTableProps {
   logs: AgentLogRecord[];
   onRowClick: (logId: string) => void;
   onDownload?: (log: AgentLogRecord) => Promise<void>;
+  showUserColumn?: boolean;
 }
 
 const formatter = new Intl.DateTimeFormat("en-US", {
@@ -25,7 +28,17 @@ const formatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
-export function AgentLogsTable({ logs, onRowClick, onDownload }: AgentLogsTableProps) {
+function getInitials(name: string | null | undefined): string {
+  if (!name) return "?";
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+export function AgentLogsTable({ logs, onRowClick, onDownload, showUserColumn = false }: AgentLogsTableProps) {
   const handleDownload = async (logId: string, agent: string) => {
     try {
       const res = await fetch(`/api/agent-logs/${logId}/content`);
@@ -61,7 +74,9 @@ export function AgentLogsTable({ logs, onRowClick, onDownload }: AgentLogsTableP
         <TableHeader>
           <TableRow>
             <TableHead>Timestamp</TableHead>
+            {showUserColumn && <TableHead>User</TableHead>}
             <TableHead>Agent Name</TableHead>
+            <TableHead>Model</TableHead>
             <TableHead>Feature</TableHead>
             <TableHead className="w-10" />
           </TableRow>
@@ -76,7 +91,27 @@ export function AgentLogsTable({ logs, onRowClick, onDownload }: AgentLogsTableP
               <TableCell>
                 {formatter.format(new Date(log.createdAt))}
               </TableCell>
+              {showUserColumn && (
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-6 w-6">
+                      <AvatarImage src={log.initiatorImage ?? undefined} />
+                      <AvatarFallback className="text-xs">
+                        {getInitials(log.initiatorName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm text-muted-foreground">
+                      {log.initiatorName ?? "Anonymous"}
+                    </span>
+                  </div>
+                </TableCell>
+              )}
               <TableCell className="font-medium">{log.agent}</TableCell>
+              <TableCell>
+                {log.model
+                  ? <Badge variant="secondary" className="text-xs font-mono">{log.model}</Badge>
+                  : <span className="text-muted-foreground">—</span>}
+              </TableCell>
               <TableCell className="text-muted-foreground">
                 {log.featureTitle
                   ? log.featureTitle.length > 20

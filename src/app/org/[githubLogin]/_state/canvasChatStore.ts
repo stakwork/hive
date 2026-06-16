@@ -78,6 +78,18 @@ export interface ToolCall {
 }
 
 /**
+ * A file attachment uploaded by the user before sending a canvas chat message.
+ * Persisted in SharedConversation JSON so it survives reload and live-sync.
+ */
+export interface CanvasAttachment {
+  /** S3 path (key) — used to generate a presigned download URL. */
+  path: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
+/**
  * Marks a `CanvasChatMessage` row whose origin is NOT the canvas
  * conversation itself. The fan-out worker
  * (`src/services/canvas-planner-fanout.ts`) writes inbound rows
@@ -188,6 +200,8 @@ export interface CanvasChatMessage {
   approval?: ApprovalIntent;
   /** User clicked Reject on a proposal. Set on user messages only. */
   rejection?: RejectionIntent;
+  /** Files attached by the user before send. Persisted in SharedConversation JSON. */
+  attachments?: CanvasAttachment[];
   /**
    * Synthetic assistant message describing an approval outcome. Set by
    * `/api/ask/quick` after `handleApproval` creates the DB row; carries
@@ -200,6 +214,17 @@ export interface CanvasChatMessage {
    * See `CanvasMessageSource`.
    */
   source?: CanvasMessageSource;
+  /**
+   * Populated when this assistant message is the confirmation for a
+   * `schedule_check` tool call. Persisted in `SharedConversation.messages`
+   * JSON so the `DeferredCheckCard` renders correctly after reload/share.
+   */
+  deferredCheck?: {
+    id: string;
+    description: string;
+    fireAt: string; // ISO timestamp
+    status: "PENDING" | "FIRED" | "CANCELLED" | "FAILED";
+  };
 }
 
 export interface CanvasConversation {
@@ -333,6 +358,34 @@ interface CanvasChatState {
    */
   pendingInputDraft: string | null;
 
+  // ─── Canvas viewport (written by OrgCanvasBackground on every pan/zoom) ─
+  /**
+   * The live viewport state from the canvas renderer, plus the pixel
+   * dimensions of the canvas container element. Written by
+   * `OrgCanvasBackground.onViewportChange` so that `ProposalCard`
+   * can compute canvas-space bounds for viewport-aware node placement
+   * without prop drilling.
+   *
+   * `null` when the canvas is not mounted (before first render or
+   * after unmount). All consumers must handle null gracefully.
+   */
+  canvasViewport: {
+    x: number;
+    y: number;
+    zoom: number;
+    containerW: number;
+    containerH: number;
+  } | null;
+  setCanvasViewport: (
+    v: {
+      x: number;
+      y: number;
+      zoom: number;
+      containerW: number;
+      containerH: number;
+    } | null,
+  ) => void;
+
   // ─── Reserved slots (empty in PR 1; canvas may already select these) ─
   proposals: Record<string, CanvasProposal>;
   subAgentRuns: Record<string, SubAgentRun>;
@@ -457,6 +510,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       ephemeralSeedCounts: {},
       locallyAuthoredTurnIds: new Set<string>(),
       pendingInputDraft: null,
+      canvasViewport: null,
       proposals: {},
       subAgentRuns: {},
       artifacts: {},
@@ -745,6 +799,9 @@ export const useCanvasChatStore = create<CanvasChatState>()(
 
       setPendingInputDraft: (draft) =>
         set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
+
+      setCanvasViewport: (v) =>
+        set({ canvasViewport: v }, false, "setCanvasViewport"),
     }),
     { name: "canvas-chat-store" },
   ),
@@ -764,8 +821,30 @@ export function toModelMessages(
   messages: CanvasChatMessage[],
 ): ModelMessage[] {
   return messages
-    .filter((m) => m.content.trim() || m.toolCalls)
+    .filter((m) => m.content.trim() || m.toolCalls || m.attachments?.length)
     .flatMap((m): ModelMessage[] => {
+      // Multimodal: user messages with image attachments get a content array
+      if (m.role === "user" && m.attachments?.length) {
+        const imageAttachments = m.attachments.filter((a) =>
+          a.mimeType.startsWith("image/"),
+        );
+        if (imageAttachments.length > 0) {
+          const contentParts: Array<
+            { type: "text"; text: string } | { type: "image"; image: string }
+          > = [];
+          if (m.content.trim()) {
+            contentParts.push({ type: "text", text: m.content });
+          }
+          for (const a of imageAttachments) {
+            contentParts.push({
+              type: "image",
+              image: `/api/upload/presigned-url?s3Key=${encodeURIComponent(a.path)}`,
+            });
+          }
+          return [{ role: "user", content: contentParts as never }];
+        }
+      }
+
       if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
         const out: ModelMessage[] = [];
         out.push({
