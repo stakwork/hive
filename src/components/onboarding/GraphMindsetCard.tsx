@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { validateWorkspaceSlugFormat } from "@/lib/utils/slug";
 
 export function GraphMindsetCard() {
   const [name, setName] = useState("");
@@ -39,16 +40,25 @@ export function GraphMindsetCard() {
   const handleNameChange = (value: string) => {
     setName(value);
     setIsAvailable(false);
-    setNameError("");
     setShowPaymentOptions(false);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     if (!value.trim()) {
+      setNameError("");
       setIsValidating(false);
       return;
     }
 
+    // Synchronous format check — reject immediately before hitting the API
+    const formatResult = validateWorkspaceSlugFormat(value);
+    if (!formatResult.valid) {
+      setNameError(formatResult.error ?? "Invalid workspace name.");
+      setIsValidating(false);
+      return;
+    }
+
+    setNameError("");
     setIsValidating(true);
     debounceRef.current = setTimeout(async () => {
       try {

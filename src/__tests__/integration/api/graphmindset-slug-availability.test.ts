@@ -144,6 +144,29 @@ describe('GET /api/graphmindset/slug-availability', () => {
     expect(data.data.isAvailable).toBe(true);
   });
 
+  test('returns isAvailable: false for slug with capital letters (raw format check)', async () => {
+    const req = createGetRequest('/api/graphmindset/slug-availability?slug=MyWorkspace');
+    const response = await GET(req);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.success).toBe(true);
+    expect(data.data.isAvailable).toBe(false);
+    expect(data.data.message).toBe('This slug is not available. Please choose a different one.');
+    // Should not call swarm admin or DB — rejected at format validation
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('returns isAvailable: false for slug with mixed case', async () => {
+    const req = createGetRequest('/api/graphmindset/slug-availability?slug=MyGraph123');
+    const response = await GET(req);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.data.isAvailable).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   test('falls back to DB-only result when SWARM_SUPER_ADMIN_URL is not configured', async () => {
     // Override the env mock for this test
     vi.doMock('@/config/env', () => ({

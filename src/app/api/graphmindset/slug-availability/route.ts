@@ -21,9 +21,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Validate raw slug format first — catches capitals and other disallowed chars
+    // before lowercasing, so the value reported "available" matches what workspace creation accepts.
+    const rawValidation = validateWorkspaceSlug(slug);
+    if (!rawValidation.isValid) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          slug,
+          isAvailable: false,
+          message: UNAVAILABLE_MESSAGE,
+        },
+      });
+    }
+
     const normalizedSlug = slug.toLowerCase();
 
-    // Check format and reserved words
+    // Check reserved words on the normalized slug (e.g. "ADMIN" → "admin")
     const validation = validateWorkspaceSlug(normalizedSlug);
     if (!validation.isValid) {
       return NextResponse.json({
