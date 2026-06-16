@@ -25,8 +25,8 @@
  * goes here without changing the agent surface.
  *
  * NOT exported: collision logic, geometry-derived gaps, or anything
- * else pixel-y. The single export is `resolvePlacement` — pixels
- * never leave this module.
+ * else pixel-y. Primary exports are `resolvePlacement` and
+ * `findFreeSlotInViewport` — pixels never leave this module.
  */
 import { readCanvas } from "./io";
 import {
@@ -260,6 +260,42 @@ export function findFreeSlotInViewport(
  * overlap, but the math is cleaner if we don't have to special-case
  * floating-point zero-area intersections).
  */
+/**
+ * Grid-scan the user's visible canvas area and return the first
+ * non-overlapping position for a new card of size `cardW × cardH`.
+ *
+ * Scans left→right, top→bottom in `(cardW + padding)` steps so
+ * every candidate slot is fully within the visible viewport bounds.
+ * Returns `null` when the viewport is completely packed — callers
+ * are responsible for falling back to legacy auto-layout.
+ */
+export function findFreeSlotInViewport(
+  vpBounds: {
+    canvasX: number;
+    canvasY: number;
+    canvasW: number;
+    canvasH: number;
+  },
+  existingNodes: CanvasNode[],
+  cardW: number,
+  cardH: number,
+  padding = 20,
+): { x: number; y: number } | null {
+  const STEP_X = cardW + padding;
+  const STEP_Y = cardH + padding;
+  const maxX = vpBounds.canvasX + vpBounds.canvasW - cardW;
+  const maxY = vpBounds.canvasY + vpBounds.canvasH - cardH;
+
+  for (let y = vpBounds.canvasY + padding; y <= maxY; y += STEP_Y) {
+    for (let x = vpBounds.canvasX + padding; x <= maxX; x += STEP_X) {
+      if (!collides({ x, y }, { w: cardW, h: cardH }, existingNodes, "")) {
+        return { x, y };
+      }
+    }
+  }
+  return null; // viewport fully packed — caller falls back to legacy behaviour
+}
+
 function collides(
   rect: { x: number; y: number },
   dims: Dims,
