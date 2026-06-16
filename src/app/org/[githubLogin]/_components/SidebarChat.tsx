@@ -36,9 +36,9 @@ import {
 } from "./ResearchRunCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
-import { AttentionList } from "./AttentionList";
+import { MyActivityPanel } from "./MyActivityPanel";
 import { DeferredCheckCard } from "./DeferredCheckCard";
-import type { AttentionItem } from "@/services/attention/topItems";
+import type { ActivityItem } from "@/app/api/profile/activity/route";
 import {
   useCanvasChatStore,
   type CanvasAttachment,
@@ -535,10 +535,10 @@ const EMPTY_TOOL_CALLS: ToolCall[] = [];
  * here) and switches on `artifact.type`.
  *
  * Currently registered types:
- *   - `attention-list` — synthetic intro card listing items needing
- *     the user's attention. Seeded by `OrgCanvasView` on fresh
- *     canvas entry; data shape is `AttentionItem[]` from
- *     `services/attention/topItems.ts`.
+ *   - `my-activity` — compact "My Activity" intro card showing the user's
+ *     recent tasks, chats, plans, and milestones. Seeded by `OrgCanvasView`
+ *     on fresh canvas entry; data shape is `ActivityItem[]` from
+ *     `services/roadmap/user-activity.ts`.
  *
  * Future canvas-bound types (proposals' canvas halos, sub-agent
  * status pills, etc.) layer in additional cases here.
@@ -561,16 +561,13 @@ function MessageArtifacts({ artifactIds }: { artifactIds?: string[] }) {
   return (
     <div className="space-y-1.5">
       {artifacts.map((artifact) => {
-        if (artifact.type === "attention-list") {
-          const data = artifact.data as
-            | { items: AttentionItem[]; total: number }
-            | undefined;
+        if (artifact.type === "my-activity") {
+          const data = artifact.data as { items: ActivityItem[] } | undefined;
           if (!data || !Array.isArray(data.items)) return null;
           return (
-            <AttentionList
+            <MyActivityPanel
               key={artifact.id}
-              items={data.items}
-              total={data.total}
+              initialItems={data.items}
               onDismiss={() => dismissArtifact(artifact.id)}
             />
           );
