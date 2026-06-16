@@ -3037,4 +3037,111 @@ describe("CompactTasksList", () => {
       expect(badge.getAttribute("data-cistatus")).toBeNull();
     });
   });
+
+  describe("handleRealtimeTaskUpdate — optimistic update preservation", () => {
+    function captureOnTaskTitleUpdate(): { getCallback: () => ((update: any) => void) | undefined } {
+      let captured: ((update: any) => void) | undefined;
+      (usePusherConnection as ReturnType<typeof vi.fn>).mockImplementation((opts: any) => {
+        if (opts?.onTaskTitleUpdate) captured = opts.onTaskTitleUpdate;
+      });
+      return { getCallback: () => captured };
+    }
+
+    test("preserves pending optimistic autoMerge:true when Pusher fires while save is in-flight", async () => {
+      const { getCallback } = captureOnTaskTitleUpdate();
+
+      const task = createMockTask({ id: "task-opt", status: "TODO", autoMerge: false });
+      const feature = createMockFeature([task]);
+      const onUpdate = vi.fn();
+
+      // Mock updateTicket to never resolve (save in-flight)
+      mockRoadmapUpdateTicket.mockReturnValue(new Promise(() => {}));
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={onUpdate}
+        />
+      );
+
+      // Click the autoMerge toggle (index 0) to trigger optimistic update
+      const user = userEvent.setup();
+      const toggles = screen.getAllByTestId("mini-toggle");
+      await user.click(toggles[0]);
+
+      // Now fire the Pusher WORKSPACE_TASK_TITLE_UPDATE event (simulating start-task)
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+      cb!({ taskId: "task-opt", status: "IN_PROGRESS" });
+
+      // onUpdate should have been called; the task in the updated feature must have autoMerge: true
+      expect(onUpdate).toHaveBeenCalled();
+      const lastCall = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      const updatedTask = lastCall.phases.flatMap((p: any) => p.tasks).find((t: any) => t.id === "task-opt");
+      expect(updatedTask?.autoMerge).toBe(true);
+    });
+
+    test("preserves feature autoMerge value when no optimistic update is pending", () => {
+      const { getCallback } = captureOnTaskTitleUpdate();
+
+      const task = createMockTask({ id: "task-no-opt", status: "TODO", autoMerge: true });
+      const feature = createMockFeature([task]);
+      const onUpdate = vi.fn();
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={onUpdate}
+        />
+      );
+
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+      cb!({ taskId: "task-no-opt", status: "IN_PROGRESS" });
+
+      expect(onUpdate).toHaveBeenCalled();
+      const lastCall = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      const updatedTask = lastCall.phases.flatMap((p: any) => p.tasks).find((t: any) => t.id === "task-no-opt");
+      expect(updatedTask?.autoMerge).toBe(true);
+    });
+
+    test("respects optimistic autoMerge:false when toggled OFF before Pusher fires", async () => {
+      const { getCallback } = captureOnTaskTitleUpdate();
+
+      const task = createMockTask({ id: "task-off", status: "TODO", autoMerge: true });
+      const feature = createMockFeature([task]);
+      const onUpdate = vi.fn();
+
+      // Mock updateTicket to never resolve (save in-flight)
+      mockRoadmapUpdateTicket.mockReturnValue(new Promise(() => {}));
+
+      render(
+        <CompactTasksList
+          feature={feature}
+          featureId="feature-1"
+          isGenerating={false}
+          onUpdate={onUpdate}
+        />
+      );
+
+      // Toggle autoMerge OFF (it was true, clicking sets optimistic to false)
+      const user = userEvent.setup();
+      const toggles = screen.getAllByTestId("mini-toggle");
+      await user.click(toggles[0]);
+
+      const cb = getCallback();
+      expect(cb).toBeDefined();
+      cb!({ taskId: "task-off", status: "IN_PROGRESS" });
+
+      expect(onUpdate).toHaveBeenCalled();
+      const lastCall = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      const updatedTask = lastCall.phases.flatMap((p: any) => p.tasks).find((t: any) => t.id === "task-off");
+      // The optimistic value (false) should be preserved
+      expect(updatedTask?.autoMerge).toBe(false);
+    });
+  });
 });
