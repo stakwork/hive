@@ -39,6 +39,7 @@ import {
   type StoredMessage,
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
+import { buildDeferredCheckTools } from "@/lib/ai/deferredCheckTools";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
 // the org-canvas turn is persisted server-side in `after()` so it survives the
@@ -370,12 +371,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Org-membership gating for the multi-workspace + orgId branch
-    // (canvas chat). Validated here in the route so `runCanvasAgent`
-    // can stay auth-agnostic — it trusts the caller. Matches the
-    // pre-refactor behavior: org tools are only merged in multi-WS
-    // mode, and only after this check.
-    if (orgId && isMultiWorkspace) {
+    // Org-membership gating for any request that carries an orgId
+    // (canvas chat, single- or multi-workspace). Validated here so
+    // `runCanvasAgent` can stay auth-agnostic — it trusts the caller.
+    // Must run before any DB write that uses orgId (persistCanvasUserMessage,
+    // buildDeferredCheckTools) to prevent IDOR: an unauthenticated or
+    // non-member caller could otherwise associate DB rows with an arbitrary org.
+    if (orgId) {
       const orgBelongsToCaller = await validateUserBelongsToOrg(
         orgId,
         userId!,
@@ -571,6 +573,19 @@ export async function POST(request: NextRequest) {
           // open clients animate the researched node.
           silentPusher: false,
           dispatchedResearch,
+          // Inject the schedule_check tool when we have a fully-resolved
+          // canvas conversation (org + user + server-owned row). All three
+          // context values are server-side only — the LLM cannot override them.
+          ...(orgId && userId && (canvasConversationRowId ?? tokenAttributionRowId)
+            ? {
+                additionalTools: buildDeferredCheckTools({
+                  conversationId:
+                    (canvasConversationRowId ?? tokenAttributionRowId)!,
+                  orgId,
+                  userId,
+                }),
+              }
+            : {}),
           hooks: {
             onStepFinish: (sf) => {
               const conceptIds = extractConceptIdsFromStep(sf.content);
