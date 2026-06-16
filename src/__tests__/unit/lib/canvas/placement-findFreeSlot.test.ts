@@ -28,12 +28,10 @@ describe("findFreeSlotInViewport", () => {
   });
 
   it("partial occupation: first slot occupied → returns second slot", () => {
-    // Place a node exactly at the first candidate slot
     const firstX = VP.canvasX + PADDING;
     const firstY = VP.canvasY + PADDING;
     const blocking = makeNode("n1", firstX, firstY);
     const result = findFreeSlotInViewport(VP, [blocking], CARD_W, CARD_H, PADDING);
-    // Second slot is one STEP_X to the right on the same row
     expect(result).not.toBeNull();
     expect(result).toEqual({ x: firstX + CARD_W + PADDING, y: firstY });
   });
@@ -50,23 +48,25 @@ describe("findFreeSlotInViewport", () => {
   });
 
   it("no collision: returned position does not overlap any existing node", () => {
-    const blocking = makeNode("n1", VP.canvasX + PADDING, VP.canvasY + PADDING);
-    const result = findFreeSlotInViewport(VP, [blocking], CARD_W, CARD_H, PADDING);
+    const nodes = [
+      makeNode("n1", VP.canvasX + PADDING, VP.canvasY + PADDING),
+      makeNode("n2", VP.canvasX + PADDING + CARD_W + PADDING, VP.canvasY + PADDING),
+    ];
+    const result = findFreeSlotInViewport(VP, nodes, CARD_W, CARD_H, PADDING);
     expect(result).not.toBeNull();
     if (result) {
-      // Verify no overlap with the blocking node using AABB
-      const rX2 = result.x + CARD_W;
-      const rY2 = result.y + CARD_H;
-      const bX2 = blocking.x + CARD_W;
-      const bY2 = blocking.y + CARD_H;
-      const overlaps =
-        result.x < bX2 && rX2 > blocking.x && result.y < bY2 && rY2 > blocking.y;
-      expect(overlaps).toBe(false);
+      for (const n of nodes) {
+        const overlaps =
+          result.x < n.x + CARD_W &&
+          result.x + CARD_W > n.x &&
+          result.y < n.y + CARD_H &&
+          result.y + CARD_H > n.y;
+        expect(overlaps).toBe(false);
+      }
     }
   });
 
   it("fully packed viewport: returns null", () => {
-    // Fill every grid slot
     const STEP_X = CARD_W + PADDING;
     const STEP_Y = CARD_H + PADDING;
     const maxX = VP.canvasX + VP.canvasW - CARD_W;
@@ -90,5 +90,11 @@ describe("findFreeSlotInViewport", () => {
       expect(result.x + CARD_W).toBeLessThanOrEqual(vp.canvasX + vp.canvasW);
       expect(result.y + CARD_H).toBeLessThanOrEqual(vp.canvasY + vp.canvasH);
     }
+  });
+
+  it("returns null when the viewport is too small to fit even one card", () => {
+    const tinyVP = { canvasX: 0, canvasY: 0, canvasW: 100, canvasH: 50 };
+    const result = findFreeSlotInViewport(tinyVP, [], CARD_W, CARD_H, PADDING);
+    expect(result).toBeNull();
   });
 });
