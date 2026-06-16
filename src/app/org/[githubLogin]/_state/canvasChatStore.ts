@@ -214,6 +214,17 @@ export interface CanvasChatMessage {
    * See `CanvasMessageSource`.
    */
   source?: CanvasMessageSource;
+  /**
+   * Populated when this assistant message is the confirmation for a
+   * `schedule_check` tool call. Persisted in `SharedConversation.messages`
+   * JSON so the `DeferredCheckCard` renders correctly after reload/share.
+   */
+  deferredCheck?: {
+    id: string;
+    description: string;
+    fireAt: string; // ISO timestamp
+    status: "PENDING" | "FIRED" | "CANCELLED" | "FAILED";
+  };
 }
 
 export interface CanvasConversation {

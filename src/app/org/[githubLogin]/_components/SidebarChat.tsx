@@ -37,6 +37,7 @@ import {
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
 import { AttentionList } from "./AttentionList";
+import { DeferredCheckCard } from "./DeferredCheckCard";
 import type { AttentionItem } from "@/services/attention/topItems";
 import {
   useCanvasChatStore,
@@ -436,6 +437,12 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                       />
                     ))}
                   </div>
+                )}
+                {message.deferredCheck && (
+                  <DeferredCheckCard
+                    deferredCheck={message.deferredCheck}
+                    githubLogin={githubLogin}
+                  />
                 )}
                 {subAgentRuns &&
                   subAgentRuns.length > 0 &&

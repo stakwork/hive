@@ -11,6 +11,7 @@ import {
   WorkspaceRole,
   InitiativeStatus,
   MilestoneStatus,
+  DeferredChatActionStatus,
 } from "@prisma/client";
 import { config as dotenvConfig } from "dotenv";
 import { seedDeploymentTracking } from "./seed-deployment-tracking";
@@ -1727,6 +1728,44 @@ async function seedStakworkSecrets() {
   }
 }
 
+async function seedDeferredChatAction(
+  users: Array<{ id: string; email: string }>,
+) {
+  // Idempotent: skip if any deferred actions already exist
+  const existing = await prisma.deferredChatAction.count();
+  if (existing > 0) {
+    console.log("DeferredChatAction already seeded, skipping.");
+    return;
+  }
+
+  // Resolve an org and a user to attach the seed record to
+  const org = await prisma.sourceControlOrg.findFirst();
+  if (!org) {
+    console.log("⚠ No SourceControlOrg found, skipping DeferredChatAction seed");
+    return;
+  }
+
+  const user = users[0];
+  if (!user) {
+    console.log("⚠ No users found, skipping DeferredChatAction seed");
+    return;
+  }
+
+  await prisma.deferredChatAction.create({
+    data: {
+      conversationId: "seed-conversation-placeholder",
+      orgId: org.id,
+      userId: user.id,
+      query: "Summarise any new PRs opened in the last hour",
+      description: "Check for new PRs in 2 minutes (smoke-test seed)",
+      fireAt: new Date(Date.now() + 2 * 60 * 1000),
+      status: DeferredChatActionStatus.PENDING,
+    },
+  });
+
+  console.log("✓ Seeded 1 DeferredChatAction (fireAt = now + 2min)");
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1743,6 +1782,7 @@ async function main() {
   await seedMilestoneLinkFeatureData(users);
   await seedWorkflowTask();
   await seedStakworkSecrets();
+  await seedDeferredChatAction(users);
 
   console.log("Seed completed.");
 }

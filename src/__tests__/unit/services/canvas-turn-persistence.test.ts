@@ -184,3 +184,122 @@ describe("appendTurnMessages", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// deferredCheck population from schedule_check tool results
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("messagesFromSteps — deferredCheck population", () => {
+  test("attaches deferredCheck to the text row when schedule_check succeeds", () => {
+    const steps = [
+      {
+        text: "I've scheduled the check for you.",
+        toolCalls: [
+          {
+            toolCallId: "tc-sched",
+            toolName: "schedule_check",
+            input: { query: "Check PR status", delayMs: 300_000, description: "Check PR in 5 min" },
+          },
+        ],
+        toolResults: [
+          {
+            toolCallId: "tc-sched",
+            output: {
+              deferredActionId: "deferred-001",
+              fireAt: "2026-01-01T00:05:00.000Z",
+              description: "Check PR in 5 min",
+            },
+          },
+        ],
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+
+    // Text row should carry deferredCheck
+    const textRow = rows.find((r) => r.content !== "");
+    expect(textRow).toBeDefined();
+    expect(textRow!.deferredCheck).toEqual({
+      id: "deferred-001",
+      description: "Check PR in 5 min",
+      fireAt: "2026-01-01T00:05:00.000Z",
+      status: "PENDING",
+    });
+  });
+
+  test("attaches deferredCheck to tool-call row when step has no text", () => {
+    const steps = [
+      {
+        text: "",
+        toolCalls: [
+          {
+            toolCallId: "tc-sched",
+            toolName: "schedule_check",
+            input: { query: "Check deploy", delayMs: 60_000, description: "Check deploy in 1 min" },
+          },
+        ],
+        toolResults: [
+          {
+            toolCallId: "tc-sched",
+            output: {
+              deferredActionId: "deferred-002",
+              fireAt: "2026-01-01T00:01:00.000Z",
+              description: "Check deploy in 1 min",
+            },
+          },
+        ],
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+
+    const toolRow = rows.find((r) => r.toolCalls && r.toolCalls.length > 0);
+    expect(toolRow).toBeDefined();
+    expect(toolRow!.deferredCheck).toEqual({
+      id: "deferred-002",
+      description: "Check deploy in 1 min",
+      fireAt: "2026-01-01T00:01:00.000Z",
+      status: "PENDING",
+    });
+  });
+
+  test("does not attach deferredCheck when no schedule_check tool call is present", () => {
+    const steps = [
+      {
+        text: "Here is the result.",
+        toolCalls: [
+          { toolCallId: "tc-search", toolName: "search", input: { q: "foo" } },
+        ],
+        toolResults: [{ toolCallId: "tc-search", output: { hits: 3 } }],
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+
+    rows.forEach((row) => {
+      expect(row.deferredCheck).toBeUndefined();
+    });
+  });
+
+  test("does not attach deferredCheck when schedule_check result has missing fields", () => {
+    const steps = [
+      {
+        text: "Scheduling…",
+        toolCalls: [
+          { toolCallId: "tc-bad", toolName: "schedule_check", input: {} },
+        ],
+        toolResults: [
+          {
+            toolCallId: "tc-bad",
+            output: { someRandomField: true }, // missing deferredActionId / fireAt / description
+          },
+        ],
+      },
+    ];
+
+    const rows = messagesFromSteps(steps, "t-");
+    rows.forEach((row) => {
+      expect(row.deferredCheck).toBeUndefined();
+    });
+  });
+});
