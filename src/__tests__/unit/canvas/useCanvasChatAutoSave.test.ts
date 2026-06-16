@@ -105,6 +105,28 @@ vi.mock("@/lib/pusher", () => ({
 // eslint-disable-next-line no-var
 var _store: ReturnType<typeof makeStore>;
 
+// Real implementation of timelineFromToolCalls (matches canvasChatStore.ts)
+function timelineFromToolCalls(toolCalls: any[]): any[] {
+  return toolCalls.map((tc) => ({
+    type: "toolCall" as const,
+    id: tc.id,
+    data: {
+      id: tc.id,
+      toolName: tc.toolName,
+      input: tc.input,
+      inputText:
+        tc.input === undefined
+          ? undefined
+          : typeof tc.input === "string"
+            ? tc.input
+            : JSON.stringify(tc.input, null, 2),
+      output: tc.output,
+      status: tc.status ?? "output-available",
+      errorText: tc.errorText,
+    },
+  }));
+}
+
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => {
   // Will be overwritten in beforeEach
   _store = makeStore();
@@ -118,7 +140,7 @@ vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => {
       return (_store as any)[prop];
     },
   });
-  return { useCanvasChatStore: proxy };
+  return { useCanvasChatStore: proxy, timelineFromToolCalls };
 });
 
 import { useCanvasChatAutoSave } from "@/app/org/[githubLogin]/_state/useCanvasChatAutoSave";
@@ -314,6 +336,142 @@ describe("useCanvasChatAutoSave (live-sync)", () => {
     expect(ids).toEqual(["local-u", "local-a", "planner-x"]);
     expect(ids).not.toContain("turn-1-u");
     expect(ids).not.toContain("turn-1-a0");
+  });
+
+  it("reconstructs timeline from toolCalls when timeline is absent", async () => {
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [],
+          serverConversationId: "server-1",
+        }),
+      },
+    });
+
+    const serverMessages = [
+      {
+        id: "a1",
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "tc1",
+            toolName: "search",
+            input: { q: "x" },
+            output: { ok: true },
+            status: "output-available",
+          },
+        ],
+        // no `timeline` field
+      },
+    ];
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ messages: serverMessages }),
+    });
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+    act(() => {
+      _store.setState((s) => ({ ...s }));
+    });
+    await act(async () => {
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const msgs = _store.getState().conversations["conv-1"].messages as any[];
+    const hydrated = msgs.find((m: any) => m.id === "a1");
+    expect(hydrated).toBeDefined();
+    expect(hydrated.timeline).toHaveLength(1);
+    expect(hydrated.timeline[0].type).toBe("toolCall");
+    expect(hydrated.timeline[0].data.toolName).toBe("search");
+  });
+
+  it("does not overwrite timeline when already present", async () => {
+    const existingTimeline = [
+      { type: "toolCall" as const, id: "tc-existing", data: { id: "tc-existing", toolName: "existing_tool", input: {}, output: {}, status: "output-available" as const } },
+    ];
+
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [],
+          serverConversationId: "server-1",
+        }),
+      },
+    });
+
+    const serverMessages = [
+      {
+        id: "a1",
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          { id: "tc1", toolName: "other_tool", input: {}, output: {}, status: "output-available" },
+        ],
+        timeline: existingTimeline,
+      },
+    ];
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ messages: serverMessages }),
+    });
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+    act(() => {
+      _store.setState((s) => ({ ...s }));
+    });
+    await act(async () => {
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const msgs = _store.getState().conversations["conv-1"].messages as any[];
+    const hydrated = msgs.find((m: any) => m.id === "a1");
+    expect(hydrated).toBeDefined();
+    // existing timeline preserved, not replaced by toolCalls reconstruction
+    expect(hydrated.timeline).toHaveLength(1);
+    expect(hydrated.timeline[0].data.toolName).toBe("existing_tool");
+  });
+
+  it("leaves timeline undefined for plain text messages with no toolCalls", async () => {
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [],
+          serverConversationId: "server-1",
+        }),
+      },
+    });
+
+    const serverMessages = [
+      { id: "u1", role: "user", content: "Hello there" },
+      { id: "a1", role: "assistant", content: "Hi! How can I help?" },
+    ];
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ messages: serverMessages }),
+    });
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+    act(() => {
+      _store.setState((s) => ({ ...s }));
+    });
+    await act(async () => {
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const msgs = _store.getState().conversations["conv-1"].messages as any[];
+    for (const m of msgs) {
+      expect(m.timeline).toBeUndefined();
+    }
   });
 
   it("defers a mid-stream nudge and syncs once the stream settles", async () => {

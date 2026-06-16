@@ -31,6 +31,7 @@
 import { useEffect, useRef } from "react";
 import {
   useCanvasChatStore,
+  timelineFromToolCalls,
   type CanvasChatMessage,
 } from "./canvasChatStore";
 import {
@@ -69,7 +70,11 @@ function hydrateServerMessages(raw: unknown[]): CanvasChatMessage[] {
       content: typeof m.content === "string" ? m.content : "",
       timestamp: m.timestamp ? new Date(m.timestamp as string) : new Date(),
       toolCalls: m.toolCalls as CanvasChatMessage["toolCalls"],
-      timeline: m.timeline as CanvasChatMessage["timeline"],
+      timeline:
+        (m.timeline as CanvasChatMessage["timeline"]) ??
+        ((m.toolCalls as NonNullable<CanvasChatMessage["toolCalls"]>)?.length
+          ? timelineFromToolCalls(m.toolCalls as NonNullable<CanvasChatMessage["toolCalls"]>)
+          : undefined),
       artifactIds: m.artifactIds as string[] | undefined,
       attachments: m.attachments as CanvasChatMessage["attachments"],
       approval: m.approval as CanvasChatMessage["approval"],
