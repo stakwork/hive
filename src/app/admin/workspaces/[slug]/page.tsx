@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ExternalLink } from "lucide-react";
 import { db } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +65,7 @@ export default async function AdminWorkspaceDetailPage({
 
   const hasPassword = !!workspace.swarm?.swarmPassword;
   const workspaceId = workspace.id;
+  const swarmUrl = workspace.swarm?.swarmUrl ?? null;
 
   const ec2Alert = workspace.swarm?.ec2Id
     ? await db.ec2Alert.findUnique({ where: { instanceId: workspace.swarm.ec2Id } })
@@ -175,10 +176,23 @@ export default async function AdminWorkspaceDetailPage({
             )}
             <div>
               <p className="text-sm text-muted-foreground mb-2">Password</p>
-              <CopySwarmPasswordButton
-                workspaceId={workspaceId}
-                hasPassword={hasPassword}
-              />
+              <div className="flex items-center gap-3">
+                <CopySwarmPasswordButton
+                  workspaceId={workspaceId}
+                  hasPassword={hasPassword}
+                />
+                {swarmUrl && (
+                  <a
+                    href={`${new URL(swarmUrl).protocol}//${new URL(swarmUrl).hostname}:8800`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open Swarm Admin
+                  </a>
+                )}
+              </div>
             </div>
             <div>
               <p className="text-sm font-medium mb-2">CPU Alert Status</p>
