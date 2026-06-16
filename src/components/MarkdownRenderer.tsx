@@ -414,7 +414,7 @@ export function MarkdownRenderer({
     : [rehypeRaw, rehypeSanitize, rehypeFormat];
 
   return (
-    <div className={cn("prose dark:prose-invert max-w-full break-words", className)}>
+    <div className={cn("prose dark:prose-invert max-w-full break-words overflow-x-hidden prose-pre:overflow-x-auto", className)}>
       <ReactMarkdown
         remarkPlugins={remarkPluginList}
         rehypePlugins={rehypePluginList}
