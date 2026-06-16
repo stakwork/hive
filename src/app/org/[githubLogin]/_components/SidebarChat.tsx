@@ -41,6 +41,7 @@ import { DeferredCheckCard } from "./DeferredCheckCard";
 import type { ActivityItem } from "@/app/api/profile/activity/route";
 import {
   useCanvasChatStore,
+  timelineFromToolCalls,
   type CanvasAttachment,
   type CanvasChatMessage,
   type ToolCall,
@@ -394,14 +395,25 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               }
             }
 
+            // The streamed (live) path attaches a rich `timeline` to
+            // tool-call rows. The server only persists `toolCalls`, so a
+            // reloaded / shared / live-synced row has `toolCalls` but no
+            // `timeline` — synthesize one from `toolCalls` so its tool
+            // cards render identically to a live turn.
+            const effectiveTimeline =
+              message.timeline ??
+              (message.toolCalls?.length
+                ? timelineFromToolCalls(message.toolCalls)
+                : undefined);
+
             const filteredTimeline =
               proposalToolCallIds.size > 0
-                ? message.timeline?.filter(
+                ? effectiveTimeline?.filter(
                     (item) =>
                       item.type !== "toolCall" ||
                       !proposalToolCallIds.has(item.id),
                   )
-                : message.timeline;
+                : effectiveTimeline;
 
             // A streamed tool-call row carries a `timeline` (and empty
             // text content). Render it as rich, expandable tool cards via
