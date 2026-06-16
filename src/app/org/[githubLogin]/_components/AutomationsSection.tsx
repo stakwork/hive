@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2, Clock, Loader2 } from "lucide-react";
+import { Plus, Trash2, Clock, Loader2, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,8 @@ export function AutomationsSection({ githubLogin }: AutomationsSectionProps) {
   const [items, setItems] = useState<AutomationDTO[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Which automation card is expanded to reveal its prompt (one at a time).
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // New-automation form fields.
   const [name, setName] = useState("");
@@ -63,7 +65,7 @@ export function AutomationsSection({ githubLogin }: AutomationsSectionProps) {
 
   const resetForm = () => {
     setName("");
-    setTimeOfDay("09:00");
+    setTimeOfDay("05:00");
     setPrompt("");
     setCreating(false);
   };
@@ -165,43 +167,71 @@ export function AutomationsSection({ githubLogin }: AutomationsSectionProps) {
         </p>
       ) : (
         <div className="space-y-1.5">
-          {items.map((a) => (
-            <div
-              key={a.id}
-              className={cn(
-                "rounded-md border bg-card px-2.5 py-2 text-sm",
-                !a.enabled && "opacity-60",
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 space-y-0.5">
-                  <p className="truncate text-[13px] font-medium leading-none">
-                    {a.name}
-                  </p>
-                  <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    {a.schedule}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Switch
-                    checked={a.enabled}
-                    onCheckedChange={(v) => handleToggle(a, v)}
-                    aria-label="Enable automation"
-                  />
+          {items.map((a) => {
+            const expanded = expandedId === a.id;
+            return (
+              <div
+                key={a.id}
+                className={cn(
+                  "rounded-md border bg-card text-sm",
+                  !a.enabled && "opacity-60",
+                )}
+              >
+                <div className="flex items-start justify-between gap-2 px-2.5 py-2">
                   <button
                     type="button"
-                    onClick={() => handleDelete(a)}
-                    className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                    title="Delete automation"
-                    aria-label="Delete automation"
+                    onClick={() => setExpandedId(expanded ? null : a.id)}
+                    aria-expanded={expanded}
+                    className="flex min-w-0 flex-1 items-start gap-1.5 text-left"
+                    title={expanded ? "Hide prompt" : "Show prompt"}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <ChevronRight
+                      className={cn(
+                        "mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+                        expanded && "rotate-90",
+                      )}
+                    />
+                    <span className="min-w-0 space-y-0.5">
+                      <span className="block truncate text-[13px] font-medium leading-none">
+                        {a.name}
+                      </span>
+                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {a.schedule}
+                      </span>
+                    </span>
                   </button>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Switch
+                      checked={a.enabled}
+                      onCheckedChange={(v) => handleToggle(a, v)}
+                      aria-label="Enable automation"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(a)}
+                      className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                      title="Delete automation"
+                      aria-label="Delete automation"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
+
+                {expanded && (
+                  <div className="border-t px-2.5 py-2">
+                    <p className="mb-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Prompt
+                    </p>
+                    <p className="whitespace-pre-wrap text-[12px] leading-snug text-foreground/80">
+                      {a.prompt}
+                    </p>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
