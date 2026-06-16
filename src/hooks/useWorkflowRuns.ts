@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 export interface WorkflowRun {
   id: number;
   name: string;
-  status: "finished" | "error" | "halted" | "active";
+  status: "finished" | "error" | "halted" | "active" | "completed";
   started_at: string | null;
   finished_at: string | null;
 }
