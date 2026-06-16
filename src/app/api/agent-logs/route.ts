@@ -135,6 +135,9 @@ export async function GET(request: NextRequest) {
           createdAt: true,
           sessionId: true,
           config: true,
+          provider: true,
+          source: true,
+          repos: true,
           stakworkRun: {
             select: {
               feature: {
