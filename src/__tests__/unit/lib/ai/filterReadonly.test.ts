@@ -57,6 +57,7 @@ describe("filterReadonly", () => {
     update_canvas: makeFakeTool(),
     patch_canvas: makeFakeTool(),
     save_research: makeFakeTool(),
+    dispatch_research: makeFakeTool(),
     update_research: makeFakeTool(),
     save_connection: makeFakeTool(),
     update_connection: makeFakeTool(),
@@ -79,6 +80,10 @@ describe("filterReadonly", () => {
     expect(result).not.toHaveProperty("update_canvas");
     expect(result).not.toHaveProperty("patch_canvas");
     expect(result).not.toHaveProperty("save_research");
+    // dispatch_research is a write tool (creates a Research row); it MUST be
+    // stripped in readonly mode so the research sub-agent can't re-dispatch
+    // itself and collide on the unique (org_id, slug) constraint.
+    expect(result).not.toHaveProperty("dispatch_research");
     expect(result).not.toHaveProperty("update_research");
     expect(result).not.toHaveProperty("save_connection");
     expect(result).not.toHaveProperty("propose_initiative");
@@ -100,6 +105,7 @@ describe("filterReadonly", () => {
     expect(result).toHaveProperty("update_research");
     // other write tools still stripped
     expect(result).not.toHaveProperty("save_research");
+    expect(result).not.toHaveProperty("dispatch_research");
     expect(result).not.toHaveProperty("update_canvas");
     expect(result).not.toHaveProperty("patch_canvas");
     expect(result).not.toHaveProperty("save_connection");
