@@ -15,13 +15,19 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function GET(request: NextRequest) {
   try {
+    console.log("[Automations] Cron endpoint hit");
     const authHeader = request.headers.get("authorization");
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      console.warn(
+        "[Automations] Unauthorized — missing/incorrect CRON_SECRET bearer",
+      );
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     if (process.env.AUTOMATIONS_ENABLED !== "true") {
-      console.log("[Automations] Disabled via AUTOMATIONS_ENABLED");
+      console.log(
+        "[Automations] Disabled via AUTOMATIONS_ENABLED (set it to \"true\" to enable)",
+      );
       return NextResponse.json({
         success: true,
         message: "Disabled",
