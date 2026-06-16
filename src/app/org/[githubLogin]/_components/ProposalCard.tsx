@@ -180,15 +180,31 @@ export function ProposalCard({
       }
     }
 
+    // Read the live canvas viewport from the store (safe to call outside
+    // React render — this is a click handler). Compute canvas-space bounds:
+    //   canvasX = -vpX / zoom  (left edge of visible area in canvas coords)
+    //   canvasY = -vpY / zoom  (top edge)
+    //   canvasW = containerW / zoom  (visible width in canvas coords)
+    //   canvasH = containerH / zoom  (visible height in canvas coords)
+    const cv = useCanvasChatStore.getState().canvasViewport;
+    const viewportState =
+      cv && cv.zoom > 0
+        ? {
+            canvasX: -cv.x / cv.zoom,
+            canvasY: -cv.y / cv.zoom,
+            canvasW: cv.containerW / cv.zoom,
+            canvasH: cv.containerH / cv.zoom,
+          }
+        : undefined;
+
     const intent: ApprovalIntent = {
       proposalId: proposal.proposalId,
       ...(payload && { payload }),
       currentRef: currentRef || "",
-      // Viewport hint defaults to a static "near origin" point. Future
-      // drag-from-chat will override this with drop coords; until then
-      // the projector falls back to its auto-layout slot when the
-      // overlay isn't legal anyway, so the value rarely matters.
+      // Legacy safety-net fallback for the server (used when viewportState
+      // is absent or findFreeSlotInViewport returns null on a packed canvas).
       viewport: { x: 40, y: 40 },
+      ...(viewportState && { viewportState }),
     };
 
     await sendMessage({
