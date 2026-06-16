@@ -41,11 +41,13 @@ import { DeferredCheckCard } from "./DeferredCheckCard";
 import type { ActivityItem } from "@/app/api/profile/activity/route";
 import {
   useCanvasChatStore,
+  timelineFromToolCalls,
   type CanvasAttachment,
   type CanvasChatMessage,
   type ToolCall,
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+import { useAutomationInbox } from "../_state/useAutomationInbox";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
@@ -76,6 +78,9 @@ interface SidebarChatProps {
 }
 
 export function SidebarChat({ githubLogin }: SidebarChatProps) {
+  // Auto-open the most recent unseen automation run, if any, once on load.
+  useAutomationInbox(githubLogin);
+
   // ─── Selectors — narrow on purpose ─────────────────────────────────
   // Each selector returns a primitive or a stable reference so
   // streaming text-deltas don't trigger re-renders in selectors that
@@ -293,7 +298,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           >
             <Share2 className="w-4 h-4" />
           </button>
-          <CanvasAgentSettingsPopover />
+          <CanvasAgentSettingsPopover githubLogin={githubLogin} />
           <CanvasHistoryPopover githubLogin={githubLogin} />
           <button
             type="button"
@@ -390,14 +395,25 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               }
             }
 
+            // The streamed (live) path attaches a rich `timeline` to
+            // tool-call rows. The server only persists `toolCalls`, so a
+            // reloaded / shared / live-synced row has `toolCalls` but no
+            // `timeline` — synthesize one from `toolCalls` so its tool
+            // cards render identically to a live turn.
+            const effectiveTimeline =
+              message.timeline ??
+              (message.toolCalls?.length
+                ? timelineFromToolCalls(message.toolCalls)
+                : undefined);
+
             const filteredTimeline =
               proposalToolCallIds.size > 0
-                ? message.timeline?.filter(
+                ? effectiveTimeline?.filter(
                     (item) =>
                       item.type !== "toolCall" ||
                       !proposalToolCallIds.has(item.id),
                   )
-                : message.timeline;
+                : effectiveTimeline;
 
             // A streamed tool-call row carries a `timeline` (and empty
             // text content). Render it as rich, expandable tool cards via
