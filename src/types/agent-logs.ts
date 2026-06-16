@@ -21,6 +21,9 @@ export interface AgentLogRecord {
   initiatorName?: string | null;
   initiatorImage?: string | null;
   model?: string | null;
+  provider?: string | null;
+  source?: string | null;
+  repos?: string[];
   sessionId?: string | null;
   config?: AgentRunConfig | null;
 }
