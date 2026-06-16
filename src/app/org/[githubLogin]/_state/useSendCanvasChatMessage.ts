@@ -42,6 +42,36 @@ import {
   type ToolCall,
 } from "./canvasChatStore";
 
+/**
+ * Scan a rebuilt assistant-side timeline for a completed `schedule_check`
+ * tool call and return its parsed `deferredCheck` metadata, or `null`.
+ * Mirrors `extractDeferredCheckFromStep` in `canvas-turn-persistence.ts`.
+ */
+function extractDeferredCheck(
+  messages: CanvasChatMessage[],
+): CanvasChatMessage["deferredCheck"] | null {
+  for (const m of messages) {
+    const tc = m.toolCalls?.find(
+      (c) => c.toolName === "schedule_check" && c.output != null,
+    );
+    if (!tc) continue;
+    const out = tc.output as Record<string, unknown>;
+    if (
+      typeof out.deferredActionId === "string" &&
+      typeof out.fireAt === "string" &&
+      typeof out.description === "string"
+    ) {
+      return {
+        id: out.deferredActionId,
+        description: out.description,
+        fireAt: out.fireAt,
+        status: "PENDING",
+      };
+    }
+  }
+  return null;
+}
+
 interface SendArgs {
   conversationId: string;
   content: string;
@@ -340,6 +370,40 @@ export function useSendCanvasChatMessage() {
               if (m.role === "assistant" && !m.toolCalls?.length) {
                 timelineMessages[i] = { ...m, approvalResult };
                 break;
+              }
+            }
+          }
+
+          // Stamp deferred-check metadata onto the assistant message when a
+          // `schedule_check` tool call completed in this turn, so the
+          // `DeferredCheckCard` renders live. This mirrors the server-side
+          // `messagesFromSteps` extraction (anchoring to the text row when
+          // present, else the tool-call row); without it the card only
+          // surfaces after a reload / Pusher sync.
+          const deferredCheck = extractDeferredCheck(timelineMessages);
+          if (deferredCheck) {
+            const textIdx = (() => {
+              for (let i = timelineMessages.length - 1; i >= 0; i--) {
+                const m = timelineMessages[i];
+                if (m.role === "assistant" && !m.toolCalls?.length) return i;
+              }
+              return -1;
+            })();
+            if (textIdx >= 0) {
+              timelineMessages[textIdx] = {
+                ...timelineMessages[textIdx],
+                deferredCheck,
+              };
+            } else {
+              for (let i = timelineMessages.length - 1; i >= 0; i--) {
+                const m = timelineMessages[i];
+                if (
+                  m.role === "assistant" &&
+                  m.toolCalls?.some((c) => c.toolName === "schedule_check")
+                ) {
+                  timelineMessages[i] = { ...m, deferredCheck };
+                  break;
+                }
               }
             }
           }

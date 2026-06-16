@@ -9,6 +9,7 @@ import {
   PopoverContent,
 } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
+import { AutomationsSection } from "./AutomationsSection";
 
 /**
  * Gear menu on the canvas Agent chat panel. Hosts per-user preferences
@@ -25,7 +26,11 @@ import { Switch } from "@/components/ui/switch";
  * via `/api/user/preferences`. Fetched once on mount; toggled
  * optimistically with a rollback on failure.
  */
-export function CanvasAgentSettingsPopover() {
+export function CanvasAgentSettingsPopover({
+  githubLogin,
+}: {
+  githubLogin: string;
+}) {
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
@@ -79,7 +84,7 @@ export function CanvasAgentSettingsPopover() {
           <Settings className="w-4 h-4" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-72">
+      <PopoverContent align="end" className="w-80 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-0.5">
             <p className="text-sm font-medium leading-none">
@@ -96,6 +101,10 @@ export function CanvasAgentSettingsPopover() {
             disabled={enabled === null || saving}
             aria-label="Auto-respond to planners"
           />
+        </div>
+
+        <div className="border-t pt-3">
+          <AutomationsSection githubLogin={githubLogin} />
         </div>
       </PopoverContent>
     </Popover>

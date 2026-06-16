@@ -10,6 +10,7 @@ export interface WorkspaceSwarmAccess {
   swarmUrl: string;
   swarmApiKey: string; // Decrypted
   swarmStatus: string;
+  poolName: string;
 }
 
 /**
@@ -84,10 +85,12 @@ export async function getWorkspaceSwarmAccess(
   const swarm = await db.swarm.findUnique({
     where: { workspaceId: workspaceExists.id },
     select: {
+      id: true,
       name: true,
       status: true,
       swarmUrl: true,
       swarmApiKey: true,
+      poolName: true,
     },
   });
 
@@ -141,6 +144,7 @@ export async function getWorkspaceSwarmAccess(
       swarmUrl: swarm.swarmUrl,
       swarmApiKey: decryptedApiKey,
       swarmStatus: swarm.status,
+      poolName: swarm.poolName || swarm.id,
     },
   };
 }
@@ -158,10 +162,12 @@ export async function getSwarmAccessByWorkspaceId(
   const swarm = await db.swarm.findUnique({
     where: { workspaceId },
     select: {
+      id: true,
       name: true,
       status: true,
       swarmUrl: true,
       swarmApiKey: true,
+      poolName: true,
     },
   });
 
@@ -208,6 +214,7 @@ export async function getSwarmAccessByWorkspaceId(
       swarmUrl: baseSwarmUrl,
       swarmApiKey: decryptedApiKey,
       swarmStatus: swarm.status,
+      poolName: swarm.poolName || swarm.id,
     },
   };
 }
