@@ -103,6 +103,14 @@ const ACTIVE_RUN: WorkflowRun = {
   finished_at: null,
 };
 
+const COMPLETED_RUN: WorkflowRun = {
+  id: 1004,
+  name: "Completed Run",
+  status: "completed",
+  started_at: "2024-03-16T08:00:00.000Z",
+  finished_at: "2024-03-16T08:45:00.000Z",
+};
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 describe("WorkflowRunsTable", () => {
   beforeEach(() => {
@@ -255,19 +263,41 @@ describe("WorkflowRunsTable", () => {
       expect(screen.getByRole("columnheader", { name: /actions/i })).toBeInTheDocument();
     });
 
-    it("renders a flag button for each completed run", () => {
+    it("renders a flag button for every run regardless of status", () => {
       setupRuns(MOCK_RUNS);
       renderTable();
       const flagBtns = screen.getAllByRole("button", { name: /capture eval/i });
-      // MOCK_RUNS[0]=finished (enabled), MOCK_RUNS[1]=error (enabled)
+      // MOCK_RUNS[0]=finished, MOCK_RUNS[1]=error — both get an enabled flag button
       expect(flagBtns).toHaveLength(2);
+      flagBtns.forEach((btn) => expect(btn).toBeEnabled());
     });
 
-    it("flag button is disabled for active (non-completed) runs", () => {
+    it("flag button is enabled for active runs", () => {
       setupRuns([ACTIVE_RUN]);
       renderTable();
       const btn = screen.getByRole("button", { name: /capture eval/i });
-      expect(btn).toBeDisabled();
+      expect(btn).toBeEnabled();
+    });
+
+    it("flag button is enabled for completed runs", () => {
+      setupRuns([COMPLETED_RUN]);
+      renderTable();
+      const btn = screen.getByRole("button", { name: /capture eval/i });
+      expect(btn).toBeEnabled();
+    });
+
+    it("completed status renders a badge with text 'completed'", () => {
+      setupRuns([COMPLETED_RUN]);
+      renderTable();
+      expect(screen.getByText("completed")).toBeInTheDocument();
+    });
+
+    it("no completion-gate tooltip text is present", () => {
+      setupRuns([...MOCK_RUNS, ACTIVE_RUN, COMPLETED_RUN]);
+      renderTable();
+      expect(
+        screen.queryByText(/run must be complete to capture an eval/i)
+      ).not.toBeInTheDocument();
     });
 
     it("clicking a flag button opens the FlagRunEvalModal for that run", () => {
