@@ -48,6 +48,7 @@ export function FlagRunEvalModal({
   // Step 1 state
   const [steps, setSteps] = useState<RequestStep[]>([]);
   const [loadingSteps, setLoadingSteps] = useState(false);
+  const [stepsUnavailable, setStepsUnavailable] = useState(false);
   const [selectedStep, setSelectedStep] = useState<RequestStep | null>(null);
 
   // Step 2 state
@@ -62,12 +63,17 @@ export function FlagRunEvalModal({
   useEffect(() => {
     if (!open) return;
     setLoadingSteps(true);
+    setStepsUnavailable(false);
     fetch(`/api/workspaces/${slug}/workflows/${workflowId}/runs/${runId}/request-steps`)
       .then((r) => r.json())
       .then((data) => {
         setSteps(data?.data?.steps ?? []);
+        setStepsUnavailable(data?.data?.unavailable === true);
       })
-      .catch(() => toast.error("Failed to load request steps"))
+      .catch(() => {
+        toast.error("Failed to load request steps");
+        setStepsUnavailable(true);
+      })
       .finally(() => setLoadingSteps(false));
   }, [open, slug, workflowId, runId]);
 
@@ -77,6 +83,7 @@ export function FlagRunEvalModal({
       setStep(1);
       setSteps([]);
       setLoadingSteps(false);
+      setStepsUnavailable(false);
       setSelectedStep(null);
       setRequirement("");
       setReason("");
@@ -134,6 +141,10 @@ export function FlagRunEvalModal({
               <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Loading steps…
+              </div>
+            ) : stepsUnavailable ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                Could not load step data for this run. Please try again.
               </div>
             ) : steps.length === 0 ? (
               <div className="py-6 text-center text-sm text-muted-foreground">
