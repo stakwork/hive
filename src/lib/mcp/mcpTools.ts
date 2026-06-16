@@ -691,6 +691,7 @@ interface McpRoadmapTaskBase {
   title: string;
   description?: string;
   priority?: string;
+  dependsOnTaskIds?: string[];
 }
 
 /**
@@ -785,6 +786,7 @@ export async function mcpCreateFeatureTask(
       description: base.description,
       priority: taskPriority,
       repositoryId: resolved.repositoryId,
+      dependsOnTaskIds: base.dependsOnTaskIds,
     });
 
     return mcpOk({
@@ -857,6 +859,7 @@ export async function mcpCreateWorkflowTask(
       title: base.title,
       description: base.description,
       priority: taskPriority,
+      dependsOnTaskIds: base.dependsOnTaskIds,
       workflowTaskType: workflow.workflowTaskType,
       ...(hasExistingWorkflow
         ? {
@@ -904,6 +907,7 @@ export async function mcpUpdateTask(
     title?: string;
     description?: string;
     priority?: string;
+    dependsOnTaskIds?: string[];
   },
 ): Promise<McpToolResult> {
   try {
@@ -918,6 +922,7 @@ export async function mcpUpdateTask(
       title?: string;
       description?: string | null;
       priority?: Priority;
+      dependsOnTaskIds?: string[];
       updatedById: string;
     } = { updatedById: auth.userId };
 
@@ -943,10 +948,27 @@ export async function mcpUpdateTask(
       data.priority = updates.priority as Priority;
     }
 
+    if (updates.dependsOnTaskIds !== undefined) {
+      if (updates.dependsOnTaskIds.length > 0) {
+        const depCount = await db.task.count({
+          where: {
+            id: { in: updates.dependsOnTaskIds },
+            workspaceId: auth.workspaceId,
+          },
+        });
+        if (depCount !== updates.dependsOnTaskIds.length) {
+          return mcpError(
+            "Error: one or more dependency task IDs do not belong to this workspace",
+          );
+        }
+      }
+      data.dependsOnTaskIds = updates.dependsOnTaskIds;
+    }
+
     // Nothing actually changed beyond updatedById — short-circuit.
     if (Object.keys(data).length === 1) {
       return mcpError(
-        "Error: no updatable fields provided (title, description, priority)",
+        "Error: no updatable fields provided (title, description, priority, dependsOnTaskIds)",
       );
     }
 
@@ -960,6 +982,7 @@ export async function mcpUpdateTask(
         status: true,
         priority: true,
         featureId: true,
+        dependsOnTaskIds: true,
         updatedAt: true,
       },
     });
@@ -971,6 +994,7 @@ export async function mcpUpdateTask(
       status: updated.status,
       priority: updated.priority,
       featureId: updated.featureId,
+      dependsOnTaskIds: updated.dependsOnTaskIds,
       updatedAt: updated.updatedAt.toISOString(),
     });
   } catch (error) {
