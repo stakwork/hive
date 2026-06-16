@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { WorkflowRunsTable } from "@/components/workflow/inspector/WorkflowRunsTable";
 import type { WorkflowRun } from "@/hooks/useWorkflowRuns";
 
@@ -60,6 +60,59 @@ vi.mock("@/components/ui/tooltip", () => ({
   ),
 }));
 
+// ── mock DropdownMenu ─────────────────────────────────────────────────────────
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="dropdown-menu">{children}</div>
+  ),
+  DropdownMenuTrigger: ({
+    children,
+    asChild,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    asChild?: boolean;
+    onClick?: React.MouseEventHandler;
+  }) => (
+    <div data-testid="dropdown-trigger" onClick={onClick}>
+      {asChild ? children : <button>{children}</button>}
+    </div>
+  ),
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="dropdown-content">{children}</div>
+  ),
+  DropdownMenuItem: ({
+    children,
+    onClick,
+    disabled,
+    asChild,
+  }: {
+    children: React.ReactNode;
+    onClick?: React.MouseEventHandler;
+    disabled?: boolean;
+    asChild?: boolean;
+  }) =>
+    asChild ? (
+      <div data-testid="dropdown-item">{children}</div>
+    ) : (
+      <button data-testid="dropdown-item" onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
+    ),
+}));
+
+// ── mock startDebugRun ────────────────────────────────────────────────────────
+const mockStartDebugRun = vi.fn();
+vi.mock("@/lib/workflow/debugRun", () => ({
+  startDebugRun: (...args: unknown[]) => mockStartDebugRun(...args),
+}));
+
+// ── mock sonner toast ─────────────────────────────────────────────────────────
+const mockToastError = vi.fn();
+vi.mock("sonner", () => ({
+  toast: { error: (...args: unknown[]) => mockToastError(...args) },
+}));
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 function renderTable(extraProps: Partial<React.ComponentProps<typeof WorkflowRunsTable>> = {}) {
   return render(<WorkflowRunsTable slug="test-ws" workflowId={42} {...extraProps} />);
@@ -115,6 +168,7 @@ const COMPLETED_RUN: WorkflowRun = {
 describe("WorkflowRunsTable", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockStartDebugRun.mockResolvedValue("new-task-id");
   });
 
   it("shows skeletons while loading", () => {
@@ -128,18 +182,6 @@ describe("WorkflowRunsTable", () => {
     setupRuns([], false);
     renderTable();
     expect(screen.getByText("No runs recorded yet.")).toBeInTheDocument();
-  });
-
-  it("renders 'Open' links with correct href and target", () => {
-    setupRuns(MOCK_RUNS);
-    renderTable();
-
-    const links = screen.getAllByRole("link", { name: /open/i });
-    expect(links[0]).toHaveAttribute(
-      "href",
-      "https://jobs.stakwork.com/admin/projects/1001",
-    );
-    expect(links[0]).toHaveAttribute("target", "_blank");
   });
 
   it("renders status badge text matching run status", () => {
@@ -161,7 +203,6 @@ describe("WorkflowRunsTable", () => {
     setupRuns(MOCK_RUNS);
     renderTable();
     // Run #1002 has finished_at: null → duration should be "—"
-    // The "—" appears in multiple cells (finished_at + duration), just check it exists
     const dashes = screen.getAllByText("—");
     expect(dashes.length).toBeGreaterThanOrEqual(1);
   });
@@ -170,9 +211,6 @@ describe("WorkflowRunsTable", () => {
     setupRuns([MOCK_RUNS[0]]);
     renderTable();
     const badge = screen.getByText("finished");
-    // The default variant uses bg-primary, not bg-destructive.
-    // (aria-invalid:*-destructive utility classes appear in every Badge variant for
-    //  accessibility and should not be used to identify the destructive variant.)
     expect(badge.className).not.toMatch(/bg-destructive/);
     expect(badge.className).toMatch(/bg-primary/);
   });
@@ -189,12 +227,10 @@ describe("WorkflowRunsTable", () => {
       setupRuns([LONG_NAME_RUN]);
       renderTable();
 
-      // The rendered name cell text should be truncated (first 40 chars + ellipsis)
       const truncated = LONG_NAME.slice(0, 40) + "…";
       const nameCell = screen.getByText(truncated);
       expect(nameCell).toBeInTheDocument();
 
-      // Tooltip content should show the full name
       const tooltip = screen.getByTestId("tooltip-content");
       expect(tooltip).toHaveTextContent(LONG_NAME);
     });
@@ -203,25 +239,10 @@ describe("WorkflowRunsTable", () => {
       setupRuns([MOCK_RUNS[0]]); // "Run #1001" — well under 40 chars
       renderTable();
 
-      // The name cell text should be the full name, unmodified
       const nameCell = screen.getByText("Run #1001");
       expect(nameCell).toBeInTheDocument();
 
-      // No TooltipContent rendered
       expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
-    });
-
-    it("'Open' link navigates to the correct Stakwork URL even when name is truncated", () => {
-      setupRuns([LONG_NAME_RUN]);
-      renderTable();
-
-      const link = screen.getByRole("link", { name: /open/i });
-      expect(link).toHaveAttribute(
-        "href",
-        `https://jobs.stakwork.com/admin/projects/${LONG_NAME_RUN.id}`,
-      );
-      expect(link).toHaveAttribute("target", "_blank");
-      expect(link).toHaveAttribute("rel", "noreferrer");
     });
   });
 
@@ -239,145 +260,190 @@ describe("WorkflowRunsTable", () => {
       setupRuns(MOCK_RUNS);
       renderTable({ onRunSelect: vi.fn(), selectedRunId: MOCK_RUNS[0].id });
       const rows = screen.getAllByRole("row").slice(1);
-      // Check for the standalone `bg-muted` class (not hover/data modifiers like hover:bg-muted/50)
       const classesRow0 = rows[0].className.split(" ");
       const classesRow1 = rows[1].className.split(" ");
       expect(classesRow0).toContain("bg-muted");
       expect(classesRow1).not.toContain("bg-muted");
     });
-
-    it("does not call onRunSelect when the 'Open' link is clicked", () => {
-      setupRuns(MOCK_RUNS);
-      const onRunSelect = vi.fn();
-      renderTable({ onRunSelect });
-      const links = screen.getAllByRole("link", { name: /open/i });
-      fireEvent.click(links[0]);
-      expect(onRunSelect).not.toHaveBeenCalled();
-    });
   });
 
-  describe("flag button (eval capture)", () => {
-    it("renders an Actions column header", () => {
+  describe("three-dot kebab menu", () => {
+    it("renders a three-dot menu trigger per run row", () => {
+      setupRuns(MOCK_RUNS);
+      renderTable();
+      const triggers = screen.getAllByRole("button", { name: /run actions/i });
+      expect(triggers).toHaveLength(MOCK_RUNS.length);
+    });
+
+    it("renders an Actions column header (no View in Stak column)", () => {
       setupRuns(MOCK_RUNS);
       renderTable();
       expect(screen.getByRole("columnheader", { name: /actions/i })).toBeInTheDocument();
-    });
-
-    it("renders a flag button for every run regardless of status", () => {
-      setupRuns(MOCK_RUNS);
-      renderTable();
-      const flagBtns = screen.getAllByRole("button", { name: /capture eval/i });
-      // MOCK_RUNS[0]=finished, MOCK_RUNS[1]=error — both get an enabled flag button
-      expect(flagBtns).toHaveLength(2);
-      flagBtns.forEach((btn) => expect(btn).toBeEnabled());
-    });
-
-    it("flag button is enabled for active runs", () => {
-      setupRuns([ACTIVE_RUN]);
-      renderTable();
-      const btn = screen.getByRole("button", { name: /capture eval/i });
-      expect(btn).toBeEnabled();
-    });
-
-    it("flag button is enabled for completed runs", () => {
-      setupRuns([COMPLETED_RUN]);
-      renderTable();
-      const btn = screen.getByRole("button", { name: /capture eval/i });
-      expect(btn).toBeEnabled();
-    });
-
-    it("completed status renders a badge with text 'completed'", () => {
-      setupRuns([COMPLETED_RUN]);
-      renderTable();
-      expect(screen.getByText("completed")).toBeInTheDocument();
-    });
-
-    it("no completion-gate tooltip text is present", () => {
-      setupRuns([...MOCK_RUNS, ACTIVE_RUN, COMPLETED_RUN]);
-      renderTable();
       expect(
-        screen.queryByText(/run must be complete to capture an eval/i)
+        screen.queryByRole("columnheader", { name: /view in stak/i }),
       ).not.toBeInTheDocument();
     });
 
-    it("clicking a flag button opens the FlagRunEvalModal for that run", () => {
-      setupRuns(MOCK_RUNS);
-      renderTable();
-      const flagBtns = screen.getAllByRole("button", { name: /capture eval/i });
-      fireEvent.click(flagBtns[0]);
-      expect(
-        screen.getByTestId(`flag-modal-${MOCK_RUNS[0].id}`)
-      ).toBeInTheDocument();
-    });
-
-    it("modal receives correct props (slug, workflowId, runId)", () => {
+    it("menu contains Open in Stak, Flag for eval, and Debug run items", () => {
       setupRuns([MOCK_RUNS[0]]);
       renderTable();
-      fireEvent.click(screen.getByRole("button", { name: /capture eval/i }));
-      expect(mockFlagRunEvalModal).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(screen.getByText("Open in Stak")).toBeInTheDocument();
+      expect(screen.getByText("Flag for eval")).toBeInTheDocument();
+      expect(screen.getByText("Debug run")).toBeInTheDocument();
+    });
+
+    it("Open in Stak link has correct href and target", () => {
+      setupRuns([MOCK_RUNS[0]]);
+      renderTable();
+      const link = screen.getByRole("link", { name: /open in stak/i });
+      expect(link).toHaveAttribute(
+        "href",
+        `https://jobs.stakwork.com/admin/projects/${MOCK_RUNS[0].id}`,
+      );
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noreferrer");
+    });
+
+    it("Open in Stak link has correct href for truncated-name run", () => {
+      setupRuns([LONG_NAME_RUN]);
+      renderTable();
+      const link = screen.getByRole("link", { name: /open in stak/i });
+      expect(link).toHaveAttribute(
+        "href",
+        `https://jobs.stakwork.com/admin/projects/${LONG_NAME_RUN.id}`,
+      );
+    });
+
+    it("menu trigger click does not propagate to row (onRunSelect not called)", () => {
+      setupRuns(MOCK_RUNS);
+      const onRunSelect = vi.fn();
+      renderTable({ onRunSelect });
+      const trigger = screen.getAllByTestId("dropdown-trigger")[0];
+      fireEvent.click(trigger);
+      expect(onRunSelect).not.toHaveBeenCalled();
+    });
+
+    describe("Flag for eval", () => {
+      it("clicking Flag for eval opens FlagRunEvalModal for that run", () => {
+        setupRuns(MOCK_RUNS);
+        renderTable();
+        // Each run has a "Flag for eval" dropdown item
+        const flagItems = screen.getAllByText("Flag for eval");
+        fireEvent.click(flagItems[0]);
+        expect(
+          screen.getByTestId(`flag-modal-${MOCK_RUNS[0].id}`),
+        ).toBeInTheDocument();
+      });
+
+      it("modal receives correct props (slug, workflowId, runId)", () => {
+        setupRuns([MOCK_RUNS[0]]);
+        renderTable();
+        fireEvent.click(screen.getByText("Flag for eval"));
+        expect(mockFlagRunEvalModal).toHaveBeenCalledWith(
+          expect.objectContaining({
+            slug: "test-ws",
+            workflowId: "42",
+            runId: String(MOCK_RUNS[0].id),
+            open: true,
+          }),
+        );
+      });
+
+      it("after capture, menu item shows 'Eval captured' and is disabled", () => {
+        setupRuns([MOCK_RUNS[0]]);
+        renderTable();
+
+        // open modal via menu item
+        fireEvent.click(screen.getByText("Flag for eval"));
+        // simulate capture
+        fireEvent.click(screen.getByTestId(`flag-modal-capture-${MOCK_RUNS[0].id}`));
+
+        // menu item should now show "Eval captured" and be disabled
+        expect(screen.getByText("Eval captured")).toBeInTheDocument();
+        expect(screen.queryByText("Flag for eval")).not.toBeInTheDocument();
+      });
+
+      it("calls onEvalCaptured prop when a capture is confirmed", () => {
+        setupRuns([MOCK_RUNS[0]]);
+        const onEvalCaptured = vi.fn();
+        renderTable({ onEvalCaptured });
+
+        fireEvent.click(screen.getByText("Flag for eval"));
+        fireEvent.click(screen.getByTestId(`flag-modal-capture-${MOCK_RUNS[0].id}`));
+
+        expect(onEvalCaptured).toHaveBeenCalledOnce();
+      });
+
+      it("modal closes without flagging when the close button is clicked", () => {
+        setupRuns([MOCK_RUNS[0]]);
+        const onEvalCaptured = vi.fn();
+        renderTable({ onEvalCaptured });
+
+        fireEvent.click(screen.getByText("Flag for eval"));
+        expect(
+          screen.getByTestId(`flag-modal-${MOCK_RUNS[0].id}`),
+        ).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId(`flag-modal-close-${MOCK_RUNS[0].id}`));
+
+        expect(
+          screen.queryByTestId(`flag-modal-${MOCK_RUNS[0].id}`),
+        ).not.toBeInTheDocument();
+        expect(onEvalCaptured).not.toHaveBeenCalled();
+        // "Flag for eval" item should be restored
+        expect(screen.getByText("Flag for eval")).toBeInTheDocument();
+      });
+    });
+
+    describe("Debug run", () => {
+      let mockTab: { location: { href: string }; close: ReturnType<typeof vi.fn> };
+
+      beforeEach(() => {
+        mockTab = { location: { href: "" }, close: vi.fn() };
+        vi.spyOn(window, "open").mockReturnValue(mockTab as unknown as Window);
+      });
+
+      it("opens a blank tab synchronously then sets location to new task URL", async () => {
+        setupRuns([MOCK_RUNS[0]]);
+        renderTable();
+
+        await act(async () => {
+          fireEvent.click(screen.getByText("Debug run"));
+        });
+
+        expect(window.open).toHaveBeenCalledWith("", "_blank");
+        expect(mockStartDebugRun).toHaveBeenCalledWith({
           slug: "test-ws",
-          workflowId: "42",
-          runId: String(MOCK_RUNS[0].id),
-          open: true,
-        })
-      );
-    });
+          workflowId: 42,
+          runId: MOCK_RUNS[0].id,
+        });
+        expect(mockTab.location.href).toBe(`/w/test-ws/task/new-task-id`);
+      });
 
-    it("after onCaptured fires, shows filled flag icon instead of button", () => {
-      setupRuns([MOCK_RUNS[0]]);
-      renderTable();
+      it("error path closes the blank tab and shows a toast", async () => {
+        mockStartDebugRun.mockRejectedValue(new Error("server error"));
+        setupRuns([MOCK_RUNS[0]]);
+        renderTable();
 
-      // open modal
-      fireEvent.click(screen.getByRole("button", { name: /capture eval/i }));
-      // simulate capture
-      fireEvent.click(
-        screen.getByTestId(`flag-modal-capture-${MOCK_RUNS[0].id}`)
-      );
+        await act(async () => {
+          fireEvent.click(screen.getByText("Debug run"));
+        });
 
-      // flag button should be gone
-      expect(
-        screen.queryByRole("button", { name: /capture eval/i })
-      ).not.toBeInTheDocument();
-      // filled flag indicator should be present
-      expect(screen.getByLabelText("Eval captured")).toBeInTheDocument();
-    });
+        expect(mockTab.close).toHaveBeenCalled();
+        expect(mockToastError).toHaveBeenCalledWith("Failed to start debug session");
+      });
 
-    it("calls onEvalCaptured prop when a capture is confirmed", () => {
-      setupRuns([MOCK_RUNS[0]]);
-      const onEvalCaptured = vi.fn();
-      renderTable({ onEvalCaptured });
+      it("debug run click does not propagate to row (onRunSelect not called)", async () => {
+        setupRuns([MOCK_RUNS[0]]);
+        const onRunSelect = vi.fn();
+        renderTable({ onRunSelect });
 
-      fireEvent.click(screen.getByRole("button", { name: /capture eval/i }));
-      fireEvent.click(
-        screen.getByTestId(`flag-modal-capture-${MOCK_RUNS[0].id}`)
-      );
+        await act(async () => {
+          fireEvent.click(screen.getByText("Debug run"));
+        });
 
-      expect(onEvalCaptured).toHaveBeenCalledOnce();
-    });
-
-    it("modal closes without flagging when the close button is clicked", () => {
-      setupRuns([MOCK_RUNS[0]]);
-      const onEvalCaptured = vi.fn();
-      renderTable({ onEvalCaptured });
-
-      fireEvent.click(screen.getByRole("button", { name: /capture eval/i }));
-      expect(
-        screen.getByTestId(`flag-modal-${MOCK_RUNS[0].id}`)
-      ).toBeInTheDocument();
-
-      fireEvent.click(
-        screen.getByTestId(`flag-modal-close-${MOCK_RUNS[0].id}`)
-      );
-
-      expect(
-        screen.queryByTestId(`flag-modal-${MOCK_RUNS[0].id}`)
-      ).not.toBeInTheDocument();
-      expect(onEvalCaptured).not.toHaveBeenCalled();
-      // flag button restored
-      expect(
-        screen.getByRole("button", { name: /capture eval/i })
-      ).toBeInTheDocument();
+        expect(onRunSelect).not.toHaveBeenCalled();
+      });
     });
   });
 });

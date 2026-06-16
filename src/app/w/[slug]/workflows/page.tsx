@@ -11,7 +11,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkflowNodes } from "@/hooks/useWorkflowNodes";
 import { useRecentWorkflows } from "@/hooks/useRecentWorkflows";
-import { ArtifactType } from "@/lib/chat";
+import { startDebugRun } from "@/lib/workflow/debugRun";
 
 const formatDate = (dateString: string) => {
   try {
@@ -100,57 +100,14 @@ export default function WorkflowsPage() {
     if (!runData || !slug) return;
     setIsDebugging(true);
     try {
-      // 1. Fetch latest version for the run's associated workflow
-      const versionsRes = await fetch(`/api/workspaces/${slug}/workflows/${runData.workflow_id}/versions`);
-      const versionsData = await versionsRes.json();
-      const latestVersion = versionsData.data?.versions?.[0]; // API returns newest-first
-      if (!latestVersion) throw new Error('No versions found for workflow');
-
-      const workflowId = runData.workflow_id;
-      const workflowName = latestVersion.workflow_name || `Workflow ${workflowId}`;
-      const workflowRefId = latestVersion.ref_id;
-      const workflowJson = latestVersion.workflow_json;
-      const workflowVersionId = String(latestVersion.workflow_version_id);
-      const taskTitle = `Debug run ${runData.id}`;
-
-      // 2. Create workflow_editor task
-      const taskRes = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: taskTitle, description: taskTitle, status: 'active', workspaceSlug: slug, mode: 'workflow_editor' }),
+      const taskId = await startDebugRun({
+        slug,
+        workflowId: runData.workflow_id,
+        runId: runData.id,
       });
-      if (!taskRes.ok) throw new Error('Failed to create task');
-      const { data: { id: newTaskId } } = await taskRes.json();
-
-      // 3. Save ASSISTANT workflow artifact
-      await fetch(`/api/tasks/${newTaskId}/messages/save`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `Loaded: ${workflowName}\nSelect a step on the right as a starting point.`,
-          role: 'ASSISTANT',
-          artifacts: [{ type: ArtifactType.WORKFLOW, content: { workflowJson, workflowId, workflowName, workflowRefId, workflowVersionId } }],
-        }),
-      });
-
-      // 3b. Dual-write WorkflowTask row
-      await fetch(`/api/tasks/${newTaskId}/workflow-task`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflowId, workflowName, workflowRefId, workflowVersionId }),
-      });
-
-      // 4. Auto-send "Debug this run [runId]" — triggers the AI workflow
-      await fetch('/api/workflow-editor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: newTaskId, message: `Debug this run ${runData.id}`, workflowId, workflowName, workflowRefId, workflowVersionId }),
-      });
-
-      // 5. Navigate to task
-      window.location.href = `/w/${slug}/task/${newTaskId}`;
+      window.location.href = `/w/${slug}/task/${taskId}`;
     } catch (err) {
-      console.error('Failed to debug run:', err);
+      console.error("Failed to debug run:", err);
       setIsDebugging(false);
     }
   };
