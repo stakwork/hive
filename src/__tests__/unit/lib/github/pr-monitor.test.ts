@@ -1786,6 +1786,134 @@ describe("monitorSinglePR", () => {
     expect(stats.healthy).toBe(0);
   });
 
+  it("returns stats.outOfDate === 1 when PR is behind base (no CI block entered)", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([makeSingleArtifactRow()]);
+
+    const { Octokit } = await import("@octokit/rest");
+    vi.mocked(Octokit).mockImplementation(() => ({
+      pulls: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            state: "open",
+            merged: false,
+            mergeable: true,
+            mergeable_state: "behind",
+            head: { ref: "feature/test", sha: "head-sha" },
+            base: { ref: "main", sha: "base-sha" },
+          },
+        }),
+        updateBranch: vi.fn(),
+      },
+      repos: {
+        // ahead_by > 0 means base is ahead of head → PR is behind
+        compareCommits: vi.fn().mockResolvedValue({ data: { ahead_by: 3 } }),
+        merge: vi.fn(),
+      },
+    }));
+
+    // CI would report failure, but the behind-base check should short-circuit before it
+    const { fetchCIStatus } = await import("@/lib/github/pr-ci");
+    vi.mocked(fetchCIStatus).mockResolvedValue({
+      status: "failure",
+      summary: "Tests failed",
+      failedChecks: ["unit-tests"],
+      failedCheckLogs: {},
+    });
+
+    const stats = await monitorSinglePR(prUrl);
+
+    expect(stats.checked).toBe(1);
+    expect(stats.outOfDate).toBe(1);
+    expect(stats.ciFailures).toBe(0);
+    expect(stats.healthy).toBe(0);
+  });
+
+  it("returns stats.ciFailures === 1 when CI fails and PR is not behind base", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([
+      makeSingleArtifactRow({ pr_ci_failure_fix_enabled: true }),
+    ]);
+
+    const { Octokit } = await import("@octokit/rest");
+    vi.mocked(Octokit).mockImplementation(() => ({
+      pulls: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            state: "open",
+            merged: false,
+            mergeable: true,
+            mergeable_state: "unstable",
+            head: { ref: "feature/test", sha: "head-sha" },
+            base: { ref: "main", sha: "base-sha" },
+          },
+        }),
+        updateBranch: vi.fn(),
+      },
+      repos: {
+        // ahead_by === 0 means PR is up-to-date with base
+        compareCommits: vi.fn().mockResolvedValue({ data: { ahead_by: 0 } }),
+        merge: vi.fn(),
+      },
+    }));
+
+    const { fetchCIStatus } = await import("@/lib/github/pr-ci");
+    vi.mocked(fetchCIStatus).mockResolvedValue({
+      status: "failure",
+      summary: "Tests failed",
+      failedChecks: ["unit-tests"],
+      failedCheckLogs: {},
+    });
+
+    const stats = await monitorSinglePR(prUrl);
+
+    expect(stats.checked).toBe(1);
+    expect(stats.ciFailures).toBe(1);
+    expect(stats.outOfDate).toBe(0);
+    expect(stats.healthy).toBe(0);
+  });
+
+  it("returns stats.outOfDate === 1 (not ciFailures) when PR is both behind base and has CI failures", async () => {
+    vi.mocked(db.$queryRaw).mockResolvedValue([
+      makeSingleArtifactRow({ pr_ci_failure_fix_enabled: true }),
+    ]);
+
+    const { Octokit } = await import("@octokit/rest");
+    vi.mocked(Octokit).mockImplementation(() => ({
+      pulls: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            state: "open",
+            merged: false,
+            mergeable: true,
+            mergeable_state: "behind",
+            head: { ref: "feature/test", sha: "head-sha" },
+            base: { ref: "main", sha: "base-sha" },
+          },
+        }),
+        updateBranch: vi.fn(),
+      },
+      repos: {
+        compareCommits: vi.fn().mockResolvedValue({ data: { ahead_by: 2 } }),
+        merge: vi.fn(),
+      },
+    }));
+
+    const { fetchCIStatus } = await import("@/lib/github/pr-ci");
+    vi.mocked(fetchCIStatus).mockResolvedValue({
+      status: "failure",
+      summary: "Tests failed",
+      failedChecks: ["unit-tests"],
+      failedCheckLogs: {},
+    });
+
+    const stats = await monitorSinglePR(prUrl);
+
+    // behind-base wins — state becomes out_of_date before CI block is reached
+    expect(stats.checked).toBe(1);
+    expect(stats.outOfDate).toBe(1);
+    expect(stats.ciFailures).toBe(0);
+    expect(stats.healthy).toBe(0);
+  });
+
   it("returns zeroed stats (same as no artifact) when pr_monitor_enabled filter excludes the record", async () => {
     // The SQL query filters COALESCE(jc.pr_monitor_enabled, false) = true,
     // so a disabled workspace returns no rows — identical to "not found" case
