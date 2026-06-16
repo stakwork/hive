@@ -219,29 +219,19 @@ function computeCandidate(
 }
 
 /**
- * Axis-aligned bounding-box collision check between the candidate
- * slot and every existing node on the canvas. We exclude the anchor
- * itself from the check (it's allowed to "touch" — `right-of:X`
- * lands at `X.right + ROW_GAP`, which by construction doesn't
- * overlap, but the math is cleaner if we don't have to special-case
- * floating-point zero-area intersections).
- */
-/**
- * Grid-scan the user's visible canvas area and return the first
- * non-overlapping position for a new card of size `cardW × cardH`.
+ * Grid-scan the user's visible viewport area and return the first
+ * non-overlapping `{ x, y }` position for a new card of `cardW × cardH`.
  *
- * Scans left→right, top→bottom in `(cardW + padding)` steps so
- * every candidate slot is fully within the visible viewport bounds.
- * Returns `null` when the viewport is completely packed — callers
- * are responsible for falling back to legacy auto-layout.
+ * Scans left-to-right, top-to-bottom in `(cardW + padding)` steps.
+ * Every returned position is fully inside the viewport:
+ *   x ∈ [canvasX + padding, canvasX + canvasW - cardW]
+ *   y ∈ [canvasY + padding, canvasY + canvasH - cardH]
+ *
+ * Returns `null` when the viewport is completely packed — caller is
+ * responsible for the fallback (legacy `{ x: 40, y: 40 }`).
  */
 export function findFreeSlotInViewport(
-  vpBounds: {
-    canvasX: number;
-    canvasY: number;
-    canvasW: number;
-    canvasH: number;
-  },
+  vpBounds: { canvasX: number; canvasY: number; canvasW: number; canvasH: number },
   existingNodes: CanvasNode[],
   cardW: number,
   cardH: number,
@@ -262,6 +252,14 @@ export function findFreeSlotInViewport(
   return null; // viewport fully packed — caller falls back to legacy behaviour
 }
 
+/**
+ * Axis-aligned bounding-box collision check between the candidate
+ * slot and every existing node on the canvas. We exclude the anchor
+ * itself from the check (it's allowed to "touch" — `right-of:X`
+ * lands at `X.right + ROW_GAP`, which by construction doesn't
+ * overlap, but the math is cleaner if we don't have to special-case
+ * floating-point zero-area intersections).
+ */
 function collides(
   rect: { x: number; y: number },
   dims: Dims,
