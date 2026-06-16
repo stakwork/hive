@@ -26,7 +26,7 @@ import {
 } from "../_state/canvasChatStore";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
 import { useSubAgentStatusRefresh } from "../_state/useSubAgentStatusRefresh";
-import type { AttentionItem } from "@/services/attention/topItems";
+import type { ActivityItem } from "@/app/api/profile/activity/route";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -221,18 +221,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     useState<CanvasChatMessage[] | null>(null);
   const [chatLoadComplete, setChatLoadComplete] = useState(false);
 
-  // Synthetic "top items needing your attention" intro — fetched
-  // server-side from /api/orgs/[githubLogin]/attention. Resolved
-  // before `startConversation` fires so the seed lands cleanly into
-  // the new conversation. Intentionally skipped when:
+  // Synthetic "My Activity" intro — fetched from /api/profile/activity.
+  // Resolved before `startConversation` fires so the seed lands cleanly
+  // into the new conversation. Intentionally skipped when:
   //   - `?chat=<shareId>` is present (forking — we'd be polluting
   //     someone else's transcript with the new viewer's intro).
   //   - The user dismissed the intro during this session (×).
-  // See `_components/AttentionList.tsx` for the rendered card.
-  const [attentionData, setAttentionData] = useState<
-    { items: AttentionItem[]; total: number } | null
-  >(null);
-  const [attentionLoadComplete, setAttentionLoadComplete] = useState(false);
+  // See `_components/MyActivityPanel.tsx` for the rendered card.
+  const [activityData, setActivityData] = useState<ActivityItem[] | null>(null);
+  const [activityLoadComplete, setActivityLoadComplete] = useState(false);
 
   const setUrlSlug = useCallback(
     (slug: string | null) => {
@@ -351,7 +348,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   useEffect(() => {
     if (sharedChatId) {
       // Forking someone else's conversation — never inject our intro.
-      setAttentionLoadComplete(true);
+      setActivityLoadComplete(true);
       return;
     }
     if (!hiddenInitialized) return; // wait for the hidden-workspace list
@@ -359,38 +356,33 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     // browsers throw on `sessionStorage` access in private modes.
     try {
       const dismissed = sessionStorage.getItem(
-        `hive:attention-dismissed:${githubLogin}`,
+        `hive:my-activity-dismissed:${githubLogin}`,
       );
       if (dismissed === "1") {
-        setAttentionLoadComplete(true);
+        setActivityLoadComplete(true);
         return;
       }
     } catch {
       // Storage unavailable — fall through and just always show.
     }
     let cancelled = false;
-    // Restrict to workspaces visible on the root canvas. An empty
-    // list still flows through as `workspaceSlugs=` so the server
-    // returns zero items rather than treating the param as absent.
-    const slugsQs = `&workspaceSlugs=${encodeURIComponent(chatWorkspaceSlugs.join(","))}`;
-    fetch(`/api/orgs/${githubLogin}/attention?limit=3${slugsQs}`)
+    // User-scoped feed — no workspace slug filtering needed; the API
+    // already scopes to the authenticated user across all workspaces.
+    fetch(`/api/profile/activity?limit=5`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
         if (Array.isArray(data.items) && data.items.length > 0) {
-          setAttentionData({ items: data.items, total: data.total ?? data.items.length });
+          setActivityData(data.items);
         }
       })
       .catch(() => {})
       .finally(() => {
-        if (!cancelled) setAttentionLoadComplete(true);
+        if (!cancelled) setActivityLoadComplete(true);
       });
     return () => {
       cancelled = true;
     };
-    // `chatWorkspaceSlugs` identity changes whenever the visible-set
-    // shifts; we want a fresh fetch in that case (e.g. user hides a
-    // workspace, refreshes — new list reflects current root scope).
   }, [sharedChatId, githubLogin, hiddenInitialized, chatWorkspaceSlugs]);
 
   const fetchConnections = useCallback(async () => {
@@ -805,7 +797,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     !loadingWorkspaces &&
     hiddenInitialized &&
     chatLoadComplete &&
-    attentionLoadComplete;
+    activityLoadComplete;
 
   useEffect(() => {
     if (!chatReady || conversationStarted) return;
@@ -817,38 +809,33 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     let seedMessages: CanvasChatMessage[] | undefined =
       chatInitialMessages ?? undefined;
     let ephemeralSeedCount = 0;
-    let attentionArtifactId: string | null = null;
+    let activityArtifactId: string | null = null;
 
-    if (!chatInitialMessages && attentionData && attentionData.items.length > 0) {
+    if (!chatInitialMessages && activityData && activityData.length > 0) {
       // Synthesize the intro assistant message + register a single
       // artifact carrying the items list. Mirrors the
       // `appendAssistantError` factory pattern (id prefix + role +
       // timestamp), with `artifactIds` pointing at the registered
       // entry.
       const introId = `intro-${Date.now().toString(36)}`;
-      attentionArtifactId = `attention-${introId}`;
+      activityArtifactId = `my-activity-${introId}`;
       useCanvasChatStore.getState().registerArtifact({
-        id: attentionArtifactId,
-        type: "attention-list",
+        id: activityArtifactId,
+        type: "my-activity",
         // `conversationId` is unknown at this point (the conversation
         // doesn't exist yet); we set it after `startConversation`
         // returns. Renderer doesn't use it today; future canvas-side
         // subscribers may.
         conversationId: "",
         messageId: introId,
-        data: { items: attentionData.items, total: attentionData.total },
+        data: { items: activityData },
       });
       const intro: CanvasChatMessage = {
         id: introId,
         role: "assistant",
-        // Singular vs plural copy. The header inside the card already
-        // says "Top N for you" so the message stays short.
-        content:
-          attentionData.items.length === 1
-            ? "Here's the top item waiting on you:"
-            : `Here are the top ${attentionData.items.length} items waiting on you:`,
+        content: "Here's your recent activity:",
         timestamp: new Date(),
-        artifactIds: [attentionArtifactId],
+        artifactIds: [activityArtifactId],
       };
       seedMessages = [intro];
       ephemeralSeedCount = 1;
@@ -888,9 +875,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
 
     // Backfill the artifact's `conversationId` now that we have one,
     // so future canvas-side selectors can scope by conversation.
-    if (attentionArtifactId) {
+    if (activityArtifactId) {
       const existing =
-        useCanvasChatStore.getState().artifacts[attentionArtifactId];
+        useCanvasChatStore.getState().artifacts[activityArtifactId];
       if (existing) {
         useCanvasChatStore.getState().registerArtifact({
           ...existing,
@@ -917,10 +904,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       if (before === after) return;
       for (const id of Object.keys(after)) {
         if (before[id]) continue;
-        if (!id.startsWith("attention-")) continue;
+        if (!id.startsWith("my-activity-")) continue;
         try {
           sessionStorage.setItem(
-            `hive:attention-dismissed:${githubLogin}`,
+            `hive:my-activity-dismissed:${githubLogin}`,
             "1",
           );
         } catch {
