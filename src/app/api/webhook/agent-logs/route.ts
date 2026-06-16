@@ -51,6 +51,11 @@ export async function POST(request: NextRequest) {
       : body.model
         ? String(body.model)
         : undefined;
+    const provider: string | undefined = config?.provider ? String(config.provider) : undefined;
+    const source: string | undefined = config?.source ? String(config.source) : undefined;
+    const repos: string[] = Array.isArray(config?.repos)
+      ? (config.repos as unknown[]).filter((r): r is string => typeof r === "string")
+      : [];
     // Stakwork sends project IDs as integers
     const stakwork_run_id = body.stakwork_run_id
       ? Number(body.stakwork_run_id)
@@ -187,6 +192,9 @@ export async function POST(request: NextRequest) {
             blobUrl: blob.url,
             sessionId: sessionId ?? null,
             config: config as Prisma.InputJsonValue | undefined,
+            provider: provider ?? null,
+            source: source ?? null,
+            repos,
           },
         })
       : await db.agentLog.create({
@@ -199,6 +207,9 @@ export async function POST(request: NextRequest) {
             workspaceId: workspace_id,
             sessionId: sessionId ?? null,
             config: config as Prisma.InputJsonValue | undefined,
+            provider: provider ?? null,
+            source: source ?? null,
+            repos,
           },
         });
 
@@ -258,6 +269,8 @@ export async function POST(request: NextRequest) {
             task_id: task_id ?? null,
             log_url: blob.url,
             ...(model ? { model } : {}),
+            ...(provider ? { provider } : {}),
+            ...(source ? { source } : {}),
             workspace_id,
             created_at: new Date().toISOString(),
           },
