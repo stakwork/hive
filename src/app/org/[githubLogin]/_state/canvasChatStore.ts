@@ -62,7 +62,11 @@ import type {
   RejectionIntent,
 } from "@/lib/proposals/types";
 import type { ClarifyingQuestion } from "@/types/stakwork";
-import type { StreamTimelineItem } from "@/types/streaming";
+import type {
+  StreamTimelineItem,
+  StreamToolCall,
+  ToolCallStatus,
+} from "@/types/streaming";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -225,6 +229,44 @@ export interface CanvasChatMessage {
     fireAt: string; // ISO timestamp
     status: "PENDING" | "FIRED" | "CANCELLED" | "FAILED";
   };
+}
+
+/**
+ * Reconstruct a render `timeline` from a message's persisted `toolCalls`.
+ *
+ * The streamed (live) path attaches a rich `timeline` to tool-call rows so
+ * `<StreamingMessage>` renders expandable tool cards. But the server only
+ * persists `toolCalls` to `SharedConversation.messages` (see
+ * `canvas-turn-persistence.ts`) — `timeline` is never written. So on reload,
+ * share, or live-sync of another tab's turn, a tool-call row arrives with
+ * `toolCalls` but no `timeline` and would render nothing.
+ *
+ * `SidebarChat` calls this to synthesize the missing `timeline` from the
+ * persisted `toolCalls` so reloaded tool calls render identically to live
+ * ones. `toolCalls` carries everything `<StreamToolCall>` needs (name, input,
+ * output, status, error); `inputText` is derived from `input` for the
+ * expandable "Input" section.
+ */
+export function timelineFromToolCalls(
+  toolCalls: ToolCall[],
+): StreamTimelineItem[] {
+  return toolCalls.map((tc) => {
+    const data: StreamToolCall = {
+      id: tc.id,
+      toolName: tc.toolName,
+      input: tc.input,
+      inputText:
+        tc.input === undefined
+          ? undefined
+          : typeof tc.input === "string"
+            ? tc.input
+            : JSON.stringify(tc.input, null, 2),
+      output: tc.output,
+      status: tc.status as ToolCallStatus,
+      errorText: tc.errorText,
+    };
+    return { type: "toolCall", id: tc.id, data };
+  });
 }
 
 export interface CanvasConversation {

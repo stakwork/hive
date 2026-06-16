@@ -40,7 +40,7 @@ export function AutomationsSection({ githubLogin }: AutomationsSectionProps) {
 
   // New-automation form fields.
   const [name, setName] = useState("");
-  const [timeOfDay, setTimeOfDay] = useState("09:00");
+  const [timeOfDay, setTimeOfDay] = useState("05:00");
   const [prompt, setPrompt] = useState("");
 
   const base = `/api/orgs/${githubLogin}/automations`;
