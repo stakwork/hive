@@ -278,7 +278,6 @@ jobs:
       - name: Resolve Failed Migrations
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
-          export DIRECT_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "Checking for failed migrations..."
 
           # Helper: resolve a migration based on whether its DDL column/table already exists
@@ -345,7 +344,6 @@ jobs:
       - name: Build
         run: |
           export DATABASE_URL="${{ steps.neon.outputs.connection_uri }}"
-          export DIRECT_URL="${{ steps.neon.outputs.connection_uri }}"
           echo "DATABASE_URL is set (masked)"
           npx prisma generate
 
