@@ -124,3 +124,68 @@ describe("mcpCreateFeatureTask — creator attribution", () => {
     expect(mockCreateTicket).not.toHaveBeenCalled();
   });
 });
+
+describe("mcpCreateFeatureTask — dependsOnTaskIds", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDbFeature.findUnique.mockResolvedValue({
+      workspaceId: "ws-1",
+      createdById: "feature-creator-1",
+    });
+    mockDbRepository.findFirst.mockResolvedValue({ id: "repo-1" });
+    mockDbWorkspace.findUnique.mockResolvedValue({
+      ownerId: "owner-1",
+      owner: { id: "owner-1", name: "Tom Smith", sphinxAlias: null },
+      members: [],
+    });
+  });
+
+  it("forwards non-empty dependsOnTaskIds to createTicket", async () => {
+    mockCreateTicket.mockResolvedValue({ ...BASE_TASK, dependsOnTaskIds: ["task-a"] });
+
+    const result = await mcpCreateFeatureTask(
+      AUTH,
+      "feature-1",
+      { title: "Dependent task", dependsOnTaskIds: ["task-a"] },
+      { repositoryId: "repo-1" },
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(mockCreateTicket).toHaveBeenCalledWith(
+      "feature-1",
+      "feature-creator-1",
+      expect.objectContaining({ dependsOnTaskIds: ["task-a"] }),
+    );
+  });
+
+  it("forwards empty dependsOnTaskIds array to createTicket", async () => {
+    mockCreateTicket.mockResolvedValue({ ...BASE_TASK, dependsOnTaskIds: [] });
+
+    await mcpCreateFeatureTask(
+      AUTH,
+      "feature-1",
+      { title: "No deps", dependsOnTaskIds: [] },
+      { repositoryId: "repo-1" },
+    );
+
+    expect(mockCreateTicket).toHaveBeenCalledWith(
+      "feature-1",
+      "feature-creator-1",
+      expect.objectContaining({ dependsOnTaskIds: [] }),
+    );
+  });
+
+  it("passes undefined dependsOnTaskIds when not provided", async () => {
+    mockCreateTicket.mockResolvedValue(BASE_TASK);
+
+    await mcpCreateFeatureTask(
+      AUTH,
+      "feature-1",
+      { title: "No deps field" },
+      { repositoryId: "repo-1" },
+    );
+
+    const call = mockCreateTicket.mock.calls[0][2];
+    expect(call.dependsOnTaskIds).toBeUndefined();
+  });
+});
