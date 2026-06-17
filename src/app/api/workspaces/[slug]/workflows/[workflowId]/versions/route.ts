@@ -85,6 +85,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Invalid workflow ID" }, { status: 400 });
     }
 
+    // Dev mode: delegate to mock endpoint (mirrors the runs/stats routes).
+    // Lets the mock workflows from /api/workflow/recent open without a swarm.
+    if (isDevelopmentMode()) {
+      const origin = request.nextUrl.origin;
+      try {
+        const mockRes = await fetch(
+          `${origin}/api/mock/stakwork/workflows/${workflowIdNum}/versions`,
+        );
+        if (mockRes.ok) {
+          return NextResponse.json(await mockRes.json());
+        }
+      } catch {
+        // fall through to empty response
+      }
+      return NextResponse.json({ success: true, data: { versions: [] } }, { status: 200 });
+    }
+
     const swarm = await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
     });
