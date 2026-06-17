@@ -886,7 +886,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
 
   const onWorkflowUpdate = (data: any) => {
     const project_id = data.project_id;
-    axios.get(`/api/v1/projects/${project_id}.json`).then((response) => {
+    axios.get(`/api/projects/${project_id}.json`).then((response) => {
       const project_progress = response.data.response;
 
       updateDiagram(project_progress);
