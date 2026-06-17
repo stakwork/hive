@@ -31,7 +31,12 @@ export function mergeWorkflowRunStatus(
   const enrichStep = (key: string, step: WorkflowTransition): WorkflowTransition => {
     const rs = byId[step.id] ?? byName[step.name] ?? byId[key] ?? byName[key] ?? null;
     if (!rs) return step;
-    return { ...step, status: rs.status, last_transition_state: rs.last_transition_state };
+    return {
+      ...step,
+      status: rs.status,
+      last_transition_state: rs.last_transition_state,
+      project_step_id: rs.project_step_id,
+    };
   };
 
   if (Array.isArray(baseTransitions)) {
