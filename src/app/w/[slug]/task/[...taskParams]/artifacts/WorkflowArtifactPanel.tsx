@@ -425,6 +425,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
                   defaultZoomLevel: 0.65,
                   useAssistantDimensions: false,
                   rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
+                  nodeStyle: "card",
                 }}
               />
             )}
@@ -510,6 +511,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
               useAssistantDimensions: false,
               rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
               onStepClick: isProjectDebuggerMode ? undefined : onStepSelect ? handleStepClick : undefined,
+              nodeStyle: "card",
             }}
           />
         </div>
