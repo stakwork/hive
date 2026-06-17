@@ -1,5 +1,6 @@
 import React from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
+import { StepCardContent, STEP_HANDLE_CLASS, type StepNodeCardData } from "./StepNodeCard";
 
 interface StepNodeData {
   id: string;
@@ -12,13 +13,29 @@ interface StepNodeData {
   textColor?: string;
   stepType?: string;
   project_view?: boolean;
+  cardStyle?: boolean;
+  card?: StepNodeCardData;
   data: {
     html: string;
   };
 }
 
+const SYSTEM_NODE_IDS = new Set(["start", "system.succeed", "system.fail"]);
+
 export default function StepNode({ data: rawData }: NodeProps) {
   const data = rawData as unknown as StepNodeData;
+
+  // Redesigned compact card (opt-in via nodeStyle="card"). System/terminal
+  // nodes (start/end/halt) keep their classic pill rendering.
+  if (data.cardStyle && data.card && !SYSTEM_NODE_IDS.has(data.id)) {
+    return (
+      <div className="nowheel workflow-show-modal cursor-pointer">
+        <Handle type="target" position={Position.Left} className={STEP_HANDLE_CLASS} isConnectable={false} />
+        <StepCardContent data={data.card} />
+        <Handle type="source" position={Position.Right} className={STEP_HANDLE_CLASS} isConnectable={false} />
+      </div>
+    );
+  }
 
   let isSourceConnectable = data.id !== "start";
   let isTargetConnectable = data.id !== "start";

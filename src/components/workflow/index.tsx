@@ -69,6 +69,7 @@ interface WorkflowAppProps {
     onVersionChange?: (versionId: string) => void;
     changedStepIds?: Set<string>;
     changedConnectionIds?: Set<string>;
+    nodeStyle?: "classic" | "card";
   };
 }
 
@@ -151,6 +152,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     onVersionChange,
     changedStepIds,
     changedConnectionIds,
+    nodeStyle = "classic",
   } = workflowApp.props;
 
   let zoomLevel = defaultZoomLevel || 0.65;
@@ -562,6 +564,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
       isAdmin,
       workflowId,
       workflowVersionId,
+      nodeStyle,
     );
 
     const workflowSpecField = document.querySelector("#workflow_spec");

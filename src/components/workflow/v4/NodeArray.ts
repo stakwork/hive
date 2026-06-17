@@ -54,6 +54,7 @@ class NodeArray {
   currentCompletedStepPos?: Position;
   finishedNodePos?: Position;
   workflow_state?: string;
+  nodeStyle: "classic" | "card";
 
   constructor(
     transitions: Record<string, WorkflowTransition>,
@@ -64,7 +65,9 @@ class NodeArray {
     isAdmin: boolean = false,
     workflowId: string,
     workflowVersion: string,
+    nodeStyle: "classic" | "card" = "classic",
   ) {
+    this.nodeStyle = nodeStyle;
     this.connecting_edges = connecting_edges;
     this.connected_to_end = this.findDirectlyConnectedNodes(connecting_edges, "system.succeed");
 
@@ -407,6 +410,20 @@ class NodeArray {
             project_id: this.projectId,
           });
 
+          if (this.nodeStyle === "card") {
+            const ifc = ifConditionNode as unknown as Record<string, unknown>;
+            ifc.cardStyle = true;
+            ifc.card = {
+              alias: conditionLabel,
+              skill: step.name || "IfCondition",
+              category: "condition",
+              status: this.toCardStatus(this.getStatus(step)),
+              variant: "condition",
+            };
+            ifc.width = 200;
+            ifc.height = 44;
+          }
+
           this.addNode(ifConditionNode);
         } else {
           this.nodeBuilder(step, type, connections);
@@ -493,6 +510,13 @@ class NodeArray {
       this.setErrorNode(node);
     }
 
+    if (this.nodeStyle === "card") {
+      node.cardStyle = true;
+      node.card = this.buildCardData(step, type, status);
+      node.width = 208;
+      node.height = 64;
+    }
+
     node.targetNode = connections;
 
     if (status === "finished") {
@@ -534,6 +558,54 @@ class NodeArray {
     }
 
     return node;
+  }
+
+  // ── Redesigned card-node data (nodeStyle === "card") ───────────────────────
+  private skillToCategory(skill: string, type: string): string {
+    const s = (skill || "").toLowerCase();
+    if (type === "loop") return "loop";
+    if (type === "human") return "human";
+    if (type === "api") return "request";
+    if (s.includes("condition")) return "condition";
+    if (s.includes("request")) return "request";
+    if (s.includes("json")) return "json";
+    if (s.includes("setvar") || s.includes("ifvalue") || s.includes("set_var")) return "setvar";
+    return "automated";
+  }
+
+  private toCardStatus(status: string | null): string | undefined {
+    switch (status) {
+      case "finished":
+        return "finished";
+      case "in_progress":
+        return "in_progress";
+      case "error":
+        return "error";
+      case "halted":
+        return "halted";
+      case "skipped":
+        return "skipped";
+      default:
+        return undefined;
+    }
+  }
+
+  buildCardData(step: WorkflowTransition, type: string, status: string | null): Record<string, unknown> {
+    const skill = step.display_name || step.name || "";
+    const alias = step.id || step.display_id || "";
+    let timing: string | undefined;
+    if (status === "finished") {
+      const jobDetails = this.getJobDetails(step);
+      timing = this.parseCompletionTime(jobDetails?.completion_time?.value ?? null) || undefined;
+    }
+    return {
+      alias,
+      skill,
+      category: this.skillToCategory(skill, type),
+      status: this.toCardStatus(status),
+      timing,
+      variant: "step",
+    };
   }
 
   calcPosition(): Position {
