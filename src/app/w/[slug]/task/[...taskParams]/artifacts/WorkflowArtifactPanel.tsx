@@ -346,6 +346,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
               isOpen={isModalOpen}
               onClose={handleModalClose}
               onSelect={handleStepSelectFromModal}
+              projectId={projectId}
             />
           </TabsContent>
 
@@ -518,6 +519,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect, onVer
         isOpen={isModalOpen}
         onClose={handleModalClose}
         onSelect={handleStepSelectFromModal}
+        projectId={projectId}
       />
     </div>
   );

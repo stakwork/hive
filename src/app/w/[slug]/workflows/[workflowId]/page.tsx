@@ -297,6 +297,7 @@ export default function WorkflowInspectorPage() {
                       }
                     : undefined
                 }
+                projectId={selectedRunId ? String(selectedRunId) : undefined}
               />
               </>
             ) : isLoadingVersions ? (
