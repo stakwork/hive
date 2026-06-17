@@ -33,11 +33,11 @@ vi.mock("framer-motion", () => {
   };
 });
 
-// ── react-markdown mock ───────────────────────────────────────────────────────
-vi.mock("react-markdown", () => {
+// ── MarkdownRenderer mock ─────────────────────────────────────────────────────
+vi.mock("@/components/MarkdownRenderer", () => {
   const React = require("react");
   return {
-    default: ({ children }: { children: unknown }) =>
+    MarkdownRenderer: ({ children }: { children: unknown }) =>
       React.createElement(React.Fragment, null, children),
   };
 });
