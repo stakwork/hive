@@ -5,6 +5,21 @@ import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/
 import { jamieName } from "@/lib/constants/jamie";
 
 /**
+ * Returns a current-date context snippet, computed fresh on every call (never cached).
+ * Tells the model what today's date is so web searches default to the current year.
+ */
+export function getCurrentDateSnippet(): string {
+  const formatted = new Date().toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return `Current date: ${formatted} (UTC). When searching or reasoning about recent / "latest" information, treat this as today — do not default to an earlier year unless the user explicitly requests a historical range.`;
+}
+
+/**
  * Format a flat list of members for the single-workspace prompt.
  */
 function formatMemberList(members: WorkspaceMemberInfo[]): string {
@@ -29,6 +44,8 @@ export function getQuickAskSystemPrompt(repoUrls: string[], description?: string
     : "";
 
   return `
+${getCurrentDateSnippet()}
+
 You are a source code learning assistant for ${repoDescription}${descSuffix}. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand —- a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
 
 Try to match the tone of the user. If the question is highly technical (mentioning specific things in the code), then you can answer with more technical language and examples (or function names, endpoints names, etc). But the the user prompt is not technical, then you should answer in clear, plain language.
@@ -200,6 +217,8 @@ export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[], cur
     : "";
 
   return `
+${getCurrentDateSnippet()}
+
 You are a source code learning assistant with access to multiple codebases. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone.
 
 ## Reply style — read this first
