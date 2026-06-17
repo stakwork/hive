@@ -481,7 +481,7 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       // Run lookup
       mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
 
-      const bodyWithPv = { ...validBody, prompt_version_id: "pv-xyz" };
+      const bodyWithPv = { ...validBody, prompt_version_id: "pv-xyz", prompt_id: "pid-xyz" };
       const request = makeRequest(workspace.slug, "42", bodyWithPv, user);
       const response = await POST(request, {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
@@ -492,6 +492,7 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
       expect(triggerCall).toBeDefined();
       expect(triggerCall![1].node_data.prompt_version_id).toBe("pv-xyz");
+      expect(triggerCall![1].node_data.prompt_id).toBe("pid-xyz");
     });
 
     test("EvalTrigger node_data prompt_version_id is null when omitted from body", async () => {
@@ -520,6 +521,7 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
       expect(triggerCall).toBeDefined();
       expect(triggerCall![1].node_data.prompt_version_id).toBeNull();
+      expect(triggerCall![1].node_data.prompt_id).toBeNull();
     });
 
     test("EVALUATED edge is skipped gracefully when Run node not found", async () => {

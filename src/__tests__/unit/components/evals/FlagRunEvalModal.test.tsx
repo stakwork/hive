@@ -85,6 +85,7 @@ const MOCK_STEPS = [
     preview: "The title looks great.",
     prompt_version_id: "pv-1",
     prompt_name: "My Prompt v2",
+    prompt_id: "pid-1",
   },
   {
     stepId: "llm_evaluate_quality",
@@ -95,6 +96,7 @@ const MOCK_STEPS = [
     preview: "The output looks correct.",
     prompt_version_id: null,
     prompt_name: null,
+    prompt_id: null,
   },
 ];
 
@@ -418,5 +420,6 @@ describe("FlagRunEvalModal", () => {
     const [, opts] = vi.mocked(fetch).mock.calls[1];
     const body = JSON.parse((opts as RequestInit).body as string);
     expect(body.prompt_version_id).toBe("pv-1");
+    expect(body.prompt_id).toBe("pid-1");
   });
 });

@@ -26,6 +26,7 @@ interface RequestStep {
   preview: string | null;
   prompt_version_id: string | null;
   prompt_name: string | null;
+  prompt_id: string | null;
 }
 
 interface FlagRunEvalModalProps {
@@ -109,6 +110,7 @@ export function FlagRunEvalModal({
             run_id: runId,
             step_id: selectedStep.stepId,
             prompt_version_id: selectedStep.prompt_version_id,
+            prompt_id: selectedStep.prompt_id,
             requirement: requirement.trim(),
             reason: reason.trim() || undefined,
             desirable_cases: positiveCases,

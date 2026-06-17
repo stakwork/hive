@@ -346,6 +346,7 @@ describe("GET .../runs/[runId]/request-steps", () => {
                 output: {
                   prompt_version_id: "pv-abc",
                   prompt_name: "My Prompt",
+                  prompt_id: "pid-abc",
                   response: { choices: [{ message: { content: "hello" } }] },
                 },
               },
@@ -364,6 +365,7 @@ describe("GET .../runs/[runId]/request-steps", () => {
       expect(data.data.steps).toHaveLength(1);
       expect(data.data.steps[0].prompt_version_id).toBe("pv-abc");
       expect(data.data.steps[0].prompt_name).toBe("My Prompt");
+      expect(data.data.steps[0].prompt_id).toBe("pid-abc");
     });
 
     test("returns null prompt_version_id and prompt_name when absent in output", async () => {
@@ -402,6 +404,7 @@ describe("GET .../runs/[runId]/request-steps", () => {
       expect(data.data.steps).toHaveLength(1);
       expect(data.data.steps[0].prompt_version_id).toBeNull();
       expect(data.data.steps[0].prompt_name).toBeNull();
+      expect(data.data.steps[0].prompt_id).toBeNull();
     });
 
     test("truncates preview to 120 chars", async () => {

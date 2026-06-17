@@ -332,7 +332,7 @@ describe("extractStepFromTransition — correct paths", () => {
     expect(extractStepFromTransition(transition).messages).toEqual([]);
   });
 
-  test("returns prompt_version_id and prompt_name from output", () => {
+  test("returns prompt_version_id, prompt_name, and prompt_id from output", () => {
     const transition = {
       id: "step_with_pv",
       attributes: {
@@ -342,15 +342,17 @@ describe("extractStepFromTransition — correct paths", () => {
       output: {
         prompt_version_id: "pv-123",
         prompt_name: "My Prompt v3",
+        prompt_id: "pid-123",
         response: { choices: [{ message: { content: "ok" } }] },
       },
     };
     const result = extractStepFromTransition(transition);
     expect(result.prompt_version_id).toBe("pv-123");
     expect(result.prompt_name).toBe("My Prompt v3");
+    expect(result.prompt_id).toBe("pid-123");
   });
 
-  test("returns null prompt_version_id and prompt_name when absent", () => {
+  test("returns null prompt_version_id, prompt_name, and prompt_id when absent", () => {
     const transition = {
       id: "step_no_pv",
       attributes: {
@@ -364,6 +366,7 @@ describe("extractStepFromTransition — correct paths", () => {
     const result = extractStepFromTransition(transition);
     expect(result.prompt_version_id).toBeNull();
     expect(result.prompt_name).toBeNull();
+    expect(result.prompt_id).toBeNull();
   });
 });
 

@@ -24,6 +24,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
           preview: "SKIP",
           prompt_version_id: "mock-pv-1",
           prompt_name: "Generate Title v2",
+          prompt_id: "mock-prompt-1",
         },
         {
           stepId: "llm_evaluate_quality",
@@ -34,6 +35,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
           preview: "The output looks correct.",
           prompt_version_id: null,
           prompt_name: null,
+          prompt_id: null,
         },
       ],
     },

@@ -2358,13 +2358,13 @@ describe("Evals API — Integration Tests", () => {
 
         const triggerId = "trig-pv-1";
 
-        // First fetch: Jarvis EvalTrigger node lookup → returns prompt_version_id
+        // First fetch: Jarvis EvalTrigger node lookup → returns prompt_version_id + prompt_id
         // Second fetch: Stakwork project creation
         global.fetch = vi.fn()
           .mockResolvedValueOnce({
             ok: true,
             json: async () => ({
-              nodes: [{ node_data: { prompt_version_id: "pv-1" } }],
+              nodes: [{ node_data: { prompt_version_id: "pv-1", prompt_id: "pid-1" } }],
             }),
           } as any)
           .mockResolvedValueOnce({
@@ -2386,11 +2386,12 @@ describe("Evals API — Integration Tests", () => {
         const data = await response.json();
         expect(data.project_id).toBe("proj-pv-1");
 
-        // Verify Stakwork was called with version_overrides
+        // Verify Stakwork was called with version_overrides and prompt_id in vars
         const fetchCalls = vi.mocked(global.fetch as ReturnType<typeof vi.fn>).mock.calls;
         const stakworkCall = fetchCalls[1];
         const stakworkBody = JSON.parse(stakworkCall[1].body as string);
         expect(stakworkBody.version_overrides).toEqual({ [triggerId]: "pv-1" });
+        expect(stakworkBody.workflow_params.set_var.attributes.vars.prompt_id).toBe("pid-1");
       });
 
       test("omits version_overrides when Jarvis node has no prompt_version_id", async () => {
@@ -2427,6 +2428,7 @@ describe("Evals API — Integration Tests", () => {
         const fetchCalls = vi.mocked(global.fetch as ReturnType<typeof vi.fn>).mock.calls;
         const stakworkBody = JSON.parse(fetchCalls[1][1].body as string);
         expect(stakworkBody.version_overrides).toBeUndefined();
+        expect(stakworkBody.workflow_params.set_var.attributes.vars.prompt_id).toBeNull();
       });
 
       test("proceeds without version_overrides when Jarvis fetch fails", async () => {
@@ -2466,6 +2468,7 @@ describe("Evals API — Integration Tests", () => {
         const fetchCalls = vi.mocked(global.fetch as ReturnType<typeof vi.fn>).mock.calls;
         const stakworkBody = JSON.parse(fetchCalls[1][1].body as string);
         expect(stakworkBody.version_overrides).toBeUndefined();
+        expect(stakworkBody.workflow_params.set_var.attributes.vars.prompt_id).toBeNull();
       });
     });
   });

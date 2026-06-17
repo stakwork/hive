@@ -83,6 +83,7 @@ export interface ExtractedStep {
   preview: string | null;
   prompt_version_id: string | null;
   prompt_name: string | null;
+  prompt_id: string | null;
   /** Messages array for snapshot — from raw_input_params.messages */
   messages: unknown[];
 }
@@ -129,6 +130,10 @@ export function extractStepFromTransition(transition: TransitionStep): Extracted
     (outputTop?.prompt_name as string | undefined) ??
     (outputNested?.prompt_name as string | undefined) ??
     null;
+  const prompt_id =
+    (outputTop?.prompt_id as string | undefined) ??
+    (outputNested?.prompt_id as string | undefined) ??
+    null;
 
   return {
     stepId: ((transition.unique_id ?? transition.id) as string | undefined) ?? "",
@@ -139,6 +144,7 @@ export function extractStepFromTransition(transition: TransitionStep): Extracted
     preview,
     prompt_version_id,
     prompt_name,
+    prompt_id,
     messages,
   };
 }

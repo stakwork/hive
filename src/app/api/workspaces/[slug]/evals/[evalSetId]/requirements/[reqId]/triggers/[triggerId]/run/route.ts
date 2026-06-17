@@ -85,6 +85,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Fetch EvalTrigger node data to get prompt_version_id (non-fatal)
     const triggerNodeData = await fetchEvalTriggerNodeData(jarvisConfig, triggerId);
     const promptVersionId = (triggerNodeData?.prompt_version_id as string | undefined) ?? null;
+    const promptId = (triggerNodeData?.prompt_id as string | undefined) ?? null;
 
     const stakworkBaseUrl =
       process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1";
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       slug,
       tokenReference: getStakworkTokenReference(),
       sourceHiveUrl: baseUrl,
+      prompt_id: promptId ?? null,
     };
 
     const stakworkPayload: Record<string, unknown> = {
