@@ -243,6 +243,7 @@ export async function getUserActivityFeed(params: {
           select: {
             id: true,
             name: true,
+            status: true,
             assigneeId: true,
             createdById: true,
             updatedAt: true,
@@ -445,7 +446,7 @@ export async function getUserActivityFeed(params: {
       workspaceName: "",
       orgName: githubLogin,
       timestamp: m.updatedAt.toISOString(),
-      completed: false,
+      completed: m.status === "COMPLETED",
     });
   }
 
