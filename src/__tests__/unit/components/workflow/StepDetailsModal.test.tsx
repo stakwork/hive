@@ -1,12 +1,62 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StepDetailsModal } from "@/components/StepDetailsModal";
 import type { WorkflowTransition } from "@/types/stakwork/workflow";
 
+// ── mocks ─────────────────────────────────────────────────────────────────────
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+}));
+
+vi.mock("@/components/evals/CaptureEvalForm", () => ({
+  CaptureEvalForm: ({
+    requirement,
+    reason,
+    onRequirementChange,
+    onReasonChange,
+    submitting,
+  }: {
+    requirement: string;
+    reason: string;
+    onRequirementChange: (v: string) => void;
+    onReasonChange: (v: string) => void;
+    submitting?: boolean;
+  }) => (
+    <div data-testid="capture-eval-form">
+      <input
+        aria-label="Requirement"
+        value={requirement}
+        onChange={(e) => onRequirementChange(e.target.value)}
+        disabled={submitting}
+      />
+      <input
+        aria-label="Reason"
+        value={reason}
+        onChange={(e) => onReasonChange(e.target.value)}
+        disabled={submitting}
+      />
+    </div>
+  ),
+}));
+
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+/** Build a WorkflowTransition that isLlmStep recognises as an LLM step */
+function makeLlmStep(overrides: Partial<WorkflowTransition> = {}): WorkflowTransition {
+  return {
+    id: "step-llm",
+    name: "generate_response",
+    display_name: "Generate Response",
+    display_id: "step-llm",
+    step_type: "automated",
+    url: "https://api.openai.com/v1/chat/completions",
+    ...overrides,
+  } as WorkflowTransition;
+}
 
 function makeStep(overrides: Partial<WorkflowTransition> = {}): WorkflowTransition {
   return {
@@ -19,30 +69,27 @@ function makeStep(overrides: Partial<WorkflowTransition> = {}): WorkflowTransiti
   } as WorkflowTransition;
 }
 
+function defaultProps(overrides: Partial<React.ComponentProps<typeof StepDetailsModal>> = {}) {
+  return {
+    step: makeStep(),
+    isOpen: true,
+    onClose: vi.fn(),
+    ...overrides,
+  };
+}
+
 // ── StepDetailsModal render ───────────────────────────────────────────────────
 
 describe("StepDetailsModal — overlay and sizing", () => {
   it("uses fixed positioning for the overlay", () => {
-    const { container } = render(
-      <StepDetailsModal
-        step={makeStep()}
-        isOpen={true}
-        onClose={vi.fn()}
-      />,
-    );
+    const { container } = render(<StepDetailsModal {...defaultProps()} />);
     const overlay = container.firstChild as HTMLElement;
     expect(overlay.className).toContain("fixed");
     expect(overlay.className).not.toContain("absolute");
   });
 
   it("constrains the inner dialog width and height", () => {
-    const { container } = render(
-      <StepDetailsModal
-        step={makeStep()}
-        isOpen={true}
-        onClose={vi.fn()}
-      />,
-    );
+    const { container } = render(<StepDetailsModal {...defaultProps()} />);
     const overlay = container.firstChild as HTMLElement;
     const dialog = overlay.firstChild as HTMLElement;
     expect(dialog.className).toContain("max-w-3xl");
@@ -51,33 +98,21 @@ describe("StepDetailsModal — overlay and sizing", () => {
 
   it("renders nothing when isOpen is false", () => {
     const { container } = render(
-      <StepDetailsModal
-        step={makeStep()}
-        isOpen={false}
-        onClose={vi.fn()}
-      />,
+      <StepDetailsModal {...defaultProps({ isOpen: false })} />,
     );
     expect(container.firstChild).toBeNull();
   });
 
   it("renders nothing when step is null", () => {
     const { container } = render(
-      <StepDetailsModal
-        step={null}
-        isOpen={true}
-        onClose={vi.fn()}
-      />,
+      <StepDetailsModal {...defaultProps({ step: null })} />,
     );
     expect(container.firstChild).toBeNull();
   });
 
   it("displays the step display_name in the header", () => {
     render(
-      <StepDetailsModal
-        step={makeStep({ display_name: "Deploy Service" })}
-        isOpen={true}
-        onClose={vi.fn()}
-      />,
+      <StepDetailsModal {...defaultProps({ step: makeStep({ display_name: "Deploy Service" }) })} />,
     );
     expect(screen.getByText("Deploy Service")).toBeDefined();
   });
@@ -255,5 +290,272 @@ describe("StepDetailsModal — IO tab empty states", () => {
     await waitFor(() => {
       expect(screen.getByText("No input data available.")).toBeDefined();
     });
+  });
+});
+
+// ── Flag for eval button visibility ──────────────────────────────────────────
+
+describe("StepDetailsModal — Flag for eval button", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: "result" } }),
+    }));
+  });
+
+  it("shows Flag for eval when slug, workflowId, projectId are set and step is LLM", () => {
+    render(
+      <StepDetailsModal
+        {...defaultProps({
+          step: makeLlmStep(),
+          slug: "my-ws",
+          workflowId: "42",
+          projectId: "run-123",
+        })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /flag for eval/i })).toBeInTheDocument();
+  });
+
+  it("hides Flag for eval when projectId is absent (no active run)", () => {
+    render(
+      <StepDetailsModal
+        {...defaultProps({
+          step: makeLlmStep(),
+          slug: "my-ws",
+          workflowId: "42",
+          // no projectId
+        })}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /flag for eval/i })).not.toBeInTheDocument();
+  });
+
+  it("hides Flag for eval for non-LLM step types", () => {
+    render(
+      <StepDetailsModal
+        {...defaultProps({
+          step: makeStep(), // no LLM URL
+          slug: "my-ws",
+          workflowId: "42",
+          projectId: "run-123",
+        })}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /flag for eval/i })).not.toBeInTheDocument();
+  });
+
+  it("hides Flag for eval when slug is absent", () => {
+    render(
+      <StepDetailsModal
+        {...defaultProps({
+          step: makeLlmStep(),
+          workflowId: "42",
+          projectId: "run-123",
+          // no slug
+        })}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /flag for eval/i })).not.toBeInTheDocument();
+  });
+});
+
+// ── Flag for eval capture flow ────────────────────────────────────────────────
+
+describe("StepDetailsModal — Flag for eval capture", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: "result" } }),
+    }));
+  });
+
+  async function openFlagForm() {
+    render(
+      <StepDetailsModal
+        step={makeLlmStep({ project_step_id: "gen_step", name: "generate_response" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        slug="my-ws"
+        workflowId="42"
+        projectId="run-123"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
+    // form should appear
+    await waitFor(() => expect(screen.getByTestId("capture-eval-form")).toBeInTheDocument());
+  }
+
+  it("opens the CaptureEvalForm when Flag for eval is clicked", async () => {
+    await openFlagForm();
+  });
+
+  it("hides Flag for eval button while form is open", async () => {
+    await openFlagForm();
+    expect(screen.queryByRole("button", { name: /flag for eval/i })).not.toBeInTheDocument();
+  });
+
+  it("submits correct URL and body (inputs/outputs from ioData)", async () => {
+    const mockFetch = vi.fn()
+      // IO fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { inputs: { model: "gpt-4o", messages: [] }, outputs: "some output" } }),
+      })
+      // capture POST
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(
+      <StepDetailsModal
+        step={makeLlmStep({ project_step_id: "gen_step", name: "generate_response" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        slug="my-ws"
+        workflowId="42"
+        projectId="run-123"
+      />,
+    );
+
+    // Wait for IO to load
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(
+      "/api/v1/projects/run-123/steps/gen_step/io"
+    ));
+
+    fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
+    await waitFor(() => expect(screen.getByTestId("capture-eval-form")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
+      target: { value: "Must return a summary" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /capture/i }));
+
+    await waitFor(() => {
+      const calls = mockFetch.mock.calls;
+      const captureCall = calls.find(([url]) =>
+        String(url).includes("/eval/capture")
+      );
+      expect(captureCall).toBeDefined();
+      const [url, opts] = captureCall!;
+      expect(url).toBe("/api/workspaces/my-ws/workflows/42/eval/capture");
+      const body = JSON.parse((opts as RequestInit).body as string);
+      expect(body.run_id).toBe("run-123");
+      expect(body.step_id).toBe("gen_step");
+      expect(body.requirement).toBe("Must return a summary");
+      expect(body.inputs).toEqual({ model: "gpt-4o", messages: [] });
+      expect(body.outputs).toBe("some output");
+    });
+  });
+
+  it("shows success toast and closes form on capture", async () => {
+    const { toast } = await import("sonner");
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: null } }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(
+      <StepDetailsModal
+        // project_step_id required so the IO useEffect fires
+        step={makeLlmStep({ project_step_id: "gen_step" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        slug="my-ws"
+        workflowId="42"
+        projectId="run-123"
+      />,
+    );
+
+    // Wait for the IO fetch to complete
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
+      target: { value: "Always respond" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /capture/i }));
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("Eval captured");
+      expect(screen.queryByTestId("capture-eval-form")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows error toast on failed capture", async () => {
+    const { toast } = await import("sonner");
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: null } }),
+      })
+      .mockResolvedValueOnce({ ok: false });
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(
+      <StepDetailsModal
+        step={makeLlmStep({ project_step_id: "gen_step" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        slug="my-ws"
+        workflowId="42"
+        projectId="run-123"
+      />,
+    );
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
+      target: { value: "Must not fail" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /capture/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to capture eval");
+    });
+  });
+
+  it("shows error toast when ioData is null at submit time", async () => {
+    const { toast } = await import("sonner");
+    // IO fetch fails → ioData stays null
+    const mockFetch = vi.fn().mockRejectedValueOnce(new Error("network error"));
+    vi.stubGlobal("fetch", mockFetch);
+
+    render(
+      <StepDetailsModal
+        // project_step_id so the IO useEffect fires and then rejects
+        step={makeLlmStep({ project_step_id: "gen_step" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        slug="my-ws"
+        workflowId="42"
+        projectId="run-123"
+      />,
+    );
+
+    // Wait for the IO fetch attempt (which rejects) to settle
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
+      target: { value: "Test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /capture/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Step input data not available");
+    });
+    // No capture POST should be made
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
