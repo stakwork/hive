@@ -21,11 +21,13 @@ function makeRunStep(
   id: string,
   name: string,
   stepState: string,
+  extra: Partial<WorkflowTransition> = {},
 ): WorkflowTransition {
   return {
     ...makeStep(id, name),
     status: { step_state: stepState, workflow_state: stepState, job_statuses: {} },
     last_transition_state: stepState,
+    ...extra,
   };
 }
 
@@ -110,6 +112,22 @@ describe("mergeWorkflowRunStatus — object-format base transitions", () => {
 
     const result = mergeWorkflowRunStatus(base, runTransitions);
     expect(result).toEqual(base);
+  });
+
+  it("copies project_step_id from the matched run step into the enriched base step", () => {
+    const base = {
+      transitions: {
+        step_one: makeStep("step-1", "step_one"),
+      },
+    };
+    const runTransitions = {
+      "step-1": makeRunStep("step-1", "step_one", "finished", { project_step_id: "psid-123" }),
+    };
+
+    const result = mergeWorkflowRunStatus(base, runTransitions);
+    const transitions = result.transitions as Record<string, WorkflowTransition>;
+
+    expect(transitions.step_one.project_step_id).toBe("psid-123");
   });
 });
 

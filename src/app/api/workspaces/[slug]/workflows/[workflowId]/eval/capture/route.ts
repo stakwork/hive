@@ -4,13 +4,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
-import { config } from "@/config/env";
 import { logger } from "@/lib/logger";
-import {
-  normalizeTransitions,
-  inferProvider,
-  extractStepFromTransition,
-} from "@/lib/stakwork/transitions";
 
 export const runtime = "nodejs";
 
@@ -115,23 +109,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const {
-      run_id,
-      step_id,
-      requirement,
-      reason,
-      desirable_cases,
-      undesirable_cases,
-      check,
-      body: clientBody,
-    } = body as {
+    const { run_id, step_id, requirement, reason, inputs, outputs, body: clientBody } = body as {
       run_id?: string;
       step_id?: string;
       requirement?: string;
       reason?: string;
-      desirable_cases?: string[];
-      undesirable_cases?: string[];
-      check?: { type: string; want: boolean };
+      inputs?: Record<string, unknown> | null;
+      outputs?: unknown;
       /** Client-supplied replay body snapshot built from already-loaded runTransitions */
       body?: {
         prompt_change: string | null;
@@ -180,8 +164,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       node_data: {
         id: randomUUID(),
         name: requirement.trim(),
-        desirable_cases: desirable_cases ?? [],
-        undesirable_cases: undesirable_cases ?? [],
       },
     });
 
@@ -192,51 +174,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const requirementRef = reqResult.ref_id;
     logger.info(`[EvalCapture] EvalRequirement created, ref_id: ${requirementRef}`);
 
-    // ── 3. Snapshot step → EvalTrigger ──────────────────────────────────────
-    let model: string | null = null;
-    let provider: string | null = null;
-    let endpoint_url: string | null = null;
-    let prompt_snapshot: string = "[]";
-    let tool_call_trace: string | null = null;
-    let stepName: string = step_id ?? "unknown_step";
-
-    if (run_id && step_id) {
-      try {
-        const projectRes = await fetch(
-          `${config.STAKWORK_BASE_URL}/projects/${run_id}.json`,
-          { headers: { Authorization: `Token token=${config.STAKWORK_API_KEY}` } },
-        );
-
-        if (projectRes.ok) {
-          const projectData = await projectRes.json();
-          const transitions = normalizeTransitions(projectData);
-          const transition = transitions.find(
-            (t) => (t.unique_id ?? t.id) === step_id,
-          );
-
-          if (transition) {
-            const extracted = extractStepFromTransition(transition);
-            stepName = extracted.name || step_id;
-            model = extracted.model;
-            provider = extracted.provider;
-            endpoint_url = extracted.endpoint_url;
-            prompt_snapshot = JSON.stringify(extracted.messages);
-
-            // Snapshot tools if present (from raw_input_params)
-            const topAttrs = transition?.attributes as Record<string, unknown> | undefined;
-            const stepAttrs = (transition?.step as Record<string, unknown> | undefined)
-              ?.attributes as Record<string, unknown> | undefined;
-            const rawInputParams = (topAttrs?.raw_input_params ??
-              stepAttrs?.raw_input_params) as Record<string, unknown> | undefined;
-            const tools = rawInputParams?.tools ?? null;
-            tool_call_trace = tools !== null ? JSON.stringify(tools) : null;
-          }
-        }
-      } catch (err) {
-        logger.warn("[EvalCapture] Failed to fetch project JSON for snapshot", String(err));
-        // Non-fatal — proceed with defaults
-      }
-    }
+    // ── 3. Build EvalTrigger from posted IO ──────────────────────────────────
+    const stepName = step_id ?? "unknown_step";
+    const model = (inputs?.model as string | undefined) ?? null;
+    const promptSnapshot = JSON.stringify(inputs ?? null);
+    const outputSnapshot = JSON.stringify(outputs ?? null);
 
     const triggerResult = await addNode(nodeConfig, {
       node_type: "EvalTrigger",
@@ -248,13 +190,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         end_point: `step:${step_id ?? ""}`,
         change_type: "prompt",
         model,
-        provider,
-        endpoint_url,
-        prompt_snapshot,
-        tool_call_trace,
+        provider: null,
+        endpoint_url: null,
+        prompt_snapshot: promptSnapshot,
+        output_snapshot: outputSnapshot,
+        tool_call_trace: null,
         feedback_note: reason ?? null,
-        check: check ?? null,
-        // Client-supplied replay body blob (no extra fetch required on the server)
         body: clientBody ?? null,
       },
     });

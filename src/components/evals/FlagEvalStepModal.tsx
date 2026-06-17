@@ -64,6 +64,17 @@ export function FlagEvalStepModal({
     // Build snapshot from already-loaded transition — no extra fetch
     const extracted = extractStepFromTransition(runTransition);
 
+    // inputs = the LLM request params (model, messages, tools, …)
+    const inputs = extracted.messages.length > 0
+      ? { model: extracted.model, messages: extracted.messages }
+      : extracted.model
+        ? { model: extracted.model }
+        : null;
+
+    // outputs = the raw LLM response
+    const outputTop = runTransition?.output as Record<string, unknown> | undefined;
+    const outputs = outputTop?.response ?? null;
+
     try {
       const res = await fetch(
         `/api/workspaces/${slug}/workflows/${workflowId}/eval/capture`,
@@ -75,10 +86,9 @@ export function FlagEvalStepModal({
             step_id: stepId,
             requirement: requirement.trim(),
             reason: reason.trim() || undefined,
-            desirable_cases: positiveCases,
-            undesirable_cases: negativeCases,
-            check: { type: checkType, want: true },
-            // Client-side snapshot — no extra fetch needed
+            inputs,
+            outputs,
+            // Replay body blob for eval replay workflow
             body: extracted.body,
           }),
         },
