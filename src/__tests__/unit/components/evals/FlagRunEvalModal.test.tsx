@@ -8,25 +8,37 @@ import { FlagRunEvalModal } from "@/components/evals/FlagRunEvalModal";
 // ── mocks ────────────────────────────────────────────────────────────────────
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
-vi.mock("@/components/ui/tag-input", () => ({
-  TagInput: ({
-    items,
-    onChange,
-    placeholder,
+vi.mock("@/components/evals/CaptureEvalForm", () => ({
+  CaptureEvalForm: ({
+    requirement,
+    reason,
+    onRequirementChange,
+    onReasonChange,
+    submitting,
   }: {
-    items: string[];
-    onChange: (v: string[]) => void;
-    placeholder?: string;
+    requirement: string;
+    reason: string;
+    onRequirementChange: (v: string) => void;
+    onReasonChange: (v: string) => void;
+    submitting?: boolean;
   }) => (
-    <input
-      data-testid={`tag-input-${placeholder}`}
-      value={items.join(",")}
-      onChange={(e) => onChange(e.target.value ? e.target.value.split(",") : [])}
-      placeholder={placeholder}
-    />
+    <div data-testid="capture-eval-form">
+      <input
+        aria-label="requirement"
+        value={requirement}
+        onChange={(e) => onRequirementChange(e.target.value)}
+        disabled={submitting}
+      />
+      <input
+        aria-label="reason"
+        value={reason}
+        onChange={(e) => onReasonChange(e.target.value)}
+        disabled={submitting}
+      />
+    </div>
   ),
 }));
 
@@ -59,20 +71,6 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@/components/ui/tooltip", () => ({
-  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  TooltipTrigger: ({
-    children,
-    asChild,
-  }: {
-    children: React.ReactNode;
-    asChild?: boolean;
-  }) => (asChild ? <>{children}</> : <span>{children}</span>),
-  TooltipContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-}));
-
 // ── fixtures ──────────────────────────────────────────────────────────────────
 
 const MOCK_STEPS = [
@@ -93,6 +91,11 @@ const MOCK_STEPS = [
     preview: "The output looks correct.",
   },
 ];
+
+const MOCK_IO = {
+  inputs: { model: "gpt-4o-mini", messages: [{ role: "user", content: "hello" }] },
+  outputs: { content: "world" },
+};
 
 function defaultProps(overrides: Partial<React.ComponentProps<typeof FlagRunEvalModal>> = {}) {
   return {
@@ -115,11 +118,9 @@ describe("FlagRunEvalModal", () => {
   });
 
   it("renders loading spinner while fetching steps", () => {
-    // fetch never resolves
     vi.mocked(fetch).mockReturnValue(new Promise(() => {}));
     render(<FlagRunEvalModal {...defaultProps()} />);
     expect(screen.getByRole("status", { hidden: true }) ?? screen.getByText(/loading steps/i)).toBeTruthy();
-    // The Loader2 svg is present
     const content = screen.getByTestId("dialog-content");
     expect(content.innerHTML).toContain("animate-spin");
   });
@@ -147,9 +148,7 @@ describe("FlagRunEvalModal", () => {
     render(<FlagRunEvalModal {...defaultProps()} />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/no llm request steps found in this run/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/no llm request steps found in this run/i)).toBeInTheDocument();
     });
   });
 
@@ -190,18 +189,24 @@ describe("FlagRunEvalModal", () => {
     render(<FlagRunEvalModal {...defaultProps()} />);
 
     await waitFor(() => screen.getByText("Generate Title"));
-
     fireEvent.click(screen.getByText("Generate Title").closest("button")!);
 
     const nextBtn = screen.getByRole("button", { name: /next/i });
     expect(nextBtn).not.toBeDisabled();
   });
 
-  it("advances to step 2 after clicking Next with a step selected", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { steps: MOCK_STEPS } }),
-    } as Response);
+  it("clicking Next triggers IO fetch for the selected step name", async () => {
+    vi.mocked(fetch)
+      // Step 1: request-steps
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { steps: MOCK_STEPS } }),
+      } as Response)
+      // Step 2: IO fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: MOCK_IO }),
+      } as Response);
 
     render(<FlagRunEvalModal {...defaultProps()} />);
 
@@ -209,30 +214,15 @@ describe("FlagRunEvalModal", () => {
     fireEvent.click(screen.getByText("Generate Title").closest("button")!);
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-    expect(screen.getByLabelText(/requirement/i)).toBeInTheDocument();
+    await waitFor(() => {
+      const ioCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+        String(url).includes("/steps/Generate Title/io")
+      );
+      expect(ioCalls.length).toBe(1);
+    });
   });
 
-  it("Confirm button is disabled when Requirement field is empty", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { steps: MOCK_STEPS } }),
-    } as Response);
-
-    render(<FlagRunEvalModal {...defaultProps()} />);
-
-    await waitFor(() => screen.getByText("Generate Title"));
-    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
-    fireEvent.click(screen.getByRole("button", { name: /next/i }));
-
-    const confirmBtn = screen.getByRole("button", { name: /confirm/i });
-    expect(confirmBtn).toBeDisabled();
-  });
-
-  it("calls onCaptured and closes on successful POST", async () => {
-    const onCaptured = vi.fn();
-    const onOpenChange = vi.fn();
-
-    // First fetch = request-steps, second = capture POST
+  it("advances to step 2 showing CaptureEvalForm (no TagInput, no check type)", async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce({
         ok: true,
@@ -240,29 +230,143 @@ describe("FlagRunEvalModal", () => {
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          success: true,
-          data: {
-            evalSetRef: "ref-evalset",
-            requirementRef: "ref-req",
-            triggerRef: "ref-trigger",
-          },
-        }),
+        json: async () => ({ data: MOCK_IO }),
       } as Response);
 
-    render(
-      <FlagRunEvalModal
-        {...defaultProps({ onCaptured, onOpenChange })}
-      />
-    );
+    render(<FlagRunEvalModal {...defaultProps()} />);
 
     await waitFor(() => screen.getByText("Generate Title"));
     fireEvent.click(screen.getByText("Generate Title").closest("button")!);
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-    const reqInput = screen.getByLabelText(/requirement/i);
-    await userEvent.type(reqInput, "Never return an empty response");
+    await waitFor(() => expect(screen.getByTestId("capture-eval-form")).toBeInTheDocument());
 
+    // Should NOT have TagInput or check type fields
+    expect(screen.queryByPlaceholderText(/response should…/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/response should not…/i)).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("non_empty")).not.toBeInTheDocument();
+  });
+
+  it("Confirm button is disabled when requirement field is empty", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { steps: MOCK_STEPS } }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: MOCK_IO }),
+      } as Response);
+
+    render(<FlagRunEvalModal {...defaultProps()} />);
+
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    const confirmBtn = screen.getByRole("button", { name: /confirm/i });
+    expect(confirmBtn).toBeDisabled();
+  });
+
+  it("POSTs inputs/outputs in the capture body", async () => {
+    const onCaptured = vi.fn();
+    const onOpenChange = vi.fn();
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { steps: MOCK_STEPS } }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: MOCK_IO }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: {} }),
+      } as Response);
+
+    render(<FlagRunEvalModal {...defaultProps({ onCaptured, onOpenChange })} />);
+
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Never return empty");
+
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(onCaptured).toHaveBeenCalledOnce());
+
+    const captureCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).includes("/eval/capture")
+    );
+    expect(captureCalls.length).toBe(1);
+    const [url, opts] = captureCalls[0];
+    expect(url).toBe("/api/workspaces/test-ws/workflows/42/eval/capture");
+    const body = JSON.parse((opts as RequestInit).body as string);
+    expect(body.run_id).toBe("1001");
+    expect(body.step_id).toBe("Generate Title");
+    expect(body.requirement).toBe("Never return empty");
+    expect(body.inputs).toEqual(MOCK_IO.inputs);
+    expect(body.outputs).toEqual(MOCK_IO.outputs);
+    // No legacy fields
+    expect(body.check).toBeUndefined();
+    expect(body.desirable_cases).toBeUndefined();
+    expect(body.undesirable_cases).toBeUndefined();
+  });
+
+  it("gracefully advances to step 2 if IO fetch fails (with nulls)", async () => {
+    const { toast } = await import("sonner");
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { steps: MOCK_STEPS } }),
+      } as Response)
+      .mockRejectedValueOnce(new Error("network error"));
+
+    render(<FlagRunEvalModal {...defaultProps()} />);
+
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    // Should still advance to step 2 despite IO failure
+    await waitFor(() => expect(screen.getByTestId("capture-eval-form")).toBeInTheDocument());
+    expect(toast.info).toHaveBeenCalled();
+  });
+
+  it("calls onCaptured and closes on successful POST", async () => {
+    const onCaptured = vi.fn();
+    const onOpenChange = vi.fn();
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { steps: MOCK_STEPS } }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: MOCK_IO }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: {} }),
+      } as Response);
+
+    render(<FlagRunEvalModal {...defaultProps({ onCaptured, onOpenChange })} />);
+
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+    await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Always respond");
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
 
     await waitFor(() => {
@@ -280,6 +384,10 @@ describe("FlagRunEvalModal", () => {
         ok: true,
         json: async () => ({ data: { steps: MOCK_STEPS } }),
       } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: MOCK_IO }),
+      } as Response)
       .mockResolvedValueOnce({ ok: false } as Response);
 
     render(<FlagRunEvalModal {...defaultProps({ onCaptured })} />);
@@ -288,9 +396,8 @@ describe("FlagRunEvalModal", () => {
     fireEvent.click(screen.getByText("Generate Title").closest("button")!);
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-    const reqInput = screen.getByLabelText(/requirement/i);
-    await userEvent.type(reqInput, "Some requirement");
-
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+    await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Some requirement");
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
 
     await waitFor(() => {
@@ -312,43 +419,8 @@ describe("FlagRunEvalModal", () => {
 
     await waitFor(() => screen.getByText("Generate Title"));
 
-    // Close by re-rendering with open=false
     rerender(<FlagRunEvalModal {...defaultProps({ open: false, onOpenChange })} />);
 
     expect(screen.queryByTestId("dialog")).not.toBeInTheDocument();
-  });
-
-  it("POSTs with the correct request body", async () => {
-    const onCaptured = vi.fn();
-
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: {} }),
-      } as Response);
-
-    render(<FlagRunEvalModal {...defaultProps({ onCaptured })} />);
-
-    await waitFor(() => screen.getByText("Generate Title"));
-    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
-    fireEvent.click(screen.getByRole("button", { name: /next/i }));
-
-    await userEvent.type(screen.getByLabelText(/requirement/i), "Never empty");
-
-    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
-
-    await waitFor(() => expect(onCaptured).toHaveBeenCalled());
-
-    const [url, opts] = vi.mocked(fetch).mock.calls[1];
-    expect(url).toBe("/api/workspaces/test-ws/workflows/42/eval/capture");
-    const body = JSON.parse((opts as RequestInit).body as string);
-    expect(body.run_id).toBe("1001");
-    expect(body.step_id).toBe("llm_generate_title");
-    expect(body.requirement).toBe("Never empty");
-    expect(body.check).toEqual({ type: "non_empty", want: true });
   });
 });
