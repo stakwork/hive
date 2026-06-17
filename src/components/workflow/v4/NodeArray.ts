@@ -361,11 +361,24 @@ class NodeArray {
     });
 
     if (this.nodeStyle === "card") {
+      // Centre the small terminal pills on the step row instead of leaving them
+      // floating at the legacy diamond/large-node offsets.
+      const firstStep = this.nodes[1];
+      const rowCenter = firstStep ? firstStep.position.y + (firstStep.height || 64) / 2 : 100;
+
       this.applyTerminalCard(start, "start", "Start");
-      endNodes.forEach((node) => {
-        if (node.id === "system.succeed") this.applyTerminalCard(node, "end", "End");
-        else if (node.id === "system.fail") this.applyTerminalCard(node, "halt", "Halt");
-      });
+      start.position = { x: start.position.x, y: rowCenter - start.height / 2 };
+
+      const succeed = endNodes.find((node) => node.id === "system.succeed");
+      const fail = endNodes.find((node) => node.id === "system.fail");
+      if (succeed) {
+        this.applyTerminalCard(succeed, "end", "End");
+        succeed.position = { x: succeed.position.x, y: rowCenter - succeed.height / 2 };
+      }
+      if (fail) {
+        this.applyTerminalCard(fail, "halt", "Halt");
+        fail.position = { x: fail.position.x, y: (succeed ? succeed.position.y : rowCenter) + 96 };
+      }
     }
 
     if (this.workflow_state === "halted") {
@@ -374,6 +387,9 @@ class NodeArray {
       const node = this.nodes.find((node) => node.id === "system.succeed");
       if (node) {
         this.setSuccessNodeStyle(node);
+        if (this.nodeStyle === "card" && node.card) {
+          node.card.completed = true;
+        }
       }
     }
   }
@@ -430,6 +446,12 @@ class NodeArray {
             };
             ifc.width = 200;
             ifc.height = 44;
+            // The legacy diamond was 140px tall and offset -50 to centre on the
+            // wire; the compact pill needs neither, so realign to the authored
+            // baseline (+10 to centre against 64px step cards).
+            if (typeof step.position?.y === "number") {
+              ifConditionNode.position = { x: ifConditionNode.position.x, y: step.position.y + 10 };
+            }
           }
 
           this.addNode(ifConditionNode);

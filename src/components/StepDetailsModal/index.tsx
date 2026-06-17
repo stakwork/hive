@@ -190,7 +190,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       aria-label={`Step details: ${step.display_name || step.name}`}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl"
+        className="flex h-[640px] max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -219,8 +219,8 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
         </div>
 
         {/* Tabbed content */}
-        <Tabs defaultValue="attributes" className="flex flex-1 flex-col overflow-hidden">
-          <div className="shrink-0 border-b px-5 pt-3">
+        <Tabs defaultValue="attributes" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="shrink-0 border-b px-5 py-3">
             <TabsList>
               <TabsTrigger value="attributes">Attributes</TabsTrigger>
               <TabsTrigger value="inputs">Inputs</TabsTrigger>
@@ -229,7 +229,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
             </TabsList>
           </div>
 
-          <TabsContent value="attributes" className="mt-0 flex-1 space-y-5 overflow-y-auto p-5">
+          <TabsContent value="attributes" className="mt-0 min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
             {stepId && (
               <Section title="Step Alias">
                 <code className="rounded-md bg-muted px-2 py-1 font-mono text-xs">{stepId}</code>
@@ -279,7 +279,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
             )}
           </TabsContent>
 
-          <TabsContent value="inputs" className="mt-0 flex-1 overflow-y-auto p-5">
+          <TabsContent value="inputs" className="mt-0 min-h-0 flex-1 overflow-y-auto p-5">
             {!projectId ? (
               <p className="text-sm text-muted-foreground">Select a run to view IO data.</p>
             ) : isLoadingIO ? (
@@ -295,7 +295,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
             )}
           </TabsContent>
 
-          <TabsContent value="outputs" className="mt-0 flex-1 overflow-y-auto p-5">
+          <TabsContent value="outputs" className="mt-0 min-h-0 flex-1 overflow-y-auto p-5">
             {!projectId ? (
               <p className="text-sm text-muted-foreground">Select a run to view IO data.</p>
             ) : isLoadingIO ? (
@@ -311,7 +311,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
             )}
           </TabsContent>
 
-          <TabsContent value="logs" className="mt-0 flex-1 overflow-y-auto p-5">
+          <TabsContent value="logs" className="mt-0 min-h-0 flex-1 overflow-y-auto p-5">
             {runStep?.log ? (
               <div
                 className="max-h-[60vh] overflow-auto rounded-lg border bg-muted/50 p-3 font-mono text-xs"

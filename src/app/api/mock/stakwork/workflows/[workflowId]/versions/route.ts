@@ -10,6 +10,9 @@ type RouteParams = {
 // React Flow diagram renders. `label` lets each version differ slightly, which
 // gives the History tab's diff something to show.
 function buildWorkflowJson(label: string): string {
+  // One clean left-to-right row so the compact card layout reads well. Every
+  // step uses a different skill so each category colour/icon is represented.
+  const ROW_Y = 140;
   const transitions = {
     trigger: {
       id: "trigger_webhook",
@@ -17,7 +20,7 @@ function buildWorkflowJson(label: string): string {
       name: "Webhook",
       display_name: "Webhook",
       skill: { type: "automated" },
-      position: { x: 0, y: 140 },
+      position: { x: 0, y: ROW_Y },
       attributes: {},
     },
     config: {
@@ -26,7 +29,7 @@ function buildWorkflowJson(label: string): string {
       name: "IfValue",
       display_name: "IfValue",
       skill: { type: "automated" },
-      position: { x: 280, y: 140 },
+      position: { x: 260, y: ROW_Y },
       attributes: { vars: { model: "claude-opus-4-8", version: label, temperature: 0.2 } },
     },
     cond: {
@@ -34,7 +37,7 @@ function buildWorkflowJson(label: string): string {
       unique_id: "check_prototype_mode",
       name: "IfCondition",
       display_name: "IfCondition",
-      position: { x: 560, y: 150 },
+      position: { x: 520, y: ROW_Y },
       attributes: { statement: "goTo(call_stakwork_api)", else_statement: "goTo(system.fail)" },
     },
     request: {
@@ -43,17 +46,44 @@ function buildWorkflowJson(label: string): string {
       name: "Request",
       display_name: "Request",
       skill: { type: "api" },
-      position: { x: 760, y: 50 },
+      position: { x: 740, y: ROW_Y },
       attributes: { url: "https://jobs.stakwork.com/api/v1/projects", method: "POST" },
     },
     build: {
-      id: "build_title_json",
-      unique_id: "build_title_json",
+      id: "parse_response",
+      unique_id: "parse_response",
       name: "JSONBuilder",
       display_name: "JSONBuilder",
       skill: { type: "automated" },
-      position: { x: 1040, y: 50 },
+      position: { x: 1000, y: ROW_Y },
       attributes: { vars: { template: "feature_title", max_tokens: 512 } },
+    },
+    prompt: {
+      id: "ask_clarification",
+      unique_id: "ask_clarification",
+      name: "Prompt",
+      display_name: "Prompt",
+      skill: { type: "human" },
+      position: { x: 1260, y: ROW_Y },
+      attributes: { vars: { prompt: "Confirm the generated feature title before continuing." } },
+    },
+    boolean: {
+      id: "user_approved",
+      unique_id: "user_approved",
+      name: "Boolean",
+      display_name: "Boolean",
+      skill: { type: "human" },
+      position: { x: 1520, y: ROW_Y },
+      attributes: { vars: { question: "Approved?" } },
+    },
+    loop: {
+      id: "iterate_files",
+      unique_id: "iterate_files",
+      name: "forEachLoop",
+      display_name: "forEachLoop",
+      skill: { type: "automated" },
+      position: { x: 1780, y: ROW_Y },
+      attributes: { vars: { collection: "changed_files", concurrency: 4 } },
     },
     setvar: {
       id: "set_feature_title",
@@ -61,7 +91,7 @@ function buildWorkflowJson(label: string): string {
       name: "SetVar",
       display_name: "SetVar",
       skill: { type: "automated" },
-      position: { x: 1320, y: 50 },
+      position: { x: 2040, y: ROW_Y },
       attributes: { vars: { feature_title: `Redesigned workflow canvas (${label})` } },
     },
   };
@@ -74,9 +104,12 @@ function buildWorkflowJson(label: string): string {
       { id: "e2", source: "set_model_config", target: "check_prototype_mode" },
       { id: "e3", source: "check_prototype_mode", target: "call_stakwork_api" },
       { id: "e4", source: "check_prototype_mode", target: "system.fail" },
-      { id: "e5", source: "call_stakwork_api", target: "build_title_json" },
-      { id: "e6", source: "build_title_json", target: "set_feature_title" },
-      { id: "e7", source: "set_feature_title", target: "system.succeed" },
+      { id: "e5", source: "call_stakwork_api", target: "parse_response" },
+      { id: "e6", source: "parse_response", target: "ask_clarification" },
+      { id: "e7", source: "ask_clarification", target: "user_approved" },
+      { id: "e8", source: "user_approved", target: "iterate_files" },
+      { id: "e9", source: "iterate_files", target: "set_feature_title" },
+      { id: "e10", source: "set_feature_title", target: "system.succeed" },
     ],
   });
 }

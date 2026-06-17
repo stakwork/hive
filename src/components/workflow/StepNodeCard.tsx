@@ -60,6 +60,8 @@ export interface StepNodeCardData {
   timing?: string;
   variant?: "step" | "condition" | "terminal";
   terminalKind?: TerminalKind;
+  /** When an End terminal is reached on a completed run, render it green. */
+  completed?: boolean;
   [key: string]: unknown;
 }
 
@@ -145,11 +147,13 @@ export function StepCardContent({ data }: { data: StepNodeCardData }) {
   const meta = STATUS[status];
 
   if (data.variant === "terminal") {
-    const t = TERMINAL[data.terminalKind ?? "end"];
-    const TIcon = t.icon;
+    const kind = data.terminalKind ?? "end";
+    // A reached End on a completed run goes green, mirroring the legacy design.
+    const t = kind === "end" && data.completed ? TERMINAL.start : TERMINAL[kind];
+    const TIcon = kind === "end" && data.completed ? Check : t.icon;
     return (
       <div className={cn("flex items-center gap-2 rounded-full border px-3.5 py-2 shadow-sm", t.pill)}>
-        <TIcon className={cn("h-3.5 w-3.5", t.tint)} />
+        <TIcon className={cn("h-3.5 w-3.5", t.tint)} strokeWidth={kind === "end" && data.completed ? 3 : undefined} />
         <span className={cn("text-xs font-semibold", t.tint)}>{data.alias}</span>
       </div>
     );
