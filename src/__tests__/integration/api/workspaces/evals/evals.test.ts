@@ -2177,10 +2177,17 @@ describe("Evals API — Integration Tests", () => {
         process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
         process.env.STAKWORK_API_KEY = "test-stakwork-key";
 
-        global.fetch = vi.fn().mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ project_id: "proj-abc" }),
-        } as any);
+        // First fetch: Jarvis EvalTrigger node lookup (no prompt_version_id)
+        // Second fetch: Stakwork project creation
+        global.fetch = vi.fn()
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+          } as any)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ project_id: "proj-abc" }),
+          } as any);
 
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
@@ -2312,11 +2319,18 @@ describe("Evals API — Integration Tests", () => {
         process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
         process.env.STAKWORK_API_KEY = "test-stakwork-key";
 
-        global.fetch = vi.fn().mockResolvedValueOnce({
-          ok: false,
-          status: 500,
-          text: async () => "Internal Server Error",
-        } as any);
+        // First fetch: Jarvis lookup (non-fatal 404)
+        // Second fetch: Stakwork returns 500
+        global.fetch = vi.fn()
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+          } as any)
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            text: async () => "Internal Server Error",
+          } as any);
 
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
@@ -2329,6 +2343,132 @@ describe("Evals API — Integration Tests", () => {
         });
 
         expect(response.status).toBe(502);
+      });
+    });
+
+    describe("version_overrides", () => {
+      test("includes version_overrides in Stakwork payload when Jarvis returns prompt_version_id", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
+        process.env.STAKWORK_API_KEY = "test-stakwork-key";
+
+        const triggerId = "trig-pv-1";
+
+        // First fetch: Jarvis EvalTrigger node lookup → returns prompt_version_id + prompt_id
+        // Second fetch: Stakwork project creation
+        global.fetch = vi.fn()
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+              nodes: [{ node_data: { prompt_version_id: "pv-1", prompt_id: "pid-1" } }],
+            }),
+          } as any)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ project_id: "proj-pv-1" }),
+          } as any);
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/${triggerId}/run`,
+          owner,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.project_id).toBe("proj-pv-1");
+
+        // Verify Stakwork was called with version_overrides and prompt_id in vars
+        const fetchCalls = vi.mocked(global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+        const stakworkCall = fetchCalls[1];
+        const stakworkBody = JSON.parse(stakworkCall[1].body as string);
+        expect(stakworkBody.version_overrides).toEqual({ [triggerId]: "pv-1" });
+        expect(stakworkBody.workflow_params.set_var.attributes.vars.prompt_id).toBe("pid-1");
+      });
+
+      test("omits version_overrides when Jarvis node has no prompt_version_id", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
+        process.env.STAKWORK_API_KEY = "test-stakwork-key";
+
+        // Jarvis returns a node without prompt_version_id
+        global.fetch = vi.fn()
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ nodes: [{ node_data: { agent: "some_step" } }] }),
+          } as any)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ project_id: "proj-no-pv" }),
+          } as any);
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-no-pv/run`,
+          owner,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-no-pv" }),
+        });
+
+        expect(response.status).toBe(200);
+        const fetchCalls = vi.mocked(global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+        const stakworkBody = JSON.parse(fetchCalls[1][1].body as string);
+        expect(stakworkBody.version_overrides).toBeUndefined();
+        expect(stakworkBody.workflow_params.set_var.attributes.vars.prompt_id).toBeNull();
+      });
+
+      test("proceeds without version_overrides when Jarvis fetch fails", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
+        process.env.STAKWORK_API_KEY = "test-stakwork-key";
+
+        // Jarvis fetch fails (non-ok)
+        global.fetch = vi.fn()
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 503,
+          } as any)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ project_id: "proj-fallback" }),
+          } as any);
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-fail/run`,
+          owner,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-fail" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.project_id).toBe("proj-fallback");
+
+        const fetchCalls = vi.mocked(global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+        const stakworkBody = JSON.parse(fetchCalls[1][1].body as string);
+        expect(stakworkBody.version_overrides).toBeUndefined();
+        expect(stakworkBody.workflow_params.set_var.attributes.vars.prompt_id).toBeNull();
       });
     });
   });

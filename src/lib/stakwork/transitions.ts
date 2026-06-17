@@ -81,6 +81,9 @@ export interface ExtractedStep {
   provider: string | null;
   endpoint_url: string | null;
   preview: string | null;
+  prompt_version_id: string | null;
+  prompt_name: string | null;
+  prompt_id: string | null;
   /** Messages array for snapshot — from raw_input_params.messages */
   messages: unknown[];
 }
@@ -116,6 +119,22 @@ export function extractStepFromTransition(transition: TransitionStep): Extracted
 
   const preview = typeof rawPreview === "string" ? rawPreview.slice(0, 120) : null;
 
+  // prompt_version_id and prompt_name — check both transition.output (real shape)
+  // and transition.output.output (legacy nested shape) for compatibility
+  const outputNested = outputTop?.output as Record<string, unknown> | undefined;
+  const prompt_version_id =
+    (outputTop?.prompt_version_id as string | undefined) ??
+    (outputNested?.prompt_version_id as string | undefined) ??
+    null;
+  const prompt_name =
+    (outputTop?.prompt_name as string | undefined) ??
+    (outputNested?.prompt_name as string | undefined) ??
+    null;
+  const prompt_id =
+    (outputTop?.prompt_id as string | undefined) ??
+    (outputNested?.prompt_id as string | undefined) ??
+    null;
+
   return {
     stepId: ((transition.unique_id ?? transition.id) as string | undefined) ?? "",
     name: ((transition.display_name ?? transition.name) as string | undefined) ?? "",
@@ -123,6 +142,9 @@ export function extractStepFromTransition(transition: TransitionStep): Extracted
     provider: inferProvider(requestUrl),
     endpoint_url: requestUrl || null,
     preview,
+    prompt_version_id,
+    prompt_name,
+    prompt_id,
     messages,
   };
 }

@@ -83,6 +83,9 @@ const MOCK_STEPS = [
     provider: "openai",
     endpoint_url: "https://api.openai.com/v1/chat/completions",
     preview: "The title looks great.",
+    prompt_version_id: "pv-1",
+    prompt_name: "My Prompt v2",
+    prompt_id: "pid-1",
   },
   {
     stepId: "llm_evaluate_quality",
@@ -91,6 +94,9 @@ const MOCK_STEPS = [
     provider: "anthropic",
     endpoint_url: "https://api.anthropic.com/v1/messages",
     preview: "The output looks correct.",
+    prompt_version_id: null,
+    prompt_name: null,
+    prompt_id: null,
   },
 ];
 
@@ -350,5 +356,70 @@ describe("FlagRunEvalModal", () => {
     expect(body.step_id).toBe("llm_generate_title");
     expect(body.requirement).toBe("Never empty");
     expect(body.check).toEqual({ type: "non_empty", want: true });
+  });
+
+  it("renders prompt_name badge when step has prompt_name", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { steps: MOCK_STEPS } }),
+    } as Response);
+
+    render(<FlagRunEvalModal {...defaultProps()} />);
+
+    await waitFor(() => screen.getByText("Generate Title"));
+
+    // First step has prompt_name: "My Prompt v2"
+    expect(screen.getByText("My Prompt v2")).toBeInTheDocument();
+  });
+
+  it("does not render a prompt_name badge when prompt_name is null", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { steps: MOCK_STEPS } }),
+    } as Response);
+
+    render(<FlagRunEvalModal {...defaultProps()} />);
+
+    await waitFor(() => screen.getByText("Evaluate Quality"));
+
+    // Second step has prompt_name: null — no extra badge beyond model/provider chips
+    // Verify the null case doesn't render a badge with undefined/null text
+    const evaluateQualityBtn = screen.getByText("Evaluate Quality").closest("button")!;
+    const chips = evaluateQualityBtn.querySelectorAll("span");
+    // Only model + provider chips (2), no prompt_name chip
+    const chipTexts = Array.from(chips).map((s) => s.textContent);
+    expect(chipTexts).not.toContain(null);
+    expect(chipTexts).not.toContain("null");
+  });
+
+  it("includes prompt_version_id in the capture POST body", async () => {
+    const onCaptured = vi.fn();
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { steps: MOCK_STEPS } }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: {} }),
+      } as Response);
+
+    render(<FlagRunEvalModal {...defaultProps({ onCaptured })} />);
+
+    await waitFor(() => screen.getByText("Generate Title"));
+    // Select the first step (has prompt_version_id: "pv-1")
+    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await userEvent.type(screen.getByLabelText(/requirement/i), "Always returns title");
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(onCaptured).toHaveBeenCalled());
+
+    const [, opts] = vi.mocked(fetch).mock.calls[1];
+    const body = JSON.parse((opts as RequestInit).body as string);
+    expect(body.prompt_version_id).toBe("pv-1");
+    expect(body.prompt_id).toBe("pid-1");
   });
 });
