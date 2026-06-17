@@ -184,12 +184,12 @@ describe("WorkflowRunsTable", () => {
     expect(screen.getByText("No runs recorded yet.")).toBeInTheDocument();
   });
 
-  it("renders status badge text matching run status", () => {
+  it("renders status label text matching run status", () => {
     setupRuns(MOCK_RUNS);
     renderTable();
 
-    expect(screen.getByText("finished")).toBeInTheDocument();
-    expect(screen.getByText("error")).toBeInTheDocument();
+    expect(screen.getByText("Finished")).toBeInTheDocument();
+    expect(screen.getByText("Error")).toBeInTheDocument();
   });
 
   it("shows duration as Xm Ys for runs with both start and finish times", () => {
@@ -207,42 +207,40 @@ describe("WorkflowRunsTable", () => {
     expect(dashes.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("finished status badge does not have destructive variant class", () => {
+  it("finished status label uses the success (emerald) color, not the error color", () => {
     setupRuns([MOCK_RUNS[0]]);
     renderTable();
-    const badge = screen.getByText("finished");
-    expect(badge.className).not.toMatch(/bg-destructive/);
-    expect(badge.className).toMatch(/bg-primary/);
+    const label = screen.getByText("Finished");
+    expect(label.className).toContain("text-emerald-600");
+    expect(label.className).not.toContain("text-rose-600");
   });
 
-  it("error status badge has destructive variant class", () => {
+  it("error status label uses the error (rose) color", () => {
     setupRuns([MOCK_RUNS[1]]);
     renderTable();
-    const badge = screen.getByText("error");
-    expect(badge.className).toMatch(/destructive/);
+    const label = screen.getByText("Error");
+    expect(label.className).toContain("text-rose-600");
   });
 
-  describe("Run name truncation and tooltip", () => {
-    it("truncates names longer than 40 chars and shows tooltip with full name", () => {
+  describe("Run name + tooltip", () => {
+    it("renders the full run name (CSS-truncated) and a tooltip carrying the full name", () => {
       setupRuns([LONG_NAME_RUN]);
       renderTable();
 
-      const truncated = LONG_NAME.slice(0, 40) + "…";
-      const nameCell = screen.getByText(truncated);
-      expect(nameCell).toBeInTheDocument();
+      // The name is present in full in the DOM; visual truncation is CSS-only.
+      const truncatedEl = screen
+        .getAllByText(LONG_NAME)
+        .find((el) => el.className.includes("truncate"));
+      expect(truncatedEl).toBeTruthy();
 
       const tooltip = screen.getByTestId("tooltip-content");
       expect(tooltip).toHaveTextContent(LONG_NAME);
     });
 
-    it("does not render a tooltip for names 40 chars or shorter", () => {
-      setupRuns([MOCK_RUNS[0]]); // "Run #1001" — well under 40 chars
+    it("renders the run name for short names too", () => {
+      setupRuns([MOCK_RUNS[0]]); // "Run #1001"
       renderTable();
-
-      const nameCell = screen.getByText("Run #1001");
-      expect(nameCell).toBeInTheDocument();
-
-      expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
+      expect(screen.getAllByText("Run #1001").length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -251,7 +249,7 @@ describe("WorkflowRunsTable", () => {
       setupRuns(MOCK_RUNS);
       const onRunSelect = vi.fn();
       renderTable({ onRunSelect });
-      const rows = screen.getAllByRole("row").slice(1); // skip header
+      const rows = screen.getAllByTestId("run-row");
       fireEvent.click(rows[0]);
       expect(onRunSelect).toHaveBeenCalledWith(MOCK_RUNS[0].id);
     });
@@ -259,11 +257,10 @@ describe("WorkflowRunsTable", () => {
     it("applies bg-muted class only to the selected row", () => {
       setupRuns(MOCK_RUNS);
       renderTable({ onRunSelect: vi.fn(), selectedRunId: MOCK_RUNS[0].id });
-      const rows = screen.getAllByRole("row").slice(1);
-      const classesRow0 = rows[0].className.split(" ");
-      const classesRow1 = rows[1].className.split(" ");
-      expect(classesRow0).toContain("bg-muted");
-      expect(classesRow1).not.toContain("bg-muted");
+      const rows = screen.getAllByTestId("run-row");
+      // Token match so the unselected row's `hover:bg-muted/60` doesn't count
+      expect(rows[0].className.split(" ")).toContain("bg-muted");
+      expect(rows[1].className.split(" ")).not.toContain("bg-muted");
     });
   });
 
@@ -275,13 +272,15 @@ describe("WorkflowRunsTable", () => {
       expect(triggers).toHaveLength(MOCK_RUNS.length);
     });
 
-    it("renders an Actions column header (no View in Stak column)", () => {
+    it("exposes run actions via a kebab menu (one per row), not a table column", () => {
       setupRuns(MOCK_RUNS);
       renderTable();
-      expect(screen.getByRole("columnheader", { name: /actions/i })).toBeInTheDocument();
-      expect(
-        screen.queryByRole("columnheader", { name: /view in stak/i }),
-      ).not.toBeInTheDocument();
+      // List layout has no tabular column headers
+      expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
+      // One kebab trigger per run
+      expect(screen.getAllByRole("button", { name: /run actions/i })).toHaveLength(
+        MOCK_RUNS.length,
+      );
     });
 
     it("menu contains Open in Stak, Flag for eval, and Debug run items", () => {
