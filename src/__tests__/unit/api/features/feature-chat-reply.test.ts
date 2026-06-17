@@ -3,6 +3,7 @@ import { POST } from "@/app/api/features/[featureId]/chat/route";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus } from "@/lib/chat";
+import * as canvasPlannerForms from "@/services/canvas-planner-forms";
 
 // Mock dependencies
 vi.mock("@/lib/auth/api-token", () => ({
@@ -68,6 +69,10 @@ vi.mock("@/config/env", () => ({
   },
 }));
 
+vi.mock("@/services/canvas-planner-forms", () => ({
+  appendAnswerRow: vi.fn().mockResolvedValue(undefined),
+}));
+
 function mockChatMessage(overrides: Record<string, unknown> = {}) {
   return {
     id: "new-message-id",
@@ -110,6 +115,7 @@ describe("Feature Chat POST Route - replyId", () => {
     vi.mocked(db.feature.findUnique).mockResolvedValue({
       id: "feature-123",
       workspaceId: "workspace-1",
+      parentCanvasConversationId: "conv-abc",
       updatedAt: new Date(),
       phases: [],
       workspace: {
@@ -173,5 +179,91 @@ describe("Feature Chat POST Route - replyId", () => {
         }),
       }),
     );
+  });
+
+  it("should call appendAnswerRow when replyId and parentCanvasConversationId are both present", async () => {
+    vi.mocked(db.chatMessage.create).mockResolvedValue(
+      mockChatMessage({ message: "My answer", replyId: "planner-msg-1" }) as any,
+    );
+
+    const request = createChatRequest({
+      message: "My answer",
+      replyId: "planner-msg-1",
+    });
+
+    const response = await POST(request, { params: featureParams });
+
+    expect(response.status).toBe(201);
+    expect(canvasPlannerForms.appendAnswerRow).toHaveBeenCalledOnce();
+    expect(canvasPlannerForms.appendAnswerRow).toHaveBeenCalledWith(
+      "conv-abc",
+      "feature-123",
+      "planner-msg-1",
+      "My answer",
+    );
+  });
+
+  it("should not call appendAnswerRow when replyId is absent", async () => {
+    vi.mocked(db.chatMessage.create).mockResolvedValue(
+      mockChatMessage({ message: "No reply" }) as any,
+    );
+
+    const request = createChatRequest({ message: "No reply" });
+
+    const response = await POST(request, { params: featureParams });
+
+    expect(response.status).toBe(201);
+    expect(canvasPlannerForms.appendAnswerRow).not.toHaveBeenCalled();
+  });
+
+  it("should not call appendAnswerRow when parentCanvasConversationId is null", async () => {
+    vi.mocked(db.feature.findUnique).mockResolvedValue({
+      id: "feature-123",
+      workspaceId: "workspace-1",
+      parentCanvasConversationId: null,
+      updatedAt: new Date(),
+      phases: [],
+      workspace: {
+        slug: "test-workspace",
+        ownerId: "user-123",
+        swarm: null,
+        repositories: [],
+      },
+    } as any);
+
+    vi.mocked(db.chatMessage.create).mockResolvedValue(
+      mockChatMessage({ message: "My answer", replyId: "planner-msg-2" }) as any,
+    );
+
+    const request = createChatRequest({
+      message: "My answer",
+      replyId: "planner-msg-2",
+    });
+
+    const response = await POST(request, { params: featureParams });
+
+    expect(response.status).toBe(201);
+    expect(canvasPlannerForms.appendAnswerRow).not.toHaveBeenCalled();
+  });
+
+  it("should still return 201 when appendAnswerRow throws", async () => {
+    vi.mocked(canvasPlannerForms.appendAnswerRow).mockRejectedValueOnce(
+      new Error("DB connection lost"),
+    );
+
+    vi.mocked(db.chatMessage.create).mockResolvedValue(
+      mockChatMessage({ message: "My answer", replyId: "planner-msg-3" }) as any,
+    );
+
+    const request = createChatRequest({
+      message: "My answer",
+      replyId: "planner-msg-3",
+    });
+
+    const response = await POST(request, { params: featureParams });
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.success).toBe(true);
   });
 });
