@@ -2,10 +2,12 @@
  * Unit tests for workflow request-steps utilities
  *
  * Tests:
- * - normalizeTransitions: workflowData-wrapped keyed object, flat keyed object, plain array
- * - LLM step URL filtering: only URL-matching transitions pass
+ * - normalizeTransitions: data-wrapped (real shape), workflowData-wrapped, flat, plain array
+ * - LLM step URL filtering: top-level url, attributes.url, step.attributes.url
  * - Provider inference from URL
  * - extractStepFromTransition: correct model/messages/preview paths, no headers/auth leaked
+ * - raw_input_params → request_params fallback
+ * - body blob assembly from runtime output
  * - Preview truncation at 120 chars
  * - EvalSet find-or-create idempotency logic
  */
@@ -37,7 +39,7 @@ const realRunFixture = {
         },
         output: {
           response: {
-            choices: [{ message: { content: "SKIP" } }],
+            choices: [{ message: { content: "SKIP" }, finish_reason: "stop" }],
           },
         },
       },
@@ -50,9 +52,59 @@ const realRunFixture = {
   status: "error",
 };
 
+// ── Real Stakwork /projects/{id}.json shape fixture ───────────────────────────
+
+const realStakworkProjectFixture = {
+  success: true,
+  data: {
+    transitions: {
+      request_openai: {
+        unique_id: "request_openai",
+        display_name: "Request skill to OpenAI",
+        url: "https://api.openai.com/v1/chat/completions",
+        method: "post",
+        attributes: {
+          raw_input_params: {
+            model: "gpt-4o",
+            messages: [{ role: "user", content: "Summarise this code" }],
+          },
+        },
+        output: {
+          response: {
+            choices: [{ message: { content: "Here is the summary" }, finish_reason: "stop" }],
+          },
+        },
+      },
+      set_var_step: {
+        unique_id: "set_var_step",
+        display_name: "Set Variable",
+        attributes: { url: null },
+      },
+    },
+    connections: [],
+    project: { id: 146887244 },
+  },
+};
+
 // ── normalizeTransitions ──────────────────────────────────────────────────────
 
 describe("normalizeTransitions", () => {
+  // REGRESSION: real Stakwork shape { success, data: { transitions } } was never unwrapped
+  test("REGRESSION: handles real Stakwork data-wrapped shape { data: { transitions } }", () => {
+    const result = normalizeTransitions(realStakworkProjectFixture);
+    expect(result).toHaveLength(2);
+    expect(result.map((t) => t.unique_id)).toEqual(
+      expect.arrayContaining(["request_openai", "set_var_step"]),
+    );
+  });
+
+  test("real data.transitions shape yields the OpenAI step (guards data-wrapper bug)", () => {
+    const result = normalizeTransitions(realStakworkProjectFixture);
+    const llmSteps = result.filter(isLlmStep);
+    expect(llmSteps).toHaveLength(1);
+    expect(llmSteps[0].unique_id).toBe("request_openai");
+  });
+
   test("handles workflowData-wrapped keyed object → array of 2 transitions", () => {
     const result = normalizeTransitions(realRunFixture);
     expect(result).toHaveLength(2);
@@ -85,6 +137,29 @@ describe("normalizeTransitions", () => {
     const result = normalizeTransitions(arrayShape);
     expect(result).toHaveLength(2);
     expect(result[0].id).toBe("step_a");
+  });
+
+  test("data.transitions as array is normalized correctly", () => {
+    const shape = {
+      data: {
+        transitions: [
+          { id: "step_a", url: "https://api.openai.com/v1/chat/completions" },
+        ],
+      },
+    };
+    const result = normalizeTransitions(shape);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("step_a");
+  });
+
+  test("data.transitions takes priority over workflowData.transitions", () => {
+    const shape = {
+      data: { transitions: { a: { id: "from_data" } } },
+      workflowData: { transitions: { b: { id: "from_workflowData" } } },
+    };
+    const result = normalizeTransitions(shape);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("from_data");
   });
 
   test("returns empty array for null/undefined projectData", () => {
@@ -122,6 +197,22 @@ describe("isLlmStep — URL filtering", () => {
   test("set_var fixture step (no LLM URL) → false", () => {
     const transition = realRunFixture.workflowData.transitions.set_var;
     expect(isLlmStep(transition)).toBe(false);
+  });
+
+  test("detects LLM step via top-level transition.url (real Stakwork Request skill shape)", () => {
+    const transition = {
+      url: "https://api.openai.com/v1/chat/completions",
+      // no attributes at all — real shape puts url at top level
+    };
+    expect(isLlmStep(transition)).toBe(true);
+  });
+
+  test("top-level url takes priority — detects even when attributes.url is null", () => {
+    const transition = {
+      url: "https://api.anthropic.com/v1/messages",
+      attributes: { url: null },
+    };
+    expect(isLlmStep(transition)).toBe(true);
   });
 
   test("accepts api.openai.com step (via step.attributes.url)", () => {
@@ -330,6 +421,133 @@ describe("extractStepFromTransition — correct paths", () => {
       },
     };
     expect(extractStepFromTransition(transition).messages).toEqual([]);
+  });
+
+  test("falls back to request_params when raw_input_params is absent", () => {
+    const transition = {
+      id: "fallback_step",
+      attributes: {
+        url: "https://api.openai.com/v1/chat/completions",
+        request_params: {
+          model: "gpt-3.5-turbo",
+          messages: [{ role: "user", content: "Fallback msg" }],
+        },
+        // no raw_input_params
+      },
+      output: { response: { choices: [{ message: { content: "ok" } }] } },
+    };
+    const result = extractStepFromTransition(transition);
+    expect(result.model).toBe("gpt-3.5-turbo");
+    expect(result.messages).toEqual([{ role: "user", content: "Fallback msg" }]);
+  });
+
+  test("falls back to request_params when raw_input_params is empty object", () => {
+    const transition = {
+      id: "empty_raw_params",
+      attributes: {
+        url: "https://api.openai.com/v1/chat/completions",
+        raw_input_params: {},
+        request_params: { model: "gpt-4-turbo", messages: [] },
+      },
+    };
+    const result = extractStepFromTransition(transition);
+    expect(result.model).toBe("gpt-4-turbo");
+  });
+
+  test("extracts url and method from top-level transition fields (real Stakwork shape)", () => {
+    const transition = {
+      unique_id: "request_openai",
+      display_name: "Request skill to OpenAI",
+      url: "https://api.openai.com/v1/chat/completions",
+      method: "post",
+      attributes: {
+        raw_input_params: {
+          model: "gpt-4o",
+          messages: [{ role: "user", content: "hello" }],
+        },
+      },
+      output: {
+        response: {
+          choices: [{ message: { content: "world" }, finish_reason: "stop" }],
+        },
+      },
+    };
+    const result = extractStepFromTransition(transition);
+    expect(result.endpoint_url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(result.method).toBe("post");
+    expect(result.model).toBe("gpt-4o");
+    expect(result.provider).toBe("openai");
+    expect(result.preview).toBe("world");
+  });
+
+  test("assembles body blob from runtime output (OpenAI shape)", () => {
+    const transition = {
+      id: "body_test",
+      attributes: {
+        url: "https://api.openai.com/v1/chat/completions",
+        raw_input_params: { model: "gpt-4o-mini", messages: [] },
+      },
+      output: {
+        prompt_change: "added instruction",
+        response: {
+          choices: [{ message: { content: "Result text" }, finish_reason: "stop" }],
+          model: "gpt-4o-mini-2024-07-18",
+        },
+      },
+    };
+    const result = extractStepFromTransition(transition);
+    expect(result.body.model).toBe("gpt-4o-mini");
+    expect(result.body.output_text).toBe("Result text");
+    expect(result.body.finish_reason).toBe("stop");
+    expect(result.body.prompt_change).toBe("added instruction");
+    expect(result.body.response_raw).toBe(
+      JSON.stringify(transition.output.response),
+    );
+  });
+
+  test("assembles body blob with null fields when output is absent", () => {
+    const transition = {
+      id: "no_output_body",
+      attributes: {
+        url: "https://api.openai.com/v1/chat/completions",
+        raw_input_params: { model: "gpt-4o" },
+      },
+    };
+    const result = extractStepFromTransition(transition);
+    expect(result.body.model).toBe("gpt-4o");
+    expect(result.body.output_text).toBeNull();
+    expect(result.body.finish_reason).toBeNull();
+    expect(result.body.response_raw).toBeNull();
+    expect(result.body.prompt_change).toBeNull();
+  });
+
+  test("body blob output_text is NOT truncated (unlike preview)", () => {
+    const longText = "B".repeat(500);
+    const transition = {
+      id: "long_output",
+      attributes: { url: "https://api.openai.com/v1/chat/completions" },
+      output: {
+        response: { choices: [{ message: { content: longText }, finish_reason: "stop" }] },
+      },
+    };
+    const result = extractStepFromTransition(transition);
+    expect(result.body.output_text).toHaveLength(500);
+    expect(result.preview).toHaveLength(120); // preview still truncated
+  });
+
+  test("real Stakwork fixture: full pipeline — normalise → filter → extract with body", () => {
+    const transitions = normalizeTransitions(realStakworkProjectFixture);
+    const steps = transitions.filter(isLlmStep).map(extractStepFromTransition);
+    expect(steps).toHaveLength(1);
+    const step = steps[0];
+    expect(step.stepId).toBe("request_openai");
+    expect(step.model).toBe("gpt-4o");
+    expect(step.provider).toBe("openai");
+    expect(step.endpoint_url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(step.method).toBe("post");
+    expect(step.body.output_text).toBe("Here is the summary");
+    expect(step.body.finish_reason).toBe("stop");
+    expect(step.body.model).toBe("gpt-4o");
   });
 });
 
