@@ -2462,45 +2462,49 @@ export function OrgCanvasBackground({
   // -------------------------------------------------------------------
   const canDropNodeOn = useCallback(
     (sources: CanvasNode[], target: CanvasNode): boolean => {
-      const source = sources[0];
-      if (!source || source.id === target.id) return false;
+      // Accept if at least one source forms a valid pairing with the
+      // target. This enables multi-select drops where only some of the
+      // dragged nodes are droppable onto the target.
+      return sources.some((source) => {
+        if (!source || source.id === target.id) return false;
 
-      // Pairing 1: feature → milestone (DB reassign).
-      if (
-        source.category === "feature" &&
-        target.category === "milestone" &&
-        source.id.startsWith("feature:") &&
-        target.id.startsWith("milestone:")
-      ) {
-        return true;
-      }
+        // Pairing 1: feature → milestone (DB reassign).
+        if (
+          source.category === "feature" &&
+          target.category === "milestone" &&
+          source.id.startsWith("feature:") &&
+          target.id.startsWith("milestone:")
+        ) {
+          return true;
+        }
 
-      // Pairing 2: authored callout → live container (canvas move).
-      // The source must be authored (not a live id) and the target
-      // must be a container with a sub-canvas to land in.
-      if (
-        AUTHORED_DROPPABLE_CATEGORIES.includes(source.category ?? "") &&
-        !isLiveId(source.id) &&
-        LIVE_CONTAINER_CATEGORIES.includes(target.category ?? "") &&
-        isLiveId(target.id)
-      ) {
-        return true;
-      }
+        // Pairing 2: authored callout → live container (canvas move).
+        // The source must be authored (not a live id) and the target
+        // must be a container with a sub-canvas to land in.
+        if (
+          AUTHORED_DROPPABLE_CATEGORIES.includes(source.category ?? "") &&
+          !isLiveId(source.id) &&
+          LIVE_CONTAINER_CATEGORIES.includes(target.category ?? "") &&
+          isLiveId(target.id)
+        ) {
+          return true;
+        }
 
-      // Pairing 3: research → initiative (DB reassign). Mirrors
-      // pairing 1 structurally — the gesture targets a DB column,
-      // not the canvas blob, so the synthetic split-bewteen-canvases
-      // happens via the projector after the fan-out.
-      if (
-        source.category === "research" &&
-        target.category === "initiative" &&
-        source.id.startsWith("research:") &&
-        target.id.startsWith("initiative:")
-      ) {
-        return true;
-      }
+        // Pairing 3: research → initiative (DB reassign). Mirrors
+        // pairing 1 structurally — the gesture targets a DB column,
+        // not the canvas blob, so the synthetic split-between-canvases
+        // happens via the projector after the fan-out.
+        if (
+          source.category === "research" &&
+          target.category === "initiative" &&
+          source.id.startsWith("research:") &&
+          target.id.startsWith("initiative:")
+        ) {
+          return true;
+        }
 
-      return false;
+        return false;
+      });
     },
     [],
   );
@@ -2682,53 +2686,60 @@ export function OrgCanvasBackground({
       target: CanvasNode,
       ctx: { canvasRef: string | undefined },
     ) => {
-      const source = sources[0];
-      if (!source) return;
+      // Iterate over every dropped source and dispatch the correct
+      // action for each valid pairing. Sources with no matching
+      // pairing are silently skipped — this handles mixed multi-
+      // selections where only some nodes are droppable onto the target.
+      for (const source of sources) {
+        if (!source) continue;
 
-      // Pairing 1: feature → milestone (DB reassign). The predicate
-      // ran during drag, but a mid-drag agent edit could have changed
-      // the categories — re-check defensively, then derive the DB
-      // ids from the canvas-id strings.
-      if (
-        source.category === "feature" &&
-        target.category === "milestone" &&
-        source.id.startsWith("feature:") &&
-        target.id.startsWith("milestone:")
-      ) {
-        const featureId = source.id.slice("feature:".length);
-        const milestoneId = target.id.slice("milestone:".length);
-        void reassignFeatureToMilestone(featureId, milestoneId);
-        return;
-      }
+        // Pairing 1: feature → milestone (DB reassign). The predicate
+        // ran during drag, but a mid-drag agent edit could have changed
+        // the categories — re-check defensively, then derive the DB
+        // ids from the canvas-id strings.
+        if (
+          source.category === "feature" &&
+          target.category === "milestone" &&
+          source.id.startsWith("feature:") &&
+          target.id.startsWith("milestone:")
+        ) {
+          const featureId = source.id.slice("feature:".length);
+          const milestoneId = target.id.slice("milestone:".length);
+          void reassignFeatureToMilestone(featureId, milestoneId);
+          continue;
+        }
 
-      // Pairing 2: authored callout → live container (canvas move).
-      // The target's `ref` is the sub-canvas to move the authored
-      // node into. Defensive: if the projector ever stops emitting a
-      // `ref` on a container we'd silently no-op, which is the right
-      // failure mode (better than writing to an unknown scope).
-      if (
-        AUTHORED_DROPPABLE_CATEGORIES.includes(source.category ?? "") &&
-        !isLiveId(source.id) &&
-        LIVE_CONTAINER_CATEGORIES.includes(target.category ?? "") &&
-        target.ref
-      ) {
-        void moveAuthoredNodeToCanvas(ctx.canvasRef, source, target.ref);
-        return;
-      }
+        // Pairing 2: authored callout → live container (canvas move).
+        // The target's `ref` is the sub-canvas to move the authored
+        // node into. Defensive: if the projector ever stops emitting a
+        // `ref` on a container we'd silently no-op, which is the right
+        // failure mode (better than writing to an unknown scope).
+        if (
+          AUTHORED_DROPPABLE_CATEGORIES.includes(source.category ?? "") &&
+          !isLiveId(source.id) &&
+          LIVE_CONTAINER_CATEGORIES.includes(target.category ?? "") &&
+          target.ref
+        ) {
+          void moveAuthoredNodeToCanvas(ctx.canvasRef, source, target.ref);
+          continue;
+        }
 
-      // Pairing 3: research → initiative (DB reassign). Defensive
-      // re-check of the predicate since a mid-drag agent edit could
-      // have flipped categories between drag-start and release.
-      if (
-        source.category === "research" &&
-        target.category === "initiative" &&
-        source.id.startsWith("research:") &&
-        target.id.startsWith("initiative:")
-      ) {
-        const researchId = source.id.slice("research:".length);
-        const initiativeId = target.id.slice("initiative:".length);
-        void reassignResearchToInitiative(researchId, initiativeId);
-        return;
+        // Pairing 3: research → initiative (DB reassign). Defensive
+        // re-check of the predicate since a mid-drag agent edit could
+        // have flipped categories between drag-start and release.
+        if (
+          source.category === "research" &&
+          target.category === "initiative" &&
+          source.id.startsWith("research:") &&
+          target.id.startsWith("initiative:")
+        ) {
+          const researchId = source.id.slice("research:".length);
+          const initiativeId = target.id.slice("initiative:".length);
+          void reassignResearchToInitiative(researchId, initiativeId);
+          continue;
+        }
+
+        // No matching pairing — skip this source.
       }
     },
     [
