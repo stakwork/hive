@@ -96,7 +96,7 @@ export function FlagRunEvalModal({
     if (!selectedStep) return;
     setFetchingIO(true);
     try {
-      const ioRes = await fetch(`/api/v1/projects/${runId}/steps/${selectedStep.name}/io`);
+      const ioRes = await fetch(`/api/projects/${runId}/steps/${selectedStep.name}/io`);
       const ioJson = await ioRes.json();
       setInputs(ioJson?.data?.inputs ?? null);
       setOutputs(ioJson?.data?.outputs ?? null);
