@@ -6,10 +6,11 @@
  * - 404/403 for non-member / no swarm
  * - 400 for missing `requirement`
  * - 200 happy path: addNode called 3×, addEdge called ≥2×
- * - endpoint_url present in EvalTrigger node_data
+ * - prompt_snapshot and output_snapshot stored from posted inputs/outputs
+ * - capture with null inputs/outputs stores "null" strings gracefully
  * - Dupes allowed: a second capture creates new nodes
- * - Empty desirable_cases / undesirable_cases are accepted
  * - EvalSet find-or-create: reuses existing ref_id when found
+ * - No outbound fetch to STAKWORK_BASE_URL/projects/...
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
@@ -81,40 +82,22 @@ function makeRequest(
   return createPostRequest(url, body);
 }
 
+const sampleInputs = {
+  model: "gpt-4o-mini",
+  messages: [{ role: "user", content: "Generate a title" }],
+};
+
+const sampleOutputs = {
+  choices: [{ message: { content: "A great title" } }],
+};
+
 const validBody = {
   run_id: "1001",
   step_id: "llm_generate_title",
   requirement: "Never return an empty response",
   reason: "title step occasionally emits empty string",
-  desirable_cases: ["Returns a non-empty string"],
-  undesirable_cases: ["Returns empty string"],
-  check: { type: "non_empty", want: true },
-};
-
-// Project JSON fixture reused for snapshot tests
-const projectJsonFixture = {
-  transitions: [
-    {
-      unique_id: "llm_generate_title",
-      display_name: "Generate Title",
-      attributes: {
-        url: "https://api.openai.com/v1/chat/completions",
-        request_params: {
-          model: "gpt-4o-mini",
-          messages: [{ role: "user", content: "Generate a title" }],
-          tools: null,
-        },
-      },
-      output: {
-        output_type: "raw",
-        output: {
-          response: {
-            choices: [{ message: { content: "A great title" } }],
-          },
-        },
-      },
-    },
-  ],
+  inputs: sampleInputs,
+  outputs: sampleOutputs,
 };
 
 // ── Setup / teardown ──────────────────────────────────────────────────────────
@@ -205,7 +188,7 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
     test("returns 400 when requirement is missing", async () => {
       const { user, workspace } = await createTestFixtures();
 
-      const body = { run_id: "1001", step_id: "llm_step" }; // no requirement
+      const body = { run_id: "1001", step_id: "llm_step", inputs: sampleInputs };
       const request = makeRequest(workspace.slug, "42", body, user);
       const response = await POST(request, {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
@@ -220,7 +203,7 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
     test("returns 400 when requirement is empty string", async () => {
       const { user, workspace } = await createTestFixtures();
 
-      const body = { requirement: "   ", run_id: "1001" };
+      const body = { requirement: "   ", run_id: "1001", inputs: sampleInputs };
       const request = makeRequest(workspace.slug, "42", body, user);
       const response = await POST(request, {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
@@ -245,12 +228,6 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
           json: async () => ({}),
         });
       }
-
-      // Stakwork project JSON for snapshot
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => projectJsonFixture,
-      });
 
       // addNode: EvalSet (if not existing), EvalRequirement, EvalTrigger
       if (!options.evalSetExists) {
@@ -291,7 +268,7 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
 
       // 3 addNode calls: EvalSet, EvalRequirement, EvalTrigger
       expect(nodesService.addNode).toHaveBeenCalledTimes(3);
-      // ≥2 addEdge calls: HAS_REQUIREMENT, HAS_TRIGGER
+      // 2 addEdge calls: HAS_REQUIREMENT, HAS_TRIGGER
       expect(nodesService.addEdge).toHaveBeenCalledTimes(2);
 
       // Verify edge types
@@ -301,7 +278,7 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(edgeTypes).toContain("HAS_TRIGGER");
     });
 
-    test("EvalTrigger node_data contains endpoint_url", async () => {
+    test("(a) EvalTrigger stores prompt_snapshot and output_snapshot from posted inputs/outputs", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocks({ evalSetExists: false });
 
@@ -310,13 +287,76 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
       });
 
-      // Find the EvalTrigger addNode call (3rd call)
       const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
       const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
       expect(triggerCall).toBeDefined();
-      expect(triggerCall![1].node_data.endpoint_url).toBe(
-        "https://api.openai.com/v1/chat/completions",
+
+      const nodeData = triggerCall![1].node_data;
+      expect(nodeData.prompt_snapshot).toBe(JSON.stringify(sampleInputs));
+      expect(nodeData.output_snapshot).toBe(JSON.stringify(sampleOutputs));
+      expect(nodeData.model).toBe("gpt-4o-mini");
+      expect(nodeData.provider).toBeNull();
+      expect(nodeData.endpoint_url).toBeNull();
+      expect(nodeData.tool_call_trace).toBeNull();
+    });
+
+    test("(b) capture with null inputs/outputs stores \"null\" strings gracefully", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks({ evalSetExists: false });
+
+      const body = {
+        run_id: "1001",
+        step_id: "llm_generate_title",
+        requirement: "Never return an empty response",
+        inputs: null,
+        outputs: null,
+      };
+
+      const request = makeRequest(workspace.slug, "42", body, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
+      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      expect(triggerCall).toBeDefined();
+
+      const nodeData = triggerCall![1].node_data;
+      expect(nodeData.prompt_snapshot).toBe("null");
+      expect(nodeData.output_snapshot).toBe("null");
+      expect(nodeData.model).toBeNull();
+    });
+
+    test("(c) missing requirement → returns 400", async () => {
+      const { user, workspace } = await createTestFixtures();
+
+      const body = { run_id: "1001", step_id: "llm_step", inputs: sampleInputs };
+      const request = makeRequest(workspace.slug, "42", body, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(nodesService.addNode).not.toHaveBeenCalled();
+    });
+
+    test("no outbound fetch to STAKWORK_BASE_URL/projects/... is made", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks({ evalSetExists: false });
+
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      // All fetch calls should be Jarvis (lookup + run node), not Stakwork projects
+      const fetchUrls = mockFetch.mock.calls.map((c) => c[0] as string);
+      const stakworkCalls = fetchUrls.filter((url) =>
+        url.includes("stakwork.com") && url.includes("/projects/"),
       );
+      expect(stakworkCalls).toHaveLength(0);
     });
 
     test("EvalRequirement node_data has correct name", async () => {
@@ -365,15 +405,10 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(response1.status).toBe(200);
 
       // Second capture — EvalSet already exists (found via fetch lookup)
-      // Set up fetch: EvalSet lookup returns existing ref, project JSON, run lookup returns 404
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ nodes: [{ ref_id: "existing-evalset-ref" }] }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => projectJsonFixture,
         })
         .mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
       // Only EvalRequirement + EvalTrigger nodes needed (EvalSet reused)
@@ -394,52 +429,11 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(data2.data.triggerRef).toBe("trigger-ref-2");
     });
 
-    test("accepts empty desirable_cases and undesirable_cases", async () => {
-      const { user, workspace } = await createTestFixtures();
-
-      // EvalSet not found
-      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
-      // Project JSON
-      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => projectJsonFixture });
-      vi.mocked(nodesService.addNode)
-        .mockResolvedValueOnce({ success: true, ref_id: "evalset-ref" })
-        .mockResolvedValueOnce({ success: true, ref_id: "req-ref" })
-        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref" });
-      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
-      // Run lookup
-      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
-
-      const body = {
-        run_id: "1001",
-        step_id: "llm_generate_title",
-        requirement: "Must return valid JSON",
-        desirable_cases: [],
-        undesirable_cases: [],
-      };
-
-      const request = makeRequest(workspace.slug, "42", body, user);
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
-      });
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.success).toBe(true);
-
-      // Verify empty arrays were stored in EvalRequirement
-      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
-      const reqCall = addNodeCalls.find((c) => c[1].node_type === "EvalRequirement");
-      expect(reqCall![1].node_data.desirable_cases).toEqual([]);
-      expect(reqCall![1].node_data.undesirable_cases).toEqual([]);
-    });
-
     test("EVALUATED edge is created when Run node is found", async () => {
       const { user, workspace } = await createTestFixtures();
 
       // EvalSet not found
       mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
-      // Project JSON
-      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => projectJsonFixture });
       vi.mocked(nodesService.addNode)
         .mockResolvedValueOnce({ success: true, ref_id: "evalset-ref" })
         .mockResolvedValueOnce({ success: true, ref_id: "req-ref" })
@@ -471,8 +465,6 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
 
       // EvalSet not found
       mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
-      // Project JSON
-      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => projectJsonFixture });
       vi.mocked(nodesService.addNode)
         .mockResolvedValueOnce({ success: true, ref_id: "evalset-ref" })
         .mockResolvedValueOnce({ success: true, ref_id: "req-ref" })
