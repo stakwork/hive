@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import type { StreamToolCall as StreamToolCallType } from "@/types/streaming";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+
+function renderOutput(output: unknown): string {
+  if (typeof output === "string") return output;
+  return "```json\n" + JSON.stringify(output, null, 2) + "\n```";
+}
 
 interface StreamToolCallProps {
   toolCall: StreamToolCallType;
@@ -72,12 +78,10 @@ export function StreamToolCall({ toolCall, expectsOutput = true }: StreamToolCal
           {toolCall.output !== undefined && (
             <div>
               <div className="font-semibold mb-1">Output:</div>
-              <div className="bg-muted/50 rounded p-2 font-mono text-[10px] whitespace-pre-wrap break-words max-h-60 overflow-y-auto overflow-x-hidden">
-                {String(
-                  typeof toolCall.output === "string"
-                    ? toolCall.output
-                    : JSON.stringify(toolCall.output, null, 2)
-                )}
+              <div className="bg-muted/50 rounded p-2 max-h-60 overflow-y-auto overflow-x-hidden">
+                <MarkdownRenderer variant="assistant" size="compact">
+                  {renderOutput(toolCall.output)}
+                </MarkdownRenderer>
               </div>
             </div>
           )}

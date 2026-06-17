@@ -18,6 +18,33 @@ vi.mock('react-syntax-highlighter/dist/cjs/styles/prism', () => ({
   tomorrow: {},
 }));
 
+// Mock MermaidDiagram
+vi.mock('@/components/features/ClarifyingQuestionsPreview/artifacts/MermaidDiagram', () => ({
+  MermaidDiagram: ({ code }: { code: string }) =>
+    React.createElement('div', { 'data-testid': 'mermaid-diagram', 'data-code': code }),
+}));
+
+describe('MarkdownRenderer — mermaid code blocks', () => {
+  it('renders MermaidDiagram for ```mermaid fenced blocks', async () => {
+    const mermaidCode = 'graph TD\n  A --> B';
+    const markdown = '```mermaid\n' + mermaidCode + '\n```';
+    render(<MarkdownRenderer>{markdown}</MarkdownRenderer>);
+    await waitFor(() => {
+      const diagram = screen.getByTestId('mermaid-diagram');
+      expect(diagram).toBeInTheDocument();
+      expect(diagram.getAttribute('data-code')).toBe(mermaidCode);
+    });
+  });
+
+  it('does not render MermaidDiagram for non-mermaid code blocks', async () => {
+    const markdown = '```js\nconsole.log("hi");\n```';
+    render(<MarkdownRenderer>{markdown}</MarkdownRenderer>);
+    await waitFor(() => {
+      expect(screen.queryByTestId('mermaid-diagram')).toBeNull();
+    });
+  });
+});
+
 describe('MarkdownRenderer — code block wrapLongLines', () => {
   it('passes wrapLongLines={true} to SyntaxHighlighter for fenced code blocks', async () => {
     const longLine = 'a'.repeat(300);
