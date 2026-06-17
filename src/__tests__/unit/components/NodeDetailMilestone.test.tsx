@@ -24,10 +24,8 @@ vi.mock("@/components/ui/select", () => ({
       {children}
     </select>
   ),
-  SelectTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  SelectValue: ({ placeholder }: { placeholder?: string }) => (
-    <span data-testid="select-value">{placeholder}</span>
-  ),
+  SelectTrigger: () => null,
+  SelectValue: () => null,
   SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SelectItem: ({
     children,
@@ -184,12 +182,15 @@ describe("NodeDetail milestone — assignee picker", () => {
       <LiveNodeBody nodeId="milestone:ms-123" githubLogin="testorg" />,
     );
 
-    await waitFor(() =>
-      expect(screen.getByTestId("assignee-select")).toBeInTheDocument(),
-    );
-
-    const select = screen.getByTestId("assignee-select") as HTMLSelectElement;
-    expect(select.value).toBe("user-1");
+    // Wait until both the select exists AND user-1 option has loaded,
+    // then assert the value — all inside waitFor so it retries until
+    // both the node detail AND the members fetch have settled.
+    await waitFor(() => {
+      const select = screen.getByTestId("assignee-select") as HTMLSelectElement;
+      const opts = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+      expect(opts).toContain("user-1");
+      expect(select.value).toBe("user-1");
+    });
   });
 
   it("PATCHes assigneeId on selection change", async () => {
