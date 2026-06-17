@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Activity, Zap, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkflowRunStats } from "@/hooks/useWorkflowRunStats";
 
@@ -14,55 +15,81 @@ export function WorkflowStatsPanel({ slug, workflowId }: WorkflowStatsPanelProps
 
   if (isLoading) {
     return (
-      <div className="space-y-3 p-4">
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
+      <div className="grid grid-cols-3 divide-x border-b">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="px-4 py-3">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="mt-2 h-6 w-12" />
+          </div>
+        ))}
       </div>
     );
   }
 
   if (!stats || stats.available === false) {
     return (
-      <p className="text-sm text-muted-foreground p-4">
+      <p className="border-b p-4 text-sm text-muted-foreground">
         Run statistics unavailable — the Stakwork stats service is not yet configured.
       </p>
     );
   }
 
-  if (stats.total_runs === 0 && (stats.active_runs ?? 0) === 0) {
+  const totalRuns = stats.total_runs ?? 0;
+  const activeRuns = stats.active_runs ?? 0;
+
+  if (totalRuns === 0 && activeRuns === 0) {
     return (
-      <p className="text-sm text-muted-foreground p-4">
+      <p className="border-b p-4 text-sm text-muted-foreground">
         No runs recorded yet for this workflow.
       </p>
     );
   }
 
+  const errorRate = typeof stats.error_rate === "number" ? stats.error_rate : null;
+  const errorRateValue = errorRate !== null ? `${(errorRate * 100).toFixed(1)}%` : "—";
+  const errorRateHigh = errorRate !== null && errorRate > 0.1;
+  const errorRateAccent =
+    errorRate === null
+      ? ""
+      : errorRateHigh
+        ? "text-rose-600 dark:text-rose-400"
+        : "text-emerald-600 dark:text-emerald-400";
+
   const lastRunFormatted = stats.last_run_at
-    ? `${new Date(stats.last_run_at).toLocaleDateString()} ${new Date(stats.last_run_at).toLocaleTimeString()}`
+    ? new Date(stats.last_run_at).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
     : "—";
 
-  const errorRateValue = typeof stats.error_rate === "number"
-    ? `${(stats.error_rate * 100).toFixed(1)}%`
-    : "—";
-
-  const errorRateHigh = typeof stats.error_rate === "number" && stats.error_rate > 0.1;
+  const cells = [
+    { label: "Total Runs", icon: Activity, value: totalRuns.toLocaleString(), accent: "" },
+    {
+      label: "Active",
+      icon: Zap,
+      value: activeRuns.toLocaleString(),
+      accent: activeRuns > 0 ? "text-sky-600 dark:text-sky-400" : "",
+    },
+    { label: "Error Rate", icon: AlertTriangle, value: errorRateValue, accent: errorRateAccent },
+  ];
 
   return (
-    <div className="grid grid-cols-1 gap-3 p-4">
-      <div className="border rounded-lg p-3">
-        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Last Run</p>
-        <p className="text-sm font-semibold mt-1">{lastRunFormatted}</p>
+    <div className="border-b">
+      <div className="grid grid-cols-3 divide-x">
+        {cells.map((c) => (
+          <div key={c.label} className="px-4 py-3">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              <c.icon className="h-3 w-3" />
+              {c.label}
+            </div>
+            <div className={`mt-1 text-xl font-semibold tabular-nums ${c.accent}`}>{c.value}</div>
+          </div>
+        ))}
       </div>
-      <div className="border rounded-lg p-3">
-        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Runs</p>
-        <p className="text-sm font-semibold mt-1">{stats.total_runs}</p>
-      </div>
-      <div className="border rounded-lg p-3">
-        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Error Rate</p>
-        <p className={`text-sm font-semibold mt-1 ${errorRateHigh ? "text-red-500" : ""}`}>
-          {errorRateValue}
-        </p>
+      <div className="px-4 py-2 text-xs text-muted-foreground">
+        Last run · <span className="text-foreground">{lastRunFormatted}</span>
       </div>
     </div>
   );
