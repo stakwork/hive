@@ -189,14 +189,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         start_point: `step:${step_id ?? ""}`,
         end_point: `step:${step_id ?? ""}`,
         change_type: "prompt",
-        model,
-        provider: null,
-        endpoint_url: null,
-        prompt_snapshot: promptSnapshot,
-        output_snapshot: outputSnapshot,
-        tool_call_trace: null,
-        feedback_note: reason ?? null,
-        body: clientBody ?? null,
+        body: JSON.stringify({
+          model,
+          provider: null,
+          prompt_snapshot: promptSnapshot,
+          output_snapshot: outputSnapshot,
+          tool_call_trace: null,
+          feedback_note: reason ?? null,
+          replay: clientBody ?? null,
+        }),
       },
     });
 
@@ -244,6 +245,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       data: { evalSetRef, requirementRef, triggerRef },
     });
   } catch (error) {
+    console.error("[EvalCapture] Raw error body:", error);
     logger.error("[EvalCapture] Unexpected error", String(error));
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

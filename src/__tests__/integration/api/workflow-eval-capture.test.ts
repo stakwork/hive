@@ -292,12 +292,12 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(triggerCall).toBeDefined();
 
       const nodeData = triggerCall![1].node_data;
-      expect(nodeData.prompt_snapshot).toBe(JSON.stringify(sampleInputs));
-      expect(nodeData.output_snapshot).toBe(JSON.stringify(sampleOutputs));
-      expect(nodeData.model).toBe("gpt-4o-mini");
-      expect(nodeData.provider).toBeNull();
-      expect(nodeData.endpoint_url).toBeNull();
-      expect(nodeData.tool_call_trace).toBeNull();
+      const bodyParsed = JSON.parse(nodeData.body);
+      expect(bodyParsed.prompt_snapshot).toBe(JSON.stringify(sampleInputs));
+      expect(bodyParsed.output_snapshot).toBe(JSON.stringify(sampleOutputs));
+      expect(bodyParsed.model).toBe("gpt-4o-mini");
+      expect(bodyParsed.provider).toBeNull();
+      expect(bodyParsed.tool_call_trace).toBeNull();
     });
 
     test("(b) capture with null inputs/outputs stores \"null\" strings gracefully", async () => {
@@ -324,9 +324,10 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(triggerCall).toBeDefined();
 
       const nodeData = triggerCall![1].node_data;
-      expect(nodeData.prompt_snapshot).toBe("null");
-      expect(nodeData.output_snapshot).toBe("null");
-      expect(nodeData.model).toBeNull();
+      const bodyParsed = JSON.parse(nodeData.body);
+      expect(bodyParsed.prompt_snapshot).toBe("null");
+      expect(bodyParsed.output_snapshot).toBe("null");
+      expect(bodyParsed.model).toBeNull();
     });
 
     test("(c) missing requirement → returns 400", async () => {
@@ -508,7 +509,7 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
     }
 
-    test("persists client-supplied body blob on EvalTrigger node_data", async () => {
+    test("persists client-supplied body blob inside EvalTrigger body JSON (replay field)", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocksMinimal();
 
@@ -525,10 +526,11 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(triggerCall).toBeDefined();
 
       const nodeData = triggerCall![1].node_data as Record<string, unknown>;
-      expect(nodeData.body).toEqual(clientBodyBlob);
+      const bodyParsed = JSON.parse(nodeData.body as string);
+      expect(bodyParsed.replay).toEqual(clientBodyBlob);
     });
 
-    test("stores body as null when not supplied by client", async () => {
+    test("replay is null inside body JSON when not supplied by client", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocksMinimal();
 
@@ -544,10 +546,11 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(triggerCall).toBeDefined();
 
       const nodeData = triggerCall![1].node_data as Record<string, unknown>;
-      expect(nodeData.body).toBeNull();
+      const bodyParsed = JSON.parse(nodeData.body as string);
+      expect(bodyParsed.replay).toBeNull();
     });
 
-    test("prompt_snapshot and output_snapshot still stored alongside body blob", async () => {
+    test("prompt_snapshot and output_snapshot stored in body JSON alongside replay blob", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocksMinimal();
 
@@ -560,10 +563,11 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
       const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
       const nodeData = triggerCall![1].node_data as Record<string, unknown>;
+      const bodyParsed = JSON.parse(nodeData.body as string);
 
-      expect(nodeData.prompt_snapshot).toBe(JSON.stringify(sampleInputs));
-      expect(nodeData.output_snapshot).toBe(JSON.stringify(sampleOutputs));
-      expect(nodeData.body).toEqual(clientBodyBlob);
+      expect(bodyParsed.prompt_snapshot).toBe(JSON.stringify(sampleInputs));
+      expect(bodyParsed.output_snapshot).toBe(JSON.stringify(sampleOutputs));
+      expect(bodyParsed.replay).toEqual(clientBodyBlob);
     });
   });
 });

@@ -5,6 +5,21 @@ import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/
 import { jamieName } from "@/lib/constants/jamie";
 
 /**
+ * Returns a current-date context snippet, computed fresh on every call (never cached).
+ * Tells the model what today's date is so web searches default to the current year.
+ */
+export function getCurrentDateSnippet(): string {
+  const formatted = new Date().toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return `Current date: ${formatted} (UTC). When searching or reasoning about recent / "latest" information, treat this as today — do not default to an earlier year unless the user explicitly requests a historical range.`;
+}
+
+/**
  * Format a flat list of members for the single-workspace prompt.
  */
 function formatMemberList(members: WorkspaceMemberInfo[]): string {
@@ -29,6 +44,8 @@ export function getQuickAskSystemPrompt(repoUrls: string[], description?: string
     : "";
 
   return `
+${getCurrentDateSnippet()}
+
 You are a source code learning assistant for ${repoDescription}${descSuffix}. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand —- a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
 
 Try to match the tone of the user. If the question is highly technical (mentioning specific things in the code), then you can answer with more technical language and examples (or function names, endpoints names, etc). But the the user prompt is not technical, then you should answer in clear, plain language.
@@ -200,6 +217,8 @@ export function getMultiWorkspaceSystemPrompt(workspaces: WorkspaceConfig[], cur
     : "";
 
   return `
+${getCurrentDateSnippet()}
+
 You are a source code learning assistant with access to multiple codebases. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone.
 
 ## Reply style — read this first
@@ -227,8 +246,8 @@ Tools are prefixed with workspace slugs. For each workspace you have:
 ${conceptToolLines}
 - \`{workspace}__recent_commits\` - Query recent commits
 - \`{workspace}__recent_contributions\` - Query PRs by a contributor
-- \`{workspace}__search_logs\` - Search **Quikwit** application logs only (Lucene query syntax). Every term MUST have a field prefix (e.g. \`message:CLN\`, \`level:ERROR\`); a bare keyword like \`CLN\` fails with a 400 error. This tool ONLY covers logs indexed in Quikwit — it does NOT see CloudWatch, Lambda, or any other log source.
-- \`{workspace}__logs_agent\` - Deep, run-grounded analysis of agent execution logs, AND the way to reach **any log not in Quikwit**. If the user asks for CloudWatch logs, Lambda logs, stakwork, workflows, swarm, or any log source that \`search_logs\` (Quikwit) doesn't cover, you MUST invoke \`logs_agent\` — it can reach those sources. For simple keyword lookups against logs that ARE in Quikwit, prefer \`search_logs\` (lighter). Optionally scope to a featureId/taskId.
+- \`{workspace}__search_logs\` - Search the workspace's **live production application logs**, indexed in Quickwit (Lucene query syntax). **These ARE the runtime logs emitted by the user's deployed app** — regardless of where it's hosted (Vercel, AWS, Fly, etc.). So when the user asks about "prod", "production logs", "Vercel logs", "the deployed app", errors users are hitting, or anything their running application logged, THIS is the tool — use it directly, don't assume the logs live somewhere you can't reach. Every term MUST have a field prefix (e.g. \`message:CLN\`, \`level:ERROR\`); a bare keyword like \`CLN\` fails with a 400 error. (Quickwit indexes the app's own logs; it does NOT hold separate infra/platform logs like CloudWatch or Lambda system logs — for those, use \`logs_agent\`.)
+- \`{workspace}__logs_agent\` - Deep, run-grounded analysis of agent execution logs, AND the way to reach **infra/platform logs not indexed in Quickwit**. If the user asks for CloudWatch logs, Lambda system logs, stakwork, workflows, swarm/pod/sandbox logs, or wants a synthesised explanation of what happened during a run, invoke \`logs_agent\`. For the deployed app's own production logs and simple keyword lookups, prefer \`search_logs\` (lighter). Optionally scope to a featureId/taskId.
 - \`{workspace}__repo_agent\` - Deep code analysis of **the user's own codebases** (if you can't find the answer with the other tools). NOT for external/third-party services, libraries, or APIs — use \`web_search\` for those.
 - \`web_search\` - Search the public web. Use this for questions about external services, libraries, frameworks, third-party APIs, or general industry patterns — anything that is NOT in the user's own codebases. This tool is **not** workspace-prefixed.
 - \`{workspace}__list_features\` - List roadmap features/plans for a workspace. Use this if the user asks about features, plans, roadmap, or what's being worked on.

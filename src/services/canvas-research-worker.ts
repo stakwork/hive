@@ -24,6 +24,7 @@
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
 import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
+import { getCurrentDateSnippet } from "@/lib/constants/prompt";
 
 export interface ResearchSubAgentArgs {
   researchId: string;
@@ -153,6 +154,7 @@ export async function runResearchSubAgent(
         {
           role: "user",
           content:
+            `${getCurrentDateSnippet()}\n\n` +
             `You are a research sub-agent. Your only job is to research the following topic and call update_research once with the full markdown writeup.\n\n` +
             `Research slug: ${slug}\nTopic: ${topic}\nTitle: ${title}\nSummary: ${summary}\n\n` +
             `Instructions: ${prompt}\n\n` +

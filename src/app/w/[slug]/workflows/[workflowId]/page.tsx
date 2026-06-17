@@ -295,6 +295,7 @@ export default function WorkflowInspectorPage() {
                   useAssistantDimensions: false,
                   rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
                   onStepClick: handleStepClick,
+                  nodeStyle: "card",
                 }}
               />
               <StepDetailsModal

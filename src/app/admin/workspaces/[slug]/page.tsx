@@ -44,6 +44,7 @@ export default async function AdminWorkspaceDetailPage({
       },
       swarm: {
         select: {
+          swarmId: true,
           status: true,
           swarmUrl: true,
           ec2Id: true,
@@ -181,9 +182,9 @@ export default async function AdminWorkspaceDetailPage({
                   workspaceId={workspaceId}
                   hasPassword={hasPassword}
                 />
-                {swarmUrl && (
+                {workspace.swarm?.swarmId && (
                   <a
-                    href={`${new URL(swarmUrl).protocol}//${new URL(swarmUrl).hostname}:8800`}
+                    href={`https://${workspace.swarm.swarmId}.sphinx.chat:8800`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { stakworkService } from "@/lib/service-factory";
+import { isDevelopmentMode } from "@/lib/runtime";
+import { buildMockRunWorkflowData } from "./mock";
 import { type ApiError } from "@/types";
 
 export async function GET(
@@ -22,6 +24,12 @@ export async function GET(
         { error: "Missing required parameter: projectId" },
         { status: 400 },
       );
+    }
+
+    // In development the workspace is fully mocked (no real Stakwork project),
+    // so synthesise run transitions with varied statuses for the run view.
+    if (isDevelopmentMode()) {
+      return NextResponse.json(buildMockRunWorkflowData(projectId), { status: 200 });
     }
 
     const result = await stakworkService().getWorkflowData(projectId);

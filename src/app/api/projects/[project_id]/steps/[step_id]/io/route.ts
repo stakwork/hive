@@ -85,7 +85,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     let result: Record<string, unknown>;
     try {
       const upstream = await fetch(
-        `${config.STAKWORK_BASE_URL}/api/v1/projects/${project_id}/steps/${step_id}/io`,
+        `${config.STAKWORK_BASE_URL}/projects/${project_id}/steps/${step_id}/io`,
         {
           headers: {
             Authorization: `Token token=${config.STAKWORK_API_KEY}`,
