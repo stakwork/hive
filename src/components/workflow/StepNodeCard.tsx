@@ -21,6 +21,9 @@ import {
   Check,
   AlertTriangle,
   Ban,
+  Play,
+  Flag,
+  Octagon,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -43,15 +46,36 @@ export type StepStatus =
   | "skipped"
   | "pending";
 
+export type TerminalKind = "start" | "end" | "halt";
+
 export interface StepNodeCardData {
   alias: string;
   skill: string;
   category: StepCategory;
   status?: StepStatus;
   timing?: string;
-  variant?: "step" | "condition";
+  variant?: "step" | "condition" | "terminal";
+  terminalKind?: TerminalKind;
   [key: string]: unknown;
 }
+
+const TERMINAL: Record<TerminalKind, { icon: LucideIcon; pill: string; tint: string }> = {
+  start: {
+    icon: Play,
+    pill: "border-emerald-500/30 bg-emerald-500/10",
+    tint: "text-emerald-700 dark:text-emerald-400",
+  },
+  end: {
+    icon: Flag,
+    pill: "border-border bg-muted",
+    tint: "text-foreground",
+  },
+  halt: {
+    icon: Octagon,
+    pill: "border-rose-500/30 bg-rose-500/10",
+    tint: "text-rose-700 dark:text-rose-400",
+  },
+};
 
 export const STEP_HANDLE_CLASS = "!h-2 !w-2 !border-2 !border-background !bg-muted-foreground/60";
 
@@ -113,6 +137,17 @@ export function StepCardContent({ data }: { data: StepNodeCardData }) {
   const Icon = cat.icon;
   const status = data.status ?? "pending";
   const meta = STATUS[status];
+
+  if (data.variant === "terminal") {
+    const t = TERMINAL[data.terminalKind ?? "end"];
+    const TIcon = t.icon;
+    return (
+      <div className={cn("flex items-center gap-2 rounded-full border px-3.5 py-2 shadow-sm", t.pill)}>
+        <TIcon className={cn("h-3.5 w-3.5", t.tint)} />
+        <span className={cn("text-xs font-semibold", t.tint)}>{data.alias}</span>
+      </div>
+    );
+  }
 
   if (data.variant === "condition") {
     return (

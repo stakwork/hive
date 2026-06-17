@@ -20,19 +20,24 @@ interface StepNodeData {
   };
 }
 
-const SYSTEM_NODE_IDS = new Set(["start", "system.succeed", "system.fail"]);
-
 export default function StepNode({ data: rawData }: NodeProps) {
   const data = rawData as unknown as StepNodeData;
 
-  // Redesigned compact card (opt-in via nodeStyle="card"). System/terminal
-  // nodes (start/end/halt) keep their classic pill rendering.
-  if (data.cardStyle && data.card && !SYSTEM_NODE_IDS.has(data.id)) {
+  // Redesigned compact card (opt-in via nodeStyle="card"). Terminal nodes
+  // (start/end/halt) render as pills with the appropriate handle on one side.
+  if (data.cardStyle && data.card) {
+    const isStart = data.id === "start";
+    const isEnd = data.id === "system.succeed" || data.id === "system.fail";
+    const isTerminal = isStart || isEnd;
     return (
-      <div className="nowheel workflow-show-modal cursor-pointer">
-        <Handle type="target" position={Position.Left} className={STEP_HANDLE_CLASS} isConnectable={false} />
+      <div className={`nowheel${isTerminal ? "" : " workflow-show-modal cursor-pointer"}`}>
+        {!isStart && (
+          <Handle type="target" position={Position.Left} className={STEP_HANDLE_CLASS} isConnectable={false} />
+        )}
         <StepCardContent data={data.card} />
-        <Handle type="source" position={Position.Right} className={STEP_HANDLE_CLASS} isConnectable={false} />
+        {!isEnd && (
+          <Handle type="source" position={Position.Right} className={STEP_HANDLE_CLASS} isConnectable={false} />
+        )}
       </div>
     );
   }

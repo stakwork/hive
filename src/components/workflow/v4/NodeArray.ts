@@ -360,6 +360,14 @@ class NodeArray {
       this.addNode(node);
     });
 
+    if (this.nodeStyle === "card") {
+      this.applyTerminalCard(start, "start", "Start");
+      endNodes.forEach((node) => {
+        if (node.id === "system.succeed") this.applyTerminalCard(node, "end", "End");
+        else if (node.id === "system.fail") this.applyTerminalCard(node, "halt", "Halt");
+      });
+    }
+
     if (this.workflow_state === "halted") {
       this.setHaltedNodeStyle();
     } else if (this.workflow_state === "completed") {
@@ -588,6 +596,14 @@ class NodeArray {
       default:
         return undefined;
     }
+  }
+
+  private applyTerminalCard(node: unknown, kind: "start" | "end" | "halt", label: string): void {
+    const n = node as Record<string, unknown>;
+    n.cardStyle = true;
+    n.card = { alias: label, skill: "", category: "automated", variant: "terminal", terminalKind: kind };
+    n.width = 96;
+    n.height = 38;
   }
 
   buildCardData(step: WorkflowTransition, type: string, status: string | null): Record<string, unknown> {
