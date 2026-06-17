@@ -23,6 +23,8 @@ import {
   addEdge,
   Connection,
   useOnViewportChange,
+  getNodesBounds,
+  getViewportForBounds,
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
@@ -69,6 +71,7 @@ interface WorkflowAppProps {
     onVersionChange?: (versionId: string) => void;
     changedStepIds?: Set<string>;
     changedConnectionIds?: Set<string>;
+    nodeStyle?: "classic" | "card";
   };
 }
 
@@ -151,6 +154,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     onVersionChange,
     changedStepIds,
     changedConnectionIds,
+    nodeStyle = "classic",
   } = workflowApp.props;
 
   let zoomLevel = defaultZoomLevel || 0.65;
@@ -393,15 +397,31 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
 
   // Auto-fit view for project workflows on initial load
   useEffect(() => {
+    if (!reactFlowInstance || nodes.length === 0 || hasInitialFitViewRef.current) return;
+
     const isEditorMode = !!workflowData && !projectId;
     const hasSavedPosition = isEditorMode && !!localStorage.getItem(`position_${workflowId}`);
 
-    if (
-      (projectId || (isEditorMode && !hasSavedPosition)) &&
-      reactFlowInstance &&
-      nodes.length > 0 &&
-      !hasInitialFitViewRef.current
-    ) {
+    // Card mode (inspector / run view) controls the viewport via targetPosition,
+    // so imperative fitView() is a no-op. Compute the fit and set it directly.
+    if (nodeStyle === "card") {
+      hasInitialFitViewRef.current = true;
+      setTimeout(() => {
+        const container = ref.current as HTMLElement | null;
+        const width = container?.clientWidth || windowWidth;
+        const height = container?.clientHeight || windowHeight;
+        const bounds = getNodesBounds(nodes);
+        const vp = getViewportForBounds(bounds, width, height, 0.1, 1.2, 0.18);
+        autoCenteringRef.current = true;
+        setTargetPosition({ x: vp.x, y: vp.y, zoom: vp.zoom });
+        setTimeout(() => {
+          autoCenteringRef.current = false;
+        }, 150);
+      }, 120);
+      return;
+    }
+
+    if (projectId || (isEditorMode && !hasSavedPosition)) {
       hasInitialFitViewRef.current = true;
 
       // Small delay to ensure nodes are rendered
@@ -562,6 +582,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
       isAdmin,
       workflowId,
       workflowVersionId,
+      nodeStyle,
     );
 
     const workflowSpecField = document.querySelector("#workflow_spec");
@@ -639,6 +660,11 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
         .flat()
         .filter((n: any) => n);
 
+      // Compact card terminals sit much closer to the steps than the large
+      // legacy nodes, so pull Start/End/Halt in when nodeStyle is "card".
+      const startOffset = nodeStyle === "card" ? 170 : 500;
+      const endOffset = nodeStyle === "card" ? 260 : 500;
+
       const changes: any[] = [];
       myEdges.forEach((edge: any) => {
         if (edge.source === "start") {
@@ -647,7 +673,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
             changes.push({
               sourceNode: edge.source,
               targetNode: targetNode,
-              newPosition: targetNode.position.x - 500,
+              newPosition: targetNode.position.x - startOffset,
             });
           }
         } else if (edge.target === "system.succeed") {
@@ -656,13 +682,13 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
             changes.push({
               sourceNode: edge.target,
               node: sourceNode,
-              newPosition: sourceNode.position.x + 500,
+              newPosition: sourceNode.position.x + endOffset,
             });
 
             changes.push({
               sourceNode: "system.fail",
               node: sourceNode,
-              newPosition: sourceNode.position.x + 500,
+              newPosition: sourceNode.position.x + endOffset,
             });
           }
         }
@@ -886,7 +912,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
 
   const onWorkflowUpdate = (data: any) => {
     const project_id = data.project_id;
-    axios.get(`/api/v1/projects/${project_id}.json`).then((response) => {
+    axios.get(`/api/projects/${project_id}.json`).then((response) => {
       const project_progress = response.data.response;
 
       updateDiagram(project_progress);
@@ -1302,11 +1328,15 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     }
   }, [nodes, reactFlowInstance]); // Add showStep as dependency
 
+  // Card mode (inspector / run view) should fill its panel like project view
+  // does; only the legacy editor canvas uses the fixed window dimensions.
+  const fillContainer = !!projectId || nodeStyle === "card";
+
   return (
     <div
       style={{
-        width: projectId ? "100%" : windowWidth,
-        height: projectId ? "100%" : windowHeight,
+        width: fillContainer ? "100%" : windowWidth,
+        height: fillContainer ? "100%" : windowHeight,
       }}
     >
       {renderPendingIndicator()}
