@@ -10,12 +10,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { TagInput } from "@/components/ui/tag-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CaptureEvalForm } from "@/components/evals/CaptureEvalForm";
 
 interface RequestStep {
   stepId: string;
@@ -54,10 +52,10 @@ export function FlagRunEvalModal({
   // Step 2 state
   const [requirement, setRequirement] = useState("");
   const [reason, setReason] = useState("");
-  const [positiveCases, setPositiveCases] = useState<string[]>([]);
-  const [negativeCases, setNegativeCases] = useState<string[]>([]);
-  const [checkType, setCheckType] = useState("non_empty");
+  const [inputs, setInputs] = useState<Record<string, unknown> | null>(null);
+  const [outputs, setOutputs] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [fetchingIO, setFetchingIO] = useState(false);
 
   // Fetch request steps when modal opens
   useEffect(() => {
@@ -87,12 +85,30 @@ export function FlagRunEvalModal({
       setSelectedStep(null);
       setRequirement("");
       setReason("");
-      setPositiveCases([]);
-      setNegativeCases([]);
-      setCheckType("non_empty");
+      setInputs(null);
+      setOutputs(null);
       setSubmitting(false);
+      setFetchingIO(false);
     }
   }, [open]);
+
+  async function handleNext() {
+    if (!selectedStep) return;
+    setFetchingIO(true);
+    try {
+      const ioRes = await fetch(`/api/projects/${runId}/steps/${selectedStep.name}/io`);
+      const ioJson = await ioRes.json();
+      setInputs(ioJson?.data?.inputs ?? null);
+      setOutputs(ioJson?.data?.outputs ?? null);
+    } catch {
+      toast.info("Step IO not available — proceeding without input snapshot");
+      setInputs(null);
+      setOutputs(null);
+    } finally {
+      setFetchingIO(false);
+    }
+    setStep(2);
+  }
 
   async function handleConfirm() {
     if (!selectedStep || !requirement.trim()) return;
@@ -105,12 +121,11 @@ export function FlagRunEvalModal({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             run_id: runId,
-            step_id: selectedStep.stepId,
+            step_id: selectedStep.name,
             requirement: requirement.trim(),
             reason: reason.trim() || undefined,
-            desirable_cases: positiveCases,
-            undesirable_cases: negativeCases,
-            check: { type: checkType, want: true },
+            inputs,
+            outputs,
           }),
         }
       );
@@ -202,54 +217,13 @@ export function FlagRunEvalModal({
         )}
 
         {step === 2 && (
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="requirement">Requirement *</Label>
-              <Input
-                id="requirement"
-                placeholder="What should this step always do?"
-                value={requirement}
-                onChange={(e) => setRequirement(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="reason">Reason</Label>
-              <Input
-                id="reason"
-                placeholder="Why does this matter?"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label>Positive cases</Label>
-              <TagInput
-                items={positiveCases}
-                onChange={setPositiveCases}
-                placeholder="Response should…"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label>Negative cases</Label>
-              <TagInput
-                items={negativeCases}
-                onChange={setNegativeCases}
-                placeholder="Response should not…"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="check-type">Check</Label>
-              <Input
-                id="check-type"
-                value={checkType}
-                onChange={(e) => setCheckType(e.target.value)}
-              />
-            </div>
-          </div>
+          <CaptureEvalForm
+            requirement={requirement}
+            reason={reason}
+            onRequirementChange={setRequirement}
+            onReasonChange={setReason}
+            submitting={submitting}
+          />
         )}
 
         <DialogFooter className="gap-2">
@@ -259,7 +233,8 @@ export function FlagRunEvalModal({
                 Close
               </Button>
               {steps.length > 0 && (
-                <Button onClick={() => setStep(2)} disabled={!selectedStep}>
+                <Button onClick={handleNext} disabled={!selectedStep || fetchingIO}>
+                  {fetchingIO && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   Next
                 </Button>
               )}
