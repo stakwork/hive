@@ -230,14 +230,18 @@ describe("GET .../runs/[runId]/request-steps", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
       mockIsDevelopmentMode.mockReturnValue(false);
 
-      // Project JSON with only non-LLM transitions
+      // Real Stakwork shape: { success, data: { transitions } } with only non-LLM transitions
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
-          transitions: [
-            { id: "t1", name: "fetch_data", attributes: { url: "https://internal.example.com/api" } },
-            { id: "t2", name: "store_result", attributes: {} },
-          ],
+          success: true,
+          data: {
+            transitions: {
+              t1: { id: "t1", name: "fetch_data", attributes: { url: "https://internal.example.com/api" } },
+              t2: { id: "t2", name: "store_result", attributes: {} },
+            },
+            connections: [],
+          },
         }),
       });
 
@@ -252,24 +256,87 @@ describe("GET .../runs/[runId]/request-steps", () => {
       expect(data.data.steps).toEqual([]);
     });
 
+    test("REGRESSION: real data.transitions wrapper — returns LLM steps (guards the empty-steps bug)", async () => {
+      const { user, workspace } = await createTestFixtures();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      mockIsDevelopmentMode.mockReturnValue(false);
+
+      // This is the exact shape returned by real Stakwork /projects/{id}.json
+      // Previously normalizeTransitions never unwrapped data.transitions → always empty
+      const realStakworkShape = {
+        success: true,
+        data: {
+          transitions: {
+            request_openai: {
+              unique_id: "request_openai",
+              display_name: "Request skill to OpenAI",
+              url: "https://api.openai.com/v1/chat/completions",
+              method: "post",
+              attributes: {
+                raw_input_params: {
+                  model: "gpt-4o",
+                  messages: [{ role: "user", content: "Summarise this" }],
+                },
+              },
+              output: {
+                response: {
+                  choices: [{ message: { content: "Summary here" }, finish_reason: "stop" }],
+                },
+              },
+            },
+            set_var: {
+              unique_id: "set_var",
+              display_name: "Set Variable",
+              attributes: { url: null },
+            },
+          },
+          connections: [],
+          project: { id: 146887244 },
+        },
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => realStakworkShape,
+      });
+
+      const request = makeRequest(workspace.slug, "55177", "146887244");
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "55177", runId: "146887244" }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      // Must NOT be empty — regression guard for the data-wrapper bug
+      expect(data.data.steps).toHaveLength(1);
+      expect(data.data.steps[0].stepId).toBe("request_openai");
+      expect(data.data.steps[0].model).toBe("gpt-4o");
+      expect(data.data.steps[0].provider).toBe("openai");
+      expect(data.data.steps[0].endpoint_url).toBe("https://api.openai.com/v1/chat/completions");
+    });
+
     test("returns correctly shaped steps for a run with LLM transitions", async () => {
       const { user, workspace } = await createTestFixtures();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
       mockIsDevelopmentMode.mockReturnValue(false);
 
+      // Real Stakwork shape: { success, data: { transitions } }
       const projectJson = {
-        workflowData: {
+        success: true,
+        data: {
           transitions: {
             llm_generate_title: {
               unique_id: "llm_generate_title",
               display_name: "Generate Title",
+              url: "https://api.openai.com/v1/chat/completions",
+              method: "post",
               attributes: {
-                url: "https://api.openai.com/v1/chat/completions",
                 raw_input_params: { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
               },
               output: {
                 response: {
-                  choices: [{ message: { content: "Great title!" } }],
+                  choices: [{ message: { content: "Great title!" }, finish_reason: "stop" }],
                 },
               },
             },
@@ -294,6 +361,7 @@ describe("GET .../runs/[runId]/request-steps", () => {
               attributes: { url: "https://internal.example.com/transform" },
             },
           },
+          connections: [],
         },
       };
 
@@ -332,18 +400,20 @@ describe("GET .../runs/[runId]/request-steps", () => {
       mockIsDevelopmentMode.mockReturnValue(false);
 
       const longContent = "X".repeat(200);
+      // Use real Stakwork shape
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
-          workflowData: {
+          success: true,
+          data: {
             transitions: {
               llm_step: {
                 unique_id: "llm_step",
                 name: "LLM Step",
-                attributes: { url: "https://api.openai.com/v1/chat/completions" },
+                url: "https://api.openai.com/v1/chat/completions",
                 output: {
                   response: {
-                    choices: [{ message: { content: longContent } }],
+                    choices: [{ message: { content: longContent }, finish_reason: "stop" }],
                   },
                 },
               },
