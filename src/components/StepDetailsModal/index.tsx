@@ -102,15 +102,15 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       setIoData(null);
       return;
     }
-    // The IO endpoint is keyed by step name, not the internal step id.
-    const stepName = step?.name;
-    if (!stepName) {
+    // The IO endpoint is keyed by the step id.
+    const stepId = step?.id;
+    if (!stepId) {
       setIoData(null);
       return;
     }
     let cancelled = false;
     setIsLoadingIO(true);
-    fetch(`/api/projects/${projectId}/steps/${stepName}/io`)
+    fetch(`/api/projects/${projectId}/steps/${stepId}/io`)
       .then((r) => r.json())
       .then((result) => {
         if (!cancelled) {
@@ -120,7 +120,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       .catch(() => { if (!cancelled) setIoData(null); })
       .finally(() => { if (!cancelled) setIsLoadingIO(false); });
     return () => { cancelled = true; };
-  }, [isOpen, projectId, step?.name]);
+  }, [isOpen, projectId, step?.id]);
 
   if (!step || !isOpen) return null;
 
