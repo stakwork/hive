@@ -112,6 +112,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(UNAVAILABLE);
     }
 
+    // Stakwork returns { success, data: { inputs, outputs } }
     const data = result.data as Record<string, unknown> | undefined;
     const inputs = data?.inputs ?? null;
     const outputs = data?.outputs ?? null;
