@@ -292,12 +292,12 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(triggerCall).toBeDefined();
 
       const nodeData = triggerCall![1].node_data;
-      expect(nodeData.prompt_snapshot).toBe(JSON.stringify(sampleInputs));
-      expect(nodeData.output_snapshot).toBe(JSON.stringify(sampleOutputs));
-      expect(nodeData.model).toBe("gpt-4o-mini");
-      expect(nodeData.provider).toBeNull();
-      expect(nodeData.endpoint_url).toBeNull();
-      expect(nodeData.tool_call_trace).toBeNull();
+      const bodyParsed = JSON.parse(nodeData.body);
+      expect(bodyParsed.prompt_snapshot).toBe(JSON.stringify(sampleInputs));
+      expect(bodyParsed.output_snapshot).toBe(JSON.stringify(sampleOutputs));
+      expect(bodyParsed.model).toBe("gpt-4o-mini");
+      expect(bodyParsed.provider).toBeNull();
+      expect(bodyParsed.tool_call_trace).toBeNull();
     });
 
     test("(b) capture with null inputs/outputs stores \"null\" strings gracefully", async () => {
@@ -324,9 +324,10 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(triggerCall).toBeDefined();
 
       const nodeData = triggerCall![1].node_data;
-      expect(nodeData.prompt_snapshot).toBe("null");
-      expect(nodeData.output_snapshot).toBe("null");
-      expect(nodeData.model).toBeNull();
+      const bodyParsed = JSON.parse(nodeData.body);
+      expect(bodyParsed.prompt_snapshot).toBe("null");
+      expect(bodyParsed.output_snapshot).toBe("null");
+      expect(bodyParsed.model).toBeNull();
     });
 
     test("(c) missing requirement → returns 400", async () => {
