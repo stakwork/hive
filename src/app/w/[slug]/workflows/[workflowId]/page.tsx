@@ -304,6 +304,8 @@ export default function WorkflowInspectorPage() {
                 onClose={() => setIsModalOpen(false)}
                 runTransitions={runTransitions ?? undefined}
                 projectId={selectedRunId ? String(selectedRunId) : undefined}
+                slug={slug ?? undefined}
+                workflowId={String(workflowIdNum)}
               />
               </>
             ) : isLoadingVersions ? (
