@@ -411,6 +411,26 @@ export async function createStakworkRun(
       },
     });
 
+    // Notify all collaborators that generation has started so their
+    // Generate Tasks button disables immediately (same event + payload
+    // shape the webhook uses — useStakworkGeneration binds to it).
+    try {
+      await pusherServer.trigger(
+        getWorkspaceChannelName(workspace.slug),
+        PUSHER_EVENTS.STAKWORK_RUN_UPDATE,
+        {
+          runId: run.id,
+          type: input.type,
+          status: WorkflowStatus.IN_PROGRESS,
+          featureId: input.featureId ?? null,
+          timestamp: new Date(),
+        },
+      );
+    } catch (pusherError) {
+      // Non-fatal — webhook will broadcast subsequent status changes.
+      console.error("[createStakworkRun] Pusher broadcast failed:", pusherError);
+    }
+
     return run;
   } catch (error) {
     // Update status to FAILED if Stakwork call fails
