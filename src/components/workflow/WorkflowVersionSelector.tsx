@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, GitBranch } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { WorkflowVersion } from "@/hooks/useWorkflowVersions";
 
 interface WorkflowVersionSelectorProps {
@@ -12,15 +12,52 @@ interface WorkflowVersionSelectorProps {
   selectedVersionId: string | null;
   onVersionSelect: (versionId: string) => void;
   isLoading: boolean;
+  /**
+   * "default" — labelled, full-width trigger (used in TaskStartInput).
+   * "compact" — label-less pill trigger with a branch icon (used in the
+   * workflow inspector header where space is tight).
+   */
+  variant?: "default" | "compact";
+}
+
+function VersionBadges({
+  isLatest,
+  isActive,
+  isPublished,
+}: {
+  isLatest: boolean;
+  isActive: boolean;
+  isPublished: boolean;
+}) {
+  return (
+    <>
+      {isLatest && (
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          Latest
+        </span>
+      )}
+      {isActive ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 ring-1 ring-inset ring-emerald-500/20 dark:text-emerald-400">
+          Active
+        </span>
+      ) : isPublished ? (
+        <span className="rounded-full border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          Published
+        </span>
+      ) : null}
+    </>
+  );
 }
 
 export function WorkflowVersionSelector({
-  workflowName,
   versions,
   selectedVersionId,
   onVersionSelect,
   isLoading,
+  variant = "default",
 }: WorkflowVersionSelectorProps) {
+  const isCompact = variant === "compact";
+
   // Auto-select first version if none selected and versions are available
   useEffect(() => {
     if (!selectedVersionId && versions.length > 0) {
@@ -30,7 +67,7 @@ export function WorkflowVersionSelector({
 
   if (isLoading) {
     return (
-      <div className="mt-4 flex items-center gap-2 text-muted-foreground">
+      <div className={cn("flex items-center gap-2 text-muted-foreground", !isCompact && "mt-4")}>
         <Loader2 className="h-4 w-4 animate-spin" />
         <span className="text-sm">Loading versions...</span>
       </div>
@@ -38,7 +75,11 @@ export function WorkflowVersionSelector({
   }
 
   if (versions.length === 0) {
-    return <div className="mt-4 text-sm text-muted-foreground">No versions found for this workflow</div>;
+    return (
+      <div className={cn("text-sm text-muted-foreground", !isCompact && "mt-4")}>
+        No versions found for this workflow
+      </div>
+    );
   }
 
   const formatDate = (dateString: string) => {
@@ -57,35 +98,40 @@ export function WorkflowVersionSelector({
     }
   };
 
-  const truncateId = (id: string) => {
-    return id.length > 8 ? id.substring(0, 8) : id;
-  };
+  const truncateId = (id: string) => (id.length > 8 ? id.substring(0, 8) : id);
 
-  const selectedVersion = versions.find((v) => v.workflow_version_id === selectedVersionId) || versions[0];
+  const selectedVersion =
+    versions.find((v) => v.workflow_version_id === selectedVersionId) || versions[0];
   const activeVersionId = versions.find((v) => v.published)?.workflow_version_id ?? null;
+  const latestVersionId = versions[0]?.workflow_version_id;
+
+  const renderMeta = (version: WorkflowVersion, isLatest: boolean) => (
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-xs">{truncateId(version.workflow_version_id)}</span>
+      <span className="text-xs text-muted-foreground">{formatDate(version.date_added_to_graph)}</span>
+      <VersionBadges
+        isLatest={isLatest}
+        isActive={version.workflow_version_id === activeVersionId}
+        isPublished={version.published}
+      />
+    </div>
+  );
 
   return (
-    <div data-testid="version-selector" className="mt-4 space-y-2">
-      <label className="text-sm font-medium text-foreground">Select Version</label>
-      <Select value={selectedVersionId || versions[0]?.workflow_version_id} onValueChange={onVersionSelect}>
-        <SelectTrigger className="w-full h-10 text-sm">
+    <div data-testid="version-selector" className={cn(!isCompact && "mt-4 space-y-2")}>
+      {!isCompact && <label className="text-sm font-medium text-foreground">Select Version</label>}
+      <Select
+        value={selectedVersionId || latestVersionId}
+        onValueChange={onVersionSelect}
+      >
+        <SelectTrigger
+          className={cn(
+            isCompact ? "h-9 w-auto gap-2 rounded-lg px-2.5 text-xs" : "h-10 w-full text-sm",
+          )}
+        >
+          {isCompact && <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
           <SelectValue>
-            {selectedVersion && (
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs">{truncateId(selectedVersion.workflow_version_id)}</span>
-                <span className="text-xs text-muted-foreground">{formatDate(selectedVersion.date_added_to_graph)}</span>
-                {selectedVersion.workflow_version_id === versions[0]?.workflow_version_id && (
-                  <Badge variant="secondary" className="text-xs">
-                    Latest
-                  </Badge>
-                )}
-                {selectedVersion.workflow_version_id === activeVersionId ? (
-                  <Badge variant="default" className="text-xs">Active</Badge>
-                ) : selectedVersion.published ? (
-                  <Badge variant="outline" className="text-xs text-muted-foreground">Published</Badge>
-                ) : null}
-              </div>
-            )}
+            {selectedVersion && renderMeta(selectedVersion, selectedVersion.workflow_version_id === latestVersionId)}
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -95,20 +141,7 @@ export function WorkflowVersionSelector({
               value={version.workflow_version_id}
               className="cursor-pointer"
             >
-              <div className="flex items-center gap-2 py-1">
-                <span className="font-mono text-xs">{truncateId(version.workflow_version_id)}</span>
-                <span className="text-xs text-muted-foreground">{formatDate(version.date_added_to_graph)}</span>
-                {index === 0 && (
-                  <Badge variant="secondary" className="text-xs">
-                    Latest
-                  </Badge>
-                )}
-                {version.workflow_version_id === activeVersionId ? (
-                  <Badge variant="default" className="text-xs">Active</Badge>
-                ) : version.published ? (
-                  <Badge variant="outline" className="text-xs text-muted-foreground">Published</Badge>
-                ) : null}
-              </div>
+              <div className="py-1">{renderMeta(version, index === 0)}</div>
             </SelectItem>
           ))}
         </SelectContent>

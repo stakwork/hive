@@ -1,15 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -20,13 +11,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ExternalLink, Flag, MoreVertical, Bug, Loader2 } from "lucide-react";
-import { useWorkflowRuns, type WorkflowRun } from "@/hooks/useWorkflowRuns";
+import { useWorkflowRuns } from "@/hooks/useWorkflowRuns";
 import { FlagRunEvalModal } from "@/components/evals/FlagRunEvalModal";
 import { startDebugRun } from "@/lib/workflow/debugRun";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-
-const MAX_RUN_NAME_LEN = 40;
+import { RunStatusDot, runStatusMeta } from "./runStatus";
 
 interface WorkflowRunsTableProps {
   slug: string;
@@ -34,23 +24,6 @@ interface WorkflowRunsTableProps {
   onRunSelect?: (runId: number) => void;
   selectedRunId?: number;
   onEvalCaptured?: () => void;
-}
-
-function statusVariant(
-  status: WorkflowRun["status"],
-): "default" | "destructive" | "secondary" | "outline" {
-  switch (status) {
-    case "finished":
-      return "default";
-    case "error":
-      return "destructive";
-    case "halted":
-      return "secondary";
-    case "active":
-      return "outline";
-    case "completed":
-      return "default";
-  }
 }
 
 function formatDuration(startedAt: string | null, finishedAt: string | null): string {
@@ -61,6 +34,22 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
   const mins = Math.floor(totalSecs / 60);
   const secs = totalSecs % 60;
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return "—";
+  const then = new Date(iso).getTime();
+  if (isNaN(then)) return "—";
+  const diff = Date.now() - then;
+  if (diff < 0) return "just now";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export function WorkflowRunsTable({
@@ -77,195 +66,163 @@ export function WorkflowRunsTable({
 
   if (isLoading) {
     return (
-      <div className="p-4">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-48">Run Name</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Started At</TableHead>
-              <TableHead>Finished At</TableHead>
-              <TableHead>Duration</TableHead>
-              <TableHead className="w-16">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {[0, 1, 2].map((i) => (
-              <TableRow key={i}>
-                <TableCell>
-                  <Skeleton className="h-4 w-full" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-full" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-full" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-full" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-full" />
-                </TableCell>
-                <TableCell>
-                  <Skeleton className="h-4 w-8" />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="space-y-1 px-2 py-2">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="flex items-center gap-3 px-2.5 py-2">
+            <Skeleton className="h-2 w-2 rounded-full" />
+            <div className="flex-1 space-y-1.5">
+              <Skeleton className="h-3.5 w-3/4" />
+              <Skeleton className="h-2.5 w-1/2" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
 
   if (runs.length === 0) {
-    return <p className="text-sm text-muted-foreground p-4">No runs recorded yet.</p>;
+    return <p className="p-4 text-sm text-muted-foreground">No runs recorded yet.</p>;
   }
 
   return (
-    <div className="p-4">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-48">Run Name</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Started At</TableHead>
-            <TableHead>Finished At</TableHead>
-            <TableHead>Duration</TableHead>
-            <TableHead className="w-16">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {runs.map((run) => {
-            const runIdStr = String(run.id);
-            const isFlagged = flaggedRunIds.has(runIdStr);
-            const isDebugging = debuggingRunId === runIdStr;
+    <div className="px-2 pb-3">
+      {runs.map((run) => {
+        const runIdStr = String(run.id);
+        const isFlagged = flaggedRunIds.has(runIdStr);
+        const isDebugging = debuggingRunId === runIdStr;
+        const isSelected = run.id === selectedRunId;
+        const meta = runStatusMeta(run.status);
 
-            return (
-              <TableRow
-                key={run.id}
-                onClick={() => onRunSelect?.(run.id)}
-                className={`${run.id === selectedRunId ? "bg-muted" : ""} ${onRunSelect ? "cursor-pointer" : ""}`}
-              >
-                <TableCell>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="text-sm font-medium truncate block max-w-[180px]">
-                        {run.name.length > MAX_RUN_NAME_LEN
-                          ? run.name.slice(0, MAX_RUN_NAME_LEN) + "…"
-                          : run.name}
-                      </span>
-                    </TooltipTrigger>
-                    {run.name.length > MAX_RUN_NAME_LEN && (
-                      <TooltipContent>{run.name}</TooltipContent>
-                    )}
-                  </Tooltip>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={statusVariant(run.status)}>{run.status}</Badge>
-                </TableCell>
-                <TableCell className="text-sm">
-                  {run.started_at ? new Date(run.started_at).toLocaleString() : "—"}
-                </TableCell>
-                <TableCell className="text-sm">
-                  {run.finished_at ? new Date(run.finished_at).toLocaleString() : "—"}
-                </TableCell>
-                <TableCell className="text-sm">
+        return (
+          <div
+            key={run.id}
+            data-testid="run-row"
+            role={onRunSelect ? "button" : undefined}
+            tabIndex={onRunSelect ? 0 : undefined}
+            onClick={() => onRunSelect?.(run.id)}
+            onKeyDown={(e) => {
+              if (onRunSelect && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                onRunSelect(run.id);
+              }
+            }}
+            className={cn(
+              "group/run relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors",
+              onRunSelect && "cursor-pointer",
+              isSelected ? "bg-muted" : "hover:bg-muted/60",
+            )}
+          >
+            {isSelected && (
+              <span className={cn("absolute left-0 top-1/2 h-7 w-0.5 -translate-y-1/2 rounded-full", meta.bar)} />
+            )}
+
+            <RunStatusDot status={run.status} />
+
+            <div className="min-w-0 flex-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="truncate text-xs font-medium text-foreground">{run.name}</div>
+                </TooltipTrigger>
+                <TooltipContent>{run.name}</TooltipContent>
+              </Tooltip>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="font-mono">#{run.id}</span>
+                <span>·</span>
+                <span className={meta.text}>{meta.label}</span>
+                <span>·</span>
+                <span>{formatRelative(run.started_at)}</span>
+                <span>·</span>
+                <span className="font-mono tabular-nums">
                   {formatDuration(run.started_at, run.finished_at)}
-                </TableCell>
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Run actions">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {/* Open in Stak */}
-                      <DropdownMenuItem asChild>
-                        <a
-                          href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          Open in Stak
-                        </a>
-                      </DropdownMenuItem>
+                </span>
+              </div>
+            </div>
 
-                      {/* Flag for eval */}
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!isFlagged) setFlaggingRunId(runIdStr);
-                        }}
-                        disabled={isFlagged}
-                      >
-                        <Flag
-                          className={cn(
-                            "h-4 w-4 mr-2",
-                            isFlagged && "fill-orange-500 text-orange-500",
-                          )}
-                        />
-                        {isFlagged ? "Eval captured" : "Flag for eval"}
-                      </DropdownMenuItem>
+            <div
+              className={cn(
+                "shrink-0 transition-opacity",
+                isSelected ? "opacity-100" : "opacity-0 group-hover/run:opacity-100 focus-within:opacity-100",
+              )}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Run actions">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <a
+                      href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      Open in Stak
+                    </a>
+                  </DropdownMenuItem>
 
-                      {/* Debug run */}
-                      <DropdownMenuItem
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          // Open blank tab synchronously to avoid popup blockers
-                          const tab = window.open("", "_blank");
-                          setDebuggingRunId(runIdStr);
-                          try {
-                            const taskId = await startDebugRun({
-                              slug,
-                              workflowId,
-                              runId: run.id,
-                            });
-                            if (tab) tab.location.href = `/w/${slug}/task/${taskId}`;
-                          } catch {
-                            tab?.close();
-                            toast.error("Failed to start debug session");
-                          } finally {
-                            setDebuggingRunId(null);
-                          }
-                        }}
-                        disabled={isDebugging}
-                      >
-                        {isDebugging ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Bug className="h-4 w-4 mr-2" />
-                        )}
-                        Debug run
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isFlagged) setFlaggingRunId(runIdStr);
+                    }}
+                    disabled={isFlagged}
+                  >
+                    <Flag className={cn("mr-2 h-4 w-4", isFlagged && "fill-orange-500 text-orange-500")} />
+                    {isFlagged ? "Eval captured" : "Flag for eval"}
+                  </DropdownMenuItem>
 
-                  {flaggingRunId === runIdStr && (
-                    <FlagRunEvalModal
-                      open={true}
-                      onOpenChange={(o) => {
-                        if (!o) setFlaggingRunId(null);
-                      }}
-                      slug={slug}
-                      workflowId={String(workflowId)}
-                      runId={runIdStr}
-                      onCaptured={() => {
-                        setFlaggedRunIds((prev) => new Set(prev).add(runIdStr));
-                        setFlaggingRunId(null);
-                        onEvalCaptured?.();
-                      }}
-                    />
-                  )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  <DropdownMenuItem
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      // Open blank tab synchronously to avoid popup blockers
+                      const tab = window.open("", "_blank");
+                      setDebuggingRunId(runIdStr);
+                      try {
+                        const taskId = await startDebugRun({ slug, workflowId, runId: run.id });
+                        if (tab) tab.location.href = `/w/${slug}/task/${taskId}`;
+                      } catch {
+                        tab?.close();
+                        toast.error("Failed to start debug session");
+                      } finally {
+                        setDebuggingRunId(null);
+                      }
+                    }}
+                    disabled={isDebugging}
+                  >
+                    {isDebugging ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Bug className="mr-2 h-4 w-4" />
+                    )}
+                    Debug run
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {flaggingRunId === runIdStr && (
+                <FlagRunEvalModal
+                  open={true}
+                  onOpenChange={(o) => {
+                    if (!o) setFlaggingRunId(null);
+                  }}
+                  slug={slug}
+                  workflowId={String(workflowId)}
+                  runId={runIdStr}
+                  onCaptured={() => {
+                    setFlaggedRunIds((prev) => new Set(prev).add(runIdStr));
+                    setFlaggingRunId(null);
+                    onEvalCaptured?.();
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
