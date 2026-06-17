@@ -163,7 +163,7 @@ describe("StepDetailsModal — IO endpoint", () => {
     });
   });
 
-  it("fetches IO using runStep.project_step_id when provided in run transitions", async () => {
+  it("fetches IO using step.name even when run transitions provide project_step_id", async () => {
     const runTransitions: Record<string, WorkflowTransition> = {
       "step-1": makeStep({ id: "step-1", name: "my_step", project_step_id: "psid-123" }),
     };
@@ -179,7 +179,7 @@ describe("StepDetailsModal — IO endpoint", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/projects/proj-1/steps/psid-123/io",
+        "/api/projects/proj-1/steps/my_step/io",
       );
     });
   });
