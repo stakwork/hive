@@ -133,6 +133,7 @@ export async function POST(
         });
         await pusherServer.trigger(channelName, PUSHER_EVENTS.CANVAS_CURSOR_UPDATE, {
           senderId: userOrResponse.id,
+          name: userOrResponse.name,
           cursor: body.cursor,
           color: body.color,
         });

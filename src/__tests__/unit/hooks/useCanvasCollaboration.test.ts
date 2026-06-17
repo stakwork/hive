@@ -490,6 +490,85 @@ describe("useCanvasCollaboration", () => {
   });
 
   // -------------------------------------------------------------------------
+  // Name resolution via cursor events
+  // -------------------------------------------------------------------------
+  describe("name resolution via cursor events", () => {
+    it("cursor-before-join: sets name from CANVAS_CURSOR_UPDATE when no join event has arrived", () => {
+      const { getViewport, getSvgElement, containerRef } = makeRefs();
+      const { result } = renderHook(() =>
+        useCanvasCollaboration({ ...BASE_OPTS, getViewport, getSvgElement, containerRef }),
+      );
+
+      const onCursor = getEventCallback("canvas-cursor-update");
+      act(() => {
+        onCursor?.({ senderId: "user-bob", name: "Bob", cursor: { x: 10, y: 20 }, color: "#00ff00" });
+      });
+
+      const collab = result.current.collaborators.find((c) => c.id === "user-bob");
+      expect(collab).toBeDefined();
+      expect(collab?.name).toBe("Bob");
+    });
+
+    it("empty-name guard on cursor: does not overwrite valid name with empty string from cursor event", () => {
+      const { getViewport, getSvgElement, containerRef } = makeRefs();
+      const { result } = renderHook(() =>
+        useCanvasCollaboration({ ...BASE_OPTS, getViewport, getSvgElement, containerRef }),
+      );
+
+      // Join event sets name to "Alice"
+      const onJoin = getEventCallback("canvas-user-join");
+      act(() => {
+        onJoin?.({ user: { id: "user-carol", name: "Alice", color: "#aabbcc" } });
+      });
+
+      // Cursor event arrives with empty name
+      const onCursor = getEventCallback("canvas-cursor-update");
+      act(() => {
+        onCursor?.({ senderId: "user-carol", name: "", cursor: { x: 5, y: 5 }, color: "#aabbcc" });
+      });
+
+      const collab = result.current.collaborators.find((c) => c.id === "user-carol");
+      expect(collab?.name).toBe("Alice");
+    });
+
+    it("empty-name guard on GET seeding: does not overwrite valid name with empty string from GET response", async () => {
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        } as Response) // join POST
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            collaborators: [
+              { userId: "user-dave", name: "", color: "#112233", image: null },
+            ],
+          }),
+        } as Response); // GET seed returns empty name
+
+      const { getViewport, getSvgElement, containerRef } = makeRefs();
+      const { result } = renderHook(() =>
+        useCanvasCollaboration({ ...BASE_OPTS, getViewport, getSvgElement, containerRef }),
+      );
+
+      // Join event that sets name before GET seed resolves
+      const onJoin = getEventCallback("canvas-user-join");
+      act(() => {
+        onJoin?.({ user: { id: "user-dave", name: "Dave", color: "#112233" } });
+      });
+
+      // Allow GET seed to resolve
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const collab = result.current.collaborators.find((c) => c.id === "user-dave");
+      expect(collab?.name).toBe("Dave");
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Disabled mode
   // -------------------------------------------------------------------------
   describe("disabled mode", () => {
