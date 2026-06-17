@@ -10,6 +10,7 @@ import {
   isPublicViewer,
 } from "@/lib/auth/workspace-access";
 import { toPublicUser, redactArtifactContentForPublic } from "@/lib/auth/public-redact";
+import { appendAnswerRow } from "@/services/canvas-planner-forms";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -121,7 +122,7 @@ export async function POST(
 
     const feature = await db.feature.findUnique({
       where: { id: featureId },
-      select: { workspaceId: true },
+      select: { workspaceId: true, parentCanvasConversationId: true },
     });
 
     if (!feature) {
@@ -174,6 +175,23 @@ export async function POST(
       model,
       selectedRepositoryIds,
     });
+
+    // When the user answers a clarifying-question FORM on the Feature page,
+    // mirror the answer into the owning canvas conversation so the sidebar
+    // PlannerFormSlot dismisses via the existing canvas-conversation-updated
+    // Pusher mechanism. Best-effort: a failure must not fail the request.
+    if (replyId && feature.parentCanvasConversationId) {
+      try {
+        await appendAnswerRow(
+          feature.parentCanvasConversationId,
+          featureId,
+          replyId,
+          message,
+        );
+      } catch (e) {
+        console.error("[features/chat] canvas append failed (non-fatal):", e);
+      }
+    }
 
     const clientMessage = {
       ...chatMessage,
