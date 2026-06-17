@@ -70,7 +70,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const origin = request.nextUrl.origin;
       try {
         const mockRes = await fetch(
-          `${origin}/api/mock/v1/projects/${project_id}/steps/${step_id}/io`,
+          `${origin}/api/mock/projects/${project_id}/steps/${step_id}/io`,
         );
         if (mockRes.ok) {
           return NextResponse.json(await mockRes.json());
@@ -112,10 +112,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(UNAVAILABLE);
     }
 
-    const inputs =
-      (result.project_folder as Record<string, unknown> | undefined)?.params ?? null;
-    const outputs =
-      (result.project_folder_output as Record<string, unknown> | undefined)?.content ?? null;
+    const data = result.data as Record<string, unknown> | undefined;
+    const inputs = data?.inputs ?? null;
+    const outputs = data?.outputs ?? null;
 
     return NextResponse.json({ success: true, data: { inputs, outputs } });
   } catch (error) {

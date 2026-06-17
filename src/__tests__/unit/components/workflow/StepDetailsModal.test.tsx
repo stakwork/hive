@@ -158,7 +158,7 @@ describe("StepDetailsModal — IO endpoint", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/v1/projects/proj-1/steps/my_step/io",
+        "/api/projects/proj-1/steps/my_step/io",
       );
     });
   });
@@ -179,8 +179,34 @@ describe("StepDetailsModal — IO endpoint", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/v1/projects/proj-1/steps/psid-123/io",
+        "/api/projects/proj-1/steps/psid-123/io",
       );
+    });
+  });
+
+  it("renders IO data when fetch returns { data: { inputs, outputs } }", async () => {
+    fetchMock.mockResolvedValue({
+      json: () =>
+        Promise.resolve({ success: true, data: { inputs: { foo: 1 }, outputs: { bar: 2 } } }),
+    });
+
+    render(
+      <StepDetailsModal
+        step={makeStep({ id: "step-1", name: "my_step" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        projectId="proj-1"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("tab", { name: "Inputs" }));
+    await waitFor(() => {
+      expect(screen.getByText(/\"foo\"/)).toBeDefined();
+    });
+
+    await userEvent.click(screen.getByRole("tab", { name: "Outputs" }));
+    await waitFor(() => {
+      expect(screen.getByText(/\"bar\"/)).toBeDefined();
     });
   });
 
