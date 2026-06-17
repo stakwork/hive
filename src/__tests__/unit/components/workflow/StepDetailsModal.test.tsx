@@ -419,9 +419,9 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       />,
     );
 
-    // Wait for IO to load
+    // Wait for IO to load (the IO endpoint is keyed by step.id)
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(
-      "/api/v1/projects/run-123/steps/gen_step/io"
+      "/api/projects/run-123/steps/step-llm/io",
     ));
 
     fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
@@ -461,7 +461,7 @@ describe("StepDetailsModal — Flag for eval capture", () => {
 
     render(
       <StepDetailsModal
-        // project_step_id required so the IO useEffect fires
+        // step.id present so the IO useEffect fires
         step={makeLlmStep({ project_step_id: "gen_step" })}
         isOpen={true}
         onClose={vi.fn()}
@@ -531,7 +531,7 @@ describe("StepDetailsModal — Flag for eval capture", () => {
 
     render(
       <StepDetailsModal
-        // project_step_id so the IO useEffect fires and then rejects
+        // step.id present so the IO useEffect fires and then rejects
         step={makeLlmStep({ project_step_id: "gen_step" })}
         isOpen={true}
         onClose={vi.fn()}
