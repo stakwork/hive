@@ -35,7 +35,7 @@ describe("StepDetailsModal — overlay and sizing", () => {
     expect(overlay.className).not.toContain("absolute");
   });
 
-  it("applies w-[75vw] and max-h-[90vh] to the inner dialog", () => {
+  it("constrains the inner dialog width and height", () => {
     const { container } = render(
       <StepDetailsModal
         step={makeStep()}
@@ -45,8 +45,8 @@ describe("StepDetailsModal — overlay and sizing", () => {
     );
     const overlay = container.firstChild as HTMLElement;
     const dialog = overlay.firstChild as HTMLElement;
-    expect(dialog.className).toContain("w-[75vw]");
-    expect(dialog.className).toContain("max-h-[90vh]");
+    expect(dialog.className).toContain("max-w-3xl");
+    expect(dialog.className).toContain("max-h-[85vh]");
   });
 
   it("renders nothing when isOpen is false", () => {
