@@ -35,7 +35,7 @@ describe("StepDetailsModal — overlay and sizing", () => {
     expect(overlay.className).not.toContain("absolute");
   });
 
-  it("applies w-[75vw] and max-h-[90vh] to the inner dialog", () => {
+  it("constrains the inner dialog width and height", () => {
     const { container } = render(
       <StepDetailsModal
         step={makeStep()}
@@ -45,8 +45,8 @@ describe("StepDetailsModal — overlay and sizing", () => {
     );
     const overlay = container.firstChild as HTMLElement;
     const dialog = overlay.firstChild as HTMLElement;
-    expect(dialog.className).toContain("w-[75vw]");
-    expect(dialog.className).toContain("max-h-[90vh]");
+    expect(dialog.className).toContain("max-w-3xl");
+    expect(dialog.className).toContain("max-h-[85vh]");
   });
 
   it("renders nothing when isOpen is false", () => {
@@ -146,7 +146,7 @@ describe("StepDetailsModal — IO endpoint", () => {
     vi.clearAllMocks();
   });
 
-  it("fetches IO using step.name when run transitions have no project_step_id", async () => {
+  it("fetches IO using step.id", async () => {
     render(
       <StepDetailsModal
         step={makeStep({ id: "step-1", name: "my_step" })}
@@ -158,12 +158,12 @@ describe("StepDetailsModal — IO endpoint", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/projects/proj-1/steps/my_step/io",
+        "/api/projects/proj-1/steps/step-1/io",
       );
     });
   });
 
-  it("fetches IO using step.name even when run transitions provide project_step_id", async () => {
+  it("fetches IO using step.id even when run transitions provide project_step_id", async () => {
     const runTransitions: Record<string, WorkflowTransition> = {
       "step-1": makeStep({ id: "step-1", name: "my_step", project_step_id: "psid-123" }),
     };
@@ -179,7 +179,7 @@ describe("StepDetailsModal — IO endpoint", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/projects/proj-1/steps/my_step/io",
+        "/api/projects/proj-1/steps/step-1/io",
       );
     });
   });
