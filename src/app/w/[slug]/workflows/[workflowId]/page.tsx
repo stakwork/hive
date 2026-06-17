@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Workflow, Loader2, ArrowLeft, ExternalLink, X } from "lucide-react";
 import { toast } from "sonner";
-import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -201,45 +200,57 @@ export default function WorkflowInspectorPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title={workflowName}
-        icon={Workflow}
-        description={`ID: ${workflowIdNum}`}
-        actions={
-          <>
-            <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
-              <Link href={slug ? `/w/${slug}/workflows` : "/workflows"}>
-                <ArrowLeft className="w-4 h-4 mr-1" />
-                Workflows
-              </Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
-              <a
-                href={`https://jobs.stakwork.com/admin/workflows/${workflowIdNum}/edit`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <ExternalLink className="w-4 h-4 mr-1" />
-                View in Stakwork
-              </a>
-            </Button>
-            <Button onClick={handlePlanFromWorkflow} variant="outline" size="sm">
-              Plan from this Workflow
-            </Button>
-            <Button
-              onClick={handleOpenInEditor}
-              disabled={!selectedVersion || isCreatingTask}
-              size="sm"
-            >
-              {isCreatingTask && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Open in Editor
-            </Button>
-          </>
-        }
-      />
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between" data-testid="page-header">
+        <div className="min-w-0">
+          <Link
+            href={slug ? `/w/${slug}/workflows` : "/workflows"}
+            className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Workflows
+          </Link>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-foreground text-background">
+              <Workflow className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground" data-testid="page-title">
+                {workflowName}
+              </h1>
+              <p className="font-mono text-xs text-muted-foreground">workflow · {workflowIdNum}</p>
+            </div>
+          </div>
+        </div>
 
-      <ResizablePanelGroup direction="horizontal" className="h-[calc(100vh-12rem)] gap-2">
+        <div className="flex items-center gap-1">
+          <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+            <a
+              href={`https://jobs.stakwork.com/admin/workflows/${workflowIdNum}/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <ExternalLink className="h-4 w-4" />
+              View in Stakwork
+            </a>
+          </Button>
+          <span className="mx-1.5 h-5 w-px bg-border" aria-hidden="true" />
+          <Button onClick={handlePlanFromWorkflow} variant="outline" size="sm">
+            Plan from Workflow
+          </Button>
+          <Button
+            onClick={handleOpenInEditor}
+            disabled={!selectedVersion || isCreatingTask}
+            size="sm"
+            className="gap-1.5"
+          >
+            {isCreatingTask && <Loader2 className="h-4 w-4 animate-spin" />}
+            Open in Editor
+          </Button>
+        </div>
+      </div>
+
+      <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1 gap-2">
         {/* Left 60%: flow diagram */}
         <ResizablePanel defaultSize={60} minSize={25}>
         <div className="border rounded-lg overflow-hidden flex flex-col h-full">
@@ -251,21 +262,24 @@ export default function WorkflowInspectorPage() {
               onVersionSelect={setSelectedVersionId}
               isLoading={isLoadingVersions}
               workflowName={workflowName}
+              variant="compact"
             />
             {selectedRunId && (
-              <div className="flex items-center gap-2 mt-2">
-                <Badge variant="secondary">Run #{selectedRunId}</Badge>
-                <button
-                  onClick={() => { setSelectedRunId(null); setRunTransitions(null); }}
-                  className="p-0.5 hover:bg-muted rounded"
-                  aria-label="Exit run view"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-lg border bg-card/70 px-2.5 py-1 text-xs font-medium backdrop-blur-md">
+                  <span className="font-mono">Run #{selectedRunId}</span>
+                  <button
+                    onClick={() => { setSelectedRunId(null); setRunTransitions(null); }}
+                    className="grid h-4 w-4 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                    aria-label="Exit run view"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
               </div>
             )}
           </div>
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden">
             {parsedWorkflowData ? (
               <>
               <WorkflowComponent
@@ -305,10 +319,10 @@ export default function WorkflowInspectorPage() {
 
         {/* Right 40%: tabbed detail */}
         <ResizablePanel defaultSize={40} minSize={20}>
-        <div className="border rounded-lg overflow-hidden flex flex-col h-full">
-          <Tabs defaultValue="stats" className="flex flex-col h-full">
+        <div className="border rounded-lg overflow-hidden flex flex-col h-full bg-card/40">
+          <Tabs defaultValue="stats" className="flex flex-col h-full min-h-0">
             <div className="border-b px-3 pt-3 shrink-0">
-              <TabsList className="flex w-full overflow-x-auto">
+              <TabsList className="max-w-full overflow-x-auto">
                 <TabsTrigger value="stats" className="shrink-0">Stats</TabsTrigger>
                 <TabsTrigger value="params" className="shrink-0">Params</TabsTrigger>
                 <TabsTrigger value="history" className="shrink-0">History</TabsTrigger>
@@ -317,15 +331,17 @@ export default function WorkflowInspectorPage() {
               </TabsList>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               <TabsContent value="stats" className="mt-0">
                 {slug && (
                   <>
                     <WorkflowStatsPanel slug={slug} workflowId={workflowIdNum} />
-                    <div className="flex items-center gap-2 px-4 pt-2">
-                      <span className="text-sm font-medium">Runs</span>
+                    <div className="flex items-center justify-between px-4 py-2.5">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Recent Runs
+                      </span>
                       {capturedEvalCount > 0 && (
-                        <Badge variant="secondary">
+                        <Badge variant="secondary" className="text-[10px]">
                           {capturedEvalCount} eval{capturedEvalCount !== 1 ? "s" : ""} captured
                         </Badge>
                       )}
