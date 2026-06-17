@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -93,23 +93,24 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
 export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions, projectId }: StepDetailsModalProps) {
   const [ioData, setIoData] = useState<{ inputs: unknown; outputs: unknown } | null>(null);
   const [isLoadingIO, setIsLoadingIO] = useState(false);
+  // Tracks whether a pointer press originated on the backdrop so a drag/click
+  // that ends on the backdrop but began inside the modal doesn't close it.
+  const pressStartedOnBackdrop = useRef(false);
 
   useEffect(() => {
     if (!isOpen || !projectId) {
       setIoData(null);
       return;
     }
-    const runStep = runTransitions
-      ? (runTransitions[step?.id ?? ''] ?? runTransitions[step?.name ?? ''] ?? null)
-      : null;
-    const effectiveStepId = runStep?.project_step_id ?? step?.name;
-    if (!effectiveStepId) {
+    // The IO endpoint is keyed by step name, not the internal step id.
+    const stepName = step?.name;
+    if (!stepName) {
       setIoData(null);
       return;
     }
     let cancelled = false;
     setIsLoadingIO(true);
-    fetch(`/api/v1/projects/${projectId}/steps/${effectiveStepId}/io`)
+    fetch(`/api/projects/${projectId}/steps/${stepName}/io`)
       .then((r) => r.json())
       .then((result) => {
         if (!cancelled) {
@@ -119,7 +120,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       .catch(() => { if (!cancelled) setIoData(null); })
       .finally(() => { if (!cancelled) setIsLoadingIO(false); });
     return () => { cancelled = true; };
-  }, [isOpen, projectId, step?.id, step?.name, step?.project_step_id, runTransitions]);
+  }, [isOpen, projectId, step?.name]);
 
   if (!step || !isOpen) return null;
 
@@ -150,8 +151,12 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onMouseDown={(e) => {
+        pressStartedOnBackdrop.current = e.target === e.currentTarget;
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && pressStartedOnBackdrop.current) onClose();
+        pressStartedOnBackdrop.current = false;
       }}
     >
       <div

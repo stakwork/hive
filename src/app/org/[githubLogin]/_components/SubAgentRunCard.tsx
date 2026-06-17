@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   ExternalLink,
   Loader2,
@@ -585,6 +585,18 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
               <span className="min-w-0 truncate font-medium">
                 {run.featureTitle}
               </span>
+              {planHref && (
+                <a
+                  href={planHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex flex-shrink-0 items-center text-muted-foreground hover:text-foreground"
+                  title="Open feature plan"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
               {run.workspaceName && (
                 <>
                   <span
