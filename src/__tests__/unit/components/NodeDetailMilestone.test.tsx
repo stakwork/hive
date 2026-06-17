@@ -212,9 +212,12 @@ describe("NodeDetail milestone — assignee picker", () => {
       <LiveNodeBody nodeId="milestone:ms-123" githubLogin="testorg" />,
     );
 
-    await waitFor(() =>
-      expect(screen.getByTestId("assignee-select")).toBeInTheDocument(),
-    );
+    // Wait until user-1 option exists before changing (members fetch is async)
+    await waitFor(() => {
+      const select = screen.getByTestId("assignee-select") as HTMLSelectElement;
+      const opts = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+      expect(opts).toContain("user-1");
+    });
 
     const select = screen.getByTestId("assignee-select") as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "user-1" } });
@@ -249,9 +252,11 @@ describe("NodeDetail milestone — assignee picker", () => {
       <LiveNodeBody nodeId="milestone:ms-123" githubLogin="testorg" />,
     );
 
-    await waitFor(() =>
-      expect(screen.getByTestId("assignee-select")).toBeInTheDocument(),
-    );
+    // Wait until user-1 option exists (pre-selected) before changing back
+    await waitFor(() => {
+      const select = screen.getByTestId("assignee-select") as HTMLSelectElement;
+      expect(select.value).toBe("user-1");
+    });
 
     const select = screen.getByTestId("assignee-select") as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "__none__" } });
@@ -292,9 +297,12 @@ describe("NodeDetail milestone — assignee picker", () => {
       <LiveNodeBody nodeId="milestone:ms-123" githubLogin="testorg" />,
     );
 
-    await waitFor(() =>
-      expect(screen.getByTestId("assignee-select")).toBeInTheDocument(),
-    );
+    // Wait until members are loaded before interacting
+    await waitFor(() => {
+      const select = screen.getByTestId("assignee-select") as HTMLSelectElement;
+      const opts = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+      expect(opts).toContain("user-1");
+    });
 
     const select = screen.getByTestId("assignee-select") as HTMLSelectElement;
 
