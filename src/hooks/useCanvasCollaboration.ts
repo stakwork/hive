@@ -183,6 +183,7 @@ export function useCanvasCollaboration({
 
     const onCursor = (data: {
       senderId: string;
+      name?: string;
       cursor: { x: number; y: number };
       color: string;
     }) => {
@@ -190,6 +191,7 @@ export function useCanvasCollaboration({
       upsertCollaborator(data.senderId, {
         cursor: data.cursor,
         color: data.color,
+        ...(data.name ? { name: data.name } : {}),
       });
     };
 
@@ -249,7 +251,7 @@ export function useCanvasCollaboration({
           for (const c of initial) {
             if (c.userId === userIdRef.current) continue;
             upsertCollaborator(c.userId, {
-              name: c.name,
+              ...(c.name ? { name: c.name } : {}),
               color: c.color,
               image: c.image,
             });
