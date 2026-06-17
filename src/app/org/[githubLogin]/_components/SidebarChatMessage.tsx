@@ -3,7 +3,8 @@
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import ReactMarkdown, { type Components } from "react-markdown";
+import { type Components } from "react-markdown";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { FileIcon } from "lucide-react";
 import type { CanvasAttachment } from "../_state/canvasChatStore";
 
@@ -165,17 +166,16 @@ export function SidebarChatMessage({
                   {message.content}
                 </div>
               ) : (
-                <div
-                  className={`prose prose-sm max-w-none break-words ${
+                <MarkdownRenderer
+                  extraComponents={markdownComponents}
+                  className={
                     isUser
                       ? "[&>*]:!text-primary-foreground [&_*]:!text-primary-foreground"
-                      : "dark:prose-invert [&>*]:!text-foreground/90 [&_*]:!text-foreground/90"
-                  }`}
+                      : "[&>*]:!text-foreground/90 [&_*]:!text-foreground/90"
+                  }
                 >
-                  <ReactMarkdown components={markdownComponents}>
-                    {message.content}
-                  </ReactMarkdown>
-                </div>
+                  {message.content}
+                </MarkdownRenderer>
               )}
             </div>
           </div>
