@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import ReactMarkdown, { Components } from "react-markdown";
+import { MermaidDiagram } from "@/components/features/ClarifyingQuestionsPreview/artifacts/MermaidDiagram";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import remarkFrontmatter from "remark-frontmatter";
@@ -19,6 +20,7 @@ interface MarkdownRendererProps {
   variant?: "user" | "assistant";
   size?: "default" | "compact";
   inlineIconPattern?: RegExp;
+  extraComponents?: Partial<Components>;
 }
 
 const createStyles = (isUser: boolean) => ({
@@ -341,6 +343,10 @@ const createComponents = (
   code: ({ className, children }) => {
     const match = /language-(\w+)/.exec(className || "");
 
+    if (match?.[1] === "mermaid") {
+      return <MermaidDiagram code={String(children).replace(/\n$/, "")} />;
+    }
+
     if (!match) {
       return (
         <code className={cn(styleConfig.codeInline, codeInlineClass, className)}>
@@ -369,6 +375,7 @@ export function MarkdownRenderer({
   variant = "assistant",
   size = "default",
   inlineIconPattern = /svg-icons/,
+  extraComponents,
 }: MarkdownRendererProps) {
   const isUser = variant === "user";
   const styles = createStyles(isUser);
@@ -376,7 +383,7 @@ export function MarkdownRenderer({
   const isDarkTheme = resolvedTheme === "dark";
   const codeInlineClass = isDarkTheme ? "bg-zinc-600/70" : "bg-zinc-300/60";
   const styleConfig = size === "compact" ? compactStyles : baseStyles;
-  const components = createComponents(styles, styleConfig, codeInlineClass, inlineIconPattern);
+  const components = { ...createComponents(styles, styleConfig, codeInlineClass, inlineIconPattern), ...extraComponents };
 
   const processedContent =
     typeof children === "string"
