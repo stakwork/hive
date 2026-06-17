@@ -3175,6 +3175,7 @@ export function OrgCanvasBackground({
         <SystemCanvas
           ref={canvasHandleRef}
           canvas={canvasForRender}
+          panMode="trackpad"
           canvases={subCanvasesForRender}
           theme={connectionsTheme}
           editable
