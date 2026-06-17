@@ -291,20 +291,7 @@ export function ProposalCard({
             </div>
           )}
           {proposal.kind === "feature" && (
-            <>
-              <FeatureMeta payload={proposal.payload} meta={proposal.meta} />
-              <div className="mt-1 flex items-center justify-end gap-1.5">
-                <span className="text-[11px] text-muted-foreground">
-                  Auto-respond to planner
-                </span>
-                <Switch
-                  checked={autoRespond}
-                  onCheckedChange={setAutoRespond}
-                  disabled={!isPending}
-                  aria-label="Auto-respond to planner"
-                />
-              </div>
-            </>
+            <FeatureMeta payload={proposal.payload} meta={proposal.meta} />
           )}
           {proposal.kind === "milestone" && (
             <MilestoneMeta
@@ -345,50 +332,64 @@ export function ProposalCard({
               Rejected
             </div>
           )}
-        </div>
-
-        {/* Right-side controls: always rendered (Info button visible in all states) */}
-        <div className="flex flex-shrink-0 items-center gap-1">
-          {hasDetails && (
-            <button
-              type="button"
-              onClick={() => setDetailsOpen(true)}
-              title="Details"
-              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-            >
-              <Info className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {(isPending || isInFlight) && (
-            <>
-              <button
-                type="button"
-                onClick={handleApprove}
-                disabled={!isPending || isInFlight || !allBlockersApproved}
-                title={
-                  !allBlockersApproved
-                    ? "Approve blocking features first"
-                    : "Approve"
-                }
-                className="flex h-6 w-6 items-center justify-center rounded text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
-              >
-                {isInFlight ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Check className="h-3.5 w-3.5" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={handleReject}
-                disabled={!isPending || isInFlight}
-                title="Reject"
-                className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </>
-          )}
+          {/* Unified footer row: toggle (feature only) + icon buttons */}
+          <div className="mt-1 flex items-center gap-1">
+            {proposal.kind === "feature" && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground">
+                  Auto-respond to planner
+                </span>
+                <Switch
+                  checked={autoRespond}
+                  onCheckedChange={setAutoRespond}
+                  disabled={!isPending}
+                  aria-label="Auto-respond to planner"
+                />
+              </div>
+            )}
+            <div className="ml-auto flex items-center gap-1">
+              {hasDetails && (
+                <button
+                  type="button"
+                  onClick={() => setDetailsOpen(true)}
+                  title="Details"
+                  className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                >
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {(isPending || isInFlight) && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleApprove}
+                    disabled={!isPending || isInFlight || !allBlockersApproved}
+                    title={
+                      !allBlockersApproved
+                        ? "Approve blocking features first"
+                        : "Approve"
+                    }
+                    className="flex h-6 w-6 items-center justify-center rounded text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
+                  >
+                    {isInFlight ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleReject}
+                    disabled={!isPending || isInFlight}
+                    title="Reject"
+                    className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

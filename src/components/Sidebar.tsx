@@ -167,26 +167,6 @@ function VoiceIndicator({ slug, onNavigate }: { slug: string | null; onNavigate:
   );
 }
 
-const STADEUM_LOGO_URL =
-  "https://stakwork-uploads.s3.us-east-1.amazonaws.com/admin_customers/admin/stadeum_logo.jpeg";
-
-function StadeumBrandHeader() {
-  const [imgError, setImgError] = useState(false);
-
-  return (
-    <div className="flex items-center gap-2.5 px-4 py-3 border-b shrink-0">
-      {!imgError && (
-        <img
-          src={STADEUM_LOGO_URL}
-          alt="Stadeum logo"
-          className="w-7 h-7 rounded object-contain"
-          onError={() => setImgError(true)}
-        />
-      )}
-      <span className="font-semibold text-sm tracking-tight">Stadeum</span>
-    </div>
-  );
-}
 
 function SidebarContent({
   navigationItems,
@@ -228,7 +208,6 @@ function SidebarContent({
 
   return (
     <div className="flex flex-col h-full">
-      <StadeumBrandHeader />
       {/* Workspace Switcher — public viewers see a non-interactive
           label (no workspaces list to switch between). */}
       <WorkspaceSwitcher onWorkspaceChange={() => null} readOnly={isPublicViewer} />
