@@ -131,11 +131,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const transitions = normalizeTransitions(projectData);
 
-    if (typeof projectData === "object" && projectData !== null && !Array.isArray(transitions)) {
-      logger.warn("[RequestSteps] normalizeTransitions returned unexpected type", "REQUEST_STEPS", {
+    if (transitions.length === 0 && typeof projectData === "object" && projectData !== null) {
+      logger.warn("[RequestSteps] normalizeTransitions resolved empty — possible wrapper drift", "REQUEST_STEPS", {
         workflowId: workflowIdNum,
         runId: runIdNum,
-        type: typeof transitions,
+        topLevelKeys: Object.keys(projectData as Record<string, unknown>),
       });
     }
 
