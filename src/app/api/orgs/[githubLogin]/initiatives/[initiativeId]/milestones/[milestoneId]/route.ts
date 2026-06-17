@@ -185,6 +185,14 @@ export async function PATCH(
       }
     }
 
+    // Auto-derive completedAt from status when caller didn't supply it explicitly
+    const derivedCompletedAt =
+      completedAt === undefined && status !== undefined
+        ? status === "COMPLETED"
+          ? new Date()
+          : null
+        : undefined;
+
     const milestone = await db.milestone.update({
       where: { id: milestoneId },
       data: {
@@ -194,7 +202,11 @@ export async function PATCH(
         ...(sequence !== undefined && { sequence: Number(sequence) }),
         ...(assigneeId !== undefined && { assigneeId }),
         ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
-        ...(completedAt !== undefined && { completedAt: completedAt ? new Date(completedAt) : null }),
+        ...(completedAt !== undefined
+          ? { completedAt: completedAt ? new Date(completedAt) : null }
+          : derivedCompletedAt !== undefined
+            ? { completedAt: derivedCompletedAt }
+            : {}),
         ...(featuresClause !== undefined && { features: featuresClause }),
       },
       include: MILESTONE_INCLUDE,
