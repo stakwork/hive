@@ -54,6 +54,7 @@ class NodeArray {
   currentCompletedStepPos?: Position;
   finishedNodePos?: Position;
   workflow_state?: string;
+  nodeStyle: "classic" | "card";
 
   constructor(
     transitions: Record<string, WorkflowTransition>,
@@ -64,7 +65,9 @@ class NodeArray {
     isAdmin: boolean = false,
     workflowId: string,
     workflowVersion: string,
+    nodeStyle: "classic" | "card" = "classic",
   ) {
+    this.nodeStyle = nodeStyle;
     this.connecting_edges = connecting_edges;
     this.connected_to_end = this.findDirectlyConnectedNodes(connecting_edges, "system.succeed");
 
@@ -357,12 +360,36 @@ class NodeArray {
       this.addNode(node);
     });
 
+    if (this.nodeStyle === "card") {
+      // Centre the small terminal pills on the step row instead of leaving them
+      // floating at the legacy diamond/large-node offsets.
+      const firstStep = this.nodes[1];
+      const rowCenter = firstStep ? firstStep.position.y + (firstStep.height || 64) / 2 : 100;
+
+      this.applyTerminalCard(start, "start", "Start");
+      start.position = { x: start.position.x, y: rowCenter - start.height / 2 };
+
+      const succeed = endNodes.find((node) => node.id === "system.succeed");
+      const fail = endNodes.find((node) => node.id === "system.fail");
+      if (succeed) {
+        this.applyTerminalCard(succeed, "end", "End");
+        succeed.position = { x: succeed.position.x, y: rowCenter - succeed.height / 2 };
+      }
+      if (fail) {
+        this.applyTerminalCard(fail, "halt", "Halt");
+        fail.position = { x: fail.position.x, y: (succeed ? succeed.position.y : rowCenter) + 96 };
+      }
+    }
+
     if (this.workflow_state === "halted") {
       this.setHaltedNodeStyle();
     } else if (this.workflow_state === "completed") {
       const node = this.nodes.find((node) => node.id === "system.succeed");
       if (node) {
         this.setSuccessNodeStyle(node);
+        if (this.nodeStyle === "card" && node.card) {
+          node.card.completed = true;
+        }
       }
     }
   }
@@ -406,6 +433,26 @@ class NodeArray {
             connection_edges: step.connection_edges,
             project_id: this.projectId,
           });
+
+          if (this.nodeStyle === "card") {
+            const ifc = ifConditionNode as unknown as Record<string, unknown>;
+            ifc.cardStyle = true;
+            ifc.card = {
+              alias: conditionLabel,
+              skill: step.name || "IfCondition",
+              category: "condition",
+              status: this.toCardStatus(this.getStatus(step)),
+              variant: "condition",
+            };
+            ifc.width = 200;
+            ifc.height = 44;
+            // The legacy diamond was 140px tall and offset -50 to centre on the
+            // wire; the compact pill needs neither, so realign to the authored
+            // baseline (+10 to centre against 64px step cards).
+            if (typeof step.position?.y === "number") {
+              ifConditionNode.position = { x: ifConditionNode.position.x, y: step.position.y + 10 };
+            }
+          }
 
           this.addNode(ifConditionNode);
         } else {
@@ -493,6 +540,13 @@ class NodeArray {
       this.setErrorNode(node);
     }
 
+    if (this.nodeStyle === "card") {
+      node.cardStyle = true;
+      node.card = this.buildCardData(step, type, status);
+      node.width = 208;
+      node.height = 64;
+    }
+
     node.targetNode = connections;
 
     if (status === "finished") {
@@ -534,6 +588,65 @@ class NodeArray {
     }
 
     return node;
+  }
+
+  // ── Redesigned card-node data (nodeStyle === "card") ───────────────────────
+  private skillToCategory(skill: string, type: string): string {
+    const s = (skill || "").toLowerCase();
+    // Loop family: whileLoop, forEachLoop, loop, sub-workflow loops
+    if (type === "loop" || s.includes("loop")) return "loop";
+    if (s.includes("condition")) return "condition";
+    if (s.includes("prompt")) return "prompt";
+    if (s.includes("boolean")) return "boolean";
+    if (type === "api" || s.includes("request") || s.includes("http")) return "request";
+    if (s.includes("json")) return "json";
+    if (s.includes("setvar") || s.includes("set_var") || s.includes("ifvalue") || s.includes("ifelse"))
+      return "setvar";
+    if (type === "human") return "human";
+    return "automated";
+  }
+
+  private toCardStatus(status: string | null): string | undefined {
+    switch (status) {
+      case "finished":
+        return "finished";
+      case "in_progress":
+        return "in_progress";
+      case "error":
+        return "error";
+      case "halted":
+        return "halted";
+      case "skipped":
+        return "skipped";
+      default:
+        return undefined;
+    }
+  }
+
+  private applyTerminalCard(node: unknown, kind: "start" | "end" | "halt", label: string): void {
+    const n = node as Record<string, unknown>;
+    n.cardStyle = true;
+    n.card = { alias: label, skill: "", category: "automated", variant: "terminal", terminalKind: kind };
+    n.width = 96;
+    n.height = 38;
+  }
+
+  buildCardData(step: WorkflowTransition, type: string, status: string | null): Record<string, unknown> {
+    const skill = step.display_name || step.name || "";
+    const alias = step.id || step.display_id || "";
+    let timing: string | undefined;
+    if (status === "finished") {
+      const jobDetails = this.getJobDetails(step);
+      timing = this.parseCompletionTime(jobDetails?.completion_time?.value ?? null) || undefined;
+    }
+    return {
+      alias,
+      skill,
+      category: this.skillToCategory(skill, type),
+      status: this.toCardStatus(status),
+      timing,
+      variant: "step",
+    };
   }
 
   calcPosition(): Position {
