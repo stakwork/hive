@@ -571,13 +571,16 @@ class NodeArray {
   // ── Redesigned card-node data (nodeStyle === "card") ───────────────────────
   private skillToCategory(skill: string, type: string): string {
     const s = (skill || "").toLowerCase();
-    if (type === "loop") return "loop";
-    if (type === "human") return "human";
-    if (type === "api") return "request";
+    // Loop family: whileLoop, forEachLoop, loop, sub-workflow loops
+    if (type === "loop" || s.includes("loop")) return "loop";
     if (s.includes("condition")) return "condition";
-    if (s.includes("request")) return "request";
+    if (s.includes("prompt")) return "prompt";
+    if (s.includes("boolean")) return "boolean";
+    if (type === "api" || s.includes("request") || s.includes("http")) return "request";
     if (s.includes("json")) return "json";
-    if (s.includes("setvar") || s.includes("ifvalue") || s.includes("set_var")) return "setvar";
+    if (s.includes("setvar") || s.includes("set_var") || s.includes("ifvalue") || s.includes("ifelse"))
+      return "setvar";
+    if (type === "human") return "human";
     return "automated";
   }
 

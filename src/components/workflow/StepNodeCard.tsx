@@ -24,6 +24,8 @@ import {
   Play,
   Flag,
   Octagon,
+  MessageSquare,
+  ToggleLeft,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,7 +37,9 @@ export type StepCategory =
   | "json"
   | "automated"
   | "human"
-  | "loop";
+  | "loop"
+  | "prompt"
+  | "boolean";
 
 export type StepStatus =
   | "finished"
@@ -84,9 +88,11 @@ const CATEGORY: Record<StepCategory, { icon: LucideIcon; tint: string }> = {
   request: { icon: Globe, tint: "text-teal-600 dark:text-teal-400" },
   setvar: { icon: Variable, tint: "text-sky-600 dark:text-sky-400" },
   json: { icon: Braces, tint: "text-violet-600 dark:text-violet-400" },
-  automated: { icon: Zap, tint: "text-violet-600 dark:text-violet-400" },
+  automated: { icon: Zap, tint: "text-zinc-500 dark:text-zinc-400" },
   human: { icon: User, tint: "text-pink-600 dark:text-pink-400" },
   loop: { icon: Repeat, tint: "text-purple-600 dark:text-purple-400" },
+  prompt: { icon: MessageSquare, tint: "text-blue-600 dark:text-blue-400" },
+  boolean: { icon: ToggleLeft, tint: "text-fuchsia-600 dark:text-fuchsia-400" },
 };
 
 const STATUS: Record<StepStatus, { dot: string; bar: string; pulse: boolean }> = {
@@ -181,11 +187,14 @@ export function StepCardContent({ data }: { data: StepNodeCardData }) {
 }
 
 export default function StepNodeCard({ data }: NodeProps) {
+  const d = data as unknown as StepNodeCardData;
+  const isStart = d.variant === "terminal" && d.terminalKind === "start";
+  const isEndHalt = d.variant === "terminal" && (d.terminalKind === "end" || d.terminalKind === "halt");
   return (
     <>
-      <Handle type="target" position={Position.Left} className={STEP_HANDLE_CLASS} />
-      <StepCardContent data={data as unknown as StepNodeCardData} />
-      <Handle type="source" position={Position.Right} className={STEP_HANDLE_CLASS} />
+      {!isStart && <Handle type="target" position={Position.Left} className={STEP_HANDLE_CLASS} />}
+      <StepCardContent data={d} />
+      {!isEndHalt && <Handle type="source" position={Position.Right} className={STEP_HANDLE_CLASS} />}
     </>
   );
 }

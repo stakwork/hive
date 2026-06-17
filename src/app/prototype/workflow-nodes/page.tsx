@@ -23,27 +23,34 @@ const nodeTypes = { stepCard: StepNodeCard };
 type N = Node<StepNodeCardData>;
 
 const NODES: N[] = [
-  { id: "n1", type: "stepCard", position: { x: 0, y: 140 }, data: { alias: "set_system_override", skill: "IfValue", category: "setvar", status: "finished", timing: "329ms" } },
-  { id: "c1", type: "stepCard", position: { x: 280, y: 150 }, data: { alias: "check_prototype_mode", skill: "IfCondition", category: "condition", status: "finished", variant: "condition" } },
-  { id: "n2", type: "stepCard", position: { x: 470, y: 40 }, data: { alias: "set_user_msg_and_history", skill: "IfValue", category: "setvar", status: "finished", timing: "415ms" } },
-  { id: "n3", type: "stepCard", position: { x: 470, y: 250 }, data: { alias: "set_final_prompt", skill: "IfValue", category: "setvar", status: "finished", timing: "117ms" } },
-  { id: "n4", type: "stepCard", position: { x: 760, y: 40 }, data: { alias: "build_feature_title_prompt", skill: "JSONBuilder", category: "json", status: "finished", timing: "141ms" } },
-  { id: "n5", type: "stepCard", position: { x: 760, y: 250 }, data: { alias: "llm_generate_feature_title", skill: "Request", category: "request", status: "in_progress", timing: "1s" } },
-  { id: "n6", type: "stepCard", position: { x: 1050, y: 40 }, data: { alias: "validate_title_schema", skill: "JSONBuilder", category: "json", status: "error", timing: "12ms" } },
-  { id: "n7", type: "stepCard", position: { x: 1050, y: 250 }, data: { alias: "set_feature_title", skill: "SetVar", category: "setvar", status: "pending" } },
-  { id: "c2", type: "stepCard", position: { x: 1340, y: 150 }, data: { alias: "skip_title_update", skill: "IfCondition", category: "condition", status: "skipped", variant: "condition" } },
+  { id: "start", type: "stepCard", position: { x: 0, y: 212 }, data: { alias: "Start", skill: "", category: "automated", variant: "terminal", terminalKind: "start" } },
+  { id: "setvar", type: "stepCard", position: { x: 150, y: 200 }, data: { alias: "set_system_override", skill: "IfValue", category: "setvar", status: "finished", timing: "329ms" } },
+  { id: "cond", type: "stepCard", position: { x: 440, y: 214 }, data: { alias: "check_prototype_mode", skill: "IfCondition", category: "condition", status: "finished", variant: "condition" } },
+  { id: "request", type: "stepCard", position: { x: 620, y: 70 }, data: { alias: "fetch_context", skill: "Request", category: "request", status: "finished", timing: "415ms" } },
+  { id: "json", type: "stepCard", position: { x: 620, y: 330 }, data: { alias: "build_payload", skill: "JSONBuilder", category: "json", status: "finished", timing: "141ms" } },
+  { id: "prompt", type: "stepCard", position: { x: 910, y: 70 }, data: { alias: "ask_clarification", skill: "Prompt", category: "prompt", status: "in_progress", timing: "1s" } },
+  { id: "boolean", type: "stepCard", position: { x: 910, y: 330 }, data: { alias: "user_approved", skill: "Boolean", category: "boolean", status: "pending" } },
+  { id: "foreach", type: "stepCard", position: { x: 1200, y: 70 }, data: { alias: "iterate_files", skill: "forEachLoop", category: "loop", status: "finished", timing: "2m 41s" } },
+  { id: "while", type: "stepCard", position: { x: 1200, y: 330 }, data: { alias: "poll_until_ready", skill: "whileLoop", category: "loop", status: "halted", timing: "5m 09s" } },
+  { id: "human", type: "stepCard", position: { x: 1490, y: 70 }, data: { alias: "review_changes", skill: "Human review", category: "human", status: "finished", timing: "3m 02s" } },
+  { id: "automated", type: "stepCard", position: { x: 1490, y: 330 }, data: { alias: "cleanup_artifacts", skill: "Automated", category: "automated", status: "error", timing: "12ms" } },
+  { id: "end", type: "stepCard", position: { x: 1780, y: 80 }, data: { alias: "End", skill: "", category: "automated", variant: "terminal", terminalKind: "end" } },
+  { id: "halt", type: "stepCard", position: { x: 1780, y: 330 }, data: { alias: "Halt", skill: "", category: "automated", variant: "terminal", terminalKind: "halt" } },
 ];
 
 const EDGES: Edge[] = [
-  { id: "e1", source: "n1", target: "c1" },
-  { id: "e2", source: "c1", target: "n2" },
-  { id: "e3", source: "c1", target: "n3" },
-  { id: "e4", source: "n2", target: "n4" },
-  { id: "e5", source: "n3", target: "n5" },
-  { id: "e6", source: "n4", target: "n6" },
-  { id: "e7", source: "n5", target: "n7" },
-  { id: "e8", source: "n6", target: "c2" },
-  { id: "e9", source: "n7", target: "c2" },
+  { id: "e0", source: "start", target: "setvar" },
+  { id: "e1", source: "setvar", target: "cond" },
+  { id: "e2", source: "cond", target: "request" },
+  { id: "e3", source: "cond", target: "json" },
+  { id: "e4", source: "request", target: "prompt" },
+  { id: "e5", source: "json", target: "boolean" },
+  { id: "e6", source: "prompt", target: "foreach" },
+  { id: "e7", source: "boolean", target: "while" },
+  { id: "e8", source: "foreach", target: "human" },
+  { id: "e9", source: "while", target: "automated" },
+  { id: "e10", source: "human", target: "end" },
+  { id: "e11", source: "automated", target: "halt" },
 ];
 
 export default function WorkflowNodesPreviewPage() {
