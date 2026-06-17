@@ -438,12 +438,16 @@ function MilestoneExtras({ extras, nodeId, githubLogin }: MilestoneExtrasProps) 
 
   useEffect(() => {
     if (!githubLogin) return;
+    let cancelled = false;
     fetch(`/api/orgs/${githubLogin}/members`)
       .then((r) => r.json())
       .then((data) => {
-        setMembers(Array.isArray(data) ? (data as OrgMemberResponse[]) : []);
+        if (!cancelled) {
+          setMembers(Array.isArray(data) ? (data as OrgMemberResponse[]) : []);
+        }
       })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [githubLogin]);
 
   async function handleAssigneeChange(value: string) {

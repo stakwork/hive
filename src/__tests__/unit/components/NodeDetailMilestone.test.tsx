@@ -138,7 +138,9 @@ function setupFetch(
 
 describe("NodeDetail milestone — assignee picker", () => {
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    // Reset fetch to a safe no-op so the next test's useEffect doesn't throw
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
   });
 
   it("renders 'Unassigned' option and members after fetch", async () => {
@@ -328,13 +330,15 @@ describe("NodeDetail milestone — assignee picker", () => {
       <LiveNodeBody nodeId="milestone:ms-123" githubLogin="testorg" />,
     );
 
-    await waitFor(() =>
-      expect(screen.getByTestId("assignee-select")).toBeInTheDocument(),
-    );
-
-    // Alice has a name
-    expect(screen.getByText("Alice")).toBeInTheDocument();
-    // bob has no name — falls back to githubUsername
-    expect(screen.getByText("bob")).toBeInTheDocument();
+    // Wait until members have loaded and all option text is in the DOM
+    await waitFor(() => {
+      const select = screen.getByTestId("assignee-select") as HTMLSelectElement;
+      const optTexts = Array.from(select.querySelectorAll("option")).map(
+        (o) => o.textContent?.trim(),
+      );
+      // Alice has a name; bob falls back to githubUsername
+      expect(optTexts).toContain("Alice");
+      expect(optTexts).toContain("bob");
+    });
   });
 });
