@@ -95,13 +95,21 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
   const [isLoadingIO, setIsLoadingIO] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !projectId || !step?.project_step_id) {
+    if (!isOpen || !projectId) {
+      setIoData(null);
+      return;
+    }
+    const runStep = runTransitions
+      ? (runTransitions[step?.id ?? ''] ?? runTransitions[step?.name ?? ''] ?? null)
+      : null;
+    const effectiveStepId = runStep?.project_step_id ?? step?.name;
+    if (!effectiveStepId) {
       setIoData(null);
       return;
     }
     let cancelled = false;
     setIsLoadingIO(true);
-    fetch(`/api/v1/projects/${projectId}/steps/${step.project_step_id}/io`)
+    fetch(`/api/v1/projects/${projectId}/steps/${effectiveStepId}/io`)
       .then((r) => r.json())
       .then((result) => {
         if (!cancelled) {
@@ -111,7 +119,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       .catch(() => { if (!cancelled) setIoData(null); })
       .finally(() => { if (!cancelled) setIsLoadingIO(false); });
     return () => { cancelled = true; };
-  }, [isOpen, projectId, step?.project_step_id]);
+  }, [isOpen, projectId, step?.id, step?.name, step?.project_step_id, runTransitions]);
 
   if (!step || !isOpen) return null;
 
@@ -146,7 +154,10 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-background rounded-lg shadow-lg border w-[75vw] max-h-[90vh] flex flex-col">
+      <div
+        className="bg-background rounded-lg shadow-lg border w-[75vw] max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-3">
@@ -242,7 +253,9 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
 
           {/* Inputs */}
           <TabsContent value="inputs" className="flex-1 overflow-y-auto p-4 mt-0">
-            {isLoadingIO ? (
+            {!projectId ? (
+              <p className="text-xs text-muted-foreground">Select a run to view IO data.</p>
+            ) : isLoadingIO ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading...
               </div>
@@ -257,7 +270,9 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
 
           {/* Outputs */}
           <TabsContent value="outputs" className="flex-1 overflow-y-auto p-4 mt-0">
-            {isLoadingIO ? (
+            {!projectId ? (
+              <p className="text-xs text-muted-foreground">Select a run to view IO data.</p>
+            ) : isLoadingIO ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading...
               </div>
