@@ -494,4 +494,102 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(edgeTypes).not.toContain("EVALUATED");
     });
   });
+
+  describe("Body blob persistence", () => {
+    const clientBodyBlob = {
+      prompt_change: null,
+      model: "gpt-4o-mini",
+      response_raw: JSON.stringify({ choices: [{ message: { content: "Hello" }, finish_reason: "stop" }] }),
+      output_text: "Hello",
+      finish_reason: "stop",
+    };
+
+    function setupNodeMocksMinimal() {
+      // EvalSet not found
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+      // Stakwork project JSON (no transitions — body already supplied client-side)
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ transitions: [] }) });
+      vi.mocked(nodesService.addNode)
+        .mockResolvedValueOnce({ success: true, ref_id: "evalset-ref" })
+        .mockResolvedValueOnce({ success: true, ref_id: "req-ref" })
+        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref" });
+      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+      // Run node lookup
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+    }
+
+    test("persists client-supplied body blob on EvalTrigger node_data", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocksMinimal();
+
+      const bodyWithBlob = { ...validBody, body: clientBodyBlob };
+      const request = makeRequest(workspace.slug, "42", bodyWithBlob, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
+      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      expect(triggerCall).toBeDefined();
+
+      const nodeData = triggerCall![1].node_data as Record<string, unknown>;
+      expect(nodeData.body).toEqual(clientBodyBlob);
+    });
+
+    test("stores body as null when not supplied by client", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocksMinimal();
+
+      // validBody has no `body` field
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
+      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      expect(triggerCall).toBeDefined();
+
+      const nodeData = triggerCall![1].node_data as Record<string, unknown>;
+      expect(nodeData.body).toBeNull();
+    });
+
+    test("existing fields (model, provider, endpoint_url) still populated alongside body", async () => {
+      const { user, workspace } = await createTestFixtures();
+
+      // EvalSet not found
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+      // Return project JSON with a recognizable transition
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => projectJsonFixture,
+      });
+      vi.mocked(nodesService.addNode)
+        .mockResolvedValueOnce({ success: true, ref_id: "evalset-ref" })
+        .mockResolvedValueOnce({ success: true, ref_id: "req-ref" })
+        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref" });
+      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+
+      const bodyWithBlob = { ...validBody, body: clientBodyBlob };
+      const request = makeRequest(workspace.slug, "42", bodyWithBlob, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
+      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      const nodeData = triggerCall![1].node_data as Record<string, unknown>;
+
+      // Existing fields still populated from project JSON
+      expect(nodeData.endpoint_url).toBe("https://api.openai.com/v1/chat/completions");
+      expect(nodeData.model).toBeTruthy();
+      // Body blob also present
+      expect(nodeData.body).toEqual(clientBodyBlob);
+    });
+  });
 });

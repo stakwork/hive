@@ -123,6 +123,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       desirable_cases,
       undesirable_cases,
       check,
+      body: clientBody,
     } = body as {
       run_id?: string;
       step_id?: string;
@@ -131,6 +132,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       desirable_cases?: string[];
       undesirable_cases?: string[];
       check?: { type: string; want: boolean };
+      /** Client-supplied replay body snapshot built from already-loaded runTransitions */
+      body?: {
+        prompt_change: string | null;
+        model: string | null;
+        response_raw: string | null;
+        output_text: string | null;
+        finish_reason: string | null;
+      };
     };
 
     if (!requirement?.trim()) {
@@ -245,6 +254,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         tool_call_trace,
         feedback_note: reason ?? null,
         check: check ?? null,
+        // Client-supplied replay body blob (no extra fetch required on the server)
+        body: clientBody ?? null,
       },
     });
 

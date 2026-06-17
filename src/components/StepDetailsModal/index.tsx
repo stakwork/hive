@@ -1,10 +1,12 @@
 "use client";
 
-import React from "react";
-import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2 } from "lucide-react";
+import React, { useState } from "react";
+import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WorkflowTransition, StepType, getStepType } from "@/types/stakwork/workflow";
+import { isLlmStep, extractStepFromTransition, type TransitionStep } from "@/lib/stakwork/transitions";
+import { FlagEvalStepModal } from "@/components/evals/FlagEvalStepModal";
 
 interface StepDetailsModalProps {
   step: WorkflowTransition | null;
@@ -12,6 +14,12 @@ interface StepDetailsModalProps {
   onClose: () => void;
   onSelect?: () => void;
   runTransitions?: Record<string, WorkflowTransition>;
+  /** Context needed to submit flag-for-eval from this modal */
+  evalContext?: {
+    slug: string;
+    workflowId: string;
+    runId: string;
+  };
 }
 
 const STEP_TYPE_ICONS: Record<StepType, React.ReactNode> = {
@@ -88,7 +96,9 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions }: StepDetailsModalProps) {
+export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions, evalContext }: StepDetailsModalProps) {
+  const [isFlagModalOpen, setIsFlagModalOpen] = useState(false);
+
   if (!step || !isOpen) return null;
 
   const stepType = getStepType(step);
@@ -109,6 +119,13 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
   const runStep = runTransitions
     ? (runTransitions[step.id] ?? runTransitions[step.name] ?? null)
     : undefined;
+
+  // Determine if this is an LLM step.
+  // Prefer the run transition (has runtime url) when available; fall back to the static step.
+  const isLlm = runStep
+    ? isLlmStep(runStep as unknown as TransitionStep)
+    : isLlmStep(step as unknown as TransitionStep);
+  const showFlagButton = isLlm && !!evalContext && !!runStep;
 
   // Check if we have any content to show
   const hasVars = Object.keys(stepVars).length > 0;
@@ -206,19 +223,43 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 p-4 border-t">
-          <Button variant="outline" onClick={onClose}>
-            <X className="h-4 w-4 mr-2" />
-            Cancel
-          </Button>
-          {onSelect && (
-            <Button onClick={onSelect}>
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              Select Step
+        <div className="flex justify-between gap-2 p-4 border-t">
+          <div>
+            {showFlagButton && (
+              <Button variant="outline" size="sm" onClick={() => setIsFlagModalOpen(true)}>
+                <Flag className="h-4 w-4 mr-2" />
+                Flag for eval
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              <X className="h-4 w-4 mr-2" />
+              Cancel
             </Button>
-          )}
+            {onSelect && (
+              <Button onClick={onSelect}>
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Select Step
+              </Button>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Flag-for-eval modal — only mounted when we have the full context */}
+      {showFlagButton && evalContext && (
+        <FlagEvalStepModal
+          open={isFlagModalOpen}
+          onOpenChange={setIsFlagModalOpen}
+          slug={evalContext.slug}
+          workflowId={evalContext.workflowId}
+          runId={evalContext.runId}
+          stepId={step.id || step.name}
+          runTransition={runStep as unknown as TransitionStep}
+          onCaptured={() => setIsFlagModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
