@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
-import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2 } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { WorkflowTransition, StepType, getStepType } from "@/types/stakwork/workflow";
 
 interface StepDetailsModalProps {
@@ -12,6 +13,7 @@ interface StepDetailsModalProps {
   onClose: () => void;
   onSelect?: () => void;
   runTransitions?: Record<string, WorkflowTransition>;
+  projectId?: string;
 }
 
 const STEP_TYPE_ICONS: Record<StepType, React.ReactNode> = {
@@ -88,7 +90,29 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions }: StepDetailsModalProps) {
+export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions, projectId }: StepDetailsModalProps) {
+  const [ioData, setIoData] = useState<{ inputs: unknown; outputs: unknown } | null>(null);
+  const [isLoadingIO, setIsLoadingIO] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !projectId || !step?.project_step_id) {
+      setIoData(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingIO(true);
+    fetch(`/api/v1/projects/${projectId}/steps/${step.project_step_id}/io`)
+      .then((r) => r.json())
+      .then((result) => {
+        if (!cancelled) {
+          setIoData(result?.data ?? null);
+        }
+      })
+      .catch(() => { if (!cancelled) setIoData(null); })
+      .finally(() => { if (!cancelled) setIsLoadingIO(false); });
+    return () => { cancelled = true; };
+  }, [isOpen, projectId, step?.project_step_id]);
+
   if (!step || !isOpen) return null;
 
   const stepType = getStepType(step);
@@ -142,68 +166,122 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
           </button>
         </div>
 
-        {/* Content - scrollable */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Step Name/Alias */}
-          {stepId && (
-            <Section title="Step Alias">
-              <code className="text-sm bg-muted px-2 py-1 rounded">{stepId}</code>
-            </Section>
-          )}
+        {/* Tabbed content */}
+        <Tabs defaultValue="attributes" className="flex flex-col flex-1 overflow-hidden">
+          <div className="px-4 pt-2 border-b shrink-0">
+            <TabsList className="w-full">
+              <TabsTrigger value="attributes">Attributes</TabsTrigger>
+              <TabsTrigger value="inputs">Inputs</TabsTrigger>
+              <TabsTrigger value="outputs">Outputs</TabsTrigger>
+              <TabsTrigger value="logs">Logs</TabsTrigger>
+            </TabsList>
+          </div>
 
-          {/* Run Output section */}
-          {runTransitions !== undefined && (
-            <Section title="Run Output">
-              {runStep ? (
-                <div className="space-y-2">
-                  {runStep.status?.step_state && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Status:</span>
-                      <Badge variant="outline">{runStep.status.step_state}</Badge>
-                    </div>
-                  )}
-                  {runStep.has_output && runStep.output !== undefined && (
-                    <Section title="Output">
-                      <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-40 whitespace-pre-wrap">
-                        {typeof runStep.output === "string"
-                          ? runStep.output
-                          : JSON.stringify(runStep.output, null, 2)}
-                      </pre>
-                    </Section>
-                  )}
-                  {runStep.log && (
-                    <Section title="Log">
-                      <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32 whitespace-pre-wrap">
-                        {runStep.log}
-                      </pre>
-                    </Section>
-                  )}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">No run data for this step.</p>
-              )}
-            </Section>
-          )}
+          {/* Attributes — existing content verbatim */}
+          <TabsContent value="attributes" className="flex-1 overflow-y-auto p-4 space-y-4 mt-0">
+            {/* Step Name/Alias */}
+            {stepId && (
+              <Section title="Step Alias">
+                <code className="text-sm bg-muted px-2 py-1 rounded">{stepId}</code>
+              </Section>
+            )}
 
-          {/* Variables (for SetVar and other steps with vars) */}
-          {hasVars && (
-            <Section title="Variables">
-              <KeyValueTable data={stepVars} />
-            </Section>
-          )}
+            {/* Run Output section */}
+            {runTransitions !== undefined && (
+              <Section title="Run Output">
+                {runStep ? (
+                  <div className="space-y-2">
+                    {runStep.status?.step_state && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Status:</span>
+                        <Badge variant="outline">{runStep.status.step_state}</Badge>
+                      </div>
+                    )}
+                    {runStep.has_output && runStep.output !== undefined && (
+                      <Section title="Output">
+                        <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-40 whitespace-pre-wrap">
+                          {typeof runStep.output === "string"
+                            ? runStep.output
+                            : JSON.stringify(runStep.output, null, 2)}
+                        </pre>
+                      </Section>
+                    )}
+                    {runStep.log && (
+                      <Section title="Log">
+                        <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32 whitespace-pre-wrap">
+                          {runStep.log}
+                        </pre>
+                      </Section>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No run data for this step.</p>
+                )}
+              </Section>
+            )}
 
-          {/* Other Attributes (prompt, statement, url, etc.) */}
-          {hasOtherAttributes && (
-            <Section title="Attributes">
-              <KeyValueTable data={otherAttributes} />
-            </Section>
-          )}
+            {/* Variables (for SetVar and other steps with vars) */}
+            {hasVars && (
+              <Section title="Variables">
+                <KeyValueTable data={stepVars} />
+              </Section>
+            )}
 
-          {/* Show message if no attributes */}
-          {!hasAnyContent && (
-            <div className="text-muted-foreground text-sm">No attributes configured for this step.</div>
-          )}
-        </div>
+            {/* Other Attributes (prompt, statement, url, etc.) */}
+            {hasOtherAttributes && (
+              <Section title="Attributes">
+                <KeyValueTable data={otherAttributes} />
+              </Section>
+            )}
+
+            {/* Show message if no attributes */}
+            {!hasAnyContent && (
+              <div className="text-muted-foreground text-sm">No attributes configured for this step.</div>
+            )}
+          </TabsContent>
+
+          {/* Inputs */}
+          <TabsContent value="inputs" className="flex-1 overflow-y-auto p-4 mt-0">
+            {isLoadingIO ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+              </div>
+            ) : ioData?.inputs != null ? (
+              <pre className="text-xs bg-muted p-3 rounded overflow-auto max-h-[60vh] whitespace-pre-wrap">
+                {JSON.stringify(ioData.inputs, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-xs text-muted-foreground">No input data available.</p>
+            )}
+          </TabsContent>
+
+          {/* Outputs */}
+          <TabsContent value="outputs" className="flex-1 overflow-y-auto p-4 mt-0">
+            {isLoadingIO ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+              </div>
+            ) : ioData?.outputs != null ? (
+              <pre className="text-xs bg-muted p-3 rounded overflow-auto max-h-[60vh] whitespace-pre-wrap">
+                {JSON.stringify(ioData.outputs, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-xs text-muted-foreground">No output data available.</p>
+            )}
+          </TabsContent>
+
+          {/* Logs — rendered as raw HTML */}
+          <TabsContent value="logs" className="flex-1 overflow-y-auto p-4 mt-0">
+            {runStep?.log ? (
+              <div
+                className="text-xs bg-muted p-3 rounded overflow-auto max-h-[60vh]"
+                dangerouslySetInnerHTML={{ __html: runStep.log }}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground">No logs for this step.</p>
+            )}
+          </TabsContent>
+        </Tabs>
 
         {/* Footer */}
         <div className="flex justify-end gap-2 p-4 border-t">
