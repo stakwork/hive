@@ -109,7 +109,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
     }
     let cancelled = false;
     setIsLoadingIO(true);
-    fetch(`/api/v1/projects/${projectId}/steps/${effectiveStepId}/io`)
+    fetch(`/api/projects/${projectId}/steps/${effectiveStepId}/io`)
       .then((r) => r.json())
       .then((result) => {
         if (!cancelled) {

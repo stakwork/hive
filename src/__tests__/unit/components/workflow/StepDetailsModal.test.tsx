@@ -158,7 +158,7 @@ describe("StepDetailsModal — IO endpoint", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/v1/projects/proj-1/steps/my_step/io",
+        "/api/projects/proj-1/steps/my_step/io",
       );
     });
   });
@@ -179,7 +179,7 @@ describe("StepDetailsModal — IO endpoint", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/v1/projects/proj-1/steps/psid-123/io",
+        "/api/projects/proj-1/steps/psid-123/io",
       );
     });
   });
