@@ -1108,7 +1108,7 @@ describe('Sidebar - Graph Explorer Nav Item', () => {
   });
 });
 
-describe('StadeumBrandHeader', () => {
+describe('Sidebar branding', () => {
   // @vitest-environment jsdom
   const mockUser = {
     name: 'Test User',
@@ -1144,57 +1144,16 @@ describe('StadeumBrandHeader', () => {
     } as any);
   });
 
-  it('renders the "Stadeum" wordmark', () => {
+  it('does not render Stadeum logo or wordmark', () => {
     render(<Sidebar user={mockUser} />);
-    const wordmarks = screen.getAllByText('Stadeum');
-    expect(wordmarks.length).toBeGreaterThan(0);
+    expect(screen.queryByText('Stadeum')).toBeNull();
+    expect(screen.queryByAltText('Stadeum logo')).toBeNull();
   });
 
-  it('renders the logo image with correct src and alt', () => {
-    render(<Sidebar user={mockUser} />);
-    const images = screen.getAllByAltText('Stadeum logo');
-    expect(images.length).toBeGreaterThan(0);
-    expect(images[0]).toHaveAttribute(
-      'src',
-      'https://stakwork-uploads.s3.us-east-1.amazonaws.com/admin_customers/admin/stadeum_logo.jpeg',
-    );
-  });
-
-  it('hides the logo image and still shows wordmark when onError fires', async () => {
+  it('renders WorkspaceSwitcher as the topmost element in the sidebar', () => {
     const { container } = render(<Sidebar user={mockUser} />);
-
-    // Simulate image error on first logo img
-    const images = screen.getAllByAltText('Stadeum logo');
-    expect(images.length).toBeGreaterThan(0);
-
-    // Fire the error event on the first image via React's synthetic event system
-    await act(async () => {
-      fireEvent.error(images[0]);
-    });
-
-    // The wordmark should still be visible
-    expect(screen.getAllByText('Stadeum').length).toBeGreaterThan(0);
-
-    // The specific image that errored should no longer be in the DOM
-    // (React removes it when imgError state becomes true)
-    const remainingImages = container.querySelectorAll('img[alt="Stadeum logo"]');
-    // At least one image was removed (the errored one); remaining may include the other sidebar instance
-    expect(remainingImages.length).toBeLessThan(images.length);
-  });
-
-  it('renders the brand header above the workspace switcher', () => {
-    const { container } = render(<Sidebar user={mockUser} />);
-
-    const wordmark = container.querySelector('span.font-semibold');
     const switcher = container.querySelector('[data-testid="workspace-switcher"]');
-
-    expect(wordmark).not.toBeNull();
     expect(switcher).not.toBeNull();
-
-    // wordmark should appear before switcher in document order
-    const position = wordmark!.compareDocumentPosition(switcher!);
-    // DOCUMENT_POSITION_FOLLOWING = 4 means switcher comes after wordmark
-    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
