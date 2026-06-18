@@ -3,6 +3,62 @@
  * workspace-scoped and org-scoped conversation API routes.
  */
 
+import type { ModelMessage } from "ai";
+import type { StoredMessage } from "@/services/canvas-turn-persistence";
+
+/**
+ * Converts stored canvas/conversation messages into AI SDK `ModelMessage[]`.
+ * Filters out empty messages, expands assistant tool-call turns into the
+ * three-part shape the AI SDK expects (tool-call, tool-result, text).
+ */
+export function toModelMessages(messages: StoredMessage[]): ModelMessage[] {
+  return messages
+    .filter((m) => (m.content?.trim() || m.toolCalls) && m.role)
+    .flatMap((m): ModelMessage[] => {
+      if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+        const out: ModelMessage[] = [];
+        out.push({
+          role: "assistant",
+          content: m.toolCalls.map((tc) => ({
+            type: "tool-call" as const,
+            toolCallId: tc.id,
+            toolName: tc.toolName,
+            input: tc.input || {},
+          })),
+        });
+        const toolResults = m.toolCalls.filter(
+          (tc) => tc.output !== undefined || tc.errorText !== undefined,
+        );
+        if (toolResults.length > 0) {
+          out.push({
+            role: "tool",
+            content: toolResults.map((tc) => {
+              let wrappedOutput = tc.output;
+              if (
+                tc.output &&
+                typeof tc.output === "object" &&
+                !("type" in tc.output)
+              ) {
+                wrappedOutput = { type: "json", value: tc.output };
+              }
+              return {
+                type: "tool-result" as const,
+                toolCallId: tc.id,
+                toolName: tc.toolName,
+                output: wrappedOutput as never,
+              };
+            }),
+          } as ModelMessage);
+        }
+        if (m.content) {
+          out.push({ role: "assistant", content: m.content });
+        }
+        return out;
+      }
+      return [{ role: m.role, content: m.content }];
+    });
+}
+
 /** Placeholder title for a conversation with no usable first user message. */
 export const UNTITLED_CONVERSATION = "Untitled Conversation";
 
