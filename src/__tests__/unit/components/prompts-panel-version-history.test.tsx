@@ -80,6 +80,12 @@ describe("PromptsPanel - Version History", () => {
           }),
         });
       }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
+        });
+      }
       return Promise.reject(new Error("Not found"));
     }) as any;
 
@@ -119,6 +125,12 @@ describe("PromptsPanel - Version History", () => {
             success: true,
             data: mockPromptWithoutHistory,
           }),
+        });
+      }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
         });
       }
       return Promise.reject(new Error("Not found"));
@@ -172,6 +184,12 @@ describe("PromptsPanel - Version History", () => {
             success: true,
             data: mockPromptWithHistory,
           }),
+        });
+      }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
         });
       }
       return Promise.reject(new Error("Not found"));
@@ -229,6 +247,12 @@ describe("PromptsPanel - Version History", () => {
             success: true,
             data: mockPromptWithHistory,
           }),
+        });
+      }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
         });
       }
       return Promise.reject(new Error("Not found"));
@@ -328,6 +352,12 @@ describe("PromptsPanel - Version History", () => {
           }),
         });
       }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
+        });
+      }
       return Promise.reject(new Error("Not found"));
     }) as any;
 
@@ -401,6 +431,12 @@ describe("PromptsPanel - Version History", () => {
           }),
         });
       }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
+        });
+      }
       return Promise.reject(new Error("Not found"));
     }) as any;
 
@@ -468,6 +504,12 @@ describe("PromptsPanel - Version History", () => {
           }),
         });
       }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
+        });
+      }
       return Promise.reject(new Error("Not found"));
     }) as any;
 
@@ -532,6 +574,12 @@ describe("PromptsPanel - Version History", () => {
           }),
         });
       }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
+        });
+      }
       return Promise.reject(new Error("Not found"));
     }) as any;
 
@@ -584,6 +632,12 @@ describe("PromptsPanel - Version History", () => {
             success: true,
             data: mockPromptWithHistory,
           }),
+        });
+      }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
         });
       }
       return Promise.reject(new Error("Not found"));
@@ -673,6 +727,12 @@ describe("PromptsPanel - Version History", () => {
           }),
         });
       }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
+        });
+      }
       return Promise.reject(new Error("Not found"));
     }) as any;
 
@@ -703,7 +763,7 @@ describe("PromptsPanel - Version History", () => {
 
     // Verify that fetchVersionContent was called only once (for v1, not for Current)
     const versionContentCalls = fetchSpy.mock.calls.filter((call: any) => 
-      String(call[0]).includes("/versions/") && !String(call[0]).endsWith("/versions")
+      String(call[0]).includes("/versions/") && !String(call[0]).endsWith("/versions") && !String(call[0]).includes("/run-evals")
     );
     
     expect(versionContentCalls.length).toBe(1);
@@ -759,6 +819,12 @@ describe("PromptsPanel - Version History", () => {
             success: true,
             data: mockPromptWithHistory,
           }),
+        });
+      }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
         });
       }
       return Promise.reject(new Error("Not found"));
@@ -835,6 +901,12 @@ describe("PromptsPanel - Version History", () => {
           json: async () => ({ success: true, data: publishedCurrentPrompt }),
         });
       }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
+        });
+      }
       return Promise.reject(new Error("Not found"));
     }) as any;
 
@@ -898,6 +970,12 @@ describe("PromptsPanel - Version History", () => {
           json: async () => ({ success: true, data: publishedHistoricalPrompt }),
         });
       }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
+        });
+      }
       return Promise.reject(new Error("Not found"));
     }) as any;
 
@@ -959,6 +1037,12 @@ describe("PromptsPanel - Version History", () => {
         return Promise.resolve({
           ok: true,
           json: async () => ({ success: true, data: unpublishedPrompt }),
+        });
+      }
+      if (url.includes("/run-evals")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null }),
         });
       }
       return Promise.reject(new Error("Not found"));
