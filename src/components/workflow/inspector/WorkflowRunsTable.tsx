@@ -4,13 +4,7 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ExternalLink, Flag, MoreVertical, Bug, Loader2 } from "lucide-react";
+import { ExternalLink, Flag, Bug, Loader2 } from "lucide-react";
 import { useWorkflowRuns } from "@/hooks/useWorkflowRuns";
 import { FlagRunEvalModal } from "@/components/evals/FlagRunEvalModal";
 import { startDebugRun } from "@/lib/workflow/debugRun";
@@ -101,6 +95,7 @@ export function WorkflowRunsTable({
             tabIndex={onRunSelect ? 0 : undefined}
             onClick={() => onRunSelect?.(run.id)}
             onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return; // ignore events from child elements (e.g. modal inputs)
               if (onRunSelect && (e.key === "Enter" || e.key === " ")) {
                 e.preventDefault();
                 onRunSelect(run.id);
@@ -140,42 +135,60 @@ export function WorkflowRunsTable({
 
             <div
               className={cn(
-                "shrink-0 transition-opacity",
+                "flex shrink-0 items-center gap-0.5 transition-opacity",
                 isSelected ? "opacity-100" : "opacity-0 group-hover/run:opacity-100 focus-within:opacity-100",
               )}
               onClick={(e) => e.stopPropagation()}
             >
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Run actions">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem asChild>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    aria-label="Open in Stak"
+                  >
                     <a
                       href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
                       target="_blank"
                       rel="noreferrer"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Open in Stak
+                      <ExternalLink className="h-4 w-4" />
                     </a>
-                  </DropdownMenuItem>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Open in Stak</TooltipContent>
+              </Tooltip>
 
-                  <DropdownMenuItem
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    aria-label={isFlagged ? "Eval captured" : "Flag for eval"}
+                    disabled={isFlagged}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (!isFlagged) setFlaggingRunId(runIdStr);
                     }}
-                    disabled={isFlagged}
                   >
-                    <Flag className={cn("mr-2 h-4 w-4", isFlagged && "fill-orange-500 text-orange-500")} />
-                    {isFlagged ? "Eval captured" : "Flag for eval"}
-                  </DropdownMenuItem>
+                    <Flag className={cn("h-4 w-4", isFlagged && "fill-orange-500 text-orange-500")} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{isFlagged ? "Eval captured" : "Flag for eval"}</TooltipContent>
+              </Tooltip>
 
-                  <DropdownMenuItem
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    aria-label="Debug run"
+                    disabled={isDebugging}
                     onClick={async (e) => {
                       e.stopPropagation();
                       // Open blank tab synchronously to avoid popup blockers
@@ -191,17 +204,16 @@ export function WorkflowRunsTable({
                         setDebuggingRunId(null);
                       }
                     }}
-                    disabled={isDebugging}
                   >
                     {isDebugging ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Bug className="mr-2 h-4 w-4" />
+                      <Bug className="h-4 w-4" />
                     )}
-                    Debug run
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Debug run</TooltipContent>
+              </Tooltip>
 
               {flaggingRunId === runIdStr && (
                 <FlagRunEvalModal

@@ -64,6 +64,7 @@ function buildWorkflowJson(label: string): string {
       name: "Prompt",
       display_name: "Prompt",
       skill: { type: "human" },
+      url: "https://api.anthropic.com/v1/messages",
       position: { x: 1260, y: ROW_Y },
       attributes: { vars: { prompt: "Confirm the generated feature title before continuing." } },
     },
