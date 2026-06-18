@@ -487,4 +487,87 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(edgeTypes).not.toContain("EVALUATED");
     });
   });
+
+  describe("Body blob persistence", () => {
+    const clientBodyBlob = {
+      prompt_change: null,
+      model: "gpt-4o-mini",
+      response_raw: JSON.stringify({ choices: [{ message: { content: "Hello" }, finish_reason: "stop" }] }),
+      output_text: "Hello",
+      finish_reason: "stop",
+    };
+
+    function setupNodeMocksMinimal() {
+      // EvalSet not found
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+      vi.mocked(nodesService.addNode)
+        .mockResolvedValueOnce({ success: true, ref_id: "evalset-ref" })
+        .mockResolvedValueOnce({ success: true, ref_id: "req-ref" })
+        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref" });
+      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+      // Run node lookup
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+    }
+
+    test("persists client-supplied body blob inside EvalTrigger body JSON (replay field)", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocksMinimal();
+
+      const bodyWithBlob = { ...validBody, body: clientBodyBlob };
+      const request = makeRequest(workspace.slug, "42", bodyWithBlob, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
+      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      expect(triggerCall).toBeDefined();
+
+      const nodeData = triggerCall![1].node_data as Record<string, unknown>;
+      const bodyParsed = JSON.parse(nodeData.body as string);
+      expect(bodyParsed.replay).toEqual(clientBodyBlob);
+    });
+
+    test("replay is null inside body JSON when not supplied by client", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocksMinimal();
+
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
+      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      expect(triggerCall).toBeDefined();
+
+      const nodeData = triggerCall![1].node_data as Record<string, unknown>;
+      const bodyParsed = JSON.parse(nodeData.body as string);
+      expect(bodyParsed.replay).toBeNull();
+    });
+
+    test("prompt_snapshot and output_snapshot stored in body JSON alongside replay blob", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocksMinimal();
+
+      const bodyWithBlob = { ...validBody, body: clientBodyBlob };
+      const request = makeRequest(workspace.slug, "42", bodyWithBlob, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
+      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      const nodeData = triggerCall![1].node_data as Record<string, unknown>;
+      const bodyParsed = JSON.parse(nodeData.body as string);
+
+      expect(bodyParsed.prompt_snapshot).toBe(JSON.stringify(sampleInputs));
+      expect(bodyParsed.output_snapshot).toBe(JSON.stringify(sampleOutputs));
+      expect(bodyParsed.replay).toEqual(clientBodyBlob);
+    });
+  });
 });

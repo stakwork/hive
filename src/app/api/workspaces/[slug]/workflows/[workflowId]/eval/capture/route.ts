@@ -109,13 +109,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const { run_id, step_id, requirement, reason, inputs, outputs } = body as {
+    const { run_id, step_id, requirement, reason, inputs, outputs, body: clientBody } = body as {
       run_id?: string;
       step_id?: string;
       requirement?: string;
       reason?: string;
       inputs?: Record<string, unknown> | null;
       outputs?: unknown;
+      /** Client-supplied replay body snapshot built from already-loaded runTransitions */
+      body?: {
+        prompt_change: string | null;
+        model: string | null;
+        response_raw: string | null;
+        output_text: string | null;
+        finish_reason: string | null;
+      };
     };
 
     if (!requirement?.trim()) {
@@ -188,6 +196,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           output_snapshot: outputSnapshot,
           tool_call_trace: null,
           feedback_note: reason ?? null,
+          replay: clientBody ?? null,
         }),
       },
     });

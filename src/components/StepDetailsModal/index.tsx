@@ -114,8 +114,6 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
 export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions, projectId, slug, workflowId }: StepDetailsModalProps) {
   const [ioData, setIoData] = useState<{ inputs: unknown; outputs: unknown } | null>(null);
   const [isLoadingIO, setIsLoadingIO] = useState(false);
-  // Tracks whether a pointer press originated on the backdrop so a drag/click
-  // that ends on the backdrop but began inside the modal doesn't close it.
   const pressStartedOnBackdrop = useRef(false);
   const [flagOpen, setFlagOpen] = useState(false);
   const [requirement, setRequirement] = useState('');
@@ -127,7 +125,6 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       setIoData(null);
       return;
     }
-    // The IO endpoint is keyed by the step id.
     const stepId = step?.id;
     if (!stepId) {
       setIoData(null);
@@ -153,7 +150,6 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
     };
   }, [isOpen, projectId, step?.id]);
 
-  // Close on Escape
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -163,7 +159,6 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
     return () => window.removeEventListener("keydown", onKey);
   }, [isOpen, onClose]);
 
-  // Reset flag form when modal closes or step changes
   useEffect(() => {
     if (!isOpen) {
       setFlagOpen(false);
@@ -231,7 +226,6 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
   const hasOtherAttributes = Object.keys(otherAttributes).length > 0;
   const hasAnyContent = hasVars || hasOtherAttributes;
 
-  // "Flag for eval" is shown only when a run is active, workspace is known, and the step is an LLM/Request step
   const showFlagForEval =
     !!slug &&
     !!workflowId &&
