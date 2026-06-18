@@ -128,7 +128,29 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
   };
 
   const handleNewConversation = () => {
-    useCanvasChatStore.getState().clearActiveConversation();
+    // Start a fresh conversation in its own slot instead of wiping the
+    // active one in place — an in-flight stream on the previous chat
+    // keeps writing to its own slot and can't bleed into this new chat.
+    const store = useCanvasChatStore.getState();
+    const activeId = store.activeConversationId;
+    const context = activeId
+      ? store.conversations[activeId]?.context
+      : undefined;
+    store.startConversation(
+      context ?? {
+        orgId: "",
+        githubLogin,
+        workspaceSlug: null,
+        workspaceSlugs: [],
+        currentCanvasRef: "",
+        currentCanvasBreadcrumb: "",
+        selectedNodeId: null,
+        selectedNodeIds: [],
+      },
+      [],
+      undefined,
+      0,
+    );
     setOpen(false);
   };
 
