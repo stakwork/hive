@@ -59,6 +59,8 @@ import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import useCanvasClipboard from "./useCanvasClipboard";
 import { useSession } from "next-auth/react";
 import { useCanvasCollaboration } from "@/hooks/useCanvasCollaboration";
+import { toast } from "sonner";
+import { computeNodeFocusZoom } from "@/lib/canvas/nodeZoom";
 
 /**
  * Live-id detection mirrors `src/lib/canvas/scope.ts`'s `isLiveId`.
@@ -439,6 +441,10 @@ export function OrgCanvasBackground({
     // null/non-null distinction as the "have we captured yet" signal.
     pendingDeepLinkRef.current = searchParams.get("canvas") ?? "";
   }
+  const pendingNodeDeepLinkRef = useRef<string | null>(null);
+  if (pendingNodeDeepLinkRef.current === null && !initialNavAppliedRef.current) {
+    pendingNodeDeepLinkRef.current = searchParams.get("node") ?? "";
+  }
   const [deepLinkInFlight, setDeepLinkInFlight] = useState<boolean>(
     () => (searchParams.get("canvas") ?? "") !== "",
   );
@@ -742,6 +748,27 @@ export function OrgCanvasBackground({
     };
   }, [githubLogin, currentRef]);
 
+  // Scrolls to and zooms into a specific node by ID. Used for `?node=`
+  // deep-link resolution. Silently swallows rejection (stale link —
+  // node no longer exists on the current canvas).
+  const scrollToNode = useCallback(
+    (nodeId: string) => {
+      if (!nodeId || !canvasHandleRef.current) return;
+      const canvasData = currentRef
+        ? subCanvasesRef.current[currentRef]
+        : root;
+      const node = canvasData?.nodes?.find((n) => n.id === nodeId);
+      const containerW = canvasContainerRef.current?.clientWidth ?? 0;
+      const targetZoom = computeNodeFocusZoom(node?.width ?? 260, containerW);
+      void canvasHandleRef.current
+        .zoomIntoNode(nodeId, { targetZoom, durationMs: 600 })
+        .catch(() => {
+          // stale link — node no longer exists; already on right canvas, silent no-op
+        });
+    },
+    [currentRef, root],
+  );
+
   // Initial drill-in from `?canvas=<ref>`. Runs once after the root
   // canvas has loaded — `zoomIntoNode` requires the projected node
   // (e.g. `initiative:<id>`) to actually exist on the rendered canvas.
@@ -759,6 +786,9 @@ export function OrgCanvasBackground({
       // spinner gate (which only fires for true deep links anyway).
       initialNavAppliedRef.current = true;
       setDeepLinkInFlight(false);
+      if (pendingNodeDeepLinkRef.current) {
+        scrollToNode(pendingNodeDeepLinkRef.current);
+      }
       return;
     }
     // Today the projector emits a node whose `id` matches the ref it
@@ -786,6 +816,11 @@ export function OrgCanvasBackground({
     // the user is already looking at the right canvas.
     void handle
       .zoomIntoNode(targetRef, { durationMs: 0 })
+      .then(() => {
+        if (pendingNodeDeepLinkRef.current) {
+          scrollToNode(pendingNodeDeepLinkRef.current);
+        }
+      })
       .catch((err) => {
         console.error(
           "[OrgCanvasBackground] zoomIntoNode failed for URL ref",
@@ -800,7 +835,7 @@ export function OrgCanvasBackground({
     // we only want this to fire once on initial mount. Subsequent
     // navigation flows write to the URL, not the other way around.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [root]);
+  }, [root, scrollToNode]);
 
   // (No runtime-reactive `?canvas=` follower. We previously had one
   // here so the AttentionList card could push `?canvas=&select=` onto
@@ -3009,6 +3044,12 @@ export function OrgCanvasBackground({
               node.id.startsWith("ws:") || node.id.startsWith("initiative:"),
           },
         },
+        // Copy Link — available on every node
+        {
+          id: "copy-link",
+          label: "Copy Link",
+          match: { when: () => true },
+        },
         // Delete — all nodes; live nodes are hidden, authored are removed
         {
           id: "delete",
@@ -3018,6 +3059,20 @@ export function OrgCanvasBackground({
         },
       ],
       onSelect: (itemId, node, ctx) => {
+        if (itemId === "copy-link") {
+          const url = new URL(window.location.href);
+          const canvasRef = ctx.canvasRef ?? "";
+          if (canvasRef) {
+            url.searchParams.set("canvas", canvasRef);
+          } else {
+            url.searchParams.delete("canvas");
+          }
+          url.searchParams.set("node", node.id);
+          void navigator.clipboard.writeText(url.toString()).then(() => {
+            toast.success("Link copied to clipboard!");
+          });
+          return;
+        }
         if (itemId === "delete") {
           handleNodeDelete(node.id, ctx.canvasRef ?? undefined);
           return;
