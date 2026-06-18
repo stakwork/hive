@@ -116,6 +116,14 @@ const MOCK_STEPS = [
   },
 ];
 
+const MOCK_IO_INPUTS = {
+  model: "gpt-4o-mini",
+  messages: [{ role: "user", content: "Generate a title" }],
+};
+const MOCK_IO_OUTPUTS = {
+  choices: [{ message: { content: "A great title" }, finish_reason: "stop" }],
+};
+
 function defaultProps(overrides: Partial<React.ComponentProps<typeof FlagRunEvalModal>> = {}) {
   return {
     open: true,
@@ -126,6 +134,23 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof FlagRunEval
     onCaptured: vi.fn(),
     ...overrides,
   };
+}
+
+/** Returns a mock fetch that resolves steps, then IO, then optionally capture. */
+function mockStepsAndIO(opts: { captureMock?: Response } = {}) {
+  const fetchMock = vi.mocked(fetch);
+  fetchMock
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { steps: MOCK_STEPS } }),
+    } as Response)
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { inputs: MOCK_IO_INPUTS, outputs: MOCK_IO_OUTPUTS } }),
+    } as Response);
+  if (opts.captureMock) {
+    fetchMock.mockResolvedValueOnce(opts.captureMock);
+  }
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -214,11 +239,44 @@ describe("FlagRunEvalModal", () => {
     expect(nextBtn).not.toBeDisabled();
   });
 
-  it("clicking Next advances to step 2 without an IO fetch", async () => {
+  it("clicking Next shows spinner during IO fetch and then advances to step 2", async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ data: { steps: MOCK_STEPS } }),
     } as Response);
+
+    // IO fetch that we can control
+    let resolveIO!: (v: Response) => void;
+    const ioPromise = new Promise<Response>((res) => { resolveIO = res; });
+    vi.mocked(fetch).mockReturnValueOnce(ioPromise);
+
+    render(<FlagRunEvalModal {...defaultProps()} />);
+
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+
+    const nextBtn = screen.getByRole("button", { name: /next/i });
+    fireEvent.click(nextBtn);
+
+    // While IO is pending, Next button should be disabled with spinner
+    await waitFor(() => {
+      expect(nextBtn).toBeDisabled();
+    });
+    const content = screen.getByTestId("dialog-content");
+    expect(content.innerHTML).toContain("animate-spin");
+
+    // Resolve the IO fetch
+    resolveIO({
+      ok: true,
+      json: async () => ({ data: { inputs: MOCK_IO_INPUTS, outputs: MOCK_IO_OUTPUTS } }),
+    } as Response);
+
+    // Should advance to step 2
+    await waitFor(() => expect(screen.getByTestId("capture-eval-form")).toBeInTheDocument());
+  });
+
+  it("fetches IO via /api/projects/${runId}/steps/${stepId}/io when clicking Next", async () => {
+    mockStepsAndIO();
 
     render(<FlagRunEvalModal {...defaultProps()} />);
 
@@ -228,18 +286,15 @@ describe("FlagRunEvalModal", () => {
 
     await waitFor(() => expect(screen.getByTestId("capture-eval-form")).toBeInTheDocument());
 
-    // No /steps/.../io call should have been made
     const ioCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
       String(url).includes("/io")
     );
-    expect(ioCalls.length).toBe(0);
+    expect(ioCalls.length).toBe(1);
+    expect(String(ioCalls[0][0])).toBe("/api/projects/1001/steps/llm_generate_title/io");
   });
 
   it("advances to step 2 showing CaptureEvalForm (no TagInput, no check type)", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { steps: MOCK_STEPS } }),
-    } as Response);
+    mockStepsAndIO();
 
     render(<FlagRunEvalModal {...defaultProps()} />);
 
@@ -256,10 +311,7 @@ describe("FlagRunEvalModal", () => {
   });
 
   it("Confirm button is disabled when requirement field is empty", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { steps: MOCK_STEPS } }),
-    } as Response);
+    mockStepsAndIO();
 
     render(<FlagRunEvalModal {...defaultProps()} />);
 
@@ -273,19 +325,16 @@ describe("FlagRunEvalModal", () => {
     expect(confirmBtn).toBeDisabled();
   });
 
-  it("POSTs inputs/outputs in the capture body", async () => {
+  it("POSTs fetched inputs/outputs (not inline-constructed) in the capture body", async () => {
     const onCaptured = vi.fn();
     const onOpenChange = vi.fn();
 
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({
+    mockStepsAndIO({
+      captureMock: {
         ok: true,
         json: async () => ({ success: true, data: {} }),
-      } as Response);
+      } as Response,
+    });
 
     render(<FlagRunEvalModal {...defaultProps({ onCaptured, onOpenChange })} />);
 
@@ -311,31 +360,63 @@ describe("FlagRunEvalModal", () => {
     expect(body.run_id).toBe("1001");
     expect(body.step_id).toBe("llm_generate_title");
     expect(body.requirement).toBe("Never return empty");
-    expect(body.inputs).toEqual({ model: MOCK_STEPS[0].model, messages: MOCK_STEPS[0].messages });
-    expect(body.outputs).toEqual({
-      response_raw: MOCK_STEPS[0].body.response_raw,
-      output_text: MOCK_STEPS[0].body.output_text,
-      finish_reason: MOCK_STEPS[0].body.finish_reason,
-    });
-    // No legacy fields
+
+    // Inputs/outputs must come from the IO fetch response, not from step fields
+    expect(body.inputs).toEqual(MOCK_IO_INPUTS);
+    expect(body.outputs).toEqual(MOCK_IO_OUTPUTS);
+
+    // Must NOT contain inline-constructed fields
+    expect(body.inputs?.messages).not.toEqual(MOCK_STEPS[0].messages);  // different shape from IO
     expect(body.check).toBeUndefined();
     expect(body.desirable_cases).toBeUndefined();
     expect(body.undesirable_cases).toBeUndefined();
   });
 
-  it("calls onCaptured and closes on successful POST", async () => {
+  it("proceeds with null IO when IO fetch fails, still submits", async () => {
     const onCaptured = vi.fn();
-    const onOpenChange = vi.fn();
 
     vi.mocked(fetch)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { steps: MOCK_STEPS } }),
       } as Response)
+      .mockRejectedValueOnce(new Error("network error")) // IO fetch fails
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ success: true, data: {} }),
       } as Response);
+
+    render(<FlagRunEvalModal {...defaultProps({ onCaptured })} />);
+
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Some requirement");
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(onCaptured).toHaveBeenCalledOnce());
+
+    const captureCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).includes("/eval/capture")
+    );
+    const body = JSON.parse((captureCalls[0][1] as RequestInit).body as string);
+    expect(body.inputs).toBeNull();
+    expect(body.outputs).toBeNull();
+  });
+
+  it("calls onCaptured and closes on successful POST", async () => {
+    const onCaptured = vi.fn();
+    const onOpenChange = vi.fn();
+
+    mockStepsAndIO({
+      captureMock: {
+        ok: true,
+        json: async () => ({ success: true, data: {} }),
+      } as Response,
+    });
 
     render(<FlagRunEvalModal {...defaultProps({ onCaptured, onOpenChange })} />);
 
@@ -357,12 +438,9 @@ describe("FlagRunEvalModal", () => {
     const { toast } = await import("sonner");
     const onCaptured = vi.fn();
 
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({ ok: false } as Response);
+    mockStepsAndIO({
+      captureMock: { ok: false } as Response,
+    });
 
     render(<FlagRunEvalModal {...defaultProps({ onCaptured })} />);
 
