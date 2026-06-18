@@ -42,6 +42,7 @@ import { tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
+import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
 import {
   messagesFromSteps,
@@ -157,62 +158,6 @@ export function countTrailingPlannerAsks(
     }
   }
   return count;
-}
-
-/**
- * Server-side mirror of `toModelMessages` from `canvasChatStore.ts`.
- * Converts the stored canvas transcript into AI-SDK `ModelMessage[]`
- * the same way the user-driven `/api/ask/quick` path does, so the
- * agent sees an identical context. Planner-source rows round-trip as
- * plain assistant messages (the agent needs to read them); the
- * `source` marker is irrelevant to the model.
- */
-function toModelMessages(messages: StoredMessage[]): ModelMessage[] {
-  return messages
-    .filter((m) => (m.content?.trim() || m.toolCalls) && m.role)
-    .flatMap((m): ModelMessage[] => {
-      if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-        const out: ModelMessage[] = [];
-        out.push({
-          role: "assistant",
-          content: m.toolCalls.map((tc) => ({
-            type: "tool-call" as const,
-            toolCallId: tc.id,
-            toolName: tc.toolName,
-            input: tc.input || {},
-          })),
-        });
-        const toolResults = m.toolCalls.filter(
-          (tc) => tc.output !== undefined || tc.errorText !== undefined,
-        );
-        if (toolResults.length > 0) {
-          out.push({
-            role: "tool",
-            content: toolResults.map((tc) => {
-              let wrappedOutput = tc.output;
-              if (
-                tc.output &&
-                typeof tc.output === "object" &&
-                !("type" in tc.output)
-              ) {
-                wrappedOutput = { type: "json", value: tc.output };
-              }
-              return {
-                type: "tool-result" as const,
-                toolCallId: tc.id,
-                toolName: tc.toolName,
-                output: wrappedOutput as never,
-              };
-            }),
-          } as ModelMessage);
-        }
-        if (m.content) {
-          out.push({ role: "assistant", content: m.content });
-        }
-        return out;
-      }
-      return [{ role: m.role, content: m.content }];
-    });
 }
 
 /** Tool names stripped from the persisted transcript (control signals). */
