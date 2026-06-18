@@ -157,12 +157,14 @@ function makeFetch({
   evalSetsResponse = MOCK_EVAL_SETS_RESPONSE,
   ioInputs = MOCK_IO_INPUTS,
   ioOutputs = MOCK_IO_OUTPUTS,
+  ioPromptResolutions = undefined,
 }: {
   steps?: typeof MOCK_STEPS;
   captureOk?: boolean;
   evalSetsResponse?: object;
   ioInputs?: unknown;
   ioOutputs?: unknown;
+  ioPromptResolutions?: Record<string, { prompt_id: number; prompt_version_id: number; resolution: Record<string, unknown> }> | undefined;
 } = {}) {
   return vi.fn().mockImplementation((url: string) => {
     const u = String(url);
@@ -172,7 +174,13 @@ function makeFetch({
     if (u.includes("/steps/") && u.includes("/io")) {
       return Promise.resolve({
         ok: true,
-        json: async () => ({ data: { inputs: ioInputs, outputs: ioOutputs } }),
+        json: async () => ({
+          data: {
+            inputs: ioInputs,
+            outputs: ioOutputs,
+            ...(ioPromptResolutions !== undefined ? { prompt_resolutions: ioPromptResolutions } : {}),
+          },
+        }),
       } as Response);
     }
     if (u.endsWith("/evals")) {
@@ -397,6 +405,77 @@ describe("FlagRunEvalModal", () => {
     expect(body.check).toBeUndefined();
     expect(body.desirable_cases).toBeUndefined();
     expect(body.undesirable_cases).toBeUndefined();
+  });
+
+  it("includes mapped prompts in capture body when IO has prompt_resolutions", async () => {
+    const onCaptured = vi.fn();
+
+    vi.stubGlobal(
+      "fetch",
+      makeFetch({
+        ioPromptResolutions: {
+          CUSTOM_ENTITY_EXTRACTION_PROMPT: {
+            prompt_id: 1552,
+            prompt_version_id: 789,
+            resolution: { entity_type: "org" },
+          },
+        },
+      }),
+    );
+
+    render(<FlagRunEvalModal {...defaultProps({ onCaptured })} />);
+
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Never return empty");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled()
+    );
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(onCaptured).toHaveBeenCalledOnce());
+
+    const captureCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).includes("/eval/capture")
+    );
+    const body = JSON.parse((captureCalls[0][1] as RequestInit).body as string);
+    // mapped: name + ids only, no resolution values
+    expect(body.prompts).toEqual([
+      { name: "CUSTOM_ENTITY_EXTRACTION_PROMPT", prompt_id: 1552, prompt_version_id: 789 },
+    ]);
+  });
+
+  it("omits prompts from capture body when IO has no prompt_resolutions", async () => {
+    const onCaptured = vi.fn();
+
+    // Default makeFetch has no ioPromptResolutions (undefined → absent from data)
+    vi.stubGlobal("fetch", makeFetch());
+
+    render(<FlagRunEvalModal {...defaultProps({ onCaptured })} />);
+
+    await waitFor(() => screen.getByText("Generate Title"));
+    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Never return empty");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled()
+    );
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => expect(onCaptured).toHaveBeenCalledOnce());
+
+    const captureCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).includes("/eval/capture")
+    );
+    const body = JSON.parse((captureCalls[0][1] as RequestInit).body as string);
+    expect(body.prompts).toBeUndefined();
   });
 
   it("proceeds with null IO when IO fetch fails, still submits", async () => {

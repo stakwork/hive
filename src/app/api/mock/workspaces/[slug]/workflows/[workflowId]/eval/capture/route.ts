@@ -12,10 +12,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   void workflowId;
 
   const body = await request.json().catch(() => ({}));
-  const { inputs, outputs, evalSetId } = body as {
+  const { inputs, outputs, evalSetId, prompts } = body as {
     inputs?: unknown;
     outputs?: unknown;
     evalSetId?: string;
+    prompts?: unknown;
   };
 
   return NextResponse.json({
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       triggerRef: "mock-trigger-ref",
       prompt_snapshot: JSON.stringify(inputs ?? null),
       output_snapshot: JSON.stringify(outputs ?? null),
+      prompts: prompts ?? [],
     },
   });
 }
