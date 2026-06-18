@@ -135,7 +135,10 @@ export function WorkflowRunsTable({
 
             <div
               className={cn(
-                "flex shrink-0 items-center gap-0.5 transition-opacity",
+                // Float as a solid chip pinned to the right so the icons sit
+                // above the row text instead of colliding with it when the
+                // panel is narrow.
+                "absolute right-1.5 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-lg border bg-popover px-0.5 py-0.5 shadow-sm transition-opacity",
                 isSelected ? "opacity-100" : "opacity-0 group-hover/run:opacity-100 focus-within:opacity-100",
               )}
               onClick={(e) => e.stopPropagation()}
