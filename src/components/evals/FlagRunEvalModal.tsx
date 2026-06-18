@@ -22,6 +22,15 @@ interface RequestStep {
   provider: string | null;
   endpoint_url: string | null;
   preview: string | null;
+  method: string | null;
+  messages: unknown[];
+  body: {
+    response_raw: string | null;
+    output_text: string | null;
+    finish_reason: string | null;
+    prompt_change: string | null;
+    model: string | null;
+  };
 }
 
 interface FlagRunEvalModalProps {
@@ -52,10 +61,7 @@ export function FlagRunEvalModal({
   // Step 2 state
   const [requirement, setRequirement] = useState("");
   const [reason, setReason] = useState("");
-  const [inputs, setInputs] = useState<Record<string, unknown> | null>(null);
-  const [outputs, setOutputs] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [fetchingIO, setFetchingIO] = useState(false);
 
   // Fetch request steps when modal opens
   useEffect(() => {
@@ -85,28 +91,12 @@ export function FlagRunEvalModal({
       setSelectedStep(null);
       setRequirement("");
       setReason("");
-      setInputs(null);
-      setOutputs(null);
       setSubmitting(false);
-      setFetchingIO(false);
     }
   }, [open]);
 
-  async function handleNext() {
+  function handleNext() {
     if (!selectedStep) return;
-    setFetchingIO(true);
-    try {
-      const ioRes = await fetch(`/api/projects/${runId}/steps/${selectedStep.name}/io`);
-      const ioJson = await ioRes.json();
-      setInputs(ioJson?.data?.inputs ?? null);
-      setOutputs(ioJson?.data?.outputs ?? null);
-    } catch {
-      toast.info("Step IO not available — proceeding without input snapshot");
-      setInputs(null);
-      setOutputs(null);
-    } finally {
-      setFetchingIO(false);
-    }
     setStep(2);
   }
 
@@ -114,6 +104,12 @@ export function FlagRunEvalModal({
     if (!selectedStep || !requirement.trim()) return;
     setSubmitting(true);
     try {
+      const inputs = { model: selectedStep.model, messages: selectedStep.messages };
+      const outputs = {
+        response_raw: selectedStep.body.response_raw,
+        output_text: selectedStep.body.output_text,
+        finish_reason: selectedStep.body.finish_reason,
+      };
       const res = await fetch(
         `/api/workspaces/${slug}/workflows/${workflowId}/eval/capture`,
         {
@@ -121,7 +117,7 @@ export function FlagRunEvalModal({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             run_id: runId,
-            step_id: selectedStep.name,
+            step_id: selectedStep.stepId,
             requirement: requirement.trim(),
             reason: reason.trim() || undefined,
             inputs,
@@ -233,8 +229,7 @@ export function FlagRunEvalModal({
                 Close
               </Button>
               {steps.length > 0 && (
-                <Button onClick={handleNext} disabled={!selectedStep || fetchingIO}>
-                  {fetchingIO && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                <Button onClick={handleNext} disabled={!selectedStep}>
                   Next
                 </Button>
               )}
