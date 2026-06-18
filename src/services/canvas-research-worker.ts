@@ -21,10 +21,85 @@
  * one call per `dispatch_research` tool invocation in the stream.
  */
 
+import {
+  hasToolCall,
+  type ModelMessage,
+  type PrepareStepFunction,
+  type ToolSet,
+} from "ai";
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
 import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
 import { getCurrentDateSnippet } from "@/lib/constants/prompt";
+
+/**
+ * Time budget for a research sub-agent run. The worker executes inside
+ * the dispatching request's Vercel `after()` block, so the whole run
+ * shares that function's `maxDuration` (800s). We carve that into:
+ *
+ *   - SOFT_BUDGET_MS — what the agent is *told* it has. An elapsed-time
+ *     note is injected before every step so it paces itself and avoids
+ *     over-gathering (e.g. fanning the slow `repo_agent` across repos).
+ *   - HARD_BUDGET_MS — the enforced cutover. Once elapsed, `prepareStep`
+ *     restricts `activeTools` to `update_research` and forces the model
+ *     to call it, so a timely (possibly partial) writeup always lands
+ *     instead of the run dying empty at the 800s wall. Set below the
+ *     soft budget AND well under 800s to leave headroom for one
+ *     in-flight tool call (a `repo_agent` call can run minutes and
+ *     cannot be interrupted mid-flight) plus the finalize step.
+ */
+const SOFT_BUDGET_MS = 600_000; // 10 min — communicated to the agent
+const HARD_BUDGET_MS = 480_000; // 8 min — forced finalize cutover
+
+const FINALIZE_TOOL = "update_research";
+
+/**
+ * Build the per-step budget hook for a single run. Closes over the run's
+ * start time. Before every step it strips any stale budget note, appends
+ * a fresh elapsed-time note, and — once past the hard budget — narrows
+ * the toolset to `update_research` and forces the call.
+ */
+function buildBudgetPrepareStep(
+  startMs: number,
+): PrepareStepFunction<ToolSet> {
+  return ({ messages }) => {
+    const elapsedMs = Date.now() - startMs;
+    const elapsedS = Math.round(elapsedMs / 1000);
+    const overHard = elapsedMs >= HARD_BUDGET_MS;
+
+    // Drop any prior injected note so they don't accumulate across steps.
+    const base = (messages as ModelMessage[]).filter(
+      (m) =>
+        !(
+          m.role === "user" &&
+          typeof m.content === "string" &&
+          m.content.startsWith("[TIME BUDGET]")
+        ),
+    );
+
+    const note = overHard
+      ? `[TIME BUDGET] ${elapsedS}s elapsed — your hard deadline has passed. Stop all searching. Call ${FINALIZE_TOOL} NOW with the complete markdown writeup using whatever you have gathered so far.`
+      : `[TIME BUDGET] ${elapsedS}s elapsed of a ~${Math.round(
+          SOFT_BUDGET_MS / 1000,
+        )}s budget. Finish all gathering (web_search / repo_agent) before ${Math.round(
+          HARD_BUDGET_MS / 1000,
+        )}s, then call ${FINALIZE_TOOL} once. Be efficient — avoid redundant or overly deep tool calls.`;
+
+    const withNote: ModelMessage[] = [
+      ...base,
+      { role: "user", content: note },
+    ];
+
+    if (overHard) {
+      return {
+        messages: withNote,
+        activeTools: [FINALIZE_TOOL],
+        toolChoice: { type: "tool", toolName: FINALIZE_TOOL },
+      };
+    }
+    return { messages: withNote };
+  };
+}
 
 export interface ResearchSubAgentArgs {
   researchId: string;
@@ -142,23 +217,35 @@ export async function runResearchSubAgent(
     });
 
     // Run the research sub-agent with readonly: true but keep update_research.
+    // The budget hook + stop condition keep it from running past the
+    // dispatching function's wall: it paces against a soft budget, is
+    // forced to finalize once past the hard budget, and the loop ends the
+    // instant the doc is written (see buildBudgetPrepareStep).
     const { result } = await runCanvasAgent({
       userId,
       orgId,
       workspaceSlugs,
       readonly: true,
-      keepWriteToolNames: ["update_research"],
+      keepWriteToolNames: [FINALIZE_TOOL],
       silentPusher: true,
       currentCanvasConversationId: conversationId,
+      prepareStep: buildBudgetPrepareStep(Date.now()),
+      // End the loop as soon as the doc is written — the worker's sole
+      // job is one `update_research` call. Fires only AFTER the write, so
+      // it never truncates gathering or yields an empty result.
+      extraStopConditions: [hasToolCall(FINALIZE_TOOL)],
       messages: [
         {
           role: "user",
           content:
             `${getCurrentDateSnippet()}\n\n` +
-            `You are a research sub-agent. Your only job is to research the following topic and call update_research once with the full markdown writeup.\n\n` +
+            `You are a research sub-agent. Your only job is to research the following topic and call ${FINALIZE_TOOL} once with the full markdown writeup.\n\n` +
             `Research slug: ${slug}\nTopic: ${topic}\nTitle: ${title}\nSummary: ${summary}\n\n` +
             `Instructions: ${prompt}\n\n` +
-            `Call web_search as many times as needed, then call update_research ONCE with the complete markdown. Do not write chat messages. Do not call any other write tools.`,
+            `Gather efficiently, then call ${FINALIZE_TOOL} ONCE with the complete markdown. Keep the writeup focused and well-structured — cover the requested sections without padding. ` +
+            `Prefer broad, high-signal queries over many narrow sequential ones; a handful of strong sources beats exhaustive coverage. ` +
+            `Use web_search for anything external/third-party. repo_agent is for the user's OWN codebases ONLY and is SLOW (each call takes minutes) — use it sparingly, if at all. ` +
+            `You are on a strict time budget (see the [TIME BUDGET] notes); do not over-gather. Do not write chat messages. Do not call any other write tools.`,
         },
       ],
     });
