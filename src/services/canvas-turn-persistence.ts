@@ -221,6 +221,29 @@ function extractDeferredCheckFromStep(
 }
 
 /**
+ * Fetch stored messages from a SharedConversation row owned by the given user.
+ * Implements IDOR guard: the userId predicate ensures callers can only read
+ * their own conversation. Returns null when not found or access denied.
+ */
+export async function fetchStoredConversationMessages(args: {
+  conversationId: string;
+  userId: string;
+  workspaceSlug: string;
+}): Promise<StoredMessage[] | null> {
+  const { conversationId, userId, workspaceSlug } = args;
+  const row = await db.sharedConversation.findFirst({
+    where: {
+      id: conversationId,
+      userId,
+      workspace: { slug: workspaceSlug, deleted: false },
+    },
+    select: { messages: true },
+  });
+  if (!row) return null;
+  return Array.isArray(row.messages) ? (row.messages as unknown as StoredMessage[]) : [];
+}
+
+/**
  * Append rows into a canvas conversation under the same row-level lock
  * the fan-out worker and the autosave PUT use, so all writers serialize
  * on the conversation row. Idempotent on the `idPrefix`: if any existing
