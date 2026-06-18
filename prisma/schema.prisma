@@ -961,11 +961,13 @@ model StakworkRun {
   decision    StakworkRunDecision?
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
-  autoAccept  Boolean              @default(false) @map("auto_accept")
-  agentLogs   AgentLog[]
-  feature     Feature?             @relation(fields: [featureId], references: [id])
-  task        Task?                @relation(fields: [taskId], references: [id])
-  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  autoAccept      Boolean              @default(false) @map("auto_accept")
+  promptVersionId Int?                 @map("prompt_version_id")
+  evalSetId       String?              @map("eval_set_id")
+  agentLogs       AgentLog[]
+  feature         Feature?             @relation(fields: [featureId], references: [id])
+  task            Task?                @relation(fields: [taskId], references: [id])
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([featureId])
@@ -974,6 +976,8 @@ model StakworkRun {
   @@index([status])
   @@index([projectId])
   @@index([createdAt])
+  @@index([promptVersionId])
+  @@index([evalSetId])
   @@map("stakwork_runs")
 }
 
@@ -1444,6 +1448,7 @@ enum StakworkRunType {
   REPO_AGENT
   PLAN_CHAT
   WORKFLOW_EDITOR
+  PROMPT_EVAL
 }
 
 enum StakworkRunDecision {
