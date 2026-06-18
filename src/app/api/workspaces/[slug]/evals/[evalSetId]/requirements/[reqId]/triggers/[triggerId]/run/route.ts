@@ -68,6 +68,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const baseUrl = getBaseUrl();
     const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?trigger_id=${triggerId}`;
 
+    const { swarmUrl, swarmSecretAlias } = swarmAccessResult.data;
+    console.log(`[Evals Trigger Run POST] swarmUrl set=${!!swarmUrl}, swarmSecretAlias set=${!!swarmSecretAlias}`);
+
     const vars = {
       triggerId,
       reqId,
@@ -75,6 +78,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       slug,
       tokenReference: getStakworkTokenReference(),
       sourceHiveUrl: baseUrl,
+      swarmUrl: swarmUrl ?? "",
+      swarmSecretAlias: swarmSecretAlias ?? "",
     };
 
     const stakworkPayload = {
