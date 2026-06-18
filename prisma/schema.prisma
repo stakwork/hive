@@ -591,6 +591,13 @@ model SharedConversation {
   updatedAt          DateTime          @updatedAt @map("updated_at")
   isShared           Boolean           @default(false) @map("is_shared")
   lastMessageAt      DateTime?         @map("last_message_at")
+  // When the owner last viewed this conversation. The history list marks a
+  // chat "unread" (amber dot) when `lastMessageAt > ownerSeenAt` — i.e. a
+  // backgrounded chat the agent advanced (planner / sub-agent / auto-turn /
+  // deferred-check) since the owner last opened it. Set on open and on each
+  // live-sync of the active chat. Org-canvas chats are single-owner, so a
+  // per-row timestamp is sufficient (no per-viewer read table needed).
+  ownerSeenAt        DateTime?         @map("owner_seen_at")
   source             String?
   settings           Json?             @default("{}")
   user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)

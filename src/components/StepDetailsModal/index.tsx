@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2, Flag, Loader2 } from "lucide-react";
+import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2, Loader2, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toast } from "sonner";
 import { WorkflowTransition, StepType, getStepType } from "@/types/stakwork/workflow";
-import { isLlmStep, type TransitionStep } from "@/lib/stakwork/transitions";
-import { FlagEvalStepModal } from "@/components/evals/FlagEvalStepModal";
+import { isLlmStep } from "@/lib/stakwork/transitions";
+import { CaptureEvalForm } from "@/components/evals/CaptureEvalForm";
 
 interface StepDetailsModalProps {
   step: WorkflowTransition | null;
@@ -14,13 +15,9 @@ interface StepDetailsModalProps {
   onClose: () => void;
   onSelect?: () => void;
   runTransitions?: Record<string, WorkflowTransition>;
-  /** Context needed to submit flag-for-eval from this modal */
-  evalContext?: {
-    slug: string;
-    workflowId: string;
-    runId: string;
-  };
   projectId?: string;
+  slug?: string;
+  workflowId?: string | number;
 }
 
 const STEP_TYPE_ICONS: Record<StepType, React.ReactNode> = {
@@ -113,11 +110,14 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions, evalContext, projectId }: StepDetailsModalProps) {
-  const [isFlagModalOpen, setIsFlagModalOpen] = useState(false);
+export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions, projectId, slug, workflowId }: StepDetailsModalProps) {
   const [ioData, setIoData] = useState<{ inputs: unknown; outputs: unknown } | null>(null);
   const [isLoadingIO, setIsLoadingIO] = useState(false);
   const pressStartedOnBackdrop = useRef(false);
+  const [flagOpen, setFlagOpen] = useState(false);
+  const [requirement, setRequirement] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !projectId) {
@@ -158,6 +158,51 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
     return () => window.removeEventListener("keydown", onKey);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setFlagOpen(false);
+      setRequirement('');
+      setReason('');
+      setSubmitting(false);
+    }
+  }, [isOpen]);
+
+  async function handleFlagSubmit() {
+    if (!ioData) {
+      toast.error('Step input data not available');
+      return;
+    }
+    if (!requirement.trim()) return;
+    setSubmitting(true);
+    try {
+      const stepId = step?.project_step_id ?? step?.name;
+      const res = await fetch(
+        `/api/workspaces/${slug}/workflows/${workflowId}/eval/capture`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            run_id: projectId,
+            step_id: stepId,
+            requirement: requirement.trim(),
+            reason: reason.trim() || undefined,
+            inputs: ioData.inputs,
+            outputs: ioData.outputs,
+          }),
+        }
+      );
+      if (!res.ok) throw new Error('Request failed');
+      toast.success('Eval captured');
+      setFlagOpen(false);
+      setRequirement('');
+      setReason('');
+    } catch {
+      toast.error('Failed to capture eval');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (!step || !isOpen) return null;
 
   const stepType = getStepType(step);
@@ -176,15 +221,15 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
     : undefined;
   const runState = runStep?.status?.step_state;
 
-  // Show flag button only for LLM steps when a run is active and evalContext is provided
-  const isLlm = runStep
-    ? isLlmStep(runStep as unknown as TransitionStep)
-    : isLlmStep(step as unknown as TransitionStep);
-  const showFlagButton = isLlm && !!evalContext && !!runStep;
-
   const hasVars = Object.keys(stepVars).length > 0;
   const hasOtherAttributes = Object.keys(otherAttributes).length > 0;
   const hasAnyContent = hasVars || hasOtherAttributes;
+
+  const showFlagForEval =
+    !!slug &&
+    !!workflowId &&
+    !!projectId &&
+    isLlmStep(step as unknown as Record<string, unknown>);
 
   return (
     <div
@@ -334,42 +379,64 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
           </TabsContent>
         </Tabs>
 
+        {/* Flag for eval inline form */}
+        {flagOpen && (
+          <div className="px-4 pb-2 pt-3 border-t space-y-3">
+            <p className="text-sm font-medium">Flag for Eval</p>
+            <CaptureEvalForm
+              requirement={requirement}
+              reason={reason}
+              onRequirementChange={setRequirement}
+              onReasonChange={setReason}
+              submitting={submitting}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setFlagOpen(false); setRequirement(''); setReason(''); }}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleFlagSubmit}
+                disabled={submitting || !requirement.trim()}
+              >
+                {submitting && <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
+                Capture
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
-        <div className="flex items-center justify-between gap-2 border-t px-5 py-3">
-          <div>
-            {showFlagButton && (
-              <Button variant="outline" size="sm" onClick={() => setIsFlagModalOpen(true)}>
+        {(showFlagForEval || onSelect) && (
+          <div className="flex justify-end gap-2 border-t px-5 py-3">
+            {showFlagForEval && !flagOpen && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFlagOpen(true)}
+                className="mr-auto"
+              >
                 <Flag className="mr-2 h-4 w-4" />
                 Flag for eval
               </Button>
             )}
-          </div>
-          {onSelect && (
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={onClose}>
-                Cancel
-              </Button>
+            <Button variant="outline" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            {onSelect && (
               <Button size="sm" onClick={onSelect}>
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 Select Step
               </Button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
-
-      {showFlagButton && evalContext && (
-        <FlagEvalStepModal
-          open={isFlagModalOpen}
-          onOpenChange={setIsFlagModalOpen}
-          slug={evalContext.slug}
-          workflowId={evalContext.workflowId}
-          runId={evalContext.runId}
-          stepId={step.id || step.name}
-          runTransition={runStep as unknown as TransitionStep}
-          onCaptured={() => setIsFlagModalOpen(false)}
-        />
-      )}
     </div>
   );
 }

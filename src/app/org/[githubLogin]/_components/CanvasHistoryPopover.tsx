@@ -119,6 +119,16 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
       );
       store.setServerConversationId(newId, item.id);
 
+      // Opening the chat clears its unread flag — optimistically locally,
+      // and persisted so the next list load agrees. Fire-and-forget.
+      setItems((prev) =>
+        prev.map((it) => (it.id === item.id ? { ...it, unread: false } : it)),
+      );
+      void fetch(
+        `/api/orgs/${githubLogin}/chat/conversations/${item.id}/seen`,
+        { method: "POST" },
+      ).catch(() => {});
+
       setOpen(false);
     } catch {
       // silently fail
@@ -128,7 +138,29 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
   };
 
   const handleNewConversation = () => {
-    useCanvasChatStore.getState().clearActiveConversation();
+    // Start a fresh conversation in its own slot instead of wiping the
+    // active one in place — an in-flight stream on the previous chat
+    // keeps writing to its own slot and can't bleed into this new chat.
+    const store = useCanvasChatStore.getState();
+    const activeId = store.activeConversationId;
+    const context = activeId
+      ? store.conversations[activeId]?.context
+      : undefined;
+    store.startConversation(
+      context ?? {
+        orgId: "",
+        githubLogin,
+        workspaceSlug: null,
+        workspaceSlugs: [],
+        currentCanvasRef: "",
+        currentCanvasBreadcrumb: "",
+        selectedNodeId: null,
+        selectedNodeIds: [],
+      },
+      [],
+      undefined,
+      0,
+    );
     setOpen(false);
   };
 
@@ -201,8 +233,17 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
                     disabled={isLoadingThis}
                     className="w-full px-3 py-2 text-left hover:bg-muted/50 transition-colors flex flex-col gap-0.5 disabled:opacity-60"
                   >
-                    <span className="text-xs font-medium text-foreground truncate block">
-                      {label}
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      {item.unread && (
+                        <span
+                          aria-label="Unread"
+                          title="New activity since you last viewed"
+                          className="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500"
+                        />
+                      )}
+                      <span className="text-xs font-medium text-foreground truncate block">
+                        {label}
+                      </span>
                     </span>
                     <span className="text-[10px] text-muted-foreground">
                       {formatRelativeTime(item.lastMessageAt)}
