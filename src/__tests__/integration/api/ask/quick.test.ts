@@ -987,4 +987,197 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       expect(data.error.length).toBeGreaterThan(0);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Server-history mode (mobile clients)
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Server-history mode', () => {
+    async function setupWorkspaceWithConversation(
+      storedMessages: unknown[],
+      userId?: string,
+    ) {
+      const user = await createTestUser({
+        email: generateUniqueId('user') + '@example.com',
+        withGitHubAuth: true,
+        ...(userId ? { id: userId } : {}),
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: user.id,
+      });
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmUrl: 'https://test-swarm.sphinx.chat',
+        swarmApiKey: 'test-key',
+      });
+      await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: 'https://github.com/test-org/test-repo',
+      });
+      const conversation = await db.sharedConversation.create({
+        data: {
+          userId: user.id,
+          workspaceId: workspace.id,
+          messages: storedMessages as never,
+          followUpQuestions: [] as never,
+          title: 'Test conversation',
+        },
+      });
+      return { user, workspace, conversation };
+    }
+
+    it('reconstructs history from DB and appends new user message (3-element ModelMessage[])', async () => {
+      const storedMessages = [
+        { id: 'm1', role: 'user', content: 'First question', timestamp: new Date().toISOString() },
+        { id: 'm2', role: 'assistant', content: 'First answer', timestamp: new Date().toISOString() },
+      ];
+
+      const { user, workspace, conversation } =
+        await setupWorkspaceWithConversation(storedMessages);
+
+      const mockStream = {
+        toUIMessageStreamResponse: vi.fn(() =>
+          new Response('test', {
+            headers: { 'Content-Type': 'text/plain' },
+          })
+        ),
+      };
+      vi.mocked(streamText).mockReturnValue(mockStream as any);
+
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/quick',
+        {
+          message: 'New mobile question',
+          conversationId: conversation.id,
+          workspaceSlug: workspace.slug,
+        },
+        user
+      );
+
+      await POST(request);
+
+      expect(streamText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: expect.arrayContaining([
+            expect.objectContaining({ role: 'user', content: 'First question' }),
+            expect.objectContaining({ role: 'assistant', content: 'First answer' }),
+            expect.objectContaining({ role: 'user', content: 'New mobile question' }),
+          ]),
+        })
+      );
+      // Confirm exactly 3 messages in the reconstructed history
+      const callArgs = vi.mocked(streamText).mock.calls[0]![0];
+      expect(callArgs.messages!).toHaveLength(3);
+    });
+
+    it('returns 400 when server-history mode is active but conversationId is missing', async () => {
+      const user = await createTestUser({
+        email: generateUniqueId('user') + '@example.com',
+        withGitHubAuth: true,
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: user.id,
+      });
+
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/quick',
+        {
+          message: 'Hello from mobile',
+          workspaceSlug: workspace.slug,
+          // no conversationId
+        },
+        user
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toMatch(/conversationId/i);
+    });
+
+    it('returns 400 when conversationId belongs to a different user (IDOR guard)', async () => {
+      const { workspace, conversation } = await setupWorkspaceWithConversation([
+        { id: 'm1', role: 'user', content: 'Secret', timestamp: new Date().toISOString() },
+      ]);
+
+      // A different attacker user
+      const attacker = await createTestUser({
+        email: generateUniqueId('attacker') + '@example.com',
+        withGitHubAuth: true,
+      });
+      // Give attacker membership so workspace-level auth passes
+      await db.workspaceMember.create({
+        data: {
+          userId: attacker.id,
+          workspaceId: workspace.id,
+          role: WorkspaceRole.DEVELOPER,
+        },
+      });
+
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/quick',
+        {
+          message: 'Trying to read your history',
+          conversationId: conversation.id,
+          workspaceSlug: workspace.slug,
+        },
+        attacker
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toMatch(/not found|access denied/i);
+    });
+
+    it('returns 401 for unauthenticated request in server-history mode', async () => {
+      const request = createPostRequest('/api/ask/quick', {
+        message: 'Hello from mobile',
+        conversationId: 'some-id',
+        workspaceSlug: 'some-workspace',
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(401);
+    });
+
+    it('falls through to normal messages[] path when both message and messages[] are provided', async () => {
+      const storedMessages = [
+        { id: 'm1', role: 'user', content: 'Stored', timestamp: new Date().toISOString() },
+      ];
+      const { user, workspace, conversation } =
+        await setupWorkspaceWithConversation(storedMessages);
+
+      const mockStream = {
+        toUIMessageStreamResponse: vi.fn(() =>
+          new Response('test', {
+            headers: { 'Content-Type': 'text/plain' },
+          })
+        ),
+      };
+      vi.mocked(streamText).mockReturnValue(mockStream as any);
+
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/quick',
+        {
+          message: 'This should be ignored',
+          messages: [{ role: 'user', content: 'From messages array' }],
+          conversationId: conversation.id,
+          workspaceSlug: workspace.slug,
+        },
+        user
+      );
+
+      await POST(request);
+
+      // Only the messages[] content should appear — NOT the stored history
+      const callArgs = vi.mocked(streamText).mock.calls[0]![0];
+      expect(callArgs.messages!).toHaveLength(1);
+      expect(callArgs.messages![0]).toMatchObject({
+        role: 'user',
+        content: 'From messages array',
+      });
+    });
+  });
 });
