@@ -556,7 +556,19 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       if (String(url).includes("/io")) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ data: { inputs: { model: "gpt-4o", messages: [] }, outputs: "some output" } }),
+          json: async () => ({
+            data: {
+              inputs: { model: "gpt-4o", messages: [] },
+              outputs: "some output",
+              prompt_resolutions: {
+                CUSTOM_ENTITY_EXTRACTION_PROMPT: {
+                  prompt_id: 1552,
+                  prompt_version_id: 789,
+                  resolution: { entity_type: "org" },
+                },
+              },
+            },
+          }),
         });
       }
       if (String(url).endsWith("/evals")) {
@@ -611,6 +623,67 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       expect(body.inputs).toEqual({ model: "gpt-4o", messages: [] });
       expect(body.outputs).toBe("some output");
       expect(body.evalSetId).toBe("set-1"); // first set auto-selected
+      // prompt_resolutions mapped to prompts — resolution values excluded
+      expect(body.prompts).toEqual([
+        { name: "CUSTOM_ENTITY_EXTRACTION_PROMPT", prompt_id: 1552, prompt_version_id: 789 },
+      ]);
+    });
+  });
+
+  it("omits prompts from body when IO has no prompt_resolutions", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/io")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: { inputs: { model: "gpt-4o" }, outputs: "result" },
+          }),
+        });
+      }
+      if (String(url).endsWith("/evals")) {
+        return Promise.resolve({ ok: true, json: async () => mockEvalSetsResponse });
+      }
+      if (String(url).includes("/eval/capture")) {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <StepDetailsModal
+        step={makeLlmStep({ project_step_id: "gen_step", name: "generate_response" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        slug="my-ws"
+        workflowId="42"
+        projectId="run-123"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/io"))).toBe(true),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/evals"))).toBe(true),
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
+      target: { value: "Must return a summary" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /capture/i }));
+
+    await waitFor(() => {
+      const captureCall = fetchMock.mock.calls.find(([url]) =>
+        String(url).includes("/eval/capture"),
+      );
+      expect(captureCall).toBeDefined();
+      const body = JSON.parse((captureCall![1] as RequestInit).body as string);
+      expect(body.prompts).toBeUndefined();
     });
   });
 
