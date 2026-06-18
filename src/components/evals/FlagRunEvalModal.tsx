@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CaptureEvalForm } from "@/components/evals/CaptureEvalForm";
+import { CaptureEvalForm, CREATE_NEW_VALUE } from "@/components/evals/CaptureEvalForm";
 
 interface RequestStep {
   stepId: string;
@@ -63,6 +63,13 @@ export function FlagRunEvalModal({
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Eval set state
+  const [evalSets, setEvalSets] = useState<Array<{ ref_id: string; name: string }>>([]);
+  const [loadingEvalSets, setLoadingEvalSets] = useState(false);
+  const [evalSetsError, setEvalSetsError] = useState(false);
+  const [selectedEvalSetId, setSelectedEvalSetId] = useState("");
+  const [newEvalSetName, setNewEvalSetName] = useState("");
+
   // Fetch request steps when modal opens
   useEffect(() => {
     if (!open) return;
@@ -81,6 +88,44 @@ export function FlagRunEvalModal({
       .finally(() => setLoadingSteps(false));
   }, [open, slug, workflowId, runId]);
 
+  // Fetch eval sets when advancing to step 2
+  useEffect(() => {
+    if (step !== 2) return;
+    let cancelled = false;
+    setLoadingEvalSets(true);
+    setEvalSetsError(false);
+    fetch(`/api/workspaces/${slug}/evals`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const nodes: Array<{ ref_id: string; properties?: { name?: string }; name?: string }> =
+          data?.data?.nodes ?? data?.data ?? [];
+        const sets = nodes.map((n) => ({
+          ref_id: n.ref_id,
+          name: n.properties?.name ?? n.name ?? "",
+        }));
+        setEvalSets(sets);
+        const lastUsed =
+          typeof localStorage !== "undefined"
+            ? localStorage.getItem("lastUsedEvalSetId")
+            : null;
+        if (lastUsed && sets.some((s) => s.ref_id === lastUsed)) {
+          setSelectedEvalSetId(lastUsed);
+        } else if (sets.length > 0) {
+          setSelectedEvalSetId(sets[0].ref_id);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setEvalSetsError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEvalSets(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, slug]);
+
   // Reset all state when modal closes
   useEffect(() => {
     if (!open) {
@@ -92,6 +137,11 @@ export function FlagRunEvalModal({
       setRequirement("");
       setReason("");
       setSubmitting(false);
+      setEvalSets([]);
+      setLoadingEvalSets(false);
+      setEvalSetsError(false);
+      setSelectedEvalSetId("");
+      setNewEvalSetName("");
     }
   }, [open]);
 
@@ -102,8 +152,34 @@ export function FlagRunEvalModal({
 
   async function handleConfirm() {
     if (!selectedStep || !requirement.trim()) return;
+    if (!selectedEvalSetId) return;
+    if (selectedEvalSetId === CREATE_NEW_VALUE && !newEvalSetName.trim()) return;
     setSubmitting(true);
     try {
+      let resolvedEvalSetId = selectedEvalSetId;
+
+      if (selectedEvalSetId === CREATE_NEW_VALUE) {
+        const createRes = await fetch(`/api/workspaces/${slug}/evals`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newEvalSetName.trim() }),
+        });
+        if (!createRes.ok) {
+          toast.error("Failed to create eval set");
+          return;
+        }
+        const createData = await createRes.json();
+        resolvedEvalSetId = createData?.data?.ref_id ?? createData?.ref_id;
+        if (!resolvedEvalSetId) {
+          toast.error("Failed to create eval set");
+          return;
+        }
+      }
+
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("lastUsedEvalSetId", resolvedEvalSetId);
+      }
+
       const inputs = { model: selectedStep.model, messages: selectedStep.messages };
       const outputs = {
         response_raw: selectedStep.body.response_raw,
@@ -122,6 +198,7 @@ export function FlagRunEvalModal({
             reason: reason.trim() || undefined,
             inputs,
             outputs,
+            evalSetId: resolvedEvalSetId,
           }),
         }
       );
@@ -219,6 +296,13 @@ export function FlagRunEvalModal({
             onRequirementChange={setRequirement}
             onReasonChange={setReason}
             submitting={submitting}
+            evalSets={evalSets}
+            loadingEvalSets={loadingEvalSets}
+            evalSetsError={evalSetsError}
+            selectedEvalSetId={selectedEvalSetId}
+            onSelectEvalSet={setSelectedEvalSetId}
+            newEvalSetName={newEvalSetName}
+            onNewEvalSetNameChange={setNewEvalSetName}
           />
         )}
 
@@ -242,7 +326,12 @@ export function FlagRunEvalModal({
               </Button>
               <Button
                 onClick={handleConfirm}
-                disabled={submitting || !requirement.trim()}
+                disabled={
+                  submitting ||
+                  !requirement.trim() ||
+                  !selectedEvalSetId ||
+                  (selectedEvalSetId === CREATE_NEW_VALUE && !newEvalSetName.trim())
+                }
               >
                 {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Confirm
