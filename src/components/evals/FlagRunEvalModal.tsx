@@ -14,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CaptureEvalForm, CREATE_NEW_VALUE } from "@/components/evals/CaptureEvalForm";
+import { PromptResolution, mapPromptResolutions } from "@/types/evals";
 
 interface RequestStep {
   stepId: string;
@@ -61,6 +62,7 @@ export function FlagRunEvalModal({
   // IO state (fetched on Next)
   const [inputs, setInputs] = useState<unknown | null>(null);
   const [outputs, setOutputs] = useState<unknown | null>(null);
+  const [promptResolutions, setPromptResolutions] = useState<Record<string, PromptResolution> | null>(null);
   const [fetchingIO, setFetchingIO] = useState(false);
 
   // Step 2 state
@@ -141,6 +143,7 @@ export function FlagRunEvalModal({
       setSelectedStep(null);
       setInputs(null);
       setOutputs(null);
+      setPromptResolutions(null);
       setFetchingIO(false);
       setRequirement("");
       setReason("");
@@ -161,6 +164,7 @@ export function FlagRunEvalModal({
       const result = await r.json();
       setInputs(result?.data?.inputs ?? null);
       setOutputs(result?.data?.outputs ?? null);
+      setPromptResolutions(result?.data?.prompt_resolutions ?? null);
     } catch {
       // proceed with null IO — user can still submit
     } finally {
@@ -211,6 +215,7 @@ export function FlagRunEvalModal({
             reason: reason.trim() || undefined,
             inputs,
             outputs,
+            prompts: mapPromptResolutions(promptResolutions),
             evalSetId: resolvedEvalSetId,
           }),
         }
