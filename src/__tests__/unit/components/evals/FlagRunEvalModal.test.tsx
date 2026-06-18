@@ -11,7 +11,10 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+const { CREATE_NEW_VALUE } = vi.hoisted(() => ({ CREATE_NEW_VALUE: "__create_new__" }));
+
 vi.mock("@/components/evals/CaptureEvalForm", () => ({
+  CREATE_NEW_VALUE,
   CaptureEvalForm: ({
     requirement,
     reason,
@@ -128,6 +131,46 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof FlagRunEval
   };
 }
 
+// Advancing to step 2 fetches the workspace eval sets; the component auto-selects
+// the first one. A non-empty response is required for the Confirm flow to proceed.
+const MOCK_EVAL_SETS_RESPONSE = {
+  success: true,
+  data: {
+    nodes: [{ ref_id: "set-1", properties: { name: "Default Eval Set" } }],
+    total: 1,
+  },
+};
+
+// URL-aware fetch mock covering all endpoints the modal hits: request-steps
+// (on open), evals (on step 2), and eval/capture (on confirm).
+function makeFetch({
+  steps = MOCK_STEPS,
+  captureOk = true,
+  evalSetsResponse = MOCK_EVAL_SETS_RESPONSE,
+}: {
+  steps?: typeof MOCK_STEPS;
+  captureOk?: boolean;
+  evalSetsResponse?: object;
+} = {}) {
+  return vi.fn().mockImplementation((url: string) => {
+    const u = String(url);
+    if (u.includes("/request-steps")) {
+      return Promise.resolve({ ok: true, json: async () => ({ data: { steps } }) } as Response);
+    }
+    if (u.endsWith("/evals")) {
+      return Promise.resolve({ ok: true, json: async () => evalSetsResponse } as Response);
+    }
+    if (u.includes("/eval/capture")) {
+      return Promise.resolve(
+        captureOk
+          ? ({ ok: true, json: async () => ({ success: true, data: {} }) } as Response)
+          : ({ ok: false } as Response),
+      );
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
+  });
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe("FlagRunEvalModal", () => {
@@ -215,10 +258,7 @@ describe("FlagRunEvalModal", () => {
   });
 
   it("clicking Next advances to step 2 without an IO fetch", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { steps: MOCK_STEPS } }),
-    } as Response);
+    vi.stubGlobal("fetch", makeFetch());
 
     render(<FlagRunEvalModal {...defaultProps()} />);
 
@@ -236,10 +276,7 @@ describe("FlagRunEvalModal", () => {
   });
 
   it("advances to step 2 showing CaptureEvalForm (no TagInput, no check type)", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { steps: MOCK_STEPS } }),
-    } as Response);
+    vi.stubGlobal("fetch", makeFetch());
 
     render(<FlagRunEvalModal {...defaultProps()} />);
 
@@ -256,10 +293,7 @@ describe("FlagRunEvalModal", () => {
   });
 
   it("Confirm button is disabled when requirement field is empty", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { steps: MOCK_STEPS } }),
-    } as Response);
+    vi.stubGlobal("fetch", makeFetch());
 
     render(<FlagRunEvalModal {...defaultProps()} />);
 
@@ -277,15 +311,7 @@ describe("FlagRunEvalModal", () => {
     const onCaptured = vi.fn();
     const onOpenChange = vi.fn();
 
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: {} }),
-      } as Response);
+    vi.stubGlobal("fetch", makeFetch());
 
     render(<FlagRunEvalModal {...defaultProps({ onCaptured, onOpenChange })} />);
 
@@ -297,6 +323,10 @@ describe("FlagRunEvalModal", () => {
 
     await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Never return empty");
 
+    // Confirm stays disabled until the auto-selected eval set resolves
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled()
+    );
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
 
     await waitFor(() => expect(onCaptured).toHaveBeenCalledOnce());
@@ -311,6 +341,7 @@ describe("FlagRunEvalModal", () => {
     expect(body.run_id).toBe("1001");
     expect(body.step_id).toBe("llm_generate_title");
     expect(body.requirement).toBe("Never return empty");
+    expect(body.evalSetId).toBe("set-1");
     expect(body.inputs).toEqual({ model: MOCK_STEPS[0].model, messages: MOCK_STEPS[0].messages });
     expect(body.outputs).toEqual({
       response_raw: MOCK_STEPS[0].body.response_raw,
@@ -327,15 +358,7 @@ describe("FlagRunEvalModal", () => {
     const onCaptured = vi.fn();
     const onOpenChange = vi.fn();
 
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: {} }),
-      } as Response);
+    vi.stubGlobal("fetch", makeFetch());
 
     render(<FlagRunEvalModal {...defaultProps({ onCaptured, onOpenChange })} />);
 
@@ -345,6 +368,9 @@ describe("FlagRunEvalModal", () => {
 
     await waitFor(() => screen.getByTestId("capture-eval-form"));
     await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Always respond");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled()
+    );
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
 
     await waitFor(() => {
@@ -357,12 +383,7 @@ describe("FlagRunEvalModal", () => {
     const { toast } = await import("sonner");
     const onCaptured = vi.fn();
 
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({ ok: false } as Response);
+    vi.stubGlobal("fetch", makeFetch({ captureOk: false }));
 
     render(<FlagRunEvalModal {...defaultProps({ onCaptured })} />);
 
@@ -372,6 +393,9 @@ describe("FlagRunEvalModal", () => {
 
     await waitFor(() => screen.getByTestId("capture-eval-form"));
     await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Some requirement");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled()
+    );
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
 
     await waitFor(() => {
