@@ -111,8 +111,18 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+type PromptResolution = {
+  prompt_id: number;
+  prompt_version_id: number;
+  resolution: Record<string, unknown>;
+};
+
 export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions, projectId, slug, workflowId }: StepDetailsModalProps) {
-  const [ioData, setIoData] = useState<{ inputs: unknown; outputs: unknown } | null>(null);
+  const [ioData, setIoData] = useState<{
+    inputs: unknown;
+    outputs: unknown;
+    prompt_resolutions?: Record<string, PromptResolution> | null;
+  } | null>(null);
   const [isLoadingIO, setIsLoadingIO] = useState(false);
   // Tracks whether a pointer press originated on the backdrop so a drag/click
   // that ends on the backdrop but began inside the modal doesn't close it.
@@ -382,6 +392,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
               <TabsTrigger value="attributes">Attributes</TabsTrigger>
               <TabsTrigger value="inputs">Inputs</TabsTrigger>
               <TabsTrigger value="outputs">Outputs</TabsTrigger>
+              <TabsTrigger value="prompts">Prompts</TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
             </TabsList>
           </div>
@@ -465,6 +476,32 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
               </pre>
             ) : (
               <p className="text-sm text-muted-foreground">No output data available.</p>
+            )}
+          </TabsContent>
+
+          <TabsContent value="prompts" className="mt-0 min-h-0 flex-1 overflow-y-auto p-5">
+            {!projectId ? (
+              <p className="text-sm text-muted-foreground">Select a run to view prompt resolutions.</p>
+            ) : isLoadingIO ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+              </div>
+            ) : ioData?.prompt_resolutions && Object.keys(ioData.prompt_resolutions).length > 0 ? (
+              <div className="space-y-6">
+                {Object.entries(ioData.prompt_resolutions).map(([promptName, data]) => (
+                  <Section key={promptName} title={promptName}>
+                    <KeyValueTable
+                      data={{
+                        prompt_id: data.prompt_id,
+                        prompt_version_id: data.prompt_version_id,
+                        ...data.resolution,
+                      }}
+                    />
+                  </Section>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No prompt resolution data available.</p>
             )}
           </TabsContent>
 

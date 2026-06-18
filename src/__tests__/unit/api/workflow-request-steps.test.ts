@@ -317,6 +317,15 @@ describe("extractStepFromTransition — correct paths", () => {
     expect(result.messages).toEqual([{ role: "system", content: "You are..." }]);
   });
 
+  test("prefers id (slug) over unique_id (UUID) when both are present", () => {
+    const transition = {
+      id: "llm_generate_feature_title", // human-readable slug — must win
+      unique_id: "a1b2c3d4-uuid-for-react-flow", // UUID — must lose
+      attributes: { url: "https://api.openai.com/v1/chat/completions" },
+    };
+    expect(extractStepFromTransition(transition).stepId).toBe("llm_generate_feature_title");
+  });
+
   test("does NOT include headers or Authorization in snapshot", () => {
     const transition = realRunFixture.workflowData.transitions.replay_openai;
     const result = extractStepFromTransition(transition);
