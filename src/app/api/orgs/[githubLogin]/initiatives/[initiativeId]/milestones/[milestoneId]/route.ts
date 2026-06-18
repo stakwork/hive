@@ -185,6 +185,26 @@ export async function PATCH(
       }
     }
 
+    // Guard: if a new assigneeId is provided (non-null), confirm the user
+    // is a member of at least one workspace in this org. Prevents assigning
+    // a milestone to an arbitrary user ID from another org (IDOR).
+    if (assigneeId !== undefined && assigneeId !== null) {
+      const isMember = await db.workspace.findFirst({
+        where: {
+          deleted: false,
+          sourceControlOrgId: orgId,
+          OR: [
+            { ownerId: assigneeId },
+            { members: { some: { userId: assigneeId, leftAt: null } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!isMember) {
+        return NextResponse.json({ error: "Assignee is not a member of this organization" }, { status: 400 });
+      }
+    }
+
     // Auto-derive completedAt from status when caller didn't supply it explicitly
     const derivedCompletedAt =
       completedAt === undefined && status !== undefined

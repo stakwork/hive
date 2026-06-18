@@ -124,7 +124,7 @@ const INITIATIVE_GRADIENT = {
  */
 const MILESTONE_COLORS = {
   NOT_STARTED: MUTED,        // gray-on-gray; reads as "hasn't begun"
-  IN_PROGRESS: "#7dd3fc",    // cool blue; reads as "in flight"
+  IN_PROGRESS: "#fb923c",    // orange; reads as "in flight"
   COMPLETED: "#4ade80",      // green; reads as "done"
 } as const;
 

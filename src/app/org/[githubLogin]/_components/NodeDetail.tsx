@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ArrowUpRight, Loader2, MessageSquare } from "lucide-react";
 import { useCanvasChatStore } from "../_state/canvasChatStore";
 import type { CanvasNode } from "system-canvas";
@@ -10,6 +10,14 @@ import type { WorkflowStatus } from "@/lib/chat";
 import { FeaturePlanChat } from "./FeaturePlanChat";
 import { TaskChat } from "./TaskChat";
 import { ResearchViewer } from "./ResearchViewer";
+import type { OrgMemberResponse } from "@/types/workspace";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 /**
  * Right-panel detail card for the currently-selected canvas node.
@@ -296,45 +304,12 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
       );
     }
     case "milestone": {
-      const status = (extras.status ?? "") as string;
-      const dueDate = extras.dueDate as string | null | undefined;
-      const completedAt = extras.completedAt as string | null | undefined;
-      const featureCount = Number(extras.featureCount ?? 0);
-      const assignee = extras.assignee as
-        | { name: string | null }
-        | null
-        | undefined;
-      const initiative = extras.initiative as
-        | { name: string | null }
-        | null
-        | undefined;
       return (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            {status && <StatusPill value={status} />}
-            <span className="text-xs text-muted-foreground">
-              {featureCount} feature{featureCount === 1 ? "" : "s"}
-            </span>
-          </div>
-          <StatGrid
-            stats={[
-              ...(initiative?.name
-                ? [{ label: "Initiative", value: initiative.name }]
-                : []),
-              ...(assignee?.name
-                ? [{ label: "Owner", value: assignee.name }]
-                : []),
-              ...(dueDate ? [{ label: "Due", value: formatDate(dueDate) }] : []),
-              ...(completedAt
-                ? [{ label: "Completed", value: formatDate(completedAt) }]
-                : []),
-            ]}
-          />
-          <FooterLink
-            href={`/org/${githubLogin}/initiatives`}
-            label="Open in Initiatives"
-          />
-        </div>
+        <MilestoneExtras
+          extras={extras}
+          nodeId={detail.id}
+          githubLogin={githubLogin}
+        />
       );
     }
     case "feature": {
@@ -434,6 +409,124 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
     default:
       return null;
   }
+}
+
+interface MilestoneExtrasProps {
+  extras: Record<string, unknown>;
+  nodeId: string;
+  githubLogin: string;
+}
+
+function MilestoneExtras({ extras, nodeId, githubLogin }: MilestoneExtrasProps) {
+  const status = (extras.status ?? "") as string;
+  const dueDate = extras.dueDate as string | null | undefined;
+  const completedAt = extras.completedAt as string | null | undefined;
+  const featureCount = Number(extras.featureCount ?? 0);
+  const assigneeExtras = extras.assignee as
+    | { id: string; name: string | null }
+    | null
+    | undefined;
+  const initiative = extras.initiative as
+    | { id: string; name: string | null }
+    | null
+    | undefined;
+
+  const [members, setMembers] = useState<OrgMemberResponse[]>([]);
+  const [assigneeId, setAssigneeId] = useState<string>(
+    assigneeExtras?.id ?? "__none__",
+  );
+
+  useEffect(() => {
+    if (!githubLogin) return;
+    let cancelled = false;
+    fetch(`/api/orgs/${githubLogin}/members`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) {
+          setMembers(Array.isArray(data) ? (data as OrgMemberResponse[]) : []);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [githubLogin]);
+
+  async function handleAssigneeChange(value: string) {
+    const prev = assigneeId;
+    setAssigneeId(value);
+
+    const milestoneId = nodeId.startsWith("milestone:")
+      ? nodeId.slice("milestone:".length)
+      : nodeId;
+    const initiativeId = (initiative as { id: string } | null | undefined)?.id;
+    if (!initiativeId) return;
+
+    try {
+      const res = await fetch(
+        `/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones/${milestoneId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assigneeId: value === "__none__" ? null : value,
+          }),
+        },
+      );
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        console.error(
+          "[NodeDetail] PATCH milestone assignee failed",
+          res.status,
+          detail,
+        );
+        setAssigneeId(prev);
+      }
+    } catch (err) {
+      console.error("[NodeDetail] PATCH milestone assignee threw", err);
+      setAssigneeId(prev);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        {status && <StatusPill value={status} />}
+        <span className="text-xs text-muted-foreground">
+          {featureCount} feature{featureCount === 1 ? "" : "s"}
+        </span>
+      </div>
+      <StatGrid
+        stats={[
+          ...(initiative?.name
+            ? [{ label: "Initiative", value: initiative.name }]
+            : []),
+          ...(dueDate ? [{ label: "Due", value: formatDate(dueDate) }] : []),
+          ...(completedAt
+            ? [{ label: "Completed", value: formatDate(completedAt) }]
+            : []),
+        ]}
+      />
+      <div className="space-y-1">
+        <p className="text-xs text-muted-foreground">Owner</p>
+        <Select value={assigneeId} onValueChange={handleAssigneeChange}>
+          <SelectTrigger className="h-7 text-xs w-full">
+            <SelectValue placeholder="Unassigned" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Unassigned</SelectItem>
+            {members.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                {m.name ?? m.githubUsername ?? m.id}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <FooterLink
+        href={`/org/${githubLogin}/initiatives`}
+        label="Open in Initiatives"
+      />
+    </div>
+  );
 }
 
 function StatGrid({ stats }: { stats: { label: string; value: string }[] }) {
