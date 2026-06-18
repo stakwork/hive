@@ -913,42 +913,44 @@ export function DashboardChat({
         <div className="flex flex-col min-h-0">
           <div className="flex gap-4 flex-1 min-h-0">
             {/* Message history */}
-            <div
-              ref={scrollContainerRef}
-              onScroll={handleScroll}
-              className="relative flex-1 max-h-[85vh] overflow-y-auto pb-2"
-            >
-              <div className="space-y-2 px-4">
-                {messages.map((message, index) => {
-                  // Only the last message is streaming
-                  const isLastMessage = index === messages.length - 1;
-                  const isMessageStreaming = isLastMessage && isLoading;
-                  return (
-                    <div key={message.id} data-message-id={message.id}>
-                      <ChatMessage message={message} isStreaming={isMessageStreaming} />
+            <div className="relative flex-1 min-h-0">
+              <div
+                ref={scrollContainerRef}
+                onScroll={handleScroll}
+                className="flex-1 max-h-[85vh] h-full overflow-y-auto pb-2"
+              >
+                <div className="space-y-2 px-4">
+                  {messages.map((message, index) => {
+                    // Only the last message is streaming
+                    const isLastMessage = index === messages.length - 1;
+                    const isMessageStreaming = isLastMessage && isLoading;
+                    return (
+                      <div key={message.id} data-message-id={message.id}>
+                        <ChatMessage message={message} isStreaming={isMessageStreaming} />
+                      </div>
+                    );
+                  })}
+                  {/* Show tool call indicator when tools are active */}
+                  {activeToolCalls.length > 0 && <ToolCallIndicator toolCalls={activeToolCalls} />}
+                  {/* Follow-up question bubbles */}
+                  {followUpQuestions.length > 0 && !isLoading && messages.length > 0 && (
+                    <div className="pointer-events-auto pt-2">
+                      <div className="flex flex-col items-end gap-1.5">
+                        {followUpQuestions.map((question, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleFollowUpClick(question)}
+                            className="rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground transition-all hover:border-border hover:bg-muted/60 hover:text-foreground"
+                          >
+                            {question}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  );
-                })}
-                {/* Show tool call indicator when tools are active */}
-                {activeToolCalls.length > 0 && <ToolCallIndicator toolCalls={activeToolCalls} />}
-                {/* Follow-up question bubbles */}
-                {followUpQuestions.length > 0 && !isLoading && messages.length > 0 && (
-                  <div className="pointer-events-auto pt-2">
-                    <div className="flex flex-col items-end gap-1.5">
-                      {followUpQuestions.map((question, index) => (
-                        <button
-                          key={index}
-                          onClick={() => handleFollowUpClick(question)}
-                          className="rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground transition-all hover:border-border hover:bg-muted/60 hover:text-foreground"
-                        >
-                          {question}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {/* Scroll anchor */}
-                <div ref={messagesEndRef} />
+                  )}
+                  {/* Scroll anchor */}
+                  <div ref={messagesEndRef} />
+                </div>
               </div>
               <StreamScrollIndicator
                 isStreaming={isStreaming}

@@ -24,6 +24,20 @@
  * settles. Merging is identity-based (append-only), so a mid-turn nudge
  * can never drop a local message.
  *
+ * **Catch-up — Pusher has no replay.** Live nudges only cover the window
+ * we're actively subscribed AND the socket is up. To stay correct across
+ * the gaps we refetch-and-merge the active conversation: (a) immediately
+ * on every (re)subscribe, (b) once at mount seeded from current store
+ * state (a remount where the module-level store still holds the active
+ * convo never triggers the change-driven `subscribe` callback), (c) on
+ * `visibilitychange` → visible (backgrounded tabs suspend their socket),
+ * and (d) on Pusher `connected` (reconnect after a network blip). Without
+ * these, planner / sub-agent rows that fan out while you're away on
+ * another tab/chat stay invisible until the *next* live nudge happens to
+ * land — the "I rejoined the canvas chat and the sub-agent messages were
+ * missing until I left and came back" bug. Every catch-up routes through
+ * the same idempotent merge, so it can neither double-render nor drop.
+ *
  * Mounted once per page (in `OrgCanvasView`).
  */
 "use client";
@@ -210,6 +224,31 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
       }
     };
 
+    // ─── Catch-up sync ────────────────────────────────────────────────
+    // Resolve the local conversation for a server id (the active convo may
+    // have changed by call time) and merge whatever the server has now.
+    // The merge is idempotent (by id), so calling this defensively can
+    // never double-render or drop a message.
+    const syncByServerId = (serverId: string): void => {
+      const s = useCanvasChatStore.getState();
+      const cid = Object.keys(s.conversations).find(
+        (k) => s.conversations[k].serverConversationId === serverId,
+      );
+      if (cid) void syncFromServer(cid, serverId);
+    };
+
+    // Catch up the currently-active conversation. Used by the
+    // visibility/reconnect handlers below — Pusher delivers no replay, so
+    // any nudge fired while the tab was hidden or the socket was down is
+    // lost; an explicit refetch on return closes that gap.
+    const catchUpActive = (): void => {
+      const s = useCanvasChatStore.getState();
+      const activeId = s.activeConversationId;
+      if (!activeId) return;
+      const serverId = s.conversations[activeId]?.serverConversationId;
+      if (serverId) syncByServerId(serverId);
+    };
+
     // ─── Pusher subscription management ───────────────────────────────
     // Subscribe to the active conversation's channel; resubscribe when
     // the active conversation (or its server id) changes. Wrapped in
@@ -234,16 +273,15 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
         const channelName = getCanvasConversationChannelName(activeServerId);
         const channel = getPusherClient().subscribe(channelName);
         channel.bind(PUSHER_EVENTS.CANVAS_CONVERSATION_UPDATED, () => {
-          // Resolve the local conversation for this server id at call
-          // time (the active conversation may have changed).
-          const s = useCanvasChatStore.getState();
-          const cid = Object.keys(s.conversations).find(
-            (k) =>
-              s.conversations[k].serverConversationId === activeServerId,
-          );
-          if (cid) void syncFromServer(cid, activeServerId);
+          syncByServerId(activeServerId);
         });
         subRef.current = { serverId: activeServerId, channel };
+        // Catch up immediately on (re)subscribe: Pusher has no replay, so
+        // anything appended while we weren't subscribed to this channel
+        // (a reopened tab, a switch back to this conversation, the initial
+        // mount with the conversation already active) would otherwise stay
+        // invisible until the *next* live nudge. The fetch is idempotent.
+        syncByServerId(activeServerId);
       } catch {
         // Pusher unavailable — live-sync disabled.
       }
@@ -287,8 +325,54 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
       syncActiveSubscription(activeServerId);
     });
 
+    // Seed the subscription from current state at mount. `subscribe` only
+    // fires on *changes*, so a remount where the (module-level) store
+    // already holds an active conversation — e.g. navigating away from the
+    // canvas and back while the planner keeps fanning out — would never
+    // subscribe until some unrelated store mutation happened. This also
+    // performs the initial catch-up fetch (via `syncActiveSubscription`).
+    {
+      const s = useCanvasChatStore.getState();
+      const activeServerId = s.activeConversationId
+        ? s.conversations[s.activeConversationId]?.serverConversationId ?? null
+        : null;
+      syncActiveSubscription(activeServerId);
+    }
+
+    // ─── Visibility / reconnect catch-up ──────────────────────────────
+    // Browsers suspend backgrounded-tab websockets and Pusher drops on
+    // network blips; in both cases the nudges fired during the gap are
+    // never replayed. On return (tab visible again, socket reconnected)
+    // refetch the active conversation so missed planner / sub-agent rows
+    // appear. Mirrors the `visibilitychange` catch-up in the sibling
+    // `useSubAgentStatusRefresh`.
+    const handleVisibility = (): void => {
+      if (document.visibilityState === "visible") catchUpActive();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    const onReconnect = (): void => catchUpActive();
+    let pusherConnection: ReturnType<
+      typeof getPusherClient
+    >["connection"] | null = null;
+    try {
+      pusherConnection = getPusherClient().connection;
+      // `connected` fires on the initial connect AND on every reconnect.
+      pusherConnection.bind("connected", onReconnect);
+    } catch {
+      // Pusher unavailable — reconnect catch-up disabled.
+    }
+
     return () => {
       unsub();
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (pusherConnection) {
+        try {
+          pusherConnection.unbind("connected", onReconnect);
+        } catch {
+          /* ignore */
+        }
+      }
       // Tear down any live Pusher subscription on unmount.
       if (subRef.current.channel && subRef.current.serverId) {
         try {

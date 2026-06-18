@@ -336,7 +336,8 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         </div>
       </div>
 
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto relative px-4 py-3">
+      <div className="relative flex-1 min-h-0">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto h-full px-4 py-3">
         {!hasMessages && activeToolCalls.length === 0 && (
           <div className="h-full flex items-center justify-center px-4 text-center text-muted-foreground text-sm">
             Ask the agent about anything on this canvas.
@@ -531,23 +532,24 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           )}
           <div ref={messagesEndRef} />
         </div>
-        <StreamScrollIndicator
-          isStreaming={isLoading}
-          userScrolledUp={userScrolledUp}
-          showBackButton={false}
-          onStreamingClick={() => {
-            isProgrammaticScrollRef.current = true;
-            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-            setUserScrolledUp(false);
-          }}
-          onLatestClick={() => {
-            isProgrammaticScrollRef.current = true;
-            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-            setUserScrolledUp(false);
-          }}
-          onBackClick={() => {}}
-        />
       </div>
+      <StreamScrollIndicator
+        isStreaming={isLoading}
+        userScrolledUp={userScrolledUp}
+        showBackButton={false}
+        onStreamingClick={() => {
+          isProgrammaticScrollRef.current = true;
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          setUserScrolledUp(false);
+        }}
+        onLatestClick={() => {
+          isProgrammaticScrollRef.current = true;
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          setUserScrolledUp(false);
+        }}
+        onBackClick={() => {}}
+      />
+      </div>  {/* end relative wrapper */}
 
       <div className="border-t p-2">
         <SidebarChatInput
