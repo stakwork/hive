@@ -58,6 +58,11 @@ export function FlagRunEvalModal({
   const [stepsUnavailable, setStepsUnavailable] = useState(false);
   const [selectedStep, setSelectedStep] = useState<RequestStep | null>(null);
 
+  // IO state (fetched on Next)
+  const [inputs, setInputs] = useState<unknown | null>(null);
+  const [outputs, setOutputs] = useState<unknown | null>(null);
+  const [fetchingIO, setFetchingIO] = useState(false);
+
   // Step 2 state
   const [requirement, setRequirement] = useState("");
   const [reason, setReason] = useState("");
@@ -134,6 +139,9 @@ export function FlagRunEvalModal({
       setLoadingSteps(false);
       setStepsUnavailable(false);
       setSelectedStep(null);
+      setInputs(null);
+      setOutputs(null);
+      setFetchingIO(false);
       setRequirement("");
       setReason("");
       setSubmitting(false);
@@ -145,8 +153,19 @@ export function FlagRunEvalModal({
     }
   }, [open]);
 
-  function handleNext() {
+  async function handleNext() {
     if (!selectedStep) return;
+    setFetchingIO(true);
+    try {
+      const r = await fetch(`/api/projects/${runId}/steps/${selectedStep.stepId}/io`);
+      const result = await r.json();
+      setInputs(result?.data?.inputs ?? null);
+      setOutputs(result?.data?.outputs ?? null);
+    } catch {
+      // proceed with null IO — user can still submit
+    } finally {
+      setFetchingIO(false);
+    }
     setStep(2);
   }
 
@@ -180,12 +199,6 @@ export function FlagRunEvalModal({
         localStorage.setItem("lastUsedEvalSetId", resolvedEvalSetId);
       }
 
-      const inputs = { model: selectedStep.model, messages: selectedStep.messages };
-      const outputs = {
-        response_raw: selectedStep.body.response_raw,
-        output_text: selectedStep.body.output_text,
-        finish_reason: selectedStep.body.finish_reason,
-      };
       const res = await fetch(
         `/api/workspaces/${slug}/workflows/${workflowId}/eval/capture`,
         {
@@ -313,7 +326,8 @@ export function FlagRunEvalModal({
                 Close
               </Button>
               {steps.length > 0 && (
-                <Button onClick={handleNext} disabled={!selectedStep}>
+                <Button onClick={handleNext} disabled={!selectedStep || fetchingIO}>
+                  {fetchingIO && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   Next
                 </Button>
               )}
