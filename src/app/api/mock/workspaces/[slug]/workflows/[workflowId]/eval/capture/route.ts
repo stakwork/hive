@@ -12,12 +12,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   void workflowId;
 
   const body = await request.json().catch(() => ({}));
-  const { inputs, outputs } = body as { inputs?: unknown; outputs?: unknown };
+  const { inputs, outputs, evalSetId } = body as {
+    inputs?: unknown;
+    outputs?: unknown;
+    evalSetId?: string;
+  };
 
   return NextResponse.json({
     success: true,
     data: {
-      evalSetRef: "mock-evalset-ref",
+      evalSetRef: evalSetId ?? "mock-evalset-ref", // echo back
       requirementRef: "mock-req-ref",
       triggerRef: "mock-trigger-ref",
       prompt_snapshot: JSON.stringify(inputs ?? null),

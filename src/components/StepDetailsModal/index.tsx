@@ -8,7 +8,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { toast } from "sonner";
 import { WorkflowTransition, StepType, getStepType } from "@/types/stakwork/workflow";
 import { isLlmStep } from "@/lib/stakwork/transitions";
-import { CaptureEvalForm } from "@/components/evals/CaptureEvalForm";
+import { CaptureEvalForm, CREATE_NEW_VALUE } from "@/components/evals/CaptureEvalForm";
 
 interface StepDetailsModalProps {
   step: WorkflowTransition | null;
@@ -121,6 +121,11 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
   const [requirement, setRequirement] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [evalSets, setEvalSets] = useState<Array<{ ref_id: string; name: string }>>([]);
+  const [loadingEvalSets, setLoadingEvalSets] = useState(false);
+  const [evalSetsError, setEvalSetsError] = useState(false);
+  const [selectedEvalSetId, setSelectedEvalSetId] = useState('');
+  const [newEvalSetName, setNewEvalSetName] = useState('');
 
   useEffect(() => {
     if (!isOpen || !projectId) {
@@ -170,8 +175,50 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       setRequirement('');
       setReason('');
       setSubmitting(false);
+      setEvalSets([]);
+      setLoadingEvalSets(false);
+      setEvalSetsError(false);
+      setSelectedEvalSetId('');
+      setNewEvalSetName('');
     }
   }, [isOpen]);
+
+  // Fetch eval sets when flag form opens
+  useEffect(() => {
+    if (!flagOpen || !slug) return;
+    let cancelled = false;
+    setLoadingEvalSets(true);
+    setEvalSetsError(false);
+    fetch(`/api/workspaces/${slug}/evals`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        // Response shape: { success: true, data: { nodes: JarvisNode[], total: number } }
+        const nodes: Array<{ ref_id: string; properties?: { name?: string }; name?: string }> =
+          data?.data?.nodes ?? data?.data ?? [];
+        const sets = nodes.map((n) => ({
+          ref_id: n.ref_id,
+          name: n.properties?.name ?? n.name ?? '',
+        }));
+        setEvalSets(sets);
+        // Pre-select last-used set
+        const lastUsed = typeof localStorage !== 'undefined'
+          ? localStorage.getItem('lastUsedEvalSetId')
+          : null;
+        if (lastUsed && sets.some((s) => s.ref_id === lastUsed)) {
+          setSelectedEvalSetId(lastUsed);
+        } else if (sets.length > 0) {
+          setSelectedEvalSetId(sets[0].ref_id);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setEvalSetsError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEvalSets(false);
+      });
+    return () => { cancelled = true; };
+  }, [flagOpen, slug]);
 
   async function handleFlagSubmit() {
     if (!ioData) {
@@ -179,8 +226,40 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       return;
     }
     if (!requirement.trim()) return;
+    // Block submit until a set is chosen/created
+    if (!selectedEvalSetId) return;
+    if (selectedEvalSetId === CREATE_NEW_VALUE && !newEvalSetName.trim()) return;
+
     setSubmitting(true);
     try {
+      let resolvedEvalSetId = selectedEvalSetId;
+      let resolvedSetName = evalSets.find((s) => s.ref_id === selectedEvalSetId)?.name ?? selectedEvalSetId;
+
+      // Create new eval set inline if requested
+      if (selectedEvalSetId === CREATE_NEW_VALUE) {
+        const createRes = await fetch(`/api/workspaces/${slug}/evals`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newEvalSetName.trim() }),
+        });
+        if (!createRes.ok) {
+          toast.error('Failed to create eval set');
+          return;
+        }
+        const createData = await createRes.json();
+        resolvedEvalSetId = createData?.data?.ref_id ?? createData?.ref_id;
+        if (!resolvedEvalSetId) {
+          toast.error('Failed to create eval set');
+          return;
+        }
+        resolvedSetName = newEvalSetName.trim();
+      }
+
+      // Persist last-used set
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('lastUsedEvalSetId', resolvedEvalSetId);
+      }
+
       const stepId = step?.id;
       const res = await fetch(
         `/api/workspaces/${slug}/workflows/${workflowId}/eval/capture`,
@@ -194,11 +273,12 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
             reason: reason.trim() || undefined,
             inputs: ioData.inputs,
             outputs: ioData.outputs,
+            evalSetId: resolvedEvalSetId,
           }),
         }
       );
       if (!res.ok) throw new Error('Request failed');
-      toast.success('Eval captured');
+      toast.success(`Eval captured into "${resolvedSetName}"`);
       setFlagOpen(false);
       setRequirement('');
       setReason('');
@@ -410,6 +490,13 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
               onRequirementChange={setRequirement}
               onReasonChange={setReason}
               submitting={submitting}
+              evalSets={evalSets}
+              loadingEvalSets={loadingEvalSets}
+              evalSetsError={evalSetsError}
+              selectedEvalSetId={selectedEvalSetId}
+              onSelectEvalSet={setSelectedEvalSetId}
+              newEvalSetName={newEvalSetName}
+              onNewEvalSetNameChange={setNewEvalSetName}
             />
             <div className="flex justify-end gap-2">
               <Button
@@ -423,7 +510,12 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
               <Button
                 size="sm"
                 onClick={handleFlagSubmit}
-                disabled={submitting || !requirement.trim()}
+                disabled={
+                  submitting ||
+                  !requirement.trim() ||
+                  !selectedEvalSetId ||
+                  (selectedEvalSetId === CREATE_NEW_VALUE && !newEvalSetName.trim())
+                }
               >
                 {submitting && <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
                 Capture

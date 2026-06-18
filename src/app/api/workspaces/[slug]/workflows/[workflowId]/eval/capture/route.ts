@@ -23,51 +23,6 @@ function handleSwarmAccessError(error: { type: string }) {
   return NextResponse.json({ error: errorInfo.message }, { status: errorInfo.status });
 }
 
-/** Attempt to find an existing EvalSet node by its stable id. */
-async function findOrCreateEvalSet(
-  jarvisConfig: { jarvisUrl: string; apiKey: string },
-  workflowId: string,
-): Promise<{ ref_id: string; created: boolean }> {
-  const evalSetId = `evalset-${workflowId}`;
-
-  try {
-    const lookupRes = await fetch(`${jarvisConfig.jarvisUrl}/node?id=${encodeURIComponent(evalSetId)}`, {
-      headers: { "x-api-token": jarvisConfig.apiKey },
-    });
-
-    if (lookupRes.ok) {
-      const data = await lookupRes.json();
-      const nodes: Array<{ ref_id: string }> =
-        data?.nodes ?? (data?.ref_id ? [data] : []);
-      if (nodes.length > 0 && nodes[0].ref_id) {
-        logger.info(`[EvalCapture] EvalSet found, ref_id: ${nodes[0].ref_id}`);
-        return { ref_id: nodes[0].ref_id, created: false };
-      }
-    }
-  } catch {
-    // fall through to create
-  }
-
-  // Not found — create it
-  const createResult = await addNode(
-    { jarvisUrl: jarvisConfig.jarvisUrl, apiKey: jarvisConfig.apiKey },
-    {
-      node_type: "EvalSet",
-      node_data: {
-        id: evalSetId,
-        name: `Workflow ${workflowId} Evals`,
-      },
-    },
-  );
-
-  if (!createResult.success || !createResult.ref_id) {
-    throw new Error(`Failed to create EvalSet: ${createResult.error}`);
-  }
-
-  logger.info(`[EvalCapture] EvalSet created, ref_id: ${createResult.ref_id}`);
-  return { ref_id: createResult.ref_id, created: true };
-}
-
 /** Look up a Run/AgentSession node by stakwork project id for the EVALUATED edge. */
 async function lookupRunNode(
   jarvisConfig: { jarvisUrl: string; apiKey: string },
@@ -109,17 +64,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const { run_id, step_id, requirement, reason, inputs, outputs } = body as {
+    const { run_id, step_id, requirement, reason, inputs, outputs, evalSetId } = body as {
       run_id?: string;
       step_id?: string;
       requirement?: string;
       reason?: string;
       inputs?: Record<string, unknown> | null;
       outputs?: unknown;
+      evalSetId?: string;
     };
 
     if (!requirement?.trim()) {
       return NextResponse.json({ error: "requirement is required" }, { status: 400 });
+    }
+
+    if (!evalSetId?.trim()) {
+      return NextResponse.json({ error: "evalSetId is required" }, { status: 400 });
     }
 
     // Dev mode — delegate to mock
@@ -147,8 +107,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const jarvisConfig = { jarvisUrl, apiKey: swarmApiKey };
     const nodeConfig = { jarvisUrl, apiKey: swarmApiKey };
 
-    // ── 1. Find-or-create EvalSet ────────────────────────────────────────────
-    const { ref_id: evalSetRef } = await findOrCreateEvalSet(jarvisConfig, workflowId);
+    // ── 1. Use provided EvalSet ──────────────────────────────────────────────
+    const evalSetRef = evalSetId.trim();
+    logger.info(`[EvalCapture] Using EvalSet ref_id: ${evalSetRef}`);
 
     // ── 2. Create EvalRequirement ────────────────────────────────────────────
     const reqResult = await addNode(nodeConfig, {
