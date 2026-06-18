@@ -25,6 +25,17 @@ export async function GET() {
         },
         completion_time: 0.556712943,
       },
+      prompt_resolutions: {
+        CUSTOM_ENTITY_EXTRACTION_PROMPT: {
+          prompt_id: 1552,
+          prompt_version_id: 789,
+          resolution: {
+            entity_type: "organization",
+            language: "en",
+            max_results: 10,
+          },
+        },
+      },
     },
   });
 }

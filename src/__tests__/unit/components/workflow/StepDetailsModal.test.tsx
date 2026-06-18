@@ -213,6 +213,15 @@ describe("StepDetailsModal — tab clicks do not close the modal", () => {
 
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("does not call onClose when clicking the Prompts tab", async () => {
+    const onClose = vi.fn();
+    render(<StepDetailsModal step={makeStep()} isOpen={true} onClose={onClose} />);
+
+    await userEvent.click(screen.getByRole("tab", { name: "Prompts" }));
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
 
 // ── IO endpoint fetching ──────────────────────────────────────────────────────
@@ -832,6 +841,7 @@ describe("StepDetailsModal — Flag for eval capture", () => {
   });
 
   it("shows error toast when ioData is null at submit time", async () => {
+
     const { toast } = await import("sonner");
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (String(url).includes("/io")) {
@@ -876,5 +886,164 @@ describe("StepDetailsModal — Flag for eval capture", () => {
     });
     // No capture POST should be made
     expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("/eval/capture"))).toBe(true);
+  });
+});
+
+// ── Prompts tab ───────────────────────────────────────────────────────────────
+
+describe("StepDetailsModal — Prompts tab", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("shows 'Select a run to view prompt resolutions.' when projectId is undefined", async () => {
+    render(<StepDetailsModal step={makeStep()} isOpen={true} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("tab", { name: "Prompts" }));
+
+    expect(screen.getByText("Select a run to view prompt resolutions.")).toBeDefined();
+  });
+
+  it("renders prompt name as section heading with prompt_id, prompt_version_id, and resolution keys", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: {
+              inputs: {},
+              outputs: {},
+              prompt_resolutions: {
+                MY_PROMPT: {
+                  prompt_id: 1,
+                  prompt_version_id: 2,
+                  resolution: { key: "val" },
+                },
+              },
+            },
+          }),
+      }),
+    );
+
+    render(
+      <StepDetailsModal
+        step={makeStep({ id: "step-1" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        projectId="proj-1"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("tab", { name: "Prompts" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("MY_PROMPT")).toBeDefined();
+      expect(screen.getByText("prompt_id")).toBeDefined();
+      expect(screen.getByText("1")).toBeDefined();
+      expect(screen.getByText("prompt_version_id")).toBeDefined();
+      expect(screen.getByText("2")).toBeDefined();
+      expect(screen.getByText("key")).toBeDefined();
+      expect(screen.getByText("val")).toBeDefined();
+    });
+  });
+
+  it("shows 'No prompt resolution data available.' when prompt_resolutions is absent", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: { inputs: {}, outputs: {} },
+          }),
+      }),
+    );
+
+    render(
+      <StepDetailsModal
+        step={makeStep({ id: "step-1" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        projectId="proj-1"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("tab", { name: "Prompts" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("No prompt resolution data available.")).toBeDefined();
+    });
+  });
+
+  it("shows 'No prompt resolution data available.' when prompt_resolutions is empty object", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: { inputs: {}, outputs: {}, prompt_resolutions: {} },
+          }),
+      }),
+    );
+
+    render(
+      <StepDetailsModal
+        step={makeStep({ id: "step-1" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        projectId="proj-1"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("tab", { name: "Prompts" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("No prompt resolution data available.")).toBeDefined();
+    });
+  });
+
+  it("renders multiple prompt names as separate sections", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: {
+              inputs: {},
+              outputs: {},
+              prompt_resolutions: {
+                FIRST_PROMPT: {
+                  prompt_id: 10,
+                  prompt_version_id: 20,
+                  resolution: { lang: "en" },
+                },
+                SECOND_PROMPT: {
+                  prompt_id: 30,
+                  prompt_version_id: 40,
+                  resolution: { mode: "strict" },
+                },
+              },
+            },
+          }),
+      }),
+    );
+
+    render(
+      <StepDetailsModal
+        step={makeStep({ id: "step-1" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        projectId="proj-1"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("tab", { name: "Prompts" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("FIRST_PROMPT")).toBeDefined();
+      expect(screen.getByText("SECOND_PROMPT")).toBeDefined();
+      expect(screen.getByText("lang")).toBeDefined();
+      expect(screen.getByText("mode")).toBeDefined();
+    });
   });
 });
