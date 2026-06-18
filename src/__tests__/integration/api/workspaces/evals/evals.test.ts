@@ -2234,6 +2234,76 @@ describe("Evals API — Integration Tests", () => {
         const data = await response.json();
         expect(data.success).toBe(true);
         expect(data.project_id).toBe("proj-abc");
+
+        // Assert swarmUrl and swarmSecretAlias are present in the Stakwork payload
+        const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+        const body = JSON.parse(fetchCall[1].body);
+        const vars = body.workflow_params.set_var.attributes.vars;
+        expect(vars).toHaveProperty("swarmUrl");
+        expect(vars).toHaveProperty("swarmSecretAlias");
+      });
+
+      test("includes swarmSecretAlias in vars when swarm has an alias set", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key", swarmSecretAlias: "my-alias" });
+
+        process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
+        process.env.STAKWORK_API_KEY = "test-stakwork-key";
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ project_id: "proj-xyz" }),
+        } as any);
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
+          owner,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+        const body = JSON.parse(fetchCall[1].body);
+        const vars = body.workflow_params.set_var.attributes.vars;
+        expect(vars.swarmSecretAlias).toBe("my-alias");
+      });
+
+      test("sends empty string for swarmSecretAlias when swarm has none set", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        // No swarmSecretAlias provided — defaults to null
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
+        process.env.STAKWORK_API_KEY = "test-stakwork-key";
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ project_id: "proj-null-alias" }),
+        } as any);
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
+          owner,
+          {},
+        );
+
+        const response = await runTrigger(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1", triggerId: "trig-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+        const body = JSON.parse(fetchCall[1].body);
+        const vars = body.workflow_params.set_var.attributes.vars;
+        expect(vars.swarmSecretAlias).toBe("");
       });
     });
 
