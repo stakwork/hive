@@ -324,7 +324,7 @@ export default function WorkflowInspectorPage() {
         <ResizablePanel defaultSize={40} minSize={20}>
         <div className="border rounded-lg overflow-hidden flex flex-col h-full bg-card/40">
           <Tabs defaultValue="stats" className="flex flex-col h-full min-h-0">
-            <div className="border-b px-3 pt-3 shrink-0">
+            <div className="border-b px-3 py-3 shrink-0">
               <TabsList className="max-w-full overflow-x-auto">
                 <TabsTrigger value="stats" className="shrink-0">Stats</TabsTrigger>
                 <TabsTrigger value="params" className="shrink-0">Params</TabsTrigger>
