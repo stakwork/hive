@@ -6,12 +6,14 @@
  * - 404/403 for non-member / no swarm
  * - 400 for missing `requirement`
  * - 400 for missing `evalSetId`
- * - 200 happy path: addNode called 2× (EvalRequirement + EvalTrigger), addEdge called ≥2×
+ * - 200 happy path: addNode called 2× (EvalRequirement + EvalTrigger), addEdge called exactly 2×
  * - HAS_REQUIREMENT edge source is the provided evalSetId (not auto-generated)
  * - prompt_snapshot and output_snapshot stored from posted inputs/outputs
+ * - EvalTrigger body has no `model` or `provider` fields
  * - capture with null inputs/outputs stores "null" strings gracefully
  * - Dupes allowed: a second capture creates new nodes
  * - No outbound fetch to STAKWORK_BASE_URL/projects/...
+ * - No EVALUATED edge is created
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
@@ -135,13 +137,6 @@ function setupNodeMocks() {
     .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" });
 
   vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
-
-  // Run node lookup returns null (skip EVALUATED edge)
-  mockFetch.mockResolvedValueOnce({
-    ok: false,
-    status: 404,
-    json: async () => ({}),
-  });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -237,14 +232,14 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
     test("returns 400 when evalSetId is missing", async () => {
       const { user, workspace } = await createTestFixtures();
 
-      const bodyWithoutEvalSetId = {
+      const body = {
         run_id: "1001",
         step_id: "llm_step",
         requirement: "Never return an empty response",
         inputs: sampleInputs,
         // evalSetId intentionally omitted
       };
-      const request = makeRequest(workspace.slug, "42", bodyWithoutEvalSetId, user);
+      const request = makeRequest(workspace.slug, "42", body, user);
       const response = await POST(request, {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
       });
@@ -269,7 +264,7 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
   });
 
   describe("Happy path", () => {
-    test("200 happy path: addNode called 2× (EvalRequirement + EvalTrigger), addEdge called ≥2×", async () => {
+    test("200 happy path: addNode called 2×, addEdge called exactly 2× (no EVALUATED edge)", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocks();
 
@@ -285,16 +280,15 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(data.data.triggerRef).toBe("trigger-ref-1");
       expect(data.data.evalSetRef).toBe(SAMPLE_EVAL_SET_ID);
 
-      // Only 2 addNode calls: EvalRequirement, EvalTrigger (no EvalSet creation)
+      // Only 2 addNode calls: EvalRequirement + EvalTrigger (no EvalSet creation)
       expect(nodesService.addNode).toHaveBeenCalledTimes(2);
-      // 2 addEdge calls: HAS_REQUIREMENT, HAS_TRIGGER
+      // Exactly 2 addEdge calls: HAS_REQUIREMENT + HAS_TRIGGER — no EVALUATED
       expect(nodesService.addEdge).toHaveBeenCalledTimes(2);
 
-      // Verify edge types
-      const edgeCalls = vi.mocked(nodesService.addEdge).mock.calls;
-      const edgeTypes = edgeCalls.map((c) => c[1].edge.edge_type);
+      const edgeTypes = vi.mocked(nodesService.addEdge).mock.calls.map((c) => c[1].edge.edge_type);
       expect(edgeTypes).toContain("HAS_REQUIREMENT");
       expect(edgeTypes).toContain("HAS_TRIGGER");
+      expect(edgeTypes).not.toContain("EVALUATED");
     });
 
     test("HAS_REQUIREMENT edge source is the provided evalSetId (not auto-generated)", async () => {
@@ -312,6 +306,38 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(hasReqEdge![1].source.ref_id).toBe(SAMPLE_EVAL_SET_ID);
     });
 
+    test("no EVALUATED edge is created even when run_id is provided", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      const edgeTypes = vi.mocked(nodesService.addEdge).mock.calls.map((c) => c[1].edge.edge_type);
+      expect(edgeTypes).not.toContain("EVALUATED");
+    });
+
+    test("EvalTrigger body has no model or provider fields", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      const triggerCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "EvalTrigger"
+      );
+      expect(triggerCall).toBeDefined();
+
+      const bodyParsed = JSON.parse(triggerCall![1].node_data.body);
+      expect(bodyParsed.model).toBeUndefined();
+      expect(bodyParsed.provider).toBeUndefined();
+    });
+
     test("(a) EvalTrigger stores prompt_snapshot and output_snapshot from posted inputs/outputs", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocks();
@@ -321,17 +347,16 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
       });
 
-      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
-      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      const triggerCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "EvalTrigger"
+      );
       expect(triggerCall).toBeDefined();
 
-      const nodeData = triggerCall![1].node_data;
-      const bodyParsed = JSON.parse(nodeData.body);
+      const bodyParsed = JSON.parse(triggerCall![1].node_data.body);
       expect(bodyParsed.prompt_snapshot).toBe(JSON.stringify(sampleInputs));
       expect(bodyParsed.output_snapshot).toBe(JSON.stringify(sampleOutputs));
-      expect(bodyParsed.model).toBe("gpt-4o-mini");
-      expect(bodyParsed.provider).toBeNull();
       expect(bodyParsed.tool_call_trace).toBeNull();
+      expect(bodyParsed.feedback_note).toBe("title step occasionally emits empty string");
     });
 
     test("(b) capture with null inputs/outputs stores \"null\" strings gracefully", async () => {
@@ -354,15 +379,15 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
 
       expect(response.status).toBe(200);
 
-      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
-      const triggerCall = addNodeCalls.find((c) => c[1].node_type === "EvalTrigger");
+      const triggerCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "EvalTrigger"
+      );
       expect(triggerCall).toBeDefined();
 
-      const nodeData = triggerCall![1].node_data;
-      const bodyParsed = JSON.parse(nodeData.body);
+      const bodyParsed = JSON.parse(triggerCall![1].node_data.body);
       expect(bodyParsed.prompt_snapshot).toBe("null");
       expect(bodyParsed.output_snapshot).toBe("null");
-      expect(bodyParsed.model).toBeNull();
+      expect(bodyParsed.model).toBeUndefined();
     });
 
     test("no outbound fetch to STAKWORK_BASE_URL/projects/... is made", async () => {
@@ -381,6 +406,18 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(stakworkCalls).toHaveLength(0);
     });
 
+    test("no outbound fetch at all (no run node lookup)", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     test("EvalRequirement node_data has correct name", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocks();
@@ -390,8 +427,9 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
         params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
       });
 
-      const addNodeCalls = vi.mocked(nodesService.addNode).mock.calls;
-      const reqCall = addNodeCalls.find((c) => c[1].node_type === "EvalRequirement");
+      const reqCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "EvalRequirement"
+      );
       expect(reqCall).toBeDefined();
       expect(reqCall![1].node_data.name).toBe("Never return an empty response");
     });
@@ -407,12 +445,11 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       });
       expect(response1.status).toBe(200);
 
-      // Second capture — still uses the same provided evalSetId
+      // Second capture — same evalSetId provided, new nodes created
       vi.mocked(nodesService.addNode)
         .mockResolvedValueOnce({ success: true, ref_id: "req-ref-2" })
         .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-2" });
       vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
-      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
 
       const request2 = makeRequest(workspace.slug, "42", validBody, user);
       const response2 = await POST(request2, {
@@ -423,57 +460,6 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       const data2 = await response2.json();
       expect(data2.data.requirementRef).toBe("req-ref-2");
       expect(data2.data.triggerRef).toBe("trigger-ref-2");
-    });
-
-    test("EVALUATED edge is created when Run node is found", async () => {
-      const { user, workspace } = await createTestFixtures();
-
-      vi.mocked(nodesService.addNode)
-        .mockResolvedValueOnce({ success: true, ref_id: "req-ref" })
-        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref" });
-      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
-
-      // Run node lookup returns a ref
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ nodes: [{ ref_id: "run-node-ref" }] }),
-      });
-
-      const request = makeRequest(workspace.slug, "42", validBody, user);
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
-      });
-
-      expect(response.status).toBe(200);
-
-      // Should have 3 edges: HAS_REQUIREMENT, HAS_TRIGGER, EVALUATED
-      expect(nodesService.addEdge).toHaveBeenCalledTimes(3);
-      const edgeCalls = vi.mocked(nodesService.addEdge).mock.calls;
-      const edgeTypes = edgeCalls.map((c) => c[1].edge.edge_type);
-      expect(edgeTypes).toContain("EVALUATED");
-    });
-
-    test("EVALUATED edge is skipped gracefully when Run node not found", async () => {
-      const { user, workspace } = await createTestFixtures();
-
-      vi.mocked(nodesService.addNode)
-        .mockResolvedValueOnce({ success: true, ref_id: "req-ref" })
-        .mockResolvedValueOnce({ success: true, ref_id: "trigger-ref" });
-      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
-      // Run node not found
-      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
-
-      const request = makeRequest(workspace.slug, "42", validBody, user);
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
-      });
-
-      expect(response.status).toBe(200);
-      // Only HAS_REQUIREMENT + HAS_TRIGGER, no EVALUATED
-      expect(nodesService.addEdge).toHaveBeenCalledTimes(2);
-      const edgeCalls = vi.mocked(nodesService.addEdge).mock.calls;
-      const edgeTypes = edgeCalls.map((c) => c[1].edge.edge_type);
-      expect(edgeTypes).not.toContain("EVALUATED");
     });
   });
 });

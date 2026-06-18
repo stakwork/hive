@@ -23,25 +23,6 @@ function handleSwarmAccessError(error: { type: string }) {
   return NextResponse.json({ error: errorInfo.message }, { status: errorInfo.status });
 }
 
-/** Look up a Run/AgentSession node by stakwork project id for the EVALUATED edge. */
-async function lookupRunNode(
-  jarvisConfig: { jarvisUrl: string; apiKey: string },
-  runId: string,
-): Promise<string | null> {
-  try {
-    const url = `${jarvisConfig.jarvisUrl}/v2/nodes?type=AgentSession&project_id=${encodeURIComponent(runId)}`;
-    const res = await fetch(url, {
-      headers: { "x-api-token": jarvisConfig.apiKey },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const nodes: Array<{ ref_id: string }> = data?.nodes ?? [];
-    return nodes[0]?.ref_id ?? null;
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     // Auth — middleware-based (same as flag-as-eval)
@@ -64,7 +45,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const { run_id, step_id, requirement, reason, inputs, outputs, evalSetId } = body as {
+    const { step_id, requirement, reason, inputs, outputs, evalSetId } = body as {
       run_id?: string;
       step_id?: string;
       requirement?: string;
@@ -104,7 +85,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
-    const jarvisConfig = { jarvisUrl, apiKey: swarmApiKey };
     const nodeConfig = { jarvisUrl, apiKey: swarmApiKey };
 
     // ── 1. Use provided EvalSet ──────────────────────────────────────────────
@@ -129,7 +109,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // ── 3. Build EvalTrigger from posted IO ──────────────────────────────────
     const stepName = step_id ?? "unknown_step";
-    const model = (inputs?.model as string | undefined) ?? null;
     const promptSnapshot = JSON.stringify(inputs ?? null);
     const outputSnapshot = JSON.stringify(outputs ?? null);
 
@@ -143,8 +122,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         end_point: `step:${step_id ?? ""}`,
         change_type: "prompt",
         body: JSON.stringify({
-          model,
-          provider: null,
           prompt_snapshot: promptSnapshot,
           output_snapshot: outputSnapshot,
           tool_call_trace: null,
@@ -176,21 +153,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       target: { ref_id: triggerRef },
     });
     logger.info("[EvalCapture] HAS_TRIGGER edge created");
-
-    // EvalTrigger -[EVALUATED]-> Run (optional — skip if not found)
-    if (run_id) {
-      const runNodeRef = await lookupRunNode(jarvisConfig, run_id);
-      if (runNodeRef) {
-        await addEdge(nodeConfig, {
-          edge: { edge_type: "EVALUATED" },
-          source: { ref_id: triggerRef },
-          target: { ref_id: runNodeRef },
-        });
-        logger.info(`[EvalCapture] EVALUATED edge created, run ref_id: ${runNodeRef}`);
-      } else {
-        logger.info("[EvalCapture] No Run node found for EVALUATED edge — skipping");
-      }
-    }
 
     return NextResponse.json({
       success: true,
