@@ -100,6 +100,8 @@ export const PUSHER_EVENTS = {
   ACTIVITY_UPDATED: "activity-updated",
   // Workflow version summary ready (AI-generated summary delivered via webhook)
   WORKFLOW_SUMMARY_READY: "workflow-summary-ready",
+  // Prompt eval run completed — carries pass/fail badge data for version rows
+  PROMPT_EVAL_RESULT: "prompt-eval-result",
 } as const;
 
 /**
