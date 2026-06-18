@@ -176,7 +176,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
     if (!requirement.trim()) return;
     setSubmitting(true);
     try {
-      const stepId = step?.project_step_id ?? step?.name;
+      const stepId = step?.id;
       const res = await fetch(
         `/api/workspaces/${slug}/workflows/${workflowId}/eval/capture`,
         {
