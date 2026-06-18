@@ -77,17 +77,28 @@ function makeStore(initial?: Partial<ConvState>) {
 // simulate a server-side nudge.
 const { fakePusher } = vi.hoisted(() => {
   const handlers: Record<string, (...a: unknown[]) => void> = {};
+  const connHandlers: Record<string, ((...a: unknown[]) => void)[]> = {};
   const channel = {
     bind: (ev: string, h: (...a: unknown[]) => void) => {
       handlers[ev] = h;
     },
     unbind_all: () => {},
   };
-  const client = { subscribe: () => channel, unsubscribe: () => {} };
+  const connection = {
+    bind: (ev: string, h: (...a: unknown[]) => void) => {
+      (connHandlers[ev] ??= []).push(h);
+    },
+    unbind: (ev: string, h: (...a: unknown[]) => void) => {
+      connHandlers[ev] = (connHandlers[ev] ?? []).filter((x) => x !== h);
+    },
+  };
+  const client = { subscribe: () => channel, unsubscribe: () => {}, connection };
   return {
     fakePusher: {
       client,
       fire: (ev: string) => handlers[ev]?.(),
+      fireConnection: (ev: string) =>
+        (connHandlers[ev] ?? []).forEach((h) => h()),
     },
   };
 });
@@ -97,6 +108,13 @@ vi.mock("@/lib/pusher", () => ({
   getCanvasConversationChannelName: (id: string) => `canvas-conversation-${id}`,
   PUSHER_EVENTS: { CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated" },
 }));
+
+function setVisibility(state: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  });
+}
 
 // The hook imports `useCanvasChatStore` directly; we replace the module with
 // a factory that returns a fresh store per test.
@@ -365,5 +383,117 @@ describe("useCanvasChatAutoSave (live-sync)", () => {
     );
     const msgs = _store.getState().conversations["conv-1"].messages;
     expect(msgs.map((m) => m.id)).toContain("planner-y");
+  });
+
+  // ── Catch-up: Pusher has no replay ────────────────────────────────────
+  // Rows fanned out while we weren't subscribed / the socket was down /
+  // the tab was hidden must appear on return without waiting for the next
+  // live nudge. These cover the "rejoined the canvas chat and the planner
+  // sub-agent messages were missing" bug.
+
+  it("catches up on mount when a conversation is already active (remount)", async () => {
+    // Simulates a remount: the module-level store already holds an active
+    // conversation with a server id, so the change-driven `subscribe`
+    // callback never fires for it. The mount-seed must still subscribe AND
+    // refetch the rows that fanned out while we were gone.
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [makeMsg("user", "m1")],
+          serverConversationId: "server-1",
+        }),
+      },
+    });
+
+    global.fetch = fetchReturning([
+      { id: "m1", role: "user", content: "Hello" },
+      { id: "planner-z", role: "assistant", content: "Plan ready" },
+    ]);
+
+    await act(async () => {
+      renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/orgs/my-org/chat/conversations/server-1",
+    );
+    const ids = _store.getState().conversations["conv-1"].messages.map(
+      (m) => m.id,
+    );
+    expect(ids).toContain("planner-z");
+  });
+
+  it("catches up when the tab becomes visible again", async () => {
+    setVisibility("hidden");
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [makeMsg("user", "m1")],
+          serverConversationId: "server-1",
+        }),
+      },
+    });
+
+    // No rows yet at mount.
+    global.fetch = fetchReturning([{ id: "m1", role: "user", content: "Hello" }]);
+    await act(async () => {
+      renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+      await Promise.resolve();
+    });
+
+    // Planner fanned out while hidden; tab returns → catch-up fetch merges it.
+    global.fetch = fetchReturning([
+      { id: "m1", role: "user", content: "Hello" },
+      { id: "planner-vis", role: "assistant", content: "Plan ready" },
+    ]);
+    await act(async () => {
+      setVisibility("visible");
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const ids = _store.getState().conversations["conv-1"].messages.map(
+      (m) => m.id,
+    );
+    expect(ids).toContain("planner-vis");
+  });
+
+  it("catches up when the Pusher socket reconnects", async () => {
+    setVisibility("visible");
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [makeMsg("user", "m1")],
+          serverConversationId: "server-1",
+        }),
+      },
+    });
+
+    global.fetch = fetchReturning([{ id: "m1", role: "user", content: "Hello" }]);
+    await act(async () => {
+      renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+      await Promise.resolve();
+    });
+
+    global.fetch = fetchReturning([
+      { id: "m1", role: "user", content: "Hello" },
+      { id: "planner-recon", role: "assistant", content: "Plan ready" },
+    ]);
+    await act(async () => {
+      fakePusher.fireConnection("connected");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const ids = _store.getState().conversations["conv-1"].messages.map(
+      (m) => m.id,
+    );
+    expect(ids).toContain("planner-recon");
   });
 });
