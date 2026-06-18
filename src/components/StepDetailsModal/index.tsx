@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2, Loader2, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { WorkflowTransition, StepType, getStepType } from "@/types/stakwork/workflow";
 import { isLlmStep } from "@/lib/stakwork/transitions";
@@ -262,8 +263,22 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
               <div className="truncate font-mono text-xs text-muted-foreground">{step.name}</div>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
             {runState && <StatusPill state={runState} />}
+            {showFlagForEval && !flagOpen && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setFlagOpen(true)}
+                    aria-label="Flag for eval"
+                    className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Flag className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Flag for eval</TooltipContent>
+              </Tooltip>
+            )}
             <button
               onClick={onClose}
               className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -412,28 +427,15 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
         )}
 
         {/* Footer */}
-        {(showFlagForEval || onSelect) && (
+        {onSelect && (
           <div className="flex justify-end gap-2 border-t px-5 py-3">
-            {showFlagForEval && !flagOpen && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setFlagOpen(true)}
-                className="mr-auto"
-              >
-                <Flag className="mr-2 h-4 w-4" />
-                Flag for eval
-              </Button>
-            )}
             <Button variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
-            {onSelect && (
-              <Button size="sm" onClick={onSelect}>
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Select Step
-              </Button>
-            )}
+            <Button size="sm" onClick={onSelect}>
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              Select Step
+            </Button>
           </div>
         )}
       </div>
