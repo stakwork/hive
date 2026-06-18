@@ -81,6 +81,18 @@ const MOCK_STEPS = [
     provider: "openai",
     endpoint_url: "https://api.openai.com/v1/chat/completions",
     preview: "The title looks great.",
+    method: "POST",
+    messages: [
+      { role: "system", content: "You are a helpful assistant." },
+      { role: "user", content: "Generate a title for this content." },
+    ],
+    body: {
+      response_raw: JSON.stringify({ choices: [{ message: { content: "Sample Title" }, finish_reason: "stop" }] }),
+      output_text: "Sample Title",
+      finish_reason: "stop",
+      prompt_change: null,
+      model: "gpt-4o-mini",
+    },
   },
   {
     stepId: "llm_evaluate_quality",
@@ -89,13 +101,20 @@ const MOCK_STEPS = [
     provider: "anthropic",
     endpoint_url: "https://api.anthropic.com/v1/messages",
     preview: "The output looks correct.",
+    method: "POST",
+    messages: [
+      { role: "system", content: "You are a quality evaluation assistant." },
+      { role: "user", content: "Evaluate the quality of the following output." },
+    ],
+    body: {
+      response_raw: JSON.stringify({ content: [{ text: "High quality.", type: "text" }], stop_reason: "end_turn" }),
+      output_text: "High quality.",
+      finish_reason: "end_turn",
+      prompt_change: null,
+      model: "claude-3-5-sonnet-20241022",
+    },
   },
 ];
-
-const MOCK_IO = {
-  inputs: { model: "gpt-4o-mini", messages: [{ role: "user", content: "hello" }] },
-  outputs: { content: "world" },
-};
 
 function defaultProps(overrides: Partial<React.ComponentProps<typeof FlagRunEvalModal>> = {}) {
   return {
@@ -195,18 +214,11 @@ describe("FlagRunEvalModal", () => {
     expect(nextBtn).not.toBeDisabled();
   });
 
-  it("clicking Next triggers IO fetch for the selected step name", async () => {
-    vi.mocked(fetch)
-      // Step 1: request-steps
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      // Step 2: IO fetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: MOCK_IO }),
-      } as Response);
+  it("clicking Next advances to step 2 without an IO fetch", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { steps: MOCK_STEPS } }),
+    } as Response);
 
     render(<FlagRunEvalModal {...defaultProps()} />);
 
@@ -214,24 +226,20 @@ describe("FlagRunEvalModal", () => {
     fireEvent.click(screen.getByText("Generate Title").closest("button")!);
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-    await waitFor(() => {
-      const ioCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
-        String(url).includes("/steps/Generate Title/io")
-      );
-      expect(ioCalls.length).toBe(1);
-    });
+    await waitFor(() => expect(screen.getByTestId("capture-eval-form")).toBeInTheDocument());
+
+    // No /steps/.../io call should have been made
+    const ioCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).includes("/io")
+    );
+    expect(ioCalls.length).toBe(0);
   });
 
   it("advances to step 2 showing CaptureEvalForm (no TagInput, no check type)", async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: MOCK_IO }),
-      } as Response);
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { steps: MOCK_STEPS } }),
+    } as Response);
 
     render(<FlagRunEvalModal {...defaultProps()} />);
 
@@ -248,15 +256,10 @@ describe("FlagRunEvalModal", () => {
   });
 
   it("Confirm button is disabled when requirement field is empty", async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: MOCK_IO }),
-      } as Response);
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { steps: MOCK_STEPS } }),
+    } as Response);
 
     render(<FlagRunEvalModal {...defaultProps()} />);
 
@@ -278,10 +281,6 @@ describe("FlagRunEvalModal", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: MOCK_IO }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
@@ -310,35 +309,18 @@ describe("FlagRunEvalModal", () => {
     expect(url).toBe("/api/workspaces/test-ws/workflows/42/eval/capture");
     const body = JSON.parse((opts as RequestInit).body as string);
     expect(body.run_id).toBe("1001");
-    expect(body.step_id).toBe("Generate Title");
+    expect(body.step_id).toBe("llm_generate_title");
     expect(body.requirement).toBe("Never return empty");
-    expect(body.inputs).toEqual(MOCK_IO.inputs);
-    expect(body.outputs).toEqual(MOCK_IO.outputs);
+    expect(body.inputs).toEqual({ model: MOCK_STEPS[0].model, messages: MOCK_STEPS[0].messages });
+    expect(body.outputs).toEqual({
+      response_raw: MOCK_STEPS[0].body.response_raw,
+      output_text: MOCK_STEPS[0].body.output_text,
+      finish_reason: MOCK_STEPS[0].body.finish_reason,
+    });
     // No legacy fields
     expect(body.check).toBeUndefined();
     expect(body.desirable_cases).toBeUndefined();
     expect(body.undesirable_cases).toBeUndefined();
-  });
-
-  it("gracefully advances to step 2 if IO fetch fails (with nulls)", async () => {
-    const { toast } = await import("sonner");
-
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockRejectedValueOnce(new Error("network error"));
-
-    render(<FlagRunEvalModal {...defaultProps()} />);
-
-    await waitFor(() => screen.getByText("Generate Title"));
-    fireEvent.click(screen.getByText("Generate Title").closest("button")!);
-    fireEvent.click(screen.getByRole("button", { name: /next/i }));
-
-    // Should still advance to step 2 despite IO failure
-    await waitFor(() => expect(screen.getByTestId("capture-eval-form")).toBeInTheDocument());
-    expect(toast.info).toHaveBeenCalled();
   });
 
   it("calls onCaptured and closes on successful POST", async () => {
@@ -349,10 +331,6 @@ describe("FlagRunEvalModal", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: MOCK_IO }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
@@ -383,10 +361,6 @@ describe("FlagRunEvalModal", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { steps: MOCK_STEPS } }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: MOCK_IO }),
       } as Response)
       .mockResolvedValueOnce({ ok: false } as Response);
 
