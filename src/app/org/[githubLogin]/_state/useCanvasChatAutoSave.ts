@@ -103,6 +103,19 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
     const isIdle = (conv: { isStreaming: boolean }): boolean =>
       !conv.isStreaming;
 
+    // Clear a conversation's unread flag server-side. Called for the chat
+    // the user is actively viewing (the active conversation): when its own
+    // turn settles, and when a live-sync lands new server rows into it —
+    // so watching a planner/sub-agent fan out keeps it "seen". A
+    // backgrounded chat is never marked here, so it stays unread until the
+    // user opens it. Fire-and-forget; owner-only on the server.
+    const markSeen = (serverId: string): void => {
+      void fetch(
+        `/api/orgs/${githubLogin}/chat/conversations/${serverId}/seen`,
+        { method: "POST" },
+      ).catch(() => {});
+    };
+
     // Prefixes for turns this tab authored — their server rows are
     // filtered out of the merge (we already show them optimistically).
     const authoredPrefixes = (): string[] =>
@@ -171,9 +184,13 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
         const reconciled = reconcilePlannerSources(merged.messages, mapped);
 
         if (merged.added.length === 0 && !reconciled.changed) return; // in sync
-        useCanvasChatStore
-          .getState()
-          .setConversationMessages(conversationId, reconciled.messages);
+        const store = useCanvasChatStore.getState();
+        store.setConversationMessages(conversationId, reconciled.messages);
+
+        // The user is looking at this chat (only the active conv is
+        // subscribed/synced live), and we just merged new server content
+        // into it — so it's been seen. Clear its unread flag.
+        if (store.activeConversationId === conversationId) markSeen(serverId);
       } catch {
         // Network hiccup — a later nudge (or the next server append) will
         // resync.
@@ -252,10 +269,14 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
           before?.isStreaming &&
           after &&
           !after.isStreaming &&
-          after.serverConversationId &&
-          pendingSyncRef.current.has(activeId)
+          after.serverConversationId
         ) {
-          void syncFromServer(activeId, after.serverConversationId);
+          // The active chat's own turn just finished and the user is
+          // looking at it — mark it seen so it doesn't flag itself unread.
+          markSeen(after.serverConversationId);
+          if (pendingSyncRef.current.has(activeId)) {
+            void syncFromServer(activeId, after.serverConversationId);
+          }
         }
       }
 
