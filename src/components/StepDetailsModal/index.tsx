@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { WorkflowTransition, StepType, getStepType } from "@/types/stakwork/workflow";
 import { isLlmStep } from "@/lib/stakwork/transitions";
 import { CaptureEvalForm, CREATE_NEW_VALUE } from "@/components/evals/CaptureEvalForm";
+import { PromptResolution, mapPromptResolutions } from "@/types/evals";
 
 interface StepDetailsModalProps {
   step: WorkflowTransition | null;
@@ -110,12 +111,6 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
     </div>
   );
 }
-
-type PromptResolution = {
-  prompt_id: number;
-  prompt_version_id: number;
-  resolution: Record<string, unknown>;
-};
 
 export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitions, projectId, slug, workflowId }: StepDetailsModalProps) {
   const [ioData, setIoData] = useState<{
@@ -284,6 +279,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
             inputs: ioData.inputs,
             outputs: ioData.outputs,
             evalSetId: resolvedEvalSetId,
+            prompts: mapPromptResolutions(ioData.prompt_resolutions),
           }),
         }
       );
