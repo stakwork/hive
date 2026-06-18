@@ -17,12 +17,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock, Trash2, Zap, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock, Trash2, Zap, Upload, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { estimateTokens, formatTokenCount } from "@/lib/utils/token-estimate";
 import { useDebounce } from "@/hooks/useDebounce";
 import { diffLines } from "diff";
+import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { RunEvalsModal } from "@/components/prompts/RunEvalsModal";
 
 // Sentinel ID for representing the current live version
 const CURRENT_VERSION_SENTINEL = -1;
@@ -92,6 +94,12 @@ interface PromptsPanelProps {
 
 type ViewMode = "list" | "detail" | "create" | "history";
 
+type EvalRunState = {
+  runId: string;
+  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "ERROR" | "HALTED";
+  result: { pass: number; fail: number; total: number } | null;
+};
+
 export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkflow, workspaceSlug }: PromptsPanelProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -126,6 +134,10 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [isLoadingDiff, setIsLoadingDiff] = useState(false);
   const [previewVersionDescription, setPreviewVersionDescription] = useState<string | null>(null);
 
+  // Eval runs state
+  const [evalRuns, setEvalRuns] = useState<Record<number, EvalRunState | null>>({});
+  const [runEvalsTarget, setRunEvalsTarget] = useState<{ versionId: number; label: string } | null>(null);
+
   // Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
@@ -139,6 +151,13 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const liveTokenCount = estimateTokens(debouncedFormValue);
 
   const isFullpage = variant === "fullpage";
+
+  // Resolve workspace slug from prop or URL path
+  const resolvedSlug = workspaceSlug ?? (() => {
+    const parts = pathname?.split('/') ?? [];
+    const wIdx = parts.indexOf('w');
+    return wIdx !== -1 ? parts[wIdx + 1] : undefined;
+  })();
 
   // Initialize search from URL on mount
   useEffect(() => {
@@ -289,6 +308,83 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       return null;
     }
   }, []);
+
+  // Load persisted eval runs when entering history view
+  useEffect(() => {
+    if (viewMode !== 'history' || !selectedPrompt || !resolvedSlug) return;
+
+    const versionIds: number[] = versions.map((v) => v.id);
+    if (selectedPrompt.current_version_id) {
+      versionIds.push(selectedPrompt.current_version_id);
+    }
+
+    if (versionIds.length === 0) return;
+
+    const fetchRuns = async () => {
+      const results = await Promise.all(
+        versionIds.map(async (vId) => {
+          try {
+            const res = await fetch(
+              `/api/workspaces/${resolvedSlug}/prompts/${selectedPrompt.id}/versions/${vId}/run-evals`
+            );
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data.success && data.data ? { vId, run: data.data } : null;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      setEvalRuns((prev) => {
+        const next = { ...prev };
+        results.forEach((item) => {
+          if (!item) return;
+          const { vId, run } = item;
+          // Key Current row under CURRENT_VERSION_SENTINEL
+          const key = vId === selectedPrompt.current_version_id ? CURRENT_VERSION_SENTINEL : vId;
+          next[key] = {
+            runId: run.id ?? '',
+            status: run.status,
+            result: run.result ? (typeof run.result === 'string' ? JSON.parse(run.result) : run.result) : null,
+          };
+        });
+        return next;
+      });
+    };
+
+    fetchRuns();
+  }, [viewMode, selectedPrompt, versions, resolvedSlug]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pusher subscription for real-time eval results in history view
+  useEffect(() => {
+    if (viewMode !== 'history' || !resolvedSlug) return;
+
+    let channel: ReturnType<ReturnType<typeof getPusherClient>['subscribe']> | null = null;
+    try {
+      const pusher = getPusherClient();
+      channel = pusher.subscribe(getWorkspaceChannelName(resolvedSlug));
+      channel.bind(
+        PUSHER_EVENTS.PROMPT_EVAL_RESULT,
+        (data: { runId: string; promptVersionId: number; result: { pass: number; fail: number; total: number } }) => {
+          setEvalRuns((prev) => ({
+            ...prev,
+            [data.promptVersionId]: {
+              runId: data.runId,
+              status: 'COMPLETED',
+              result: data.result,
+            },
+          }));
+        }
+      );
+    } catch {
+      // Pusher not configured — no-op
+    }
+
+    return () => {
+      channel?.unbind(PUSHER_EVENTS.PROMPT_EVAL_RESULT);
+    };
+  }, [viewMode, resolvedSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch prompts when page or search changes
   useEffect(() => {
@@ -1142,6 +1238,33 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                               </Badge>
                             )}
                           <span className="text-xs text-muted-foreground">Latest</span>
+                          {evalRuns[CURRENT_VERSION_SENTINEL]?.status === 'IN_PROGRESS' ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
+                          ) : evalRuns[CURRENT_VERSION_SENTINEL]?.status === 'COMPLETED' && evalRuns[CURRENT_VERSION_SENTINEL]?.result ? (
+                            <Badge
+                              variant="default"
+                              className={cn(
+                                "text-xs flex-shrink-0",
+                                evalRuns[CURRENT_VERSION_SENTINEL]!.result!.fail === 0
+                                  ? "bg-green-600 text-white"
+                                  : "bg-red-600 text-white"
+                              )}
+                              title="Eval result"
+                            >
+                              {evalRuns[CURRENT_VERSION_SENTINEL]!.result!.pass}/{evalRuns[CURRENT_VERSION_SENTINEL]!.result!.total} pass
+                            </Badge>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex-shrink-0 h-7 px-2"
+                              disabled={!resolvedSlug}
+                              title="Run evals on Current"
+                              onClick={(e) => { e.stopPropagation(); setRunEvalsTarget({ versionId: CURRENT_VERSION_SENTINEL, label: 'Current' }); }}
+                            >
+                              <Play className="h-3 w-3" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </button>
@@ -1181,6 +1304,35 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                           </div>
                         </button>
 
+                        {/* Eval run button / spinner / badge */}
+                        {evalRuns[version.id]?.status === 'IN_PROGRESS' ? (
+                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
+                        ) : evalRuns[version.id]?.status === 'COMPLETED' && evalRuns[version.id]?.result ? (
+                          <Badge
+                            variant="default"
+                            className={cn(
+                              "text-xs flex-shrink-0",
+                              evalRuns[version.id]!.result!.fail === 0
+                                ? "bg-green-600 text-white"
+                                : "bg-red-600 text-white"
+                            )}
+                            title="Eval result"
+                          >
+                            {evalRuns[version.id]!.result!.pass}/{evalRuns[version.id]!.result!.total} pass
+                          </Badge>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-shrink-0 h-7 px-2"
+                            disabled={!resolvedSlug}
+                            title={`Run evals on v${version.version_number}`}
+                            onClick={(e) => { e.stopPropagation(); setRunEvalsTarget({ versionId: version.id, label: `v${version.version_number}` }); }}
+                          >
+                            <Play className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {/* Publish button */}
                         {isLive ? (
                           <Badge variant="default" className="text-xs flex-shrink-0 bg-green-600 text-white">Published</Badge>
                         ) : publishingVersionId === version.id ? (
@@ -1346,7 +1498,53 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
         )}
       </div>
     );
-    return isFullpage ? <Card className={wrapperClassName}>{content}</Card> : content;
+
+    const historyView = (
+      <>
+        {isFullpage ? <Card className={wrapperClassName}>{content}</Card> : content}
+        {runEvalsTarget && resolvedSlug && (
+          <RunEvalsModal
+            open={!!runEvalsTarget}
+            onClose={() => setRunEvalsTarget(null)}
+            versionLabel={runEvalsTarget.label}
+            workspaceSlug={resolvedSlug}
+            onConfirm={async (evalSetId) => {
+              if (!selectedPrompt || !resolvedSlug) return;
+              const capturedTarget = runEvalsTarget;
+              const vId =
+                capturedTarget.versionId === CURRENT_VERSION_SENTINEL
+                  ? selectedPrompt.current_version_id!
+                  : capturedTarget.versionId;
+              setRunEvalsTarget(null);
+              setEvalRuns((prev) => ({
+                ...prev,
+                [capturedTarget.versionId]: { runId: '', status: 'IN_PROGRESS', result: null },
+              }));
+              try {
+                const res = await fetch(
+                  `/api/workspaces/${resolvedSlug}/prompts/${selectedPrompt.id}/versions/${vId}/run-evals`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ evalSetId, promptName: selectedPrompt.name }),
+                  }
+                );
+                if (!res.ok) throw new Error('Failed to start eval run');
+                const data = await res.json();
+                setEvalRuns((prev) => ({
+                  ...prev,
+                  [capturedTarget.versionId]: { runId: data.runId, status: 'IN_PROGRESS', result: null },
+                }));
+              } catch {
+                setEvalRuns((prev) => ({ ...prev, [capturedTarget.versionId]: null }));
+              }
+            }}
+          />
+        )}
+      </>
+    );
+
+    return historyView;
   }
 
   // Show prompts list
