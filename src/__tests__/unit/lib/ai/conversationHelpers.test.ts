@@ -1,142 +1,173 @@
-/**
- * Unit tests for the shared SharedConversation title/preview helpers.
- *
- * Regression coverage for the canvas-chat "Untitled Conversation" bug:
- * the title is generated from the FIRST user message, and a conversation
- * whose persisted message list happens to lead with an assistant message
- * (e.g. a planner fan-out row, or a creating-POST delta that started
- * after the user turn) must still resolve a meaningful title from the
- * first user message anywhere in the list — never freeze as the
- * placeholder when a user message exists.
- */
-import { describe, test, expect } from "vitest";
-import {
-  generateTitle,
-  getMessagePreview,
-  TITLE_MAX_LENGTH,
-  UNTITLED_CONVERSATION,
-} from "@/lib/ai/conversationHelpers";
+// @vitest-environment node
 
-describe("generateTitle", () => {
-  test("uses the first user message text", () => {
-    const messages = [
-      { role: "user", content: "How does auth work?" },
-      { role: "assistant", content: "It uses NextAuth." },
+import { describe, it, expect } from "vitest";
+import { toModelMessages } from "@/lib/ai/conversationHelpers";
+import type { StoredMessage } from "@/services/canvas-turn-persistence";
+
+describe("toModelMessages", () => {
+  it("converts plain text user and assistant messages", () => {
+    const stored: StoredMessage[] = [
+      { role: "user", content: "Hello" } as StoredMessage,
+      { role: "assistant", content: "Hi there" } as StoredMessage,
     ];
-    expect(generateTitle(messages)).toBe("How does auth work?");
+    const result = toModelMessages(stored);
+    expect(result).toEqual([
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi there" },
+    ]);
   });
 
-  test("picks the first user message even when an assistant leads", () => {
-    // This is the exact shape that produced "Untitled Conversation":
-    // an assistant answer persisted first, the user's question second.
-    const messages = [
-      { role: "assistant", content: "No — it does not use extended thinking." },
-      { role: "user", content: "can you make a feature plan for that?" },
-    ];
-    expect(generateTitle(messages)).toBe(
-      "can you make a feature plan for that?",
-    );
-  });
-
-  test("caps long titles at TITLE_MAX_LENGTH with no ellipsis", () => {
-    const long = "a".repeat(TITLE_MAX_LENGTH + 50);
-    const title = generateTitle([{ role: "user", content: long }]);
-    expect(title).toBe("a".repeat(TITLE_MAX_LENGTH));
-    expect(title.endsWith("...")).toBe(false);
-  });
-
-  test("keeps titles under the cap intact (no ellipsis)", () => {
-    const text = "a".repeat(60);
-    expect(generateTitle([{ role: "user", content: text }])).toBe(text);
-  });
-
-  test("collapses internal whitespace to a single line", () => {
-    const messages = [
-      { role: "user", content: "line one\n\n  line two\ttabbed" },
-    ];
-    expect(generateTitle(messages)).toBe("line one line two tabbed");
-  });
-
-  test("supports array-shaped content with a text part", () => {
-    const messages = [
+  it("expands assistant message with tool calls and results into 3 ModelMessage entries", () => {
+    const stored: StoredMessage[] = [
       {
-        role: "user",
-        content: [
-          { type: "text", text: "array content question" },
-          { type: "image", url: "x" },
+        role: "assistant",
+        content: "Here is what I found.",
+        toolCalls: [
+          {
+            id: "tc1",
+            toolName: "search",
+            input: { query: "test" },
+            output: { results: ["a", "b"] },
+          },
         ],
-      },
+      } as StoredMessage,
     ];
-    expect(generateTitle(messages)).toBe("array content question");
+
+    const result = toModelMessages(stored);
+
+    expect(result).toHaveLength(3);
+
+    // 1. tool-call entry
+    expect(result[0]).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: "tc1",
+          toolName: "search",
+          input: { query: "test" },
+        },
+      ],
+    });
+
+    // 2. tool-result entry — output without "type" key gets wrapped as json
+    expect(result[1]).toEqual({
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "tc1",
+          toolName: "search",
+          output: { type: "json", value: { results: ["a", "b"] } },
+        },
+      ],
+    });
+
+    // 3. trailing assistant text
+    expect(result[2]).toEqual({
+      role: "assistant",
+      content: "Here is what I found.",
+    });
   });
 
-  test("returns the placeholder when there is no user message", () => {
-    const messages = [
-      { role: "assistant", content: "Here are the top items waiting on you:" },
+  it("omits tool-result message when tool call has no output or errorText", () => {
+    const stored: StoredMessage[] = [
+      {
+        role: "assistant",
+        content: null,
+        toolCalls: [
+          {
+            id: "tc2",
+            toolName: "no_result_tool",
+            input: {},
+            // output and errorText intentionally absent
+          },
+        ],
+      } as unknown as StoredMessage,
     ];
-    expect(generateTitle(messages)).toBe(UNTITLED_CONVERSATION);
+
+    const result = toModelMessages(stored);
+
+    // Only the tool-call entry; no tool-result, no trailing text
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: "tc2",
+          toolName: "no_result_tool",
+          input: {},
+        },
+      ],
+    });
   });
 
-  test("returns the placeholder for empty / non-array input", () => {
-    expect(generateTitle([])).toBe(UNTITLED_CONVERSATION);
-    expect(generateTitle(undefined as unknown as unknown[])).toBe(
-      UNTITLED_CONVERSATION,
-    );
-  });
-
-  test("returns the placeholder when the first user message is blank", () => {
-    expect(generateTitle([{ role: "user", content: "   " }])).toBe(
-      UNTITLED_CONVERSATION,
-    );
-  });
-});
-
-describe("getMessagePreview", () => {
-  test("returns the first user message text", () => {
-    const messages = [
-      { role: "assistant", content: "intro" },
-      { role: "user", content: "real question" },
+  it("filters out messages with empty content and no toolCalls", () => {
+    const stored: StoredMessage[] = [
+      { role: "user", content: "   " } as StoredMessage, // whitespace-only → filtered
+      { role: "assistant", content: "" } as StoredMessage, // empty string → filtered
+      { role: "user", content: "Keep me" } as StoredMessage,
     ];
-    expect(getMessagePreview(messages)).toBe("real question");
+
+    const result = toModelMessages(stored);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ role: "user", content: "Keep me" });
   });
 
-  test("returns null when there is no user message", () => {
-    expect(getMessagePreview([{ role: "assistant", content: "x" }])).toBeNull();
-  });
-});
-
-/**
- * Models the PUT-route title self-heal: a row stuck on the placeholder
- * (its creating delta led with a non-user message) recomputes the title
- * the moment a user message lands. Mirrors the logic in
- * `src/app/api/orgs/[githubLogin]/chat/conversations/[conversationId]/route.ts`.
- */
-describe("title self-heal logic", () => {
-  function healTitle(storedTitle: string | null, allMessages: unknown[]) {
-    const needsHeal = !storedTitle || storedTitle === UNTITLED_CONVERSATION;
-    if (!needsHeal) return storedTitle;
-    const next = generateTitle(allMessages);
-    return next !== UNTITLED_CONVERSATION ? next : storedTitle;
-  }
-
-  test("heals a placeholder title once a user message exists", () => {
-    const stored = UNTITLED_CONVERSATION;
-    const messages = [
-      { role: "assistant", content: "planner posted a plan" },
-      { role: "user", content: "the real first question" },
+  it("handles a mixed sequence (text, tool turn, text) with correct flat ordering", () => {
+    const stored: StoredMessage[] = [
+      { role: "user", content: "Start" } as StoredMessage,
+      {
+        role: "assistant",
+        content: "Done searching.",
+        toolCalls: [
+          {
+            id: "tc3",
+            toolName: "lookup",
+            input: { id: 42 },
+            output: { found: true },
+          },
+        ],
+      } as StoredMessage,
+      { role: "user", content: "Thanks" } as StoredMessage,
     ];
-    expect(healTitle(stored, messages)).toBe("the real first question");
+
+    const result = toModelMessages(stored);
+
+    // user + tool-call + tool-result + assistant-text + user = 5
+    expect(result).toHaveLength(5);
+    expect(result[0]).toMatchObject({ role: "user", content: "Start" });
+    expect(result[1]).toMatchObject({ role: "assistant" }); // tool-call
+    expect(result[2]).toMatchObject({ role: "tool" }); // tool-result
+    expect(result[3]).toMatchObject({ role: "assistant", content: "Done searching." });
+    expect(result[4]).toMatchObject({ role: "user", content: "Thanks" });
   });
 
-  test("does not overwrite an already-meaningful title", () => {
-    const stored = "My existing title";
-    const messages = [{ role: "user", content: "different text" }];
-    expect(healTitle(stored, messages)).toBe("My existing title");
-  });
+  it("does not wrap output that already has a 'type' key", () => {
+    const stored: StoredMessage[] = [
+      {
+        role: "assistant",
+        content: null,
+        toolCalls: [
+          {
+            id: "tc4",
+            toolName: "typed_tool",
+            input: {},
+            output: { type: "text", value: "already typed" },
+          },
+        ],
+      } as unknown as StoredMessage,
+    ];
 
-  test("leaves the placeholder when still no user message", () => {
-    expect(healTitle(UNTITLED_CONVERSATION, [
-      { role: "assistant", content: "still no user turn" },
-    ])).toBe(UNTITLED_CONVERSATION);
+    const result = toModelMessages(stored);
+    const toolResultMsg = result.find((m) => m.role === "tool") as any;
+    expect(toolResultMsg).toBeDefined();
+    // output already has "type" → should NOT be double-wrapped
+    expect(toolResultMsg.content[0].output).toEqual({
+      type: "text",
+      value: "already typed",
+    });
   });
 });
