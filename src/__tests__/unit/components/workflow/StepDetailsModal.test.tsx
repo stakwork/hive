@@ -12,21 +12,62 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+const { CREATE_NEW_VALUE } = vi.hoisted(() => ({ CREATE_NEW_VALUE: "__create_new__" }));
+
 vi.mock("@/components/evals/CaptureEvalForm", () => ({
+  CREATE_NEW_VALUE,
   CaptureEvalForm: ({
     requirement,
     reason,
     onRequirementChange,
     onReasonChange,
     submitting,
+    evalSets,
+    loadingEvalSets,
+    evalSetsError,
+    selectedEvalSetId,
+    onSelectEvalSet,
+    newEvalSetName,
+    onNewEvalSetNameChange,
   }: {
     requirement: string;
     reason: string;
     onRequirementChange: (v: string) => void;
     onReasonChange: (v: string) => void;
     submitting?: boolean;
+    evalSets: Array<{ ref_id: string; name: string }>;
+    loadingEvalSets: boolean;
+    evalSetsError: boolean;
+    selectedEvalSetId: string;
+    onSelectEvalSet: (id: string) => void;
+    newEvalSetName: string;
+    onNewEvalSetNameChange: (name: string) => void;
   }) => (
     <div data-testid="capture-eval-form">
+      {loadingEvalSets && <span data-testid="eval-sets-loading">Loading...</span>}
+      {evalSetsError && <span data-testid="eval-sets-error">Failed to load eval sets</span>}
+      {evalSets.map((es) => (
+        <button
+          key={es.ref_id}
+          data-testid={`eval-set-option-${es.ref_id}`}
+          onClick={() => onSelectEvalSet(es.ref_id)}
+        >
+          {es.name}
+        </button>
+      ))}
+      <button
+        data-testid="eval-set-create-new"
+        onClick={() => onSelectEvalSet(CREATE_NEW_VALUE)}
+      >
+        + Create new
+      </button>
+      {selectedEvalSetId === CREATE_NEW_VALUE && (
+        <input
+          aria-label="New eval set name"
+          value={newEvalSetName}
+          onChange={(e) => onNewEvalSetNameChange(e.target.value)}
+        />
+      )}
       <input
         aria-label="Requirement"
         value={requirement}
@@ -77,6 +118,17 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof StepDetails
     ...overrides,
   };
 }
+
+const mockEvalSetsResponse = {
+  success: true,
+  data: {
+    nodes: [
+      { ref_id: "set-1", properties: { name: "Eval Set Alpha" } },
+      { ref_id: "set-2", properties: { name: "Eval Set Beta" } },
+    ],
+    total: 2,
+  },
+};
 
 // ── StepDetailsModal render ───────────────────────────────────────────────────
 
@@ -364,15 +416,50 @@ describe("StepDetailsModal — Flag for eval button", () => {
 // ── Flag for eval capture flow ────────────────────────────────────────────────
 
 describe("StepDetailsModal — Flag for eval capture", () => {
+  function makeMultiFetch(overrides: {
+    ioResponse?: object;
+    evalsResponse?: object;
+    captureOk?: boolean;
+    createEvalSetResponse?: object;
+  } = {}) {
+    const {
+      ioResponse = { data: { inputs: { model: "gpt-4o" }, outputs: "result" } },
+      evalsResponse = mockEvalSetsResponse,
+      captureOk = true,
+      createEvalSetResponse,
+    } = overrides;
+
+    return vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/steps/") && String(url).includes("/io")) {
+        return Promise.resolve({ ok: true, json: async () => ioResponse });
+      }
+      if (String(url).endsWith("/evals")) {
+        if (createEvalSetResponse !== undefined) {
+          // POST /evals to create new set
+          return Promise.resolve({ ok: true, json: async () => createEvalSetResponse });
+        }
+        return Promise.resolve({ ok: true, json: async () => evalsResponse });
+      }
+      if (String(url).includes("/eval/capture")) {
+        return Promise.resolve({ ok: captureOk, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: "result" } }),
-    }));
+    vi.stubGlobal("fetch", makeMultiFetch());
   });
 
-  async function openFlagForm() {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  async function openFlagForm(fetchMock?: ReturnType<typeof vi.fn>) {
+    if (fetchMock) vi.stubGlobal("fetch", fetchMock);
+
     render(
       <StepDetailsModal
         step={makeLlmStep({ project_step_id: "gen_step", name: "generate_response" })}
@@ -384,7 +471,6 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
-    // form should appear
     await waitFor(() => expect(screen.getByTestId("capture-eval-form")).toBeInTheDocument());
   }
 
@@ -397,16 +483,82 @@ describe("StepDetailsModal — Flag for eval capture", () => {
     expect(screen.queryByRole("button", { name: /flag for eval/i })).not.toBeInTheDocument();
   });
 
-  it("submits correct URL and body (inputs/outputs from ioData)", async () => {
-    const mockFetch = vi.fn()
-      // IO fetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { inputs: { model: "gpt-4o", messages: [] }, outputs: "some output" } }),
-      })
-      // capture POST
-      .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
-    vi.stubGlobal("fetch", mockFetch);
+  it("fetches eval sets when flag form opens", async () => {
+    const fetchMock = makeMultiFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <StepDetailsModal
+        step={makeLlmStep()}
+        isOpen={true}
+        onClose={vi.fn()}
+        slug="my-ws"
+        workflowId="42"
+        projectId="run-123"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
+
+    await waitFor(() => {
+      const evalsCalls = fetchMock.mock.calls.filter(([url]) =>
+        String(url).endsWith("/evals"),
+      );
+      expect(evalsCalls.length).toBeGreaterThan(0);
+      expect(evalsCalls[0][0]).toBe("/api/workspaces/my-ws/evals");
+    });
+  });
+
+  it("submit button is disabled without a set selected", async () => {
+    // Return empty eval sets so nothing is auto-selected
+    const fetchMock = makeMultiFetch({
+      evalsResponse: { success: true, data: { nodes: [], total: 0 } },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <StepDetailsModal
+        step={makeLlmStep({ project_step_id: "gen_step" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        slug="my-ws"
+        workflowId="42"
+        projectId="run-123"
+      />,
+    );
+
+    // Wait for IO fetch
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/io"))).toBe(true),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
+      target: { value: "Must return a summary" },
+    });
+
+    const captureBtn = screen.getByRole("button", { name: /capture/i });
+    expect(captureBtn).toBeDisabled();
+  });
+
+  it("submits correct URL and body with evalSetId when existing set is selected", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/io")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: { inputs: { model: "gpt-4o", messages: [] }, outputs: "some output" } }),
+        });
+      }
+      if (String(url).endsWith("/evals")) {
+        return Promise.resolve({ ok: true, json: async () => mockEvalSetsResponse });
+      }
+      if (String(url).includes("/eval/capture")) {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     render(
       <StepDetailsModal
@@ -419,13 +571,17 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       />,
     );
 
-    // Wait for IO to load (the IO endpoint is keyed by step.id)
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(
-      "/api/projects/run-123/steps/step-llm/io",
-    ));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/io"))).toBe(true),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
-    await waitFor(() => expect(screen.getByTestId("capture-eval-form")).toBeInTheDocument());
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    // Wait for eval sets to load and auto-select first set
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/evals"))).toBe(true),
+    );
 
     fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
       target: { value: "Must return a summary" },
@@ -433,9 +589,8 @@ describe("StepDetailsModal — Flag for eval capture", () => {
     fireEvent.click(screen.getByRole("button", { name: /capture/i }));
 
     await waitFor(() => {
-      const calls = mockFetch.mock.calls;
-      const captureCall = calls.find(([url]) =>
-        String(url).includes("/eval/capture")
+      const captureCall = fetchMock.mock.calls.find(([url]) =>
+        String(url).includes("/eval/capture"),
       );
       expect(captureCall).toBeDefined();
       const [url, opts] = captureCall!;
@@ -446,22 +601,39 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       expect(body.requirement).toBe("Must return a summary");
       expect(body.inputs).toEqual({ model: "gpt-4o", messages: [] });
       expect(body.outputs).toBe("some output");
+      expect(body.evalSetId).toBe("set-1"); // first set auto-selected
     });
   });
 
-  it("shows success toast and closes form on capture", async () => {
-    const { toast } = await import("sonner");
-    const mockFetch = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: null } }),
-      })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
-    vi.stubGlobal("fetch", mockFetch);
+  it("creates new eval set first when 'Create new' is selected, then captures with new ref_id", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (String(url).includes("/io")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: null } }),
+        });
+      }
+      if (String(url).endsWith("/evals")) {
+        const method = (opts as RequestInit | undefined)?.method;
+        if (method === "POST") {
+          // Create new eval set
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ data: { ref_id: "new-set-ref" } }),
+          });
+        }
+        // GET /evals
+        return Promise.resolve({ ok: true, json: async () => mockEvalSetsResponse });
+      }
+      if (String(url).includes("/eval/capture")) {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     render(
       <StepDetailsModal
-        // step.id present so the IO useEffect fires
         step={makeLlmStep({ project_step_id: "gen_step" })}
         isOpen={true}
         onClose={vi.fn()}
@@ -471,11 +643,132 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       />,
     );
 
-    // Wait for the IO fetch to complete
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/io"))).toBe(true),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
     await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    // Select "Create new"
+    fireEvent.click(screen.getByTestId("eval-set-create-new"));
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: /new eval set name/i })).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: /new eval set name/i }), {
+      target: { value: "My Brand New Set" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
+      target: { value: "Must always respond" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /capture/i }));
+
+    await waitFor(() => {
+      // POST /evals should have fired first
+      const createSetCall = fetchMock.mock.calls.find(
+        ([url, opts]) =>
+          String(url).endsWith("/evals") && (opts as RequestInit)?.method === "POST",
+      );
+      expect(createSetCall).toBeDefined();
+      const createBody = JSON.parse((createSetCall![1] as RequestInit).body as string);
+      expect(createBody.name).toBe("My Brand New Set");
+
+      // Capture should use the new ref_id
+      const captureCall = fetchMock.mock.calls.find(([url]) =>
+        String(url).includes("/eval/capture"),
+      );
+      expect(captureCall).toBeDefined();
+      const captureBody = JSON.parse((captureCall![1] as RequestInit).body as string);
+      expect(captureBody.evalSetId).toBe("new-set-ref");
+    });
+  });
+
+  it("shows error state when eval sets fetch fails", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/io")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: null } }),
+        });
+      }
+      if (String(url).endsWith("/evals")) {
+        return Promise.reject(new Error("network error"));
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <StepDetailsModal
+        step={makeLlmStep({ project_step_id: "gen_step" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        slug="my-ws"
+        workflowId="42"
+        projectId="run-123"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/io"))).toBe(true),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("eval-sets-error")).toBeInTheDocument();
+    });
+
+    // Submit should be blocked (no set selected)
+    fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
+      target: { value: "Test" },
+    });
+    const captureBtn = screen.getByRole("button", { name: /capture/i });
+    expect(captureBtn).toBeDisabled();
+  });
+
+  it("shows success toast with set name and closes form on capture", async () => {
+    const { toast } = await import("sonner");
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/io")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: null } }),
+        });
+      }
+      if (String(url).endsWith("/evals")) {
+        return Promise.resolve({ ok: true, json: async () => mockEvalSetsResponse });
+      }
+      if (String(url).includes("/eval/capture")) {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <StepDetailsModal
+        step={makeLlmStep({ project_step_id: "gen_step" })}
+        isOpen={true}
+        onClose={vi.fn()}
+        slug="my-ws"
+        workflowId="42"
+        projectId="run-123"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/io"))).toBe(true),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
+    await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/evals"))).toBe(true),
+    );
 
     fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
       target: { value: "Always respond" },
@@ -483,20 +776,29 @@ describe("StepDetailsModal — Flag for eval capture", () => {
     fireEvent.click(screen.getByRole("button", { name: /capture/i }));
 
     await waitFor(() => {
-      expect(toast.success).toHaveBeenCalledWith("Eval captured");
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("Eval captured into"));
       expect(screen.queryByTestId("capture-eval-form")).not.toBeInTheDocument();
     });
   });
 
   it("shows error toast on failed capture", async () => {
     const { toast } = await import("sonner");
-    const mockFetch = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: null } }),
-      })
-      .mockResolvedValueOnce({ ok: false });
-    vi.stubGlobal("fetch", mockFetch);
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/io")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: { inputs: { model: "gpt-4o" }, outputs: null } }),
+        });
+      }
+      if (String(url).endsWith("/evals")) {
+        return Promise.resolve({ ok: true, json: async () => mockEvalSetsResponse });
+      }
+      if (String(url).includes("/eval/capture")) {
+        return Promise.resolve({ ok: false });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     render(
       <StepDetailsModal
@@ -509,9 +811,15 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       />,
     );
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/io"))).toBe(true),
+    );
     fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
     await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/evals"))).toBe(true),
+    );
 
     fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
       target: { value: "Must not fail" },
@@ -525,13 +833,19 @@ describe("StepDetailsModal — Flag for eval capture", () => {
 
   it("shows error toast when ioData is null at submit time", async () => {
     const { toast } = await import("sonner");
-    // IO fetch fails → ioData stays null
-    const mockFetch = vi.fn().mockRejectedValueOnce(new Error("network error"));
-    vi.stubGlobal("fetch", mockFetch);
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/io")) {
+        return Promise.reject(new Error("network error"));
+      }
+      if (String(url).endsWith("/evals")) {
+        return Promise.resolve({ ok: true, json: async () => mockEvalSetsResponse });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     render(
       <StepDetailsModal
-        // step.id present so the IO useEffect fires and then rejects
         step={makeLlmStep({ project_step_id: "gen_step" })}
         isOpen={true}
         onClose={vi.fn()}
@@ -541,11 +855,16 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       />,
     );
 
-    // Wait for the IO fetch attempt (which rejects) to settle
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/io"))).toBe(true),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /flag for eval/i }));
     await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/evals"))).toBe(true),
+    );
 
     fireEvent.change(screen.getByRole("textbox", { name: /requirement/i }), {
       target: { value: "Test" },
@@ -556,6 +875,6 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       expect(toast.error).toHaveBeenCalledWith("Step input data not available");
     });
     // No capture POST should be made
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("/eval/capture"))).toBe(true);
   });
 });
