@@ -112,12 +112,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(UNAVAILABLE);
     }
 
-    // Stakwork returns { success, data: { inputs, outputs } }
+    // Stakwork returns { success, data: { inputs, outputs, prompt_resolutions } }
     const data = result.data as Record<string, unknown> | undefined;
     const inputs = data?.inputs ?? null;
     const outputs = data?.outputs ?? null;
+    const prompt_resolutions = (data?.prompt_resolutions as Record<string, unknown>) ?? null;
 
-    return NextResponse.json({ success: true, data: { inputs, outputs } });
+    return NextResponse.json({ success: true, data: { inputs, outputs, prompt_resolutions } });
   } catch (error) {
     logger.error("[StepIO] GET error", "STEP_IO", { error: String(error) });
     return NextResponse.json(UNAVAILABLE);
