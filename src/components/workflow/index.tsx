@@ -1,5 +1,6 @@
 import React, { useMemo, useCallback, useEffect, useState, useRef } from "react";
 import axios from "axios";
+import { Maximize2 } from "lucide-react";
 import ImportNodeModal from "./ImportNodeModal";
 import RequestQueue from "./RequestQueue";
 import { toast } from "sonner";
@@ -395,6 +396,38 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     }
   }, [useAssistantDimensions]);
 
+  // Card mode (inspector / run view) controls the viewport via targetPosition,
+  // so imperative fitView() is a no-op — compute the framing and set it directly.
+  // Small graphs are centred; large ones (real workflows) stay legible by
+  // anchoring to the Start node at a readable zoom instead of shrinking to fit.
+  const recenterCardView = useCallback(() => {
+    if (!nodes.length) return;
+    const container = ref.current as HTMLElement | null;
+    const width = container?.clientWidth || windowWidth;
+    const height = container?.clientHeight || windowHeight;
+    const bounds = getNodesBounds(nodes);
+    const READABLE = 0.6;
+    const fitVp = getViewportForBounds(bounds, width, height, 0.05, 1.2, 0.2);
+    autoCenteringRef.current = true;
+    if (fitVp.zoom >= READABLE) {
+      setTargetPosition({ x: fitVp.x, y: fitVp.y, zoom: fitVp.zoom });
+    } else {
+      const startNode =
+        nodes.find((n: any) => n.id === "start") ??
+        nodes.reduce((a: any, b: any) => (a.position.x <= b.position.x ? a : b));
+      const nodeH = Number(startNode?.data?.height) || 60;
+      const cy = startNode.position.y + nodeH / 2;
+      setTargetPosition({
+        zoom: READABLE,
+        x: 120 - startNode.position.x * READABLE,
+        y: height / 2 - cy * READABLE,
+      });
+    }
+    setTimeout(() => {
+      autoCenteringRef.current = false;
+    }, 150);
+  }, [nodes]);
+
   // Auto-fit view for project workflows on initial load
   useEffect(() => {
     if (!reactFlowInstance || nodes.length === 0 || hasInitialFitViewRef.current) return;
@@ -402,22 +435,9 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
     const isEditorMode = !!workflowData && !projectId;
     const hasSavedPosition = isEditorMode && !!localStorage.getItem(`position_${workflowId}`);
 
-    // Card mode (inspector / run view) controls the viewport via targetPosition,
-    // so imperative fitView() is a no-op. Compute the fit and set it directly.
     if (nodeStyle === "card") {
       hasInitialFitViewRef.current = true;
-      setTimeout(() => {
-        const container = ref.current as HTMLElement | null;
-        const width = container?.clientWidth || windowWidth;
-        const height = container?.clientHeight || windowHeight;
-        const bounds = getNodesBounds(nodes);
-        const vp = getViewportForBounds(bounds, width, height, 0.1, 1.2, 0.18);
-        autoCenteringRef.current = true;
-        setTargetPosition({ x: vp.x, y: vp.y, zoom: vp.zoom });
-        setTimeout(() => {
-          autoCenteringRef.current = false;
-        }, 150);
-      }, 120);
+      setTimeout(() => recenterCardView(), 120);
       return;
     }
 
@@ -1365,7 +1385,18 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
               <SearchButton workflowId={workflowId} />
             </Controls> */}
             {/* <MiniMap position={'bottom-left'} pannable zoomable/> */}
-            {!projectId && <SmartLayoutButton onNodesChange={onCustomNodesChanged} />}
+            {nodeStyle === "card" ? (
+              <button
+                onClick={recenterCardView}
+                title="Recenter"
+                aria-label="Recenter"
+                className="absolute right-2.5 top-2.5 z-10 grid h-8 w-8 place-items-center rounded-lg border bg-card/90 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </button>
+            ) : (
+              !projectId && <SmartLayoutButton onNodesChange={onCustomNodesChanged} />
+            )}
           </div>
         )}
 
