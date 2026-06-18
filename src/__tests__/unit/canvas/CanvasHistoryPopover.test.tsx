@@ -72,6 +72,7 @@ const mockItems = [
     isShared: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    unread: true,
   },
   {
     id: "conv-b",
@@ -82,6 +83,7 @@ const mockItems = [
     isShared: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    unread: false,
   },
 ];
 
@@ -251,6 +253,41 @@ describe("CanvasHistoryPopover", () => {
       0,
     );
     expect(mockClearActiveConversation).not.toHaveBeenCalled();
+  });
+
+  it("renders an amber unread dot only on unread conversations", async () => {
+    global.fetch = buildFetch(mockItems, {});
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+
+    await waitFor(() => screen.getByText("Planning session"));
+
+    // conv-a is unread, conv-b is not → exactly one dot.
+    const dots = screen.getAllByLabelText("Unread");
+    expect(dots).toHaveLength(1);
+  });
+
+  it("marks a conversation seen (POST .../seen) and clears its dot on open", async () => {
+    const fetchMock = buildFetch(mockItems, { "conv-a": mockConversationDetail });
+    global.fetch = fetchMock;
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+
+    await waitFor(() => screen.getByText("Planning session"));
+    expect(screen.getAllByLabelText("Unread")).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("Planning session"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/orgs/my-org/chat/conversations/conv-a/seen",
+        { method: "POST" },
+      );
+    });
+    // Optimistically cleared locally.
+    expect(screen.queryByLabelText("Unread")).toBeNull();
   });
 
   it("closes popover after loading a conversation", async () => {

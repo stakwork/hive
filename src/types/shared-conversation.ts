@@ -69,6 +69,9 @@ export interface ConversationListItem {
   creatorName?: string | null;
   creatorId?: string;
   creatorImage?: string | null;
+  // True when content arrived since the owner last viewed this chat —
+  // drives the amber "unread" dot in the history list.
+  unread?: boolean;
 }
 
 // Full conversation detail for GET /conversations/[id]

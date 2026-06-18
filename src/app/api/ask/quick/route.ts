@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
-import { ModelMessage, generateObject } from "ai";
-import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
-// Deep import — see comment in services/task-workflow.ts.
-import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
-import { z } from "zod";
-import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
+import { ModelMessage } from "ai";
 import { getMiddlewareContext } from "@/lib/middleware/utils";
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 import {
@@ -15,24 +10,15 @@ import {
   recordTurnTokens,
 } from "@/lib/ai/publicChatBudget";
 import { db } from "@/lib/db";
-import { getS3Service } from "@/services/s3";
-import {
-  handleApproval,
-  handleRejection,
-  type MessageLike,
-} from "@/lib/proposals/handleApproval";
-import type {
-  ApprovalIntent,
-  RejectionIntent,
-} from "@/lib/proposals/types";
+import { resolveMessageImageUrls } from "@/lib/ai/resolveMessageImages";
+import type { MessageLike } from "@/lib/proposals/handleApproval";
+import { runProposalIntent } from "@/lib/proposals/runProposalIntent";
 import {
   runCanvasAgent,
   extractConceptIdsFromStep,
-  type CachedConcepts,
 } from "@/lib/ai/runCanvasAgent";
 import type { DispatchedResearchIntent } from "@/lib/ai/researchTools";
-import { swarmFetch } from "@/lib/ai/concepts";
-import { generateTitle, toModelMessages } from "@/lib/ai/conversationHelpers";
+import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import {
   messagesFromSteps,
   appendTurnMessages,
@@ -41,6 +27,17 @@ import {
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
 import { buildDeferredCheckTools } from "@/lib/ai/deferredCheckTools";
+import {
+  resolveOrgConversationRowId,
+  persistCanvasUserMessage,
+  loadOrgCanvasPromptCache,
+  hasConcepts,
+  persistOrgCanvasPromptCache,
+} from "@/services/org-canvas-conversation";
+import {
+  emitFollowUpQuestions,
+  emitProvenance,
+} from "@/services/canvas-turn-enrichments";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
 // the org-canvas turn is persisted server-side in `after()` so it survives the
@@ -50,50 +47,6 @@ import { buildDeferredCheckTools } from "@/lib/ai/deferredCheckTools";
 // deploy, and `runCanvasAgent` passes no abort signal, so a client disconnect
 // can't cancel generation).
 export const maxDuration = 800;
-
-/**
- * Provenance data types
- */
-interface ProvenanceData {
-  concepts: Array<{
-    refId: string;
-    name: string;
-    description?: string;
-    files: Array<{
-      refId: string;
-      name: string;
-      path: string;
-      codeEntities: Array<{
-        refId: string;
-        name: string;
-        nodeType: string;
-        file: string;
-        start: number;
-        end: number;
-      }>;
-    }>;
-  }>;
-}
-
-/**
- * Fetch provenance data from stakgraph
- */
-async function fetchProvenance(swarmUrl: string, apiKey: string, conceptIds: string[]): Promise<ProvenanceData> {
-  const response = await swarmFetch(`${swarmUrl}/gitree/provenance`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-token": apiKey,
-    },
-    body: JSON.stringify({ conceptIds }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch provenance: ${response.status}`);
-  }
-
-  return response.json();
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -345,71 +298,9 @@ export async function POST(request: NextRequest) {
         .filter((msg: ModelMessage | null): msg is ModelMessage => msg !== null);
     }
 
-    // Resolve image parts to fetchable URLs so the LLM receives visuals.
-    //
-    // The client (`toModelMessages`) embeds image attachments as
-    // `{ type: "image", image: "/api/upload/presigned-url?s3Key=..." }` for
-    // EVERY user turn that has one — including past turns in the history. That
-    // value is a *relative* URL: the AI SDK only treats a string as a fetchable
-    // URL when `new URL(...)` parses it; a relative path throws and is then
-    // mis-read as raw base64 → Anthropic rejects it ("invalid base64 data").
-    // So we must rewrite EVERY such part across the whole message array (not
-    // just the latest turn), swapping the relative path for an ABSOLUTE signed
-    // S3 URL the SDK can actually download.
-    {
-      const s3 = getS3Service();
-      // Map a relative `/api/upload/presigned-url?s3Key=<key>` value to its key.
-      const extractS3Key = (image: unknown): string | null => {
-        if (typeof image !== "string") return null;
-        if (!image.startsWith("/api/upload/presigned-url")) return null;
-        try {
-          // Parse against a dummy base since the value is path-only.
-          const key = new URL(image, "http://x").searchParams.get("s3Key");
-          return key || null;
-        } catch {
-          return null;
-        }
-      };
-      // Resolve each distinct key once (a key can repeat across turns).
-      const keysToResolve = new Set<string>();
-      for (const m of convertedMessages) {
-        if (!Array.isArray(m.content)) continue;
-        for (const part of m.content as Array<{ type?: string; image?: unknown }>) {
-          if (part?.type !== "image") continue;
-          const key = extractS3Key(part.image);
-          if (key) keysToResolve.add(key);
-        }
-      }
-      if (keysToResolve.size > 0) {
-        const resolved = new Map<string, URL>();
-        await Promise.all(
-          [...keysToResolve].map(async (key) => {
-            try {
-              const url = await s3.generatePresignedDownloadUrl(key);
-              resolved.set(key, new URL(url));
-            } catch (err) {
-              console.error(
-                `[ask/quick] failed to resolve image attachment ${key}:`,
-                err,
-              );
-            }
-          }),
-        );
-        for (const m of convertedMessages) {
-          if (!Array.isArray(m.content)) continue;
-          m.content = (m.content as Array<{ type?: string; image?: unknown }>)
-            .map((part) => {
-              if (part?.type !== "image") return part;
-              const key = extractS3Key(part.image);
-              if (!key) return part;
-              const url = resolved.get(key);
-              // Drop parts we couldn't resolve rather than ship a bad URL.
-              return url ? { ...part, image: url } : null;
-            })
-            .filter((p) => p !== null) as typeof m.content;
-        }
-      }
-    }
+    // Rewrite relative image-attachment URLs to absolute signed S3 URLs
+    // the AI SDK can actually download (see `resolveMessageImageUrls`).
+    await resolveMessageImageUrls(convertedMessages);
 
     // Org-membership gating for any request that carries an orgId
     // (canvas chat, single- or multi-workspace). Validated here so
@@ -733,101 +624,20 @@ export async function POST(request: NextRequest) {
         // of computing them. Saves a `generateObject` round-trip and
         // a `${swarmUrl}/gitree/provenance` POST per turn.
         if (skipEnrichments) return;
-        // Generate follow-up questions
-        try {
-          const followUpSchema = z.object({
-            questions: z
-              .array(z.string())
-              .describe("Exactly 3 short, specific follow-up questions (max 10 words each)"),
-          });
-
-          const conversationSummary = messages
-            .filter((m: ModelMessage) => m.role === "user" || m.role === "assistant")
-            .map((m: ModelMessage) => {
-              const role = m.role === "user" ? "User" : "Assistant";
-              let text = "";
-              if (typeof m.content === "string") {
-                text = m.content;
-              } else if (Array.isArray(m.content)) {
-                text = m.content
-                  .filter((part: any) => part.type === "text")
-                  .map((part: any) => part.text)
-                  .join("\n");
-              }
-              return text ? `${role}: ${text}` : null;
-            })
-            .filter(Boolean)
-            .join("\n\n");
-
-          const followUpApiKey = getApiKeyForProvider("anthropic");
-          // Route the follow-up `generateObject` through Bifrost under
-          // the SAME `agentName` as the main stream. Follow-ups are
-          // part of the same user-facing turn — splitting them into a
-          // separate dim would fragment the per-surface rollups
-          // operators actually want. So: orgId present → "canvas-agent",
-          // absent → "chat-agent", matching `runCanvasAgent`. Returns
-          // `undefined` and falls back to the default key when
-          // BIFROST_ENABLED doesn't cover the primary slug, or for
-          // public-viewer requests.
-          const followUpBifrost = await getBifrostForLLM(
-            {
-              workspaceId: primaryWorkspaceId,
-              workspaceSlug: primarySlug,
-              userId: primaryUserId,
-            },
-            {
-              agentName:
-                orgId && isMultiWorkspace ? "canvas-agent" : "chat-agent",
-            },
-          );
-          const followUpModel = getModel(
-            "anthropic",
-            followUpBifrost?.apiKey ?? followUpApiKey,
-            primarySlug,
-            undefined,
-            followUpBifrost
-              ? {
-                  baseUrl: followUpBifrost.baseUrl,
-                  headers: followUpBifrost.headers,
-                }
-              : undefined,
-          );
-
-          const followUpResult = await generateObject({
-            model: followUpModel,
-            schema: followUpSchema,
-            prompt: `Based on this conversation, generate 3 short follow-up questions:\n\n${conversationSummary}`,
-            system:
-              "Generate 3 questions that the USER would naturally ask next as a follow-up in this conversation. Write them from the user's perspective, as if the user is typing them. They should be specific to the codebase and conversation context. NEVER generate clarifying questions directed at the user (like 'What kind of X are you interested in?'). Instead predict the user's next question (like 'How does the auth middleware work?' or 'Where are the API routes defined?'). Keep each under 10 words. Don't repeat questions already asked.",
-            temperature: 0.3,
-          });
-
-          const channelName = getWorkspaceChannelName(primarySlug);
-          await pusherServer.trigger(channelName, PUSHER_EVENTS.FOLLOW_UP_QUESTIONS, {
-            questions: followUpResult.object.questions,
-            timestamp: Date.now(),
-          });
-
-          console.log("✅ Follow-up questions sent:", followUpResult.object.questions);
-        } catch (error) {
-          console.error("❌ Error generating follow-up questions:", error);
-        }
-
-        // Generate provenance
-        try {
-          const conceptIds = Array.from(learnedConceptIds);
-          if (conceptIds.length > 0) {
-            const provenance = await fetchProvenance(primarySwarmUrl, primarySwarmApiKey, conceptIds);
-            const channelName = getWorkspaceChannelName(primarySlug);
-            await pusherServer.trigger(channelName, PUSHER_EVENTS.PROVENANCE_DATA, {
-              provenance,
-              timestamp: Date.now(),
-            });
-            console.log("✅ Provenance data sent:", provenance.concepts.length, "concepts");
-          }
-        } catch (error) {
-          console.error("❌ Error generating provenance:", error);
-        }
+        await emitFollowUpQuestions({
+          messages,
+          primarySlug,
+          primaryWorkspaceId,
+          primaryUserId,
+          agentName:
+            orgId && isMultiWorkspace ? "canvas-agent" : "chat-agent",
+        });
+        await emitProvenance({
+          conceptIds: Array.from(learnedConceptIds),
+          primarySlug,
+          primarySwarmUrl,
+          primarySwarmApiKey,
+        });
       });
 
       // Schedule research sub-agent workers for each dispatched intent.
@@ -939,378 +749,6 @@ async function resolveTokenAttributionRowId(args: {
     select: { id: true },
   });
   return row?.id ?? null;
-}
-
-/**
- * Org-canvas sibling of `resolveTokenAttributionRowId`. Org-canvas
- * conversations are NOT workspace-scoped (`workspaceId: null`,
- * `sourceControlOrgId` set), so the workspace-keyed validator above
- * never matches them and would silently drop the id. The approval flow
- * needs a validated id to stamp `Feature.parentCanvasConversationId`,
- * which is what lets `fanOutPlannerMessageToCanvas` post the planner's
- * `source.kind === "planner"` message back into this conversation (and
- * render the `<SubAgentRunCard>`).
- *
- * Validates the row belongs to this org and either to this caller or
- * is an explicitly shared room (mirrors the GET/PUT ownership rule in
- * the org-canvas conversations route). Returns the id when safe, else
- * null. IDOR-safe: a mismatched id is indistinguishable from missing.
- */
-async function resolveOrgConversationRowId(args: {
-  conversationId: unknown;
-  userId: string;
-  orgId: string;
-}): Promise<string | null> {
-  const { conversationId, userId, orgId } = args;
-  if (typeof conversationId !== "string" || conversationId.length === 0) {
-    return null;
-  }
-
-  const row = await db.sharedConversation.findFirst({
-    where: {
-      id: conversationId,
-      sourceControlOrgId: orgId,
-      OR: [{ userId }, { isShared: true }],
-    },
-    select: { id: true },
-  });
-  return row?.id ?? null;
-}
-
-/**
- * Persist the user's message for a backend-driven org-canvas turn,
- * creating the conversation row on the first turn. Returns the row id
- * the rest of the request (fan-out, the `after()` assistant-turn write,
- * the `X-Conversation-Id` header) keys off.
- *
- * - **Existing row** (validated org-canvas id from the prompt cache):
- *   append the user row under the shared row lock, idempotent on
- *   `${turnId}-u` so a retry / double-send doesn't duplicate it.
- * - **No / mismatched id:** create a fresh `SharedConversation` owned by
- *   this caller (workspace-null, org-scoped), titled from the message,
- *   seeded with the user row, and carrying the full workspace-slug set
- *   in `settings.extraWorkspaceSlugs` (what the auto-turn reconstruction
- *   and later turns read — org rows have no `workspaceId` to recover the
- *   slugs from). Creating a new row on an IDOR-mismatched id is safe:
- *   the caller can only ever write to their own conversation.
- */
-async function persistCanvasUserMessage(args: {
-  orgId: string;
-  userId: string;
-  existingRowId: string | null;
-  turnId: string;
-  content: string;
-  attachments?: StoredAttachment[];
-  workspaceSlugs: string[];
-}): Promise<string> {
-  const {
-    orgId,
-    userId,
-    existingRowId,
-    turnId,
-    content,
-    attachments,
-    workspaceSlugs,
-  } = args;
-
-  const userRow: StoredMessage = {
-    id: `${turnId}-u`,
-    role: "user",
-    content,
-    timestamp: new Date().toISOString(),
-    ...(attachments && attachments.length > 0 ? { attachments } : {}),
-  };
-
-  if (existingRowId) {
-    await appendTurnMessages({
-      conversationId: existingRowId,
-      rows: [userRow],
-      idPrefix: `${turnId}-u`,
-      reason: "user-message",
-    });
-    return existingRowId;
-  }
-
-  const created = await db.sharedConversation.create({
-    data: {
-      sourceControlOrgId: orgId,
-      userId,
-      workspaceId: null,
-      messages: [userRow] as unknown as never,
-      title: generateTitle([userRow]),
-      lastMessageAt: new Date(),
-      source: "org-canvas",
-      settings: { extraWorkspaceSlugs: workspaceSlugs } as unknown as never,
-      followUpQuestions: [],
-      isShared: false,
-    },
-    select: { id: true },
-  });
-  return created.id;
-}
-
-/**
- * Load the cached concepts for an org-canvas conversation, while
- * validating that the row belongs to this org and either to this caller
- * or is an explicitly shared room (same ownership rule as
- * `resolveOrgConversationRowId`). Returns the validated row id plus the
- * cached concepts (or null when there's no usable cache yet). IDOR-safe:
- * a mismatched/missing id yields `null` indistinguishably.
- *
- * The concepts live at `settings.promptConcepts` (`CachedConcepts`).
- * They're the expensive swarm `listConcepts` result; reusing them lets
- * later turns skip that round-trip. The rendered prefix is rebuilt fresh
- * each turn (for an accurate scope hint), so it is NOT what we cache for
- * reuse — `settings.promptPrefix` is only a display snapshot.
- */
-async function loadOrgCanvasPromptCache(args: {
-  conversationId: unknown;
-  userId: string;
-  orgId: string;
-}): Promise<{ rowId: string; cachedConcepts: CachedConcepts | null } | null> {
-  const { conversationId, userId, orgId } = args;
-  if (typeof conversationId !== "string" || conversationId.length === 0) {
-    return null;
-  }
-  const row = await db.sharedConversation.findFirst({
-    where: {
-      id: conversationId,
-      sourceControlOrgId: orgId,
-      OR: [{ userId }, { isShared: true }],
-    },
-    select: { id: true, settings: true },
-  });
-  if (!row) return null;
-  const settings = (row.settings ?? {}) as Record<string, unknown>;
-  const pc = settings.promptConcepts;
-  const cachedConcepts =
-    pc && typeof pc === "object" ? (pc as CachedConcepts) : null;
-  return { rowId: row.id, cachedConcepts };
-}
-
-/** True when a cache holds at least one concept (defensive: never cache
- *  an empty result from a swarm outage). */
-function hasConcepts(c: CachedConcepts): boolean {
-  if (Array.isArray(c.features)) return c.features.length > 0;
-  if (c.conceptsByWorkspace) {
-    return Object.values(c.conceptsByWorkspace).some(
-      (list) => Array.isArray(list) && list.length > 0,
-    );
-  }
-  return false;
-}
-
-/**
- * Atomically merge the cached concepts (for reuse) + the rendered prefix
- * snapshot (for the Agent Logs detail view) into
- * `SharedConversation.settings` via a jsonb `||` merge. Using a single
- * UPDATE (rather than read-modify-write) keeps it race-free against the
- * client autosave's concurrent `settings` writes — both sides merge into
- * the same blob instead of overwriting it. Caller has validated `rowId`.
- */
-async function persistOrgCanvasPromptCache(
-  rowId: string,
-  concepts: CachedConcepts,
-  prefixSnapshot: ModelMessage[],
-): Promise<void> {
-  const patch = JSON.stringify({
-    promptConcepts: concepts,
-    promptPrefix: prefixSnapshot,
-  });
-  await db.$executeRaw`
-    UPDATE shared_conversations
-    SET settings = COALESCE(settings, '{}'::jsonb) || ${patch}::jsonb
-    WHERE id = ${rowId}
-  `;
-}
-
-// ─── Agent-proposal: synthetic SSE stream for Approve / Reject ─────
-//
-// We don't call the LLM for these clicks — the side effect is fully
-// determined by the conversation transcript + intent. We synthesize a
-// tiny UI-message-stream-shaped response (text-start / text-delta /
-// text-end) carrying the human-readable summary, plus a custom
-// `X-Approval-Result` header carrying the structured outcome JSON.
-// The chat send hook reads that header before processing the stream
-// and stamps `approvalResult` onto the assistant message before
-// autosave persists. Forks then see the resolved state in transcript
-// because the message JSON includes the field.
-async function runProposalIntent(args: {
-  orgId: string;
-  userId: string;
-  transcript: MessageLike[];
-  approvalIntent?: ApprovalIntent;
-  rejectionIntent?: RejectionIntent;
-  /**
-   * Pre-validated `SharedConversation.id` (validated via
-   * `resolveTokenAttributionRowId` in the caller). Forwarded into
-   * `handleApproval` so feature approvals can stamp
-   * `Feature.parentCanvasConversationId` for fan-out. Never
-   * un-validated — the caller is the trust boundary.
-   */
-  conversationId?: string;
-  /**
-   * Backend-driven persistence id (org-canvas). When present alongside
-   * `conversationId`, the click row + synthetic assistant row (carrying
-   * `approvalResult`) are written server-side under `${turnId}-`, so the
-   * proposal-card "approved" state survives a refresh without the client
-   * autosave. Mirrors the LLM turn's persistence.
-   */
-  turnId?: string;
-}): Promise<Response> {
-  const {
-    orgId,
-    userId,
-    transcript,
-    approvalIntent,
-    rejectionIntent,
-    conversationId,
-    turnId,
-  } = args;
-
-  let summaryText: string;
-  let approvalResultHeader: string | null = null;
-  let approvalResultObj: unknown = null;
-  let alreadyApproved = false;
-
-  if (approvalIntent) {
-    const outcome = await handleApproval({
-      orgId,
-      userId,
-      messages: transcript,
-      intent: approvalIntent,
-      ...(conversationId ? { conversationId } : {}),
-    });
-    if (!outcome.ok) {
-      // Surface validation errors as the assistant text. The card UI
-      // distinguishes "approval failed" from "approved" by checking
-      // for `approvalResult` on the message; without it, the card
-      // stays in pending-in-flight + shows the assistant text as the
-      // failure reason. The HTTP status stays 200 so the SSE stream
-      // still flushes cleanly.
-      summaryText = `I couldn't create that: ${outcome.error}`;
-    } else {
-      const r = outcome.result;
-      alreadyApproved = outcome.alreadyApproved;
-      approvalResultHeader = JSON.stringify(r);
-      approvalResultObj = r;
-      // Prefer the resolved entity name ("Auth Refactor") over the
-      // generic kind label ("an initiative canvas") so the user knows
-      // exactly which workspace / initiative the new row landed
-      // under. Falls back to the kind label when the lookup didn't
-      // resolve (root canvas, deleted entity, older transcript). The
-      // `milestone:` branch is a defensive fallback for pre-cutover
-      // proposal trails — milestones aren't drillable scopes today,
-      // so new approvals never produce that ref.
-      const kindLabel =
-        r.landedOn === ""
-          ? "the org root canvas"
-          : r.landedOn.startsWith("ws:")
-            ? "a workspace canvas"
-            : r.landedOn.startsWith("initiative:")
-              ? "an initiative canvas"
-              : r.landedOn.startsWith("milestone:")
-                ? "an initiative canvas"
-                : "the canvas";
-      const where = r.landedOnName
-        ? `**${r.landedOnName}**`
-        : kindLabel;
-      summaryText = alreadyApproved
-        ? `Already created — opening the existing ${r.kind} on ${where}.`
-        : r.kind === "initiative"
-          ? `Created the initiative on ${where}.`
-          : r.kind === "milestone"
-            ? `Created the milestone on ${where}.`
-            : `Created the feature on ${where}.`;
-    }
-  } else if (rejectionIntent) {
-    const outcome = handleRejection({
-      messages: transcript,
-      intent: rejectionIntent,
-    });
-    summaryText = outcome.ok
-      ? "Got it — I won't create that."
-      : `Couldn't reject: ${outcome.error}`;
-  } else {
-    // Defensive — shouldn't happen given the caller guard.
-    summaryText = "No proposal intent provided.";
-  }
-
-  // Persist the click + synthetic assistant row server-side (org-canvas
-  // backend-driven turns). Single locked write under the `${turnId}-`
-  // prefix (idempotent) so a re-click never double-appends. The client
-  // filters its own `${turnId}-*` rows out of the live-sync merge.
-  if (conversationId && turnId) {
-    const lastUser = [...transcript]
-      .reverse()
-      .find((m) => m.role === "user") as
-      | { content?: unknown; approval?: unknown; rejection?: unknown }
-      | undefined;
-    const clickRow: StoredMessage = {
-      id: `${turnId}-u`,
-      role: "user",
-      content:
-        typeof lastUser?.content === "string" ? lastUser.content : "",
-      timestamp: new Date().toISOString(),
-      ...(approvalIntent ? { approval: approvalIntent } : {}),
-      ...(rejectionIntent ? { rejection: rejectionIntent } : {}),
-    };
-    const resultRow: StoredMessage = {
-      id: `${turnId}-a0`,
-      role: "assistant",
-      content: summaryText,
-      timestamp: new Date().toISOString(),
-      ...(approvalResultObj ? { approvalResult: approvalResultObj } : {}),
-    };
-    await appendTurnMessages({
-      conversationId,
-      rows: [clickRow, resultRow],
-      idPrefix: `${turnId}-`,
-      reason: "user-turn",
-    }).catch((err) =>
-      console.error("❌ [quick-ask] Proposal persist failed:", err),
-    );
-  }
-
-  // Build a minimal SSE stream of UIMessageChunk parts.
-  const encoder = new TextEncoder();
-  const partsTextId = `proposal-result-${Date.now().toString(36)}`;
-  const parts: Array<Record<string, unknown>> = [
-    { type: "start" },
-    { type: "start-step" },
-    { type: "text-start", id: partsTextId },
-    { type: "text-delta", id: partsTextId, delta: summaryText },
-    { type: "text-end", id: partsTextId },
-    { type: "finish-step" },
-    { type: "finish" },
-  ];
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const part of parts) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(part)}\n\n`));
-      }
-      controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-      controller.close();
-    },
-  });
-
-  const headers: Record<string, string> = {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-    "x-vercel-ai-ui-message-stream": "v1",
-  };
-  if (approvalResultHeader) {
-    headers["X-Approval-Result"] = approvalResultHeader;
-    // Browsers expose only safelisted response headers to fetch
-    // unless the server opts in via Access-Control-Expose-Headers.
-    // The chat is same-origin so this isn't strictly required, but
-    // setting it makes the contract explicit and safe under any
-    // future origin-split.
-    headers["Access-Control-Expose-Headers"] = "X-Approval-Result";
-  }
-
-  return new Response(stream, { headers });
 }
 
 
