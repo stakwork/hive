@@ -304,6 +304,7 @@ describe("pusher.ts", () => {
         CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",
         ACTIVITY_UPDATED: "activity-updated",
         WORKFLOW_SUMMARY_READY: "workflow-summary-ready",
+        PROMPT_EVAL_RESULT: "prompt-eval-result",
       });
     });
 
