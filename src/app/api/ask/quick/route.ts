@@ -643,17 +643,35 @@ export async function POST(request: NextRequest) {
       // Schedule research sub-agent workers for each dispatched intent.
       // Each worker runs off the stream's critical path via after() so
       // the HTTP response is already returned before any web searches run.
-      for (const intent of dispatchedResearch) {
-        after(async () => {
-          const { runResearchSubAgent } = await import(
-            "@/services/canvas-research-worker"
-          );
+      //
+      // CRITICAL: `dispatchedResearch` is populated by the
+      // `dispatch_research` tool, which only executes while the stream is
+      // CONSUMED — i.e. AFTER this synchronous handler returns. So we must
+      // NOT read the collector here (it's still empty at this point);
+      // instead, register a single `after()` that first drives the stream
+      // to completion (`consumeStream()` is idempotent and shared with the
+      // turn-persist block above), THEN iterates the now-populated array.
+      // Reading it synchronously here scheduled zero workers and left every
+      // dispatched research row stuck in the "researching" state forever.
+      after(async () => {
+        try {
+          await result.consumeStream();
+          await result.steps;
+        } catch {
+          // Stream errors are surfaced/logged elsewhere; we still want to
+          // schedule whatever intents were collected before the failure.
+        }
+        if (dispatchedResearch.length === 0) return;
+        const { runResearchSubAgent } = await import(
+          "@/services/canvas-research-worker"
+        );
+        for (const intent of dispatchedResearch) {
           await runResearchSubAgent({
             ...intent,
             workspaceSlugs: slugs,
           });
-        });
-      }
+        }
+      });
 
       return result.toUIMessageStreamResponse({
         // Hand the server-created/validated org-canvas row id back to the
