@@ -295,7 +295,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
       },
     }),
     search_logs: tool({
-      description: `Search the deployed application's live production logs (indexed in Quickwit). These ARE the runtime logs emitted by the user's running app, no matter where it's hosted (Vercel, AWS, Fly, etc.) — so use this for "prod"/"production"/"Vercel"/"the deployed app" log questions and any errors users are hitting. Supports Lucene query syntax. Does not support wildcards.
+      description: `Search the deployed application's live production logs (indexed in Quickwit). These ARE the runtime logs emitted by the user's running app — so use this for "prod"/"production"/"Vercel"/"the deployed app" log questions and any errors users are hitting. NOTE: this only covers the Quickwit-indexed app logs; it does NOT cover AWS Lambda / CloudWatch system logs — for those (or any question mentioning a Lambda function or CloudWatch) use the \`logs_agent\` tool instead. Supports Lucene query syntax. Does not support wildcards.
 IMPORTANT: every term MUST include a field prefix (e.g. "message:", "level:", "path:"). There is no default search field, so a bare query like "CLN" will fail with a 400 error ("query requires a default search field"). To search for a keyword, use "message:CLN".
 Example queries:
 - "path:pool AND path:status" (for searching endpoint like /api/pool/[slug]/status)
@@ -480,9 +480,11 @@ function buildWorkspaceTools(
     }),
     logs_agent: tool({
       description:
-        "Invoke the Logs Agent to perform deep, run-grounded analysis of infra, sandbox, and agent execution logs for this workspace. " +
-        "Use this when the user asks about what happened during a run, on a swarm, on a pod/sandbox, debugging agent failures, or wants a synthesised explanation backed by real log data. " +
-        "Heavier than `search_logs` (which does a quick Lucene keyword search) — prefer `search_logs` for simple keyword lookups. " +
+        "Invoke the Logs Agent to perform deep, run-grounded analysis of infra, sandbox, agent execution, AND AWS CloudWatch logs for this workspace. " +
+        "It has direct access to CloudWatch and all of the workspace's log groups (including AWS Lambda functions), and can do complex investigations — e.g. downloading thousands of log lines into local files and grepping through them. " +
+        "Use this when the user asks about what happened during a run, on a swarm, on a pod/sandbox, debugging agent failures, ANY question about a Lambda/CloudWatch/AWS log group, or wants a synthesised explanation backed by real log data. " +
+        "If the user mentions a Lambda function or CloudWatch, invoke this immediately — do NOT ask for permission first, and do NOT use `search_logs` (which only covers Quickwit-indexed app logs, not CloudWatch/Lambda system logs). " +
+        "Heavier than `search_logs` — prefer `search_logs` only for simple Lucene keyword lookups against the indexed app logs. " +
         "Optionally narrow the analysis to a specific feature or task by supplying featureId/taskId.",
       inputSchema: z.object({
         prompt: z.string().describe("The question or debugging query to send to the Logs Agent"),
