@@ -101,6 +101,7 @@ export function WorkflowRunsTable({
             tabIndex={onRunSelect ? 0 : undefined}
             onClick={() => onRunSelect?.(run.id)}
             onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return; // ignore events from child elements (e.g. modal inputs)
               if (onRunSelect && (e.key === "Enter" || e.key === " ")) {
                 e.preventDefault();
                 onRunSelect(run.id);
