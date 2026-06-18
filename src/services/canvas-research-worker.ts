@@ -61,11 +61,30 @@ const FINALIZE_TOOL = "update_research";
  */
 function buildBudgetPrepareStep(
   startMs: number,
+  logCtx: { slug: string; researchId: string },
 ): PrepareStepFunction<ToolSet> {
-  return ({ messages }) => {
+  let forcedLogged = false;
+  return ({ messages, stepNumber }) => {
     const elapsedMs = Date.now() - startMs;
     const elapsedS = Math.round(elapsedMs / 1000);
     const overHard = elapsedMs >= HARD_BUDGET_MS;
+
+    // Per-step heartbeat — steps are minutes apart, so this is low-volume
+    // and lets operators watch a run pace against its budget in the logs.
+    console.log("[canvas-research] step budget", {
+      ...logCtx,
+      stepNumber,
+      elapsedS,
+      hardBudgetS: Math.round(HARD_BUDGET_MS / 1000),
+      overHard,
+    });
+    if (overHard && !forcedLogged) {
+      forcedLogged = true;
+      console.log(
+        "[canvas-research] HARD BUDGET reached — restricting to update_research and forcing finalize",
+        { ...logCtx, elapsedS },
+      );
+    }
 
     // Drop any prior injected note so they don't accumulate across steps.
     const base = (messages as ModelMessage[]).filter(
@@ -229,7 +248,7 @@ export async function runResearchSubAgent(
       keepWriteToolNames: [FINALIZE_TOOL],
       silentPusher: true,
       currentCanvasConversationId: conversationId,
-      prepareStep: buildBudgetPrepareStep(Date.now()),
+      prepareStep: buildBudgetPrepareStep(Date.now(), { slug, researchId }),
       // End the loop as soon as the doc is written — the worker's sole
       // job is one `update_research` call. Fires only AFTER the write, so
       // it never truncates gathering or yields an empty result.
