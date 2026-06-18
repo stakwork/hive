@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const { step_id, requirement, reason, inputs, outputs, evalSetId } = body as {
+    const { step_id, requirement, reason, inputs, outputs, evalSetId, prompts } = body as {
       run_id?: string;
       step_id?: string;
       requirement?: string;
@@ -53,6 +53,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       inputs?: Record<string, unknown> | null;
       outputs?: unknown;
       evalSetId?: string;
+      prompts?: Array<{ name: string; prompt_id: number; prompt_version_id: number }>;
     };
 
     if (!requirement?.trim()) {
@@ -127,6 +128,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           tool_call_trace: null,
           feedback_note: reason ?? null,
         }),
+        ...(prompts?.length ? { prompts } : {}),
       },
     });
 
