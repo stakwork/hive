@@ -4,7 +4,13 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { ExternalLink, Flag, Bug, Loader2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ExternalLink, Flag, Bug, Loader2, MoreVertical } from "lucide-react";
 import { useWorkflowRuns } from "@/hooks/useWorkflowRuns";
 import { FlagRunEvalModal } from "@/components/evals/FlagRunEvalModal";
 import { startDebugRun } from "@/lib/workflow/debugRun";
@@ -79,13 +85,34 @@ export function WorkflowRunsTable({
   }
 
   return (
-    <div className="px-2 pb-3">
+    <div className="px-2 pb-3 @container/runs">
       {runs.map((run) => {
         const runIdStr = String(run.id);
         const isFlagged = flaggedRunIds.has(runIdStr);
         const isDebugging = debuggingRunId === runIdStr;
         const isSelected = run.id === selectedRunId;
         const meta = runStatusMeta(run.status);
+        const openHref = `https://jobs.stakwork.com/admin/projects/${run.id}`;
+
+        const handleFlag = (e: React.MouseEvent) => {
+          e.stopPropagation();
+          if (!isFlagged) setFlaggingRunId(runIdStr);
+        };
+        const handleDebug = async (e: React.MouseEvent) => {
+          e.stopPropagation();
+          // Open blank tab synchronously to avoid popup blockers
+          const tab = window.open("", "_blank");
+          setDebuggingRunId(runIdStr);
+          try {
+            const taskId = await startDebugRun({ slug, workflowId, runId: run.id });
+            if (tab) tab.location.href = `/w/${slug}/task/${taskId}`;
+          } catch {
+            tab?.close();
+            toast.error("Failed to start debug session");
+          } finally {
+            setDebuggingRunId(null);
+          }
+        };
 
         return (
           <div
@@ -120,7 +147,7 @@ export function WorkflowRunsTable({
                 </TooltipTrigger>
                 <TooltipContent>{run.name}</TooltipContent>
               </Tooltip>
-              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <div className="mt-0.5 flex items-center gap-1.5 overflow-hidden text-[11px] text-muted-foreground whitespace-nowrap">
                 <span className="font-mono">#{run.id}</span>
                 <span>·</span>
                 <span className={meta.text}>{meta.label}</span>
@@ -135,88 +162,93 @@ export function WorkflowRunsTable({
 
             <div
               className={cn(
-                // Float as a solid chip pinned to the right so the icons sit
-                // above the row text instead of colliding with it when the
-                // panel is narrow.
-                "absolute right-1.5 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-lg border bg-popover px-0.5 py-0.5 shadow-sm transition-opacity",
+                "shrink-0 transition-opacity",
                 isSelected ? "opacity-100" : "opacity-0 group-hover/run:opacity-100 focus-within:opacity-100",
               )}
               onClick={(e) => e.stopPropagation()}
             >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground"
-                    aria-label="Open in Stak"
-                  >
-                    <a
-                      href={`https://jobs.stakwork.com/admin/projects/${run.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
+              {/* Wide: inline icon actions */}
+              <div className="hidden items-center gap-0.5 @[300px]/runs:flex">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground"
+                      aria-label="Open in Stak"
                     >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Open in Stak</TooltipContent>
-              </Tooltip>
+                      <a href={openHref} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Open in Stak</TooltipContent>
+                </Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground"
-                    aria-label={isFlagged ? "Eval captured" : "Flag for eval"}
-                    disabled={isFlagged}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!isFlagged) setFlaggingRunId(runIdStr);
-                    }}
-                  >
-                    <Flag className={cn("h-4 w-4", isFlagged && "fill-orange-500 text-orange-500")} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{isFlagged ? "Eval captured" : "Flag for eval"}</TooltipContent>
-              </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground"
+                      aria-label={isFlagged ? "Eval captured" : "Flag for eval"}
+                      disabled={isFlagged}
+                      onClick={handleFlag}
+                    >
+                      <Flag className={cn("h-4 w-4", isFlagged && "fill-orange-500 text-orange-500")} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{isFlagged ? "Eval captured" : "Flag for eval"}</TooltipContent>
+                </Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground"
-                    aria-label="Debug run"
-                    disabled={isDebugging}
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      // Open blank tab synchronously to avoid popup blockers
-                      const tab = window.open("", "_blank");
-                      setDebuggingRunId(runIdStr);
-                      try {
-                        const taskId = await startDebugRun({ slug, workflowId, runId: run.id });
-                        if (tab) tab.location.href = `/w/${slug}/task/${taskId}`;
-                      } catch {
-                        tab?.close();
-                        toast.error("Failed to start debug session");
-                      } finally {
-                        setDebuggingRunId(null);
-                      }
-                    }}
-                  >
-                    {isDebugging ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Bug className="h-4 w-4" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Debug run</TooltipContent>
-              </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground"
+                      aria-label="Debug run"
+                      disabled={isDebugging}
+                      onClick={handleDebug}
+                    >
+                      {isDebugging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bug className="h-4 w-4" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Debug run</TooltipContent>
+                </Tooltip>
+              </div>
+
+              {/* Narrow: collapse to a 3-dot menu */}
+              <div className="@[300px]/runs:hidden">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" aria-label="Run actions">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <a href={openHref} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Open in Stak
+                      </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleFlag} disabled={isFlagged}>
+                      <Flag className={cn("mr-2 h-4 w-4", isFlagged && "fill-orange-500 text-orange-500")} />
+                      {isFlagged ? "Eval captured" : "Flag for eval"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleDebug} disabled={isDebugging}>
+                      {isDebugging ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Bug className="mr-2 h-4 w-4" />
+                      )}
+                      Debug run
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
 
               {flaggingRunId === runIdStr && (
                 <FlagRunEvalModal
