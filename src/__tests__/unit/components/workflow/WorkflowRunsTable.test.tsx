@@ -445,4 +445,40 @@ describe("WorkflowRunsTable", () => {
       });
     });
   });
+
+  describe("row keyboard handler — target guard", () => {
+    it("Space on the row itself calls onRunSelect", () => {
+      setupRuns([MOCK_RUNS[0]]);
+      const onRunSelect = vi.fn();
+      renderTable({ onRunSelect });
+      const row = screen.getAllByTestId("run-row")[0];
+      fireEvent.keyDown(row, { key: " ", target: row });
+      expect(onRunSelect).toHaveBeenCalledWith(MOCK_RUNS[0].id);
+    });
+
+    it("Enter on the row itself calls onRunSelect", () => {
+      setupRuns([MOCK_RUNS[0]]);
+      const onRunSelect = vi.fn();
+      renderTable({ onRunSelect });
+      const row = screen.getAllByTestId("run-row")[0];
+      fireEvent.keyDown(row, { key: "Enter", target: row });
+      expect(onRunSelect).toHaveBeenCalledWith(MOCK_RUNS[0].id);
+    });
+
+    it("Space bubbling from a child element does NOT call onRunSelect (regression: modal inputs)", () => {
+      setupRuns([MOCK_RUNS[0]]);
+      const onRunSelect = vi.fn();
+      renderTable({ onRunSelect });
+      const row = screen.getAllByTestId("run-row")[0];
+
+      // Simulate a child element (e.g. a modal input) dispatching Space —
+      // fire on the child so target !== currentTarget when the event reaches the row.
+      const childInput = document.createElement("input");
+      row.appendChild(childInput);
+      fireEvent.keyDown(childInput, { key: " " });
+
+      expect(onRunSelect).not.toHaveBeenCalled();
+      row.removeChild(childInput);
+    });
+  });
 });
