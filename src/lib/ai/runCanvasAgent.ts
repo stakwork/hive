@@ -38,7 +38,11 @@
  */
 
 import { streamText, ModelMessage, ToolSet } from "ai";
-import type { StreamTextResult } from "ai";
+import type {
+  StreamTextResult,
+  StopCondition,
+  PrepareStepFunction,
+} from "ai";
 import {
   getMultiWorkspacePrefixMessages,
   getQuickAskPrefixMessages,
@@ -270,6 +274,25 @@ export interface RunCanvasAgentOptions {
    * Sibling pattern to `capturedWebSearchResults`.
    */
   dispatchedResearch?: DispatchedResearchIntent[];
+  /**
+   * Per-step override hook, forwarded verbatim to `streamText`. Lets a
+   * caller change tools / tool-choice / messages between steps (e.g. the
+   * research sub-agent injecting an elapsed-time note and, past its hard
+   * budget, restricting `activeTools` to `update_research` to force a
+   * timely finalize). **Off by default** — the interactive canvas/dashboard
+   * chat and every other caller pass nothing here, so their loop is
+   * unchanged.
+   */
+  prepareStep?: PrepareStepFunction<ToolSet>;
+  /**
+   * Extra stop conditions appended to the default `[END_OF_ANSWER]`
+   * end-marker condition. ANY condition stopping ends the loop. **Off by
+   * default.** The research sub-agent passes `hasToolCall("update_research")`
+   * so its loop ends the moment it writes the doc.
+   */
+  extraStopConditions?:
+    | StopCondition<ToolSet>
+    | Array<StopCondition<ToolSet>>;
   /** Caller-owned side effects. */
   hooks?: CanvasAgentHooks;
 }
@@ -489,6 +512,8 @@ export async function runCanvasAgent(
     additionalTools,
     dispatchedResearch,
     cachedConcepts,
+    prepareStep,
+    extraStopConditions,
   } = opts;
 
   // When cached concepts are supplied we skip the slow per-workspace
@@ -837,7 +862,15 @@ export async function runCanvasAgent(
     tools,
     messages: modelMessages,
     providerOptions,
-    stopWhen: createHasEndMarkerCondition(),
+    stopWhen: [
+      createHasEndMarkerCondition(),
+      ...(extraStopConditions
+        ? Array.isArray(extraStopConditions)
+          ? extraStopConditions
+          : [extraStopConditions]
+        : []),
+    ],
+    ...(prepareStep ? { prepareStep } : {}),
     stopSequences: ["[END_OF_ANSWER]"],
     onStepFinish: async (sf) => {
       logStep(sf.content);
