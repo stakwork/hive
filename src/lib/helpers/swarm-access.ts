@@ -11,6 +11,7 @@ export interface WorkspaceSwarmAccess {
   swarmApiKey: string; // Decrypted
   swarmStatus: string;
   poolName: string;
+  swarmSecretAlias: string | null;
 }
 
 /**
@@ -91,6 +92,7 @@ export async function getWorkspaceSwarmAccess(
       swarmUrl: true,
       swarmApiKey: true,
       poolName: true,
+      swarmSecretAlias: true,
     },
   });
 
@@ -145,6 +147,7 @@ export async function getWorkspaceSwarmAccess(
       swarmApiKey: decryptedApiKey,
       swarmStatus: swarm.status,
       poolName: swarm.poolName || swarm.id,
+      swarmSecretAlias: swarm.swarmSecretAlias ?? null,
     },
   };
 }
@@ -168,6 +171,7 @@ export async function getSwarmAccessByWorkspaceId(
       swarmUrl: true,
       swarmApiKey: true,
       poolName: true,
+      swarmSecretAlias: true,
     },
   });
 
@@ -215,6 +219,7 @@ export async function getSwarmAccessByWorkspaceId(
       swarmApiKey: decryptedApiKey,
       swarmStatus: swarm.status,
       poolName: swarm.poolName || swarm.id,
+      swarmSecretAlias: swarm.swarmSecretAlias ?? null,
     },
   };
 }
