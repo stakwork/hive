@@ -442,7 +442,7 @@ describe("StepDetailsModal — Flag for eval capture", () => {
       expect(url).toBe("/api/workspaces/my-ws/workflows/42/eval/capture");
       const body = JSON.parse((opts as RequestInit).body as string);
       expect(body.run_id).toBe("run-123");
-      expect(body.step_id).toBe("gen_step");
+      expect(body.step_id).toBe("step-llm");
       expect(body.requirement).toBe("Must return a summary");
       expect(body.inputs).toEqual({ model: "gpt-4o", messages: [] });
       expect(body.outputs).toBe("some output");
