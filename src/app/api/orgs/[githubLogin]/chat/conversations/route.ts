@@ -59,6 +59,7 @@ export async function GET(
         id: true,
         title: true,
         lastMessageAt: true,
+        ownerSeenAt: true,
         messages: true,
         source: true,
         isShared: true,
@@ -76,6 +77,12 @@ export async function GET(
       isShared: conv.isShared,
       createdAt: conv.createdAt.toISOString(),
       updatedAt: conv.updatedAt.toISOString(),
+      // Unread = content arrived since the owner last viewed this chat
+      // (a backgrounded chat the agent advanced). Never seen yet but has
+      // content → unread; otherwise compare timestamps.
+      unread: conv.lastMessageAt
+        ? !conv.ownerSeenAt || conv.lastMessageAt > conv.ownerSeenAt
+        : false,
     }));
 
     return NextResponse.json({ items });

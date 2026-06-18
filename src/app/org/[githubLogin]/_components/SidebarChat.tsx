@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { FileIcon, Loader2, Mic, MicOff, Paperclip, RefreshCw, Send, Share2, X } from "lucide-react";
+import { FileIcon, Loader2, Mic, MicOff, Paperclip, Plus, RefreshCw, Send, Share2, X } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import {
@@ -151,7 +151,31 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   };
 
   const handleClear = () => {
-    useCanvasChatStore.getState().clearActiveConversation();
+    // Start a brand-new conversation in its own slot rather than wiping
+    // the active one in place. An in-flight stream stays bound to its
+    // original slot (closed over in `useSendCanvasChatMessage`), so it
+    // can't bleed into this fresh chat. The new chat inherits the current
+    // canvas scope (context) so its first turn targets the right canvas.
+    const store = useCanvasChatStore.getState();
+    const activeId = store.activeConversationId;
+    const context = activeId
+      ? store.conversations[activeId]?.context
+      : undefined;
+    store.startConversation(
+      context ?? {
+        orgId: "",
+        githubLogin: githubLogin ?? "",
+        workspaceSlug: null,
+        workspaceSlugs: [],
+        currentCanvasRef: "",
+        currentCanvasBreadcrumb: "",
+        selectedNodeId: null,
+        selectedNodeIds: [],
+      },
+      [],
+      undefined,
+      0,
+    );
   };
 
   const handleShare = async () => {
@@ -304,10 +328,10 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
             type="button"
             onClick={handleClear}
             disabled={!hasMessages}
-            title="Clear conversation"
+            title="New chat"
             className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            <X className="w-4 h-4" />
+            <Plus className="w-4 h-4" />
           </button>
         </div>
       </div>
