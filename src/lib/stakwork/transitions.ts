@@ -194,7 +194,7 @@ export function extractStepFromTransition(transition: TransitionStep): Extracted
   };
 
   return {
-    stepId: ((transition.unique_id ?? transition.id) as string | undefined) ?? "",
+    stepId: ((transition.id ?? transition.unique_id) as string | undefined) ?? "",
     name: ((transition.display_name ?? transition.name) as string | undefined) ?? "",
     model,
     provider: inferProvider(requestUrl),
