@@ -1765,6 +1765,35 @@ export function OrgCanvasBackground({
     [githubLogin],
   );
 
+  const persistMilestoneName = useCallback(
+    async (milestoneId: string, initiativeId: string, name: string) => {
+      try {
+        const res = await fetch(
+          `/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones/${milestoneId}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          },
+        );
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          console.error(
+            "[OrgCanvasBackground] PATCH milestone name failed",
+            res.status,
+            detail,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[OrgCanvasBackground] PATCH milestone name threw",
+          err,
+        );
+      }
+    },
+    [githubLogin],
+  );
+
   /**
    * Persist a feature title rename to the DB. Same fire-and-forget
    * shape as `persistMilestoneStatus`: optimistic local update lands
@@ -1857,6 +1886,25 @@ export function OrgCanvasBackground({
         }
       }
 
+      // For milestone live nodes: a text edit is a DB name rename, not
+      // a canvas blob change. The splitter drops `text` on live ids
+      // (see `src/lib/canvas/io.ts`), so without this intercept the
+      // user's edit reverts on the next read. Skip when the text
+      // didn't actually change to avoid spurious PATCHes.
+      if (id.startsWith("milestone:") && patch.text !== undefined) {
+        const prevText = (prevNode?.text ?? "").trim();
+        const nextText = patch.text.trim();
+        if (
+          nextText.length > 0 &&
+          nextText !== prevText &&
+          canvasRef?.startsWith("initiative:")
+        ) {
+          const milestoneId = id.slice("milestone:".length);
+          const initiativeId = canvasRef.slice("initiative:".length);
+          void persistMilestoneName(milestoneId, initiativeId, nextText);
+        }
+      }
+
       // Research kickoff trigger. When an authored research node's
       // text gets edited for the first time, fire the chat-side
       // kickoff that drives `save_research`. Authored = no
@@ -1890,6 +1938,7 @@ export function OrgCanvasBackground({
       applyMutation,
       fireResearchKickoff,
       persistMilestoneStatus,
+      persistMilestoneName,
       persistFeatureTitle,
     ],
   );
