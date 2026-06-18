@@ -171,10 +171,11 @@ vi.mock("@/components/dashboard/DashboardChat/StreamScrollIndicator", () => ({
   }: {
     userScrolledUp: boolean;
     onLatestClick: () => void;
-  }) =>
-    userScrolledUp ? (
-      <button onClick={onLatestClick}>Latest response…</button>
-    ) : null,
+  }) => (
+    <div data-testid="stream-scroll-indicator">
+      {userScrolledUp && <button onClick={onLatestClick}>Latest response…</button>}
+    </div>
+  ),
 }));
 
 vi.mock("framer-motion", () => ({
@@ -347,5 +348,20 @@ describe("SidebarChat — scroll behaviour", () => {
 
     // Button should be gone
     expect(screen.queryByText("Latest response…")).toBeNull();
+  });
+
+  it("StreamScrollIndicator is a sibling of the scroll container, not a descendant", async () => {
+    const { container } = await renderSidebarChat();
+
+    const scrollEl = container.querySelector(".overflow-y-auto");
+    expect(scrollEl).not.toBeNull();
+
+    // The indicator must NOT be inside the overflow scroll div
+    const indicatorInsideScroll = scrollEl!.querySelector("[data-testid='stream-scroll-indicator']");
+    expect(indicatorInsideScroll).toBeNull();
+
+    // It should still exist as a sibling in the component tree
+    const indicator = container.querySelector("[data-testid='stream-scroll-indicator']");
+    expect(indicator).not.toBeNull();
   });
 });
