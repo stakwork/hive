@@ -18,7 +18,7 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/db", () => ({
   db: {
-    sharedConversation: { update: vi.fn() },
+    sharedConversation: { update: vi.fn(), findFirst: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   },
@@ -33,11 +33,13 @@ import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 import {
   messagesFromSteps,
   appendTurnMessages,
+  fetchStoredConversationMessages,
 } from "@/services/canvas-turn-persistence";
 
 const queryRaw = db.$queryRaw as ReturnType<typeof vi.fn>;
 const txn = db.$transaction as ReturnType<typeof vi.fn>;
 const update = db.sharedConversation.update as ReturnType<typeof vi.fn>;
+const findFirst = db.sharedConversation.findFirst as ReturnType<typeof vi.fn>;
 const notify = notifyCanvasConversationUpdated as ReturnType<typeof vi.fn>;
 
 /** Run the `$transaction` callback against a tx whose locked read returns `existing`. */
@@ -301,5 +303,73 @@ describe("messagesFromSteps — deferredCheck population", () => {
     rows.forEach((row) => {
       expect(row.deferredCheck).toBeUndefined();
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// fetchStoredConversationMessages
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("fetchStoredConversationMessages", () => {
+  beforeEach(() => {
+    findFirst.mockReset();
+  });
+
+  const baseArgs = {
+    conversationId: "conv-1",
+    userId: "user-1",
+    workspaceSlug: "my-workspace",
+  };
+
+  const sampleMessages = [
+    { id: "m1", role: "user", content: "Hello" },
+    { id: "m2", role: "assistant", content: "Hi there" },
+  ];
+
+  test("returns StoredMessage[] when conversationId + userId + workspaceSlug match", async () => {
+    findFirst.mockResolvedValue({ messages: sampleMessages });
+    const result = await fetchStoredConversationMessages(baseArgs);
+    expect(result).toEqual(sampleMessages);
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "conv-1",
+          userId: "user-1",
+          workspace: { slug: "my-workspace", deleted: false },
+        }),
+        select: { messages: true },
+      }),
+    );
+  });
+
+  test("returns null when userId mismatches (IDOR guard)", async () => {
+    // DB returns null when predicate doesn't match
+    findFirst.mockResolvedValue(null);
+    const result = await fetchStoredConversationMessages({
+      ...baseArgs,
+      userId: "other-user",
+    });
+    expect(result).toBeNull();
+  });
+
+  test("returns null when conversationId is not found", async () => {
+    findFirst.mockResolvedValue(null);
+    const result = await fetchStoredConversationMessages({
+      ...baseArgs,
+      conversationId: "non-existent",
+    });
+    expect(result).toBeNull();
+  });
+
+  test("returns [] (not null) when conversation exists but messages column is empty", async () => {
+    findFirst.mockResolvedValue({ messages: null });
+    const result = await fetchStoredConversationMessages(baseArgs);
+    expect(result).toEqual([]);
+  });
+
+  test("returns [] when messages column is an empty array", async () => {
+    findFirst.mockResolvedValue({ messages: [] });
+    const result = await fetchStoredConversationMessages(baseArgs);
+    expect(result).toEqual([]);
   });
 });

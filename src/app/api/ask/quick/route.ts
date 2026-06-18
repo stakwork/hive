@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
-import { validateUserBelongsToOrg } from "@/services/workspace";
+import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
 import { ModelMessage, generateObject } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 // Deep import — see comment in services/task-workflow.ts.
@@ -32,10 +32,11 @@ import {
 } from "@/lib/ai/runCanvasAgent";
 import type { DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import { swarmFetch } from "@/lib/ai/concepts";
-import { generateTitle } from "@/lib/ai/conversationHelpers";
+import { generateTitle, toModelMessages } from "@/lib/ai/conversationHelpers";
 import {
   messagesFromSteps,
   appendTurnMessages,
+  fetchStoredConversationMessages,
   type StoredMessage,
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
@@ -155,8 +156,23 @@ export async function POST(request: NextRequest) {
       attachments,
     } = body;
 
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    // Server-history mode: mobile clients send { message, conversationId, workspaceSlugs[] }
+    // instead of the full messages array. Detected when `message` is a non-empty string
+    // and no `messages` array is present.
+    const isServerHistoryMode =
+      typeof body.message === "string" &&
+      body.message.trim().length > 0 &&
+      (!body.messages || !Array.isArray(body.messages));
+
+    if (!isServerHistoryMode && (!messages || !Array.isArray(messages) || messages.length === 0)) {
       throw validationError("Missing required parameter: messages (must be a non-empty array)");
+    }
+    if (isServerHistoryMode && (typeof conversationId !== "string" || !conversationId)) {
+      throw validationError("Server-history mode requires conversationId");
+    }
+    // Server-history mode is authenticated-only.
+    if (isServerHistoryMode && !isAuthenticated) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Normalize to array (supports both single slug and array)
@@ -289,21 +305,45 @@ export async function POST(request: NextRequest) {
     const primarySlug = slugs[0];
     const isPublicViewerRequest = publicViewerWorkspaceId !== null;
 
-    // Normalize incoming messages to ModelMessage[] format
-    const convertedMessages: ModelMessage[] = messages
-      .map((m: any): ModelMessage | null => {
-        let role = m.role;
-        if (!role || !["user", "assistant", "system", "tool"].includes(role)) {
-          role = "user";
-        }
-        let content = m.content;
-        if (content === undefined || content === null) {
-          if (role === "tool") return null;
-          content = "";
-        }
-        return { role, content } as ModelMessage;
-      })
-      .filter((m): m is ModelMessage => m !== null);
+    // Build the ModelMessage[] array — two paths:
+    //   Server-history mode: fetch stored conversation from DB + append new user message.
+    //   Normal mode: normalize incoming messages array from client.
+    let convertedMessages: ModelMessage[];
+
+    if (isServerHistoryMode) {
+      const memberAccess = await validateWorkspaceAccess(primarySlug, userId!);
+      if (!memberAccess.hasAccess) {
+        throw forbiddenError("Access denied for workspace");
+      }
+      const stored = await fetchStoredConversationMessages({
+        conversationId: conversationId as string,
+        userId: userId!,
+        workspaceSlug: primarySlug,
+      });
+      if (!stored) {
+        throw validationError("Conversation not found or access denied");
+      }
+      convertedMessages = [
+        ...toModelMessages(stored),
+        { role: "user", content: body.message.trim() } as ModelMessage,
+      ];
+    } else {
+      // Normalize incoming messages to ModelMessage[] format
+      convertedMessages = messages
+        .map((m: any): ModelMessage | null => {
+          let role = m.role;
+          if (!role || !["user", "assistant", "system", "tool"].includes(role)) {
+            role = "user";
+          }
+          let content = m.content;
+          if (content === undefined || content === null) {
+            if (role === "tool") return null;
+            content = "";
+          }
+          return { role, content } as ModelMessage;
+        })
+        .filter((msg: ModelMessage | null): msg is ModelMessage => msg !== null);
+    }
 
     // Resolve image parts to fetchable URLs so the LLM receives visuals.
     //

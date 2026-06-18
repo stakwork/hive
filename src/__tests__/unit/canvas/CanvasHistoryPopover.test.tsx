@@ -230,7 +230,7 @@ describe("CanvasHistoryPopover", () => {
     });
   });
 
-  it("calls clearActiveConversation when New conversation is clicked", async () => {
+  it("starts a fresh conversation slot (no message bleed) when New conversation is clicked", async () => {
     global.fetch = buildFetch(mockItems, {});
 
     render(<CanvasHistoryPopover githubLogin="my-org" />);
@@ -241,7 +241,16 @@ describe("CanvasHistoryPopover", () => {
     const newButton = screen.getByTitle("New conversation");
     fireEvent.click(newButton);
 
-    expect(mockClearActiveConversation).toHaveBeenCalled();
+    // New chat must mint its own slot (empty messages, no seed) rather than
+    // wiping the active one in place — that's what keeps an in-flight stream
+    // from the previous chat from bleeding into this fresh one.
+    expect(mockStartConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: "org-1" }), // inherits active canvas scope
+      [],
+      undefined,
+      0,
+    );
+    expect(mockClearActiveConversation).not.toHaveBeenCalled();
   });
 
   it("closes popover after loading a conversation", async () => {
