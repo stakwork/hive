@@ -103,12 +103,13 @@ vi.mock(
       onBackClick: () => void;
     }) => {
       const show = userScrolledUp || showBackButton;
-      if (!show) return null;
-      if (showBackButton)
-        return <button data-testid="back-btn" onClick={onBackClick}>Back</button>;
-      if (isStreaming)
-        return <button data-testid="streaming-btn" onClick={onStreamingClick}>Streaming…</button>;
-      return <button data-testid="latest-btn" onClick={onLatestClick}>Latest response…</button>;
+      return (
+        <div data-testid="stream-scroll-indicator">
+          {show && showBackButton && <button data-testid="back-btn" onClick={onBackClick}>Back</button>}
+          {show && !showBackButton && isStreaming && <button data-testid="streaming-btn" onClick={onStreamingClick}>Streaming…</button>}
+          {show && !showBackButton && !isStreaming && <button data-testid="latest-btn" onClick={onLatestClick}>Latest response…</button>}
+        </div>
+      );
     },
   })
 );
@@ -440,6 +441,22 @@ describe("DashboardChat — scroll indicator", () => {
     // Go back → userScrolledUp=true, showBackButton=false → latest-btn
     await userEvent.click(screen.getByTestId("back-btn"));
     await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
+  });
+
+  test("StreamScrollIndicator is a sibling of the scroll container, not a descendant", async () => {
+    const { container } = await renderWithMessages();
+
+    const scrollEl = container.querySelector(".overflow-y-auto");
+    expect(scrollEl).not.toBeNull();
+
+    // The indicator is rendered outside (after) the scroll container — it must
+    // NOT be a descendant of the overflow-y-auto div.
+    const indicatorInsideScroll = scrollEl!.querySelector("[data-testid='stream-scroll-indicator']");
+    expect(indicatorInsideScroll).toBeNull();
+
+    // It should still exist somewhere in the component tree (as a sibling).
+    const indicator = container.querySelector("[data-testid='stream-scroll-indicator']");
+    expect(indicator).not.toBeNull();
   });
 });
 
