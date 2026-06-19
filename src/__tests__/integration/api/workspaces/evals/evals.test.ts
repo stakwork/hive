@@ -1796,6 +1796,44 @@ describe("Evals API — Integration Tests", () => {
         const data = await response.json();
         expect(data.data.nodes[0].outputs).toEqual([]);
       });
+
+      test("strips seed node from outputs when Jarvis returns trigger ref_id in outputs (no HAS_OUTPUT edges)", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        const mockTrigger = { ref_id: "trigger-123", node_type: "EvalTrigger", properties: { agent: "Reviewer" } };
+
+        global.fetch = vi.fn()
+          // First call: trigger list from requirement
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ nodes: [mockTrigger] }),
+          } as any)
+          // Second call: Jarvis returns the seed node (trigger itself) because no HAS_OUTPUT edges exist
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ nodes: [{ ref_id: "trigger-123", node_type: "EvalTrigger", properties: { agent: "Reviewer" } }] }),
+          } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers`,
+          owner,
+        );
+
+        const response = await getTriggers(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.data.nodes).toHaveLength(1);
+        expect(data.data.nodes[0].ref_id).toBe("trigger-123");
+        // Seed node must be stripped — trigger must not appear in its own outputs
+        expect(data.data.nodes[0].outputs).toEqual([]);
+      });
     });
 
     describe("Auth failures", () => {
