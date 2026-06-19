@@ -75,7 +75,12 @@ export async function createAndSendNotification(input: {
       : null;
     const dmReady = isDirectMessageConfigured() && !!decryptedPubkey;
 
-    // 4. Always insert a row — use SKIPPED when DM is not ready
+    // 4. For deferred types with DM ready, compute sendAfter upfront so it is
+    //    written atomically in the initial create — avoids a race condition where
+    //    a polling caller reads the record between create and the subsequent update.
+    const isDeferred = dmReady && DEFERRED_NOTIFICATION_TYPES.has(input.notificationType);
+    const deferredSendAfter = isDeferred ? new Date(Date.now() + DEFERRED_DELAY_MS) : null;
+
     const record = await db.notificationTrigger.create({
       data: {
         targetUserId: input.targetUserId,
@@ -88,6 +93,7 @@ export async function createAndSendNotification(input: {
           : NotificationTriggerStatus.SKIPPED,
         notificationMethod: NotificationMethod.SPHINX,
         notificationTimestamps: [],
+        ...(isDeferred && { sendAfter: deferredSendAfter, message: input.message }),
       },
     });
 
@@ -101,15 +107,10 @@ export async function createAndSendNotification(input: {
       return;
     }
 
-    // 6. Deferred types: store sendAfter + message, return without sending
-    if (DEFERRED_NOTIFICATION_TYPES.has(input.notificationType)) {
-      const sendAfter = new Date(Date.now() + DEFERRED_DELAY_MS);
-      await db.notificationTrigger.update({
-        where: { id: record.id },
-        data: { sendAfter, message: input.message },
-      });
+    // 6. Deferred types: sendAfter + message already set in create — just log and return
+    if (isDeferred) {
       logger.info(
-        `[Notifications] Deferred ${input.notificationType} — will dispatch after ${sendAfter.toISOString()}`,
+        `[Notifications] Deferred ${input.notificationType} — will dispatch after ${deferredSendAfter!.toISOString()}`,
         "NOTIFICATIONS",
         { recordId: record.id, targetUserId: input.targetUserId, taskId, featureId }
       );

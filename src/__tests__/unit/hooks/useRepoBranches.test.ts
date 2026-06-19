@@ -10,6 +10,14 @@ const MOCK_BRANCHES = [
   { name: "dev", sha: "def456" },
 ];
 
+/** Build an array of N mock branches */
+function makeBranches(count: number, offset = 0) {
+  return Array.from({ length: count }, (_, i) => ({
+    name: `branch-${offset + i}`,
+    sha: `sha-${offset + i}`,
+  }));
+}
+
 describe("useRepoBranches", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
@@ -41,6 +49,11 @@ describe("useRepoBranches", () => {
 
     expect(result.current.branches).toEqual(MOCK_BRANCHES);
     expect(result.current.error).toBeNull();
+    // Single page (< 100 items) — only one fetch call
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("page=1");
+    expect(calledUrl).toContain("per_page=100");
   });
 
   it("sets isLoading true during fetch and false after", async () => {
@@ -154,5 +167,141 @@ describe("useRepoBranches", () => {
     act(() => { result.current.fetchBranches(); });
     await waitFor(() => expect(result.current.branches).toEqual(branches2));
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  // --- Pagination tests ---
+
+  it("fetches multiple pages and accumulates all branches (100 + 40 = 140)", async () => {
+    const page1 = makeBranches(100, 0);
+    const page2 = makeBranches(40, 100);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ branches: page1 }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ branches: page2 }),
+      } as Response);
+
+    const { result } = renderHook(() =>
+      useRepoBranches(REPO_URL, WORKSPACE_SLUG),
+    );
+
+    act(() => { result.current.fetchBranches(); });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.branches).toHaveLength(140);
+    expect(result.current.branches).toEqual([...page1, ...page2]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    const call1Url = vi.mocked(fetch).mock.calls[0][0] as string;
+    const call2Url = vi.mocked(fetch).mock.calls[1][0] as string;
+    expect(call1Url).toContain("page=1");
+    expect(call2Url).toContain("page=2");
+    expect(call1Url).toContain("per_page=100");
+    expect(call2Url).toContain("per_page=100");
+  });
+
+  it("continues fetching when page returns exactly 100 items, stops on empty next page", async () => {
+    const page1 = makeBranches(100, 0);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ branches: page1 }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ branches: [] }),
+      } as Response);
+
+    const { result } = renderHook(() =>
+      useRepoBranches(REPO_URL, WORKSPACE_SLUG),
+    );
+
+    act(() => { result.current.fetchBranches(); });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.branches).toHaveLength(100);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops after one fetch when page 1 returns fewer than 100 items", async () => {
+    const page1 = makeBranches(42, 0);
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ branches: page1 }),
+    } as Response);
+
+    const { result } = renderHook(() =>
+      useRepoBranches(REPO_URL, WORKSPACE_SLUG),
+    );
+
+    act(() => { result.current.fetchBranches(); });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.branches).toHaveLength(42);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetches three pages and accumulates all branches (100 + 100 + 50 = 250)", async () => {
+    const page1 = makeBranches(100, 0);
+    const page2 = makeBranches(100, 100);
+    const page3 = makeBranches(50, 200);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ branches: page1 }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ branches: page2 }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ branches: page3 }),
+      } as Response);
+
+    const { result } = renderHook(() =>
+      useRepoBranches(REPO_URL, WORKSPACE_SLUG),
+    );
+
+    act(() => { result.current.fetchBranches(); });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.branches).toHaveLength(250);
+    expect(fetch).toHaveBeenCalledTimes(3);
+
+    const call3Url = vi.mocked(fetch).mock.calls[2][0] as string;
+    expect(call3Url).toContain("page=3");
+  });
+
+  it("does not re-fetch for the same repoUrl + workspaceSlug (cache)", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ branches: MOCK_BRANCHES }),
+    } as Response);
+
+    const { result } = renderHook(() =>
+      useRepoBranches(REPO_URL, WORKSPACE_SLUG),
+    );
+
+    act(() => { result.current.fetchBranches(); });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Second call — should be a no-op due to cache
+    act(() => { result.current.fetchBranches(); });
+
+    // Still only 1 fetch total
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(result.current.branches).toEqual(MOCK_BRANCHES);
   });
 });

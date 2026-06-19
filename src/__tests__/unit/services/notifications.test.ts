@@ -177,21 +177,21 @@ describe("createAndSendNotification", () => {
       findFirst.mockResolvedValue(null);
       create.mockResolvedValue(mockRecord);
       userFindUnique.mockResolvedValue(userWithPubkey);
-      update.mockResolvedValue({ ...mockRecord });
 
       await createAndSendNotification(baseInput);
 
-      expect(create).toHaveBeenCalledOnce();
-      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
-      expect(update).toHaveBeenCalledWith(
+      // sendAfter + message are now written atomically in the create call, so no
+      // separate update call should happen for deferred notification types.
+      expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: "notif-1" },
           data: expect.objectContaining({
             sendAfter: expect.any(Date),
             message: baseInput.message,
           }),
         })
       );
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
     });
   });
 
