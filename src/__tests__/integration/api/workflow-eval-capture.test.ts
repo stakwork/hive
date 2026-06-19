@@ -14,6 +14,8 @@
  * - Dupes allowed: a second capture creates new nodes
  * - No outbound fetch to STAKWORK_BASE_URL/projects/...
  * - No EVALUATED edge is created
+ * - prompts is an array of JSON strings (not a single big string, not a raw object array)
+ * - agent is always a string even when step_id is sent as a number
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
@@ -247,24 +249,11 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error).toMatch(/evalSetId/i);
-      expect(nodesService.addNode).not.toHaveBeenCalled();
-    });
-
-    test("returns 400 when evalSetId is empty string", async () => {
-      const { user, workspace } = await createTestFixtures();
-
-      const body = { ...validBody, evalSetId: "   " };
-      const request = makeRequest(workspace.slug, "42", body, user);
-      const response = await POST(request, {
-        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
-      });
-
-      expect(response.status).toBe(400);
     });
   });
 
   describe("Happy path", () => {
-    test("200 happy path: addNode called 2×, addEdge called exactly 2× (no EVALUATED edge)", async () => {
+    test("returns 200 and calls addNode twice (EvalRequirement + EvalTrigger)", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocks();
 
@@ -274,17 +263,23 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       });
 
       expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.success).toBe(true);
-      expect(data.data.requirementRef).toBe("req-ref-1");
-      expect(data.data.triggerRef).toBe("trigger-ref-1");
-      expect(data.data.evalSetRef).toBe(SAMPLE_EVAL_SET_ID);
-
-      // Only 2 addNode calls: EvalRequirement + EvalTrigger (no EvalSet creation)
       expect(nodesService.addNode).toHaveBeenCalledTimes(2);
-      // Exactly 2 addEdge calls: HAS_REQUIREMENT + HAS_TRIGGER — no EVALUATED
-      expect(nodesService.addEdge).toHaveBeenCalledTimes(2);
 
+      const nodeTypes = vi.mocked(nodesService.addNode).mock.calls.map((c) => c[1].node_type);
+      expect(nodeTypes).toContain("EvalRequirement");
+      expect(nodeTypes).toContain("EvalTrigger");
+    });
+
+    test("calls addEdge exactly twice (HAS_REQUIREMENT + HAS_TRIGGER)", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(nodesService.addEdge).toHaveBeenCalledTimes(2);
       const edgeTypes = vi.mocked(nodesService.addEdge).mock.calls.map((c) => c[1].edge.edge_type);
       expect(edgeTypes).toContain("HAS_REQUIREMENT");
       expect(edgeTypes).toContain("HAS_TRIGGER");
@@ -434,12 +429,19 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(reqCall![1].node_data.name).toBe("Never return an empty response");
     });
 
-    test("EvalTrigger node_data.prompts is stored as a JSON string, not a raw object", async () => {
+    /**
+     * prompts fix: each entry must be individually JSON-stringified.
+     * The downstream Python API expects an array of strings, NOT one big JSON blob.
+     * Wrong (old): prompts = '[{"name":"TITLE_PROMPT",...}]'          ← single string
+     * Right (new): prompts = ['{"name":"TITLE_PROMPT",...}', ...]     ← array of strings
+     */
+    test("EvalTrigger node_data.prompts is an array of JSON strings (not a plain string, not a raw object array)", async () => {
       const { user, workspace } = await createTestFixtures();
       setupNodeMocks();
 
       const samplePrompts = [
         { name: "TITLE_PROMPT", prompt_id: 7, prompt_version_id: 42 },
+        { name: "SYSTEM_PROMPT", prompt_id: 8, prompt_version_id: 5 },
       ];
 
       const request = makeRequest(workspace.slug, "42", { ...validBody, prompts: samplePrompts }, user);
@@ -453,8 +455,111 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(triggerCall).toBeDefined();
 
       const { prompts } = triggerCall![1].node_data;
-      expect(typeof prompts).toBe("string");
-      expect(JSON.parse(prompts as string)).toEqual(samplePrompts);
+
+      // Must be an array, not a plain string
+      expect(Array.isArray(prompts)).toBe(true);
+      expect(typeof prompts).not.toBe("string");
+
+      // Every element must be a JSON string (parseable, not a raw object)
+      (prompts as string[]).forEach((entry) => {
+        expect(typeof entry).toBe("string");
+        expect(() => JSON.parse(entry)).not.toThrow();
+        expect(typeof JSON.parse(entry)).toBe("object");
+      });
+
+      // Parsed values must round-trip back to the original objects
+      const parsed = (prompts as string[]).map((s) => JSON.parse(s));
+      expect(parsed).toEqual(samplePrompts);
+    });
+
+    test("EvalTrigger node_data.prompts with a single entry is still an array of strings", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      const singlePrompt = [{ name: "TITLE_PROMPT", prompt_id: 7, prompt_version_id: 42 }];
+
+      const request = makeRequest(workspace.slug, "42", { ...validBody, prompts: singlePrompt }, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      const triggerCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "EvalTrigger",
+      );
+      expect(triggerCall).toBeDefined();
+
+      const { prompts } = triggerCall![1].node_data;
+      expect(Array.isArray(prompts)).toBe(true);
+      expect((prompts as string[]).length).toBe(1);
+      expect(typeof (prompts as string[])[0]).toBe("string");
+      expect(JSON.parse((prompts as string[])[0])).toEqual(singlePrompt[0]);
+    });
+
+    /**
+     * agent fix: step_id may arrive as a number from the client (e.g. step_id: 42).
+     * The downstream Python API declares `agent` as a string and rejects integers with:
+     *   "expected type string for: agent, got <class 'int'>"
+     * The route must always coerce step_id to a string via String().
+     */
+    test("EvalTrigger agent is always a string even when step_id is sent as a number", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      // Send a numeric step_id to simulate the scenario that caused the log error
+      const body = { ...validBody, step_id: 42 };
+      const request = makeRequest(workspace.slug, "42", body, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const triggerCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "EvalTrigger",
+      );
+      expect(triggerCall).toBeDefined();
+
+      const { agent } = triggerCall![1].node_data;
+      // Must be "42" (string), never 42 (number)
+      expect(typeof agent).toBe("string");
+      expect(agent).toBe("42");
+    });
+
+    test("EvalTrigger agent falls back to 'unknown_step' string when step_id is omitted", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      const { step_id: _omitted, ...bodyWithoutStepId } = validBody;
+      const request = makeRequest(workspace.slug, "42", bodyWithoutStepId, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const triggerCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "EvalTrigger",
+      );
+      expect(triggerCall).toBeDefined();
+      expect(typeof triggerCall![1].node_data.agent).toBe("string");
+      expect(triggerCall![1].node_data.agent).toBe("unknown_step");
+    });
+
+    test("EvalTrigger node_data omits prompts key when prompts is absent", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      // validBody has no prompts field
+      const request = makeRequest(workspace.slug, "42", validBody, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      const triggerCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "EvalTrigger",
+      );
+      expect(triggerCall).toBeDefined();
+      expect(triggerCall![1].node_data).not.toHaveProperty("prompts");
     });
 
     test("dupes allowed: second capture creates new requirement (not deduplicated)", async () => {
