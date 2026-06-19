@@ -12,7 +12,7 @@ import { DEFAULT_CANVAS_SYSTEM_PROMPT } from "@/lib/constants/prompt";
  * value (what an editor explicitly promoted), falling back to the
  * prompt's current `value` if nothing is published.
  *
- * The whole lookup is bounded by a single 10s deadline and ALWAYS falls
+ * The whole lookup is bounded by a single 15s deadline and ALWAYS falls
  * back to the in-repo `DEFAULT_CANVAS_SYSTEM_PROMPT` on timeout, error,
  * missing config, or dev/mock mode. The agent therefore never blocks on
  * — or breaks because of — the Prompt Manager.
@@ -33,7 +33,8 @@ import { DEFAULT_CANVAS_SYSTEM_PROMPT } from "@/lib/constants/prompt";
  */
 
 const PROMPT_NAME = "CANVAS_AGENT_SYSTEM_PROMPT";
-const TIMEOUT_MS = 10_000;
+// Covers all 3 sequential Stakwork calls (search → detail → version).
+const TIMEOUT_MS = 15_000;
 // Cache a successful resolution for 5 min. Cache a fallback (Stakwork
 // down / not found) for only 30s so a freshly-published prompt — or
 // recovery from an outage — shows up quickly instead of being pinned to
@@ -120,7 +121,7 @@ async function fetchAndCache(): Promise<string> {
   } catch (error) {
     // Timeout (AbortError), network failure, bad JSON, missing prompt —
     // all collapse to the in-repo default, cached briefly to avoid
-    // hammering Stakwork (with 10s timeouts) on every turn during an
+    // hammering Stakwork (with 15s timeouts) on every turn during an
     // outage.
     console.error("getCanvasSystemPrompt: falling back to default:", error);
     cacheStore.entry = {
