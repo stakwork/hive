@@ -47,7 +47,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { step_id, requirement, reason, inputs, outputs, evalSetId, prompts } = body as {
       run_id?: string;
-      step_id?: string;
+      step_id?: string | number;
       requirement?: string;
       reason?: string;
       inputs?: Record<string, unknown> | null;
@@ -109,7 +109,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     logger.info(`[EvalCapture] EvalRequirement created, ref_id: ${requirementRef}`);
 
     // ── 3. Build EvalTrigger from posted IO ──────────────────────────────────
-    const stepName = step_id ?? "unknown_step";
+    // Always coerce step_id to a string — the downstream Python API expects a
+    // string for `agent` and will reject integers with "expected type string".
+    const stepName = String(step_id ?? "unknown_step");
     const promptSnapshot = JSON.stringify(inputs ?? null);
     const outputSnapshot = JSON.stringify(outputs ?? null);
 
@@ -128,7 +130,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           tool_call_trace: null,
           feedback_note: reason ?? null,
         }),
-        ...(prompts?.length ? { prompts } : {}),
+        // Each prompt entry is individually JSON-stringified so the downstream
+        // API receives an array of strings rather than one big JSON blob.
+        ...(prompts?.length ? { prompts: prompts.map((p: any) => JSON.stringify(p)) } : {}),
       },
     });
 
