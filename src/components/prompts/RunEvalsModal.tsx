@@ -52,7 +52,7 @@ export function RunEvalsModal({
         const res = await fetch(`/api/workspaces/${workspaceSlug}/evals`);
         if (!res.ok) throw new Error("Failed to fetch eval sets");
         const data = await res.json();
-        setEvalSets((data.nodes as JarvisNode[]) ?? []);
+        setEvalSets((data.data?.nodes ?? data.nodes ?? []) as JarvisNode[]);
       } catch {
         setEvalSets([]);
       } finally {

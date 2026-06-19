@@ -12,6 +12,11 @@ const mockEvalSets = [
   { ref_id: "eval-set-2", properties: { name: "Beta Suite", description: "Tests beta" } },
 ];
 
+const wrappedResponse = {
+  success: true,
+  data: { nodes: mockEvalSets, total: mockEvalSets.length },
+};
+
 const defaultProps = {
   open: true,
   onClose: vi.fn(),
@@ -40,16 +45,16 @@ describe("RunEvalsModal", () => {
     // spinner shown while pending
     expect(document.querySelector(".animate-spin")).toBeTruthy();
 
-    // unblock
+    // unblock with real wrapped shape
     resolve!({
       ok: true,
-      json: async () => ({ nodes: mockEvalSets }),
+      json: async () => wrappedResponse,
     });
   });
 
-  it("renders EvalSet list after fetch completes", async () => {
+  it("renders EvalSet list after fetch completes (wrapped envelope)", async () => {
     global.fetch = vi.fn(() =>
-      Promise.resolve({ ok: true, json: async () => ({ nodes: mockEvalSets }) })
+      Promise.resolve({ ok: true, json: async () => wrappedResponse })
     ) as unknown as typeof fetch;
 
     render(<RunEvalsModal {...defaultProps} />);
@@ -62,7 +67,10 @@ describe("RunEvalsModal", () => {
 
   it("shows empty state when API returns no sets", async () => {
     global.fetch = vi.fn(() =>
-      Promise.resolve({ ok: true, json: async () => ({ nodes: [] }) })
+      Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, data: { nodes: [], total: 0 } }),
+      })
     ) as unknown as typeof fetch;
 
     render(<RunEvalsModal {...defaultProps} />);
@@ -74,7 +82,7 @@ describe("RunEvalsModal", () => {
 
   it("Run button is disabled when no EvalSet selected", async () => {
     global.fetch = vi.fn(() =>
-      Promise.resolve({ ok: true, json: async () => ({ nodes: mockEvalSets }) })
+      Promise.resolve({ ok: true, json: async () => wrappedResponse })
     ) as unknown as typeof fetch;
 
     render(<RunEvalsModal {...defaultProps} />);
@@ -87,7 +95,7 @@ describe("RunEvalsModal", () => {
 
   it("Run button is enabled after selecting a set", async () => {
     global.fetch = vi.fn(() =>
-      Promise.resolve({ ok: true, json: async () => ({ nodes: mockEvalSets }) })
+      Promise.resolve({ ok: true, json: async () => wrappedResponse })
     ) as unknown as typeof fetch;
 
     render(<RunEvalsModal {...defaultProps} />);
@@ -103,7 +111,7 @@ describe("RunEvalsModal", () => {
   it("clicking Run calls onConfirm with the correct ref_id", async () => {
     const onConfirm = vi.fn();
     global.fetch = vi.fn(() =>
-      Promise.resolve({ ok: true, json: async () => ({ nodes: mockEvalSets }) })
+      Promise.resolve({ ok: true, json: async () => wrappedResponse })
     ) as unknown as typeof fetch;
 
     render(<RunEvalsModal {...defaultProps} onConfirm={onConfirm} />);
@@ -120,7 +128,7 @@ describe("RunEvalsModal", () => {
     const onClose = vi.fn();
     const onConfirm = vi.fn();
     global.fetch = vi.fn(() =>
-      Promise.resolve({ ok: true, json: async () => ({ nodes: mockEvalSets }) })
+      Promise.resolve({ ok: true, json: async () => wrappedResponse })
     ) as unknown as typeof fetch;
 
     render(<RunEvalsModal {...defaultProps} onClose={onClose} onConfirm={onConfirm} />);
@@ -133,9 +141,30 @@ describe("RunEvalsModal", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("regression: renders nodes from nested envelope (data.data.nodes), not bare data.nodes", async () => {
+    // If the modal regresses to reading data.nodes (unwrapped), this test will fail
+    // because the response only has the wrapped shape { success, data: { nodes } }
+    global.fetch = vi.fn(() =>
+      Promise.resolve({ ok: true, json: async () => wrappedResponse })
+    ) as unknown as typeof fetch;
+
+    render(<RunEvalsModal {...defaultProps} />);
+
+    await waitFor(() => {
+      // Both nodes must be visible — proves data.data.nodes was read correctly
+      expect(screen.getByText("Alpha Suite")).toBeInTheDocument();
+      expect(screen.getByText("Beta Suite")).toBeInTheDocument();
+      // Empty state must NOT appear
+      expect(screen.queryByText(/No eval sets found/i)).not.toBeInTheDocument();
+    });
+  });
+
   it("displays version label in the dialog title", async () => {
     global.fetch = vi.fn(() =>
-      Promise.resolve({ ok: true, json: async () => ({ nodes: [] }) })
+      Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, data: { nodes: [], total: 0 } }),
+      })
     ) as unknown as typeof fetch;
 
     render(<RunEvalsModal {...defaultProps} versionLabel="v5" />);
