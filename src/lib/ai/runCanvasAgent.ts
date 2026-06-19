@@ -48,6 +48,7 @@ import {
   getQuickAskPrefixMessages,
 } from "@/lib/constants/prompt";
 import type { CanvasScopeHint } from "@/lib/constants/prompt";
+import { getCanvasSystemPrompt } from "@/lib/ai/canvas-system-prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import {
@@ -645,6 +646,11 @@ export async function runCanvasAgent(
       }
     }
 
+    // Persona/reply-style preamble, pulled from the Stakwork Prompt
+    // Manager (published CANVAS_AGENT_SYSTEM_PROMPT). Bounded by a 10s
+    // deadline and always falls back to the in-repo default.
+    const canvasSystemPrompt = await getCanvasSystemPrompt();
+
     // Always rebuilt fresh (cheap string work) so the scope hint reflects
     // the user's CURRENT canvas/selection, even on a concept-cache hit.
     prefixMessages = getMultiWorkspacePrefixMessages(
@@ -654,6 +660,7 @@ export async function runCanvasAgent(
       orgId,
       buildScopeHint(scope, linkedWorkspaces),
       orgPromptSuffix,
+      canvasSystemPrompt,
     );
     cacheHit = multiCacheHit;
     cacheableConcepts = { conceptsByWorkspace };
