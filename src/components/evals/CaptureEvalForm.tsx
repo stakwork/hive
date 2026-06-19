@@ -3,7 +3,6 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Plus, CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -55,7 +54,7 @@ export function CaptureEvalForm({
         ) : evalSetsError ? (
           <p className="text-sm text-destructive">Failed to load eval sets</p>
         ) : (
-          <ScrollArea className="max-h-40 rounded-md border p-2">
+          <div className="max-h-40 overflow-y-auto rounded-md border p-2">
             <div className="space-y-1">
               {evalSets.length === 0 && (
                 <p className="px-2 py-1 text-xs text-muted-foreground">
@@ -105,7 +104,7 @@ export function CaptureEvalForm({
                 Create new eval set
               </button>
             </div>
-          </ScrollArea>
+          </div>
         )}
         {selectedEvalSetId === CREATE_NEW_VALUE && (
           <Input

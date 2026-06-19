@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CaptureEvalForm, CREATE_NEW_VALUE } from "@/components/evals/CaptureEvalForm";
@@ -257,7 +256,7 @@ export function FlagRunEvalModal({
                 No LLM request steps found in this run.
               </div>
             ) : (
-              <ScrollArea className="max-h-64 rounded-md border p-2">
+              <div className="max-h-64 overflow-y-auto rounded-md border p-2">
                 <div className="space-y-1">
                   {steps.map((s) => {
                     const isSelected = selectedStep?.stepId === s.stepId;
@@ -302,7 +301,7 @@ export function FlagRunEvalModal({
                     );
                   })}
                 </div>
-              </ScrollArea>
+              </div>
             )}
           </div>
         )}
