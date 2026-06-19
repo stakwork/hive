@@ -434,6 +434,29 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(reqCall![1].node_data.name).toBe("Never return an empty response");
     });
 
+    test("EvalTrigger node_data.prompts is stored as a JSON string, not a raw object", async () => {
+      const { user, workspace } = await createTestFixtures();
+      setupNodeMocks();
+
+      const samplePrompts = [
+        { name: "TITLE_PROMPT", prompt_id: 7, prompt_version_id: 42 },
+      ];
+
+      const request = makeRequest(workspace.slug, "42", { ...validBody, prompts: samplePrompts }, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      const triggerCall = vi.mocked(nodesService.addNode).mock.calls.find(
+        (c) => c[1].node_type === "EvalTrigger",
+      );
+      expect(triggerCall).toBeDefined();
+
+      const { prompts } = triggerCall![1].node_data;
+      expect(typeof prompts).toBe("string");
+      expect(JSON.parse(prompts as string)).toEqual(samplePrompts);
+    });
+
     test("dupes allowed: second capture creates new requirement (not deduplicated)", async () => {
       const { user, workspace } = await createTestFixtures();
 
