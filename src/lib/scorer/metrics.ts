@@ -14,6 +14,49 @@
 import { db } from "@/lib/db";
 
 // ---------------------------------------------------------------------------
+// Windowed metrics in-memory cache (short-TTL, mirrors accessCache pattern)
+// ---------------------------------------------------------------------------
+
+const WINDOWED_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const WINDOWED_CACHE_MAX = 100;
+
+interface WindowedCacheEntry {
+  data: { aggregate: AggregateMetrics; features: FeatureMetrics[] };
+  expiresAt: number;
+}
+const windowedMetricsCache = new Map<string, WindowedCacheEntry>();
+
+export function getCachedWindowedMetrics(
+  workspaceId: string,
+  window: string
+): WindowedCacheEntry["data"] | null {
+  const key = `${workspaceId}:${window}`;
+  const entry = windowedMetricsCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    windowedMetricsCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+export function setCachedWindowedMetrics(
+  workspaceId: string,
+  window: string,
+  data: WindowedCacheEntry["data"]
+): void {
+  // Simple LRU eviction — drop oldest entry when at capacity
+  if (windowedMetricsCache.size >= WINDOWED_CACHE_MAX) {
+    const oldest = windowedMetricsCache.keys().next().value;
+    if (oldest) windowedMetricsCache.delete(oldest);
+  }
+  windowedMetricsCache.set(`${workspaceId}:${window}`, {
+    data,
+    expiresAt: Date.now() + WINDOWED_CACHE_TTL,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Affirmation filter for correction counting
 // ---------------------------------------------------------------------------
 
@@ -299,6 +342,8 @@ export async function loadCachedMetrics(
 // Raw compute (no caching, used internally)
 // ---------------------------------------------------------------------------
 
+const FEATURE_FETCH_LIMIT = 500;
+
 function computeAggregateMetrics(
   workspaceId: string,
   since?: Date
@@ -316,6 +361,7 @@ async function computeMetricsBulk(
   const features = await db.feature.findMany({
     where: { workspaceId, deleted: false, ...dateFilter },
     orderBy: { createdAt: "desc" },
+    take: FEATURE_FETCH_LIMIT,
     select: {
       id: true,
       title: true,
@@ -353,6 +399,7 @@ async function computeMetricsBulk(
           where: {
             message: { taskId: { in: allTaskIds } },
             type: { in: ["DIFF", "PULL_REQUEST"] },
+            ...(since ? { createdAt: { gte: since } } : {}),
           },
           select: {
             type: true,
@@ -380,7 +427,10 @@ async function computeMetricsBulk(
     allTaskIds.length > 0
       ? await db.agentLog.groupBy({
           by: ["taskId", "agent"],
-          where: { taskId: { in: allTaskIds } },
+          where: {
+            taskId: { in: allTaskIds },
+            ...(since ? { createdAt: { gte: since } } : {}),
+          },
           _count: true,
         })
       : [];
