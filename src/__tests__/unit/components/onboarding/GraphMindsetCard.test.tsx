@@ -262,4 +262,61 @@ describe("GraphMindsetCard", () => {
       expect(screen.getByText("Stripe error")).toBeInTheDocument();
     });
   });
+
+  it("shows format error immediately for capital letters without calling slug-availability", async () => {
+    vi.useFakeTimers();
+    mockFetch.mockReturnValueOnce(priceResponse());
+    render(<GraphMindsetCard />);
+
+    const input = screen.getByPlaceholderText("Workspace name");
+    fireEvent.change(input, { target: { value: "MyGraph" } });
+
+    // Format error is set synchronously — fireEvent is wrapped in act by RTL,
+    // so state is flushed before the next line. No waitFor needed (waitFor uses
+    // setTimeout internally which hangs with fake timers).
+    expect(screen.getByText(/letters or numbers/i)).toBeInTheDocument();
+
+    // Advance timers — the debounced fetch must NOT have been called
+    await act(async () => { vi.advanceTimersByTime(1000); });
+
+    // Only the price endpoint fetch should have been called (on mount), not slug-availability
+    const slugCalls = (mockFetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([url]: [string]) => typeof url === "string" && url.includes("slug-availability")
+    );
+    expect(slugCalls).toHaveLength(0);
+
+    // Build Graph button must be disabled
+    expect(screen.getByRole("button", { name: /build graph/i })).toBeDisabled();
+
+    vi.useRealTimers();
+  });
+
+  it("clears format error and re-enables availability check when corrected to lowercase", async () => {
+    vi.useFakeTimers();
+    mockFetch.mockReturnValueOnce(priceResponse());
+    mockFetch.mockReturnValueOnce(availableSlugResponse());
+    render(<GraphMindsetCard />);
+
+    const input = screen.getByPlaceholderText("Workspace name");
+
+    // Type invalid name first
+    fireEvent.change(input, { target: { value: "MyGraph" } });
+    // Synchronous state update — no waitFor needed with fake timers active
+    expect(screen.getByText(/letters or numbers/i)).toBeInTheDocument();
+
+    // Correct to valid lowercase
+    fireEvent.change(input, { target: { value: "mygraph" } });
+
+    // Advance debounce
+    await act(async () => { vi.advanceTimersByTime(600); });
+
+    vi.useRealTimers();
+
+    // Error should be gone and available message should appear
+    await waitFor(() => expect(screen.getByText(/Name is available/i)).toBeInTheDocument());
+    expect(screen.queryByText(/letters or numbers/i)).not.toBeInTheDocument();
+
+    // Build Graph button should now be enabled
+    expect(screen.getByRole("button", { name: /build graph/i })).not.toBeDisabled();
+  });
 });
