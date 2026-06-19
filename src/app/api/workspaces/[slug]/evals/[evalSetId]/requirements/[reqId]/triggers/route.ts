@@ -79,7 +79,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         );
         if (!outputsRes.ok) return { ...trigger, outputs: [] };
         const outputsData = await outputsRes.json();
-        return { ...trigger, outputs: outputsData?.nodes ?? [] };
+        return { ...trigger, outputs: (outputsData?.nodes ?? []).filter((n: { ref_id: string }) => n.ref_id !== trigger.ref_id) };
       }),
     );
 
