@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Plus, Search, X } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { EvalSetCard } from "./EvalSetCard";
+import { useDebounce } from "@/hooks/useDebounce";
+import { EvalSetRow } from "./EvalSetRow";
 import { EvalSetDetail } from "./EvalSetDetail";
 import { CreateEvalSetModal } from "./CreateEvalSetModal";
 import { EditEvalSetModal } from "./EditEvalSetModal";
@@ -17,6 +19,12 @@ export function EvalDashboard() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selected, setSelected] = useState<JarvisNode | null>(null);
   const [editTarget, setEditTarget] = useState<JarvisNode | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  const filteredEvalSets = evalSets.filter((e) =>
+    String(e.properties?.name ?? "").toLowerCase().includes(debouncedSearchQuery.toLowerCase())
+  );
 
   async function fetchEvalSets() {
     setLoading(true);
@@ -61,7 +69,24 @@ export function EvalDashboard() {
   return (
     <div className="space-y-6">
       {/* Toolbar */}
-      <div className="flex justify-end">
+      <div className="flex justify-between items-center gap-4">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search eval sets..."
+            className="w-full pl-9 pr-9 h-9 rounded-md border border-input bg-background text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           <Plus className="mr-1 h-4 w-4" />
           New Eval Set
@@ -70,29 +95,60 @@ export function EvalDashboard() {
 
       {/* Content */}
       {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 w-full" />
-          ))}
-        </div>
-      ) : evalSets.length === 0 ? (
-        <div
-          className="rounded-lg border border-dashed p-14 text-center text-sm text-muted-foreground"
-          data-testid="empty-state"
-        >
-          No eval sets yet — create one to get started
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader className="bg-muted/50">
+              <TableRow>
+                <TableHead className="w-[220px]">Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[1, 2, 3].map((i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton className="h-5 w-40" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-64" /></TableCell>
+                  <TableCell></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {evalSets.map((evalSet) => (
-            <EvalSetCard
-              key={evalSet.ref_id}
-              evalSet={evalSet}
-              onClick={() => setSelected(evalSet)}
-              onEdit={() => setEditTarget(evalSet)}
-              onDelete={() => handleDelete(evalSet)}
-            />
-          ))}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader className="bg-muted/50">
+              <TableRow>
+                <TableHead className="w-[220px]">Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredEvalSets.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={3} className="h-32 text-center">
+                    <p className="text-muted-foreground">
+                      {evalSets.length === 0
+                        ? "No eval sets yet — create one to get started"
+                        : "No eval sets match your search"}
+                    </p>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredEvalSets.map((evalSet) => (
+                  <EvalSetRow
+                    key={evalSet.ref_id}
+                    evalSet={evalSet}
+                    onClick={() => setSelected(evalSet)}
+                    onEdit={() => setEditTarget(evalSet)}
+                    onDelete={() => handleDelete(evalSet)}
+                  />
+                ))
+              )}
+            </TableBody>
+          </Table>
         </div>
       )}
 

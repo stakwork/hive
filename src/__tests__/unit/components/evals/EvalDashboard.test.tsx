@@ -13,13 +13,17 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({ slug: "test-ws", workspace: { swarmUrl: "https://swarm.test" } }),
 }));
 
+vi.mock("@/hooks/useDebounce", () => ({
+  useDebounce: (v: unknown) => v,
+}));
+
 vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
 // Mock child components so we can test EvalDashboard in isolation
-vi.mock("@/components/evals/EvalSetCard", () => ({
-  EvalSetCard: ({
+vi.mock("@/components/evals/EvalSetRow", () => ({
+  EvalSetRow: ({
     evalSet,
     onClick,
     onEdit,
@@ -30,15 +34,17 @@ vi.mock("@/components/evals/EvalSetCard", () => ({
     onEdit: () => void;
     onDelete: () => void;
   }) => (
-    <div data-testid="eval-set-card" onClick={onClick}>
-      <span>{String(evalSet.properties?.name ?? evalSet.ref_id)}</span>
-      <button data-testid={`edit-${evalSet.ref_id}`} onClick={(e) => { e.stopPropagation(); onEdit(); }}>
-        Edit
-      </button>
-      <button data-testid={`delete-${evalSet.ref_id}`} onClick={(e) => { e.stopPropagation(); onDelete(); }}>
-        Delete
-      </button>
-    </div>
+    <tr data-testid="eval-set-row" onClick={onClick}>
+      <td>{String(evalSet.properties?.name ?? evalSet.ref_id)}</td>
+      <td>
+        <button data-testid={`edit-${evalSet.ref_id}`} onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+          Edit
+        </button>
+        <button data-testid={`delete-${evalSet.ref_id}`} onClick={(e) => { e.stopPropagation(); onDelete(); }}>
+          Delete
+        </button>
+      </td>
+    </tr>
   ),
 }));
 
@@ -91,8 +97,23 @@ vi.mock("@/components/ui/skeleton", () => ({
   Skeleton: ({ className }: any) => <div data-testid="skeleton" className={className} />,
 }));
 
+vi.mock("@/components/ui/table", () => ({
+  Table: ({ children }: any) => <table>{children}</table>,
+  TableHeader: ({ children, className }: any) => <thead className={className}>{children}</thead>,
+  TableBody: ({ children }: any) => <tbody>{children}</tbody>,
+  TableRow: ({ children, className, onClick, "data-testid": testId }: any) => (
+    <tr className={className} onClick={onClick} data-testid={testId}>{children}</tr>
+  ),
+  TableHead: ({ children, className }: any) => <th className={className}>{children}</th>,
+  TableCell: ({ children, className, colSpan, onClick }: any) => (
+    <td className={className} colSpan={colSpan} onClick={onClick}>{children}</td>
+  ),
+}));
+
 vi.mock("lucide-react", () => ({
   Plus: () => <span>+</span>,
+  Search: () => <span>search-icon</span>,
+  X: () => <span>x-icon</span>,
 }));
 
 import { EvalDashboard } from "@/components/evals/EvalDashboard";
@@ -108,7 +129,7 @@ describe("EvalDashboard", () => {
     vi.clearAllMocks();
   });
 
-  it("shows skeleton cards while loading", async () => {
+  it("shows skeleton rows while loading", async () => {
     global.fetch = vi.fn(() => new Promise(() => {})) as any;
 
     render(<EvalDashboard />);
@@ -125,12 +146,11 @@ describe("EvalDashboard", () => {
     render(<EvalDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("empty-state")).toBeTruthy();
+      expect(screen.getByText("No eval sets yet — create one to get started")).toBeTruthy();
     });
-    expect(screen.getByTestId("empty-state").textContent).toContain("No eval sets yet");
   });
 
-  it("renders eval set cards when nodes are returned", async () => {
+  it("renders eval set rows when nodes are returned", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       json: async () => ({ data: { nodes: MOCK_NODES, total: 2 } }),
     }) as any;
@@ -138,13 +158,13 @@ describe("EvalDashboard", () => {
     render(<EvalDashboard />);
 
     await waitFor(() => {
-      expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2);
+      expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2);
     });
     expect(screen.getByText("Code Quality Evals")).toBeTruthy();
     expect(screen.getByText("Agent Accuracy Suite")).toBeTruthy();
   });
 
-  it("navigates to detail view when a card is clicked", async () => {
+  it("navigates to detail view when a row is clicked", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       json: async () => ({ data: { nodes: MOCK_NODES, total: 2 } }),
     }) as any;
@@ -152,17 +172,17 @@ describe("EvalDashboard", () => {
     render(<EvalDashboard />);
 
     await waitFor(() => {
-      expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2);
+      expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2);
     });
 
-    const firstCard = screen.getAllByTestId("eval-set-card")[0];
-    await userEvent.click(firstCard);
+    const firstRow = screen.getAllByTestId("eval-set-row")[0];
+    await userEvent.click(firstRow);
 
     expect(screen.getByTestId("eval-set-detail")).toBeTruthy();
-    expect(screen.queryByTestId("eval-set-card")).toBeNull();
+    expect(screen.queryByTestId("eval-set-row")).toBeNull();
   });
 
-  it("returns to grid when back button is clicked in detail view", async () => {
+  it("returns to table when back button is clicked in detail view", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       json: async () => ({ data: { nodes: MOCK_NODES, total: 2 } }),
     }) as any;
@@ -170,15 +190,15 @@ describe("EvalDashboard", () => {
     render(<EvalDashboard />);
 
     await waitFor(() => {
-      expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2);
+      expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2);
     });
 
-    await userEvent.click(screen.getAllByTestId("eval-set-card")[0]);
+    await userEvent.click(screen.getAllByTestId("eval-set-row")[0]);
     expect(screen.getByTestId("eval-set-detail")).toBeTruthy();
 
     await userEvent.click(screen.getByTestId("back-btn"));
     await waitFor(() => {
-      expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2);
+      expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2);
     });
   });
 
@@ -189,7 +209,9 @@ describe("EvalDashboard", () => {
 
     render(<EvalDashboard />);
 
-    await waitFor(() => screen.getByTestId("empty-state"));
+    await waitFor(() =>
+      screen.getByText("No eval sets yet — create one to get started")
+    );
 
     const newBtn = screen.getByText(/New Eval Set/);
     await userEvent.click(newBtn);
@@ -205,13 +227,15 @@ describe("EvalDashboard", () => {
 
     render(<EvalDashboard />);
 
-    await waitFor(() => screen.getByTestId("empty-state"));
+    await waitFor(() =>
+      screen.getByText("No eval sets yet — create one to get started")
+    );
 
     await userEvent.click(screen.getByText(/New Eval Set/));
     await userEvent.click(screen.getByTestId("mock-create"));
 
     await waitFor(() => {
-      expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2);
+      expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2);
     });
   });
 
@@ -222,7 +246,7 @@ describe("EvalDashboard", () => {
 
     render(<EvalDashboard />);
 
-    await waitFor(() => expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2));
 
     await userEvent.click(screen.getByTestId("edit-eval-1"));
 
@@ -238,16 +262,14 @@ describe("EvalDashboard", () => {
 
     render(<EvalDashboard />);
 
-    await waitFor(() => expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2));
 
     await userEvent.click(screen.getByTestId("edit-eval-1"));
     await userEvent.click(screen.getByTestId("mock-save"));
 
     await waitFor(() => {
-      // fetch called again after update
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
-    // Modal closed
     expect(screen.queryByTestId("edit-modal")).toBeNull();
   });
 
@@ -260,7 +282,7 @@ describe("EvalDashboard", () => {
 
     render(<EvalDashboard />);
 
-    await waitFor(() => expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2));
 
     await userEvent.click(screen.getByTestId("delete-eval-1"));
 
@@ -284,12 +306,69 @@ describe("EvalDashboard", () => {
 
     render(<EvalDashboard />);
 
-    await waitFor(() => expect(screen.getAllByTestId("eval-set-card")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2));
 
     await userEvent.click(screen.getByTestId("delete-eval-1"));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Failed to delete eval set");
+    });
+  });
+
+  it("search filters rows client-side by name", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_NODES, total: 2 } }),
+    }) as any;
+
+    render(<EvalDashboard />);
+
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2));
+
+    const searchInput = screen.getByPlaceholderText("Search eval sets...");
+    await userEvent.type(searchInput, "Code");
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("eval-set-row")).toHaveLength(1);
+      expect(screen.getByText("Code Quality Evals")).toBeTruthy();
+      expect(screen.queryByText("Agent Accuracy Suite")).toBeNull();
+    });
+  });
+
+  it("clears search and restores all rows when X is clicked", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_NODES, total: 2 } }),
+    }) as any;
+
+    render(<EvalDashboard />);
+
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2));
+
+    const searchInput = screen.getByPlaceholderText("Search eval sets...");
+    await userEvent.type(searchInput, "Code");
+
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-row")).toHaveLength(1));
+
+    // Click the X clear button
+    const clearBtn = screen.getByText("x-icon").closest("button")!;
+    await userEvent.click(clearBtn);
+
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2));
+  });
+
+  it("shows 'No eval sets match your search' when search yields no results", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: MOCK_NODES, total: 2 } }),
+    }) as any;
+
+    render(<EvalDashboard />);
+
+    await waitFor(() => expect(screen.getAllByTestId("eval-set-row")).toHaveLength(2));
+
+    const searchInput = screen.getByPlaceholderText("Search eval sets...");
+    await userEvent.type(searchInput, "zzznomatch");
+
+    await waitFor(() => {
+      expect(screen.getByText("No eval sets match your search")).toBeTruthy();
     });
   });
 });
