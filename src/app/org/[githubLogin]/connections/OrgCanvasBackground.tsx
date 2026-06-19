@@ -3242,6 +3242,7 @@ export function OrgCanvasBackground({
           ref={canvasHandleRef}
           canvas={canvasForRender}
           panMode="trackpad"
+          multiSelectKey="space"
           canvases={subCanvasesForRender}
           theme={connectionsTheme}
           editable
