@@ -3,6 +3,8 @@ import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
 import {
   loadCachedMetrics,
   computeAndCacheMetrics,
+  getCachedWindowedMetrics,
+  setCachedWindowedMetrics,
 } from "@/lib/scorer/metrics";
 
 const PAGE_SIZE = 20;
@@ -47,8 +49,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Check short-TTL in-memory cache for windowed queries (7d/30d/24h)
+    if (!refresh && since) {
+      const cached = getCachedWindowedMetrics(workspaceId, window);
+      if (cached) {
+        const totalFeatures = cached.features.length;
+        const totalPages = Math.max(1, Math.ceil(totalFeatures / PAGE_SIZE));
+        const start = (page - 1) * PAGE_SIZE;
+        return NextResponse.json({
+          aggregate: cached.aggregate,
+          features: cached.features.slice(start, start + PAGE_SIZE),
+          pagination: { page, pageSize: PAGE_SIZE, totalFeatures, totalPages },
+        });
+      }
+      console.warn(
+        `[scorer/metrics] cache miss: ${workspaceId} window=${window}, computing...`
+      );
+    }
+
     // Cache miss or filtered: compute fresh and cache
     const result = await computeAndCacheMetrics(workspaceId, since);
+
+    // Store windowed result in short-TTL cache
+    if (since) {
+      setCachedWindowedMetrics(workspaceId, window, result);
+    }
 
     // Paginate the full result
     const totalFeatures = result.features.length;
