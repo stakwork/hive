@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { extractRepoNameFromUrl, nextIndexedName } from "@/lib/utils/slug";
+import { extractRepoNameFromUrl, nextIndexedName, validateWorkspaceSlugFormat } from "@/lib/utils/slug";
 
 describe("extractRepoNameFromUrl", () => {
   describe("Valid GitHub URLs", () => {
@@ -201,5 +201,73 @@ describe("nextIndexedName", () => {
   test("should handle special regex characters in base name", () => {
     const result = nextIndexedName("repo.test", ["repo.test", "repo.test-1"]);
     expect(result).toBe("repo.test-2");
+  });
+});
+
+describe("validateWorkspaceSlugFormat", () => {
+  test("rejects capital letters", () => {
+    expect(validateWorkspaceSlugFormat("MyWorkspace")).toEqual({
+      valid: false,
+      error: expect.stringContaining("letters or numbers"),
+    });
+  });
+
+  test("accepts valid lowercase slug with hyphen", () => {
+    expect(validateWorkspaceSlugFormat("my-workspace")).toEqual({ valid: true });
+  });
+
+  test("rejects slug starting with underscore", () => {
+    expect(validateWorkspaceSlugFormat("_bad")).toEqual({
+      valid: false,
+      error: expect.stringContaining("letters or numbers"),
+    });
+  });
+
+  test("rejects slug ending with hyphen", () => {
+    expect(validateWorkspaceSlugFormat("bad-")).toEqual({
+      valid: false,
+      error: expect.stringContaining("letters or numbers"),
+    });
+  });
+
+  test("rejects slug with space", () => {
+    expect(validateWorkspaceSlugFormat("a b")).toEqual({
+      valid: false,
+      error: expect.stringContaining("letters or numbers"),
+    });
+  });
+
+  test("accepts min-length slug (2 chars)", () => {
+    expect(validateWorkspaceSlugFormat("ab")).toEqual({ valid: true });
+  });
+
+  test("rejects slug that is too short (1 char)", () => {
+    expect(validateWorkspaceSlugFormat("a")).toEqual({
+      valid: false,
+      error: expect.stringContaining("between 2 and 50"),
+    });
+  });
+
+  test("rejects slug exceeding max length", () => {
+    expect(validateWorkspaceSlugFormat("a".repeat(51))).toEqual({
+      valid: false,
+      error: expect.stringContaining("between 2 and 50"),
+    });
+  });
+
+  test("accepts slug with numbers", () => {
+    expect(validateWorkspaceSlugFormat("workspace123")).toEqual({ valid: true });
+  });
+
+  test("accepts slug with underscores", () => {
+    expect(validateWorkspaceSlugFormat("my_workspace")).toEqual({ valid: true });
+  });
+
+  test("trims surrounding whitespace before validating", () => {
+    // A single-char trimmed value is too short
+    expect(validateWorkspaceSlugFormat(" a ")).toEqual({
+      valid: false,
+      error: expect.stringContaining("between 2 and 50"),
+    });
   });
 });
