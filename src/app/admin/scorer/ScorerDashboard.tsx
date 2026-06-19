@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -115,6 +115,13 @@ interface AgentLogEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Metrics window selector types & constants (used by ScorerDashboard + MetricsWindowSelector)
+// ---------------------------------------------------------------------------
+
+export const METRICS_WINDOWS = ["all", "24h", "7d", "30d"] as const;
+export type MetricsWindow = (typeof METRICS_WINDOWS)[number];
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -130,6 +137,17 @@ export function ScorerDashboard({
     workspaces.find((ws) => ws.slug === searchParams.get("w")) ||
     workspaces[0] ||
     null;
+
+  const rawRange = searchParams.get("range") ?? "";
+  const metricsWindow: MetricsWindow = (METRICS_WINDOWS as readonly string[]).includes(rawRange)
+    ? (rawRange as MetricsWindow)
+    : "all";
+
+  const setMetricsWindow = (next: MetricsWindow) => {
+    const p = new URLSearchParams(searchParams.toString());
+    p.set("range", next);
+    router.replace(`?${p.toString()}`, { scroll: false });
+  };
 
   const [selectedWs, setSelectedWs] = useState<Workspace | null>(initialWs);
   const [aggregate, setAggregate] = useState<AggregateMetrics | null>(null);
@@ -162,6 +180,7 @@ export function ScorerDashboard({
         workspaceId: selectedWs.id,
         page: String(page),
       });
+      if (metricsWindow !== "all") params.set("window", metricsWindow);
       if (refresh) params.set("refresh", "true");
       const res = await fetch(`/api/admin/scorer/metrics?${params}`);
       if (!res.ok) throw new Error("Failed to fetch metrics");
@@ -177,7 +196,7 @@ export function ScorerDashboard({
     } finally {
       setLoading(false);
     }
-  }, [selectedWs, page]);
+  }, [selectedWs, page, metricsWindow]);
 
   const fetchInsights = useCallback(async () => {
     if (!selectedWs) return;
@@ -410,7 +429,10 @@ export function ScorerDashboard({
                 setExpandedInsight(null);
                 setInsightsVisible(10);
                 setPage(1);
-                router.replace(`?w=${ws.slug}`, { scroll: false });
+                const p = new URLSearchParams();
+                p.set("w", ws.slug);
+                if (metricsWindow !== "all") p.set("range", metricsWindow);
+                router.replace(`?${p.toString()}`, { scroll: false });
               }}
               className={`px-3 py-1.5 text-xs font-mono border transition-colors whitespace-nowrap shrink-0 ${
                 ws.id === selectedWs.id
@@ -480,14 +502,17 @@ export function ScorerDashboard({
                 warn: 60,
               })}
             />
-            <button
-              onClick={() => fetchMetrics(true)}
-              disabled={loading}
-              className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
-              title="Refresh metrics (skip cache)"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <MetricsWindowSelector window={metricsWindow} setWindow={setMetricsWindow} />
+              <button
+                onClick={() => fetchMetrics(true)}
+                disabled={loading}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                title="Refresh metrics (skip cache)"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
           </div>
         ) : null}
 
@@ -811,6 +836,39 @@ export function ScorerDashboard({
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
+
+const WINDOW_LABELS: Record<MetricsWindow, string> = {
+  all: "All",
+  "24h": "24h",
+  "7d": "7d",
+  "30d": "30d",
+};
+
+export function MetricsWindowSelector({
+  window: activeWindow,
+  setWindow,
+}: {
+  window: MetricsWindow;
+  setWindow: (w: MetricsWindow) => void;
+}) {
+  return (
+    <div className="flex gap-px" data-testid="metrics-window-selector">
+      {METRICS_WINDOWS.map((w) => (
+        <button
+          key={w}
+          onClick={() => setWindow(w)}
+          className={`px-2 py-0.5 text-[10px] font-mono border transition-colors ${
+            w === activeWindow
+              ? "bg-accent/10 text-foreground border-border"
+              : "bg-card text-muted-foreground border-border hover:text-foreground"
+          } ${w === "all" ? "rounded-l" : ""} ${w === "30d" ? "rounded-r" : ""}`}
+        >
+          {WINDOW_LABELS[w]}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function MetricItem({
   label,
