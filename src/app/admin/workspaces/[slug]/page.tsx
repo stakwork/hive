@@ -8,6 +8,7 @@ import CopySwarmPasswordButton from "./CopySwarmPasswordButton";
 import AdminJanitorToggles from "./AdminJanitorToggles";
 import WorkspacePRStats from "./WorkspacePRStats";
 import AdminPodScaleControl from "./AdminPodScaleControl";
+import { getSwarmBaseUrl } from "@/lib/utils/swarm";
 
 export default async function AdminWorkspaceDetailPage({
   params,
@@ -184,7 +185,11 @@ export default async function AdminWorkspaceDetailPage({
                 />
                 {workspace.swarm?.swarmId && (
                   <a
-                    href={`https://${workspace.swarm.swarmId}.sphinx.chat:8800`}
+                    href={
+                      workspace.swarm.swarmUrl
+                        ? `${getSwarmBaseUrl(workspace.swarm.swarmUrl)}:8800`
+                        : `https://${workspace.swarm.swarmId}.sphinx.chat:8800`
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"

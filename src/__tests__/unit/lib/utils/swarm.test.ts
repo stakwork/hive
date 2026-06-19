@@ -101,6 +101,35 @@ describe("swarm utils", () => {
     });
   });
 
+  describe("getSwarmBaseUrl :8800 admin URL construction", () => {
+    test("vanity swarmUrl produces correct admin URL", () => {
+      const swarmUrl = "https://ai.sphinx.chat/api";
+      const swarmId = "swarmABC123";
+      const href = swarmUrl
+        ? `${getSwarmBaseUrl(swarmUrl)}:8800`
+        : `https://${swarmId}.sphinx.chat:8800`;
+      expect(href).toBe("https://ai.sphinx.chat:8800");
+    });
+
+    test("default swarmUrl (non-vanity) produces correct admin URL", () => {
+      const swarmUrl = "https://swarmABC123.sphinx.chat/api";
+      const swarmId = "swarmABC123";
+      const href = swarmUrl
+        ? `${getSwarmBaseUrl(swarmUrl)}:8800`
+        : `https://${swarmId}.sphinx.chat:8800`;
+      expect(href).toBe("https://swarmABC123.sphinx.chat:8800");
+    });
+
+    test("null swarmUrl falls back to swarmId construction", () => {
+      const swarmUrl = null;
+      const swarmId = "swarmABC123";
+      const href = swarmUrl
+        ? `${getSwarmBaseUrl(swarmUrl)}:8800`
+        : `https://${swarmId}.sphinx.chat:8800`;
+      expect(href).toBe("https://swarmABC123.sphinx.chat:8800");
+    });
+  });
+
   describe("getSecondBrainBaseUrl", () => {
     test("strips /api and appends :8444", () => {
       expect(getSecondBrainBaseUrl("https://ai.sphinx.chat/api")).toBe("https://ai.sphinx.chat:8444");
