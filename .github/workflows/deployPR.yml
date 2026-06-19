@@ -155,6 +155,16 @@ jobs:
           ENDPOINTS_JSON=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints" "endpoints")
           ENDPOINT_ID=$(echo "$ENDPOINTS_JSON" | jq -r ".endpoints[] | select(.branch_id==\"$BRANCH_ID\") | .id")
 
+          # Validate the cached endpoint is still accessible (it may have been deleted since list was fetched)
+          if [ -n "$ENDPOINT_ID" ] && [ "$ENDPOINT_ID" != "null" ]; then
+            VALIDATE_RESP=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID")
+            if ! echo "$VALIDATE_RESP" | jq -e '.endpoint' > /dev/null 2>&1; then
+              echo "⚠️  Endpoint $ENDPOINT_ID found in list but no longer accessible, will create a new one"
+              ENDPOINT_ID=""
+            fi
+          fi
+
           if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
             # Try to create a new endpoint first
             RESPONSE=$(curl -s -H "Authorization: Bearer $NEON_API_KEY" \
@@ -192,7 +202,11 @@ jobs:
 
           # Wait until endpoint is ready (GET endpoint does not return credentials)
           for i in {1..30}; do
-            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint")
+            STATUS=$(neon_curl "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/endpoints/$ENDPOINT_ID" "endpoint") || {
+              echo "⚠️  Could not poll endpoint status (attempt $i), retrying..."
+              sleep 5
+              continue
+            }
             STATE=$(echo "$STATUS" | jq -r '.endpoint.current_state')
             DB_HOST=$(echo "$STATUS" | jq -r '.endpoint.host')
             if [ "$STATE" = "ready" ] && [ -n "$DB_HOST" ] && [ "$DB_HOST" != "null" ]; then

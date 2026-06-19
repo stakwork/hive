@@ -1,4 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  mockIsPublic,
+  mockEndpoints,
+  setMockIsPublic,
+  setMockEndpoints,
+} from "./state";
 
 const MOCK_CONTAINERS = [
   { name: "sphinx", status: "running", image: "sphinxlightning/sphinx-relay:latest" },
@@ -6,6 +12,9 @@ const MOCK_CONTAINERS = [
   { name: "lnd", status: "stopped", image: "lightninglabs/lnd:v0.18" },
 ];
 
+// ---------------------------------------------------------------------------
+// Static responses
+// ---------------------------------------------------------------------------
 const MOCK_RESPONSES: Record<string, unknown> = {
   ListContainers: { containers: MOCK_CONTAINERS },
   StartContainer: { success: true },
@@ -25,6 +34,18 @@ const MOCK_RESPONSES: Record<string, unknown> = {
       "lightninglabs/lnd": "v0.18",
     },
   },
+  // Boltwall admin
+  GetBoltwallSuperAdmin: { pubkey: null, name: null },
+  ListAdmins: { admins: [] },
+  GetBotBalance: { success: true, message: "bot balance retrieved", data: { msat: 30000 } },
+  CreateBotInvoice: { invoice: "lnbcrt1mock000000000" },
+  AddBoltwallUser: { success: true },
+  AddBoltwallAdminPubkey: { success: true },
+  DeleteSubAdmin: { success: true },
+  UpdateUser: { success: true },
+  GetEnrichedBoltwallUsers: { users: [] },
+  UpdateNeo4jConfig: { success: true },
+  UpdateEnv: { success: true },
   GetBoltwallAccessibility: { isPublic: false },
   UpdateBoltwallAccessibility: { success: true },
   ListPaidEndpoint: {
@@ -34,7 +55,6 @@ const MOCK_RESPONSES: Record<string, unknown> = {
     ],
   },
   UpdatePaidEndpoint: { success: true },
-  GetBotBalance: { success: true, message: "bot balance retrieved", data: { msat: 30000 } },
   GetBoltwallUsers: {
     users: [
       { id: 1, pubkey: "03superadmin0000000000000000000000000000000000000000000000000000001", name: "Super Admin", role: "admin" },
@@ -63,7 +83,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing txt param" }, { status: 400 });
   }
 
-  let parsed: { cmd?: string; data?: { cmd?: string } };
+  let parsed: { type?: string; cmd?: string; data?: { cmd?: string; content?: unknown }; content?: unknown };
   try {
     parsed = JSON.parse(txt);
   } catch {
@@ -73,7 +93,44 @@ export async function GET(request: NextRequest) {
   // SwarmCmd shape: { type: "Swarm", data: { cmd: "..." } }
   // Fall back to top-level .cmd for legacy callers
   const cmd = parsed.data?.cmd ?? parsed.cmd;
-  if (!cmd || !(cmd in MOCK_RESPONSES)) {
+  const content = parsed.data?.content ?? parsed.content;
+
+  if (!cmd) {
+    return NextResponse.json({ error: "Unknown cmd: undefined" }, { status: 400 });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stateful boltwall commands
+  // ---------------------------------------------------------------------------
+  if (cmd === "GetBoltwallAccessibility") {
+    return NextResponse.json({ isPublic: mockIsPublic });
+  }
+
+  if (cmd === "UpdateBoltwallAccessibility") {
+    setMockIsPublic(Boolean(content));
+    return NextResponse.json({ success: true });
+  }
+
+  if (cmd === "ListPaidEndpoint") {
+    return NextResponse.json({ endpoints: mockEndpoints });
+  }
+
+  if (cmd === "UpdatePaidEndpoint") {
+    const update = content as { id?: number; status?: boolean } | undefined;
+    if (update?.id !== undefined) {
+      setMockEndpoints(
+        mockEndpoints.map((ep) =>
+          ep.id === update.id ? { ...ep, status: Boolean(update.status) } : ep
+        )
+      );
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Static responses
+  // ---------------------------------------------------------------------------
+  if (!(cmd in MOCK_RESPONSES)) {
     return NextResponse.json({ error: `Unknown cmd: ${cmd}` }, { status: 400 });
   }
 

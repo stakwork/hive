@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Mock fetch globally before importing
 const mockFetch = vi.fn();
@@ -7,8 +7,21 @@ global.fetch = mockFetch;
 const { getSwarmCmdJwt, swarmCmdRequest } = await import("@/services/swarm/cmd");
 
 describe("getSwarmCmdJwt", () => {
+  let savedUseMocks: string | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Ensure production routing (no mocks) for getSwarmCmdJwt tests
+    savedUseMocks = process.env.USE_MOCKS;
+    delete process.env.USE_MOCKS;
+  });
+
+  afterEach(() => {
+    if (savedUseMocks !== undefined) {
+      process.env.USE_MOCKS = savedUseMocks;
+    } else {
+      delete process.env.USE_MOCKS;
+    }
   });
 
   const swarmUrl = "https://swarm42.sphinx.chat";
@@ -114,14 +127,23 @@ describe("getSwarmCmdJwt", () => {
   });
 });
 
-describe("swarmCmdRequest", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+// ---------------------------------------------------------------------------
+// swarmCmdRequest — USE_MOCKS routing + double-encoded JSON handling
+// ---------------------------------------------------------------------------
 
+describe("swarmCmdRequest", () => {
   const swarmUrl = "https://swarm42.sphinx.chat";
   const jwt = "test-jwt-token";
   const cmd = { type: "Swarm" as const, data: { cmd: "GetBoltwallAccessibility" as const } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.USE_MOCKS;
+  });
+
+  afterEach(() => {
+    delete process.env.USE_MOCKS;
+  });
 
   test("parses normal (single-encoded) JSON correctly", async () => {
     mockFetch.mockResolvedValue({
@@ -208,5 +230,34 @@ describe("swarmCmdRequest", () => {
 
     const [, init] = mockFetch.mock.calls[0];
     expect(init.headers["x-jwt"]).toBe(jwt);
+  });
+
+  test("routes to host:8800 in production (no USE_MOCKS)", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ isPublic: false }),
+    });
+
+    await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain("swarm42.sphinx.chat:8800/api/cmd");
+  });
+
+  test("routes to NEXTAUTH_URL mock endpoint when USE_MOCKS=true", async () => {
+    process.env.USE_MOCKS = "true";
+    process.env.NEXTAUTH_URL = "http://localhost:3000";
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ isPublic: false }),
+    });
+
+    await swarmCmdRequest({ swarmUrl, jwt, cmd });
+
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain("localhost:3000/api/mock/swarm-super-admin/api/cmd");
   });
 });
