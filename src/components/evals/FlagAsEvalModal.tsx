@@ -14,7 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "@/components/ui/tag-input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Plus, CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -224,7 +223,7 @@ export function FlagAsEvalModal({
                   Loading eval sets…
                 </div>
               ) : (
-                <ScrollArea className="max-h-44 rounded-md border p-2">
+                <div className="max-h-44 overflow-y-auto rounded-md border p-2">
                   <div className="space-y-1">
                     {evalSets.map((es) => {
                       const selected = selectedEvalSetId === es.ref_id;
@@ -269,7 +268,7 @@ export function FlagAsEvalModal({
                       Create new EvalSet
                     </button>
                   </div>
-                </ScrollArea>
+                </div>
               )}
               {selectedEvalSetId === CREATE_NEW_VALUE && (
                 <div className="space-y-1">
