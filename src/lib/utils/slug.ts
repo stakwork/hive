@@ -1,4 +1,26 @@
 /**
+ * Validates workspace slug format on the client.
+ * Mirrors WORKSPACE_SLUG_PATTERNS.VALID and WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+ * from src/lib/constants.ts — kept here to avoid pulling @prisma/client into the client bundle.
+ */
+const SLUG_VALID_RE = /^[a-z0-9]([a-z0-9_-])*[a-z0-9]$|^[a-z0-9]$/;
+const SLUG_MIN = 2;
+const SLUG_MAX = 50;
+const SLUG_FORMAT_MSG =
+  "Workspace name must start and end with letters or numbers, and can only contain letters, numbers, hyphens, and underscores.";
+
+export function validateWorkspaceSlugFormat(name: string): { valid: boolean; error?: string } {
+  const v = name.trim();
+  if (v.length < SLUG_MIN || v.length > SLUG_MAX) {
+    return { valid: false, error: "Workspace name must be between 2 and 50 characters." };
+  }
+  if (!SLUG_VALID_RE.test(v)) {
+    return { valid: false, error: SLUG_FORMAT_MSG };
+  }
+  return { valid: true };
+}
+
+/**
  * Extracts repo name from a GitHub repository URL and sanitizes it for use as a workspace slug
  * Converts unsupported characters (periods, etc.) to hyphens while preserving underscores
  */
