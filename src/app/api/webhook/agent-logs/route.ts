@@ -25,6 +25,7 @@ export const fetchCache = "force-no-store";
  *   task_id?:       string   — optional Task to associate with
  *   feature_id?:    string   — optional Feature to associate with
  *   logs:           unknown  — the actual log data (JSON array, JSONL string, etc.)
+ *   _metadata?:     object   — optional free-form metadata, stored as-is on the AgentLog record
  *
  * At least one of 'stakwork_run_id', 'task_id', or 'feature_id' is required.
  */
@@ -53,6 +54,11 @@ export async function POST(request: NextRequest) {
         : undefined;
     const provider: string | undefined = config?.provider ? String(config.provider) : undefined;
     const source: string | undefined = config?.source ? String(config.source) : undefined;
+    // Free-form metadata — stored as-is, not interpreted
+    const metadata: Record<string, unknown> | undefined =
+      body._metadata && typeof body._metadata === "object" && !Array.isArray(body._metadata)
+        ? (body._metadata as Record<string, unknown>)
+        : undefined;
     const repos: string[] = Array.isArray(config?.repos)
       ? (config.repos as unknown[]).filter((r): r is string => typeof r === "string")
       : [];
@@ -195,6 +201,7 @@ export async function POST(request: NextRequest) {
             provider: provider ?? null,
             source: source ?? null,
             repos,
+            metadata: metadata as Prisma.InputJsonValue | undefined,
           },
         })
       : await db.agentLog.create({
@@ -210,6 +217,7 @@ export async function POST(request: NextRequest) {
             provider: provider ?? null,
             source: source ?? null,
             repos,
+            metadata: metadata as Prisma.InputJsonValue | undefined,
           },
         });
 
