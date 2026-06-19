@@ -220,7 +220,7 @@ export async function deleteNode(
   refId: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const url = `${config.jarvisUrl.replace(/\/$/, "")}/node/${encodeURIComponent(refId)}`;
+    const url = `${config.jarvisUrl.replace(/\/$/, "")}/v2/nodes/${encodeURIComponent(refId)}`;
     const response = await fetch(url, {
       method: "DELETE",
       headers: {

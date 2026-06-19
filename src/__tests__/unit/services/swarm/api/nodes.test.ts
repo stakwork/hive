@@ -623,7 +623,7 @@ describe("updateNode", () => {
 
 describe("deleteNode", () => {
   describe("Success cases", () => {
-    test("calls DELETE /node/{refId} with X-Is-Admin: true header", async () => {
+    test("calls DELETE /v2/nodes/{refId} with X-Is-Admin: true header", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -635,7 +635,7 @@ describe("deleteNode", () => {
       expect(result).toEqual({ success: true });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://test-swarm.sphinx.chat:8444/node/eval-set-abc",
+        "https://test-swarm.sphinx.chat:8444/v2/nodes/eval-set-abc",
         expect.objectContaining({
           method: "DELETE",
           headers: expect.objectContaining({
@@ -669,7 +669,51 @@ describe("deleteNode", () => {
       await deleteNode(config, "node with spaces");
 
       const calledUrl = mockFetch.mock.calls[0][0] as string;
-      expect(calledUrl).toBe("https://test-swarm.sphinx.chat:8444/node/node%20with%20spaces");
+      expect(calledUrl).toBe("https://test-swarm.sphinx.chat:8444/v2/nodes/node%20with%20spaces");
+    });
+
+    test("deletes an EvalSet node via v2 route", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success" }),
+      });
+
+      const result = await deleteNode(config, "evalset-ref-123");
+
+      expect(result).toEqual({ success: true });
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://test-swarm.sphinx.chat:8444/v2/nodes/evalset-ref-123",
+        expect.objectContaining({
+          method: "DELETE",
+          headers: expect.objectContaining({
+            "x-api-token": "test-api-key",
+            "X-Is-Admin": "true",
+          }),
+        }),
+      );
+    });
+
+    test("deletes an EvalRequirement node via v2 route", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "success" }),
+      });
+
+      const result = await deleteNode(config, "req-ref-456");
+
+      expect(result).toEqual({ success: true });
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://test-swarm.sphinx.chat:8444/v2/nodes/req-ref-456",
+        expect.objectContaining({
+          method: "DELETE",
+          headers: expect.objectContaining({
+            "x-api-token": "test-api-key",
+            "X-Is-Admin": "true",
+          }),
+        }),
+      );
     });
   });
 
@@ -694,6 +738,19 @@ describe("deleteNode", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Connection refused");
+    });
+
+    test("returns failure on 4xx from v2 route", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => "Unauthorized",
+      });
+
+      const result = await deleteNode(config, "evalset-ref-123");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("401");
     });
   });
 });
