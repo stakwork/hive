@@ -128,7 +128,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           tool_call_trace: null,
           feedback_note: reason ?? null,
         }),
-        ...(prompts?.length ? { prompts } : {}),
+        ...(prompts?.length ? { prompts: JSON.stringify(prompts) } : {}),
       },
     });
 
