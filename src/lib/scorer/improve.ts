@@ -20,6 +20,7 @@ import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import {
   createInMemoryEditor,
   applyEdit,
+  diffToEdits,
   type TextEditInput,
   type ProposedEdit,
 } from "./editor";
@@ -212,6 +213,37 @@ export async function applyProposal(
   ]);
 
   return { status: "APPLIED", description: live };
+}
+
+/**
+ * Replace a PENDING proposal's edits with the human-edited final text.
+ * Recomputes the minimal diff against the original (pre-edit) description so
+ * the proposal still applies via exact str_replace, and refreshes the
+ * afterPreview shown in the UI/history.
+ */
+export async function editProposal(
+  proposalId: string,
+  text: string
+): Promise<{ status: string; editCount?: number; error?: string }> {
+  const proposal = await db.scorerDescriptionProposal.findUniqueOrThrow({
+    where: { id: proposalId },
+  });
+
+  if (proposal.status !== "PENDING") {
+    return { status: proposal.status, error: "Proposal is not pending" };
+  }
+
+  const edits = diffToEdits(proposal.beforePreview, text);
+
+  await db.scorerDescriptionProposal.update({
+    where: { id: proposalId },
+    data: {
+      edits: edits as unknown as Prisma.InputJsonValue,
+      afterPreview: text,
+    },
+  });
+
+  return { status: "PENDING", editCount: edits.length };
 }
 
 export async function rejectProposal(proposalId: string): Promise<void> {
