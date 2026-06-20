@@ -17,6 +17,7 @@ import {
   Link2,
   Sparkles,
   Check,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -1290,6 +1291,9 @@ function InsightImprove({ insightId }: { insightId: string }) {
   const [running, setRunning] = useState(false);
   const [proposals, setProposals] = useState<DescriptionProposal[]>([]);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<DescriptionProposal[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1388,6 +1392,26 @@ function InsightImprove({ insightId }: { insightId: string }) {
     }
   };
 
+  const saveEdit = async (id: string) => {
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/admin/scorer/proposals/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "edit", text: editText }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success("Proposal updated");
+      setEditingId(null);
+      await loadProposals();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   return (
     <div className="mt-3 border-t border-border/50 pt-2">
       <div className="flex items-center gap-3">
@@ -1465,47 +1489,100 @@ function InsightImprove({ insightId }: { insightId: string }) {
                   {p.rationale}
                 </p>
               )}
-              <div className="flex flex-col gap-1.5">
-                {p.edits.map((e, i) => (
-                  <div
-                    key={i}
-                    className="text-[11px] font-mono rounded overflow-hidden border"
-                  >
-                    {e.oldStr ? (
-                      <div className="bg-red-500/10 text-red-400 px-2 py-1 whitespace-pre-wrap border-b border-border/50">
-                        {e.oldStr}
-                      </div>
-                    ) : null}
-                    <div className="bg-green-500/10 text-green-400 px-2 py-1 whitespace-pre-wrap">
-                      {e.newStr}
-                    </div>
+              {editingId === p.id ? (
+                <>
+                  <div className="text-[9px] text-muted-foreground mb-1">
+                    Edit the resulting workspace description, then save.
                   </div>
-                ))}
-              </div>
-              <div className="flex justify-end gap-2 mt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-[10px] h-6 px-2"
-                  disabled={actingId === p.id}
-                  onClick={() => act(p.id, "reject")}
-                >
-                  Reject
-                </Button>
-                <Button
-                  size="sm"
-                  className="text-[10px] h-6 px-2"
-                  disabled={actingId === p.id}
-                  onClick={() => act(p.id, "accept")}
-                >
-                  {actingId === p.id ? (
-                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                  ) : (
-                    <Check className="w-3 h-3 mr-1" />
-                  )}
-                  Accept &amp; apply
-                </Button>
-              </div>
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    rows={8}
+                    className="w-full text-[11px] font-mono rounded border bg-background p-2 resize-y focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  />
+                  <div className="flex justify-end gap-2 mt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-[10px] h-6 px-2"
+                      disabled={savingEdit}
+                      onClick={() => setEditingId(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="text-[10px] h-6 px-2"
+                      disabled={savingEdit}
+                      onClick={() => saveEdit(p.id)}
+                    >
+                      {savingEdit ? (
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      ) : (
+                        <Check className="w-3 h-3 mr-1" />
+                      )}
+                      Save
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    {p.edits.map((e, i) => (
+                      <div
+                        key={i}
+                        className="text-[11px] font-mono rounded overflow-hidden border"
+                      >
+                        {e.oldStr ? (
+                          <div className="bg-red-500/10 text-red-400 px-2 py-1 whitespace-pre-wrap border-b border-border/50">
+                            {e.oldStr}
+                          </div>
+                        ) : null}
+                        <div className="bg-green-500/10 text-green-400 px-2 py-1 whitespace-pre-wrap">
+                          {e.newStr}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-end gap-2 mt-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-[10px] h-6 px-2"
+                      disabled={actingId === p.id}
+                      onClick={() => {
+                        setEditText(p.afterPreview);
+                        setEditingId(p.id);
+                      }}
+                    >
+                      <Pencil className="w-3 h-3 mr-1" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-[10px] h-6 px-2"
+                      disabled={actingId === p.id}
+                      onClick={() => act(p.id, "reject")}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="text-[10px] h-6 px-2"
+                      disabled={actingId === p.id}
+                      onClick={() => act(p.id, "accept")}
+                    >
+                      {actingId === p.id ? (
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      ) : (
+                        <Check className="w-3 h-3 mr-1" />
+                      )}
+                      Accept &amp; apply
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           ))}
         </div>
