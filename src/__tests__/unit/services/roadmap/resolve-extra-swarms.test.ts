@@ -32,6 +32,7 @@ function makeWorkspace(overrides: Record<string, unknown> = {}) {
   return {
     id: "ws-1",
     slug: "my-workspace",
+    description: "My workspace description",
     deleted: false,
     ownerId: "user-1",
     swarm: {
@@ -64,6 +65,7 @@ describe("resolveExtraSwarms", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
       name: "my-workspace",
+      description: "My workspace description",
       url: "https://swarm.example.com:3355",
       apiKey: "decrypted:encrypted-key",
       repoUrls: "https://github.com/org/repo1,https://github.com/org/repo2",
@@ -71,6 +73,15 @@ describe("resolveExtraSwarms", () => {
         learn_concepts: true,
       },
     });
+  });
+
+  it("omits description when the workspace has none", async () => {
+    mockFindFirst.mockResolvedValueOnce(makeWorkspace({ description: null }));
+
+    const result = await resolveExtraSwarms("hello @my-workspace", "user-1");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].description).toBeUndefined();
   });
 
   it("skips a slug the user is not a member of (workspace not found)", async () => {
