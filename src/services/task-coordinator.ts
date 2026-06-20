@@ -18,6 +18,13 @@ export interface FeatureContext {
     architecture: string | null;
   };
   /**
+   * Free-form prose describing the workspace this feature belongs to.
+   * Exposed to the plan agent as high-level grounding so it understands
+   * what the product/org is about when planning. Null when the workspace
+   * has no description set.
+   */
+  workspaceDescription: string | null;
+  /**
    * Repositories attached to this feature's workspace. Exposed to the
    * plan agent so it can pick a target repo when creating coding
    * tasks via `create_feature_task` (which accepts either
@@ -77,6 +84,7 @@ export async function buildFeatureContext(
       },
       workspace: {
         select: {
+          description: true,
           repositories: {
             select: {
               id: true,
@@ -121,6 +129,7 @@ export async function buildFeatureContext(
       requirements: feature.requirements,
       architecture: feature.architecture,
     },
+    workspaceDescription: feature.workspace?.description ?? null,
     // `workspace?.repositories` rather than `workspace.repositories` so the
     // function stays well-defined when older mocks / fixtures don't eager-
     // load the join. Real DB rows always have a workspace (FK is non-null),
