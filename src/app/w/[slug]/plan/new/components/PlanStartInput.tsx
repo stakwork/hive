@@ -342,7 +342,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
   const title = "What job are you trying to solve?";
 
   return (
-    <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
+    <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background overflow-hidden">
       <h1 className="text-4xl font-bold text-foreground mb-10 text-center">
         {title}
       </h1>
@@ -399,7 +399,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 disabled={isLoading}
-                className="resize-none min-h-[180px] text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
+                className="resize-none min-h-[180px] max-h-[40vh] overflow-y-auto text-lg bg-transparent border-0 focus:ring-0 focus-visible:ring-0 px-8 pt-8 pb-4 rounded-3xl shadow-none"
                 autoFocus
                 data-testid="plan-start-input"
               />
