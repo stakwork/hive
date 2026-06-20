@@ -15,6 +15,8 @@ import {
   RefreshCw,
   FileDown,
   Link2,
+  Sparkles,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -90,6 +92,26 @@ interface DigestData {
   content: string;
   metadata: unknown;
   updatedAt: string;
+}
+
+interface ProposalEdit {
+  command: string;
+  oldStr: string;
+  newStr: string;
+}
+
+interface DescriptionProposal {
+  id: string;
+  workspaceId: string;
+  insightId: string | null;
+  userPrompt: string | null;
+  rationale: string | null;
+  edits: ProposalEdit[];
+  beforePreview: string;
+  afterPreview: string;
+  status: string;
+  appliedAt: string | null;
+  createdAt: string;
 }
 
 interface AgentLogStatsJson {
@@ -700,6 +722,7 @@ export function ScorerDashboard({
                             {insight.featureIds.length !== 1 ? "s" : ""}
                           </button>
                         </div>
+                        <InsightImprove insightId={insight.id} />
                       </div>
                     )}
                   </div>
@@ -1254,6 +1277,299 @@ function FeatureInsightCard({
           <div className="mt-2 text-[10px] text-muted-foreground capitalize">
             {insight.mode}
           </div>
+          <InsightImprove insightId={insight.id} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InsightImprove({ insightId }: { insightId: string }) {
+  const [open, setOpen] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [running, setRunning] = useState(false);
+  const [proposals, setProposals] = useState<DescriptionProposal[]>([]);
+  const [actingId, setActingId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<DescriptionProposal[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const loadProposals = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/admin/scorer/proposals?insightId=${insightId}&status=PENDING`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      setProposals(data.proposals || []);
+    } catch {
+      /* ignore */
+    }
+  }, [insightId]);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(
+        `/api/admin/scorer/proposals?insightId=${insightId}&status=all`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      setHistory(
+        (data.proposals || []).filter(
+          (p: DescriptionProposal) => p.status !== "PENDING"
+        )
+      );
+    } catch {
+      /* ignore */
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [insightId]);
+
+  useEffect(() => {
+    loadProposals();
+  }, [loadProposals]);
+
+  const toggleHistory = () => {
+    const next = !showHistory;
+    setShowHistory(next);
+    if (next) loadHistory();
+  };
+
+  const generate = async () => {
+    setRunning(true);
+    try {
+      const res = await fetch(`/api/admin/scorer/improve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ insightId, prompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate");
+      if (data.proposalId) {
+        toast.success(
+          `Proposed ${data.editCount} edit${data.editCount !== 1 ? "s" : ""} to workspace context`
+        );
+        setOpen(false);
+        setPrompt("");
+        await loadProposals();
+      } else {
+        toast.info(data.message || "No edits proposed");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to generate");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const act = async (id: string, action: "accept" | "reject") => {
+    setActingId(id);
+    try {
+      const res = await fetch(`/api/admin/scorer/proposals/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success(
+        action === "accept"
+          ? "Applied to workspace description"
+          : "Proposal rejected"
+      );
+      setProposals((p) => p.filter((x) => x.id !== id));
+      if (showHistory) loadHistory();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  return (
+    <div className="mt-3 border-t border-border/50 pt-2">
+      <div className="flex items-center gap-3">
+      <div className="relative inline-block">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((o) => !o);
+          }}
+          className="flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-300"
+        >
+          <Sparkles className="w-3 h-3" />
+          Improve agent context
+        </button>
+        {open && (
+          <div
+            className="absolute z-20 left-0 mt-1 w-80 bg-popover border rounded-md shadow-lg p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-[10px] text-muted-foreground mb-1.5">
+              Optionally describe how to update the workspace description to
+              address this insight. The insight is included automatically.
+            </div>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={3}
+              placeholder="e.g. note which repo holds the graph API backend"
+              className="w-full text-[11px] rounded border bg-background p-2 resize-none focus:outline-none focus:ring-1 focus:ring-purple-500"
+            />
+            <div className="flex justify-end gap-2 mt-1.5">
+              <button
+                onClick={() => setOpen(false)}
+                className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-1"
+              >
+                Cancel
+              </button>
+              <Button
+                size="sm"
+                className="text-[10px] h-6 px-2"
+                onClick={generate}
+                disabled={running}
+              >
+                {running ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3 h-3 mr-1" />
+                )}
+                Generate
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleHistory();
+          }}
+          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+        >
+          {showHistory ? "Hide history" : "Show history"}
+        </button>
+      </div>
+
+      {proposals.length > 0 && (
+        <div className="flex flex-col gap-2 mt-2">
+          {proposals.map((p) => (
+            <div key={p.id} className="border rounded-md bg-background p-2">
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                Proposed workspace description edit
+              </div>
+              {p.rationale && (
+                <p className="text-[10px] text-muted-foreground mb-2 leading-relaxed">
+                  {p.rationale}
+                </p>
+              )}
+              <div className="flex flex-col gap-1.5">
+                {p.edits.map((e, i) => (
+                  <div
+                    key={i}
+                    className="text-[11px] font-mono rounded overflow-hidden border"
+                  >
+                    {e.oldStr ? (
+                      <div className="bg-red-500/10 text-red-400 px-2 py-1 whitespace-pre-wrap border-b border-border/50">
+                        {e.oldStr}
+                      </div>
+                    ) : null}
+                    <div className="bg-green-500/10 text-green-400 px-2 py-1 whitespace-pre-wrap">
+                      {e.newStr}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2 mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                  disabled={actingId === p.id}
+                  onClick={() => act(p.id, "reject")}
+                >
+                  Reject
+                </Button>
+                <Button
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                  disabled={actingId === p.id}
+                  onClick={() => act(p.id, "accept")}
+                >
+                  {actingId === p.id ? (
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  ) : (
+                    <Check className="w-3 h-3 mr-1" />
+                  )}
+                  Accept &amp; apply
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showHistory && (
+        <div className="flex flex-col gap-2 mt-2">
+          {historyLoading && (
+            <div className="text-[10px] text-muted-foreground">
+              Loading history…
+            </div>
+          )}
+          {!historyLoading && history.length === 0 && (
+            <div className="text-[10px] text-muted-foreground">
+              No past proposals for this insight.
+            </div>
+          )}
+          {history.map((p) => {
+            const badge =
+              p.status === "APPLIED"
+                ? "bg-green-500/10 text-green-400"
+                : p.status === "REJECTED"
+                  ? "bg-muted text-muted-foreground"
+                  : "bg-orange-500/10 text-orange-400";
+            return (
+              <div
+                key={p.id}
+                className="border rounded-md bg-background p-2 opacity-80"
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span
+                    className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${badge}`}
+                  >
+                    {p.status}
+                  </span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    {timeAgo(p.appliedAt || p.createdAt)}
+                  </span>
+                </div>
+                {p.rationale && (
+                  <p className="text-[10px] text-muted-foreground mb-2 leading-relaxed">
+                    {p.rationale}
+                  </p>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  {p.edits.map((e, i) => (
+                    <div
+                      key={i}
+                      className="text-[11px] font-mono rounded overflow-hidden border"
+                    >
+                      {e.oldStr ? (
+                        <div className="bg-red-500/10 text-red-400 px-2 py-1 whitespace-pre-wrap border-b border-border/50">
+                          {e.oldStr}
+                        </div>
+                      ) : null}
+                      <div className="bg-green-500/10 text-green-400 px-2 py-1 whitespace-pre-wrap">
+                        {e.newStr}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
