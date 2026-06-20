@@ -105,8 +105,8 @@ export async function runImprovement({
     "",
     `The workspace description document is available at "${DOC_PATH}". ${
       initial.length > 0
-        ? "It currently has content — view it before editing."
-        : "It is currently EMPTY."
+        ? "It currently has content — `view` it first, then make targeted `str_replace` edits."
+        : "It is currently EMPTY — author it from scratch with the `create` command (do NOT use str_replace on an empty document)."
     }`,
     "",
     userPrompt

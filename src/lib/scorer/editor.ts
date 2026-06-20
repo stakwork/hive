@@ -11,7 +11,7 @@
  * the *live* DB value (rejecting the proposal if the value drifted).
  */
 
-const VIEW_MAX_CHARS = 200_000;
+const VIEW_MAX_CHARS = 500_000;
 
 export interface TextEditInput {
   command: "view" | "create" | "str_replace" | "insert";
