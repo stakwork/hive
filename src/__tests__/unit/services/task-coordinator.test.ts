@@ -69,6 +69,7 @@ describe("buildFeatureContext", () => {
           requirements: "Support credit cards and ACH payments",
           architecture: "Microservice-based payment gateway",
         },
+        workspaceDescription: null,
         workspaceRepositories: [],
         currentPhase: {
           name: "Development Phase",
@@ -111,6 +112,7 @@ describe("buildFeatureContext", () => {
           },
           workspace: {
             select: {
+              description: true,
               repositories: {
                 select: {
                   id: true,
@@ -174,6 +176,7 @@ describe("buildFeatureContext", () => {
           requirements: null,
           architecture: null,
         },
+        workspaceDescription: null,
         workspaceRepositories: [],
         currentPhase: {
           name: "Minimal Phase",
@@ -206,6 +209,7 @@ describe("buildFeatureContext", () => {
           },
           workspace: {
             select: {
+              description: true,
               repositories: {
                 select: {
                   id: true,
@@ -907,6 +911,60 @@ describe("buildFeatureContext", () => {
 
       expect(result.feature.title).toBe("Test Feature");
       expect(result.currentPhase.name).toBe("Test Phase");
+    });
+  });
+
+  describe("Workspace Description", () => {
+    test("should include workspace description when present", async () => {
+      const mockFeature = {
+        id: "feature-1",
+        title: "Test Feature",
+        brief: null,
+        requirements: null,
+        architecture: null,
+        userStories: [],
+        workspace: { description: "An AI-first PM toolkit", repositories: [] },
+      };
+
+      const mockPhase = {
+        id: "phase-1",
+        name: "Test Phase",
+        description: null,
+        tasks: [],
+      };
+
+      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+
+      const result = await buildFeatureContext("feature-1", "phase-1");
+
+      expect(result.workspaceDescription).toBe("An AI-first PM toolkit");
+    });
+
+    test("should return null workspace description when not set", async () => {
+      const mockFeature = {
+        id: "feature-1",
+        title: "Test Feature",
+        brief: null,
+        requirements: null,
+        architecture: null,
+        userStories: [],
+        workspace: { description: null, repositories: [] },
+      };
+
+      const mockPhase = {
+        id: "phase-1",
+        name: "Test Phase",
+        description: null,
+        tasks: [],
+      };
+
+      mockDb.feature.findUnique.mockResolvedValue(mockFeature);
+      mockDb.phase.findUnique.mockResolvedValue(mockPhase);
+
+      const result = await buildFeatureContext("feature-1", "phase-1");
+
+      expect(result.workspaceDescription).toBeNull();
     });
   });
 });

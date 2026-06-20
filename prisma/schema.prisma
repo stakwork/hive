@@ -267,6 +267,7 @@ model Workspace {
   screenshots             Screenshot[]
   scorerDigests           ScorerDigest[]
   scorerInsights          ScorerInsight[]
+  scorerDescriptionProposals ScorerDescriptionProposal[]
   sharedConversations     SharedConversation[]
   stakworkRuns            StakworkRun[]
   swarm                   Swarm?
@@ -1697,6 +1698,30 @@ model ScorerInsight {
   @@index([createdAt])
   @@index([dismissedAt])
   @@map("scorer_insights")
+}
+
+/// A proposed edit to a Workspace.description produced by the scorer
+/// self-improvement agent. Held for human approval before being applied
+/// (exact str_replace) to the live description.
+model ScorerDescriptionProposal {
+  id            String    @id @default(cuid())
+  workspaceId   String    @map("workspace_id")
+  insightId     String?   @map("insight_id")
+  userPrompt    String?   @map("user_prompt") @db.Text
+  rationale     String?   @db.Text
+  edits         Json
+  beforePreview String    @map("before_preview") @db.Text
+  afterPreview  String    @map("after_preview") @db.Text
+  status        String    @default("PENDING")
+  appliedAt     DateTime? @map("applied_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([insightId])
+  @@index([status])
+  @@map("scorer_description_proposals")
 }
 
 enum InitiativeStatus {
