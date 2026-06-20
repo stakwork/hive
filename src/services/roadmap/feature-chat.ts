@@ -170,6 +170,7 @@ const FEATURE_SELECT_FOR_CHAT = {
  */
 interface SubAgent {
   name: string,
+  description?: string;
   url: string;
   apiKey: string;
   repoUrls: string;
@@ -214,7 +215,14 @@ export async function resolveExtraSwarms(
         .map((r) => r.repositoryUrl)
         .join(",");
 
-      results.push({ name: slug, url, apiKey, repoUrls, toolsConfig: { learn_concepts: true } });
+      results.push({
+        name: slug,
+        description: workspace.description ?? undefined,
+        url,
+        apiKey,
+        repoUrls,
+        toolsConfig: { learn_concepts: true },
+      });
     } catch {
       // Silently skip any workspace that fails to resolve
     }
