@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,9 @@ import {
   Zap,
   RefreshCw,
   FileDown,
+  Link2,
+  Sparkles,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -91,6 +94,26 @@ interface DigestData {
   updatedAt: string;
 }
 
+interface ProposalEdit {
+  command: string;
+  oldStr: string;
+  newStr: string;
+}
+
+interface DescriptionProposal {
+  id: string;
+  workspaceId: string;
+  insightId: string | null;
+  userPrompt: string | null;
+  rationale: string | null;
+  edits: ProposalEdit[];
+  beforePreview: string;
+  afterPreview: string;
+  status: string;
+  appliedAt: string | null;
+  createdAt: string;
+}
+
 interface AgentLogStatsJson {
   totalMessages: number;
   estimatedTokens: number;
@@ -160,6 +183,7 @@ export function ScorerDashboard({
   const [loading, setLoading] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
   const [expandedInsight, setExpandedInsight] = useState<string | null>(null);
+  const [insightsCollapsed, setInsightsCollapsed] = useState(false);
   const [insightsVisible, setInsightsVisible] = useState(10);
   const [analyzingFeature, setAnalyzingFeature] = useState<string | null>(null);
   const [downloadingFeature, setDownloadingFeature] = useState<string | null>(null);
@@ -215,6 +239,45 @@ export function ScorerDashboard({
     fetchMetrics();
     fetchInsights();
   }, [fetchMetrics, fetchInsights]);
+
+  // Deeplink: auto-open & scroll to an insight from ?insight=<id>
+  const deeplinkInsight = searchParams.get("insight");
+  const deeplinkHandled = useRef(false);
+  const deeplinkTriedDismissed = useRef(false);
+  useEffect(() => {
+    if (deeplinkHandled.current || !deeplinkInsight || insights.length === 0)
+      return;
+    const idx = insights.findIndex((i) => i.id === deeplinkInsight);
+    if (idx === -1) {
+      // Maybe it's a dismissed insight — try loading dismissed once
+      if (!showDismissed && !deeplinkTriedDismissed.current) {
+        deeplinkTriedDismissed.current = true;
+        setShowDismissed(true);
+      }
+      return;
+    }
+    deeplinkHandled.current = true;
+    setInsightsCollapsed(false);
+    setExpandedInsight(deeplinkInsight);
+    setInsightsVisible((v) => Math.max(v, idx + 1));
+    setTimeout(() => {
+      document
+        .getElementById(`scorer-insight-${deeplinkInsight}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 200);
+  }, [deeplinkInsight, insights, showDismissed]);
+
+  const copyInsightLink = (id: string) => {
+    const p = new URLSearchParams();
+    if (selectedWs) p.set("w", selectedWs.slug);
+    if (metricsWindow !== "all") p.set("range", metricsWindow);
+    p.set("insight", id);
+    const url = `${window.location.origin}${window.location.pathname}?${p.toString()}`;
+    navigator.clipboard
+      .writeText(url)
+      .then(() => toast.success("Insight link copied"))
+      .catch(() => toast.error("Failed to copy link"));
+  };
 
   // Fetch digest for expanded feature
   useEffect(() => {
@@ -408,6 +471,15 @@ export function ScorerDashboard({
 
   const insightFeatureIds = new Set(insights.flatMap((i) => i.featureIds));
 
+  const insightsByFeature = new Map<string, Insight[]>();
+  for (const ins of insights) {
+    for (const fid of ins.featureIds) {
+      const arr = insightsByFeature.get(fid);
+      if (arr) arr.push(ins);
+      else insightsByFeature.set(fid, [ins]);
+    }
+  }
+
   if (!selectedWs) {
     return (
       <div className="text-muted-foreground">No workspaces found.</div>
@@ -519,28 +591,38 @@ export function ScorerDashboard({
         {/* Insights feed */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <button
+              onClick={() => setInsightsCollapsed((c) => !c)}
+              className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {insightsCollapsed ? (
+                <ChevronRight className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
               Insights
-            </h3>
+            </button>
             {insights.filter((i) => !i.dismissedAt).length > 0 && (
               <span className="text-[10px] font-bold bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full">
                 {insights.filter((i) => !i.dismissedAt).length}
               </span>
             )}
-            <button
-              onClick={() => setShowDismissed(!showDismissed)}
-              className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-            >
-              {showDismissed ? (
-                <EyeOff className="w-3 h-3" />
-              ) : (
-                <Eye className="w-3 h-3" />
-              )}
-              {showDismissed ? "Hide dismissed" : "Show dismissed"}
-            </button>
+            {!insightsCollapsed && (
+              <button
+                onClick={() => setShowDismissed(!showDismissed)}
+                className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                {showDismissed ? (
+                  <EyeOff className="w-3 h-3" />
+                ) : (
+                  <Eye className="w-3 h-3" />
+                )}
+                {showDismissed ? "Hide dismissed" : "Show dismissed"}
+              </button>
+            )}
           </div>
 
-          {insights.length === 0 ? (
+          {insightsCollapsed ? null : insights.length === 0 ? (
             <div className="text-xs text-muted-foreground border rounded-md p-4 bg-card">
               No insights yet. Run analysis on a feature or wait for the
               automatic pipeline.
@@ -552,7 +634,8 @@ export function ScorerDashboard({
                 return (
                   <div
                     key={insight.id}
-                    className={`border rounded-md bg-card border-l-[3px] ${
+                    id={`scorer-insight-${insight.id}`}
+                    className={`border rounded-md bg-card border-l-[3px] scroll-mt-20 ${
                       insight.severity === "HIGH"
                         ? "border-l-red-500"
                         : insight.severity === "MEDIUM"
@@ -582,6 +665,17 @@ export function ScorerDashboard({
                       </span>
                       <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
                         {timeAgo(insight.createdAt)}
+                      </span>
+                      <span
+                        role="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyInsightLink(insight.id);
+                        }}
+                        className="text-muted-foreground hover:text-foreground shrink-0"
+                        title="Copy shareable link"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
                       </span>
                       {!insight.dismissedAt && (
                         <span
@@ -628,6 +722,7 @@ export function ScorerDashboard({
                             {insight.featureIds.length !== 1 ? "s" : ""}
                           </button>
                         </div>
+                        <InsightImprove insightId={insight.id} />
                       </div>
                     )}
                   </div>
@@ -686,6 +781,9 @@ export function ScorerDashboard({
                     feature={f}
                     isExpanded={expandedFeature === f.featureId}
                     hasInsight={insightFeatureIds.has(f.featureId)}
+                    insights={insightsByFeature.get(f.featureId) || []}
+                    onDismissInsight={dismissInsight}
+                    onCopyInsightLink={copyInsightLink}
                     digest={digests[f.featureId] || null}
                     agentLogs={agentStats[f.featureId] || null}
                     agentStatsLoading={agentStatsLoading === f.featureId}
@@ -893,6 +991,9 @@ function FeatureRow({
   feature: f,
   isExpanded,
   hasInsight,
+  insights,
+  onDismissInsight,
+  onCopyInsightLink,
   digest,
   agentLogs,
   agentStatsLoading,
@@ -907,6 +1008,9 @@ function FeatureRow({
   feature: FeatureMetrics;
   isExpanded: boolean;
   hasInsight: boolean;
+  insights: Insight[];
+  onDismissInsight: (id: string) => void;
+  onCopyInsightLink: (id: string) => void;
   digest: DigestData | null;
   agentLogs: AgentLogEntry[] | null;
   agentStatsLoading: boolean;
@@ -1026,6 +1130,25 @@ function FeatureRow({
                 </div>
               )}
 
+              {/* Insights for this feature */}
+              {insights.length > 0 && (
+                <div className="p-4 border-b">
+                  <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Insights ({insights.length})
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {insights.map((insight) => (
+                      <FeatureInsightCard
+                        key={insight.id}
+                        insight={insight}
+                        onDismiss={onDismissInsight}
+                        onCopyLink={onCopyInsightLink}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Analyze button */}
               <div className="p-3 flex justify-end gap-2">
                 <Button
@@ -1065,6 +1188,391 @@ function FeatureRow({
         </tr>
       )}
     </>
+  );
+}
+
+function FeatureInsightCard({
+  insight,
+  onDismiss,
+  onCopyLink,
+}: {
+  insight: Insight;
+  onDismiss: (id: string) => void;
+  onCopyLink: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const sevBadge =
+    insight.severity === "HIGH"
+      ? "bg-red-500/10 text-red-400"
+      : insight.severity === "MEDIUM"
+        ? "bg-orange-500/10 text-orange-400"
+        : "bg-blue-500/10 text-blue-400";
+  const sevBorder =
+    insight.severity === "HIGH"
+      ? "border-l-red-500"
+      : insight.severity === "MEDIUM"
+        ? "border-l-orange-500"
+        : "border-l-blue-500";
+
+  return (
+    <div
+      className={`border rounded-md bg-card border-l-[3px] ${sevBorder} ${insight.dismissedAt ? "opacity-50" : ""}`}
+    >
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className="w-full flex items-center gap-2 p-2 pl-3 text-left"
+      >
+        {open ? (
+          <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="w-3 h-3 shrink-0 text-muted-foreground" />
+        )}
+        <span
+          className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${sevBadge}`}
+        >
+          {insight.severity}
+        </span>
+        <span className="text-[11px] font-semibold truncate">
+          {insight.pattern}
+        </span>
+        <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
+          {timeAgo(insight.createdAt)}
+        </span>
+        <span
+          role="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onCopyLink(insight.id);
+          }}
+          className="text-muted-foreground hover:text-foreground shrink-0"
+          title="Copy shareable link"
+        >
+          <Link2 className="w-3 h-3" />
+        </span>
+        {!insight.dismissedAt && (
+          <span
+            role="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDismiss(insight.id);
+            }}
+            className="text-muted-foreground hover:text-foreground shrink-0"
+          >
+            <X className="w-3 h-3" />
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="px-3 pb-2.5 pt-0 border-t border-border/50">
+          <p className="text-[11px] text-muted-foreground leading-relaxed mb-2 mt-2">
+            {insight.description}
+          </p>
+          <div className="text-[11px] bg-purple-500/5 text-purple-400 rounded p-2 leading-relaxed">
+            {insight.suggestion}
+          </div>
+          <div className="mt-2 text-[10px] text-muted-foreground capitalize">
+            {insight.mode}
+          </div>
+          <InsightImprove insightId={insight.id} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InsightImprove({ insightId }: { insightId: string }) {
+  const [open, setOpen] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [running, setRunning] = useState(false);
+  const [proposals, setProposals] = useState<DescriptionProposal[]>([]);
+  const [actingId, setActingId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<DescriptionProposal[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const loadProposals = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/admin/scorer/proposals?insightId=${insightId}&status=PENDING`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      setProposals(data.proposals || []);
+    } catch {
+      /* ignore */
+    }
+  }, [insightId]);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(
+        `/api/admin/scorer/proposals?insightId=${insightId}&status=all`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      setHistory(
+        (data.proposals || []).filter(
+          (p: DescriptionProposal) => p.status !== "PENDING"
+        )
+      );
+    } catch {
+      /* ignore */
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [insightId]);
+
+  useEffect(() => {
+    loadProposals();
+  }, [loadProposals]);
+
+  const toggleHistory = () => {
+    const next = !showHistory;
+    setShowHistory(next);
+    if (next) loadHistory();
+  };
+
+  const generate = async () => {
+    setRunning(true);
+    try {
+      const res = await fetch(`/api/admin/scorer/improve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ insightId, prompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate");
+      if (data.proposalId) {
+        toast.success(
+          `Proposed ${data.editCount} edit${data.editCount !== 1 ? "s" : ""} to workspace context`
+        );
+        setOpen(false);
+        setPrompt("");
+        await loadProposals();
+      } else {
+        toast.info(data.message || "No edits proposed");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to generate");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const act = async (id: string, action: "accept" | "reject") => {
+    setActingId(id);
+    try {
+      const res = await fetch(`/api/admin/scorer/proposals/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success(
+        action === "accept"
+          ? "Applied to workspace description"
+          : "Proposal rejected"
+      );
+      setProposals((p) => p.filter((x) => x.id !== id));
+      if (showHistory) loadHistory();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  return (
+    <div className="mt-3 border-t border-border/50 pt-2">
+      <div className="flex items-center gap-3">
+      <div className="relative inline-block">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((o) => !o);
+          }}
+          className="flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-300"
+        >
+          <Sparkles className="w-3 h-3" />
+          Improve agent context
+        </button>
+        {open && (
+          <div
+            className="absolute z-20 left-0 mt-1 w-80 bg-popover border rounded-md shadow-lg p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-[10px] text-muted-foreground mb-1.5">
+              Optionally describe how to update the workspace description to
+              address this insight. The insight is included automatically.
+            </div>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={3}
+              placeholder="e.g. note which repo holds the graph API backend"
+              className="w-full text-[11px] rounded border bg-background p-2 resize-none focus:outline-none focus:ring-1 focus:ring-purple-500"
+            />
+            <div className="flex justify-end gap-2 mt-1.5">
+              <button
+                onClick={() => setOpen(false)}
+                className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-1"
+              >
+                Cancel
+              </button>
+              <Button
+                size="sm"
+                className="text-[10px] h-6 px-2"
+                onClick={generate}
+                disabled={running}
+              >
+                {running ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3 h-3 mr-1" />
+                )}
+                Generate
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleHistory();
+          }}
+          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+        >
+          {showHistory ? "Hide history" : "Show history"}
+        </button>
+      </div>
+
+      {proposals.length > 0 && (
+        <div className="flex flex-col gap-2 mt-2">
+          {proposals.map((p) => (
+            <div key={p.id} className="border rounded-md bg-background p-2">
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                Proposed workspace description edit
+              </div>
+              {p.rationale && (
+                <p className="text-[10px] text-muted-foreground mb-2 leading-relaxed">
+                  {p.rationale}
+                </p>
+              )}
+              <div className="flex flex-col gap-1.5">
+                {p.edits.map((e, i) => (
+                  <div
+                    key={i}
+                    className="text-[11px] font-mono rounded overflow-hidden border"
+                  >
+                    {e.oldStr ? (
+                      <div className="bg-red-500/10 text-red-400 px-2 py-1 whitespace-pre-wrap border-b border-border/50">
+                        {e.oldStr}
+                      </div>
+                    ) : null}
+                    <div className="bg-green-500/10 text-green-400 px-2 py-1 whitespace-pre-wrap">
+                      {e.newStr}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2 mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                  disabled={actingId === p.id}
+                  onClick={() => act(p.id, "reject")}
+                >
+                  Reject
+                </Button>
+                <Button
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                  disabled={actingId === p.id}
+                  onClick={() => act(p.id, "accept")}
+                >
+                  {actingId === p.id ? (
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  ) : (
+                    <Check className="w-3 h-3 mr-1" />
+                  )}
+                  Accept &amp; apply
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showHistory && (
+        <div className="flex flex-col gap-2 mt-2">
+          {historyLoading && (
+            <div className="text-[10px] text-muted-foreground">
+              Loading history…
+            </div>
+          )}
+          {!historyLoading && history.length === 0 && (
+            <div className="text-[10px] text-muted-foreground">
+              No past proposals for this insight.
+            </div>
+          )}
+          {history.map((p) => {
+            const badge =
+              p.status === "APPLIED"
+                ? "bg-green-500/10 text-green-400"
+                : p.status === "REJECTED"
+                  ? "bg-muted text-muted-foreground"
+                  : "bg-orange-500/10 text-orange-400";
+            return (
+              <div
+                key={p.id}
+                className="border rounded-md bg-background p-2 opacity-80"
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span
+                    className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${badge}`}
+                  >
+                    {p.status}
+                  </span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    {timeAgo(p.appliedAt || p.createdAt)}
+                  </span>
+                </div>
+                {p.rationale && (
+                  <p className="text-[10px] text-muted-foreground mb-2 leading-relaxed">
+                    {p.rationale}
+                  </p>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  {p.edits.map((e, i) => (
+                    <div
+                      key={i}
+                      className="text-[11px] font-mono rounded overflow-hidden border"
+                    >
+                      {e.oldStr ? (
+                        <div className="bg-red-500/10 text-red-400 px-2 py-1 whitespace-pre-wrap border-b border-border/50">
+                          {e.oldStr}
+                        </div>
+                      ) : null}
+                      <div className="bg-green-500/10 text-green-400 px-2 py-1 whitespace-pre-wrap">
+                        {e.newStr}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
