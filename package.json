@@ -38,6 +38,7 @@
     "decrypt-json": "tsx scripts/decrypt-json-file.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.85",
     "@ai-sdk/mcp": "^1.0.19",
     "@anycable/web": "^1.1.0",
     "@auth/prisma-adapter": "^2.10.0",
