@@ -20,6 +20,7 @@ import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import {
   createInMemoryEditor,
   applyEdit,
+  diffToEdits,
   type TextEditInput,
   type ProposedEdit,
 } from "./editor";
@@ -28,14 +29,18 @@ const DOC_PATH = "workspace-description.md";
 
 const SYSTEM_PROMPT = `You maintain the "workspace description" — a short context document that is injected directly into the system prompt of AI coding agents working in this workspace. Improving it makes those agents smarter immediately, with no code change or deploy.
 
-You are given a scorer INSIGHT describing an observed problem with agent behavior, plus optional guidance from a human operator. Make the SMALLEST, most surgical edit to the workspace description that durably addresses the insight — e.g. clarifying which repository contains which backend/service, noting constraints the agent cannot verify, or recording domain facts the agent repeatedly gets wrong.
+You are given a scorer INSIGHT (an observed problem with agent behavior) and — when provided — OPERATOR GUIDANCE from a human.
+
+PRIORITY OF INSTRUCTIONS:
+1. When OPERATOR GUIDANCE is present it is your PRIMARY and OVERRIDING directive. Do exactly — and ONLY — what it asks. The insight is then BACKGROUND CONTEXT ONLY: if the operator addresses just one part of the insight (or something tangential to it), edit only that. Do NOT broaden the edit to cover the rest of the insight or the suggestion.
+2. When there is NO operator guidance, address the insight itself: make the smallest, most surgical edit that durably resolves it.
 
 Rules:
 - Use the str_replace_based_edit_tool to view and edit the document.
 - ALWAYS \`view\` the current document before editing it.
 - Prefer \`str_replace\` for targeted changes; include enough surrounding context that old_str matches exactly once. Use \`create\` only when the document is empty.
-- Keep edits concise and factual. Do NOT restructure or rewrite content unrelated to the insight.
-- Do NOT invent facts that aren't supported by the insight, the repositories list, or the operator's guidance.
+- Keep edits concise and factual. Do NOT restructure or rewrite unrelated content. Add nothing beyond what the ACTIVE directive (operator guidance if present, otherwise the insight) calls for.
+- Do NOT invent facts that aren't supported by the operator's guidance, the insight, or the repositories list.
 
 When finished, briefly explain in plain text what you changed and why. If no edit is warranted, make no tool calls and explain why.`;
 
@@ -93,8 +98,21 @@ export async function runImprovement({
         .join("\n")
     : "(no repositories linked)";
 
+  const directive = userPrompt
+    ? [
+        "OPERATOR GUIDANCE — PRIMARY DIRECTIVE. Do exactly and ONLY this:",
+        userPrompt,
+        "",
+        "Treat the INSIGHT below as background context only. Address only what the operator guidance above asks — do NOT expand the edit to cover the rest of the insight or its suggestion.",
+      ]
+    : [
+        "No operator guidance was provided — address the INSIGHT below directly.",
+      ];
+
   const prompt = [
-    "INSIGHT",
+    ...directive,
+    "",
+    userPrompt ? "INSIGHT (background context only)" : "INSIGHT",
     `Pattern: ${insight.pattern}`,
     `Description: ${insight.description}`,
     `Suggestion: ${insight.suggestion}`,
@@ -108,10 +126,6 @@ export async function runImprovement({
         ? "It currently has content — `view` it first, then make targeted `str_replace` edits."
         : "It is currently EMPTY — author it from scratch with the `create` command (do NOT use str_replace on an empty document)."
     }`,
-    "",
-    userPrompt
-      ? `OPERATOR GUIDANCE:\n${userPrompt}`
-      : "No additional operator guidance was provided.",
   ].join("\n");
 
   const apiKey = getApiKeyForProvider("anthropic");
@@ -212,6 +226,37 @@ export async function applyProposal(
   ]);
 
   return { status: "APPLIED", description: live };
+}
+
+/**
+ * Replace a PENDING proposal's edits with the human-edited final text.
+ * Recomputes the minimal diff against the original (pre-edit) description so
+ * the proposal still applies via exact str_replace, and refreshes the
+ * afterPreview shown in the UI/history.
+ */
+export async function editProposal(
+  proposalId: string,
+  text: string
+): Promise<{ status: string; editCount?: number; error?: string }> {
+  const proposal = await db.scorerDescriptionProposal.findUniqueOrThrow({
+    where: { id: proposalId },
+  });
+
+  if (proposal.status !== "PENDING") {
+    return { status: proposal.status, error: "Proposal is not pending" };
+  }
+
+  const edits = diffToEdits(proposal.beforePreview, text);
+
+  await db.scorerDescriptionProposal.update({
+    where: { id: proposalId },
+    data: {
+      edits: edits as unknown as Prisma.InputJsonValue,
+      afterPreview: text,
+    },
+  });
+
+  return { status: "PENDING", editCount: edits.length };
 }
 
 export async function rejectProposal(proposalId: string): Promise<void> {
