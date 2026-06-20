@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/require-superadmin";
-import { applyProposal, rejectProposal } from "@/lib/scorer/improve";
+import {
+  applyProposal,
+  rejectProposal,
+  editProposal,
+} from "@/lib/scorer/improve";
 
 /**
- * PATCH — accept or reject a description proposal.
- * Body: { action: "accept" | "reject" }
+ * PATCH — accept, reject, or edit a description proposal.
+ * Body: { action: "accept" | "reject" | "edit", text?: string }
  *
  * Accept applies the recorded edits to the live Workspace.description via
  * exact str_replace; if the value drifted, the proposal is marked CONFLICT.
+ * Edit replaces the proposed final text (recomputes the diff).
  */
 export async function PATCH(
   request: NextRequest,
@@ -27,6 +32,19 @@ export async function PATCH(
       return NextResponse.json({ status: "REJECTED", id });
     }
 
+    if (action === "edit") {
+      const text = body?.text;
+      if (typeof text !== "string") {
+        return NextResponse.json(
+          { error: "text is required for edit" },
+          { status: 400 }
+        );
+      }
+      const result = await editProposal(id, text);
+      const status = result.error ? 400 : 200;
+      return NextResponse.json({ id, ...result }, { status });
+    }
+
     if (action === "accept") {
       const result = await applyProposal(id);
       const status =
@@ -35,7 +53,7 @@ export async function PATCH(
     }
 
     return NextResponse.json(
-      { error: "action must be 'accept' or 'reject'" },
+      { error: "action must be 'accept', 'reject', or 'edit'" },
       { status: 400 }
     );
   } catch (error) {
