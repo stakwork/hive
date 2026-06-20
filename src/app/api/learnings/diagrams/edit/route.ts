@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
     const subAgents = resolved.length
       ? resolved.map((s) => ({
           name: s.name,
+          description: s.description,
           url: s.url,
           apiToken: s.apiKey,
           repoUrl: s.repoUrls,

@@ -140,6 +140,62 @@ export function createInMemoryEditor(initialContent: string): InMemoryEditor {
 }
 
 /**
+ * Convert a human-edited full document into recorded edits, so an edited
+ * proposal applies through the same exact-match path as an agent proposal.
+ *
+ * Produces a single minimal `str_replace` (common prefix/suffix trimmed,
+ * expanded to whole lines if needed for a unique, non-empty anchor). Falls
+ * back to a whole-document `create` when no unique anchor exists — still
+ * applied with exact semantics (CONFLICT on drift, never a silent clobber).
+ */
+export function diffToEdits(before: string, after: string): ProposedEdit[] {
+  if (before === after) return [];
+  if (before.length === 0) {
+    return [{ command: "create", oldStr: "", newStr: after }];
+  }
+
+  const lenB = before.length;
+  const lenA = after.length;
+
+  let p = 0;
+  const maxP = Math.min(lenB, lenA);
+  while (p < maxP && before[p] === after[p]) p++;
+
+  let s = 0;
+  const maxS = Math.min(lenB - p, lenA - p);
+  while (s < maxS && before[lenB - 1 - s] === after[lenA - 1 - s]) s++;
+
+  const startB = p;
+  const endB = lenB - s;
+  const endA = lenA - s;
+
+  const unique = (o: string) =>
+    o.length > 0 && before.indexOf(o) === before.lastIndexOf(o);
+
+  let oldStr = before.slice(startB, endB);
+  let newStr = after.slice(startB, endA);
+
+  if (!unique(oldStr)) {
+    // Expand the changed region out to whole-line boundaries to get a
+    // non-empty, ideally-unique anchor. The expanded chars on the left lie
+    // in the common prefix and on the right in the common suffix, so they
+    // are identical in `before` and `after`.
+    let lo = startB;
+    while (lo > 0 && before[lo - 1] !== "\n") lo--;
+    let hi = endB;
+    while (hi < lenB && before[hi] !== "\n") hi++;
+    const k = hi - endB;
+    oldStr = before.slice(lo, hi);
+    newStr = after.slice(lo, endA + k);
+    if (!unique(oldStr)) {
+      return [{ command: "create", oldStr: before, newStr: after }];
+    }
+  }
+
+  return [{ command: "str_replace", oldStr, newStr }];
+}
+
+/**
  * Re-apply a recorded edit against a live value with exact `str_replace`
  * semantics. Returns the new value, or `null` if the edit no longer applies
  * cleanly (stale / conflicting — i.e. not exactly one match).

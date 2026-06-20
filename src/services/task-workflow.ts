@@ -643,7 +643,7 @@ export async function callStakworkAPI(params: {
   featureId?: string | null;
   planEdited?: boolean;
   isPrototype?: boolean;
-  subAgents?: { name: string, url: string; apiKey: string; repoUrls: string }[];
+  subAgents?: { name: string, description?: string; url: string; apiKey: string; repoUrls: string }[];
   taskModel?: string;
   /**
    * MCP servers to expose to the swarm-side `repo/agent`. The agent
