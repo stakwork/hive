@@ -29,7 +29,7 @@ export interface FullSession {
 
   planning: {
     humanMessages: string[];
-    agentTranscript: TranscriptEntry[];
+    agentTranscripts: AgentTranscript[];
     planOutput: {
       brief: string | null;
       requirements: string | null;
@@ -222,11 +222,24 @@ export async function assembleFullSession(
     select: { message: true },
   });
 
-  // Build plan agent transcript
-  const planTranscript: TranscriptEntry[] = [];
+  // Build plan agent transcripts, grouped by agent so each agent's
+  // independent context stays a distinct block. The planning phase can
+  // involve more than one agent (e.g. plan-agent then TASK_GENERATION-agent),
+  // each with its own fresh context window.
+  const planLogsByAgent = new Map<string, string[]>();
   for (const log of featureLogs) {
-    const entries = await fetchAgentTranscript(log.blobUrl);
-    planTranscript.push(...entries);
+    const existing = planLogsByAgent.get(log.agent) || [];
+    existing.push(log.blobUrl);
+    planLogsByAgent.set(log.agent, existing);
+  }
+  const planAgentTranscripts: AgentTranscript[] = [];
+  for (const [agentName, blobUrls] of planLogsByAgent) {
+    const allEntries: TranscriptEntry[] = [];
+    for (const blobUrl of blobUrls) {
+      const entries = await fetchAgentTranscript(blobUrl);
+      allEntries.push(...entries);
+    }
+    planAgentTranscripts.push({ agentName, entries: allEntries });
   }
 
   // Compute metrics
@@ -269,7 +282,7 @@ export async function assembleFullSession(
 
     planning: {
       humanMessages: featureChatMessages.map((m) => m.message),
-      agentTranscript: planTranscript,
+      agentTranscripts: planAgentTranscripts,
       planOutput: {
         brief: feature.brief,
         requirements: feature.requirements,
@@ -486,6 +499,42 @@ export function sessionToText(session: FullSession): string {
   );
   lines.push("");
 
+  // Count distinct agent contexts across planning + execution. The session is
+  // the concatenation of these INDEPENDENT agents, each running in its OWN fresh
+  // context window with NO shared memory. The "HOW TO READ" note and the per-agent
+  // banners only make sense when more than one agent is present — a single-agent
+  // session is one continuous context and gets no banner.
+  const agentContextCount =
+    session.planning.agentTranscripts.length +
+    session.execution.reduce(
+      (sum, phase) =>
+        sum +
+        phase.tasks.reduce((t, task) => t + task.agentTranscripts.length, 0),
+      0
+    );
+  const multiAgent = agentContextCount > 1;
+
+  if (multiAgent) {
+    lines.push("--- HOW TO READ THIS TRANSCRIPT ---");
+    lines.push(
+      `This session spans ${agentContextCount} independent agents. Each agent (marked by a`
+    );
+    lines.push(
+      '"NEW AGENT CONTEXT" banner) runs in its own fresh context window with NO'
+    );
+    lines.push(
+      "memory of any other agent above or below it. Re-fetching or re-reading data"
+    );
+    lines.push(
+      "that a different agent already retrieved is expected — each agent must"
+    );
+    lines.push(
+      "gather its own context from scratch. Token costs do NOT accumulate across"
+    );
+    lines.push("these separate context windows.");
+    lines.push("");
+  }
+
   // Planning
   lines.push("--- PLANNING PHASE ---");
   lines.push("");
@@ -498,11 +547,8 @@ export function sessionToText(session: FullSession): string {
     lines.push("");
   }
 
-  if (session.planning.agentTranscript.length > 0) {
-    lines.push("Plan agent transcript:");
-    for (const entry of session.planning.agentTranscript) {
-      lines.push(formatTranscriptEntry(entry, "  "));
-    }
+  for (const agent of session.planning.agentTranscripts) {
+    lines.push(...formatAgentContextBlock(agent, "", multiAgent));
     lines.push("");
   }
 
@@ -538,10 +584,7 @@ export function sessionToText(session: FullSession): string {
       lines.push("");
 
       for (const agent of task.agentTranscripts) {
-        lines.push(`  ${agent.agentName} agent transcript:`);
-        for (const entry of agent.entries) {
-          lines.push(formatTranscriptEntry(entry, "    "));
-        }
+        lines.push(...formatAgentContextBlock(agent, "  ", multiAgent));
         lines.push("");
       }
 
@@ -570,6 +613,39 @@ export function sessionToText(session: FullSession): string {
   lines.push(`Total corrections: ${session.metrics.totalCorrections}`);
 
   return lines.join("\n");
+}
+
+/**
+ * Render one agent's transcript. When the session has multiple agents, wrap it
+ * in an explicit "fresh context" banner so readers (human or LLM) don't mistake
+ * cross-agent re-fetching for redundant work within one context. A single-agent
+ * session is one continuous context, so it gets a plain header instead.
+ */
+function formatAgentContextBlock(
+  agent: AgentTranscript,
+  indent: string,
+  multiAgent: boolean
+): string[] {
+  const lines: string[] = [];
+  if (multiAgent) {
+    const bar = `${indent}${"=".repeat(72)}`;
+    lines.push(bar);
+    lines.push(`${indent}NEW AGENT CONTEXT — "${agent.agentName}"`);
+    lines.push(
+      `${indent}Fresh context window. No memory of other agents' messages, tool calls,`
+    );
+    lines.push(
+      `${indent}or fetched files. Re-fetching data another agent already retrieved is`
+    );
+    lines.push(`${indent}expected, not redundant.`);
+    lines.push(bar);
+  } else {
+    lines.push(`${indent}${agent.agentName} agent transcript:`);
+  }
+  for (const entry of agent.entries) {
+    lines.push(formatTranscriptEntry(entry, `${indent}  `));
+  }
+  return lines;
 }
 
 function formatTranscriptEntry(entry: TranscriptEntry, indent: string): string {
