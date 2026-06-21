@@ -254,6 +254,41 @@ export async function deleteNode(
   }
 }
 
+export async function patchEdge(
+  config: JarvisConnectionConfig,
+  edgeRefId: string,
+  data: Record<string, unknown>,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const url = `${config.jarvisUrl.replace(/\/$/, "")}/v2/edges/${encodeURIComponent(edgeRefId)}`;
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        "x-api-token": config.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      console.error("[Jarvis Nodes] patchEdge failed:", response.status, responseText);
+      return {
+        success: false,
+        error: `Request failed with status ${response.status}`,
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("[Jarvis Nodes] patchEdge error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Request failed",
+    };
+  }
+}
+
 export async function deleteEdge(
   config: JarvisConnectionConfig,
   edgeRefId: string,
