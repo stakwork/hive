@@ -5,10 +5,13 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 /**
- * Authenticated user's UI preferences. Currently a single flag:
- * `canvasAutonomousTurns` — the per-user opt-in for the autonomous
- * canvas-agent turns (see `src/services/canvas-agent-autoturn.ts`).
- * Toggled from the gear menu on the canvas Agent chat panel.
+ * Authenticated user's UI preferences. Currently:
+ * - `canvasAutonomousTurns` — the per-user opt-in for the autonomous
+ *   canvas-agent turns (see `src/services/canvas-agent-autoturn.ts`).
+ * - `chatAgentModel` — the per-user default model for the canvas Agent
+ *   chat, in `getModelValue()` "provider/name" form. Null = inherit the
+ *   admin-configured default.
+ * Both are edited from the gear menu on the canvas Agent chat panel.
  */
 
 /** GET /api/user/preferences — read the current user's preferences. */
@@ -20,13 +23,16 @@ export async function GET() {
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { canvasAutonomousTurns: true },
+    select: { canvasAutonomousTurns: true, chatAgentModel: true },
   });
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ canvasAutonomousTurns: user.canvasAutonomousTurns });
+  return NextResponse.json({
+    canvasAutonomousTurns: user.canvasAutonomousTurns,
+    chatAgentModel: user.chatAgentModel,
+  });
 }
 
 /** PATCH /api/user/preferences — update one or more preference flags. */
@@ -38,7 +44,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { canvasAutonomousTurns } = body;
+    const { canvasAutonomousTurns, chatAgentModel } = body;
 
     if (
       canvasAutonomousTurns !== undefined &&
@@ -50,21 +56,35 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    if (
+      chatAgentModel !== undefined &&
+      chatAgentModel !== null &&
+      typeof chatAgentModel !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "chatAgentModel must be a string or null" },
+        { status: 400 },
+      );
+    }
+
     const updated = await db.user.update({
       where: { id: session.user.id },
       data: {
         ...(canvasAutonomousTurns !== undefined && { canvasAutonomousTurns }),
+        ...(chatAgentModel !== undefined && { chatAgentModel }),
       },
-      select: { canvasAutonomousTurns: true },
+      select: { canvasAutonomousTurns: true, chatAgentModel: true },
     });
 
     logger.info("User preferences updated", "USER_PREFERENCES_UPDATE", {
       userId: session.user.id,
       canvasAutonomousTurns: updated.canvasAutonomousTurns,
+      chatAgentModel: updated.chatAgentModel,
     });
 
     return NextResponse.json({
       canvasAutonomousTurns: updated.canvasAutonomousTurns,
+      chatAgentModel: updated.chatAgentModel,
     });
   } catch (error) {
     logger.error(

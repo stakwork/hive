@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
-import { ensureMockWorkspaceForUser, ensureStakworkMockWorkspace, ensureMockOrgData } from "@/utils/mockSetup";
+import { ensureMockWorkspaceForUser, ensureStakworkMockWorkspace, ensureMockOrgData, ensureMockLlmModels } from "@/utils/mockSetup";
 import { isSuperAdminUserId } from "@/config/env";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import axios from "axios";
@@ -268,6 +268,17 @@ export const authOptions: NextAuthOptions = {
             logger.authError(
               "Failed to create mock org data - continuing authentication",
               "SIGNIN_MOCK_ORG_FAILED",
+              error
+            );
+          }
+
+          // Seed baseline public LLM models so model pickers have options — non-fatal
+          try {
+            await ensureMockLlmModels();
+          } catch (error) {
+            logger.authError(
+              "Failed to seed mock LLM models - continuing authentication",
+              "SIGNIN_MOCK_LLM_MODELS_FAILED",
               error
             );
           }
