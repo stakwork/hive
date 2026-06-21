@@ -16,6 +16,7 @@ import {
   ClipboardCheck,
   FileText,
   KeyRound,
+  Languages,
   Map,
   Menu,
   Mic,
@@ -138,6 +139,7 @@ const baseNavigationItems: NavigationItem[] = [
     href: "/context",
     children: [
       { icon: BookOpen, label: "Learn", href: "/learn" },
+      { icon: Languages, label: "Lingo", href: "/learn/lingo" },
       { icon: Phone, label: "Calls", href: "/calls" },
       { icon: FileText, label: "Agent Logs", href: "/agent-logs" },
       { icon: Share2, label: "Graph", href: "/context/graph" },
