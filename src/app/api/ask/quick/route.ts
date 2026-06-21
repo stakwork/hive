@@ -352,6 +352,19 @@ export async function POST(request: NextRequest) {
         ? await loadOrgCanvasPromptCache({ conversationId, userId, orgId })
         : null;
 
+    // Per-user canvas-chat model preference (set from the Agent settings
+    // gear). Threaded into `runCanvasAgent`, which only honors Anthropic
+    // selections today. Null/absent → aieo default. Public viewers have
+    // no user row, so they always get the default.
+    const chatAgentModel = userId
+      ? (
+          await db.user.findUnique({
+            where: { id: userId },
+            select: { chatAgentModel: true },
+          })
+        )?.chatAgentModel ?? undefined
+      : undefined;
+
     // ============================================================
     // Backend-driven canvas turn — server-side persistence (Tier 1).
     //
@@ -461,6 +474,7 @@ export async function POST(request: NextRequest) {
           userId,
           orgId: orgId && isMultiWorkspace ? orgId : undefined,
           workspaceSlugs: slugs,
+          modelName: chatAgentModel,
           // Reuse cached concepts (skips the swarm `listConcepts` call)
           // when we have them for this org-canvas conversation. The prefix
           // is still rebuilt fresh each turn for an accurate scope hint.

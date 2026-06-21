@@ -58,6 +58,12 @@ model User {
   // `CANVAS_AUTONOMOUS_TURNS_ENABLED` env var is a master kill-switch
   // layered above this flag.
   canvasAutonomousTurns    Boolean                  @default(false) @map("canvas_autonomous_turns")
+  // Per-user default model for the canvas Agent chat, stored in
+  // `getModelValue()` "provider/name" form (e.g. "anthropic/claude-sonnet-4").
+  // Null = fall back to the admin-configured default. Set from the gear
+  // menu on the canvas Agent chat panel. Named `chatAgentModel` (not just
+  // `agentModel`) to leave room for per-agent defaults later.
+  chatAgentModel           String?                  @map("chat_agent_model")
   createdAt                DateTime                 @default(now()) @map("created_at")
   updatedAt                DateTime                 @updatedAt @map("updated_at")
   deleted                  Boolean                  @default(false)

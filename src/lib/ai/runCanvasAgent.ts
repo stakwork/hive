@@ -198,6 +198,16 @@ export interface RunCanvasAgentOptions {
   /** User-visible chat messages, in AI SDK ModelMessage[] form. */
   messages: ModelMessage[];
   /**
+   * Optional model override in `getModelValue()` "provider/name" form
+   * (e.g. "anthropic/claude-opus-4-6"), sourced from the caller's
+   * `User.chatAgentModel` preference. Only Anthropic models are honored
+   * — the canvas agent is Anthropic-only today (provider tools, prompt
+   * caching, etc. are wired to Anthropic), so a non-Anthropic selection
+   * is ignored and the aieo default is used. When omitted/ignored, the
+   * model resolves to aieo's default (sonnet).
+   */
+  modelName?: string;
+  /**
    * Cached concepts from a previous turn of the SAME conversation. When
    * provided, we SKIP the slow per-workspace `listConcepts` swarm
    * round-trip (a swarm can be slow or offline, and re-fetching the
@@ -515,6 +525,7 @@ export async function runCanvasAgent(
     cachedConcepts,
     prepareStep,
     extraStopConditions,
+    modelName,
   } = opts;
 
   // When cached concepts are supplied we skip the slow per-workspace
@@ -819,11 +830,20 @@ export async function runCanvasAgent(
         )
       : undefined;
 
+  // Honor the caller's model preference only when it targets the
+  // Anthropic provider (the canvas agent's only supported provider
+  // today). `modelName` is in "provider/name" form; aieo strips the
+  // prefix and uses the remainder as the model id. A non-Anthropic
+  // selection is ignored so we never pair an OpenAI/Google id with the
+  // hardcoded Anthropic provider/key/tools.
+  const modelOverride =
+    modelName && modelName.startsWith("anthropic/") ? modelName : undefined;
+
   const model = getModel(
     provider,
     bifrost?.apiKey ?? apiKey,
     primarySlug,
-    undefined,
+    modelOverride,
     bifrost
       ? { baseUrl: bifrost.baseUrl, headers: bifrost.headers }
       : undefined,

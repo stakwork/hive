@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import {
   InitiativeStatus,
+  LlmProvider,
   MilestoneStatus,
   PodState,
   PoolState,
@@ -968,4 +969,67 @@ async function ensureMockOrgInitiatives(
   console.log(
     `[MockSetup] Seeded ${platformMilestones.length + trustMilestones.length} milestones across 2 initiatives for mock-org`,
   );
+}
+
+/**
+ * Ensures a baseline set of public LLM models exists so model pickers
+ * (plan/task inputs, the canvas Agent settings model selector, etc.) have
+ * options in local dev. Models are global rows (not per-user/workspace),
+ * so this is keyed on the unique `name` and is cheap to re-run on every
+ * mock login. Existing rows are left untouched aside from re-asserting
+ * `isPublic` so they show up in `/api/llm-models`.
+ */
+export async function ensureMockLlmModels(): Promise<void> {
+  const models: Array<{
+    name: string;
+    provider: LlmProvider;
+    inputPricePer1M: number;
+    outputPricePer1M: number;
+    isPlanDefault?: boolean;
+    isTaskDefault?: boolean;
+  }> = [
+    // Names must be real model ids aieo recognizes — the model picker
+    // stores them as `getModelValue()` "provider/name" (e.g.
+    // "anthropic/claude-opus-4-6"), which is threaded straight into
+    // aieo as the model id. Bogus names would 404 against the provider.
+    {
+      name: "claude-sonnet-4-6",
+      provider: LlmProvider.ANTHROPIC,
+      inputPricePer1M: 3,
+      outputPricePer1M: 15,
+      isPlanDefault: true,
+      isTaskDefault: true,
+    },
+    {
+      name: "claude-opus-4-6",
+      provider: LlmProvider.ANTHROPIC,
+      inputPricePer1M: 15,
+      outputPricePer1M: 75,
+    },
+    {
+      name: "claude-haiku-4-5",
+      provider: LlmProvider.ANTHROPIC,
+      inputPricePer1M: 1,
+      outputPricePer1M: 5,
+    },
+  ];
+
+  for (const m of models) {
+    await db.llmModel.upsert({
+      where: { name: m.name },
+      create: {
+        name: m.name,
+        provider: m.provider,
+        inputPricePer1M: m.inputPricePer1M,
+        outputPricePer1M: m.outputPricePer1M,
+        isPublic: true,
+        isPlanDefault: m.isPlanDefault ?? false,
+        isTaskDefault: m.isTaskDefault ?? false,
+      },
+      // Only re-assert visibility; don't clobber admin-tuned pricing/defaults.
+      update: { isPublic: true },
+    });
+  }
+
+  console.log(`[MockSetup] Ensured ${models.length} public LLM models`);
 }
