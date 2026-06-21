@@ -9,31 +9,43 @@ coding, building, testing, and PR creation.
 
 ## Agent types in the transcript
 
-Our system uses multiple specialized agents, each labeled in the transcript:
+Our system uses multiple specialized agents, each labeled in the transcript. The transcript
+marks every agent with a "NEW AGENT CONTEXT" banner. Common agents include:
 
 - **plan-agent-{featureId}** — Explores the codebase and produces the implementation plan
-  (brief, architecture, user stories), then generates actionable dev tickets from that plan.
-  May re-explore the codebase to verify claims and get exact signatures/interfaces.
-  Runs first. Has access to search and read tools.
+  (brief, architecture, user stories). May re-explore to verify claims and get exact
+  signatures/interfaces. Runs first. Has access to search and read tools.
+- **TASK_GENERATION-agent-{featureId}** — Turns the plan into actionable dev tickets. May run
+  as its own separate context, distinct from plan-agent.
 - **coding-agent-{taskId}** — Implements the code changes for a single task. Has shell, edit,
   and file tools. Produces a PR.
 - **build-agent-{taskId}** — Runs the project build and fixes any build errors.
 - **test-agent-{taskId}** — Determines which tests to run, runs them, and fixes failures.
 - **browser-agent-{taskId}** — Takes screenshots and validates UI changes in the browser.
+- **wfe-agent-{taskId}** — Workflow-engine agent for Stakwork workflow tasks (editing workflow
+  JSON, skills, child workflows). Runs per-task in the execution phase instead of the
+  coding/build/test agents.
 
-Each agent runs as a separate LLM session with its own conversation history. The plan-agent
-handles the entire planning phase (plan + task generation). The coding/build/test/browser
-agents are part of the execution phase and run per-task.
+The planning phase may involve one or more agents; the execution phase spins up one or more
+fresh agents per task.
 
-IMPORTANT: Each agent session accumulates tokens cumulatively — every tool call iteration
-sends the full conversation history so far. When two agents explore the same files, the
-token cost of that exploration is paid twice. This is a key cost consideration.
+CRITICAL — how token costs actually work across agents:
+- Each agent runs as a SEPARATE LLM session with its OWN fresh context window. It has zero
+  memory of any other agent's messages, tool calls, or fetched files.
+- WITHIN a single agent's context, tokens accumulate: every tool-call iteration resends that
+  agent's full conversation history so far. So redundant re-reads INSIDE ONE agent's context
+  are a real, quantifiable waste — flag those.
+- ACROSS different agents, re-fetching the same file or workflow is NOT double-paid in a shared
+  window and is NOT waste. A later agent (e.g. a per-task wfe-agent) MUST re-gather context from
+  scratch because it cannot see what an earlier agent (e.g. the plan-agent) already fetched.
+  Do NOT report cross-agent re-fetching as a cost problem — that is expected, correct behavior.
 
 ## What to look for
 
 - Where did a specific agent (name it) waste time or go in the wrong direction?
-- Did the plan-agent spend excessive tokens re-exploring files during task generation that
-  it already read during planning? If so, quantify the overlap (how many identical tool calls).
+- Within a SINGLE agent's context, did it redundantly re-read or re-fetch the same file it
+  already had in that same context? If so, quantify the overlap (how many identical tool calls).
+  (Only count repeats inside one agent's context — never across the "NEW AGENT CONTEXT" boundary.)
 - Did the coding-agent misunderstand the task? What in the task description caused confusion?
 - Were there files or modules a specific agent should have found faster?
 - Did the build/test agents have to fix issues the coding-agent should have caught?
