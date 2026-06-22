@@ -34,6 +34,7 @@ import {
   messagesFromSteps,
   appendTurnMessages,
   fetchStoredConversationMessages,
+  normalizeStoredAttachments,
 } from "@/services/canvas-turn-persistence";
 
 const queryRaw = db.$queryRaw as ReturnType<typeof vi.fn>;
@@ -371,5 +372,38 @@ describe("fetchStoredConversationMessages", () => {
     findFirst.mockResolvedValue({ messages: [] });
     const result = await fetchStoredConversationMessages(baseArgs);
     expect(result).toEqual([]);
+  });
+});
+
+describe("normalizeStoredAttachments", () => {
+  const valid = {
+    path: "s3/key.png",
+    filename: "img.png",
+    mimeType: "image/png",
+    size: 1234,
+  };
+
+  test("returns [] for non-array input", () => {
+    expect(normalizeStoredAttachments(undefined)).toEqual([]);
+    expect(normalizeStoredAttachments(null)).toEqual([]);
+    expect(normalizeStoredAttachments("nope")).toEqual([]);
+    expect(normalizeStoredAttachments({})).toEqual([]);
+  });
+
+  test("keeps a well-formed attachment, picking only the known fields", () => {
+    const result = normalizeStoredAttachments([{ ...valid, extra: "ignored" }]);
+    expect(result).toEqual([valid]);
+  });
+
+  test("drops entries missing or mistyping any required field", () => {
+    const result = normalizeStoredAttachments([
+      valid,
+      null,
+      "string",
+      { ...valid, path: 123 }, // wrong type
+      { filename: "x.png", mimeType: "image/png", size: 1 }, // missing path
+      { ...valid, size: "1234" }, // size must be a number
+    ]);
+    expect(result).toEqual([valid]);
   });
 });
