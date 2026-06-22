@@ -241,6 +241,46 @@ describe("EvalTriggerList", () => {
     expect(screen.getByTestId("trigger-count-chip").textContent).toContain("1");
   });
 
+  it("hides blank-verdict outputs and numbers attempts sequentially when attempt_number is 0", async () => {
+    const triggersWithMixedOutputs = [
+      {
+        ...MOCK_TRIGGERS[0],
+        outputs: [
+          {
+            ref_id: "o-empty",
+            node_type: "EvalTriggerOutput",
+            properties: { result: "", score: 0, attempt_number: 0 },
+          },
+          {
+            ref_id: "o-pass",
+            node_type: "EvalTriggerOutput",
+            properties: { result: "pass", score: 1, attempt_number: 0 },
+          },
+          {
+            ref_id: "o-fail",
+            node_type: "EvalTriggerOutput",
+            properties: { result: "fail", score: 0, attempt_number: 0 },
+          },
+        ],
+      },
+    ];
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: triggersWithMixedOutputs } }),
+    });
+
+    render(<EvalTriggerList {...DEFAULT_PROPS} />);
+    await userEvent.click(screen.getByTestId("trigger-count-chip"));
+
+    await waitFor(() => {
+      // The blank-result output is filtered out
+      expect(screen.getAllByTestId("trigger-output-row")).toHaveLength(2);
+    });
+
+    const rows = screen.getAllByTestId("trigger-output-row");
+    expect(rows[0].textContent).toContain("#1");
+    expect(rows[1].textContent).toContain("#2");
+  });
+
   it("Run Eval button enters disabled state during execution", async () => {
     let resolveRun!: (val: unknown) => void;
     const runPromise = new Promise((resolve) => { resolveRun = resolve; });
