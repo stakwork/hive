@@ -33,6 +33,40 @@ Two deltas from the original plan:
   the trusted token skips them. `orgId` is derived from the primary
   workspace's `sourceControlOrgId` when not passed explicitly.
 
+### Replay input mode + `dryRun` (eval harness)
+
+Added for an automated eval harness that re-plays canvas-agent calls and
+scores the result without mutating anything:
+
+- **Replay input** — alongside the server-history shape (`{ message,
+  conversationId? }`), the endpoint accepts a full verbatim transcript:
+  `{ messages: ModelMessage[] }`, the same shape `/api/ask/quick` takes.
+  Replay is **stateless** (no conversation read/written) and **requires
+  `dryRun: true`** — a replayed transcript must never persist or mutate.
+
+- **`dryRun: true`** runs the agent as a pure function and writes nothing:
+  no row create/append, no prompt-cache write, no Pusher, no research
+  dispatch, no `schedule_check` injection. Crucially it is **selective,
+  not a blunt `readonly`**: the pure-output `propose_*` tools are KEPT
+  (they emit a proposal card with *no DB write* — the row is only created
+  later at approval time, see `initiativeTools.ts`), so an eval can read
+  exactly what `propose_feature` produced from the returned rows'
+  `toolCalls[].output`. Implemented as `readonly: true` +
+  `keepWriteToolNames: [propose_initiative, propose_feature,
+  propose_milestone]` + `capabilities: ["canvas"]` (drops the `planner`
+  capability so `send_to_feature_planner`, a real Stakwork dispatch, is
+  absent). Every genuinely-mutating tool (canvas/feature/research/
+  connection writes) is stripped. Response carries `dryRun: true` and
+  `conversationId: null`.
+
+- **`maxTurns`** (positive integer, optional) caps the agentic loop by
+  appending a `stepCountIs(maxTurns)` stop condition (ANY stop condition
+  ends the loop — so the run halts at the model's `[END_OF_ANSWER]` or the
+  cap, whichever is first). It counts the agent's **generated steps in
+  this call**, NOT the input transcript — so `maxTurns: 1` with a
+  100-message replay still returns exactly one step. Lets an evaluator
+  score just the next single response/tool-call.
+
 > **Companion docs — read first.**
 > - `src/app/org/[githubLogin]/CANVAS_CHAT.md` — the chat subsystem; the org chat → toolset wiring (`runCanvasAgent`, `buildConnectionTools`/`buildCanvasTools`/`buildInitiativeTools`), the `<SubAgentRunCard>` async fan-out.
 > - `docs/plans/backend-driven-canvas-turns.md` — the server-as-single-writer turn model this endpoint inherits (`messagesFromSteps` → `appendTurnMessages`, the `${turnId}-` idempotency prefix, the `CANVAS_CONVERSATION_UPDATED` nudge). The sync endpoint is that exact persistence path with the streaming response swapped for an awaited JSON one.
