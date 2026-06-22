@@ -47,8 +47,15 @@ vi.mock("@/components/ui/textarea", () => ({
   ),
 }));
 
+vi.mock("@/components/ui/label", () => ({
+  Label: ({ children, htmlFor }: any) => <label htmlFor={htmlFor}>{children}</label>,
+}));
+
 import { EditRequirementModal } from "@/components/evals/EditRequirementModal";
 import { toast } from "sonner";
+
+const NAME_PLACEHOLDER = "What should the agent always do?";
+const REASON_PLACEHOLDER = "Why does this matter?";
 
 const REQUIREMENT = {
   ref_id: "req-1",
@@ -82,25 +89,14 @@ describe("EditRequirementModal", () => {
     expect(screen.getByText("Edit Requirement")).toBeTruthy();
   });
 
-  it("pre-populates all fields from requirement.properties", () => {
+  it("pre-populates name and reason from requirement.properties", () => {
     render(<EditRequirementModal {...defaultProps} />);
 
-    const nameInput = screen.getByPlaceholderText("e.g. Correct auth handling") as HTMLInputElement;
+    const nameInput = screen.getByPlaceholderText(NAME_PLACEHOLDER) as HTMLTextAreaElement;
     expect(nameInput.value).toBe("Existing Req");
 
-    const descTextarea = screen.getByPlaceholderText("Optional description...") as HTMLTextAreaElement;
-    expect(descTextarea.value).toBe("Existing req desc");
-
-    const promptTextarea = screen.getByPlaceholderText(
-      "The portion of the prompt being evaluated...",
-    ) as HTMLTextAreaElement;
-    expect(promptTextarea.value).toBe("When asked to do X...");
-
-    const posTextarea = screen.getByPlaceholderText("The agent correctly...") as HTMLTextAreaElement;
-    expect(posTextarea.value).toBe("Does A\nDoes B");
-
-    const negTextarea = screen.getByPlaceholderText("The agent fails to...") as HTMLTextAreaElement;
-    expect(negTextarea.value).toBe("Fails to C");
+    const reasonInput = screen.getByPlaceholderText(REASON_PLACEHOLDER) as HTMLInputElement;
+    expect(reasonInput.value).toBe("Existing req desc");
   });
 
   it("does not render when open=false", () => {
@@ -108,46 +104,19 @@ describe("EditRequirementModal", () => {
     expect(screen.queryByTestId("dialog")).toBeNull();
   });
 
-  it("shows validation error when name is cleared", async () => {
+  it("shows validation error when the requirement is cleared", async () => {
     render(<EditRequirementModal {...defaultProps} />);
-    const nameInput = screen.getByPlaceholderText("e.g. Correct auth handling");
-    await userEvent.clear(nameInput);
+    await userEvent.clear(screen.getByPlaceholderText(NAME_PLACEHOLDER));
 
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Name is required")).toBeTruthy();
+      expect(screen.getByText("Requirement is required")).toBeTruthy();
     });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("shows validation error when desirable_cases is cleared", async () => {
-    render(<EditRequirementModal {...defaultProps} />);
-    const posTextarea = screen.getByPlaceholderText("The agent correctly...");
-    await userEvent.clear(posTextarea);
-
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("At least one desirable case is required")).toBeTruthy();
-    });
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
-
-  it("shows validation error when undesirable_cases is cleared", async () => {
-    render(<EditRequirementModal {...defaultProps} />);
-    const negTextarea = screen.getByPlaceholderText("The agent fails to...");
-    await userEvent.clear(negTextarea);
-
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("At least one undesirable case is required")).toBeTruthy();
-    });
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
-
-  it("calls PUT with correct URL and body on submit", async () => {
+  it("calls PUT and preserves legacy prompt_snippet/example cases in the body", async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }) as any;
 
     render(<EditRequirementModal {...defaultProps} />);
@@ -163,9 +132,30 @@ describe("EditRequirementModal", () => {
 
     const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
     expect(body.name).toBe("Existing Req");
+    expect(body.description).toBe("Existing req desc");
     expect(body.prompt_snippet).toBe("When asked to do X...");
     expect(body.desirable_cases).toEqual(["Does A", "Does B"]);
     expect(body.undesirable_cases).toEqual(["Fails to C"]);
+  });
+
+  it("omits legacy fields when the requirement has none", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as any;
+
+    const minimalReq = {
+      ref_id: "req-2",
+      node_type: "EvalRequirement",
+      properties: { name: "Minimal", description: "why" },
+    };
+    render(<EditRequirementModal {...defaultProps} requirement={minimalReq} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+    expect(body.name).toBe("Minimal");
+    expect(body.prompt_snippet).toBeUndefined();
+    expect(body.desirable_cases).toBeUndefined();
+    expect(body.undesirable_cases).toBeUndefined();
   });
 
   it("calls onUpdated and closes modal on success", async () => {
@@ -193,25 +183,5 @@ describe("EditRequirementModal", () => {
       expect(toast.error).toHaveBeenCalledWith("Failed to update requirement");
     });
     expect(defaultProps.onUpdated).not.toHaveBeenCalled();
-  });
-
-  it("splits multi-line cases correctly in the request body", async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as any;
-
-    const reqWithMultiline = {
-      ...REQUIREMENT,
-      properties: {
-        ...REQUIREMENT.properties,
-        desirable_cases: ["Case one", "Case two"],
-        undesirable_cases: ["Neg one"],
-      },
-    };
-    render(<EditRequirementModal {...defaultProps} requirement={reqWithMultiline} />);
-
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-    expect(body.desirable_cases).toEqual(["Case one", "Case two"]);
   });
 });
