@@ -412,6 +412,41 @@ describe("Evals API — Integration Tests", () => {
         expect(data.data.nodes[1].properties.order).toBe(1);
       });
 
+      test("excludes the EvalSet root node and tolerates Jarvis node-type casing", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        // Mirrors Jarvis's actual casing: "Evalset" root + "Evalrequirement" neighbors.
+        const mockNodes = [
+          { ref_id: "eval-set-1", node_type: "Evalset", properties: { name: "The set" } },
+          { ref_id: "req-1", node_type: "Evalrequirement", properties: { name: "Req A" } },
+          { ref_id: "req-2", node_type: "Evalrequirement", properties: { name: "Req B" } },
+        ];
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: mockNodes, edges: [] }),
+        } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-set-1/requirements`,
+          owner,
+        );
+
+        const response = await getRequirements(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-set-1" }),
+        });
+
+        const data = await response.json();
+        expect(data.data.total).toBe(2);
+        expect(data.data.nodes.map((n: { ref_id: string }) => n.ref_id)).toEqual([
+          "req-1",
+          "req-2",
+        ]);
+      });
+
       test("returns empty array when eval set has no requirements", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
@@ -662,66 +697,38 @@ describe("Evals API — Integration Tests", () => {
         expect(nodesService.addNode).not.toHaveBeenCalled();
       });
 
-      test("rejects missing prompt_snippet", async () => {
+      test("creates requirement with only name and reason (no example cases)", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
         await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
         await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
 
-        const { prompt_snippet: _, ...bodyWithoutSnippet } = validBody;
+        vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "req-min" });
+        vi.mocked(nodesService.addEdge).mockResolvedValueOnce({ success: true });
 
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
           owner,
-          bodyWithoutSnippet,
+          { name: "Minimal req", description: "because it matters" },
         );
 
         const response = await createRequirement(request, {
           params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }),
         });
 
-        await expectError(response, "prompt_snippet is required", 400);
-        expect(nodesService.addNode).not.toHaveBeenCalled();
-      });
-
-      test("rejects empty desirable_cases array", async () => {
-        const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
-
-        const request = createAuthenticatedPostRequest(
-          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
-          owner,
-          { ...validBody, desirable_cases: [] },
+        expect(response.status).toBe(200);
+        expect(nodesService.addNode).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            node_type: "EvalRequirement",
+            node_data: expect.objectContaining({
+              name: "Minimal req",
+              description: "because it matters",
+              desirable_cases: [],
+              undesirable_cases: [],
+            }),
+          }),
         );
-
-        const response = await createRequirement(request, {
-          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }),
-        });
-
-        await expectError(response, "desirable_cases must be a non-empty array", 400);
-        expect(nodesService.addNode).not.toHaveBeenCalled();
-      });
-
-      test("rejects empty undesirable_cases array", async () => {
-        const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
-
-        const request = createAuthenticatedPostRequest(
-          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements`,
-          owner,
-          { ...validBody, undesirable_cases: [] },
-        );
-
-        const response = await createRequirement(request, {
-          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1" }),
-        });
-
-        await expectError(response, "undesirable_cases must be a non-empty array", 400);
-        expect(nodesService.addNode).not.toHaveBeenCalled();
       });
     });
 
@@ -1339,6 +1346,39 @@ describe("Evals API — Integration Tests", () => {
           }),
         );
       });
+
+      test("updates requirement with only name and reason", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        vi.mocked(nodesService.updateNode).mockResolvedValueOnce({ success: true });
+
+        const request = createAuthenticatedPutRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
+          owner,
+          { name: "Renamed req", description: "new reason" },
+        );
+
+        const response = await updateRequirement(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(nodesService.updateNode).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            ref_id: "req-1",
+            node_data: expect.objectContaining({
+              name: "Renamed req",
+              description: "new reason",
+              desirable_cases: [],
+              undesirable_cases: [],
+            }),
+          }),
+        );
+      });
     });
 
     describe("Validation", () => {
@@ -1359,63 +1399,6 @@ describe("Evals API — Integration Tests", () => {
         });
 
         await expectError(response, "name is required", 400);
-      });
-
-      test("returns 400 when prompt_snippet is missing", async () => {
-        const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
-
-        const request = createAuthenticatedPutRequest(
-          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
-          owner,
-          { ...validReqBody, prompt_snippet: "" },
-        );
-
-        const response = await updateRequirement(request, {
-          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
-        });
-
-        await expectError(response, "prompt_snippet is required", 400);
-      });
-
-      test("returns 400 when desirable_cases is empty", async () => {
-        const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
-
-        const request = createAuthenticatedPutRequest(
-          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
-          owner,
-          { ...validReqBody, desirable_cases: [] },
-        );
-
-        const response = await updateRequirement(request, {
-          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
-        });
-
-        await expectError(response, "desirable_cases must be a non-empty array", 400);
-      });
-
-      test("returns 400 when undesirable_cases is empty", async () => {
-        const owner = await createTestUser();
-        const workspace = await createTestWorkspace({ ownerId: owner.id });
-        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
-        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
-
-        const request = createAuthenticatedPutRequest(
-          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1`,
-          owner,
-          { ...validReqBody, undesirable_cases: [] },
-        );
-
-        const response = await updateRequirement(request, {
-          params: Promise.resolve({ slug: workspace.slug, evalSetId: "set-1", reqId: "req-1" }),
-        });
-
-        await expectError(response, "undesirable_cases must be a non-empty array", 400);
       });
     });
 

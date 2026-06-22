@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { TagInput } from "@/components/ui/tag-input";
+import { Label } from "@/components/ui/label";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface CreateRequirementModalProps {
@@ -30,40 +30,24 @@ export function CreateRequirementModal({
 }: CreateRequirementModalProps) {
   const { slug } = useWorkspace();
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [promptSnippet, setPromptSnippet] = useState("");
-  const [desirableCases, setDesirableCases] = useState<string[]>([]);
-  const [undesirableCases, setUndesirableCases] = useState<string[]>([]);
+  const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
 
   function handleClose() {
     setName("");
-    setDescription("");
-    setPromptSnippet("");
-    setDesirableCases([]);
-    setUndesirableCases([]);
-    setErrors({});
+    setReason("");
+    setError("");
     onOpenChange(false);
-  }
-
-  function validate() {
-    const next: Record<string, string> = {};
-    if (!name.trim()) next.name = "Name is required";
-    if (!promptSnippet.trim()) next.promptSnippet = "Prompt snippet is required";
-    if (desirableCases.length === 0) next.desirableCases = "At least one desirable case is required";
-    if (undesirableCases.length === 0) next.undesirableCases = "At least one undesirable case is required";
-    return { next, posLines: desirableCases, negLines: undesirableCases };
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const { next, posLines, negLines } = validate();
-    if (Object.keys(next).length > 0) {
-      setErrors(next);
+    if (!name.trim()) {
+      setError("Requirement is required");
       return;
     }
-    setErrors({});
+    setError("");
     setSubmitting(true);
     try {
       const res = await fetch(`/api/workspaces/${slug}/evals/${evalSetId}/requirements`, {
@@ -71,10 +55,7 @@ export function CreateRequirementModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          description: description.trim() || undefined,
-          prompt_snippet: promptSnippet.trim(),
-          desirable_cases: posLines,
-          undesirable_cases: negLines,
+          description: reason.trim() || undefined,
           order,
         }),
       });
@@ -93,74 +74,36 @@ export function CreateRequirementModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add Requirement</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-sm font-medium" htmlFor="req-name">
-              Name <span className="text-destructive">*</span>
-            </label>
-            <Input
+          <div className="space-y-1.5">
+            <Label htmlFor="req-name">
+              Requirement <span className="text-destructive">*</span>
+            </Label>
+            <Textarea
               id="req-name"
               value={name}
-              onChange={(e) => { setName(e.target.value); setErrors((p) => ({ ...p, name: "" })); }}
-              placeholder="e.g. Correct auth handling"
-            />
-            {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm font-medium" htmlFor="req-description">
-              Description
-            </label>
-            <Textarea
-              id="req-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description..."
+              onChange={(e) => {
+                setName(e.target.value);
+                if (error) setError("");
+              }}
+              placeholder="What should the agent always do?"
               rows={2}
+              autoFocus
             />
+            {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium" htmlFor="req-prompt">
-              Prompt Snippet <span className="text-destructive">*</span>
-            </label>
-            <Textarea
-              id="req-prompt"
-              value={promptSnippet}
-              onChange={(e) => { setPromptSnippet(e.target.value); setErrors((p) => ({ ...p, promptSnippet: "" })); }}
-              placeholder="The portion of the prompt being evaluated..."
-              rows={3}
-            />
-            {errors.promptSnippet && <p className="text-xs text-destructive">{errors.promptSnippet}</p>}
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm font-medium" htmlFor="req-positive">
-              Desirable Cases <span className="text-destructive">*</span>
-            </label>
-            <TagInput
-              id="req-positive"
-              items={desirableCases}
-              onChange={(items) => { setDesirableCases(items); setErrors((p) => ({ ...p, desirableCases: "" })); }}
-              placeholder="The agent correctly..."
-              error={errors.desirableCases}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm font-medium" htmlFor="req-negative">
-              Undesirable Cases <span className="text-destructive">*</span>
-            </label>
-            <TagInput
-              id="req-negative"
-              items={undesirableCases}
-              onChange={(items) => { setUndesirableCases(items); setErrors((p) => ({ ...p, undesirableCases: "" })); }}
-              placeholder="The agent fails to..."
-              error={errors.undesirableCases}
+          <div className="space-y-1.5">
+            <Label htmlFor="req-reason">Reason</Label>
+            <Input
+              id="req-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Why does this matter?"
             />
           </div>
 

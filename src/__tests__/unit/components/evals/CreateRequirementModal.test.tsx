@@ -47,29 +47,15 @@ vi.mock("@/components/ui/textarea", () => ({
   ),
 }));
 
-// Mock TagInput: renders a plain input; pressing Enter calls onChange([...items, value])
-vi.mock("@/components/ui/tag-input", () => ({
-  TagInput: ({ items, onChange, placeholder, error }: any) => (
-    <div>
-      <input
-        data-testid={`tag-input-${placeholder}`}
-        placeholder={placeholder}
-        onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            const val = (e.currentTarget as HTMLInputElement).value.trim();
-            if (val) onChange([...items, val]);
-            (e.currentTarget as HTMLInputElement).value = "";
-          }
-        }}
-      />
-      {error && <p>{error}</p>}
-    </div>
-  ),
+vi.mock("@/components/ui/label", () => ({
+  Label: ({ children, htmlFor }: any) => <label htmlFor={htmlFor}>{children}</label>,
 }));
 
 import { CreateRequirementModal } from "@/components/evals/CreateRequirementModal";
 import { toast } from "sonner";
+
+const NAME_PLACEHOLDER = "What should the agent always do?";
+const REASON_PLACEHOLDER = "Why does this matter?";
 
 const defaultProps = {
   open: true,
@@ -79,14 +65,7 @@ const defaultProps = {
   onCreated: vi.fn(),
 };
 
-/** Helper: type into a TagInput mock and press Enter to add a chip */
-async function addTagItem(placeholder: string, value: string) {
-  const input = screen.getByTestId(`tag-input-${placeholder}`);
-  await userEvent.type(input, value);
-  await userEvent.keyboard("{Enter}");
-}
-
-describe("CreateRequirementModal — validation", () => {
+describe("CreateRequirementModal — name + reason", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as any;
@@ -95,77 +74,22 @@ describe("CreateRequirementModal — validation", () => {
   it("renders the form when open", () => {
     render(<CreateRequirementModal {...defaultProps} />);
     expect(screen.getByTestId("dialog")).toBeTruthy();
-    expect(screen.getByPlaceholderText("e.g. Correct auth handling")).toBeTruthy();
+    expect(screen.getByPlaceholderText(NAME_PLACEHOLDER)).toBeTruthy();
+    expect(screen.getByPlaceholderText(REASON_PLACEHOLDER)).toBeTruthy();
   });
 
-  it("blocks submission when name is empty", async () => {
-    render(<CreateRequirementModal {...defaultProps} />);
-
-    await userEvent.type(
-      screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
-      "Some prompt",
-    );
-    await addTagItem("The agent correctly...", "Good output");
-    await addTagItem("The agent fails to...", "Bad output");
-
-    await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Name is required")).toBeTruthy();
-    });
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
-
-  it("blocks submission when desirable_cases is empty", async () => {
-    render(<CreateRequirementModal {...defaultProps} />);
-
-    await userEvent.type(screen.getByPlaceholderText("e.g. Correct auth handling"), "My req");
-    await userEvent.type(
-      screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
-      "Some prompt",
-    );
-    await addTagItem("The agent fails to...", "Bad output");
-    // Leave desirable_cases blank
-
-    await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("At least one desirable case is required")).toBeTruthy();
-    });
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
-
-  it("blocks submission when undesirable_cases is empty", async () => {
-    render(<CreateRequirementModal {...defaultProps} />);
-
-    await userEvent.type(screen.getByPlaceholderText("e.g. Correct auth handling"), "My req");
-    await userEvent.type(
-      screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
-      "Some prompt",
-    );
-    await addTagItem("The agent correctly...", "Good output");
-    // Leave undesirable_cases blank
-
-    await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("At least one undesirable case is required")).toBeTruthy();
-    });
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
-
-  it("blocks submission when all fields empty", async () => {
+  it("blocks submission when the requirement is empty", async () => {
     render(<CreateRequirementModal {...defaultProps} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Name is required")).toBeTruthy();
+      expect(screen.getByText("Requirement is required")).toBeTruthy();
     });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("submits successfully when all required fields are filled", async () => {
+  it("submits with only a name (reason omitted)", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, data: { ref_id: "new-req-1" } }),
@@ -173,14 +97,7 @@ describe("CreateRequirementModal — validation", () => {
 
     render(<CreateRequirementModal {...defaultProps} />);
 
-    await userEvent.type(screen.getByPlaceholderText("e.g. Correct auth handling"), "My req");
-    await userEvent.type(
-      screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
-      "Some prompt",
-    );
-    await addTagItem("The agent correctly...", "Good output");
-    await addTagItem("The agent fails to...", "Bad output");
-
+    await userEvent.type(screen.getByPlaceholderText(NAME_PLACEHOLDER), "My req");
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
 
     await waitFor(() => {
@@ -190,31 +107,16 @@ describe("CreateRequirementModal — validation", () => {
       );
     });
 
+    const callBody = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+    expect(callBody.name).toBe("My req");
+    expect(callBody.description).toBeUndefined();
+    expect(callBody.order).toBe(0);
+
     expect(toast.success).toHaveBeenCalledWith("Requirement added");
     expect(defaultProps.onCreated).toHaveBeenCalled();
   });
 
-  it("shows error toast when request fails", async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false }) as any;
-
-    render(<CreateRequirementModal {...defaultProps} />);
-
-    await userEvent.type(screen.getByPlaceholderText("e.g. Correct auth handling"), "My req");
-    await userEvent.type(
-      screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
-      "Prompt",
-    );
-    await addTagItem("The agent correctly...", "Good");
-    await addTagItem("The agent fails to...", "Bad");
-
-    await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Failed to add requirement");
-    });
-  });
-
-  it("sends multiple positive/negative cases correctly", async () => {
+  it("includes the reason as description when provided", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ success: true }),
@@ -222,18 +124,8 @@ describe("CreateRequirementModal — validation", () => {
 
     render(<CreateRequirementModal {...defaultProps} />);
 
-    await userEvent.type(screen.getByPlaceholderText("e.g. Correct auth handling"), "My req");
-    await userEvent.type(
-      screen.getByPlaceholderText("The portion of the prompt being evaluated..."),
-      "Prompt",
-    );
-    // Add two positive cases via separate Enter presses
-    await addTagItem("The agent correctly...", "Case one");
-    await addTagItem("The agent correctly...", "Case two");
-    // Add two negative cases via separate Enter presses
-    await addTagItem("The agent fails to...", "Neg one");
-    await addTagItem("The agent fails to...", "Neg two");
-
+    await userEvent.type(screen.getByPlaceholderText(NAME_PLACEHOLDER), "My req");
+    await userEvent.type(screen.getByPlaceholderText(REASON_PLACEHOLDER), "It matters");
     await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
 
     await waitFor(() => {
@@ -241,7 +133,19 @@ describe("CreateRequirementModal — validation", () => {
     });
 
     const callBody = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-    expect(callBody.desirable_cases).toEqual(["Case one", "Case two"]);
-    expect(callBody.undesirable_cases).toEqual(["Neg one", "Neg two"]);
+    expect(callBody.description).toBe("It matters");
+  });
+
+  it("shows error toast when request fails", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false }) as any;
+
+    render(<CreateRequirementModal {...defaultProps} />);
+
+    await userEvent.type(screen.getByPlaceholderText(NAME_PLACEHOLDER), "My req");
+    await userEvent.click(screen.getByRole("button", { name: "Add Requirement" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to add requirement");
+    });
   });
 });
