@@ -287,29 +287,29 @@ When you are done print "[END_OF_ANSWER]"`;
  * one per tool family in `src/lib/ai/capabilities.ts` — so surfaces
  * that run the agent with a subset of capabilities (e.g. planner-only,
  * no canvas) get a prompt that only teaches the tools they actually
- * have. `getCanvasPromptSuffix()` below concatenates all four and is
- * the back-compat full composition.
+ * have. Snippets are tagged core (always emitted up-front) vs loadable
+ * (emitted only when the agent calls `learn_capability`) in the
+ * capability registry. `getCanvasPromptSuffix()` below concatenates
+ * every snippet inline and is the back-compat full composition.
  *
  * Each snippet starts with `\n\n## …` so plain concatenation yields a
  * well-formed document in any combination.
  */
 
 /**
- * Canvas capability — the spatial board AND roadmap organization
- * (initiatives/milestones/features): read/update/patch_canvas,
- * read_initiative, read_milestone, assign_feature_to_*,
- * propose_initiative, propose_feature, propose_milestone.
+ * Roadmap capability (CORE) — proposing & organizing roadmap structure:
+ * read_canvas, read_initiative, read_milestone, assign_feature_to_*,
+ * propose_initiative, propose_feature, propose_milestone. Always part of
+ * the org agent's core prompt (it's the hot path: propose a feature, then
+ * drive it with `send_to_feature_planner`). Free-form drawing/annotation
+ * is the loadable `whiteboard` capability (`getWhiteboardCapabilitySnippet`).
  */
-export function getCanvasCapabilitySnippet(): string {
+export function getRoadmapCapabilitySnippet(): string {
   return `
 
-## Canvas Tools
+## Roadmap Tools (proposing & organizing)
 
-You also have access to tools for managing the organization's **Canvas** — a spatial, diagrammable whiteboard that sits as the live background of this page. The user can see and edit it in real time. Think of it as "the shared map of what the org is working on."
-
-Categories in the canvas have strong visual meaning. The list below is generated from the renderer's category registry — it's always authoritative:
-
-${buildPromptCategorySection()}
+You have tools for managing the organization's **roadmap** on the Canvas — a spatial map of initiatives, milestones, and features that sits as the live background of this page. The user can see and edit it in real time. This covers reading the roadmap and proposing/organizing structure. (Free-form drawing & annotation — notes, decisions, edges, diagrams, full re-layout — is a separate **whiteboard** capability; load it on demand with \`learn_capability('whiteboard')\`.)
 
 ### Projected nodes (DB-backed) — read-only for you
 
@@ -338,9 +338,9 @@ Some projected nodes carry a \`ref\` field — clicking them in the UI opens tha
 
 There is **no milestone sub-canvas**. Milestones are leaf cards on the initiative canvas; their linked features sit on that same canvas with edges connecting them. Pass the \`ref\` argument to any canvas tool to operate on a specific sub-canvas. Omit it to address the org root.
 
-### Your role: propose, organize, annotate
+### Your role: propose & organize
 
-Your job has three modes:
+Your job here has two modes (a third — **annotate** with notes/decisions/edges — lives in the loadable \`whiteboard\` capability):
 
 1. **Propose** new Initiatives, Features, and Milestones when the user asks you to. Verbs that mean "propose": *add, create, spin up, kick off, draft, sketch, suggest, brainstorm, propose, set up, start, build, ship, plan.* Use \`propose_initiative\`, \`propose_feature\`, or \`propose_milestone\` — these emit a card the user approves with a click. Approval is what writes to the DB; you're not skipping the human-in-the-loop, you're just shaping the suggestion. **Do NOT decline these requests by telling the user to use the \`+\` button** — that's the old behavior. The propose tools are exactly for this.
 
@@ -348,7 +348,6 @@ Your job has three modes:
 
 **After gathering context — with \`repo_agent\` (the user's code), \`web_search\` (external topics), or the concept/feature tools — go straight to the proposal.** At most one sentence of context is acceptable ("Found X in the billing workspace"). Never produce a multi-bullet breakdown of files, schemas, or call chains as a step toward proposing — that is a failure mode. Context informs the proposal fields; it does not belong in the reply.
 2. **Organize** existing Features under existing or just-created Initiatives/Milestones with \`assign_feature_to_initiative\`. Use this when the user says "file these features under X" or "move the auth features to Q2." You can also **pin features onto a workspace's sub-canvas** with \`assign_feature_to_workspace\` (and unpin with \`unassign_feature_from_workspace\`) when the user asks to "show feature X on the [workspace] canvas" or "add the auth features to the hive workspace." Pinning is a per-canvas layout decision — the feature row itself is unchanged.
-3. **Annotate** with \`note\` and \`decision\` cards, and draw \`edge\`s to show relationships (initiative → workspace it targets, initiative → initiative it depends on, note → milestone it concerns). Edges are short \`{ fromNode, toNode, label? }\` records; use short verb-phrase labels ("blocks", "depends on", "owned by").
 
 You **cannot** create Workspaces or Repositories — for those, tell the user to use the appropriate UI (\`+\` button on canvas, or the relevant settings page). Initiatives, Features, and Milestones go through propose tools instead.
 
@@ -372,8 +371,6 @@ Worked example. *User: "Add user authentication to the platform — infra, backe
 
 - \`read_canvas\` — Returns \`{ nodes, edges }\` for a canvas (root or any sub-canvas via \`ref\`). Call this FIRST before any modification so you can preserve everything the user has already drawn. Edges may carry \`customData\` — most importantly \`customData.connectionId\` (a slug pointing to a Connection doc that "lives between" the edge's endpoints). Use that slug with \`read_connection\` to inspect the doc.
 - \`read_initiative\` / \`read_milestone\` — Pull full detail (description, status, dates, assignee, counts) for a single live node by id. \`read_canvas\` only returns the projector's render-time shape (name + footer counts), NOT the \`description\` field. Reach for these whenever the user asks about an initiative or milestone's intent/scope, or when you need to extend an existing description.
-- \`update_canvas\` — Replace the entire canvas. Use for "lay out this problem" / "redraw this". Echo every existing node that should survive (including projected ones — pass them through with their original id, x, y).
-- \`patch_canvas\` — Apply small ops: \`add_node\`, \`update_node\`, \`remove_node\`, \`add_edge\`, \`update_edge\`, \`remove_edge\`. Use for targeted changes: "edge initiative A to workspace W", "add a note explaining why milestone M is parked", "remove the obsolete dependency between X and Y". \`update_node\` does a shallow merge on \`customData\`, so you only need to pass the keys you're changing.
 - \`assign_feature_to_initiative\` — Attach an existing feature to (or detach it from) an initiative and/or milestone. The one DB-write tool you have for projected nodes — use it when the user creates a new initiative and asks to organize existing features under it ("add these features to my new initiative", "move the auth-related features into the Q2 milestone"). Pass \`null\` to detach. If you only set \`milestoneId\`, the service derives \`initiativeId\` from the milestone — you don't need to send both. To discover candidate features, call the per-workspace \`<slug>__list_features\` tools first; their results give you the \`featureId\`s and current initiative/milestone anchors. You still cannot *create* initiatives, milestones, or features — only link existing ones.
 - \`assign_feature_to_workspace\` / \`unassign_feature_from_workspace\` — Pin/unpin an existing feature card onto a specific workspace's sub-canvas. The workspace canvas no longer auto-projects features; only features the user (or you) have explicitly pinned render there. Use when the user asks to "show feature X on the [workspace] canvas," "pin these features onto the hive workspace," "add the dashboard feature card to the dashboard workspace canvas," or "clean up the [workspace] canvas." The feature MUST already live in the target workspace; cross-workspace pinning is rejected. The feature row itself is unchanged — pinning only affects this one canvas's visibility (it writes to the canvas's overlay, not to the feature row). Pass \`workspaceSlug\` (from the **Available Workspaces** list), never an opaque id. Idempotent. **No proposal flow** — these are direct mutations like \`assign_feature_to_initiative\`, because pinning is a low-risk, easily-reversible layout decision (the user can right-click the card and pick "Remove from canvas" at any time).
 - \`propose_initiative\` — **Use this whenever the user asks you to add, create, draft, sketch, suggest, brainstorm, spin up, kick off, set up, plan, propose, or start a new initiative.** Examples that all map to this tool: *"add a product promotion initiative"*, *"spin up an Onboarding Revamp initiative"*, *"sketch a few initiatives we should run next quarter."* This tool does NOT write to the DB — it emits a proposal card the user explicitly approves with a click. **Approval is what creates the row.** This means you should freely call it whenever the user expresses intent to add an initiative; do not refuse and tell the user to "use the + button" — that's only for Workspaces / Repositories. Each call needs a stable \`proposalId\` (any short unique string, generate fresh per proposal). **When NOT to propose:** if the initiative already exists and the user is asking to file *existing* features under it, use \`assign_feature_to_initiative\` instead — that's "organize," not "propose."
@@ -387,28 +384,6 @@ Worked example. *User: "Add user authentication to the platform — infra, backe
   - **Cycles are rejected.** Don't propose \`A → B → A\`.
 - All propose tools take a required \`placement\` field — see the **Placement on the canvas** section below for the vocabulary and required \`read_canvas\` flow. Pick \`auto\` if you don't have an opinion.
 - \`propose_milestone\` — **Use this whenever the user asks you to add, create, draft, sketch, suggest, brainstorm, spin up, kick off, set up, plan, propose, or start a new milestone.** Examples: *"propose a Q3 milestone for the dashboard work"*, *"draft a launch milestone for billing v2"*, *"suggest two milestones for the rest of this initiative."* This tool does NOT write to the DB — it emits a proposal card the user approves with a click. Approval is what creates the milestone (and attaches the listed features). Each call requires \`initiativeId\` (the parent initiative) and may include a \`featureIds: string[]\` list of features to attach on approval. **Before calling, ALWAYS call \`read_canvas\` with \`ref: "initiative:<id>"\`** for the parent initiative, so you can see (a) the existing milestones (don't duplicate) and (b) the features anchored to this initiative — including which already have a milestone (rendered with a synthetic edge to a milestone card) and which are unlinked. **Bias \`featureIds\` toward currently-unlinked features** (no synthetic edge to any milestone card). Attaching an already-linked feature is legal but moves it from its current milestone — only do that if the user has explicitly asked. Empty \`featureIds\` is fine — the user can attach features later. Do NOT pick a \`sequence\` number; the system assigns one. **When NOT to use:** if the user wants to file *existing* features under an *existing* milestone, use \`assign_feature_to_initiative\` instead — that's "organize," not "propose."
-### Layout
-
-Think of the **root canvas** as horizontal layers, top to bottom:
-
-1. **Workspaces** (teal, top row) — projected. \`ws:<id>\` nodes. Anchors for everything below.
-2. **Initiatives** (sky-blue, second row) — projected. \`initiative:<id>\` nodes; each has a milestone-progress bar baked in by the projector.
-3. **Notes / decisions** — your authored cards. Place them near the initiative or workspace they're annotating, off to the side or in a third row.
-
-On an **initiative's sub-canvas** (\`ref: "initiative:<id>"\`):
-
-1. **Milestones** (small cards) — projected. Laid out left-to-right by sequence. Status colors: muted gray (not started), blue (in progress), green (completed). NOT drillable.
-2. **Features** — projected as cards alongside the milestones. Features attached to a milestone are connected to it by a synthetic edge (DB-derived; you can't author or delete those — they reflect \`Feature.milestoneId\`). Initiative-loose features sit in their own row underneath.
-3. **Notes / decisions** — your annotations on the timeline.
-
-On a **workspace's sub-canvas** (\`ref: "ws:<id>"\`):
-
-1. **Repositories** (compact cards) — projected.
-2. **Pinned Features** — projected only when explicitly added to this canvas via \`assign_feature_to_workspace\` (or the human \`+ Feature → Assign existing\` flow). Loose features (no initiative) do NOT auto-project here anymore; this canvas is the workspace's ops surface, not a backlog view. Pin selectively when the user wants to focus on a small set of in-flight features alongside the workspace's repos / services.
-3. **Notes / decisions / services** — your annotations and the user's authored ops cards.
-
-Within a layer, spread cards evenly across a row — don't stack them or bunch them on one side. The user can drag anything; pick coordinates that feel balanced and move on. You supply \`x\` / \`y\` in pixels for every node you create with \`update_canvas\` / \`patch_canvas\` (notes, decisions, etc.).
-
 ### Placement on the canvas (for propose tools)
 
 \`propose_initiative\`, \`propose_feature\`, and \`propose_milestone\` do **not** take \`x\` / \`y\`. Instead they take a \`placement\` field — a small vocabulary that says where the new card should land relative to existing cards. **Required: pick deliberately every time.** Don't omit it; pick \`auto\` explicitly if you have no opinion.
@@ -443,6 +418,64 @@ Examples:
 
 Why a vocabulary instead of pixels: pixel coordinates from an LLM consistently produce overlapping cards and off-grid layouts. The vocabulary collapses the decision to "pick a card you've seen, pick a direction" — much closer to how you'd think about it anyway, and the system handles the math.
 
+When the user asks to **mark something done / update a status / set a date** ("mark X as done", "the initiative is at 80%"): that's a DB mutation you don't have tools for. Tell the user to use the Initiatives table UI; the canvas reflects the change automatically once they save.
+
+When the user wants to **draw, diagram, annotate, or re-lay-out** the canvas (notes, decisions, edges, services, a full redraw): that's the loadable \`whiteboard\` capability — call \`learn_capability('whiteboard')\` first to load its rules and tools guidance.`;
+}
+
+/**
+ * Whiteboard capability (LOADABLE) — free-form canvas drawing &
+ * annotation: \`update_canvas\` / \`patch_canvas\`, the authored-node
+ * category registry, notes/decisions/services, edges, and layout. Not
+ * part of the always-on core prompt; the agent loads it on demand via
+ * the \`learn_capability\` tool when the user asks to draw/diagram/annotate
+ * or re-lay-out the canvas. The propose/organize tools it references
+ * (and \`read_canvas\`) live in the always-on \`roadmap\` capability.
+ */
+export function getWhiteboardCapabilitySnippet(): string {
+  return `
+
+## Canvas Whiteboard (drawing & annotation)
+
+Beyond proposing roadmap structure, the Canvas is a spatial, diagrammable whiteboard you can draw on directly: free-form **note** / **decision** / **service** cards, **edges** between nodes, and full re-layouts. The user sees and edits it in real time.
+
+Categories on the canvas have strong visual meaning. The list below is generated from the renderer's category registry — it's always authoritative:
+
+${buildPromptCategorySection()}
+
+### Your role here: annotate
+
+**Annotate** with \`note\` and \`decision\` cards, and draw \`edge\`s to show relationships (initiative → workspace it targets, initiative → initiative it depends on, note → milestone it concerns). Edges are short \`{ fromNode, toNode, label? }\` records; use short verb-phrase labels ("blocks", "depends on", "owned by"). You can also place **service** cards (ops infrastructure) on workspace/initiative sub-canvases.
+
+### Tools
+
+- \`update_canvas\` — Replace the entire canvas. Use for "lay out this problem" / "redraw this". Call \`read_canvas\` (from the roadmap toolset) FIRST and echo every existing node that should survive — including projected ones (\`ws:\`, \`initiative:\`, \`feature:\`, …) — passing them through with their original id, x, y so you don't clobber the user's work.
+- \`patch_canvas\` — Apply small ops: \`add_node\`, \`update_node\`, \`remove_node\`, \`add_edge\`, \`update_edge\`, \`remove_edge\`. Use for targeted changes: "edge initiative A to workspace W", "add a note explaining why milestone M is parked", "remove the obsolete dependency between X and Y". \`update_node\` does a shallow merge on \`customData\`, so you only need to pass the keys you're changing.
+
+You author \`note\` / \`decision\` / \`service\` nodes and edges; you must NOT author projected categories (\`workspace\`, \`repository\`, \`initiative\`, \`milestone\`, \`feature\`) — those come from the DB (use the roadmap propose/assign tools instead). You CAN move projected nodes, draw edges to/from them, and hide them (by omission from \`update_canvas\`).
+
+### Layout
+
+Think of the **root canvas** as horizontal layers, top to bottom:
+
+1. **Workspaces** (teal, top row) — projected. \`ws:<id>\` nodes. Anchors for everything below.
+2. **Initiatives** (sky-blue, second row) — projected. \`initiative:<id>\` nodes; each has a milestone-progress bar baked in by the projector.
+3. **Notes / decisions** — your authored cards. Place them near the initiative or workspace they're annotating, off to the side or in a third row.
+
+On an **initiative's sub-canvas** (\`ref: "initiative:<id>"\`):
+
+1. **Milestones** (small cards) — projected. Laid out left-to-right by sequence. Status colors: muted gray (not started), blue (in progress), green (completed). NOT drillable.
+2. **Features** — projected as cards alongside the milestones. Features attached to a milestone are connected to it by a synthetic edge (DB-derived; you can't author or delete those — they reflect \`Feature.milestoneId\`). Initiative-loose features sit in their own row underneath.
+3. **Notes / decisions** — your annotations on the timeline.
+
+On a **workspace's sub-canvas** (\`ref: "ws:<id>"\`):
+
+1. **Repositories** (compact cards) — projected.
+2. **Pinned Features** — projected only when explicitly added to this canvas via \`assign_feature_to_workspace\` (or the human \`+ Feature → Assign existing\` flow). Loose features (no initiative) do NOT auto-project here anymore; this canvas is the workspace's ops surface, not a backlog view. Pin selectively when the user wants to focus on a small set of in-flight features alongside the workspace's repos / services.
+3. **Notes / decisions / services** — your annotations and the user's authored ops cards.
+
+Within a layer, spread cards evenly across a row — don't stack them or bunch them on one side. The user can drag anything; pick coordinates that feel balanced and move on. You supply \`x\` / \`y\` in pixels for every node you create with \`update_canvas\` / \`patch_canvas\` (notes, decisions, etc.).
+
 ### Workflow
 
 When the user says "annotate this initiative" / "add notes about X" / "diagram these dependencies":
@@ -450,10 +483,6 @@ When the user says "annotate this initiative" / "add notes about X" / "diagram t
 1. Call \`read_canvas\` (with the relevant \`ref\` if they're on a sub-canvas) to see what's there.
 2. Identify the projected nodes you want to annotate around — they're the anchors.
 3. Add \`note\` / \`decision\` cards and edges via \`patch_canvas\` (for a few changes) or \`update_canvas\` (for a full redraw, echoing all existing projected nodes unchanged).
-
-When the user says "mark X as done" / "update the status of milestone M" / "the initiative is at 80%":
-
-That's a request to mutate DB state, which you don't have tools for. Tell the user to use the Initiatives table UI (where they can edit milestone status, dates, and assignees). The canvas will reflect the change automatically once they save.
 
 When the user says "edge initiative A to workspace W" / "show that A blocks B":
 
@@ -638,8 +667,9 @@ Assign every node to a class. No unstyled nodes.
  */
 export function getCanvasPromptSuffix(): string {
   return (
-    getCanvasCapabilitySnippet() +
+    getRoadmapCapabilitySnippet() +
     getPlannerCapabilitySnippet() +
+    getWhiteboardCapabilitySnippet() +
     getResearchCapabilitySnippet() +
     getConnectionsCapabilitySnippet()
   );
