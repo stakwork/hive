@@ -8,8 +8,9 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { toast } from "sonner";
 import { WorkflowTransition, StepType, getStepType } from "@/types/stakwork/workflow";
 import { isLlmStep } from "@/lib/stakwork/transitions";
-import { CaptureEvalForm, CREATE_NEW_VALUE } from "@/components/evals/CaptureEvalForm";
+import { CaptureEvalForm, CREATE_NEW_VALUE, CREATE_NEW_REQ } from "@/components/evals/CaptureEvalForm";
 import { PromptResolution, mapPromptResolutions } from "@/types/evals";
+import { useEvalRequirements } from "@/hooks/useEvalRequirements";
 
 interface StepDetailsModalProps {
   step: WorkflowTransition | null;
@@ -131,6 +132,13 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
   const [evalSetsError, setEvalSetsError] = useState(false);
   const [selectedEvalSetId, setSelectedEvalSetId] = useState('');
   const [newEvalSetName, setNewEvalSetName] = useState('');
+  const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
+
+  const {
+    requirements,
+    loading: loadingRequirements,
+    error: requirementsError,
+  } = useEvalRequirements(slug ?? '', flagOpen ? selectedEvalSetId : null);
 
   useEffect(() => {
     if (!isOpen || !projectId) {
@@ -225,15 +233,21 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
     return () => { cancelled = true; };
   }, [flagOpen, slug]);
 
+  // Reset requirement selection when eval set changes
+  useEffect(() => {
+    setSelectedRequirementId(null);
+  }, [selectedEvalSetId]);
+
   async function handleFlagSubmit() {
     if (!ioData) {
       toast.error('Step input data not available');
       return;
     }
-    if (!requirement.trim()) return;
-    // Block submit until a set is chosen/created
     if (!selectedEvalSetId) return;
     if (selectedEvalSetId === CREATE_NEW_VALUE && !newEvalSetName.trim()) return;
+
+    const attachingExisting = selectedRequirementId && selectedRequirementId !== CREATE_NEW_REQ;
+    if (!attachingExisting && !requirement.trim()) return;
 
     setSubmitting(true);
     try {
@@ -266,21 +280,28 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       }
 
       const stepId = step?.id;
+      const captureBody: Record<string, unknown> = {
+        run_id: projectId,
+        step_id: stepId,
+        reason: reason.trim() || undefined,
+        inputs: ioData.inputs,
+        outputs: ioData.outputs,
+        evalSetId: resolvedEvalSetId,
+        prompts: mapPromptResolutions(ioData.prompt_resolutions),
+      };
+
+      if (attachingExisting) {
+        captureBody.requirementId = selectedRequirementId;
+      } else {
+        captureBody.requirement = requirement.trim();
+      }
+
       const res = await fetch(
         `/api/workspaces/${slug}/workflows/${workflowId}/eval/capture`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            run_id: projectId,
-            step_id: stepId,
-            requirement: requirement.trim(),
-            reason: reason.trim() || undefined,
-            inputs: ioData.inputs,
-            outputs: ioData.outputs,
-            evalSetId: resolvedEvalSetId,
-            prompts: mapPromptResolutions(ioData.prompt_resolutions),
-          }),
+          body: JSON.stringify(captureBody),
         }
       );
       if (!res.ok) throw new Error('Request failed');
@@ -288,6 +309,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
       setFlagOpen(false);
       setRequirement('');
       setReason('');
+      setSelectedRequirementId(null);
     } catch {
       toast.error('Failed to capture eval');
     } finally {
@@ -530,6 +552,11 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
               onSelectEvalSet={setSelectedEvalSetId}
               newEvalSetName={newEvalSetName}
               onNewEvalSetNameChange={setNewEvalSetName}
+              requirements={requirements}
+              loadingRequirements={loadingRequirements}
+              requirementsError={requirementsError}
+              selectedRequirementId={selectedRequirementId}
+              onSelectRequirement={setSelectedRequirementId}
             />
             <div className="flex justify-end gap-2">
               <Button
@@ -543,12 +570,14 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect, runTransitio
               <Button
                 size="sm"
                 onClick={handleFlagSubmit}
-                disabled={
-                  submitting ||
-                  !requirement.trim() ||
-                  !selectedEvalSetId ||
-                  (selectedEvalSetId === CREATE_NEW_VALUE && !newEvalSetName.trim())
-                }
+                disabled={(() => {
+                  if (submitting) return true;
+                  if (!selectedEvalSetId) return true;
+                  if (selectedEvalSetId === CREATE_NEW_VALUE && !newEvalSetName.trim()) return true;
+                  const attachingExisting = selectedRequirementId && selectedRequirementId !== CREATE_NEW_REQ;
+                  if (!attachingExisting && !requirement.trim()) return true;
+                  return false;
+                })()}
               >
                 {submitting && <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
                 Capture

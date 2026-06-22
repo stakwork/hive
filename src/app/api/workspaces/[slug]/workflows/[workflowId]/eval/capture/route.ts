@@ -6,6 +6,24 @@ import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { logger } from "@/lib/logger";
 
+async function verifyRequirementOwnership(
+  jarvisUrl: string,
+  apiKey: string,
+  requirementId: string
+): Promise<boolean> {
+  try {
+    const res = await fetch(`${jarvisUrl}/node/${requirementId}`, {
+      headers: { "x-api-token": apiKey },
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const nodeType: string = data?.node_type ?? data?.type ?? "";
+    return nodeType === "EvalRequirement";
+  } catch {
+    return false;
+  }
+}
+
 export const runtime = "nodejs";
 
 type RouteParams = { params: Promise<{ slug: string; workflowId: string }> };
@@ -45,10 +63,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const { step_id, requirement, reason, inputs, outputs, evalSetId, prompts } = body as {
+    const { step_id, requirement, requirementId, reason, inputs, outputs, evalSetId, prompts } = body as {
       run_id?: string;
       step_id?: string | number;
       requirement?: string;
+      requirementId?: string;
       reason?: string;
       inputs?: Record<string, unknown> | null;
       outputs?: unknown;
@@ -56,8 +75,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       prompts?: Array<{ name: string; prompt_id: number; prompt_version_id: number }>;
     };
 
-    if (!requirement?.trim()) {
-      return NextResponse.json({ error: "requirement is required" }, { status: 400 });
+    if (!requirement?.trim() && !requirementId?.trim()) {
+      return NextResponse.json(
+        { error: "requirement or requirementId is required" },
+        { status: 400 }
+      );
     }
 
     if (!evalSetId?.trim()) {
@@ -92,21 +114,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const evalSetRef = evalSetId.trim();
     logger.info(`[EvalCapture] Using EvalSet ref_id: ${evalSetRef}`);
 
-    // ── 2. Create EvalRequirement ────────────────────────────────────────────
-    const reqResult = await addNode(nodeConfig, {
-      node_type: "EvalRequirement",
-      node_data: {
-        id: randomUUID(),
-        name: requirement.trim(),
-      },
-    });
+    // ── 2. Resolve requirement ref ───────────────────────────────────────────
+    let requirementRef: string;
 
-    if (!reqResult.success || !reqResult.ref_id) {
-      logger.error("[EvalCapture] Failed to create EvalRequirement", reqResult.error);
-      return NextResponse.json({ error: "Failed to create requirement" }, { status: 502 });
+    if (requirementId?.trim()) {
+      // IDOR guard: verify the node exists and is of type EvalRequirement
+      const isOwned = await verifyRequirementOwnership(jarvisUrl, swarmApiKey, requirementId.trim());
+      if (!isOwned) {
+        logger.warn("[EvalCapture] requirementId not found or wrong type", requirementId);
+        return NextResponse.json(
+          { error: "Requirement not found or access denied" },
+          { status: 403 }
+        );
+      }
+      requirementRef = requirementId.trim();
+      logger.info(`[EvalCapture] Attaching trigger to existing requirement ${requirementRef}`);
+    } else {
+      // Create a new EvalRequirement node
+      const reqResult = await addNode(nodeConfig, {
+        node_type: "EvalRequirement",
+        node_data: {
+          id: randomUUID(),
+          name: requirement!.trim(),
+        },
+      });
+
+      if (!reqResult.success || !reqResult.ref_id) {
+        logger.error("[EvalCapture] Failed to create EvalRequirement", reqResult.error);
+        return NextResponse.json({ error: "Failed to create requirement" }, { status: 502 });
+      }
+      requirementRef = reqResult.ref_id;
+      logger.info(`[EvalCapture] EvalRequirement created, ref_id: ${requirementRef}`);
     }
-    const requirementRef = reqResult.ref_id;
-    logger.info(`[EvalCapture] EvalRequirement created, ref_id: ${requirementRef}`);
 
     // ── 3. Build EvalTrigger from posted IO ──────────────────────────────────
     // Always coerce step_id to a string — the downstream Python API expects a
@@ -144,13 +183,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     logger.info(`[EvalCapture] EvalTrigger created, ref_id: ${triggerRef}`);
 
     // ── 4. Wire edges ────────────────────────────────────────────────────────
-    // EvalSet -[HAS_REQUIREMENT]-> EvalRequirement
-    await addEdge(nodeConfig, {
-      edge: { edge_type: "HAS_REQUIREMENT" },
-      source: { ref_id: evalSetRef },
-      target: { ref_id: requirementRef },
-    });
-    logger.info("[EvalCapture] HAS_REQUIREMENT edge created");
+    if (!requirementId?.trim()) {
+      // Only create EvalSet -> EvalRequirement edge when creating a new requirement
+      await addEdge(nodeConfig, {
+        edge: { edge_type: "HAS_REQUIREMENT" },
+        source: { ref_id: evalSetRef },
+        target: { ref_id: requirementRef },
+      });
+      logger.info("[EvalCapture] HAS_REQUIREMENT edge created");
+    }
 
     // EvalRequirement -[HAS_TRIGGER]-> EvalTrigger
     await addEdge(nodeConfig, {

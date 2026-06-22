@@ -11,24 +11,33 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
-const { CREATE_NEW_VALUE } = vi.hoisted(() => ({ CREATE_NEW_VALUE: "__create_new__" }));
+const { CREATE_NEW_VALUE, CREATE_NEW_REQ } = vi.hoisted(() => ({
+  CREATE_NEW_VALUE: "__create_new__",
+  CREATE_NEW_REQ: "__create_new_req__",
+}));
 
 vi.mock("@/components/evals/CaptureEvalForm", () => ({
   CREATE_NEW_VALUE,
+  CREATE_NEW_REQ,
   CaptureEvalForm: ({
     requirement,
     reason,
     onRequirementChange,
     onReasonChange,
     submitting,
+    onSelectRequirement,
+    selectedEvalSetId,
   }: {
     requirement: string;
     reason: string;
     onRequirementChange: (v: string) => void;
     onReasonChange: (v: string) => void;
     submitting?: boolean;
+    selectedRequirementId?: string | null;
+    onSelectRequirement?: (id: string | null) => void;
+    selectedEvalSetId?: string;
   }) => (
-    <div data-testid="capture-eval-form">
+    <div data-testid="capture-eval-form" data-evalset={selectedEvalSetId || ""}>
       <input
         aria-label="requirement"
         value={requirement}
@@ -41,8 +50,23 @@ vi.mock("@/components/evals/CaptureEvalForm", () => ({
         onChange={(e) => onReasonChange(e.target.value)}
         disabled={submitting}
       />
+      {/* Simulate selecting an existing requirement */}
+      <button
+        data-testid="select-existing-req"
+        onClick={() => onSelectRequirement?.("existing-req-ref-123")}
+      >
+        Pick existing req
+      </button>
     </div>
   ),
+}));
+
+vi.mock("@/hooks/useEvalRequirements", () => ({
+  useEvalRequirements: vi.fn(() => ({
+    requirements: [],
+    loading: false,
+    error: null,
+  })),
 }));
 
 vi.mock("@/components/ui/scroll-area", () => ({
@@ -591,5 +615,93 @@ describe("FlagRunEvalModal", () => {
     rerender(<FlagRunEvalModal {...defaultProps({ open: false, onOpenChange })} />);
 
     expect(screen.queryByTestId("dialog")).not.toBeInTheDocument();
+  });
+
+  describe("Attach to existing requirement", () => {
+    it("Confirm button disabled when neither existing req selected nor new text entered", async () => {
+      vi.stubGlobal("fetch", makeFetch());
+
+      render(<FlagRunEvalModal {...defaultProps()} />);
+
+      await waitFor(() => screen.getByText("Generate Title"));
+      fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+      fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+      await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+      // No requirement text, no existing req selected → confirm should be disabled
+      const confirmBtn = screen.getByRole("button", { name: /confirm/i });
+      expect(confirmBtn).toBeDisabled();
+    });
+
+    it("sends requirementId (not requirement) when attaching to existing requirement", async () => {
+      const onCaptured = vi.fn();
+      vi.stubGlobal("fetch", makeFetch());
+
+      render(<FlagRunEvalModal {...defaultProps({ onCaptured })} />);
+
+      await waitFor(() => screen.getByText("Generate Title"));
+      fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+      fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+      // Wait for step 2 AND for the evals fetch to auto-select a set (non-empty data-evalset).
+      // Clicking the existing-req button before the evals fetch resolves causes the
+      // selectedEvalSetId effect to reset selectedRequirementId back to null.
+      await waitFor(() => {
+        const form = screen.getByTestId("capture-eval-form");
+        expect(form.getAttribute("data-evalset")).not.toBe("");
+      });
+
+      // Select an existing requirement via the mock button
+      fireEvent.click(screen.getByTestId("select-existing-req"));
+
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled()
+      );
+      fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+      await waitFor(() => expect(onCaptured).toHaveBeenCalledOnce());
+
+      const captureCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+        String(url).includes("/eval/capture")
+      );
+      const body = JSON.parse((captureCalls[0][1] as RequestInit).body as string);
+
+      // Must send requirementId, NOT requirement
+      expect(body.requirementId).toBe("existing-req-ref-123");
+      expect(body.requirement).toBeUndefined();
+    });
+
+    it("sends requirement (not requirementId) when creating new requirement", async () => {
+      const onCaptured = vi.fn();
+      vi.stubGlobal("fetch", makeFetch());
+
+      render(<FlagRunEvalModal {...defaultProps({ onCaptured })} />);
+
+      await waitFor(() => screen.getByText("Generate Title"));
+      fireEvent.click(screen.getByText("Generate Title").closest("button")!);
+      fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+      await waitFor(() => screen.getByTestId("capture-eval-form"));
+
+      // Type a new requirement (no existing req selection)
+      await userEvent.type(screen.getByRole("textbox", { name: /requirement/i }), "Always respond concisely");
+
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled()
+      );
+      fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+
+      await waitFor(() => expect(onCaptured).toHaveBeenCalledOnce());
+
+      const captureCalls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+        String(url).includes("/eval/capture")
+      );
+      const body = JSON.parse((captureCalls[0][1] as RequestInit).body as string);
+
+      // Must send requirement, NOT requirementId
+      expect(body.requirement).toBe("Always respond concisely");
+      expect(body.requirementId).toBeUndefined();
+    });
   });
 });
