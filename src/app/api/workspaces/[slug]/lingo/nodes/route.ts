@@ -76,10 +76,15 @@ export async function GET(
     });
 
     if (!response.ok) {
-      return NextResponse.json(
-        { success: false, error: `Jarvis returned ${response.status}` },
-        { status: response.status },
+      console.warn(`[Lingo nodes] Jarvis returned ${response.status}, falling back to mock`);
+      const sorted = [...mockLingoNodes].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
+      const page = sorted.slice(offset, offset + limit);
+      return NextResponse.json({
+        success: true,
+        data: { nodes: page, hasMore: page.length === limit },
+      });
     }
 
     const data = await response.json();

@@ -60,10 +60,12 @@ export async function GET(
     );
 
     if (!response.ok) {
-      return NextResponse.json(
-        { success: false, error: `Jarvis returned ${response.status}` },
-        { status: response.status },
-      );
+      console.warn(`[Lingo nodes/${ref_id}] Jarvis returned ${response.status}, falling back to mock`);
+      const data = getNeighborData(ref_id);
+      if (!data) {
+        return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, data });
     }
 
     const data = await response.json();
