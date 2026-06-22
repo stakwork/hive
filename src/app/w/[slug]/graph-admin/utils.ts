@@ -11,7 +11,10 @@ export async function postGraphAdminCmd(workspaceSlug: string, cmd: SwarmCmd) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error || "Request failed");
+    const swarmMsg = err?.swarm
+      ? (typeof err.swarm === "string" ? err.swarm : err.swarm?.message ?? null)
+      : null;
+    throw new Error(swarmMsg ?? err?.error ?? "Request failed");
   }
   return res.json();
 }
