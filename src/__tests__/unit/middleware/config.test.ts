@@ -379,6 +379,16 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/ask/quick", "PUT")).toBe("protected");
     });
 
+    it("keeps the synchronous /api/ask/sync endpoint protected", () => {
+      // The sync (mobile / agent-as-tool / eval) endpoint is auth-only:
+      // it has no public-viewer path and no ROUTE_POLICIES entry, so it
+      // falls through to the protected default. External eval workflows
+      // reach it via the middleware `x-api-token` bypass + in-handler
+      // `validateApiToken`, not via a route policy.
+      expect(resolveRouteAccess("/api/ask/sync", "POST")).toBe("protected");
+      expect(resolveRouteAccess("/api/ask/sync", "GET")).toBe("protected");
+    });
+
     it("allows POST/PUT on conversations for public viewers (autosave)", () => {
       expect(
         resolveRouteAccess("/api/workspaces/my-ws/chat/conversations", "POST"),
