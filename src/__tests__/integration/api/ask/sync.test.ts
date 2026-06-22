@@ -424,4 +424,126 @@ describe('POST /api/ask/sync', () => {
       expect(response.status).toBe(401);
     });
   });
+
+  describe('dryRun (eval / replay)', () => {
+    it('rejects messages[] replay mode without dryRun (400)', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/sync',
+        {
+          messages: [{ role: 'user', content: 'replayed prompt' }],
+          workspaceSlug: workspace.slug,
+        },
+        owner,
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toMatch(/dryRun/i);
+    });
+
+    it('dryRun + messages[] returns rows and persists NOTHING', async () => {
+      const { owner, org, workspace } = await setupOrgWorkspace();
+
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([
+          { text: 'dry answer', toolCalls: [], toolResults: [] },
+        ]) as any,
+      );
+
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/sync',
+        {
+          messages: [
+            { role: 'user', content: 'First' },
+            { role: 'assistant', content: 'Prior' },
+            { role: 'user', content: 'Replay me' },
+          ],
+          workspaceSlug: workspace.slug,
+          dryRun: true,
+        },
+        owner,
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.dryRun).toBe(true);
+      expect(data.conversationId).toBeNull();
+      expect(data.messages[0].content).toBe('dry answer');
+
+      // The transcript was passed verbatim to the agent.
+      const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
+      const contents = (callArgs.messages ?? []).map((m: any) => m.content);
+      expect(contents).toEqual(
+        expect.arrayContaining(['First', 'Prior', 'Replay me']),
+      );
+
+      // No SharedConversation row was created for this org.
+      const count = await db.sharedConversation.count({
+        where: { sourceControlOrgId: org.id },
+      });
+      expect(count).toBe(0);
+    });
+
+    it('dryRun in server-history mode also persists nothing', async () => {
+      const { owner, org, workspace } = await setupOrgWorkspace();
+
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([
+          { text: 'dry answer', toolCalls: [], toolResults: [] },
+        ]) as any,
+      );
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          { message: 'preview this', workspaceSlug: workspace.slug, dryRun: true },
+          owner,
+        ),
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.dryRun).toBe(true);
+      expect(data.conversationId).toBeNull();
+
+      const count = await db.sharedConversation.count({
+        where: { sourceControlOrgId: org.id },
+      });
+      expect(count).toBe(0);
+    });
+
+    it('dryRun composes a side-effect-free toolset: propose_* kept, mutators + planner stripped', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([{ text: 'ok', toolCalls: [], toolResults: [] }]) as any,
+      );
+
+      await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          {
+            messages: [{ role: 'user', content: 'propose a feature' }],
+            workspaceSlug: workspace.slug,
+            dryRun: true,
+          },
+          owner,
+        ),
+      );
+
+      const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
+      const toolNames = Object.keys(callArgs.tools ?? {});
+
+      // Pure-output proposal tools survive the readonly strip.
+      expect(toolNames).toContain('propose_feature');
+      // Genuinely-mutating tools are stripped...
+      expect(toolNames).not.toContain('update_canvas');
+      expect(toolNames).not.toContain('assign_feature_to_initiative');
+      // ...and the planner capability (real Stakwork dispatch) is absent.
+      expect(toolNames).not.toContain('send_to_feature_planner');
+      // No deferred-check write tool injected.
+      expect(toolNames).not.toContain('schedule_check');
+    });
+  });
 });
