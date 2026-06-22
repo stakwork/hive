@@ -907,12 +907,19 @@ export function buildInitiativeTools(
         "feature under an EXISTING initiative, use `initiativeId`. " +
         "**Always provide BOTH `description` and `initialMessage`.** " +
         "`description` is the durable brief (a short paragraph of " +
-        "context shown on the feature page). `initialMessage` is a " +
-        "one-sentence directive that seeds the feature's planning " +
-        "agent — it should read like an instruction to a developer, " +
-        "e.g. 'Build a tiered pricing page with three plans and a " +
-        "comparison table' — that's what kicks off research and the " +
-        "feature's eventual auto-naming.",
+        "context shown on the feature page). `initialMessage` seeds " +
+        "the feature's planning agent: LEAD with a one-line directive " +
+        "phrased as an instruction to a developer (e.g. 'Build a " +
+        "tiered pricing page with three plans and a comparison " +
+        "table'), then FOLD IN any concrete API shapes/contracts, " +
+        "data models, types, and integration points you discovered " +
+        "while researching this in the conversation — verbatim and " +
+        "specific, so the planner builds on what you already learned " +
+        "instead of rediscovering it. You can also reference another " +
+        "workspace by its `@slug` (from the **Available Workspaces** " +
+        "list) to let the planner delegate to that workspace's swarm " +
+        "for cross-workspace context. This directive is what kicks " +
+        "off research and the feature's eventual auto-naming.",
       inputSchema: z.object({
         proposalId: z.string().min(1),
         title: z.string().min(1),
@@ -921,21 +928,42 @@ export function buildInitiativeTools(
           .optional()
           .describe(
             "The durable brief for this feature — a short paragraph " +
-              "of context shown on the feature page. Distinct from " +
-              "`initialMessage`, which seeds the planning agent.",
+              "of context shown on the feature page. Keep it " +
+              "high-level; put concrete API contracts and any `@slug` " +
+              "workspace references in `initialMessage`, not here. " +
+              "Distinct from `initialMessage`, which seeds the " +
+              "planning agent.",
           ),
         initialMessage: z
           .string()
           .min(1)
           .describe(
-            "One-sentence directive (what should be created) that " +
-              "becomes the FIRST chat message on the new feature's " +
-              "plan chat after approval. This is what kicks off the " +
-              "planning workflow's research pass — research is what " +
-              "ultimately produces the feature's proper auto-generated " +
-              "title. Phrase it as an instruction to a developer, e.g. " +
-              "'Build a tiered pricing page with three plans and a " +
-              "comparison table.' Required.",
+            "The FIRST chat message on the new feature's plan chat " +
+              "after approval — it kicks off the planning workflow's " +
+              "research pass (which produces the feature's proper " +
+              "auto-generated title). Structure it in up to three " +
+              "parts: (1) LEAD with a one-line directive phrased as " +
+              "an instruction to a developer, e.g. 'Build a tiered " +
+              "pricing page with three plans and a comparison table.' " +
+              "(2) THEN, whenever your prior research in THIS " +
+              "conversation surfaced concrete technical contracts, " +
+              "append them verbatim so the planner doesn't have to " +
+              "rediscover (or accidentally contradict) them: exact " +
+              "API endpoint paths, request/response schemas, data " +
+              "models, type definitions, auth/permission requirements, " +
+              "and external integration points. Be specific — paste " +
+              "the real routes, field names, and types you found, not " +
+              "vague summaries. (3) If the feature needs context from " +
+              "ANOTHER workspace's codebase (shared types, an API " +
+              "another team owns, cross-service contracts), mention " +
+              "that workspace by its `@slug` (the slug from the " +
+              "**Available Workspaces** list, e.g. `@stakgraph`). A " +
+              "mentioned `@slug` attaches that workspace as a " +
+              "sub-agent to this planner run, letting the planner " +
+              "query that workspace's own swarm / knowledge graph for " +
+              "cross-workspace details on demand. Only mention " +
+              "workspaces that are genuinely relevant. Markdown is " +
+              "supported. Required.",
           ),
         workspaceSlug: z
           .string()
