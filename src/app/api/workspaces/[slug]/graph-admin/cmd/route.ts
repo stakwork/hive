@@ -108,10 +108,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (cmdName === "GetBoltwallUsers") {
     const result = await swarmCmdRequest({ swarmUrl: swarm.swarmUrl, jwt, cmd });
     if (!result.ok) return NextResponse.json({ error: "Swarm cmd failed" }, { status: 502 });
-    const raw = result.data as { users?: Array<{ id: number; pubkey: string; name: string; role: string }> };
+    const raw = result.data as {
+      users?: Array<{ id: number; pubkey: string; name: string; role: string; route_hint?: string | null }>;
+    };
     const users = (raw?.users ?? []).map((u) => ({
       ...u,
       role: u.role === "admin" ? "owner" : u.role === "sub_admin" ? "admin" : "member",
+      routeHint: u.route_hint ?? null,
     }));
     return NextResponse.json({ users });
   }

@@ -17,7 +17,14 @@ export function UserRow({
   onSetOwner: () => void;
 }) {
   const isOwner = user.role === "owner";
-  const displayName = user.name ?? (user.pubkey ? `${user.pubkey.slice(0, 16)}…` : "—");
+
+  function truncate(s: string) {
+    return `${s.slice(0, 5)}…${s.slice(-5)}`;
+  }
+
+  const pubkeyDisplay = user.pubkey ? truncate(user.pubkey) : null;
+  const routeHintSuffix = user.routeHint ? `:${truncate(user.routeHint)}` : "";
+  const displayName = user.name ?? (pubkeyDisplay ? `${pubkeyDisplay}${routeHintSuffix}` : "—");
 
   return (
     <tr className="border-b last:border-0">
