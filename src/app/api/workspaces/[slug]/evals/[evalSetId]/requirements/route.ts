@@ -103,26 +103,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { name, description, prompt_snippet, desirable_cases, undesirable_cases, order } =
       body ?? {};
 
+    // A requirement only needs a name and an optional reason (description).
+    // prompt_snippet and example cases are optional and may be added later.
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
-    }
-    if (!prompt_snippet || typeof prompt_snippet !== "string" || !prompt_snippet.trim()) {
-      return NextResponse.json(
-        { error: "prompt_snippet is required" },
-        { status: 400 },
-      );
-    }
-    if (!Array.isArray(desirable_cases) || desirable_cases.length === 0) {
-      return NextResponse.json(
-        { error: "desirable_cases must be a non-empty array" },
-        { status: 400 },
-      );
-    }
-    if (!Array.isArray(undesirable_cases) || undesirable_cases.length === 0) {
-      return NextResponse.json(
-        { error: "undesirable_cases must be a non-empty array" },
-        { status: 400 },
-      );
     }
 
     const swarmAccessResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
@@ -157,9 +141,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         id,
         name: name.trim(),
         description,
-        prompt_snippet: prompt_snippet.trim(),
-        desirable_cases,
-        undesirable_cases,
+        prompt_snippet:
+          typeof prompt_snippet === "string" ? prompt_snippet.trim() : undefined,
+        desirable_cases: Array.isArray(desirable_cases) ? desirable_cases : [],
+        undesirable_cases: Array.isArray(undesirable_cases) ? undesirable_cases : [],
       },
     });
     console.log(`[Evals Requirements POST] addNode result: success=${nodeResult.success}, ref_id=${nodeResult.ref_id ?? 'n/a'}, error=${nodeResult.error ?? 'none'}`);
