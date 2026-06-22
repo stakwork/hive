@@ -12,8 +12,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CaptureEvalForm, CREATE_NEW_VALUE } from "@/components/evals/CaptureEvalForm";
+import { CaptureEvalForm, CREATE_NEW_VALUE, CREATE_NEW_REQ } from "@/components/evals/CaptureEvalForm";
 import { PromptResolution, mapPromptResolutions } from "@/types/evals";
+import { useEvalRequirements } from "@/hooks/useEvalRequirements";
 
 interface RequestStep {
   stepId: string;
@@ -75,6 +76,13 @@ export function FlagRunEvalModal({
   const [evalSetsError, setEvalSetsError] = useState(false);
   const [selectedEvalSetId, setSelectedEvalSetId] = useState("");
   const [newEvalSetName, setNewEvalSetName] = useState("");
+  const [selectedRequirementId, setSelectedRequirementId] = useState<string | null>(null);
+
+  const {
+    requirements,
+    loading: loadingRequirements,
+    error: requirementsError,
+  } = useEvalRequirements(slug, step === 2 ? selectedEvalSetId : null);
 
   // Fetch request steps when modal opens
   useEffect(() => {
@@ -152,8 +160,14 @@ export function FlagRunEvalModal({
       setEvalSetsError(false);
       setSelectedEvalSetId("");
       setNewEvalSetName("");
+      setSelectedRequirementId(null);
     }
   }, [open]);
+
+  // Reset requirement selection when eval set changes
+  useEffect(() => {
+    setSelectedRequirementId(null);
+  }, [selectedEvalSetId]);
 
   async function handleNext() {
     if (!selectedStep) return;
@@ -173,9 +187,15 @@ export function FlagRunEvalModal({
   }
 
   async function handleConfirm() {
-    if (!selectedStep || !requirement.trim()) return;
+    if (!selectedStep) return;
     if (!selectedEvalSetId) return;
     if (selectedEvalSetId === CREATE_NEW_VALUE && !newEvalSetName.trim()) return;
+
+    // Must have either an existing requirement selected or new text entered
+    const attachingExisting =
+      selectedRequirementId && selectedRequirementId !== CREATE_NEW_REQ;
+    if (!attachingExisting && !requirement.trim()) return;
+
     setSubmitting(true);
     try {
       let resolvedEvalSetId = selectedEvalSetId;
@@ -202,21 +222,28 @@ export function FlagRunEvalModal({
         localStorage.setItem("lastUsedEvalSetId", resolvedEvalSetId);
       }
 
+      const captureBody: Record<string, unknown> = {
+        run_id: runId,
+        step_id: selectedStep.stepId,
+        reason: reason.trim() || undefined,
+        inputs,
+        outputs,
+        prompts: mapPromptResolutions(promptResolutions),
+        evalSetId: resolvedEvalSetId,
+      };
+
+      if (attachingExisting) {
+        captureBody.requirementId = selectedRequirementId;
+      } else {
+        captureBody.requirement = requirement.trim();
+      }
+
       const res = await fetch(
         `/api/workspaces/${slug}/workflows/${workflowId}/eval/capture`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            run_id: runId,
-            step_id: selectedStep.stepId,
-            requirement: requirement.trim(),
-            reason: reason.trim() || undefined,
-            inputs,
-            outputs,
-            prompts: mapPromptResolutions(promptResolutions),
-            evalSetId: resolvedEvalSetId,
-          }),
+          body: JSON.stringify(captureBody),
         }
       );
       if (!res.ok) throw new Error("Request failed");
@@ -320,6 +347,11 @@ export function FlagRunEvalModal({
             onSelectEvalSet={setSelectedEvalSetId}
             newEvalSetName={newEvalSetName}
             onNewEvalSetNameChange={setNewEvalSetName}
+            requirements={requirements}
+            loadingRequirements={loadingRequirements}
+            requirementsError={requirementsError}
+            selectedRequirementId={selectedRequirementId}
+            onSelectRequirement={setSelectedRequirementId}
           />
         )}
 
@@ -344,12 +376,14 @@ export function FlagRunEvalModal({
               </Button>
               <Button
                 onClick={handleConfirm}
-                disabled={
-                  submitting ||
-                  !requirement.trim() ||
-                  !selectedEvalSetId ||
-                  (selectedEvalSetId === CREATE_NEW_VALUE && !newEvalSetName.trim())
-                }
+                disabled={(() => {
+                  if (submitting) return true;
+                  if (!selectedEvalSetId) return true;
+                  if (selectedEvalSetId === CREATE_NEW_VALUE && !newEvalSetName.trim()) return true;
+                  const attachingExisting = selectedRequirementId && selectedRequirementId !== CREATE_NEW_REQ;
+                  if (!attachingExisting && !requirement.trim()) return true;
+                  return false;
+                })()}
               >
                 {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Confirm
