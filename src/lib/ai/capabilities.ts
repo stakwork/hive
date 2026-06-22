@@ -12,26 +12,49 @@
  * boundaries — `buildInitiativeTools` in particular spans two
  * capabilities (everything that authors/organizes roadmap structure —
  * the initiative/milestone tools AND `propose_feature` — belongs to
- * `canvas`; only `send_to_feature_planner` belongs to `planner`), so
- * those entries pick the relevant keys out of the factory's output.
+ * `roadmap`; only `send_to_feature_planner` + `read_user_activity`
+ * belong to `planner`), so those entries pick the relevant keys out of
+ * the factory's output. Likewise `buildCanvasTools`' output is split:
+ * `read_canvas` is a `roadmap` tool (you read the canvas to find
+ * anchors before proposing); `update_canvas` / `patch_canvas` are
+ * `whiteboard` tools.
  *
- * The four capabilities:
- *   - `canvas` — the spatial board AND roadmap organization
- *     (initiatives/milestones/features). Folds in `research` +
- *     `connections` via `includes`, since the canvas surface has
- *     always carried both.
- *   - `planner` — driving an EXISTING feature's per-feature planning
- *     agent via `send_to_feature_planner`. Usable without `canvas`:
- *     the motivating surface is the per-feature Plan page, where the
- *     feature already exists and the user wants the org agent's help
- *     to execute the plan (no proposing). Its prompt snippet reads
- *     standalone — feature/chat context comes from the per-workspace
- *     `<slug>__read_feature` / `<slug>__list_features` tools.
- *   - `research` — Research documents (web-search writeups).
- *   - `connections` — Connection documents (integration writeups).
+ * ## Core vs loadable (progressive disclosure)
+ *
+ * Each capability is tagged `core: true | false`.
+ *   - **Core** capabilities' prompt snippets are emitted up-front in
+ *     the agent's system prompt every turn. These are the hot path:
+ *     `roadmap` (propose a feature / organize the roadmap) and
+ *     `planner` (drive it with `send_to_feature_planner`).
+ *   - **Loadable** capabilities (`whiteboard`, `research`,
+ *     `connections`) are NOT in the up-front prompt. Instead the core
+ *     suffix carries a one-line menu, and the agent calls the
+ *     `learn_capability` tool to pull a loadable snippet on demand. The
+ *     tools themselves are always registered (the AI SDK fixes the
+ *     toolset at call start), so the gate is the prompt: the agent is
+ *     told to `learn_capability(...)` before using a loadable tool.
+ *
+ * This keeps the always-on prompt small (~roadmap + planner) while the
+ * heavy canvas-drawing / connection / research-doc instructions only
+ * cost tokens on the rarer turns that actually need them.
+ *
+ * The five capabilities:
+ *   - `roadmap` (CORE) — propose/organize roadmap structure
+ *     (initiatives/milestones/features) + `read_canvas`. Folds in the
+ *     loadable trio via `includes` so their tools + the menu are
+ *     present whenever roadmap is selected.
+ *   - `planner` (CORE) — driving an EXISTING feature's per-feature
+ *     planning agent via `send_to_feature_planner`. Usable without
+ *     `roadmap`: the motivating surface is the per-feature Plan page.
+ *   - `whiteboard` (LOADABLE) — free-form canvas drawing/annotation:
+ *     `update_canvas` / `patch_canvas`, notes/decisions, edges, layout.
+ *   - `research` (LOADABLE) — Research documents (web-search writeups).
+ *   - `connections` (LOADABLE) — Connection documents (integration
+ *     writeups).
  */
 
-import type { ToolSet } from "ai";
+import { tool, type ToolSet } from "ai";
+import { z } from "zod";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
@@ -46,13 +69,19 @@ import {
   PROPOSE_MILESTONE_TOOL,
 } from "@/lib/proposals/types";
 import {
-  getCanvasCapabilitySnippet,
   getConnectionsCapabilitySnippet,
   getPlannerCapabilitySnippet,
   getResearchCapabilitySnippet,
+  getRoadmapCapabilitySnippet,
+  getWhiteboardCapabilitySnippet,
 } from "@/lib/constants/prompt";
 
-export type OrgCapability = "canvas" | "planner" | "research" | "connections";
+export type OrgCapability =
+  | "roadmap"
+  | "planner"
+  | "whiteboard"
+  | "research"
+  | "connections";
 
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
@@ -72,6 +101,18 @@ interface CapabilityDefinition {
   buildTools(ctx: CapabilityContext): ToolSet;
   promptSnippet(): string;
   /**
+   * Core capabilities are taught up-front in the system prompt every
+   * turn; loadable ones (`core: false`) are taught only when the agent
+   * calls `learn_capability`. See the module doc.
+   */
+  core: boolean;
+  /**
+   * One-line "what this lets you do / when to load it" blurb, shown in
+   * the loadable-capability menu appended to the core prompt suffix.
+   * Only consumed for loadable capabilities.
+   */
+  menuBlurb?: string;
+  /**
    * Bare tool names (no `{slug}__` namespace) that mutate state and
    * are stripped in readonly mode. Proposal tools count: they emit
    * cards rather than writing rows, but a readonly caller wants
@@ -80,8 +121,8 @@ interface CapabilityDefinition {
   writeToolNames: readonly string[];
   /**
    * Capabilities this one implies. Expanded (transitively) by
-   * `resolveCapabilities`, so selecting `canvas` also pulls in
-   * `research` + `connections` without listing them.
+   * `resolveCapabilities`, so selecting `roadmap` also pulls in
+   * `whiteboard` + `research` + `connections` without listing them.
    */
   includes?: readonly OrgCapability[];
 }
@@ -96,9 +137,9 @@ function pickTools(tools: ToolSet, names: readonly string[]): ToolSet {
 
 // Intent-based split of buildInitiativeTools' output (see module doc).
 // All the roadmap-authoring/organizing tools — including
-// `propose_feature` — are `canvas`; `send_to_feature_planner` (drive an
-// existing feature's planner) is the lone `planner` tool.
-const CANVAS_INITIATIVE_TOOL_NAMES = [
+// `propose_feature` — are `roadmap`; `send_to_feature_planner` (drive an
+// existing feature's planner) + `read_user_activity` are `planner`.
+const ROADMAP_INITIATIVE_TOOL_NAMES = [
   "read_initiative",
   "read_milestone",
   "assign_feature_to_initiative",
@@ -111,36 +152,43 @@ const CANVAS_INITIATIVE_TOOL_NAMES = [
 
 const PLANNER_TOOL_NAMES = ["send_to_feature_planner", "read_user_activity"] as const;
 
+// `read_canvas` is a roadmap tool (used to find anchors before
+// proposing / placing). `update_canvas` + `patch_canvas` are the
+// whiteboard draw tools.
+const WHITEBOARD_CANVAS_TOOL_NAMES = ["update_canvas", "patch_canvas"] as const;
+
 /** Canonical composition order — also the prompt snippet order. */
 export const ALL_CAPABILITIES: readonly OrgCapability[] = [
-  "canvas",
+  "roadmap",
   "planner",
+  "whiteboard",
   "research",
   "connections",
 ];
 
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
   {
-    canvas: {
-      // Both `canvas` and `planner` call buildInitiativeTools and pick
+    roadmap: {
+      // Both `roadmap` and `planner` call buildInitiativeTools and pick
       // their keys — the factory is a pure ToolSet builder (no I/O at
       // build time), so constructing it twice when both capabilities
       // are selected is cheap and keeps the entries independent.
+      // `read_canvas` comes from buildCanvasTools (the only canvas tool
+      // roadmap needs; update/patch are whiteboard).
       buildTools: (ctx) => ({
-        ...buildCanvasTools(ctx.orgId),
+        ...pickTools(buildCanvasTools(ctx.orgId), ["read_canvas"]),
         ...pickTools(
           buildInitiativeTools(
             ctx.orgId,
             ctx.userId,
             ctx.currentCanvasConversationId,
           ),
-          CANVAS_INITIATIVE_TOOL_NAMES,
+          ROADMAP_INITIATIVE_TOOL_NAMES,
         ),
       }),
-      promptSnippet: getCanvasCapabilitySnippet,
+      promptSnippet: getRoadmapCapabilitySnippet,
+      core: true,
       writeToolNames: [
-        "update_canvas",
-        "patch_canvas",
         "assign_feature_to_initiative",
         "assign_feature_to_workspace",
         "unassign_feature_from_workspace",
@@ -148,7 +196,10 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         PROPOSE_FEATURE_TOOL,
         PROPOSE_MILESTONE_TOOL,
       ],
-      includes: ["research", "connections"],
+      // Pull the loadable trio in so their tools are registered and the
+      // learn_capability menu lists them whenever roadmap is selected
+      // (the org canvas surface always carried all of these).
+      includes: ["whiteboard", "research", "connections"],
     },
     planner: {
       buildTools: (ctx) =>
@@ -161,10 +212,23 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
           PLANNER_TOOL_NAMES,
         ),
       promptSnippet: getPlannerCapabilitySnippet,
+      core: true,
       // No write tools to strip: send_to_feature_planner survives
       // readonly mode (matches the pre-registry strip set — it messages
       // an agent rather than mutating org state directly).
       writeToolNames: [],
+    },
+    whiteboard: {
+      buildTools: (ctx) =>
+        pickTools(buildCanvasTools(ctx.orgId), WHITEBOARD_CANVAS_TOOL_NAMES),
+      promptSnippet: getWhiteboardCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**whiteboard** — draw/diagram on the canvas: notes, decisions, " +
+        "service cards, edges, and full re-layouts (`update_canvas` / " +
+        "`patch_canvas`). Load before drawing/annotating or laying out " +
+        "the canvas freehand.",
+      writeToolNames: ["update_canvas", "patch_canvas"],
     },
     research: {
       buildTools: (ctx) =>
@@ -176,6 +240,13 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
           ctx.currentCanvasConversationId,
         ),
       promptSnippet: getResearchCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**research** — create saved Research documents (markdown " +
+        "writeups from web search, projected as canvas cards): " +
+        "`dispatch_research` / `save_research` / `update_research`. Load " +
+        "when the user asks you to research a topic and save the writeup. " +
+        "(Plain `web_search` to inform an answer does NOT need this.)",
       // dispatch_research creates a Research row, so it's a write tool and
       // MUST be stripped in readonly mode. Critically, the research
       // sub-agent (`canvas-research-worker.ts`) runs readonly with only
@@ -187,13 +258,19 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
     connections: {
       buildTools: (ctx) => buildConnectionTools(ctx.orgId, ctx.userId),
       promptSnippet: getConnectionsCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**connections** — author Connection documents describing how two " +
+        "or more systems integrate (with mermaid diagrams): " +
+        "`save_connection` / `update_connection`. Load when documenting an " +
+        "integration between systems/workspaces.",
       writeToolNames: ["save_connection", "update_connection"],
     },
   };
 
 /**
  * Expand `includes` transitively and return the resulting set in
- * canonical order. `["canvas", "planner"]` resolves to all four.
+ * canonical order. `["roadmap", "planner"]` resolves to all five.
  */
 export function resolveCapabilities(
   selected: readonly OrgCapability[],
@@ -210,32 +287,117 @@ export function resolveCapabilities(
   return ALL_CAPABILITIES.filter((cap) => resolved.has(cap));
 }
 
+/** Loadable (non-core) capabilities within a resolved selection. */
+function loadableCapabilities(
+  resolved: readonly OrgCapability[],
+): OrgCapability[] {
+  return resolved.filter((cap) => !CAPABILITY_REGISTRY[cap].core);
+}
+
+/**
+ * The `learn_capability` tool. Returns a loadable capability's full
+ * prompt snippet on demand, so the heavy whiteboard / research /
+ * connection instructions stay out of the always-on system prompt
+ * (progressive disclosure — see module doc). Only the loadable
+ * capabilities present in `resolved` are accepted; passing a core or
+ * unavailable name returns guidance rather than throwing.
+ *
+ * The capability's tools are already registered (the AI SDK fixes the
+ * toolset at call start); this tool only injects the instructions the
+ * agent needs to use them correctly.
+ */
+function buildLearnCapabilityTool(resolved: readonly OrgCapability[]): ToolSet {
+  const loadable = loadableCapabilities(resolved);
+  if (loadable.length === 0) return {};
+  return {
+    learn_capability: tool({
+      description:
+        "Load the detailed instructions for an advanced capability " +
+        "before you use its tools. Available capabilities: " +
+        loadable.join(", ") +
+        ". Call this FIRST whenever the user wants to: draw / diagram / " +
+        "annotate / re-lay-out the canvas (`whiteboard`), create a saved " +
+        "research writeup (`research`), or document a system integration " +
+        "(`connections`). Returns the full rules for that capability; " +
+        "don't call the capability's tools until you've loaded them.",
+      inputSchema: z.object({
+        capability: z
+          .enum(loadable as [OrgCapability, ...OrgCapability[]])
+          .describe("Which capability's instructions to load."),
+      }),
+      execute: async ({ capability }: { capability: OrgCapability }) => {
+        const def = CAPABILITY_REGISTRY[capability];
+        if (!def || def.core || !loadable.includes(capability)) {
+          return {
+            error:
+              "Unknown or unavailable capability. Available: " +
+              loadable.join(", "),
+          };
+        }
+        return { capability, instructions: def.promptSnippet() };
+      },
+    }),
+  };
+}
+
 /**
  * Merge the selected capabilities' toolsets. Tool names are disjoint
  * across capabilities, so spread order doesn't matter; we still
- * compose in canonical order for determinism.
+ * compose in canonical order for determinism. When any loadable
+ * capability is present, a `learn_capability` tool is added so the
+ * agent can pull its instructions on demand.
  */
 export function composeCapabilityTools(
   selected: readonly OrgCapability[],
   ctx: CapabilityContext,
 ): ToolSet {
+  const resolved = resolveCapabilities(selected);
   let tools: ToolSet = {};
-  for (const cap of resolveCapabilities(selected)) {
+  for (const cap of resolved) {
     tools = { ...tools, ...CAPABILITY_REGISTRY[cap].buildTools(ctx) };
   }
+  tools = { ...tools, ...buildLearnCapabilityTool(resolved) };
   return tools;
 }
 
 /**
- * Concatenate the selected capabilities' prompt snippets in canonical
- * order. With the full set this equals `getCanvasPromptSuffix()`.
+ * Build the system-prompt suffix for the selected capabilities.
+ *
+ * Core capabilities' snippets are emitted inline, in canonical order.
+ * Loadable capabilities are NOT inlined; instead a short menu lists
+ * them and tells the agent to call `learn_capability` before using
+ * their tools (progressive disclosure — keeps the always-on prompt
+ * small). With the full set this is roadmap + planner inline + a
+ * three-item menu, NOT the full `getCanvasPromptSuffix()`.
  */
 export function composeCapabilityPromptSuffix(
   selected: readonly OrgCapability[],
 ): string {
-  return resolveCapabilities(selected)
+  const resolved = resolveCapabilities(selected);
+  const core = resolved
+    .filter((cap) => CAPABILITY_REGISTRY[cap].core)
     .map((cap) => CAPABILITY_REGISTRY[cap].promptSnippet())
     .join("");
+
+  const loadable = loadableCapabilities(resolved);
+  if (loadable.length === 0) return core;
+
+  const menu = loadable
+    .map((cap) => `- ${CAPABILITY_REGISTRY[cap].menuBlurb}`)
+    .join("\n");
+
+  return (
+    core +
+    `
+
+## More capabilities (load on demand)
+
+These advanced capabilities are available but their detailed rules are NOT loaded yet. Before using any of their tools, call \`learn_capability(<name>)\` to load the instructions:
+
+${menu}
+
+Only load a capability when the user's request actually calls for it; for the common "propose a feature, then send it to its planner" flow you don't need any of these.`
+  );
 }
 
 /**
