@@ -962,8 +962,18 @@ export function buildInitiativeTools(
               "sub-agent to this planner run, letting the planner " +
               "query that workspace's own swarm / knowledge graph for " +
               "cross-workspace details on demand. Only mention " +
-              "workspaces that are genuinely relevant. Markdown is " +
-              "supported. Required.",
+              "workspaces that are genuinely relevant. " +
+              "ACCURACY OVER SPEED: only include contracts you " +
+              "actually verified via research/tools (the per-workspace " +
+              "concept/code agents, `web_search`, or a referenced " +
+              "`@slug` workspace's swarm) — never guess or fabricate " +
+              "endpoint paths, field names, or types. A made-up " +
+              "contract is worse than none: the planner treats the " +
+              "seed as ground truth and will build on it. For anything " +
+              "you could not verify, say so explicitly and instruct " +
+              "the planner to confirm the shape against the real " +
+              "codebase before implementing, rather than inventing it. " +
+              "Markdown is supported. Required.",
           ),
         workspaceSlug: z
           .string()
