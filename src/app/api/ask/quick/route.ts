@@ -23,6 +23,7 @@ import {
   messagesFromSteps,
   appendTurnMessages,
   fetchStoredConversationMessages,
+  normalizeStoredAttachments,
   type StoredMessage,
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
@@ -404,30 +405,9 @@ export async function POST(request: NextRequest) {
       return "";
     })();
     // Normalize the top-level attachments the client forwarded into the
-    // stored shape so the image survives reload. Defensive: drop anything
-    // missing the required fields.
-    const userAttachments: StoredAttachment[] = Array.isArray(attachments)
-      ? (attachments as unknown[]).flatMap((a) => {
-          if (!a || typeof a !== "object") return [];
-          const r = a as Record<string, unknown>;
-          if (
-            typeof r.path !== "string" ||
-            typeof r.filename !== "string" ||
-            typeof r.mimeType !== "string" ||
-            typeof r.size !== "number"
-          ) {
-            return [];
-          }
-          return [
-            {
-              path: r.path,
-              filename: r.filename,
-              mimeType: r.mimeType,
-              size: r.size,
-            },
-          ];
-        })
-      : [];
+    // stored shape so the image survives reload.
+    const userAttachments: StoredAttachment[] =
+      normalizeStoredAttachments(attachments);
     let canvasConversationRowId: string | null = null;
     // Persist when there's text OR an attachment — an image-only turn has
     // no text but still must be saved.
