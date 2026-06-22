@@ -70,10 +70,11 @@ export async function GET(
     });
 
     if (!response.ok) {
-      return NextResponse.json(
-        { success: false, error: `Jarvis returned ${response.status}` },
-        { status: response.status },
+      console.warn(`[Lingo nodes/search] Jarvis returned ${response.status}, falling back to mock`);
+      const results = mockLingoNodes.filter((n) =>
+        n.name.toLowerCase().includes(q.toLowerCase()),
       );
+      return NextResponse.json({ success: true, data: results });
     }
 
     const data = await response.json();
