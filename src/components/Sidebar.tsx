@@ -504,6 +504,13 @@ export function Sidebar({ user }: SidebarProps) {
           children: item.children.filter((child) => !hidden.has(child.label)),
         };
       }
+      // Filter Evals child from Protect for non-stakwork workspaces
+      if (item.label === "Protect" && item.children && !(workspaceSlug === "stakwork" || devMode)) {
+        return {
+          ...item,
+          children: item.children.filter((child) => child.label !== "Evals"),
+        };
+      }
       return item;
     });
 
