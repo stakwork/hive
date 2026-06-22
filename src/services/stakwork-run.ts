@@ -886,6 +886,23 @@ export async function processStakworkRunWebhook(
     return { runId: run.id, status: run.status };
   }
 
+  // Step 2a: PROMPT_EVAL — fire Pusher event and return early (no auto-accept / fast-track)
+  if (run.type === StakworkRunType.PROMPT_EVAL) {
+    const evalResult = serializedResult ? JSON.parse(serializedResult) : null;
+    try {
+      const channelName = getWorkspaceChannelName(run.workspace.slug);
+      await pusherServer.trigger(channelName, PUSHER_EVENTS.PROMPT_EVAL_RESULT, {
+        runId: run.id,
+        promptVersionId: run.promptVersionId,
+        result: evalResult,
+      });
+    } catch (pusherError) {
+      logger.error("[prompt-eval] Pusher trigger failed (non-fatal)", "stakwork-run", { error: String(pusherError) });
+    }
+    // Auto-accept and fast-track do not apply to evals
+    return { runId: run.id, status, dataType };
+  }
+
   // Step 2: Post-process DIAGRAM_GENERATION — run ELK layout and upsert/update whiteboard
   const { whiteboard_id } = queryParams;
   logger.debug("[diagram] Post-process check", "stakwork-run", {
