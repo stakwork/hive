@@ -31,10 +31,13 @@ vi.mock("@/components/ui/skeleton", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  ArrowRight: () => <span>→</span>,
+  Check: () => <span>✓</span>,
   ChevronDown: () => <span data-testid="chevron-down">▼</span>,
   ChevronRight: () => <span data-testid="chevron-right">▶</span>,
   Loader2: () => <span data-testid="loader-icon">⟳</span>,
   Play: () => <span>▷</span>,
+  X: () => <span>✗</span>,
 }));
 
 import { EvalTriggerList } from "@/components/evals/EvalTriggerList";
@@ -195,11 +198,13 @@ describe("EvalTriggerList", () => {
     await userEvent.click(screen.getByTestId("trigger-count-chip"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("trigger-count-chip").textContent).toContain("2 triggers");
+      const chip = screen.getByTestId("trigger-count-chip").textContent ?? "";
+      expect(chip).toContain("Triggers");
+      expect(chip).toContain("2");
     });
   });
 
-  it("shows 'No triggers' chip after empty response", async () => {
+  it("shows empty 'none yet' chip after empty response", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       json: async () => ({ data: { nodes: [] } }),
     });
@@ -208,8 +213,72 @@ describe("EvalTriggerList", () => {
     await userEvent.click(screen.getByTestId("trigger-count-chip"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("trigger-count-chip").textContent).toContain("No triggers");
+      expect(screen.getByTestId("trigger-count-chip").textContent).toContain("none yet");
     });
+  });
+
+  it("hides triggers with no agent, start, or end (blank/legacy rows)", async () => {
+    const triggersWithBlank = [
+      MOCK_TRIGGERS[0],
+      {
+        ref_id: "trigger-blank",
+        node_type: "EvalTrigger",
+        properties: { run_count: 1 },
+        outputs: [],
+      },
+    ];
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: triggersWithBlank } }),
+    });
+
+    render(<EvalTriggerList {...DEFAULT_PROPS} />);
+    await userEvent.click(screen.getByTestId("trigger-count-chip"));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("trigger-row")).toHaveLength(1);
+    });
+    // Count chip reflects only the visible (identifiable) trigger
+    expect(screen.getByTestId("trigger-count-chip").textContent).toContain("1");
+  });
+
+  it("hides blank-verdict outputs and numbers attempts sequentially when attempt_number is 0", async () => {
+    const triggersWithMixedOutputs = [
+      {
+        ...MOCK_TRIGGERS[0],
+        outputs: [
+          {
+            ref_id: "o-empty",
+            node_type: "EvalTriggerOutput",
+            properties: { result: "", score: 0, attempt_number: 0 },
+          },
+          {
+            ref_id: "o-pass",
+            node_type: "EvalTriggerOutput",
+            properties: { result: "pass", score: 1, attempt_number: 0 },
+          },
+          {
+            ref_id: "o-fail",
+            node_type: "EvalTriggerOutput",
+            properties: { result: "fail", score: 0, attempt_number: 0 },
+          },
+        ],
+      },
+    ];
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: { nodes: triggersWithMixedOutputs } }),
+    });
+
+    render(<EvalTriggerList {...DEFAULT_PROPS} />);
+    await userEvent.click(screen.getByTestId("trigger-count-chip"));
+
+    await waitFor(() => {
+      // The blank-result output is filtered out
+      expect(screen.getAllByTestId("trigger-output-row")).toHaveLength(2);
+    });
+
+    const rows = screen.getAllByTestId("trigger-output-row");
+    expect(rows[0].textContent).toContain("#1");
+    expect(rows[1].textContent).toContain("#2");
   });
 
   it("Run Eval button enters disabled state during execution", async () => {
@@ -277,7 +346,7 @@ describe("EvalTriggerList", () => {
     expect(rows[1].textContent).toContain("0.22");
   });
 
-  it("pass output uses default badge variant, fail uses destructive", async () => {
+  it("visually distinguishes pass and fail outputs", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ json: async () => ({ data: { nodes: [MOCK_TRIGGERS[0]] } }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) })
@@ -291,12 +360,13 @@ describe("EvalTriggerList", () => {
     await userEvent.click(screen.getByTestId("run-eval-btn"));
     await waitFor(() => expect(screen.getAllByTestId("trigger-output-row")).toHaveLength(2));
 
-    const badges = screen
-      .getAllByTestId("trigger-output-row")
-      .flatMap((row) => Array.from(row.querySelectorAll("[data-variant]")));
-    const variants = badges.map((b) => b.getAttribute("data-variant"));
-    expect(variants).toContain("default");
-    expect(variants).toContain("destructive");
+    const rows = screen.getAllByTestId("trigger-output-row");
+    expect(rows[0].textContent?.toLowerCase()).toContain("pass");
+    expect(rows[1].textContent?.toLowerCase()).toContain("fail");
+
+    const html = screen.getByTestId("trigger-list").innerHTML;
+    expect(html).toContain("emerald");
+    expect(html).toContain("rose");
   });
 
   it("shows error toast when fetch fails", async () => {
