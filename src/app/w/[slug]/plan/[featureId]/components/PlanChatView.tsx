@@ -150,7 +150,9 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const handleTabChange = useCallback(
     (tab: ArtifactType) => {
       setActiveTab(tab);
-      router.replace(`?tab=${tab.toLowerCase()}`, { scroll: false });
+      const params = new URLSearchParams(window.location.search);
+      params.set("tab", tab.toLowerCase());
+      router.replace(`?${params.toString()}`, { scroll: false });
       if (typeof window !== "undefined") {
         localStorage.setItem(`plan_tab_${featureId}`, tab);
       }

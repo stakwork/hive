@@ -434,6 +434,47 @@ describe("PlanChatView", () => {
       expect(lastCall.controlledTab).toBe("TASKS");
       expect(typeof lastCall.onControlledTabChange).toBe("function");
     });
+
+    it("should preserve existing query params (e.g. from) when tab changes", async () => {
+      mockGet.mockReturnValue(null);
+
+      // Simulate the URL already containing a `from` param (e.g. user came from page 3)
+      const fromValue = encodeURIComponent("/w/test-workspace/plan?page=3");
+      const originalLocation = window.location;
+      Object.defineProperty(window, "location", {
+        writable: true,
+        value: { ...originalLocation, search: `?from=${fromValue}` },
+      });
+
+      render(<PlanChatView featureId="feature-123" workspaceSlug="test-workspace" workspaceId="workspace-1" />);
+
+      await waitFor(() => {
+        expect(mockArtifactsPanel).toHaveBeenCalled();
+      });
+
+      const lastCall = mockArtifactsPanel.mock.calls[mockArtifactsPanel.mock.calls.length - 1][0];
+      const onControlledTabChange = lastCall.onControlledTabChange;
+
+      await act(async () => {
+        onControlledTabChange("TASKS");
+      });
+
+      // The `from` param must survive the tab switch
+      expect(mockReplace).toHaveBeenCalledWith(
+        expect.stringContaining(`from=${fromValue}`),
+        { scroll: false }
+      );
+      expect(mockReplace).toHaveBeenCalledWith(
+        expect.stringContaining("tab=tasks"),
+        { scroll: false }
+      );
+
+      // Restore window.location
+      Object.defineProperty(window, "location", {
+        writable: true,
+        value: originalLocation,
+      });
+    });
   });
 
   describe("replyId handling (existing test)", () => {
