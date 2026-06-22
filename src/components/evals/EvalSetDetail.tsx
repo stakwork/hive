@@ -4,11 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionMenu } from "@/components/ui/action-menu";
-import { ArrowLeft, Pencil, Plus, Trash2, Zap } from "lucide-react";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { ArrowLeft, ClipboardList, Link2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { CreateRequirementModal } from "./CreateRequirementModal";
 import { EditRequirementModal } from "./EditRequirementModal";
-import { CaptureEvalTriggerModal } from "./CaptureEvalTriggerModal";
 import { EvalTriggerList } from "./EvalTriggerList";
 import type { JarvisNode } from "@/types/jarvis";
 
@@ -35,7 +42,6 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
   const [requirements, setRequirements] = useState<RequirementNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
-  const [linkTarget, setLinkTarget] = useState<{ reqId: string } | null>(null);
   const [editReqTarget, setEditReqTarget] = useState<RequirementNode | null>(null);
 
   async function fetchRequirements() {
@@ -87,7 +93,15 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h2 className="text-xl font-semibold">{evalSetName}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-semibold">{evalSetName}</h2>
+              {!loading && requirements.length > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  {requirements.length} requirement
+                  {requirements.length !== 1 ? "s" : ""}
+                </Badge>
+              )}
+            </div>
             {!!evalSet.properties?.description && (
               <p className="text-sm text-muted-foreground">
                 {String(evalSet.properties.description)}
@@ -109,9 +123,23 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
           ))}
         </div>
       ) : requirements.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No requirements yet — add one to get started
-        </div>
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ClipboardList />
+            </EmptyMedia>
+            <EmptyTitle>No requirements yet</EmptyTitle>
+            <EmptyDescription>
+              Add a requirement to define what good looks like for this eval set.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1 h-4 w-4" />
+              Add Requirement
+            </Button>
+          </EmptyContent>
+        </Empty>
       ) : (
         <div className="space-y-3">
           {requirements.map((req) => {
@@ -122,12 +150,6 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
             const promptSnippet = req.properties?.prompt_snippet
               ? String(req.properties.prompt_snippet)
               : null;
-            const posCount = Array.isArray(req.properties?.desirable_cases)
-              ? req.properties.desirable_cases.length
-              : 0;
-            const negCount = Array.isArray(req.properties?.undesirable_cases)
-              ? req.properties.undesirable_cases.length
-              : 0;
             const sessionCount =
               typeof req.properties?.linked_session_count === "number"
                 ? req.properties.linked_session_count
@@ -140,14 +162,12 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
                 data-testid="requirement-row"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1 space-y-1">
+                  <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{name}</span>
-                      <Badge variant="outline" className="text-xs">
-                        +{posCount} / -{negCount}
-                      </Badge>
                       {sessionCount > 0 && (
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="secondary" className="gap-1 text-xs">
+                          <Link2 className="h-3 w-3" />
                           {sessionCount} session{sessionCount !== 1 ? "s" : ""}
                         </Badge>
                       )}
@@ -156,42 +176,32 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
                       <p className="text-sm text-muted-foreground">{description}</p>
                     )}
                     {promptSnippet && (
-                      <p className="truncate text-xs text-muted-foreground font-mono bg-muted rounded px-2 py-1">
+                      <p className="truncate rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">
                         {promptSnippet}
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setLinkTarget({ reqId: req.ref_id })}
-                    >
-                      <Zap className="mr-1 h-3 w-3" />
-                      Capture Trigger
-                    </Button>
-                    <ActionMenu
-                      actions={[
-                        {
-                          label: "Edit",
-                          icon: Pencil,
-                          onClick: () => setEditReqTarget(req),
+                  <ActionMenu
+                    actions={[
+                      {
+                        label: "Edit",
+                        icon: Pencil,
+                        onClick: () => setEditReqTarget(req),
+                      },
+                      {
+                        label: "Delete",
+                        icon: Trash2,
+                        variant: "destructive",
+                        confirmation: {
+                          title: "Delete requirement?",
+                          description:
+                            "This will permanently remove this requirement from the eval set.",
+                          confirmText: "Delete",
+                          onConfirm: () => handleDeleteRequirement(req.ref_id),
                         },
-                        {
-                          label: "Delete",
-                          icon: Trash2,
-                          variant: "destructive",
-                          confirmation: {
-                            title: "Delete requirement?",
-                            description:
-                              "This will permanently remove this requirement from the eval set.",
-                            confirmText: "Delete",
-                            onConfirm: () => handleDeleteRequirement(req.ref_id),
-                          },
-                        },
-                      ]}
-                    />
-                  </div>
+                      },
+                    ]}
+                  />
                 </div>
                 <EvalTriggerList
                   evalSetId={evalSet.ref_id}
@@ -211,16 +221,6 @@ export function EvalSetDetail({ evalSet, onBack }: EvalSetDetailProps) {
         order={requirements.length}
         onCreated={fetchRequirements}
       />
-
-      {linkTarget && (
-        <CaptureEvalTriggerModal
-          open={!!linkTarget}
-          onOpenChange={(o) => { if (!o) setLinkTarget(null); }}
-          evalSetId={evalSet.ref_id}
-          reqId={linkTarget.reqId}
-          onCreated={fetchRequirements}
-        />
-      )}
 
       {editReqTarget !== null && (
         <EditRequirementModal
