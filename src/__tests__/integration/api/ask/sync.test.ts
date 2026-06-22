@@ -546,4 +546,91 @@ describe('POST /api/ask/sync', () => {
       expect(toolNames).not.toContain('schedule_check');
     });
   });
+
+  describe('maxTurns', () => {
+    it('rejects a non-positive / non-integer maxTurns (400)', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+      for (const bad of [0, -1, 2.5, 'three']) {
+        const response = await POST(
+          createAuthenticatedPostRequest(
+            '/api/ask/sync',
+            { message: 'hi', workspaceSlug: workspace.slug, maxTurns: bad },
+            owner,
+          ),
+        );
+        expect(response.status).toBe(400);
+        const data = await response.json();
+        expect(data.error).toMatch(/maxTurns/i);
+      }
+    });
+
+    it('appends a step-cap stop condition when maxTurns is set', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([{ text: 'one step', toolCalls: [], toolResults: [] }]) as any,
+      );
+
+      // Without maxTurns: only the default end-marker stop condition.
+      await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          { message: 'no cap', workspaceSlug: workspace.slug },
+          owner,
+        ),
+      );
+      const noCap = vi.mocked(streamText).mock.calls.at(-1)![0];
+      expect(noCap.stopWhen).toHaveLength(1);
+
+      // With maxTurns: the cap is appended (end-marker + step cap).
+      await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          { message: 'capped', workspaceSlug: workspace.slug, maxTurns: 1 },
+          owner,
+        ),
+      );
+      const capped = vi.mocked(streamText).mock.calls.at(-1)![0];
+      expect(capped.stopWhen).toHaveLength(2);
+    });
+
+    it('counts generated steps, not input messages (100 in, 1 step out)', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+
+      // A big replayed transcript — these are CONTEXT, not steps.
+      const transcript = Array.from({ length: 100 }, (_, i) => ({
+        role: i % 2 === 0 ? 'user' : 'assistant',
+        content: `msg ${i}`,
+      }));
+
+      // The agent generates exactly one step (what maxTurns:1 would yield).
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([
+          { text: 'the single next step', toolCalls: [], toolResults: [] },
+        ]) as any,
+      );
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          {
+            messages: transcript,
+            workspaceSlug: workspace.slug,
+            dryRun: true,
+            maxTurns: 1,
+          },
+          owner,
+        ),
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      // All 100 messages were fed to the model as context...
+      const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
+      expect(callArgs.messages).toHaveLength(100);
+      // ...but the response carries only the generated step(s), never the input.
+      expect(data.messages).toHaveLength(1);
+      expect(data.messages[0].content).toBe('the single next step');
+    });
+  });
 });

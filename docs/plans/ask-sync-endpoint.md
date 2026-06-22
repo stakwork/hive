@@ -59,6 +59,14 @@ scores the result without mutating anything:
   connection writes) is stripped. Response carries `dryRun: true` and
   `conversationId: null`.
 
+- **`maxTurns`** (positive integer, optional) caps the agentic loop by
+  appending a `stepCountIs(maxTurns)` stop condition (ANY stop condition
+  ends the loop — so the run halts at the model's `[END_OF_ANSWER]` or the
+  cap, whichever is first). It counts the agent's **generated steps in
+  this call**, NOT the input transcript — so `maxTurns: 1` with a
+  100-message replay still returns exactly one step. Lets an evaluator
+  score just the next single response/tool-call.
+
 > **Companion docs — read first.**
 > - `src/app/org/[githubLogin]/CANVAS_CHAT.md` — the chat subsystem; the org chat → toolset wiring (`runCanvasAgent`, `buildConnectionTools`/`buildCanvasTools`/`buildInitiativeTools`), the `<SubAgentRunCard>` async fan-out.
 > - `docs/plans/backend-driven-canvas-turns.md` — the server-as-single-writer turn model this endpoint inherits (`messagesFromSteps` → `appendTurnMessages`, the `${turnId}-` idempotency prefix, the `CANVAS_CONVERSATION_UPDATED` nudge). The sync endpoint is that exact persistence path with the streaming response swapped for an awaited JSON one.

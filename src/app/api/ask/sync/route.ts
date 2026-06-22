@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
-import { ModelMessage } from "ai";
+import { ModelMessage, stepCountIs } from "ai";
 import {
   validationError,
   serverError,
@@ -80,6 +80,15 @@ import {
  *   - no `schedule_check` tool, no research-worker dispatch, no Pusher.
  * The proposed content lands in the returned rows' `toolCalls[].output`.
  *
+ * ## maxTurns
+ *
+ * `maxTurns` (positive integer, optional) caps the agentic loop via an
+ * extra `stepCountIs(maxTurns)` stop condition — ANY stop condition ends
+ * the loop, so the run halts at whichever comes first (the model's
+ * `[END_OF_ANSWER]` marker or the step cap). `maxTurns: 1` returns just
+ * the next single step (the immediate text and/or tool call), which an
+ * evaluator can use to score one response/tool-call in isolation.
+ *
  * Because the whole generation runs in-request, give the function the
  * same generous headroom as quick — a turn longer than this is the only
  * failure mode.
@@ -145,9 +154,25 @@ export async function POST(request: NextRequest) {
       selectedNodeIds,
       attachments,
       dryRun: bodyDryRun,
+      maxTurns: bodyMaxTurns,
     } = body;
 
     const dryRun = bodyDryRun === true;
+
+    // Optional cap on the agentic loop. A positive integer; `1` returns
+    // just the next single step. Undefined → uncapped (the model's
+    // `[END_OF_ANSWER]` marker is the only stop, as before).
+    let maxTurns: number | undefined;
+    if (bodyMaxTurns !== undefined && bodyMaxTurns !== null) {
+      if (
+        typeof bodyMaxTurns !== "number" ||
+        !Number.isInteger(bodyMaxTurns) ||
+        bodyMaxTurns < 1
+      ) {
+        throw validationError("maxTurns must be a positive integer");
+      }
+      maxTurns = bodyMaxTurns;
+    }
 
     // Replay (eval) mode: a full verbatim transcript instead of a single
     // `message` + server-side history.
@@ -375,6 +400,9 @@ export async function POST(request: NextRequest) {
               : undefined,
           },
           messages: convertedMessages,
+          // Caller-imposed step cap. Appended to the default end-marker
+          // stop condition (ANY condition stopping ends the loop).
+          ...(maxTurns ? { extraStopConditions: stepCountIs(maxTurns) } : {}),
           // The server-owned org-canvas row (live turns only) — what
           // `send_to_feature_planner` lazy-claims for fan-out and what
           // `schedule_check` keys off. Undefined in dryRun (no row).
