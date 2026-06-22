@@ -38,6 +38,25 @@ vi.mock("lucide-react", () => ({
   ChevronRight: () => <span data-testid="chevron-right" />,
   Copy: () => <span data-testid="icon-copy" />,
   Check: () => <span data-testid="icon-check" />,
+  Flag: () => <span data-testid="icon-flag" />,
+}));
+
+vi.mock("@/components/ui/button", () => ({
+  Button: ({
+    children,
+    onClick,
+    disabled,
+    "aria-label": ariaLabel,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+    disabled?: boolean;
+    "aria-label"?: string;
+  }) => (
+    <button onClick={onClick} disabled={disabled} aria-label={ariaLabel}>
+      {children}
+    </button>
+  ),
 }));
 
 vi.mock("@/lib/utils/agent-log-pairing", () => ({
@@ -566,5 +585,54 @@ describe("LogDetailContent", () => {
     expect(screen.getByText("System prompt")).toBeTruthy();
     // System body not shown initially
     expect(screen.queryByText("You are helpful.")).toBeNull();
+  });
+});
+
+// ─── MessageBubble — flag button ──────────────────────────────────────────────
+
+describe("MessageBubble — flag button", () => {
+  const userMsg: ParsedMessage = { role: "user", content: "Hello agent" };
+  const assistantMsg: ParsedMessage = { role: "assistant", content: "Hello user" };
+  const systemMsg: ParsedMessage = { role: "system", content: "You are helpful." };
+  const toolMsg: ParsedMessage = {
+    role: "tool",
+    content: [{ type: "tool-result", toolCallId: "id1", toolName: "bash", output: "ok" }],
+  };
+
+  test("renders flag button for user message when onFlag provided", () => {
+    const onFlag = vi.fn();
+    render(<MessageBubble message={userMsg} onFlag={onFlag} />);
+    expect(screen.getByTestId("icon-flag")).toBeTruthy();
+  });
+
+  test("renders flag button for assistant message when onFlag provided", () => {
+    const onFlag = vi.fn();
+    render(<MessageBubble message={assistantMsg} onFlag={onFlag} />);
+    expect(screen.getByTestId("icon-flag")).toBeTruthy();
+  });
+
+  test("does not render flag button when onFlag is omitted for user message", () => {
+    render(<MessageBubble message={userMsg} />);
+    expect(screen.queryByTestId("icon-flag")).toBeNull();
+  });
+
+  test("does not render flag button when onFlag is omitted for assistant message", () => {
+    render(<MessageBubble message={assistantMsg} />);
+    expect(screen.queryByTestId("icon-flag")).toBeNull();
+  });
+
+  test("does not render flag button for system message even when onFlag provided", () => {
+    const onFlag = vi.fn();
+    render(<MessageBubble message={systemMsg} onFlag={onFlag} />);
+    expect(screen.queryByTestId("icon-flag")).toBeNull();
+  });
+
+  test("calls onFlag when flag button is clicked", async () => {
+    const user = userEvent.setup();
+    const onFlag = vi.fn();
+    render(<MessageBubble message={userMsg} onFlag={onFlag} />);
+    const flagButton = screen.getByTestId("icon-flag").closest("button")!;
+    await user.click(flagButton);
+    expect(onFlag).toHaveBeenCalledTimes(1);
   });
 });
