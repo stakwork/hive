@@ -170,8 +170,13 @@ export function EvalTriggerList({ evalSetId, reqId, slug }: EvalTriggerListProps
               const startPoint = String(trigger.properties?.start_point ?? "");
               const endPoint = String(trigger.properties?.end_point ?? "");
               const isRunning = runningIds.has(trigger.ref_id);
-              const outputs = trigger.outputs ?? [];
-              const passCount = outputs.filter((o) => o.result === "pass").length;
+              // Drop incomplete output nodes that have no verdict yet.
+              const outputs = (trigger.outputs ?? []).filter(
+                (o) => o.result.trim() !== "",
+              );
+              const passCount = outputs.filter(
+                (o) => o.result.toLowerCase() === "pass",
+              ).length;
 
               return (
                 <div
@@ -240,8 +245,10 @@ export function EvalTriggerList({ evalSetId, reqId, slug }: EvalTriggerListProps
                   {/* EvalTriggerOutput rows */}
                   {outputs.length > 0 && (
                     <div className="mt-2.5 space-y-1.5 border-t pt-2.5">
-                      {outputs.map((output) => {
-                        const isPass = output.result === "pass";
+                      {outputs.map((output, i) => {
+                        const verdict = output.result.toLowerCase();
+                        const isPass = verdict === "pass";
+                        const isFail = verdict === "fail";
                         return (
                           <div
                             key={output.ref_id}
@@ -249,17 +256,23 @@ export function EvalTriggerList({ evalSetId, reqId, slug }: EvalTriggerListProps
                             data-testid="trigger-output-row"
                           >
                             <span className="w-6 shrink-0 font-mono text-muted-foreground">
-                              #{output.attempt_number}
+                              #{output.attempt_number || i + 1}
                             </span>
                             <span
                               className={cn(
                                 "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium capitalize",
                                 isPass
                                   ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+                                  : isFail
+                                    ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                                    : "bg-muted text-muted-foreground",
                               )}
                             >
-                              {isPass ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                              {isPass ? (
+                                <Check className="h-3 w-3" />
+                              ) : isFail ? (
+                                <X className="h-3 w-3" />
+                              ) : null}
                               {output.result}
                             </span>
                             <span className="font-medium tabular-nums">

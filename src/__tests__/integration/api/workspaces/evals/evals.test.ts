@@ -412,6 +412,41 @@ describe("Evals API — Integration Tests", () => {
         expect(data.data.nodes[1].properties.order).toBe(1);
       });
 
+      test("excludes the EvalSet root node and tolerates Jarvis node-type casing", async () => {
+        const owner = await createTestUser();
+        const workspace = await createTestWorkspace({ ownerId: owner.id });
+        await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+        await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key" });
+
+        // Mirrors Jarvis's actual casing: "Evalset" root + "Evalrequirement" neighbors.
+        const mockNodes = [
+          { ref_id: "eval-set-1", node_type: "Evalset", properties: { name: "The set" } },
+          { ref_id: "req-1", node_type: "Evalrequirement", properties: { name: "Req A" } },
+          { ref_id: "req-2", node_type: "Evalrequirement", properties: { name: "Req B" } },
+        ];
+
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ nodes: mockNodes, edges: [] }),
+        } as any);
+
+        const request = createAuthenticatedGetRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/evals/eval-set-1/requirements`,
+          owner,
+        );
+
+        const response = await getRequirements(request, {
+          params: Promise.resolve({ slug: workspace.slug, evalSetId: "eval-set-1" }),
+        });
+
+        const data = await response.json();
+        expect(data.data.total).toBe(2);
+        expect(data.data.nodes.map((n: { ref_id: string }) => n.ref_id)).toEqual([
+          "req-1",
+          "req-2",
+        ]);
+      });
+
       test("returns empty array when eval set has no requirements", async () => {
         const owner = await createTestUser();
         const workspace = await createTestWorkspace({ ownerId: owner.id });
