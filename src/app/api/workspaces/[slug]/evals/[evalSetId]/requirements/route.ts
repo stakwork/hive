@@ -68,7 +68,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const jarvisData = await jarvisRes.json();
-    const nodes: JarvisNode[] = jarvisData?.nodes ?? [];
+    // The depth-1 expand returns the EvalSet root node alongside its
+    // EvalRequirement neighbors — drop the root so it isn't listed as a requirement.
+    const nodes: JarvisNode[] = (jarvisData?.nodes ?? []).filter(
+      (n: JarvisNode) => n.ref_id !== evalSetId,
+    );
     const edges: Array<{ target_ref_id: string; properties?: { order?: number }; edge_data?: { order?: number } }> =
       jarvisData?.edges ?? [];
 
