@@ -68,7 +68,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const jarvisData = await jarvisRes.json();
-    const nodes: JarvisNode[] = jarvisData?.nodes ?? [];
+    // The depth-1 expand returns the EvalSet root node alongside its requirement
+    // neighbors, and Jarvis node types come back inconsistently cased
+    // ("Evalset" / "Evalrequirement"). Keep only requirement nodes (matched
+    // case-insensitively) and drop the root so the set isn't listed as a requirement.
+    const nodes: JarvisNode[] = (jarvisData?.nodes ?? []).filter(
+      (n: JarvisNode) =>
+        n.ref_id !== evalSetId &&
+        String(n.node_type ?? "").toLowerCase() === "evalrequirement",
+    );
     const edges: Array<{ target_ref_id: string; properties?: { order?: number }; edge_data?: { order?: number } }> =
       jarvisData?.edges ?? [];
 

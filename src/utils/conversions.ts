@@ -11,7 +11,7 @@ type StatusMapping = {
 
 const workflowStatusMapping: StatusMapping = {
   IN_PROGRESS: ["in_progress", "running", "processing"],
-  COMPLETED: ["completed", "success", "finished"],
+  COMPLETED: ["completed", "complete", "success", "finished"],
   FAILED: ["error", "failed"],
   HALTED: ["halted", "paused", "stopped"],
 };
