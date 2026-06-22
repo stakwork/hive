@@ -14,8 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "@/components/ui/tag-input";
-import { Loader2, Plus, CheckCircle2, Circle } from "lucide-react";
+import { Loader2, Plus, CheckCircle2, Circle, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useEvalRequirements } from "@/hooks/useEvalRequirements";
 
 interface EvalSet {
   ref_id: string;
@@ -58,6 +59,7 @@ export function FlagAsEvalModal({
   const [step1Errors, setStep1Errors] = useState<Record<string, string>>({});
   const [creatingEvalSet, setCreatingEvalSet] = useState(false);
   const [resolvedEvalSetId, setResolvedEvalSetId] = useState<string | null>(null);
+  const [reqListExpanded, setReqListExpanded] = useState(false);
 
   // Step 2 state
   const [agent, setAgent] = useState("");
@@ -66,6 +68,11 @@ export function FlagAsEvalModal({
   const [endPoint, setEndPoint] = useState("");
   const [runCount, setRunCount] = useState(3);
   const [submitting, setSubmitting] = useState(false);
+
+  const {
+    requirements: existingRequirements,
+    loading: loadingExistingReqs,
+  } = useEvalRequirements(slug, selectedEvalSetId);
 
   // Fetch eval sets when modal opens
   useEffect(() => {
@@ -102,6 +109,7 @@ export function FlagAsEvalModal({
       setStep1Errors({});
       setCreatingEvalSet(false);
       setResolvedEvalSetId(null);
+      setReqListExpanded(false);
       setAgent("");
       setEnvironment("");
       setStartPoint("");
@@ -286,6 +294,43 @@ export function FlagAsEvalModal({
                 <p className="text-xs text-destructive">{step1Errors.evalSet}</p>
               )}
             </div>
+
+            {/* Read-only existing requirements summary */}
+            {selectedEvalSetId && selectedEvalSetId !== CREATE_NEW_VALUE && (
+              <div className="space-y-1">
+                {loadingExistingReqs ? (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading existing requirements…
+                  </div>
+                ) : existingRequirements.length > 0 ? (
+                  <div className="rounded-md border p-2 text-sm">
+                    <button
+                      type="button"
+                      onClick={() => setReqListExpanded((v) => !v)}
+                      className="flex w-full items-center gap-1.5 text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {reqListExpanded ? (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      {existingRequirements.length} existing requirement
+                      {existingRequirements.length !== 1 ? "s" : ""} in this set
+                    </button>
+                    {reqListExpanded && (
+                      <ul className="mt-1.5 space-y-0.5 pl-5">
+                        {existingRequirements.map((r) => (
+                          <li key={r.ref_id} className="text-xs text-muted-foreground truncate">
+                            • {r.properties.name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            )}
 
             {/* Requirement fields */}
             <div className="space-y-1">
