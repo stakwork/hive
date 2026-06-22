@@ -481,4 +481,60 @@ describe("LingoExplorer", () => {
       expect(patchCalls).toHaveLength(0);
     });
   });
+
+  describe("Fetch failure", () => {
+    it("renders Retry button after fetch failure", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: false, error: "Jarvis error" }),
+      });
+
+      render(<LingoExplorer workspaceSlug={SLUG} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("retry-button")).toBeInTheDocument();
+      });
+    });
+
+    it("does not trigger second fetch when sentinel intersects after failure", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: false, error: "Jarvis error" }),
+      });
+
+      render(<LingoExplorer workspaceSlug={SLUG} />);
+      await waitFor(() => screen.getByTestId("retry-button"));
+
+      // Trigger intersection — hasMore should be false so no second fetch
+      await act(async () => {
+        intersectionCallback?.([{ isIntersecting: true }]);
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("reloads nodes and hides Retry button after successful retry", async () => {
+      const nodes = makeNodes(3);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: false, error: "Jarvis error" }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { nodes, hasMore: false } }),
+        });
+
+      render(<LingoExplorer workspaceSlug={SLUG} />);
+      await waitFor(() => screen.getByTestId("retry-button"));
+
+      fireEvent.click(screen.getByTestId("retry-button"));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("retry-button")).not.toBeInTheDocument();
+        expect(screen.getByTestId("jargon-card-jargon-1")).toBeInTheDocument();
+      });
+    });
+  });
 });
