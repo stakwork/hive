@@ -36,7 +36,8 @@ vi.mock("@/lib/constants/prompt", () => ({
   getQuickAskPrefixMessages: vi.fn(() => []),
   // Per-capability snippets, consumed by the capability registry
   // (@/lib/ai/capabilities) that runCanvasAgent composes from.
-  getCanvasCapabilitySnippet: vi.fn(() => ""),
+  getRoadmapCapabilitySnippet: vi.fn(() => ""),
+  getWhiteboardCapabilitySnippet: vi.fn(() => ""),
   getPlannerCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
