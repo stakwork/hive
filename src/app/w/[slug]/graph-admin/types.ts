@@ -18,6 +18,7 @@ export interface BoltwallUser {
   pubkey: string | null;
   name: string | null;
   role: "owner" | "admin" | "member";
+  routeHint?: string | null;
 }
 
 export interface GraphAdminClientProps {
