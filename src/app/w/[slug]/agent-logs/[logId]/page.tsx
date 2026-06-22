@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { toast } from "sonner";
 import { LogDetailContent } from "@/components/agent-logs/LogDetailContent";
 import { FlagAsEvalModal } from "@/components/evals/FlagAsEvalModal";
+import { AgentSessionCaptureModal } from "@/components/evals/AgentSessionCaptureModal";
 import type { ParsedMessage, AgentLogStats, AgentRunConfig } from "@/lib/utils/agent-log-stats";
 
 interface LogMeta {
@@ -35,6 +36,8 @@ export default function AgentLogDetailPage() {
 
   const [logMeta, setLogMeta] = useState<LogMeta | null>(null);
   const [flagModalOpen, setFlagModalOpen] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [captureTurnIndex, setCaptureTurnIndex] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     if (!logId) return;
@@ -128,6 +131,7 @@ export default function AgentLogDetailPage() {
         rawContent={rawContent}
         loading={loading}
         error={error}
+        onFlagTurn={(i) => { setCaptureTurnIndex(i); setCaptureOpen(true); }}
       />
 
       <FlagAsEvalModal
@@ -143,6 +147,19 @@ export default function AgentLogDetailPage() {
             workflow_id: null,
           }
         }
+        onCaptureEntireSession={() => {
+          setCaptureTurnIndex(undefined);
+          setFlagModalOpen(false);
+          setCaptureOpen(true);
+        }}
+      />
+
+      <AgentSessionCaptureModal
+        open={captureOpen}
+        onOpenChange={setCaptureOpen}
+        slug={slug}
+        logId={logId}
+        turnIndex={captureTurnIndex}
       />
     </div>
   );

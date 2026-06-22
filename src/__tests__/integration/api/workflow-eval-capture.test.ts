@@ -590,4 +590,152 @@ describe("POST .../workflows/[workflowId]/eval/capture", () => {
       expect(data2.data.triggerRef).toBe("trigger-ref-2");
     });
   });
+
+  describe("Attach to existing requirement (requirementId)", () => {
+    test("(b) requirementId only — skips EvalRequirement creation, only creates EvalTrigger", async () => {
+      const { user, workspace } = await createTestFixtures();
+
+      // IDOR check fetch returns valid EvalRequirement
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ node_type: "EvalRequirement", ref_id: "existing-req-ref" }),
+      } as Response);
+
+      // addNode only called once for EvalTrigger
+      vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" });
+      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+
+      const body = {
+        run_id: "1001",
+        step_id: "llm_step",
+        requirementId: "existing-req-ref",
+        reason: "test",
+        inputs: sampleInputs,
+        outputs: sampleOutputs,
+        evalSetId: SAMPLE_EVAL_SET_ID,
+      };
+
+      const request = makeRequest(workspace.slug, "42", body, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(200);
+
+      // Only EvalTrigger created, no EvalRequirement
+      expect(nodesService.addNode).toHaveBeenCalledTimes(1);
+      const nodeType = vi.mocked(nodesService.addNode).mock.calls[0][1].node_type;
+      expect(nodeType).toBe("EvalTrigger");
+
+      // Only HAS_TRIGGER edge, no HAS_REQUIREMENT
+      expect(nodesService.addEdge).toHaveBeenCalledTimes(1);
+      const edgeType = vi.mocked(nodesService.addEdge).mock.calls[0][1].edge.edge_type;
+      expect(edgeType).toBe("HAS_TRIGGER");
+
+      // requirementRef is the provided requirementId
+      const data = await response.json();
+      expect(data.data.requirementRef).toBe("existing-req-ref");
+    });
+
+    test("(c) neither requirement nor requirementId → 400", async () => {
+      const { user, workspace } = await createTestFixtures();
+
+      const body = {
+        run_id: "1001",
+        step_id: "llm_step",
+        // neither requirement nor requirementId
+        inputs: sampleInputs,
+        evalSetId: SAMPLE_EVAL_SET_ID,
+      };
+
+      const request = makeRequest(workspace.slug, "42", body, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toMatch(/requirement/i);
+      expect(nodesService.addNode).not.toHaveBeenCalled();
+    });
+
+    test("(d) requirementId pointing to non-existent node → 403", async () => {
+      const { user, workspace } = await createTestFixtures();
+
+      // IDOR check returns 404
+      mockFetch.mockResolvedValueOnce({ ok: false } as Response);
+
+      const body = {
+        run_id: "1001",
+        step_id: "llm_step",
+        requirementId: "non-existent-req-ref",
+        inputs: sampleInputs,
+        evalSetId: SAMPLE_EVAL_SET_ID,
+      };
+
+      const request = makeRequest(workspace.slug, "42", body, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(403);
+      expect(nodesService.addNode).not.toHaveBeenCalled();
+    });
+
+    test("(d) requirementId pointing to a wrong node type → 403", async () => {
+      const { user, workspace } = await createTestFixtures();
+
+      // Node exists but is wrong type (e.g., EvalSet)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ node_type: "EvalSet", ref_id: "some-evalset-ref" }),
+      } as Response);
+
+      const body = {
+        run_id: "1001",
+        step_id: "llm_step",
+        requirementId: "some-evalset-ref",
+        inputs: sampleInputs,
+        evalSetId: SAMPLE_EVAL_SET_ID,
+      };
+
+      const request = makeRequest(workspace.slug, "42", body, user);
+      const response = await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      expect(response.status).toBe(403);
+      expect(nodesService.addNode).not.toHaveBeenCalled();
+    });
+
+    test("HAS_TRIGGER edge source is the provided requirementId when attaching", async () => {
+      const { user, workspace } = await createTestFixtures();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ node_type: "EvalRequirement", ref_id: "existing-req-ref" }),
+      } as Response);
+
+      vi.mocked(nodesService.addNode).mockResolvedValueOnce({ success: true, ref_id: "trigger-ref-1" });
+      vi.mocked(nodesService.addEdge).mockResolvedValue({ success: true });
+
+      const body = {
+        run_id: "1001",
+        step_id: "llm_step",
+        requirementId: "existing-req-ref",
+        inputs: sampleInputs,
+        evalSetId: SAMPLE_EVAL_SET_ID,
+      };
+
+      const request = makeRequest(workspace.slug, "42", body, user);
+      await POST(request, {
+        params: Promise.resolve({ slug: workspace.slug, workflowId: "42" }),
+      });
+
+      const edgeCalls = vi.mocked(nodesService.addEdge).mock.calls;
+      expect(edgeCalls).toHaveLength(1);
+      expect(edgeCalls[0][1].edge.edge_type).toBe("HAS_TRIGGER");
+      expect(edgeCalls[0][1].source.ref_id).toBe("existing-req-ref");
+    });
+  });
 });
