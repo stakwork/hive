@@ -1,12 +1,14 @@
 import React from "react";
 import { describe, test, it, expect, vi } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { render, waitFor, fireEvent } from "@testing-library/react";
 import { FeaturesList } from "@/components/features/FeaturesList";
+import * as navigation from "next/navigation";
 
 // Mock Next.js router
+const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({
-    push: vi.fn(),
+    push: mockPush,
     replace: vi.fn(),
     refresh: vi.fn(),
   })),
@@ -163,6 +165,99 @@ describe("FeaturesList - Link Navigation", () => {
 
     // Title text is rendered directly (no overlay anchor in new implementation)
     expect(container.textContent).toContain("Test Feature");
+  });
+
+  test("encodes current URL as `from` param when navigating to a plan on page 1 (no page param)", async () => {
+    // Default mock: pathname = /w/test-workspace/plan, searchParams = empty
+    mockPush.mockClear();
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: [
+          {
+            id: "feature-1",
+            title: "Test Feature",
+            status: "IN_PROGRESS",
+            createdBy: { id: "user-1", name: "John" },
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            _count: { tasks: 0 },
+          },
+        ],
+        pagination: { page: 1, limit: 10, totalPages: 1, hasMore: false, totalCountWithoutFilters: 1 },
+      }),
+    });
+
+    const { container } = render(<FeaturesList workspaceId="workspace-1" />);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("tr.cursor-pointer").length).toBeGreaterThan(0);
+    });
+
+    const row = container.querySelector("tr.cursor-pointer")!;
+    fireEvent.click(row);
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    const url = mockPush.mock.calls[0][0] as string;
+    // Should navigate to the plan detail
+    expect(url).toContain("/w/test-workspace/plan/feature-1");
+    // The `from` param should encode the current pathname (no extra query string since page=1 has no param)
+    expect(url).toContain("from=");
+    const fromParam = new URL(url, "http://localhost").searchParams.get("from")!;
+    expect(decodeURIComponent(fromParam)).toBe("/w/test-workspace/plan");
+  });
+
+  test("encodes `from` param including ?page=N when navigating from a paginated list page", async () => {
+    mockPush.mockClear();
+
+    // Override searchParams to simulate being on page 3
+    vi.mocked(navigation.useSearchParams).mockReturnValue({
+      get: (key: string) => (key === "page" ? "3" : null),
+      toString: () => "page=3",
+    } as any);
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: [
+          {
+            id: "feature-2",
+            title: "Another Feature",
+            status: "TODO",
+            createdBy: { id: "user-1", name: "John" },
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            _count: { tasks: 0 },
+          },
+        ],
+        pagination: { page: 3, limit: 10, totalPages: 5, hasMore: true, totalCountWithoutFilters: 50 },
+      }),
+    });
+
+    const { container } = render(<FeaturesList workspaceId="workspace-1" />);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("tr.cursor-pointer").length).toBeGreaterThan(0);
+    });
+
+    const row = container.querySelector("tr.cursor-pointer")!;
+    fireEvent.click(row);
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    const url = mockPush.mock.calls[0][0] as string;
+    expect(url).toContain("/w/test-workspace/plan/feature-2");
+    // `from` must include the ?page=3 query param so back navigation returns to page 3
+    const fromParam = new URL(url, "http://localhost").searchParams.get("from")!;
+    expect(decodeURIComponent(fromParam)).toBe("/w/test-workspace/plan?page=3");
+
+    // Reset searchParams mock back to default
+    vi.mocked(navigation.useSearchParams).mockReturnValue({
+      get: () => null,
+      toString: () => "",
+    } as any);
   });
 });
 
