@@ -57,6 +57,38 @@ export interface StoredAttachment {
   size: number;
 }
 
+/**
+ * Normalize the top-level `attachments` a client forwards on a turn into
+ * the stored `StoredAttachment[]` shape, so the image survives reload.
+ * Defensive: tolerates any input and drops anything that isn't an object
+ * with all four required fields of the right types. Shared by the
+ * streaming (`/api/ask/quick`) and synchronous (`/api/ask/sync`) routes
+ * so the two stay in lockstep on the persisted shape.
+ */
+export function normalizeStoredAttachments(input: unknown): StoredAttachment[] {
+  if (!Array.isArray(input)) return [];
+  return (input as unknown[]).flatMap((a) => {
+    if (!a || typeof a !== "object") return [];
+    const r = a as Record<string, unknown>;
+    if (
+      typeof r.path !== "string" ||
+      typeof r.filename !== "string" ||
+      typeof r.mimeType !== "string" ||
+      typeof r.size !== "number"
+    ) {
+      return [];
+    }
+    return [
+      {
+        path: r.path,
+        filename: r.filename,
+        mimeType: r.mimeType,
+        size: r.size,
+      },
+    ];
+  });
+}
+
 export interface StoredMessage {
   id: string;
   role: "user" | "assistant";

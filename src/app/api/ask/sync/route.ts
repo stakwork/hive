@@ -25,6 +25,7 @@ import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import {
   messagesFromSteps,
   appendTurnMessages,
+  normalizeStoredAttachments,
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
 import { buildDeferredCheckTools } from "@/lib/ai/deferredCheckTools";
@@ -183,31 +184,11 @@ export async function POST(request: NextRequest) {
 
     const userText = message.trim();
 
-    // Normalize forwarded attachments into the stored shape (drop anything
-    // missing required fields). Persisted with the user row so they survive
-    // reload, and embedded as image parts so the model sees them this turn.
-    const userAttachments: StoredAttachment[] = Array.isArray(attachments)
-      ? (attachments as unknown[]).flatMap((a) => {
-          if (!a || typeof a !== "object") return [];
-          const r = a as Record<string, unknown>;
-          if (
-            typeof r.path !== "string" ||
-            typeof r.filename !== "string" ||
-            typeof r.mimeType !== "string" ||
-            typeof r.size !== "number"
-          ) {
-            return [];
-          }
-          return [
-            {
-              path: r.path,
-              filename: r.filename,
-              mimeType: r.mimeType,
-              size: r.size,
-            },
-          ];
-        })
-      : [];
+    // Normalize forwarded attachments into the stored shape. Persisted with
+    // the user row so they survive reload, and embedded as image parts below
+    // so the model sees them this turn.
+    const userAttachments: StoredAttachment[] =
+      normalizeStoredAttachments(attachments);
 
     // Build the new user ModelMessage. With image attachments the content
     // is a multi-part array (`{type:"text"} + {type:"image"}`) mirroring the
