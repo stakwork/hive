@@ -27,6 +27,7 @@ vi.mock("@/components/evals/CaptureEvalForm", () => ({
     submitting,
     onSelectRequirement,
     selectedEvalSetId,
+    selectedRequirementId,
   }: {
     requirement: string;
     reason: string;
@@ -37,7 +38,7 @@ vi.mock("@/components/evals/CaptureEvalForm", () => ({
     onSelectRequirement?: (id: string | null) => void;
     selectedEvalSetId?: string;
   }) => (
-    <div data-testid="capture-eval-form" data-evalset={selectedEvalSetId || ""}>
+    <div data-testid="capture-eval-form" data-evalset={selectedEvalSetId || ""} data-req={selectedRequirementId ?? ""}>
       <input
         aria-label="requirement"
         value={requirement}
@@ -644,12 +645,16 @@ describe("FlagRunEvalModal", () => {
       fireEvent.click(screen.getByText("Generate Title").closest("button")!);
       fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-      // Wait for step 2 AND for the evals fetch to auto-select a set (non-empty data-evalset).
-      // Clicking the existing-req button before the evals fetch resolves causes the
-      // selectedEvalSetId effect to reset selectedRequirementId back to null.
+      // Wait for step 2, the evals fetch to auto-select a set, AND for any
+      // subsequent selectedEvalSetId-change effects (e.g. the auto-select
+      // CREATE_NEW_REQ effect in CaptureEvalForm) to finish settling so that
+      // clicking the existing-req button isn't immediately overwritten.
       await waitFor(() => {
         const form = screen.getByTestId("capture-eval-form");
         expect(form.getAttribute("data-evalset")).not.toBe("");
+        // data-req will be "" (reset) or CREATE_NEW_REQ after effects settle;
+        // either way it must not be mid-flight (undefined is rendered as "").
+        expect(form.getAttribute("data-req")).not.toBeNull();
       });
 
       // Select an existing requirement via the mock button
