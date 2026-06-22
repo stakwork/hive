@@ -20,11 +20,6 @@ vi.mock("@/components/evals/CreateRequirementModal", () => ({
   CreateRequirementModal: () => null,
 }));
 
-vi.mock("@/components/evals/CaptureEvalTriggerModal", () => ({
-  CaptureEvalTriggerModal: ({ open }: { open: boolean }) =>
-    open ? <div data-testid="capture-trigger-modal" /> : null,
-}));
-
 vi.mock("@/components/evals/EvalTriggerList", () => ({
   EvalTriggerList: ({ reqId }: { reqId: string }) => (
     <div data-testid={`eval-trigger-list-${reqId}`} />
@@ -96,10 +91,14 @@ vi.mock("@/components/ui/skeleton", () => ({
 
 vi.mock("lucide-react", () => ({
   ArrowLeft: () => <span>←</span>,
-  Zap: () => <span>⚡</span>,
+  Check: () => <span>✓</span>,
+  ClipboardList: () => <span>📋</span>,
+  Link2: () => <span>🔗</span>,
   Pencil: () => <span>✏️</span>,
   Plus: () => <span>+</span>,
   Trash2: () => <span>🗑️</span>,
+  X: () => <span>✗</span>,
+  Zap: () => <span>⚡</span>,
 }));
 
 import { EvalSetDetail } from "@/components/evals/EvalSetDetail";
@@ -314,7 +313,7 @@ describe("EvalSetDetail", () => {
     });
   });
 
-  it("renders CaptureEvalTriggerModal (not LinkRunModal)", async () => {
+  it("shows the requirement name and reason", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       json: async () => ({ data: { nodes: MOCK_REQUIREMENTS, total: 2 } }),
     });
@@ -322,14 +321,9 @@ describe("EvalSetDetail", () => {
     render(<EvalSetDetail evalSet={EVAL_SET} onBack={() => {}} />);
     await waitFor(() => expect(screen.getAllByTestId("requirement-row")).toHaveLength(2));
 
-    // Trigger the modal by clicking "Capture Trigger"
-    const captureBtns = screen.getAllByText(/Capture Trigger/i);
-    expect(captureBtns.length).toBeGreaterThan(0);
-    await userEvent.click(captureBtns[0]);
-
-    expect(screen.getByTestId("capture-trigger-modal")).toBeTruthy();
-    // LinkRunModal should NOT be present at all
-    expect(screen.queryByTestId("link-run-modal")).toBeNull();
+    const rows = screen.getAllByTestId("requirement-row");
+    expect(rows[0].textContent).toContain("Req Alpha");
+    expect(rows[0].textContent).toContain("First requirement");
   });
 
   it("does NOT render LinkRunModal anywhere", async () => {
