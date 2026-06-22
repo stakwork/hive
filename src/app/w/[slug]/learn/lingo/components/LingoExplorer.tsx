@@ -24,6 +24,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
   const [nodes, setNodes] = useState<JargonNode[]>([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [hasError, setHasError] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [nameFilter, setNameFilter] = useState("");
 
@@ -58,6 +59,8 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
         setHasMore(more);
       } catch {
         toast.error("Failed to load Jargon nodes");
+        setHasMore(false);
+        setHasError(true);
       } finally {
         setIsLoadingMore(false);
         isFetchingRef.current = false;
@@ -65,6 +68,11 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
     },
     [workspaceSlug],
   );
+
+  const handleRetry = useCallback(() => {
+    setHasError(false);
+    fetchNodes(0, true);
+  }, [fetchNodes]);
 
   useEffect(() => {
     fetchNodes(0, true);
@@ -287,8 +295,24 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
               </p>
             )}
 
+            {/* Error state with retry */}
+            {hasError && (
+              <div className="flex flex-col items-center gap-3 py-12" data-testid="fetch-error-state">
+                <p className="text-center text-sm text-muted-foreground">
+                  Failed to load Jargon nodes.
+                </p>
+                <button
+                  onClick={handleRetry}
+                  className="text-sm font-medium text-primary underline underline-offset-4 hover:text-primary/80"
+                  data-testid="retry-button"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
             {/* Empty state */}
-            {!isLoadingMore && nodes.length === 0 && (
+            {!isLoadingMore && !hasError && nodes.length === 0 && (
               <p className="text-center text-sm text-muted-foreground py-12" data-testid="empty-state">
                 No Jargon nodes found for this workspace.
               </p>

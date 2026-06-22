@@ -207,6 +207,22 @@ describe("GET /api/workspaces/[slug]/lingo/nodes", () => {
     const body = await res.json();
     expect(body.data.hasMore).toBe(false);
   });
+
+  test("falls back to mock data when Jarvis returns non-2xx", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "bad request" }), { status: 400 }),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.data.nodes)).toBe(true);
+    expect(body.data.nodes.length).toBeGreaterThan(0);
+  });
 });
 
 // ─── GET /lingo/nodes/[ref_id] ────────────────────────────────────────────────
@@ -295,6 +311,39 @@ describe("GET /api/workspaces/[slug]/lingo/nodes/[ref_id]", () => {
     expect(calledUrl).toContain("node%20ref%2F1");
     expect(calledUrl).toContain("expand=true");
   });
+
+  test("falls back to mock data when Jarvis returns non-2xx for known ref_id", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "not found" }), { status: 400 }),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/jargon-001`,
+    );
+    const res = await GET(req, {
+      params: Promise.resolve({ slug: SLUG, ref_id: "jargon-001" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data).toBeDefined();
+  });
+
+  test("returns 404 when Jarvis returns non-2xx for unknown ref_id", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "not found" }), { status: 400 }),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/unknown-ref-xyz`,
+    );
+    const res = await GET(req, {
+      params: Promise.resolve({ slug: SLUG, ref_id: "unknown-ref-xyz" }),
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+  });
 });
 
 // ─── GET /lingo/nodes/search ──────────────────────────────────────────────────
@@ -365,6 +414,21 @@ describe("GET /api/workspaces/[slug]/lingo/nodes/search", () => {
     const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
     expect(res.status).toBe(403);
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test("falls back to mock data when Jarvis returns non-2xx", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "bad request" }), { status: 400 }),
+    );
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes/search?q=Swarm`,
+    );
+    const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.data)).toBe(true);
   });
 });
 
