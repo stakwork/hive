@@ -1302,3 +1302,105 @@ describe('Sidebar - GraphMindset Admin button', () => {
     expect(screen.queryAllByTestId('graphmindset-admin-button')).toHaveLength(0);
   });
 });
+
+describe('Sidebar - Evals link visibility under Protect', () => {
+  const mockUser = {
+    name: 'Test User',
+    email: 'test@example.com',
+    image: null,
+  };
+
+  beforeEach(() => {
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      isLoading: false,
+    } as any);
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(true);
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: true,
+      hasAccess: true,
+      role: 'OWNER',
+      permissions: {
+        canManageRepositories: true,
+        canManageProducts: true,
+        canManageMembers: true,
+      },
+    } as any);
+  });
+
+  it('hides Evals under Protect for non-stakwork workspace in production mode', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-1', name: 'Other WS', slug: 'some-other-workspace', poolState: 'COMPLETE' },
+      slug: 'some-other-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+    render(<Sidebar user={mockUser} />);
+
+    const protectButtons = screen.getAllByTestId('nav-protect');
+    await user.click(protectButtons[0]);
+
+    await waitFor(() => {
+      // Another protect child should be visible to confirm section expanded
+      expect(screen.queryAllByTestId('nav-evals')).toHaveLength(0);
+    });
+  });
+
+  it('shows Evals under Protect for stakwork workspace in production mode', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-1', name: 'Stakwork', slug: 'stakwork', poolState: 'COMPLETE' },
+      slug: 'stakwork',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+    render(<Sidebar user={mockUser} />);
+
+    const protectButtons = screen.getAllByTestId('nav-protect');
+    await user.click(protectButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-evals').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows Evals under Protect in dev mode for any workspace', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'ws-1', name: 'Random WS', slug: 'random-slug', poolState: 'COMPLETE' },
+      slug: 'random-slug',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(true);
+
+    render(<Sidebar user={mockUser} />);
+
+    const protectButtons = screen.getAllByTestId('nav-protect');
+    await user.click(protectButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-evals').length).toBeGreaterThan(0);
+    });
+  });
+});
