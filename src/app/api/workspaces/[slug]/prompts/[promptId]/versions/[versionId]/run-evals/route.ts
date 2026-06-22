@@ -120,7 +120,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               swarmUrl,
               swarmSecretAlias: swarmSecretAlias ?? "",
               prompt_overrides: [{ name: promptName, prompt_version_id: promptVersionIdInt }],
-              resultWebhookUrl: `${baseUrl}/api/webhook/prompt-eval/result?run_id=${run.id}`,
+              webhookUrl: `${baseUrl}/api/webhook/stakwork/response?type=PROMPT_EVAL&workspace_id=${workspaceId}`,
             },
           },
         },
