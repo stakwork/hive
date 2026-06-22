@@ -374,15 +374,32 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
         },
       });
       toast.success("User updated");
+      setEditingUser(undefined);
+      await fetchUsers();
     } else {
-      await postGraphAdminCmd(workspaceSlug, {
-        type: "Swarm",
-        data: { cmd: "AddBoltwallUser", content: { pubkey: data.pubkey, name: data.name, role: roleNum } },
-      });
-      toast.success("User added");
+      try {
+        await postGraphAdminCmd(workspaceSlug, {
+          type: "Swarm",
+          data: { cmd: "AddBoltwallUser", content: { pubkey: data.pubkey, name: data.name, role: roleNum } },
+        });
+        toast.success("User added");
+        setEditingUser(undefined);
+        await fetchUsers();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message.toLowerCase() : "";
+        const ownerPubkey = users?.find((u) => u.role === "owner")?.pubkey;
+        if (data.pubkey === ownerPubkey || msg.includes("duplicate") || msg.includes("already exists")) {
+          toast.error("This user is already a member. Each pubkey can only be added once.");
+        } else {
+          toast.error(
+            err instanceof Error && err.message
+              ? err.message
+              : "Failed to add user. Please check the pubkey and try again.",
+          );
+        }
+        return; // keep dialog open
+      }
     }
-    setEditingUser(undefined);
-    await fetchUsers();
   }
 
   // ── Users: set owner ──
