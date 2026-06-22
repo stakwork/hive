@@ -137,6 +137,13 @@ describe("Prompt Eval Run API — Integration Tests", () => {
       expect(run?.promptVersionId).toBe(42);
       expect(run?.evalSetId).toBe("eval-set-abc");
       expect(run?.workspaceId).toBe(workspace.id);
+
+      // Verify Stakwork payload uses webhookUrl (not resultWebhookUrl)
+      const fetchCallArgs = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const fetchBody = JSON.parse(fetchCallArgs[1].body as string);
+      const vars = fetchBody.workflow_params.set_var.attributes.vars;
+      expect(vars.webhookUrl).toContain(`/api/webhook/stakwork/response?type=PROMPT_EVAL&workspace_id=${workspace.id}`);
+      expect(vars.resultWebhookUrl).toBeUndefined();
     });
 
     test("returns 502 when Stakwork returns non-OK response", async () => {
