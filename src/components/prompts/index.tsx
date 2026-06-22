@@ -94,10 +94,22 @@ interface PromptsPanelProps {
 
 type ViewMode = "list" | "detail" | "create" | "history";
 
+type EvalResult = {
+  // Rich shape from eval-set runner
+  pass_rate?: number;
+  passed?: number;
+  failed?: number;
+  total?: number;
+  trigger_results?: Array<{ score?: number; result?: string; passed?: boolean }>;
+  // Legacy compat for already-stored runs
+  pass?: number;
+  fail?: number;
+};
+
 type EvalRunState = {
   runId: string;
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "ERROR" | "HALTED";
-  result: { pass: number; fail: number; total: number } | null;
+  result: EvalResult | null;
 };
 
 export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkflow, workspaceSlug }: PromptsPanelProps) {
@@ -366,7 +378,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       channel = pusher.subscribe(getWorkspaceChannelName(resolvedSlug));
       channel.bind(
         PUSHER_EVENTS.PROMPT_EVAL_RESULT,
-        (data: { runId: string; promptVersionId: number; result: { pass: number; fail: number; total: number } }) => {
+        (data: { runId: string; promptVersionId: number; result: EvalResult }) => {
           setEvalRuns((prev) => ({
             ...prev,
             [data.promptVersionId]: {
@@ -1245,13 +1257,13 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                               variant="default"
                               className={cn(
                                 "text-xs flex-shrink-0",
-                                evalRuns[CURRENT_VERSION_SENTINEL]!.result!.fail === 0
+                                (evalRuns[CURRENT_VERSION_SENTINEL]!.result!.failed ?? evalRuns[CURRENT_VERSION_SENTINEL]!.result!.fail ?? 0) === 0
                                   ? "bg-green-600 text-white"
                                   : "bg-red-600 text-white"
                               )}
                               title="Eval result"
                             >
-                              {evalRuns[CURRENT_VERSION_SENTINEL]!.result!.pass}/{evalRuns[CURRENT_VERSION_SENTINEL]!.result!.total} pass
+                              {evalRuns[CURRENT_VERSION_SENTINEL]!.result!.passed ?? evalRuns[CURRENT_VERSION_SENTINEL]!.result!.pass}/{evalRuns[CURRENT_VERSION_SENTINEL]!.result!.total} pass
                             </Badge>
                           ) : (
                             <Button
@@ -1312,13 +1324,13 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                             variant="default"
                             className={cn(
                               "text-xs flex-shrink-0",
-                              evalRuns[version.id]!.result!.fail === 0
+                              (evalRuns[version.id]!.result!.failed ?? evalRuns[version.id]!.result!.fail ?? 0) === 0
                                 ? "bg-green-600 text-white"
                                 : "bg-red-600 text-white"
                             )}
                             title="Eval result"
                           >
-                            {evalRuns[version.id]!.result!.pass}/{evalRuns[version.id]!.result!.total} pass
+                            {evalRuns[version.id]!.result!.passed ?? evalRuns[version.id]!.result!.pass}/{evalRuns[version.id]!.result!.total} pass
                           </Badge>
                         ) : (
                           <Button
