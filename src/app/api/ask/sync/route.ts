@@ -360,9 +360,12 @@ export async function POST(request: NextRequest) {
       const agentOptions = dryRun
         ? {
             // Always enable the org toolset in dryRun so `propose_*` exists,
-            // regardless of single- vs multi-workspace.
+            // regardless of single- vs multi-workspace. `roadmap` pulls in
+            // the loadable trio (whiteboard/research/connections) via the
+            // registry `includes` but deliberately NOT `planner`, so
+            // `send_to_feature_planner` (a real Stakwork dispatch) is absent.
             orgId,
-            capabilities: ["canvas"] as readonly OrgCapability[],
+            capabilities: ["roadmap"] as readonly OrgCapability[],
             readonly: true,
             keepWriteToolNames: PROPOSAL_TOOL_NAMES,
             silentPusher: true,
