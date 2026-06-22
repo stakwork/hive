@@ -424,4 +424,213 @@ describe('POST /api/ask/sync', () => {
       expect(response.status).toBe(401);
     });
   });
+
+  describe('dryRun (eval / replay)', () => {
+    it('rejects messages[] replay mode without dryRun (400)', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/sync',
+        {
+          messages: [{ role: 'user', content: 'replayed prompt' }],
+          workspaceSlug: workspace.slug,
+        },
+        owner,
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toMatch(/dryRun/i);
+    });
+
+    it('dryRun + messages[] returns rows and persists NOTHING', async () => {
+      const { owner, org, workspace } = await setupOrgWorkspace();
+
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([
+          { text: 'dry answer', toolCalls: [], toolResults: [] },
+        ]) as any,
+      );
+
+      const request = createAuthenticatedPostRequest(
+        '/api/ask/sync',
+        {
+          messages: [
+            { role: 'user', content: 'First' },
+            { role: 'assistant', content: 'Prior' },
+            { role: 'user', content: 'Replay me' },
+          ],
+          workspaceSlug: workspace.slug,
+          dryRun: true,
+        },
+        owner,
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.dryRun).toBe(true);
+      expect(data.conversationId).toBeNull();
+      expect(data.messages[0].content).toBe('dry answer');
+
+      // The transcript was passed verbatim to the agent.
+      const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
+      const contents = (callArgs.messages ?? []).map((m: any) => m.content);
+      expect(contents).toEqual(
+        expect.arrayContaining(['First', 'Prior', 'Replay me']),
+      );
+
+      // No SharedConversation row was created for this org.
+      const count = await db.sharedConversation.count({
+        where: { sourceControlOrgId: org.id },
+      });
+      expect(count).toBe(0);
+    });
+
+    it('dryRun in server-history mode also persists nothing', async () => {
+      const { owner, org, workspace } = await setupOrgWorkspace();
+
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([
+          { text: 'dry answer', toolCalls: [], toolResults: [] },
+        ]) as any,
+      );
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          { message: 'preview this', workspaceSlug: workspace.slug, dryRun: true },
+          owner,
+        ),
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.dryRun).toBe(true);
+      expect(data.conversationId).toBeNull();
+
+      const count = await db.sharedConversation.count({
+        where: { sourceControlOrgId: org.id },
+      });
+      expect(count).toBe(0);
+    });
+
+    it('dryRun composes a side-effect-free toolset: propose_* kept, mutators + planner stripped', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([{ text: 'ok', toolCalls: [], toolResults: [] }]) as any,
+      );
+
+      await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          {
+            messages: [{ role: 'user', content: 'propose a feature' }],
+            workspaceSlug: workspace.slug,
+            dryRun: true,
+          },
+          owner,
+        ),
+      );
+
+      const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
+      const toolNames = Object.keys(callArgs.tools ?? {});
+
+      // Pure-output proposal tools survive the readonly strip.
+      expect(toolNames).toContain('propose_feature');
+      // Genuinely-mutating tools are stripped...
+      expect(toolNames).not.toContain('update_canvas');
+      expect(toolNames).not.toContain('assign_feature_to_initiative');
+      // ...and the planner capability (real Stakwork dispatch) is absent.
+      expect(toolNames).not.toContain('send_to_feature_planner');
+      // No deferred-check write tool injected.
+      expect(toolNames).not.toContain('schedule_check');
+    });
+  });
+
+  describe('maxTurns', () => {
+    it('rejects a non-positive / non-integer maxTurns (400)', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+      for (const bad of [0, -1, 2.5, 'three']) {
+        const response = await POST(
+          createAuthenticatedPostRequest(
+            '/api/ask/sync',
+            { message: 'hi', workspaceSlug: workspace.slug, maxTurns: bad },
+            owner,
+          ),
+        );
+        expect(response.status).toBe(400);
+        const data = await response.json();
+        expect(data.error).toMatch(/maxTurns/i);
+      }
+    });
+
+    it('appends a step-cap stop condition when maxTurns is set', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([{ text: 'one step', toolCalls: [], toolResults: [] }]) as any,
+      );
+
+      // Without maxTurns: only the default end-marker stop condition.
+      await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          { message: 'no cap', workspaceSlug: workspace.slug },
+          owner,
+        ),
+      );
+      const noCap = vi.mocked(streamText).mock.calls.at(-1)![0];
+      expect(noCap.stopWhen).toHaveLength(1);
+
+      // With maxTurns: the cap is appended (end-marker + step cap).
+      await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          { message: 'capped', workspaceSlug: workspace.slug, maxTurns: 1 },
+          owner,
+        ),
+      );
+      const capped = vi.mocked(streamText).mock.calls.at(-1)![0];
+      expect(capped.stopWhen).toHaveLength(2);
+    });
+
+    it('counts generated steps, not input messages (100 in, 1 step out)', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+
+      // A big replayed transcript — these are CONTEXT, not steps.
+      const transcript = Array.from({ length: 100 }, (_, i) => ({
+        role: i % 2 === 0 ? 'user' : 'assistant',
+        content: `msg ${i}`,
+      }));
+
+      // The agent generates exactly one step (what maxTurns:1 would yield).
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([
+          { text: 'the single next step', toolCalls: [], toolResults: [] },
+        ]) as any,
+      );
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          {
+            messages: transcript,
+            workspaceSlug: workspace.slug,
+            dryRun: true,
+            maxTurns: 1,
+          },
+          owner,
+        ),
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      // All 100 messages were fed to the model as context...
+      const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
+      expect(callArgs.messages).toHaveLength(100);
+      // ...but the response carries only the generated step(s), never the input.
+      expect(data.messages).toHaveLength(1);
+      expect(data.messages[0].content).toBe('the single next step');
+    });
+  });
 });
