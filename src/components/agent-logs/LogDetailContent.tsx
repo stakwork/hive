@@ -5,7 +5,8 @@ import { format } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
+import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Copy, Check, Flag } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
 import { buildToolCallIndex, getConsumedResultIds } from "@/lib/utils/agent-log-pairing";
@@ -25,6 +26,7 @@ export interface LogDetailContentProps {
   loading: boolean;
   error: string | null;
   variant?: "modal" | "page";
+  onFlagTurn?: (turnIndex: number) => void;
 }
 
 /** Characters before assistant text is truncated with a "Show more" button */
@@ -306,10 +308,12 @@ export function MessageBubble({
   message,
   toolCallIndex,
   consumedResultIds,
+  onFlag,
 }: {
   message: ParsedMessage;
   toolCallIndex?: Map<string, ToolResultContent>;
   consumedResultIds?: Set<string>;
+  onFlag?: () => void;
 }) {
   const [showToolDetails, setShowToolDetails] = useState(false);
   const [showMore, setShowMore] = useState(false);
@@ -530,6 +534,11 @@ export function MessageBubble({
           </Tooltip>
         )}
       </div>
+      {onFlag && (
+        <Button variant="ghost" size="icon" onClick={onFlag} className="h-6 w-6 shrink-0 mt-0.5 self-start">
+          <Flag className="h-3.5 w-3.5" />
+        </Button>
+      )}
     </div>
   );
 }
@@ -706,6 +715,7 @@ export function LogDetailContent({
   loading,
   error,
   variant = "modal",
+  onFlagTurn,
 }: LogDetailContentProps) {
   const scrollHeight = variant === "page" ? "h-[calc(100vh-12rem)]" : "h-[400px]";
   const hasContent = conversation !== null || rawContent !== "";
@@ -745,6 +755,7 @@ export function LogDetailContent({
                     message={msg}
                     toolCallIndex={toolCallIndex}
                     consumedResultIds={consumedResultIds}
+                    onFlag={onFlagTurn ? () => onFlagTurn(i) : undefined}
                   />
                 ))}
               </div>

@@ -33,6 +33,7 @@ interface FlagAsEvalModalProps {
     featureId: string | null;
     workflow_id: number | null;
   };
+  onCaptureEntireSession?: () => void;
 }
 
 const CREATE_NEW_VALUE = "__create_new__";
@@ -43,6 +44,7 @@ export function FlagAsEvalModal({
   slug,
   logId,
   logMeta,
+  onCaptureEntireSession,
 }: FlagAsEvalModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
 
@@ -338,6 +340,16 @@ export function FlagAsEvalModal({
                 <p className="text-xs text-destructive">{step1Errors.negativeCases}</p>
               )}
             </div>
+
+            {onCaptureEntireSession && (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => { onOpenChange(false); onCaptureEntireSession(); }}
+              >
+                Or, quick-capture entire session →
+              </button>
+            )}
           </div>
         )}
 
