@@ -937,7 +937,10 @@ export function FeaturesList({ workspaceId }: FeaturesListProps) {
                             onPriorityUpdate={handleUpdatePriority}
                             onAssigneeUpdate={handleUpdateAssignee}
                             onDelete={handleDeleteFeature}
-                            onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}`)}
+                            onClick={() => {
+                              const currentUrl = `${pathname}${searchParams?.toString() ? `?${searchParams}` : ""}`;
+                              router.push(`/w/${workspaceSlug}/plan/${feature.id}?from=${encodeURIComponent(currentUrl)}`);
+                            }}
                             isRenaming={renamingFeatureId === feature.id}
                             onRenameStart={() => setRenamingFeatureId(feature.id)}
                             onRenameSave={handleRenameFeature}
