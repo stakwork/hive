@@ -57,6 +57,7 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
+import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import {
   buildResearchTools,
@@ -70,6 +71,7 @@ import {
 } from "@/lib/proposals/types";
 import {
   getConnectionsCapabilitySnippet,
+  getGraphWalkerCapabilitySnippet,
   getPlannerCapabilitySnippet,
   getResearchCapabilitySnippet,
   getRoadmapCapabilitySnippet,
@@ -81,7 +83,8 @@ export type OrgCapability =
   | "planner"
   | "whiteboard"
   | "research"
-  | "connections";
+  | "connections"
+  | "graph_walker";
 
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
@@ -164,6 +167,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "whiteboard",
   "research",
   "connections",
+  "graph_walker",
 ];
 
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
@@ -196,10 +200,10 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         PROPOSE_FEATURE_TOOL,
         PROPOSE_MILESTONE_TOOL,
       ],
-      // Pull the loadable trio in so their tools are registered and the
+      // Pull the loadable set in so their tools are registered and the
       // learn_capability menu lists them whenever roadmap is selected
       // (the org canvas surface always carried all of these).
-      includes: ["whiteboard", "research", "connections"],
+      includes: ["whiteboard", "research", "connections", "graph_walker"],
     },
     planner: {
       buildTools: (ctx) =>
@@ -265,6 +269,17 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         "`save_connection` / `update_connection`. Load when documenting an " +
         "integration between systems/workspaces.",
       writeToolNames: ["save_connection", "update_connection"],
+    },
+    graph_walker: {
+      buildTools: (ctx) => buildGraphWalkerTools(ctx.orgId, ctx.userId),
+      promptSnippet: getGraphWalkerCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**graph_walker** — dereference any URN (`graph_get`), expand 1-hop " +
+        "neighbors (`graph_neighbors`), search across pg/canvas realms " +
+        "(`graph_search`). Load when you need to walk the cross-realm graph " +
+        "or dereference a URN from another tool.",
+      writeToolNames: [], // read-only
     },
   };
 
