@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
 
-    const swarmUrl = `${baseSwarmUrl}/gitree/features`;
+    const swarmUrl = `${baseSwarmUrl}/gitree/concepts`;
 
     const response = await fetch(swarmUrl, {
       method: "GET",
@@ -37,11 +37,14 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
+    // stakgraph renamed `features` -> `concepts`; accept both for compatibility.
     const features = Array.isArray(data)
       ? data
-      : Array.isArray(data?.features)
-        ? data.features
-        : [];
+      : Array.isArray(data?.concepts)
+        ? data.concepts
+        : Array.isArray(data?.features)
+          ? data.features
+          : [];
     return NextResponse.json({
       features,
       lastProcessedTimestamp: data.lastProcessedTimestamp ?? null,

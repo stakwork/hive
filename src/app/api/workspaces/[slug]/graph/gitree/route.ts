@@ -81,9 +81,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const queryString = Object.keys(apiParams).length > 0 ? `?${new URLSearchParams(apiParams).toString()}` : '';
 
     console.log(queryString);
-    console.log(`${graphUrl}/gitree/all-features-graph${queryString}`);
+    console.log(`${graphUrl}/gitree/all-concepts-graph${queryString}`);
 
-    const apiResult = await fetch(`${graphUrl}/gitree/all-features-graph?per_type_limits=Function:100,Class:5,Library:1,Import:1,Datamodel:100,File:10,IntegrationTest:5,UnitTest:5,Var:5`, {
+    const apiResult = await fetch(`${graphUrl}/gitree/all-concepts-graph?per_type_limits=Function:100,Class:5,Library:1,Import:1,Datamodel:100,File:10,IntegrationTest:5,UnitTest:5,Var:5`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
