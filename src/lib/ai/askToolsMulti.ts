@@ -141,7 +141,7 @@ export function askToolsMulti(
       execute: async ({ conceptId }: { conceptId: string }) => {
         try {
           const res = await fetch(
-            `${ws.swarmUrl}/gitree/features/${encodeURIComponent(conceptId)}`,
+            `${ws.swarmUrl}/gitree/concepts/${encodeURIComponent(conceptId)}`,
             {
               method: "GET",
               headers: {

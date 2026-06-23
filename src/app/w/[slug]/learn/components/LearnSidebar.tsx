@@ -25,7 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { UsageDisplay } from "./UsageDisplay";
-import { CreateFeatureModal } from "./CreateFeatureModal";
+import { CreateConceptModal } from "./CreateConceptModal";
 import { formatRelativeOrDate } from "@/lib/date-utils";
 import {
   DropdownMenu,
@@ -168,7 +168,7 @@ export function LearnSidebar({
     const fetchProcessingState = async () => {
       try {
         const response = await fetch(
-          `/api/learnings/features?workspace=${encodeURIComponent(workspaceSlug)}`
+          `/api/learnings/concepts?workspace=${encodeURIComponent(workspaceSlug)}`
         );
         if (response.ok) {
           const data = await response.json();
@@ -224,7 +224,7 @@ export function LearnSidebar({
       } else {
         // Re-fetch to get updated state
         const featuresResponse = await fetch(
-          `/api/learnings/features?workspace=${encodeURIComponent(workspaceSlug)}`
+          `/api/learnings/concepts?workspace=${encodeURIComponent(workspaceSlug)}`
         );
         if (featuresResponse.ok) {
           const data = await featuresResponse.json();
@@ -279,7 +279,7 @@ export function LearnSidebar({
     }
   };
 
-  const handleFeatureCreated = () => {
+  const handleConceptCreated = () => {
     onConceptCreated?.();
   };
 
@@ -694,11 +694,11 @@ export function LearnSidebar({
       </div>
       )}
 
-      <CreateFeatureModal
+      <CreateConceptModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         workspaceSlug={workspaceSlug}
-        onFeatureCreated={handleFeatureCreated}
+        onConceptCreated={handleConceptCreated}
         repositories={repositories}
         selectedRepoId={selectedRepoId}
         onRepoChange={setSelectedRepoId}
