@@ -93,7 +93,12 @@ const SAMPLE_MESSAGES = [
 const BASE_CONFIG = {
   model: "claude-3-5-sonnet",
   temperature: 0.7,
-  source: "config-source",
+  source: "repo_agent",
+  systemOverride: "You are a coding agent.",
+  toolsConfig: { ask_clarifying_questions: true },
+  tools: { bash: "Run shell commands" },
+  baseUrl: "https://api.anthropic.com",
+  mcpServers: [],
 };
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -265,7 +270,7 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   // ── change_type resolution ───────────────────────────────────────────────
 
   test("uses agentLog.source as change_type (DB column takes priority)", async () => {
-    // agentLog.source = "github", config.source = "config-source"
+    // agentLog.source = "github", config.source = "repo_agent"
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "change_type test" }),
       makeParams(),
@@ -375,7 +380,7 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
       ([, node]) => node.node_type === "EvalTrigger",
     );
     expect(triggerCall).toBeDefined();
-    expect(triggerCall[1].node_data.change_type).toBe("config-source");
+    expect(triggerCall[1].node_data.change_type).toBe("repo_agent");
   });
 
   test("falls back to swarm_agent when both agentLog.source and config.source are null", async () => {
@@ -495,6 +500,102 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     const hasTrigger = edgeCalls.find(([, e]) => e.edge.edge_type === "HAS_TRIGGER");
     expect(hasReq).toBeDefined();
     expect(hasTrigger).toBeDefined();
+  });
+
+  // ── full harness config in request_params ───────────────────────────────
+
+  test("Test A: full harness fields appear in request_params", async () => {
+    const fullConfig = {
+      ...BASE_CONFIG,
+      provider: "anthropic",
+      schema: { type: "object" },
+      providerConfig: { timeout: 30 },
+      repos: ["repo-1"],
+    };
+    (parseAgentLogStats as Mock).mockReturnValue({
+      conversation: SAMPLE_MESSAGES,
+      config: fullConfig,
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "Full harness fields" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    const nodeData = triggerCall[1].node_data;
+    const parsed = JSON.parse(nodeData.body);
+    const snapshot = JSON.parse(parsed.prompt_snapshot);
+    const rp = snapshot.request_params;
+
+    expect(rp.systemOverride).toBe("You are a coding agent.");
+    expect(rp.toolsConfig).toEqual({ ask_clarifying_questions: true });
+    expect(rp.tools).toEqual({ bash: "Run shell commands" });
+    expect(rp.baseUrl).toBe("https://api.anthropic.com");
+    expect(rp.mcpServers).toEqual([]);
+    expect(rp.provider).toBe("anthropic");
+    expect(rp.schema).toEqual({ type: "object" });
+    expect(rp.providerConfig).toEqual({ timeout: 30 });
+    expect(rp.repos).toEqual(["repo-1"]);
+    expect(rp.source).toBe("repo_agent");
+    expect(rp.messages).toEqual(SAMPLE_MESSAGES);
+  });
+
+  test("Test B: role:\"system\" message is preserved when turnIndex is set", async () => {
+    const messagesWithSystem = [
+      { role: "system", content: "System prompt" },
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi there" },
+      { role: "user", content: "Do this task" },
+    ];
+    (parseAgentLogStats as Mock).mockReturnValue({
+      conversation: messagesWithSystem,
+      config: BASE_CONFIG,
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "System preserved", turnIndex: 2 }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    const nodeData = triggerCall[1].node_data;
+    const parsed = JSON.parse(nodeData.body);
+    const snapshot = JSON.parse(parsed.prompt_snapshot);
+
+    // slice(0, 3) keeps index 0 (system), 1, 2
+    expect(snapshot.request_params.messages).toHaveLength(3);
+    expect(snapshot.request_params.messages[0].role).toBe("system");
+  });
+
+  test("Test C: PromptResolution map in metadata.prompts is normalised to flat array", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      metadata: {
+        prompts: {
+          MY_PROMPT: { prompt_id: 1, prompt_version_id: 2, resolution: {} },
+        },
+      },
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "PromptResolution map" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.prompts).toEqual([
+      JSON.stringify({ name: "MY_PROMPT", prompt_id: 1, prompt_version_id: 2 }),
+    ]);
   });
 
   // ── USE_MOCKS delegation ─────────────────────────────────────────────────
