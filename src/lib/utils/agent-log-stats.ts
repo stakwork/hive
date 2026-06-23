@@ -46,6 +46,10 @@ export interface AgentRunConfig {
   temperature?: number;
   schema?: unknown;
   providerConfig?: unknown;
+  // Fields from repo_agent / staklink session blobs:
+  systemOverride?: string; // full resolved system prompt
+  baseUrl?: string; // agent provider base URL
+  mcpServers?: unknown[]; // MCP server config list
 }
 
 export interface AgentLogStatsResult {
