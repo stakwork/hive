@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import { Download, Loader2, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { MessageBubble, StatsBar, unescapeLogString } from "./LogDetailContent";
+import { AgentSessionCaptureModal } from "@/components/evals/AgentSessionCaptureModal";
 import type { ParsedMessage, AgentLogStats } from "@/lib/utils/agent-log-stats";
 import type { ConversationMessage } from "@/hooks/useStreamedAgentLog";
 import type { AgentEventsStatus } from "@/hooks/useAgentEvents";
@@ -84,12 +86,20 @@ export function LogsArtifactPanel({
   featureId,
   isSuperAdmin,
 }: LogsArtifactPanelProps) {
+  const params = useParams();
+  const slug = params?.slug as string | undefined;
+  const isStakwork = slug === "stakwork";
+
   const hasProvisional = !!streamingLog && streamingLog.status === "streaming";
 
   const defaultId = logs[logs.length - 1]?.id ?? (hasProvisional ? PROVISIONAL_ID : null);
 
   const [selectedId, setSelectedId] = useState<string | null>(() => defaultId);
   const [logStates, setLogStates] = useState<Record<string, LogState>>({});
+
+  // Capture modal state (stakwork-only)
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [captureTurnIndex, setCaptureTurnIndex] = useState<number | undefined>(undefined);
 
   // Scorer insights state
   const [insights, setInsights] = useState<ScorerInsight[]>([]);
@@ -486,7 +496,11 @@ export function LogsArtifactPanel({
               {current.conversation ? (
                 <div className="space-y-3">
                   {current.conversation.map((msg, i) => (
-                    <MessageBubble key={i} message={msg} />
+                    <MessageBubble
+                      key={i}
+                      message={msg}
+                      onFlag={isStakwork && msg.role === "assistant" ? () => { setCaptureTurnIndex(i - 1); setCaptureOpen(true); } : undefined}
+                    />
                   ))}
                 </div>
               ) : (
@@ -497,6 +511,15 @@ export function LogsArtifactPanel({
             </>
           )}
         </>
+      )}
+      {isStakwork && selectedId && selectedId !== PROVISIONAL_ID && selectedId !== INSIGHTS_ID && (
+        <AgentSessionCaptureModal
+          open={captureOpen}
+          onOpenChange={setCaptureOpen}
+          slug={slug as string}
+          logId={selectedId}
+          turnIndex={captureTurnIndex}
+        />
       )}
     </div>
   );
