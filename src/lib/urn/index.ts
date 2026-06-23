@@ -1,78 +1,47 @@
 /**
- * URN Addressing Scheme & Resolver — stub module.
+ * URN Addressing Scheme — public module exports.
  *
- * This module is a compile-time dependency of the graph-walker feature.
- * The full implementation ships as a sibling feature; these stubs exist so
- * graph-walker can be compiled and tested independently.
+ * Canonical format:
+ *   pg / canvas  →  urn:{org}:{realm}:{type}:{id}
+ *   kg           →  urn:{org}:kg:{workspace}:{type}:{id}
  *
- * DO NOT add business logic here — replace this file when the URN feature
- * ships and adjust the import path in pg-neighbors.ts if needed.
+ * The import path `@/lib/urn` stays identical so all existing consumers
+ * (e.g. `pg-neighbors.ts`) continue to work without changes to their
+ * import statements.
  */
 
-export interface ParsedUrn {
-  realm: string;
-  type: string;
-  id: string;
-}
+// Core parse / format
+export type { ParsedUrn } from "./parse";
+export {
+  parseUrn,
+  formatUrn,
+  encodeCanvasRef,
+  decodeCanvasRef,
+  composeCanvasId,
+  parseCanvasId,
+} from "./parse";
 
-/**
- * Parse a URN string into its component parts.
- * Returns null for any string that does not match `realm:type:id`.
- */
-export function parseUrn(urn: string): ParsedUrn | null {
-  const parts = urn.split(":");
-  if (parts.length !== 3) return null;
-  const [realm, type, id] = parts;
-  if (!realm || !type || !id) return null;
-  return { realm, type, id };
-}
+// Access guard
+export type { PgAccessContext } from "./access";
+export { checkPgAccess } from "./access";
 
-/**
- * Format a URN from its component parts.
- */
-export function formatUrn(realm: string, type: string, id: string): string {
-  return `${realm}:${type}:${id}`;
-}
+// Shared types
+export type { UrnEdgeNeighbor } from "./edges";
 
-export interface UrnEdgeNeighbor {
-  urn: string;
-  edgeType: string;
-  direction: "forward" | "reverse";
-}
+// UrnEdge namespace (matches stub shape)
+import { neighborsOf } from "./edges";
+export const UrnEdge = { neighborsOf };
 
-/**
- * Cross-realm UrnEdge neighbour lookup.
- * Stub returns an empty array — the real implementation queries the UrnEdge
- * table introduced by the URN feature.
- */
-export const UrnEdge = {
-  async neighborsOf(_urn: string): Promise<UrnEdgeNeighbor[]> {
-    return [];
-  },
-};
+// Edge CRUD (for callers that need direct access)
+export {
+  createEdge,
+  listEdges,
+  deleteEdge,
+  neighborsOf as urnEdgeNeighborsOf,
+} from "./edges";
 
-export interface PgAccessContext {
-  userId: string | null;
-  orgId?: string;
-  workspaceId?: string;
-}
-
-/**
- * Access guard for pg: URNs.
- *
- * Stub always returns true — the real implementation enforces workspace /
- * org membership rules per entity type.
- *
- * Access guard rules (enforced by the full implementation):
- *   - task / feature / repository / deployment / workflowtask / chatmessage:
- *     caller must be a member of the entity's workspace
- *   - initiative / milestone: caller must have org membership
- *   - user / workspacemember / workspace: visible only to members of the
- *     same workspace or org
- */
-export async function checkPgAccess(
-  _urn: string,
-  _ctx: PgAccessContext
-): Promise<boolean> {
-  return true;
-}
+// Resolvers
+export { resolvePgNode } from "./resolvers/pg";
+export { resolveCanvasNode } from "./resolvers/canvas";
+export { resolveKgSeam } from "./resolvers/kg";
+export type { KgSeamResult, KgAccessContext } from "./resolvers/kg";
