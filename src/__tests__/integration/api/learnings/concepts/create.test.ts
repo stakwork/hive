@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { POST } from '@/app/api/learnings/features/create/route';
+import { POST } from '@/app/api/learnings/concepts/create/route';
 import { db } from '@/lib/db';
 import { EncryptionService } from '@/lib/encryption';
 import {
@@ -44,7 +44,7 @@ async function createGitHubAuth(userId: string, username: string = 'test-github-
   });
 }
 
-describe('POST /api/learnings/features/create - Authorization', () => {
+describe('POST /api/learnings/concepts/create - Authorization', () => {
   let owner: User;
   let workspace: Workspace;
   let swarm: Swarm;
@@ -132,7 +132,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
 
   it('should return 401 for unauthenticated requests', async () => {
     const request = createPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Add user authentication',
@@ -148,7 +148,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
 
   it('should return 400 when workspace parameter is missing', async () => {
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         prompt: 'Add user authentication',
         name: 'Authentication Feature',
@@ -164,7 +164,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
 
   it('should return 400 when prompt parameter is missing', async () => {
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         name: 'Authentication Feature',
@@ -180,7 +180,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
 
   it('should return 400 when name parameter is missing', async () => {
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Add user authentication',
@@ -196,7 +196,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
 
   it('should return 403 for non-member access', async () => {
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Add user authentication',
@@ -220,7 +220,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Add user authentication',
@@ -243,7 +243,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
     await createGitHubAuth(memberViewer.id, 'test-viewer-github');
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
-      if (url.includes('/gitree/create-feature')) {
+      if (url.includes('/gitree/create-concept')) {
         return new Response(JSON.stringify({ request_id: 'req-123' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -265,7 +265,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Add user authentication',
@@ -283,7 +283,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
     await createGitHubAuth(memberDeveloper.id, 'test-developer-github');
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
-      if (url.includes('/gitree/create-feature')) {
+      if (url.includes('/gitree/create-concept')) {
         return new Response(JSON.stringify({ request_id: 'req-456' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -305,7 +305,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Add developer tools',
@@ -321,7 +321,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
 
   it.skip('should allow OWNER role to create features', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
-      if (url.includes('/gitree/create-feature')) {
+      if (url.includes('/gitree/create-concept')) {
         return new Response(JSON.stringify({ request_id: 'req-789' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -343,7 +343,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Add payment processing',
@@ -358,7 +358,7 @@ describe('POST /api/learnings/features/create - Authorization', () => {
   });
 });
 
-describe('POST /api/learnings/features/create - Infrastructure Requirements', () => {
+describe('POST /api/learnings/concepts/create - Infrastructure Requirements', () => {
   let owner: User;
   let workspace: Workspace;
   let swarm: Swarm;
@@ -438,7 +438,7 @@ describe('POST /api/learnings/features/create - Infrastructure Requirements', ()
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: newScenario.workspace.slug,
         prompt: 'Add feature',
@@ -478,7 +478,7 @@ describe('POST /api/learnings/features/create - Infrastructure Requirements', ()
     await createGitHubAuth(newScenario.owner.id, 'no-repo-github');
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: newScenario.workspace.slug,
         prompt: 'Add feature',
@@ -521,7 +521,7 @@ describe('POST /api/learnings/features/create - Infrastructure Requirements', ()
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: newScenario.workspace.slug,
         prompt: 'Add feature',
@@ -543,7 +543,7 @@ describe('POST /api/learnings/features/create - Infrastructure Requirements', ()
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Add feature',
@@ -559,7 +559,7 @@ describe('POST /api/learnings/features/create - Infrastructure Requirements', ()
   });
 });
 
-describe('POST /api/learnings/features/create - Swarm Integration', () => {
+describe('POST /api/learnings/concepts/create - Swarm Integration', () => {
   let owner: User;
   let workspace: Workspace;
   let swarm: Swarm;
@@ -627,9 +627,9 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
     vi.restoreAllMocks();
   });
 
-  it.skip('should call swarm gitree/create-feature endpoint with correct parameters', async () => {
+  it.skip('should call swarm gitree/create-concept endpoint with correct parameters', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any, options: any) => {
-      if (url.includes('/gitree/create-feature')) {
+      if (url.includes('/gitree/create-concept')) {
         const body = JSON.parse(options.body);
         expect(body.prompt).toBe('Add user authentication system');
         expect(body.name).toBe('Authentication Feature');
@@ -657,7 +657,7 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Add user authentication system',
@@ -674,7 +674,7 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
   it.skip('should poll progress endpoint until completion', async () => {
     let pollCount = 0;
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
-      if (url.includes('/gitree/create-feature')) {
+      if (url.includes('/gitree/create-concept')) {
         return new Response(JSON.stringify({ request_id: 'req-poll-test' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -703,7 +703,7 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Test polling',
@@ -727,7 +727,7 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
     );
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Test failure',
@@ -745,7 +745,7 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
 
   it.skip('should return error when progress polling fails', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
-      if (url.includes('/gitree/create-feature')) {
+      if (url.includes('/gitree/create-concept')) {
         return new Response(JSON.stringify({ request_id: 'req-fail' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -764,7 +764,7 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Test error',
@@ -789,7 +789,7 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
     );
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Test no request_id',
@@ -814,7 +814,7 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
     };
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
-      if (url.includes('/gitree/create-feature')) {
+      if (url.includes('/gitree/create-concept')) {
         return new Response(JSON.stringify({ request_id: 'req-success' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -836,7 +836,7 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
     });
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Create successful feature',
@@ -860,7 +860,7 @@ describe('POST /api/learnings/features/create - Swarm Integration', () => {
     );
 
     const request = createAuthenticatedPostRequest(
-      `/api/learnings/features/create`,
+      `/api/learnings/concepts/create`,
       {
         workspace: workspace.slug,
         prompt: 'Test network error',

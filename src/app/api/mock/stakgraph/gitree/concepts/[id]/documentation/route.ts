@@ -35,13 +35,13 @@ export async function PUT(
 
     const { id } = await params;
 
-    console.log(`[StakgraphMock] PUT /gitree/features/${id}/documentation`);
+    console.log(`[StakgraphMock] PUT /gitree/concepts/${id}/documentation`);
 
     return NextResponse.json({ success: true, id });
   } catch (error) {
-    console.error("[StakgraphMock] PUT /gitree/features/:id/documentation error:", error);
+    console.error("[StakgraphMock] PUT /gitree/concepts/:id/documentation error:", error);
     return NextResponse.json(
-      { error: "Failed to update feature documentation" },
+      { error: "Failed to update concept documentation" },
       { status: 500 }
     );
   }

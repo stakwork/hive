@@ -78,7 +78,7 @@ function makeFetchMock(overrides?: { docs?: unknown; concepts?: unknown; diagram
     if (url.includes("/api/learnings/docs")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides?.docs ?? DOCS_RESPONSE) });
     }
-    if (url.includes("/api/learnings/features") && !url.includes("/documentation")) {
+    if (url.includes("/api/learnings/concepts") && !url.includes("/documentation")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides?.concepts ?? CONCEPTS_RESPONSE) });
     }
     if (url.includes("/api/learnings/diagrams")) {
