@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
 
-    const swarmUrl = `${baseSwarmUrl}/gitree/features/${encodeURIComponent(id)}`;
+    const swarmUrl = `${baseSwarmUrl}/gitree/concepts/${encodeURIComponent(id)}`;
 
     const response = await fetch(swarmUrl, {
       method: "GET",
@@ -42,7 +42,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    // stakgraph renamed the `feature` payload key -> `concept`; expose both.
+    const concept = data?.concept ?? data?.feature;
+    return NextResponse.json(concept ? { ...data, feature: concept, concept } : data);
   } catch (error) {
     console.error("Feature by ID API proxy error:", error);
     return NextResponse.json({ error: "Failed to fetch feature data" }, { status: 500 });

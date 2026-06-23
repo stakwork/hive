@@ -17,8 +17,8 @@ vi.mock("@/app/w/[slug]/learn/components/UsageDisplay", () => ({
   UsageDisplay: () => <span data-testid="usage-display" />,
 }));
 
-vi.mock("@/app/w/[slug]/learn/components/CreateFeatureModal", () => ({
-  CreateFeatureModal: () => null,
+vi.mock("@/app/w/[slug]/learn/components/CreateConceptModal", () => ({
+  CreateConceptModal: () => null,
 }));
 
 vi.mock("@/lib/date-utils", () => ({

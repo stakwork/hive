@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { GET } from "@/app/api/learnings/features/[id]/route";
+import { GET } from "@/app/api/learnings/concepts/[id]/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@/__tests__/support/helpers";
 import type { User, Workspace, Swarm } from "@prisma/client";
 
-describe("GET /api/learnings/features/[id] - Authorization", () => {
+describe("GET /api/learnings/concepts/[id] - Authorization", () => {
   let owner: User;
   let workspace: Workspace;
   let swarm: Swarm;
@@ -76,7 +76,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
   });
 
   it("should return 401 for unauthenticated requests", async () => {
-    const request = createGetRequest(`/api/learnings/features/feature-123?workspace=${workspace.slug}`);
+    const request = createGetRequest(`/api/learnings/concepts/feature-123?workspace=${workspace.slug}`);
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
     expect(response.status).toBe(401);
@@ -85,7 +85,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
   });
 
   it("should return 400 when workspace parameter is missing", async () => {
-    const request = createAuthenticatedGetRequest("/api/learnings/features/feature-123", owner);
+    const request = createAuthenticatedGetRequest("/api/learnings/concepts/feature-123", owner);
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
     expect(response.status).toBe(400);
@@ -95,7 +95,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
 
   it("should return 400 when id parameter is missing", async () => {
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/?workspace=${workspace.slug}`,
       owner
     );
     // Simulate missing id by passing empty string
@@ -108,7 +108,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
 
   it("should return 403 for non-member access", async () => {
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       nonMember
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -127,7 +127,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
     });
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       owner
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -148,14 +148,14 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       memberViewer
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
     expect(response.status).toBe(200);
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining("https://test-feature-swarm.sphinx.chat:3355/gitree/features/feature-123"),
+      expect.stringContaining("https://test-feature-swarm.sphinx.chat:3355/gitree/concepts/feature-123"),
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({
@@ -176,7 +176,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       memberDeveloper
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -194,7 +194,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       memberAdmin
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -212,7 +212,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       owner
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -222,7 +222,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
   });
 });
 
-describe("GET /api/learnings/features/[id] - Data Integrity", () => {
+describe("GET /api/learnings/concepts/[id] - Data Integrity", () => {
   let owner: User;
   let workspace: Workspace;
   let swarm: Swarm;
@@ -268,7 +268,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     });
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${newScenario.workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${newScenario.workspace.slug}`,
       newScenario.owner
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -285,7 +285,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     });
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       owner
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -304,7 +304,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       owner
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -331,7 +331,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
 
     const featureId = "feature-with-special-chars/123";
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/${encodeURIComponent(featureId)}?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/${encodeURIComponent(featureId)}?workspace=${workspace.slug}`,
       owner
     );
     const response = await GET(request, { params: Promise.resolve({ id: featureId }) });
@@ -342,7 +342,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     const fetchCall = fetchSpy.mock.calls[0];
     const fetchUrl = fetchCall[0] as string;
     expect(fetchUrl).toContain(
-      `gitree/features/${encodeURIComponent(featureId)}`
+      `gitree/concepts/${encodeURIComponent(featureId)}`
     );
 
     fetchSpy.mockRestore();
@@ -364,7 +364,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       owner
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -390,7 +390,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       owner
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -406,7 +406,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       owner
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -425,7 +425,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       owner
     );
     await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -433,7 +433,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     const fetchCall = fetchSpy.mock.calls[0];
     const fetchUrl = fetchCall[0] as string;
 
-    // Verify URL format: https://{hostname}:3355/gitree/features/{id}
+    // Verify URL format: https://{hostname}:3355/gitree/concepts/{id}
     expect(fetchUrl).toMatch(
       /^https:\/\/feature-integrity-swarm\.sphinx\.chat:3355\/gitree\/features\/feature-123$/
     );
@@ -455,7 +455,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       owner
     );
     await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
@@ -478,7 +478,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     );
 
     const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
+      `/api/learnings/concepts/feature-123?workspace=${workspace.slug}`,
       owner
     );
     await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
