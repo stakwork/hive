@@ -177,7 +177,8 @@ export async function linkFeatureToConcepts(
         continue;
       }
 
-      concepts = (await response.json()) as StakgraphConcept[];
+      const body = (await response.json()) as { concepts?: StakgraphConcept[] };
+      concepts = body.concepts ?? [];
     } catch (err) {
       console.error("[FeatureConceptBridge] fetch failed", {
         featureId,
