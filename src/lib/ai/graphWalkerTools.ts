@@ -129,34 +129,46 @@ function deduplicateByUrn(
 }
 
 /**
- * Keyword search over pg-realm entities: features, initiatives, milestones.
- * Scoped to the org via workspace.sourceControlOrgId for features,
- * and initiative.orgId for initiatives/milestones.
+ * Keyword search over pg-realm entities: features, initiatives, milestones,
+ * and tasks. Scoped to the org via workspace.sourceControlOrgId for features
+ * and tasks, and initiative.orgId for initiatives/milestones.
+ *
+ * `urnOrg` is the org's githubLogin — the {org} segment must be the githubLogin
+ * (NOT the DB cuid) so the emitted URNs round-trip back through graph_get /
+ * graph_neighbors, which key off githubLogin.
  */
 async function searchPg(
   query: string,
   {
     orgId,
+    urnOrg,
     type,
     limit,
-  }: { orgId: string; userId: string; type?: string; limit: number },
+  }: { orgId: string; urnOrg: string; type?: string; limit: number },
 ): Promise<SearchResult[]> {
   const results: SearchResult[] = [];
-  const lowerQuery = query.toLowerCase();
 
-  // Features — linked to org via workspace.sourceControlOrgId
+  // Features — linked to org via workspace.sourceControlOrgId. Match the
+  // title plus the rich plan columns (brief / requirements / architecture)
+  // so plan content is discoverable, not just the title.
   if (!type || type === "feature") {
     const features = await db.feature.findMany({
       where: {
         workspace: { sourceControlOrgId: orgId },
-        title: { contains: query, mode: "insensitive" },
+        deleted: false,
+        OR: [
+          { title: { contains: query, mode: "insensitive" } },
+          { brief: { contains: query, mode: "insensitive" } },
+          { requirements: { contains: query, mode: "insensitive" } },
+          { architecture: { contains: query, mode: "insensitive" } },
+        ],
       },
       select: { id: true, title: true },
       take: limit,
     });
     for (const f of features) {
       results.push({
-        urn: formatUrn({ realm: "pg", org: orgId, type: "feature", id: f.id }),
+        urn: formatUrn({ realm: "pg", org: urnOrg, type: "feature", id: f.id }),
         type: "feature",
         title: f.title,
         realm: "pg",
@@ -178,7 +190,7 @@ async function searchPg(
       results.push({
         urn: formatUrn({
           realm: "pg",
-          org: orgId,
+          org: urnOrg,
           type: "initiative",
           id: i.id,
         }),
@@ -203,12 +215,161 @@ async function searchPg(
       results.push({
         urn: formatUrn({
           realm: "pg",
-          org: orgId,
+          org: urnOrg,
           type: "milestone",
           id: m.id,
         }),
         type: "milestone",
         title: m.name,
+        realm: "pg",
+      });
+    }
+  }
+
+  // Research — direct orgId column. Match title OR topic OR summary OR the
+  // markdown content body. Projected onto canvas as `research:<id>` cards,
+  // but searched here against the DB row (the canvas arm only sees authored
+  // nodes, never projected ones).
+  if (!type || type === "research") {
+    const researches = await db.research.findMany({
+      where: {
+        orgId,
+        OR: [
+          { title: { contains: query, mode: "insensitive" } },
+          { topic: { contains: query, mode: "insensitive" } },
+          { summary: { contains: query, mode: "insensitive" } },
+          { content: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, title: true, topic: true },
+      take: limit,
+    });
+    for (const r of researches) {
+      results.push({
+        urn: formatUrn({
+          realm: "pg",
+          org: urnOrg,
+          type: "research",
+          id: r.id,
+        }),
+        type: "research",
+        title: r.title || r.topic,
+        realm: "pg",
+      });
+    }
+  }
+
+  // Connections — direct orgId column. Match name OR summary OR architecture.
+  if (!type || type === "connection") {
+    const connections = await db.connection.findMany({
+      where: {
+        orgId,
+        OR: [
+          { name: { contains: query, mode: "insensitive" } },
+          { summary: { contains: query, mode: "insensitive" } },
+          { architecture: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, name: true },
+      take: limit,
+    });
+    for (const c of connections) {
+      results.push({
+        urn: formatUrn({
+          realm: "pg",
+          org: urnOrg,
+          type: "connection",
+          id: c.id,
+        }),
+        type: "connection",
+        title: c.name,
+        realm: "pg",
+      });
+    }
+  }
+
+  // Workspaces — direct sourceControlOrgId column. Match name OR description
+  // OR mission; exclude soft-deleted rows.
+  if (!type || type === "workspace") {
+    const workspaces = await db.workspace.findMany({
+      where: {
+        sourceControlOrgId: orgId,
+        deleted: false,
+        OR: [
+          { name: { contains: query, mode: "insensitive" } },
+          { description: { contains: query, mode: "insensitive" } },
+          { mission: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, name: true },
+      take: limit,
+    });
+    for (const w of workspaces) {
+      results.push({
+        urn: formatUrn({
+          realm: "pg",
+          org: urnOrg,
+          type: "workspace",
+          id: w.id,
+        }),
+        type: "workspace",
+        title: w.name,
+        realm: "pg",
+      });
+    }
+  }
+
+  // Repositories — linked to org via workspace.sourceControlOrgId. Match
+  // name OR description OR repositoryUrl.
+  if (!type || type === "repository") {
+    const repositories = await db.repository.findMany({
+      where: {
+        workspace: { sourceControlOrgId: orgId, deleted: false },
+        OR: [
+          { name: { contains: query, mode: "insensitive" } },
+          { description: { contains: query, mode: "insensitive" } },
+          { repositoryUrl: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, name: true },
+      take: limit,
+    });
+    for (const r of repositories) {
+      results.push({
+        urn: formatUrn({
+          realm: "pg",
+          org: urnOrg,
+          type: "repository",
+          id: r.id,
+        }),
+        type: "repository",
+        title: r.name,
+        realm: "pg",
+      });
+    }
+  }
+
+  // Tasks — linked to org via workspace.sourceControlOrgId. Match title OR
+  // description; exclude soft-deleted and archived rows.
+  if (!type || type === "task") {
+    const tasks = await db.task.findMany({
+      where: {
+        workspace: { sourceControlOrgId: orgId, deleted: false },
+        deleted: false,
+        archived: false,
+        OR: [
+          { title: { contains: query, mode: "insensitive" } },
+          { description: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, title: true },
+      take: limit,
+    });
+    for (const t of tasks) {
+      results.push({
+        urn: formatUrn({ realm: "pg", org: urnOrg, type: "task", id: t.id }),
+        type: "task",
+        title: t.title,
         realm: "pg",
       });
     }
@@ -236,16 +397,17 @@ async function searchCanvas(
   query: string,
   {
     orgId,
+    urnOrg,
     type,
     limit,
-  }: { orgId: string; type?: string; limit: number },
+  }: { orgId: string; urnOrg: string; type?: string; limit: number },
 ): Promise<SearchResult[]> {
   // Only canvas nodes have a meaningful node type — skip if caller filters by non-canvas type
   if (type && type !== "node" && type !== "text") return [];
 
   const canvases = await db.canvas.findMany({
     where: { orgId },
-    select: { ref: true, data: true, org: { select: { githubLogin: true } } },
+    select: { ref: true, data: true },
   });
 
   const results: SearchResult[] = [];
@@ -260,7 +422,7 @@ async function searchCanvas(
         results.push({
           urn: formatUrn({
             realm: "canvas",
-            org: canvas.org.githubLogin,
+            org: urnOrg,
             type: node.type ?? "node",
             id: `${encodedRef}.${node.id}`,
           }),
@@ -274,6 +436,53 @@ async function searchCanvas(
   }
 
   return results;
+}
+
+/**
+ * Keyword search over org-canvas chat conversations (SharedConversation rows),
+ * scoped to the org via the direct `sourceControlOrgId` column.
+ *
+ * Matches the conversation `title` OR any content inside the `messages` JSON
+ * blob. JSON content matching requires a raw `messages::text ILIKE` predicate —
+ * Prisma's typed filters can't do substring search across an arbitrary JSON
+ * column. Results are pg-realm with type "conversation".
+ */
+async function searchConversations(
+  query: string,
+  {
+    orgId,
+    urnOrg,
+    type,
+    limit,
+  }: { orgId: string; urnOrg: string; type?: string; limit: number },
+): Promise<SearchResult[]> {
+  // Only emit conversations when the caller hasn't filtered to a different type.
+  if (type && type !== "conversation") return [];
+
+  const like = `%${query}%`;
+  const rows = await db.$queryRaw<Array<{ id: string; title: string | null }>>`
+    SELECT id, title
+    FROM shared_conversations
+    WHERE source_control_org_id = ${orgId}
+      AND (
+        title ILIKE ${like}
+        OR messages::text ILIKE ${like}
+      )
+    ORDER BY last_message_at DESC NULLS LAST
+    LIMIT ${limit}
+  `;
+
+  return rows.map((r) => ({
+    urn: formatUrn({
+      realm: "pg",
+      org: urnOrg,
+      type: "conversation",
+      id: r.id,
+    }),
+    type: "conversation",
+    title: r.title ?? "(untitled conversation)",
+    realm: "pg" as const,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -376,6 +585,8 @@ export function buildGraphWalkerTools(
       description:
         "Search for nodes by keyword across pg and canvas realms, " +
         "returning ranked results with URN, type, title, and realm. " +
+        "The pg realm covers features, initiatives, milestones, tasks, and " +
+        "org-canvas chat conversations; the canvas realm covers canvas nodes. " +
         "Scope with `realm`, `type`, or `workspace` to narrow results. " +
         "Default (no realm) searches pg + canvas. " +
         "`kg` realm is not yet enabled — specifying `realm: 'kg'` returns a stub error.",
@@ -395,7 +606,7 @@ export function buildGraphWalkerTools(
           .string()
           .optional()
           .describe(
-            "Filter by node type (e.g. 'feature', 'initiative', 'milestone', 'node').",
+            "Filter by node type (e.g. 'feature', 'initiative', 'milestone', 'task', 'conversation', 'node').",
           ),
         limit: z
           .number()
@@ -419,11 +630,28 @@ export function buildGraphWalkerTools(
       }) => {
         const arms: Promise<SearchResult[]>[] = [];
 
+        // Resolve the org's githubLogin once — the {org} segment of every
+        // emitted URN must be the githubLogin (not the DB cuid) so results
+        // round-trip through graph_get / graph_neighbors.
+        const orgRow =
+          !realm || realm === "pg" || realm === "canvas"
+            ? await db.sourceControlOrg.findUnique({
+                where: { id: orgId },
+                select: { githubLogin: true },
+              })
+            : null;
+
+        if ((!realm || realm === "pg" || realm === "canvas") && !orgRow) {
+          return { results: [] };
+        }
+        const urnOrg = orgRow?.githubLogin ?? "";
+
         if (!realm || realm === "pg") {
-          arms.push(searchPg(query, { orgId, userId, type, limit }));
+          arms.push(searchPg(query, { orgId, urnOrg, type, limit }));
+          arms.push(searchConversations(query, { orgId, urnOrg, type, limit }));
         }
         if (!realm || realm === "canvas") {
-          arms.push(searchCanvas(query, { orgId, type, limit }));
+          arms.push(searchCanvas(query, { orgId, urnOrg, type, limit }));
         }
         if (realm === "kg") {
           // TODO(kg-enable): resolve workspace slug(s) → getJarvisConfigForWorkspace →

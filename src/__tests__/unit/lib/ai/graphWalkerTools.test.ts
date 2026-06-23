@@ -24,6 +24,12 @@ vi.mock("@/lib/db", () => ({
     feature: { findMany: vi.fn() },
     initiative: { findMany: vi.fn() },
     milestone: { findMany: vi.fn() },
+    task: { findMany: vi.fn() },
+    workspace: { findMany: vi.fn() },
+    repository: { findMany: vi.fn() },
+    research: { findMany: vi.fn() },
+    connection: { findMany: vi.fn() },
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -108,6 +114,13 @@ const dbCanvas = db.canvas as {
 const dbFeature = db.feature as { findMany: ReturnType<typeof vi.fn> };
 const dbInitiative = db.initiative as { findMany: ReturnType<typeof vi.fn> };
 const dbMilestone = db.milestone as { findMany: ReturnType<typeof vi.fn> };
+const dbTask = db.task as { findMany: ReturnType<typeof vi.fn> };
+const dbWorkspace = db.workspace as { findMany: ReturnType<typeof vi.fn> };
+const dbRepository = db.repository as { findMany: ReturnType<typeof vi.fn> };
+const dbResearch = db.research as { findMany: ReturnType<typeof vi.fn> };
+const dbConnection = db.connection as { findMany: ReturnType<typeof vi.fn> };
+const dbQueryRaw = (db as unknown as { $queryRaw: ReturnType<typeof vi.fn> })
+  .$queryRaw;
 
 // ---------------------------------------------------------------------------
 // Test constants
@@ -380,11 +393,19 @@ describe("buildGraphWalkerTools", () => {
 
   describe("graph_search", () => {
     beforeEach(() => {
-      // Default: pg returns nothing, canvas returns nothing
+      // graph_search resolves the org's githubLogin once for URN construction.
+      dbSourceControlOrg.findUnique.mockResolvedValue({ githubLogin: "myorg" });
+      // Default: every arm returns nothing
       dbFeature.findMany.mockResolvedValue([]);
       dbInitiative.findMany.mockResolvedValue([]);
       dbMilestone.findMany.mockResolvedValue([]);
+      dbTask.findMany.mockResolvedValue([]);
+      dbWorkspace.findMany.mockResolvedValue([]);
+      dbRepository.findMany.mockResolvedValue([]);
+      dbResearch.findMany.mockResolvedValue([]);
+      dbConnection.findMany.mockResolvedValue([]);
       dbCanvas.findMany.mockResolvedValue([]);
+      dbQueryRaw.mockResolvedValue([]);
     });
 
     it("searches pg + canvas when no realm specified", async () => {
@@ -495,6 +516,305 @@ describe("buildGraphWalkerTools", () => {
         title: "Feature Alpha",
         realm: "pg",
       });
+    });
+
+    it("pg URNs embed the org githubLogin, not the cuid", async () => {
+      dbFeature.findMany.mockResolvedValue([{ id: "feat-9", title: "X" }]);
+
+      const tools = getTools();
+      await tools.graph_search.execute({ query: "X", realm: "pg" }, {} as never);
+
+      // org segment must be the githubLogin so URNs round-trip through graph_get
+      expect(mockFormatUrn).toHaveBeenCalledWith(
+        expect.objectContaining({ org: "myorg", type: "feature", id: "feat-9" }),
+      );
+      expect(dbSourceControlOrg.findUnique).toHaveBeenCalledWith({
+        where: { id: ORG_ID },
+        select: { githubLogin: true },
+      });
+    });
+
+    it("returns { results: [] } when the org cannot be resolved", async () => {
+      dbSourceControlOrg.findUnique.mockResolvedValue(null);
+      dbFeature.findMany.mockResolvedValue([{ id: "feat-1", title: "Auth" }]);
+
+      const tools = getTools();
+      const result = await tools.graph_search.execute(
+        { query: "Auth" },
+        {} as never,
+      );
+
+      expect(result).toEqual({ results: [] });
+      // Arms must not run without a valid org
+      expect(dbFeature.findMany).not.toHaveBeenCalled();
+    });
+
+    it("matches features on title and plan columns (brief/requirements/architecture)", async () => {
+      dbFeature.findMany.mockResolvedValue([{ id: "feat-7", title: "Billing" }]);
+
+      const tools = getTools();
+      await tools.graph_search.execute(
+        { query: "webhook", realm: "pg", type: "feature" },
+        {} as never,
+      );
+
+      expect(dbFeature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            deleted: false,
+            workspace: { sourceControlOrgId: ORG_ID },
+            OR: [
+              { title: { contains: "webhook", mode: "insensitive" } },
+              { brief: { contains: "webhook", mode: "insensitive" } },
+              { requirements: { contains: "webhook", mode: "insensitive" } },
+              { architecture: { contains: "webhook", mode: "insensitive" } },
+            ],
+          }),
+        }),
+      );
+    });
+
+    it("searches tasks in the pg arm", async () => {
+      dbTask.findMany.mockResolvedValue([
+        { id: "task-1", title: "Fix login bug" },
+      ]);
+
+      const tools = getTools();
+      const result = await tools.graph_search.execute(
+        { query: "login", realm: "pg" },
+        {} as never,
+      );
+
+      // Tasks scoped to the org via workspace, excluding deleted/archived
+      expect(dbTask.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            deleted: false,
+            archived: false,
+            workspace: { sourceControlOrgId: ORG_ID, deleted: false },
+            OR: [
+              { title: { contains: "login", mode: "insensitive" } },
+              { description: { contains: "login", mode: "insensitive" } },
+            ],
+          }),
+        }),
+      );
+      expect(mockFormatUrn).toHaveBeenCalledWith(
+        expect.objectContaining({ realm: "pg", type: "task", id: "task-1" }),
+      );
+      const results = (
+        result as { results: Array<{ type: string; title: string }> }
+      ).results;
+      expect(results).toContainEqual(
+        expect.objectContaining({ type: "task", title: "Fix login bug", realm: "pg" }),
+      );
+    });
+
+    it("searches workspaces in the pg arm (name/description/mission)", async () => {
+      dbWorkspace.findMany.mockResolvedValue([
+        { id: "ws-1", name: "Core Platform" },
+      ]);
+
+      const tools = getTools();
+      const result = await tools.graph_search.execute(
+        { query: "platform", realm: "pg", type: "workspace" },
+        {} as never,
+      );
+
+      expect(dbWorkspace.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            sourceControlOrgId: ORG_ID,
+            deleted: false,
+            OR: [
+              { name: { contains: "platform", mode: "insensitive" } },
+              { description: { contains: "platform", mode: "insensitive" } },
+              { mission: { contains: "platform", mode: "insensitive" } },
+            ],
+          }),
+        }),
+      );
+      expect(mockFormatUrn).toHaveBeenCalledWith(
+        expect.objectContaining({ realm: "pg", type: "workspace", id: "ws-1" }),
+      );
+      const results = (
+        result as { results: Array<{ type: string; title: string }> }
+      ).results;
+      expect(results).toContainEqual(
+        expect.objectContaining({ type: "workspace", title: "Core Platform", realm: "pg" }),
+      );
+    });
+
+    it("searches repositories in the pg arm (name/description/URL)", async () => {
+      dbRepository.findMany.mockResolvedValue([
+        { id: "repo-1", name: "hive" },
+      ]);
+
+      const tools = getTools();
+      const result = await tools.graph_search.execute(
+        { query: "hive", realm: "pg", type: "repository" },
+        {} as never,
+      );
+
+      expect(dbRepository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            workspace: { sourceControlOrgId: ORG_ID, deleted: false },
+            OR: [
+              { name: { contains: "hive", mode: "insensitive" } },
+              { description: { contains: "hive", mode: "insensitive" } },
+              { repositoryUrl: { contains: "hive", mode: "insensitive" } },
+            ],
+          }),
+        }),
+      );
+      expect(mockFormatUrn).toHaveBeenCalledWith(
+        expect.objectContaining({ realm: "pg", type: "repository", id: "repo-1" }),
+      );
+      const results = (
+        result as { results: Array<{ type: string; title: string }> }
+      ).results;
+      expect(results).toContainEqual(
+        expect.objectContaining({ type: "repository", title: "hive", realm: "pg" }),
+      );
+    });
+
+    it("searches research docs in the pg arm (title/topic/summary/content)", async () => {
+      dbResearch.findMany.mockResolvedValue([
+        { id: "res-1", title: "OAuth deep-dive", topic: "oauth" },
+      ]);
+
+      const tools = getTools();
+      const result = await tools.graph_search.execute(
+        { query: "oauth", realm: "pg", type: "research" },
+        {} as never,
+      );
+
+      expect(dbResearch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            orgId: ORG_ID,
+            OR: [
+              { title: { contains: "oauth", mode: "insensitive" } },
+              { topic: { contains: "oauth", mode: "insensitive" } },
+              { summary: { contains: "oauth", mode: "insensitive" } },
+              { content: { contains: "oauth", mode: "insensitive" } },
+            ],
+          }),
+        }),
+      );
+      expect(mockFormatUrn).toHaveBeenCalledWith(
+        expect.objectContaining({ realm: "pg", type: "research", id: "res-1" }),
+      );
+      const results = (
+        result as { results: Array<{ type: string; title: string }> }
+      ).results;
+      expect(results).toContainEqual(
+        expect.objectContaining({ type: "research", title: "OAuth deep-dive", realm: "pg" }),
+      );
+    });
+
+    it("falls back to topic when a research title is empty", async () => {
+      dbResearch.findMany.mockResolvedValue([
+        { id: "res-2", title: "", topic: "rate limiting" },
+      ]);
+
+      const tools = getTools();
+      const result = await tools.graph_search.execute(
+        { query: "rate", realm: "pg", type: "research" },
+        {} as never,
+      );
+
+      const results = (
+        result as { results: Array<{ title: string }> }
+      ).results;
+      expect(results).toContainEqual(
+        expect.objectContaining({ title: "rate limiting" }),
+      );
+    });
+
+    it("searches connection docs in the pg arm (name/summary/architecture)", async () => {
+      dbConnection.findMany.mockResolvedValue([
+        { id: "conn-1", name: "Sphinx ↔ Hive" },
+      ]);
+
+      const tools = getTools();
+      const result = await tools.graph_search.execute(
+        { query: "sphinx", realm: "pg", type: "connection" },
+        {} as never,
+      );
+
+      expect(dbConnection.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            orgId: ORG_ID,
+            OR: [
+              { name: { contains: "sphinx", mode: "insensitive" } },
+              { summary: { contains: "sphinx", mode: "insensitive" } },
+              { architecture: { contains: "sphinx", mode: "insensitive" } },
+            ],
+          }),
+        }),
+      );
+      expect(mockFormatUrn).toHaveBeenCalledWith(
+        expect.objectContaining({ realm: "pg", type: "connection", id: "conn-1" }),
+      );
+      const results = (
+        result as { results: Array<{ type: string; title: string }> }
+      ).results;
+      expect(results).toContainEqual(
+        expect.objectContaining({ type: "connection", title: "Sphinx ↔ Hive", realm: "pg" }),
+      );
+    });
+
+    it("searches conversations in the pg arm via raw query", async () => {
+      dbQueryRaw.mockResolvedValue([
+        { id: "convo-1", title: "Roadmap chat" },
+        { id: "convo-2", title: null },
+      ]);
+
+      const tools = getTools();
+      const result = await tools.graph_search.execute(
+        { query: "roadmap", realm: "pg" },
+        {} as never,
+      );
+
+      expect(dbQueryRaw).toHaveBeenCalled();
+      expect(mockFormatUrn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          realm: "pg",
+          type: "conversation",
+          id: "convo-1",
+        }),
+      );
+      const results = (
+        result as { results: Array<{ type: string; title: string }> }
+      ).results;
+      expect(results).toContainEqual(
+        expect.objectContaining({ type: "conversation", title: "Roadmap chat" }),
+      );
+      // Null titles fall back to a placeholder
+      expect(results).toContainEqual(
+        expect.objectContaining({
+          type: "conversation",
+          title: "(untitled conversation)",
+        }),
+      );
+    });
+
+    it("does not search conversations or tasks when type filters them out", async () => {
+      const tools = getTools();
+      await tools.graph_search.execute(
+        { query: "x", realm: "pg", type: "feature" },
+        {} as never,
+      );
+
+      expect(dbTask.findMany).not.toHaveBeenCalled();
+      expect(dbWorkspace.findMany).not.toHaveBeenCalled();
+      expect(dbRepository.findMany).not.toHaveBeenCalled();
+      expect(dbResearch.findMany).not.toHaveBeenCalled();
+      expect(dbConnection.findMany).not.toHaveBeenCalled();
+      expect(dbQueryRaw).not.toHaveBeenCalled();
     });
   });
 });

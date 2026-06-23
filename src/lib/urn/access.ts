@@ -6,6 +6,10 @@
  *   Org-scoped:        initiative, milestone, research
  *     → verify ctx.orgId matches the SourceControlOrg for the URN's {org}
  *
+ *   Org-membership:    workspace, workspacemember, user
+ *     → verify the URN's {org} maps to ctx.orgId AND the entity belongs to a
+ *       workspace under that org. Org-level granularity (org-page graph walker).
+ *
  *   Workspace-scoped:  feature, task, repository, workflowtask, chatmessage, deployment
  *     → verify ctx.workspaceId matches the entity's workspaceId
  *       (or ctx.userId is a WorkspaceMember of that workspace as fallback)
@@ -26,7 +30,12 @@ export interface PgAccessContext {
 // Org-scoped entities
 // ---------------------------------------------------------------------------
 
-const ORG_SCOPED_TYPES = new Set(["initiative", "milestone", "research"]);
+const ORG_SCOPED_TYPES = new Set([
+  "initiative",
+  "milestone",
+  "research",
+  "connection",
+]);
 
 async function checkOrgScoped(
   org: string,
@@ -38,6 +47,67 @@ async function checkOrgScoped(
     select: { id: true },
   });
   return row?.id === ctx.orgId;
+}
+
+// ---------------------------------------------------------------------------
+// Org-membership entities (workspace / member / user)
+//
+// These have no per-workspace `ctx.workspaceId` to match against — they are
+// gated at org granularity: the URN's {org} must resolve to `ctx.orgId`, and
+// the entity must belong to a (non-deleted) workspace under that org. This is
+// the org-page graph-walker scope; it intentionally does NOT require the
+// caller to be a member of the specific workspace.
+// ---------------------------------------------------------------------------
+
+const ORG_MEMBERSHIP_TYPES = new Set(["workspace", "workspacemember", "user"]);
+
+async function checkOrgMembership(
+  type: string,
+  id: string,
+  org: string,
+  ctx: PgAccessContext
+): Promise<boolean> {
+  if (!ctx.orgId) return false;
+
+  // The URN's {org} (githubLogin) must map to the authorized org.
+  const orgRow = await db.sourceControlOrg.findUnique({
+    where: { githubLogin: org },
+    select: { id: true },
+  });
+  if (orgRow?.id !== ctx.orgId) return false;
+
+  if (type === "workspace") {
+    const ws = await db.workspace.findFirst({
+      where: { id, sourceControlOrgId: ctx.orgId, deleted: false },
+      select: { id: true },
+    });
+    return ws !== null;
+  }
+
+  if (type === "workspacemember") {
+    const member = await db.workspaceMember.findFirst({
+      where: {
+        id,
+        workspace: { sourceControlOrgId: ctx.orgId, deleted: false },
+      },
+      select: { id: true },
+    });
+    return member !== null;
+  }
+
+  if (type === "user") {
+    // A user is visible if they are a member of any workspace under the org.
+    const member = await db.workspaceMember.findFirst({
+      where: {
+        userId: id,
+        workspace: { sourceControlOrgId: ctx.orgId, deleted: false },
+      },
+      select: { id: true },
+    });
+    return member !== null;
+  }
+
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +242,10 @@ export async function checkPgAccess(
 
   if (ORG_SCOPED_TYPES.has(parsed.type)) {
     return checkOrgScoped(parsed.org, ctx);
+  }
+
+  if (ORG_MEMBERSHIP_TYPES.has(parsed.type)) {
+    return checkOrgMembership(parsed.type, parsed.id, parsed.org, ctx);
   }
 
   if (WORKSPACE_SCOPED_TYPES.has(parsed.type)) {
