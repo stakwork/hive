@@ -8,6 +8,7 @@ import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direc
 import { sendHubPushNotification, buildPushMessage } from "@/lib/hub/push-notification";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
+import { isNotificationEnabled } from "@/lib/notifications/preferences";
 
 const DEFERRED_NOTIFICATION_TYPES = new Set<NotificationTriggerType>([
   NotificationTriggerType.TASK_ASSIGNED,
@@ -38,7 +39,7 @@ export async function createAndSendNotification(input: {
     const [targetUser, workspace] = await Promise.all([
       db.user.findUnique({
         where: { id: input.targetUserId },
-        select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true },
+        select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true, notificationPreferences: true },
       }),
       db.workspace.findUnique({
         where: { id: input.workspaceId },
@@ -46,7 +47,29 @@ export async function createAndSendNotification(input: {
       }),
     ]);
 
-    // 2. Idempotency check — skip if PENDING or FAILED record already exists.
+    // 2. Preference gate — skip if the user has disabled this notification type
+    if (!isNotificationEnabled(targetUser?.notificationPreferences, input.notificationType)) {
+      await db.notificationTrigger.create({
+        data: {
+          targetUserId: input.targetUserId,
+          originatingUserId: input.originatingUserId ?? null,
+          taskId,
+          featureId,
+          notificationType: input.notificationType,
+          status: NotificationTriggerStatus.SKIPPED,
+          notificationMethod: NotificationMethod.SPHINX,
+          notificationTimestamps: [],
+        },
+      });
+      logger.info(
+        `[Notifications] Skipped ${input.notificationType} — user preference disabled`,
+        "NOTIFICATIONS",
+        { targetUserId: input.targetUserId, taskId, featureId }
+      );
+      return;
+    }
+
+    // 3. Idempotency check — skip if PENDING or FAILED record already exists.
     //    FAILED records block retries so a previous failure for the same trigger
     //    key does not produce a second notification row.
     const existing = await db.notificationTrigger.findFirst({
@@ -68,14 +91,14 @@ export async function createAndSendNotification(input: {
       return;
     }
 
-    // 3. Determine DM eligibility — decrypt the pubkey if present
+    // 4. Determine DM eligibility — decrypt the pubkey if present
     const encryptionService = EncryptionService.getInstance();
     const decryptedPubkey = targetUser?.lightningPubkey
       ? encryptionService.decryptField("lightningPubkey", targetUser.lightningPubkey)
       : null;
     const dmReady = isDirectMessageConfigured() && !!decryptedPubkey;
 
-    // 4. Always insert a row — use SKIPPED when DM is not ready
+    // 5. Always insert a row — use SKIPPED when DM is not ready
     const record = await db.notificationTrigger.create({
       data: {
         targetUserId: input.targetUserId,
@@ -91,7 +114,7 @@ export async function createAndSendNotification(input: {
       },
     });
 
-    // 5. Stop here if DM is not configured — no send attempted
+    // 6. Stop here if DM is not configured — no send attempted
     if (!dmReady) {
       logger.info(
         `[Notifications] DM not ready — record created as SKIPPED for ${input.notificationType}`,
@@ -101,7 +124,7 @@ export async function createAndSendNotification(input: {
       return;
     }
 
-    // 6. Deferred types: store sendAfter + message, return without sending
+    // 7. Deferred types: store sendAfter + message, return without sending
     if (DEFERRED_NOTIFICATION_TYPES.has(input.notificationType)) {
       const sendAfter = new Date(Date.now() + DEFERRED_DELAY_MS);
       await db.notificationTrigger.update({
@@ -116,7 +139,7 @@ export async function createAndSendNotification(input: {
       return;
     }
 
-    // 7. Immediate types: send via direct message now
+    // 8. Immediate types: send via direct message now
     const result = await sendDirectMessage(decryptedPubkey!, input.message, {
       routeHint: targetUser!.sphinxRouteHint ?? undefined,
     });
@@ -148,7 +171,7 @@ export async function createAndSendNotification(input: {
       );
     }
 
-    // 8. Update record with outcome (persist message for auditability)
+    // 9. Update record with outcome (persist message for auditability)
     await db.notificationTrigger.update({
       where: { id: record.id },
       data: {
