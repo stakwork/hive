@@ -369,6 +369,11 @@ export function MessageBubble({
             />
           ))}
         </div>
+        {onFlag && (
+          <Button variant="ghost" size="icon" onClick={onFlag} className="h-6 w-6 shrink-0 mt-0.5 self-start">
+            <Flag className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
     );
   }
@@ -534,7 +539,7 @@ export function MessageBubble({
           </Tooltip>
         )}
       </div>
-      {onFlag && (
+      {onFlag && isAssistant && (
         <Button variant="ghost" size="icon" onClick={onFlag} className="h-6 w-6 shrink-0 mt-0.5 self-start">
           <Flag className="h-3.5 w-3.5" />
         </Button>
@@ -755,7 +760,7 @@ export function LogDetailContent({
                     message={msg}
                     toolCallIndex={toolCallIndex}
                     consumedResultIds={consumedResultIds}
-                    onFlag={onFlagTurn ? () => onFlagTurn(i) : undefined}
+                    onFlag={onFlagTurn && msg.role === "assistant" ? () => onFlagTurn(i - 1) : undefined}
                   />
                 ))}
               </div>

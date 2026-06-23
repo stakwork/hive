@@ -62,6 +62,7 @@ vi.mock("lucide-react", () => ({
   ChevronRight: () => React.createElement("span", { "data-testid": "chevron-right" }),
   Copy: () => React.createElement("span", { "data-testid": "icon-copy" }),
   Check: () => React.createElement("span", { "data-testid": "icon-check" }),
+  Flag: () => React.createElement("span", { "data-testid": "icon-flag" }),
 }));
 
 describe("MessageBubble reasoning rendering", () => {
@@ -176,5 +177,64 @@ describe("MessageBubble timestamp rendering", () => {
     render(React.createElement(MessageBubble, { message }));
 
     expect(screen.queryByTestId("tooltip-content")).toBeNull();
+  });
+});
+
+describe("MessageBubble flag button", () => {
+  it("renders flag button on assistant message with text when onFlag is provided", () => {
+    const onFlag = vi.fn();
+    const message: ParsedMessage = { role: "assistant", content: "Hello" };
+    render(React.createElement(MessageBubble, { message, onFlag }));
+    expect(screen.getByTestId("icon-flag")).toBeDefined();
+  });
+
+  it("does not render flag button on assistant message when onFlag is not provided", () => {
+    const message: ParsedMessage = { role: "assistant", content: "Hello" };
+    render(React.createElement(MessageBubble, { message }));
+    expect(screen.queryByTestId("icon-flag")).toBeNull();
+  });
+
+  it("renders flag button on tool-only assistant message when onFlag is provided", () => {
+    const onFlag = vi.fn();
+    const message: ParsedMessage = {
+      role: "assistant",
+      content: [{ type: "tool-call", toolCallId: "tc1", toolName: "search", input: {} }],
+    };
+    render(React.createElement(MessageBubble, { message, onFlag }));
+    expect(screen.getByTestId("icon-flag")).toBeDefined();
+  });
+
+  it("does not render flag button on user message even when onFlag is provided", () => {
+    const onFlag = vi.fn();
+    const message: ParsedMessage = { role: "user", content: "Hello" };
+    render(React.createElement(MessageBubble, { message, onFlag }));
+    expect(screen.queryByTestId("icon-flag")).toBeNull();
+  });
+
+  it("does not render flag button on system message even when onFlag is provided", () => {
+    const onFlag = vi.fn();
+    const message: ParsedMessage = { role: "system", content: "System prompt" };
+    render(React.createElement(MessageBubble, { message, onFlag }));
+    expect(screen.queryByTestId("icon-flag")).toBeNull();
+  });
+
+  it("does not render flag button on tool-result message even when onFlag is provided", () => {
+    const onFlag = vi.fn();
+    const message: ParsedMessage = {
+      role: "tool",
+      content: [{ type: "tool-result", toolCallId: "tc1", toolName: "search", output: "result" }],
+    };
+    render(React.createElement(MessageBubble, { message, onFlag }));
+    expect(screen.queryByTestId("icon-flag")).toBeNull();
+  });
+
+  it("calls onFlag when flag button is clicked on assistant message", async () => {
+    const user = userEvent.setup();
+    const onFlag = vi.fn();
+    const message: ParsedMessage = { role: "assistant", content: "Hello" };
+    render(React.createElement(MessageBubble, { message, onFlag }));
+    const flagBtn = screen.getByTestId("icon-flag").closest("button")!;
+    await user.click(flagBtn);
+    expect(onFlag).toHaveBeenCalledOnce();
   });
 });
