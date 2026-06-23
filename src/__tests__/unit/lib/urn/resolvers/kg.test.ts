@@ -127,8 +127,21 @@ describe("resolveKgSeam", () => {
     expect(result).toEqual({
       workspace: "my-workspace",
       swarmUrl: "https://swarm.example.com",
+      jarvisUrl: "https://my-swarm.sphinx.chat:8444",
       swarmApiKey: "decrypted-key",
     });
+  });
+
+  it("returns null when swarm has no name (cannot address Jarvis)", async () => {
+    mockWsFindFirst.mockResolvedValue({ id: "ws-1" });
+    mockMemberFindFirst.mockResolvedValue({ id: "m-1" });
+    mockGetSwarmAccess.mockResolvedValue({
+      success: true,
+      data: { ...SUCCESS_DATA, swarmName: "" },
+    });
+
+    const result = await resolveKgSeam("urn:myorg:kg:my-workspace:concept:abc", CTX);
+    expect(result).toBeNull();
   });
 
   it("does not make any outbound HTTP call (credential passthrough only)", async () => {

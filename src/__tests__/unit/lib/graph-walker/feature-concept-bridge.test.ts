@@ -123,7 +123,7 @@ function mockFetchSuccess(concepts: unknown[]) {
   global.fetch = vi.fn().mockResolvedValueOnce({
     ok: true,
     status: 200,
-    json: async () => concepts,
+    json: async () => ({ concepts }),
   } as unknown as Response);
 }
 
@@ -242,13 +242,13 @@ describe("linkFeatureToConcepts", () => {
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => [CONCEPT_WITH_REF],
+          json: async () => ({ concepts: [CONCEPT_WITH_REF] }),
         } as unknown as Response)
         // Second run
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => [CONCEPT_WITH_REF],
+          json: async () => ({ concepts: [CONCEPT_WITH_REF] }),
         } as unknown as Response);
 
       const result1 = await linkFeatureToConcepts(FEATURE_ID);
@@ -355,12 +355,12 @@ describe("backfillFeatureConceptEdges", () => {
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => [CONCEPT_WITH_REF],
+          json: async () => ({ concepts: [CONCEPT_WITH_REF] }),
         } as unknown as Response)
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => [CONCEPT_WITH_REF],
+          json: async () => ({ concepts: [CONCEPT_WITH_REF] }),
         } as unknown as Response);
 
       const result = await backfillFeatureConceptEdges({ orgId: ORG_ID });
