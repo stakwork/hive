@@ -52,8 +52,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "GitHub PAT not found for this user" }, { status: 404 });
     }
 
-    // Call gitree/create-feature endpoint
-    const swarmUrl = `${baseSwarmUrl}/gitree/create-feature`;
+    // Call gitree/create-concept endpoint
+    const swarmUrl = `${baseSwarmUrl}/gitree/create-concept`;
 
     const response = await fetch(swarmUrl, {
       method: "POST",
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
         // Success! Return feature data
         return NextResponse.json({
           success: true,
-          feature: progressData.result?.feature,
+          feature: progressData.result?.concept ?? progressData.result?.feature,
           usage: progressData.result?.usage,
         });
       } else if (progressData.status === "failed") {
