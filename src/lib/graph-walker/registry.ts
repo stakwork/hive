@@ -321,4 +321,7 @@ export const PG_NODE_TYPES = new Set([
   "deployment",
   "workflowtask",
   "chatmessage",
+  "research",
+  "connection",
+  "conversation",
 ]);

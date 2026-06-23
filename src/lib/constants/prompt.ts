@@ -714,9 +714,11 @@ Realms: \`pg\` (Postgres roadmap entities), \`canvas\` (canvas nodes), \`kg\` (w
 - **\`graph_neighbors({ urn, depth? })\`** — Return all adjacent URNs reachable in one hop, with \`edgeType\` and \`direction\`. Use this to explore what a node is connected to without fetching the full content of each neighbor.
 
 - **\`graph_search({ query, realm?, type?, workspace?, limit? })\`** — Discover nodes by keyword. Returns \`{ urn, type, title, realm }[]\` ranked results. Scope with \`realm\` and/or \`type\` to narrow results:
-  - \`realm: "pg"\` — searches features, initiatives, milestones by name
-  - \`realm: "canvas"\` — searches canvas nodes by text/label
+  - \`realm: "pg"\` — searches features, initiatives, milestones, tasks, workspaces, and repositories by title/name (features also match on their brief/requirements/architecture plan content; tasks also match on description; workspaces also match on description/mission; repositories also match on description/URL), plus research docs (title/topic/summary/content), connection docs (name/summary/architecture), and org-canvas chat conversations (title + message content)
+  - \`realm: "canvas"\` — searches **authored** canvas nodes by text/label only. Projected/live cards (workspace/initiative/feature/milestone/repository/research) are NOT in this arm — find those via their pg types instead.
   - Omit \`realm\` to search both pg and canvas simultaneously
+  - Narrow pg results with \`type\`: \`"feature"\`, \`"initiative"\`, \`"milestone"\`, \`"task"\`, \`"workspace"\`, \`"repository"\`, \`"research"\`, \`"connection"\`, or \`"conversation"\`
+  - From a \`workspace\` URN, \`graph_neighbors\` walks \`HAS_MEMBER\` → workspace members, and each member's \`IS_USER\` → the underlying user
 
 ### Scope reminder
 
