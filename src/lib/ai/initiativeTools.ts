@@ -908,18 +908,22 @@ export function buildInitiativeTools(
         "**Always provide BOTH `description` and `initialMessage`.** " +
         "`description` is the durable brief (a short paragraph of " +
         "context shown on the feature page). `initialMessage` seeds " +
-        "the feature's planning agent: LEAD with a one-line directive " +
-        "phrased as an instruction to a developer (e.g. 'Build a " +
-        "tiered pricing page with three plans and a comparison " +
-        "table'), then FOLD IN any concrete API shapes/contracts, " +
-        "data models, types, and integration points you discovered " +
-        "while researching this in the conversation — verbatim and " +
-        "specific, so the planner builds on what you already learned " +
-        "instead of rediscovering it. You can also reference another " +
-        "workspace by its `@slug` (from the **Available Workspaces** " +
-        "list) to let the planner delegate to that workspace's swarm " +
-        "for cross-workspace context. This directive is what kicks " +
-        "off research and the feature's eventual auto-naming.",
+        "the feature's planning agent: keep it SHORT by default — " +
+        "LEAD with a one-line directive phrased as an instruction to " +
+        "a developer (e.g. 'Build a tiered pricing page with three " +
+        "plans and a comparison table'). Leaving scope open is GOOD: " +
+        "the planner does the deep research and figures out the " +
+        "details. Only add specifics the user ALREADY gave you in " +
+        "this conversation (a contract they stated, a shape you " +
+        "surfaced and they confirmed); fold those in verbatim so they " +
+        "aren't lost. Do NOT write a multi-section spec, do NOT " +
+        "restate the `description`, and do NOT pad the seed with " +
+        "details you'd have to research first — that's the planner's " +
+        "job. You can reference another workspace by its `@slug` " +
+        "(from the **Available Workspaces** list) to let the planner " +
+        "delegate to that workspace's swarm for cross-workspace " +
+        "context. This directive is what kicks off research and the " +
+        "feature's eventual auto-naming.",
       inputSchema: z.object({
         proposalId: z.string().min(1),
         title: z.string().min(1),
@@ -941,44 +945,40 @@ export function buildInitiativeTools(
             "The FIRST chat message on the new feature's plan chat " +
               "after approval — it kicks off the planning workflow's " +
               "research pass (which produces the feature's proper " +
-              "auto-generated title). Structure it in up to three " +
-              "parts: (1) LEAD with a one-line directive phrased as " +
-              "an instruction to a developer, e.g. 'Build a tiered " +
-              "pricing page with three plans and a comparison table.' " +
-              "(2) THEN, whenever your prior research in THIS " +
-              "conversation surfaced concrete technical contracts, " +
-              "append them verbatim so the planner doesn't have to " +
-              "rediscover (or accidentally contradict) them: exact " +
-              "API endpoint paths, request/response schemas, data " +
-              "models, type definitions, auth/permission requirements, " +
-              "and external integration points. Be specific — paste " +
-              "the real routes, field names, and types you found, not " +
-              "vague summaries. (3) If the feature needs context from " +
-              "ANOTHER workspace's codebase (shared types, an API " +
-              "another team owns, cross-service contracts), mention " +
-              "that workspace by its `@slug` (the slug from the " +
-              "**Available Workspaces** list, e.g. `@stakgraph`). A " +
-              "mentioned `@slug` attaches that workspace as a " +
-              "sub-agent to this planner run, letting the planner " +
-              "query that workspace's own swarm / knowledge graph for " +
-              "cross-workspace details on demand. Only mention " +
-              "workspaces that are genuinely relevant. " +
-              "FOLLOW THE USER'S LEAD ON DEPTH. The seed's richness " +
-              "should mirror the conversation: a detailed conversation " +
-              "should carry its established contracts into the seed " +
-              "verbatim (API shapes, data models, types the user " +
-              "specified or you surfaced earlier) so nothing is lost " +
-              "when the planner takes over; a brief request gets a " +
-              "brief seed — the planner will do the deep research " +
-              "itself. Do NOT kick off a research pass just to pad the " +
-              "seed; that's the planner's job. But NEVER guess or " +
-              "fabricate endpoint paths, field names, or types to make " +
-              "the seed look complete — a made-up contract is worse " +
-              "than none, because the planner treats the seed as " +
-              "ground truth and will build on it. For any shape that is " +
-              "NOT already established in this conversation, simply " +
-              "name it and tell the planner to confirm it against the " +
-              "real codebase — don't invent it. " +
+              "auto-generated title). " +
+              "DEFAULT TO BRIEF. Most of the time this should be ONE " +
+              "directive line phrased as an instruction to a " +
+              "developer, e.g. 'Build a tiered pricing page with three " +
+              "plans and a comparison table.' Leaving the rest open is " +
+              "GOOD — the planner is the agent that does the deep " +
+              "research and works out the contracts, file layout, and " +
+              "scope. You are NOT writing the spec. " +
+              "Do NOT restate the `description`, do NOT enumerate a " +
+              "multi-section 'Scope:' breakdown, and do NOT kick off a " +
+              "research pass just to flesh the seed out — that's the " +
+              "planner's job, not a prerequisite for proposing. " +
+              "ONLY append specifics that the user ALREADY established " +
+              "in THIS conversation — a contract they explicitly " +
+              "stated, or a shape you surfaced earlier and they " +
+              "confirmed. When that exists, fold it in verbatim (exact " +
+              "route, field name, or type) so it isn't lost or " +
+              "contradicted when the planner takes over. If the user " +
+              "only gave a brief ask, give a brief seed. " +
+              "NEVER guess or fabricate endpoint paths, field names, " +
+              "or types to make the seed look complete — a made-up " +
+              "contract is worse than none, because the planner treats " +
+              "the seed as ground truth and builds on it. For any " +
+              "shape not already established here, just name it (or " +
+              "leave it out) and let the planner discover it against " +
+              "the real codebase. " +
+              "If the feature genuinely needs context from ANOTHER " +
+              "workspace's codebase (shared types, an API another team " +
+              "owns, cross-service contracts), mention that workspace " +
+              "by its `@slug` (from the **Available Workspaces** list, " +
+              "e.g. `@stakgraph`) — that attaches the workspace as a " +
+              "sub-agent so the planner can query its swarm / " +
+              "knowledge graph on demand. Only mention workspaces that " +
+              "are genuinely relevant. " +
               "Markdown is supported. Required.",
           ),
         workspaceSlug: z
