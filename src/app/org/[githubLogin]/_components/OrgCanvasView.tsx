@@ -142,7 +142,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     return () => ro.disconnect();
   }, []);
 
-  const [workspaces, setWorkspaces] = useState<{ id: string; slug: string }[]>([]);
+  const [workspaces, setWorkspaces] = useState<{ id: string; slug: string; isDefault?: boolean }[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
   const [hiddenWorkspaceIds, setHiddenWorkspaceIds] = useState<Set<string>>(
     () => new Set(),
@@ -331,6 +331,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     () =>
       workspaces
         .filter((ws) => !hiddenWorkspaceIds.has(ws.id))
+        .sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0))
         .map((ws) => ws.slug),
     [workspaces, hiddenWorkspaceIds],
   );
