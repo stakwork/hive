@@ -2,11 +2,12 @@
  * Unit tests for buildGraphWalkerTools (graph_walker capability).
  *
  * Tests:
- *   1. graph_get routes pg/canvas URNs to their resolvers; kg returns stub
+ *   1. graph_get routes pg/canvas URNs to their resolvers; kg arm calls resolveKgSeam + kgGetNode
  *   2. graph_neighbors pg arm delegates entirely to pgNeighbors
  *   3. graph_neighbors canvas arm unions canvas edges + UrnEdge, deduplicates
- *   4. graph_search fan-out — pg + canvas arms called; kg stub returned without throwing
- *   5. resolveCapabilities(["roadmap"]) includes "graph_walker"
+ *   4. graph_neighbors kg arm calls resolveKgSeam + kgGetNeighbors; direction/importance/filters
+ *   5. graph_search fan-out — pg + canvas arms called; kg arm uses resolveKgSeam + kgSearch
+ *   6. resolveCapabilities(["roadmap"]) includes "graph_walker"
  */
 
 // @vitest-environment node
@@ -50,6 +51,20 @@ vi.mock("@/lib/graph-walker", () => ({
   pgNeighbors: vi.fn(),
 }));
 
+vi.mock("@/lib/urn/resolvers/kg", () => ({
+  resolveKgSeam: vi.fn(),
+}));
+
+vi.mock("@/lib/ai/kg-adapter", () => ({
+  kgGetNode: vi.fn(),
+  kgGetNeighbors: vi.fn(),
+  kgSearch: vi.fn(),
+}));
+
+vi.mock("@/lib/helpers/swarm-access", () => ({
+  getSwarmAccessByWorkspaceId: vi.fn(),
+}));
+
 // For capabilities.ts — mock all capability tool builders so importing
 // capabilities.ts doesn't pull in heavy deps.
 vi.mock("@/lib/ai/canvasTools", () => ({ buildCanvasTools: vi.fn(() => ({})) }));
@@ -90,6 +105,9 @@ import {
 import { pgNeighbors } from "@/lib/graph-walker";
 import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import { resolveCapabilities } from "@/lib/ai/capabilities";
+import { resolveKgSeam } from "@/lib/urn/resolvers/kg";
+import { kgGetNode, kgGetNeighbors, kgSearch } from "@/lib/ai/kg-adapter";
+import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 
 // ---------------------------------------------------------------------------
 // Typed mock aliases
@@ -103,6 +121,11 @@ const mockResolveCanvasNode = resolveCanvasNode as ReturnType<typeof vi.fn>;
 const mockUrnEdgeNeighborsOf = UrnEdge.neighborsOf as ReturnType<typeof vi.fn>;
 const mockPgNeighbors = pgNeighbors as ReturnType<typeof vi.fn>;
 const mockAsBlob = asBlob as ReturnType<typeof vi.fn>;
+const mockResolveKgSeam = resolveKgSeam as ReturnType<typeof vi.fn>;
+const mockKgGetNode = kgGetNode as ReturnType<typeof vi.fn>;
+const mockKgGetNeighbors = kgGetNeighbors as ReturnType<typeof vi.fn>;
+const mockKgSearch = kgSearch as ReturnType<typeof vi.fn>;
+const mockGetSwarmAccessByWorkspaceId = getSwarmAccessByWorkspaceId as ReturnType<typeof vi.fn>;
 
 const dbSourceControlOrg = db.sourceControlOrg as {
   findUnique: ReturnType<typeof vi.fn>;
@@ -244,13 +267,48 @@ describe("buildGraphWalkerTools", () => {
       expect(result).toEqual(fakeNode);
     });
 
-    it("returns kg stub for kg realm without calling any resolver", async () => {
+    it("kg arm: returns error when resolveKgSeam returns null (IDOR guard)", async () => {
       mockParseUrn.mockReturnValue({
         realm: "kg",
         org: "myorg",
         workspace: "my-workspace",
         type: "concept",
         id: "concept-1",
+      });
+      mockResolveKgSeam.mockResolvedValue(null);
+
+      const tools = getTools();
+      const result = await tools.graph_get.execute(
+        { urn: "urn:myorg:kg:my-workspace:concept:concept-1" },
+        {} as never,
+      );
+
+      expect(result).toEqual({ error: "swarm not configured or access denied" });
+      // IDOR guard fires before any fetch
+      expect(mockKgGetNode).not.toHaveBeenCalled();
+      expect(mockResolvePgNode).not.toHaveBeenCalled();
+      expect(mockResolveCanvasNode).not.toHaveBeenCalled();
+    });
+
+    it("kg arm: happy path returns node fields", async () => {
+      mockParseUrn.mockReturnValue({
+        realm: "kg",
+        org: "myorg",
+        workspace: "my-workspace",
+        type: "concept",
+        id: "concept-1",
+      });
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-workspace",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-123",
+      });
+      mockKgGetNode.mockResolvedValue({
+        ref_id: "concept-1",
+        node_type: "concept",
+        name: "Concept One",
+        properties: { foo: "bar" },
       });
 
       const tools = getTools();
@@ -259,9 +317,41 @@ describe("buildGraphWalkerTools", () => {
         {} as never,
       );
 
-      expect(result).toEqual({ error: "kg realm not yet enabled" });
-      expect(mockResolvePgNode).not.toHaveBeenCalled();
-      expect(mockResolveCanvasNode).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        ref_id: "concept-1",
+        node_type: "concept",
+        name: "Concept One",
+        properties: { foo: "bar" },
+      });
+      // resolveKgSeam called BEFORE kgGetNode
+      const resolveOrder = mockResolveKgSeam.mock.invocationCallOrder[0];
+      const getOrder = mockKgGetNode.mock.invocationCallOrder[0];
+      expect(resolveOrder).toBeLessThan(getOrder);
+    });
+
+    it("kg arm: returns error when kgGetNode returns null (node not found)", async () => {
+      mockParseUrn.mockReturnValue({
+        realm: "kg",
+        org: "myorg",
+        workspace: "my-workspace",
+        type: "concept",
+        id: "missing",
+      });
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-workspace",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-123",
+      });
+      mockKgGetNode.mockResolvedValue(null);
+
+      const tools = getTools();
+      const result = await tools.graph_get.execute(
+        { urn: "urn:myorg:kg:my-workspace:concept:missing" },
+        {} as never,
+      );
+
+      expect(result).toEqual({ error: "node not found" });
     });
   });
 
@@ -367,13 +457,147 @@ describe("buildGraphWalkerTools", () => {
       expect(featEntries).toHaveLength(1);
     });
 
-    it("kg arm returns stub without calling pgNeighbors or canvas helpers", async () => {
+    it("kg arm: null seam → swarm not configured error", async () => {
       mockParseUrn.mockReturnValue({
         realm: "kg",
         org: "myorg",
         workspace: "my-ws",
         type: "concept",
         id: "c1",
+      });
+      mockResolveKgSeam.mockResolvedValue(null);
+
+      const tools = getTools();
+      const result = await tools.graph_neighbors.execute(
+        { urn: "urn:myorg:kg:my-ws:concept:c1" },
+        {} as never,
+      );
+
+      expect(result).toEqual({ error: "swarm not configured or access denied" });
+      expect(mockPgNeighbors).not.toHaveBeenCalled();
+      expect(mockKgGetNeighbors).not.toHaveBeenCalled();
+    });
+
+    it("kg arm: reachable:false → swarm unreachable error", async () => {
+      mockParseUrn.mockReturnValue({
+        realm: "kg",
+        org: "myorg",
+        workspace: "my-ws",
+        type: "concept",
+        id: "c1",
+      });
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-ws",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-123",
+      });
+      mockKgGetNeighbors.mockResolvedValue({ neighbors: [], reachable: false });
+
+      const tools = getTools();
+      const result = await tools.graph_neighbors.execute(
+        { urn: "urn:myorg:kg:my-ws:concept:c1" },
+        {} as never,
+      );
+
+      expect(result).toEqual({ error: "swarm unreachable" });
+    });
+
+    it("kg arm: reachable:true with empty neighbors → { neighbors: [] } (not an error)", async () => {
+      mockParseUrn.mockReturnValue({
+        realm: "kg",
+        org: "myorg",
+        workspace: "my-ws",
+        type: "concept",
+        id: "c1",
+      });
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-ws",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-123",
+      });
+      mockKgGetNeighbors.mockResolvedValue({ neighbors: [], reachable: true });
+
+      const tools = getTools();
+      const result = await tools.graph_neighbors.execute(
+        { urn: "urn:myorg:kg:my-ws:concept:c1" },
+        {} as never,
+      );
+
+      expect(result).toEqual({ neighbors: [] });
+    });
+
+    it("kg arm: forward direction neighbor gets minted URN", async () => {
+      mockParseUrn.mockReturnValue({
+        realm: "kg",
+        org: "myorg",
+        workspace: "my-ws",
+        type: "concept",
+        id: "c1",
+      });
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-ws",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-123",
+      });
+      mockKgGetNeighbors.mockResolvedValue({
+        neighbors: [
+          {
+            urn: "",
+            edgeType: "MODIFIES",
+            direction: "forward",
+            node_type: "File",
+            ref_id: "file-ref",
+          },
+        ],
+        reachable: true,
+      });
+      mockFormatUrn.mockImplementation(
+        (p: { realm: string; org: string; workspace?: string; type: string; id: string }) =>
+          `urn:${p.org}:${p.realm}:${p.workspace ? p.workspace + ":" : ""}${p.type}:${p.id}`,
+      );
+
+      const tools = getTools();
+      const result = await tools.graph_neighbors.execute(
+        { urn: "urn:myorg:kg:my-ws:concept:c1" },
+        {} as never,
+      );
+
+      const neighbors = (result as { neighbors: Array<{ urn: string; direction: string }> }).neighbors;
+      expect(neighbors).toHaveLength(1);
+      expect(neighbors[0].direction).toBe("forward");
+      expect(neighbors[0].urn).toContain("myorg");
+      expect(neighbors[0].urn).toContain("my-ws");
+      expect(neighbors[0].urn).toContain("file-ref");
+    });
+
+    it("kg arm: reverse direction neighbor", async () => {
+      mockParseUrn.mockReturnValue({
+        realm: "kg",
+        org: "myorg",
+        workspace: "my-ws",
+        type: "concept",
+        id: "c1",
+      });
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-ws",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-123",
+      });
+      mockKgGetNeighbors.mockResolvedValue({
+        neighbors: [
+          {
+            urn: "",
+            edgeType: "TOUCHES",
+            direction: "reverse",
+            node_type: "Function",
+            ref_id: "fn-ref",
+          },
+        ],
+        reachable: true,
       });
 
       const tools = getTools();
@@ -382,8 +606,80 @@ describe("buildGraphWalkerTools", () => {
         {} as never,
       );
 
-      expect(result).toEqual({ error: "kg realm not yet enabled" });
-      expect(mockPgNeighbors).not.toHaveBeenCalled();
+      const neighbors = (result as { neighbors: Array<{ direction: string }> }).neighbors;
+      expect(neighbors[0].direction).toBe("reverse");
+    });
+
+    it("kg arm: importance forwarded to output neighbor", async () => {
+      mockParseUrn.mockReturnValue({
+        realm: "kg",
+        org: "myorg",
+        workspace: "my-ws",
+        type: "concept",
+        id: "c1",
+      });
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-ws",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-123",
+      });
+      mockKgGetNeighbors.mockResolvedValue({
+        neighbors: [
+          {
+            urn: "",
+            edgeType: "MODIFIES",
+            direction: "forward",
+            node_type: "File",
+            ref_id: "f-ref",
+            importance: 0.9,
+          },
+        ],
+        reachable: true,
+      });
+
+      const tools = getTools();
+      const result = await tools.graph_neighbors.execute(
+        { urn: "urn:myorg:kg:my-ws:concept:c1" },
+        {} as never,
+      );
+
+      const neighbors = (result as { neighbors: Array<{ importance?: number }> }).neighbors;
+      expect(neighbors[0].importance).toBe(0.9);
+    });
+
+    it("kg arm: edge_type and node_type filters forwarded to kgGetNeighbors", async () => {
+      mockParseUrn.mockReturnValue({
+        realm: "kg",
+        org: "myorg",
+        workspace: "my-ws",
+        type: "concept",
+        id: "c1",
+      });
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-ws",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-123",
+      });
+      mockKgGetNeighbors.mockResolvedValue({ neighbors: [], reachable: true });
+
+      const tools = getTools();
+      await tools.graph_neighbors.execute(
+        {
+          urn: "urn:myorg:kg:my-ws:concept:c1",
+          edge_type: ["MODIFIES", "CITES"],
+          node_type: ["File"],
+        } as { urn: string; edge_type?: string[]; node_type?: string[] },
+        {} as never,
+      );
+
+      expect(mockKgGetNeighbors).toHaveBeenCalledWith(
+        "https://jarvis.example.com",
+        "key-123",
+        "c1",
+        { edgeTypes: ["MODIFIES", "CITES"], nodeTypes: ["File"] },
+      );
     });
   });
 
@@ -477,20 +773,88 @@ describe("buildGraphWalkerTools", () => {
       expect(results.every((r) => r.realm === "canvas")).toBe(true);
     });
 
-    it("returns kg stub without throwing when realm='kg'", async () => {
+    it("kg arm with workspace param: resolveKgSeam called with synthetic URN; hits mapped to kg URNs", async () => {
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-ws",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-kg",
+      });
+      mockKgSearch.mockResolvedValue([
+        { ref_id: "n1", node_type: "Function", name: "doThing" },
+      ]);
+      mockFormatUrn.mockImplementation(
+        (p: { realm: string; org: string; workspace?: string; type: string; id: string }) =>
+          `urn:${p.org}:${p.realm}:${p.workspace ? p.workspace + ":" : ""}${p.type}:${p.id}`,
+      );
+
       const tools = getTools();
       const result = await tools.graph_search.execute(
-        { query: "anything", realm: "kg" },
+        { query: "doThing", realm: "kg", workspace: "my-ws" },
         {} as never,
       );
 
-      expect(result).toHaveProperty("results");
-      const results = (result as { results: unknown[] }).results;
-      expect(results).toHaveLength(1);
-      expect(results[0]).toMatchObject({ error: "kg realm not yet enabled" });
-      // pg and canvas should not be queried
+      // resolveKgSeam called with a synthetic kg URN
+      expect(mockResolveKgSeam).toHaveBeenCalledWith(
+        expect.stringContaining("kg"),
+        { userId: USER_ID },
+      );
+      // pg and canvas arms not called
       expect(dbFeature.findMany).not.toHaveBeenCalled();
       expect(dbCanvas.findMany).not.toHaveBeenCalled();
+
+      const results = (result as { results: Array<{ urn: string; type: string; title: string; realm: string }> }).results;
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({
+        type: "Function",
+        title: "doThing",
+        realm: "kg",
+      });
+      expect(results[0].urn).toContain("n1");
+    });
+
+    it("kg arm without workspace: fans out to all member workspaces, skips unreachable", async () => {
+      dbWorkspace.findMany.mockResolvedValue([
+        { id: "ws-1", slug: "workspace-one" },
+        { id: "ws-2", slug: "workspace-two" },
+      ]);
+      // ws-1 has swarm; ws-2 does not
+      mockGetSwarmAccessByWorkspaceId
+        .mockResolvedValueOnce({
+          success: true,
+          data: { swarmUrl: "https://jarvis1.example.com", swarmName: "swarm-one", swarmApiKey: "key-1" },
+        })
+        .mockResolvedValueOnce({ success: false, error: { type: "SWARM_NOT_CONFIGURED" } });
+      mockKgSearch.mockResolvedValue([
+        { ref_id: "n2", node_type: "File", name: "utils.ts" },
+      ]);
+      mockFormatUrn.mockImplementation(
+        (p: { realm: string; org: string; workspace?: string; type: string; id: string }) =>
+          `urn:${p.org}:${p.realm}:${p.workspace ? p.workspace + ":" : ""}${p.type}:${p.id}`,
+      );
+
+      const tools = getTools();
+      const result = await tools.graph_search.execute(
+        { query: "utils", realm: "kg" },
+        {} as never,
+      );
+
+      // Membership filter query called
+      expect(dbWorkspace.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            members: { some: { userId: USER_ID } },
+          }),
+        }),
+      );
+      // getSwarmAccessByWorkspaceId called for both workspaces
+      expect(mockGetSwarmAccessByWorkspaceId).toHaveBeenCalledTimes(2);
+      // kgSearch only called for the reachable workspace (ws-1)
+      expect(mockKgSearch).toHaveBeenCalledTimes(1);
+
+      const results = (result as { results: Array<{ realm: string; title: string }> }).results;
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({ title: "utils.ts", realm: "kg" });
     });
 
     it("pg results include correct urn, type, title, realm fields", async () => {

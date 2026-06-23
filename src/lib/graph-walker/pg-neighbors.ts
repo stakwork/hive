@@ -22,6 +22,8 @@ export interface NeighborResult {
   urn: string;
   edgeType: string;
   direction: "forward" | "reverse";
+  /** Importance score — only populated by the kg realm arm (from edge.properties.importance) */
+  importance?: number;
 }
 
 export interface PgNeighborContext {
