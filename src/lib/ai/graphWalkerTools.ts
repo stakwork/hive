@@ -28,6 +28,9 @@ import type { UrnEdgeNeighbor } from "@/lib/urn";
 
 import { pgNeighbors } from "@/lib/graph-walker";
 import type { NeighborResult, PgNeighborContext } from "@/lib/graph-walker";
+import { resolveKgSeam } from "@/lib/urn/resolvers/kg";
+import { kgGetNode, kgGetNeighbors, kgSearch } from "./kg-adapter";
+import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 
 /**
  * Verify that the URN's embedded org (a githubLogin) maps to the same
@@ -54,7 +57,7 @@ interface SearchResult {
   urn: string;
   type: string;
   title: string;
-  realm: "pg" | "canvas";
+  realm: "pg" | "canvas" | "kg";
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +489,108 @@ async function searchConversations(
 }
 
 // ---------------------------------------------------------------------------
+// kg search helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Keyword search over Jarvis v2 knowledge-graph nodes.
+ *
+ * - With `workspace`: resolves a single synthetic kg URN → IDOR guard → search.
+ * - Without `workspace`: fans out to all org workspaces the user is a member of,
+ *   using getSwarmAccessByWorkspaceId (membership already confirmed by the DB query).
+ */
+async function searchKg(
+  query: string,
+  {
+    orgId,
+    urnOrg,
+    userId,
+    workspace,
+    type,
+    limit,
+  }: {
+    orgId: string;
+    urnOrg: string;
+    userId: string;
+    workspace?: string;
+    type?: string;
+    limit: number;
+  },
+): Promise<SearchResult[]> {
+  const opts = { type, limit };
+
+  if (workspace) {
+    // Single-workspace path — synthetic URN for IDOR guard
+    const syntheticUrn = formatUrn({
+      realm: "kg",
+      org: urnOrg,
+      workspace,
+      type: "node",
+      id: "x",
+    });
+    const seam = await resolveKgSeam(syntheticUrn, { userId });
+    if (!seam) return [];
+    const hits = await kgSearch(seam.swarmUrl, seam.swarmApiKey, query, opts);
+    return hits.map((hit) => ({
+      urn: formatUrn({
+        realm: "kg",
+        org: urnOrg,
+        workspace,
+        type: hit.node_type,
+        id: hit.ref_id,
+      }),
+      type: hit.node_type,
+      title: hit.name,
+      realm: "kg" as const,
+    }));
+  }
+
+  // Fan-out path — all org workspaces the user is a member of
+  const workspaces = await db.workspace.findMany({
+    where: {
+      sourceControlOrg: { githubLogin: urnOrg },
+      deleted: false,
+      members: { some: { userId } },
+    },
+    select: { id: true, slug: true },
+  });
+
+  const settled = await Promise.allSettled(
+    workspaces.map(async (ws) => {
+      const access = await getSwarmAccessByWorkspaceId(ws.id);
+      if (!access.success) return [] as SearchResult[];
+      const hits = await kgSearch(
+        access.data.swarmUrl,
+        access.data.swarmApiKey,
+        query,
+        opts,
+      );
+      return hits.map((hit) => ({
+        urn: formatUrn({
+          realm: "kg",
+          org: urnOrg,
+          workspace: ws.slug,
+          type: hit.node_type,
+          id: hit.ref_id,
+        }),
+        type: hit.node_type,
+        title: hit.name,
+        realm: "kg" as const,
+      }));
+    }),
+  );
+
+  const merged: SearchResult[] = [];
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      merged.push(...result.value);
+      if (merged.length >= limit) break;
+    }
+  }
+  return merged.slice(0, limit);
+}
+
+// ---------------------------------------------------------------------------
 // Public factory
 // ---------------------------------------------------------------------------
 
@@ -524,12 +629,13 @@ export function buildGraphWalkerTools(
             const node = await resolveCanvasNode(urn);
             return node ?? { error: "not found or access denied" };
           }
-          case "kg":
-            // TODO(kg-enable): swap stub for live Jarvis call.
-            // When enabling: call resolveKgSeam(urn, { userId }) to get credentials,
-            // then GET {swarmUrl}/v2/nodes/{parsed.id} with swarmApiKey.
-            // resolveKgSeam already enforces workspace membership — keep it as the IDOR guard.
-            return { error: "kg realm not yet enabled" };
+          case "kg": {
+            const seam = await resolveKgSeam(urn, { userId });
+            if (!seam) return { error: "swarm not configured or access denied" };
+            const node = await kgGetNode(seam.swarmUrl, seam.swarmApiKey, parsed.id);
+            if (!node) return { error: "node not found" };
+            return node;
+          }
         }
       },
     }),
@@ -540,7 +646,7 @@ export function buildGraphWalkerTools(
         "with edgeType and direction. " +
         "For `pg` URNs, delegates to the full pgNeighbors registry (FK traversal + UrnEdge). " +
         "For `canvas` URNs, unions structural canvas edges with UrnEdge cross-realm edges. " +
-        "`kg` URNs are not yet enabled in v1.",
+        "For `kg` URNs, calls Jarvis v2 with optional edge_type / node_type filters (kg-specific, ignored by other realms).",
       inputSchema: z.object({
         urn: z.string().describe("Canonical URN of the node to expand."),
         depth: z
@@ -550,8 +656,25 @@ export function buildGraphWalkerTools(
           .max(1)
           .default(1)
           .describe("Traversal depth. Currently only depth=1 is supported."),
+        edge_type: z
+          .array(z.string())
+          .optional()
+          .describe("kg realm only: filter edges by type (e.g. [\"MODIFIES\", \"CITES\"])."),
+        node_type: z
+          .array(z.string())
+          .optional()
+          .describe("kg realm only: filter neighbor nodes by type (e.g. [\"File\", \"Function\"])."),
       }),
-      execute: async ({ urn }: { urn: string; depth?: number }) => {
+      execute: async ({
+        urn,
+        edge_type,
+        node_type,
+      }: {
+        urn: string;
+        depth?: number;
+        edge_type?: string[];
+        node_type?: string[];
+      }) => {
         const parsed = parseUrn(urn);
         if (!parsed) return { error: "invalid URN" };
 
@@ -573,23 +696,42 @@ export function buildGraphWalkerTools(
             const merged = deduplicateByUrn([...canvasEdges, ...urnEdges]);
             return { neighbors: merged };
           }
-          case "kg":
-            // TODO(kg-enable): call resolveKgSeam(urn, { userId }) → GET {swarmUrl}/v2/nodes/{id}?expand=edges
-            // Response shape: { nodes: [...], edges: [{ source, target, edge_type }] } — map to NeighborResult[]
-            return { error: "kg realm not yet enabled" };
+          case "kg": {
+            const seam = await resolveKgSeam(urn, { userId });
+            if (!seam) return { error: "swarm not configured or access denied" };
+            const { neighbors: raw, reachable } = await kgGetNeighbors(
+              seam.swarmUrl,
+              seam.swarmApiKey,
+              parsed.id,
+              { edgeTypes: edge_type, nodeTypes: node_type },
+            );
+            if (!reachable) return { error: "swarm unreachable" };
+            const neighbors = raw.map((n) => ({
+              ...n,
+              urn: formatUrn({
+                realm: "kg",
+                org: parsed.org,
+                workspace: parsed.workspace,
+                type: n.node_type,
+                id: n.ref_id,
+              }),
+            }));
+            return { neighbors };
+          }
         }
       },
     }),
 
     graph_search: tool({
       description:
-        "Search for nodes by keyword across pg and canvas realms, " +
+        "Search for nodes by keyword across pg, canvas, and kg realms, " +
         "returning ranked results with URN, type, title, and realm. " +
         "The pg realm covers features, initiatives, milestones, tasks, and " +
-        "org-canvas chat conversations; the canvas realm covers canvas nodes. " +
+        "org-canvas chat conversations; the canvas realm covers canvas nodes; " +
+        "the kg realm searches Jarvis knowledge-graph nodes. " +
         "Scope with `realm`, `type`, or `workspace` to narrow results. " +
         "Default (no realm) searches pg + canvas. " +
-        "`kg` realm is not yet enabled — specifying `realm: 'kg'` returns a stub error.",
+        "For kg: provide `workspace` to search one workspace, or omit to fan-out across all member workspaces.",
       inputSchema: z.object({
         query: z.string().min(1).describe("Keyword(s) to search for."),
         realm: z
@@ -619,6 +761,7 @@ export function buildGraphWalkerTools(
       execute: async ({
         query,
         realm,
+        workspace,
         type,
         limit = 20,
       }: {
@@ -633,18 +776,13 @@ export function buildGraphWalkerTools(
         // Resolve the org's githubLogin once — the {org} segment of every
         // emitted URN must be the githubLogin (not the DB cuid) so results
         // round-trip through graph_get / graph_neighbors.
-        const orgRow =
-          !realm || realm === "pg" || realm === "canvas"
-            ? await db.sourceControlOrg.findUnique({
-                where: { id: orgId },
-                select: { githubLogin: true },
-              })
-            : null;
+        const orgRow = await db.sourceControlOrg.findUnique({
+          where: { id: orgId },
+          select: { githubLogin: true },
+        });
 
-        if ((!realm || realm === "pg" || realm === "canvas") && !orgRow) {
-          return { results: [] };
-        }
-        const urnOrg = orgRow?.githubLogin ?? "";
+        if (!orgRow) return { results: [] };
+        const urnOrg = orgRow.githubLogin;
 
         if (!realm || realm === "pg") {
           arms.push(searchPg(query, { orgId, urnOrg, type, limit }));
@@ -654,13 +792,8 @@ export function buildGraphWalkerTools(
           arms.push(searchCanvas(query, { orgId, urnOrg, type, limit }));
         }
         if (realm === "kg") {
-          // TODO(kg-enable): resolve workspace slug(s) → getJarvisConfigForWorkspace →
-          // GET {jarvisUrl}/v2/nodes?q={query}&limit={n}&node_type={type}
-          // Fan-out to all org workspaces if workspace param omitted; skip inaccessible ones silently.
           arms.push(
-            Promise.resolve([
-              { error: "kg realm not yet enabled" } as unknown as SearchResult,
-            ]),
+            searchKg(query, { orgId, urnOrg, userId, workspace, type, limit }),
           );
         }
 
