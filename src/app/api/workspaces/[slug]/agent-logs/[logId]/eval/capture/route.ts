@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { fetchBlobContent } from "@/lib/utils/blob-fetch";
 import { parseAgentLogStats } from "@/lib/utils/agent-log-stats";
 import { deriveEvalTriggerSource } from "@/lib/utils/eval-source";
+import { mapPromptResolutions, type PromptResolution } from "@/types/evals";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -116,20 +117,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       url: (config as { resolvedRequestUrl?: string } | undefined)?.resolvedRequestUrl ?? "",
       method: "post",
       request_params: {
-        model: config?.model,
-        temperature: config?.temperature,
-        messages: slicedConversation,
+        // Full harness config spread
+        ...(config
+          ? {
+              systemOverride: config.systemOverride,
+              toolsConfig: config.toolsConfig,
+              tools: config.tools,
+              schema: config.schema,
+              providerConfig: config.providerConfig,
+              baseUrl: config.baseUrl,
+              mcpServers: config.mcpServers,
+              model: config.model,
+              provider: config.provider,
+              temperature: config.temperature,
+              source: config.source,
+              repos: config.repos,
+            }
+          : {}),
+        messages: slicedConversation, // role:"system" at index 0 is preserved by slice(0, n+1)
       },
     });
 
-    // 9. Extract metadata.prompts
+    // 9. Extract metadata.prompts (handles both flat array and PromptResolution map shapes)
     const metadata =
       agentLog.metadata != null && typeof agentLog.metadata === "object"
         ? (agentLog.metadata as Record<string, unknown>)
         : {};
-    const metadataPrompts: unknown[] = Array.isArray(metadata.prompts)
-      ? (metadata.prompts as unknown[])
-      : [];
+    const rawPrompts = metadata.prompts;
+    const metadataPrompts: unknown[] = Array.isArray(rawPrompts)
+      ? (rawPrompts as unknown[])
+      : (mapPromptResolutions(
+          rawPrompts as Record<string, PromptResolution> | null | undefined,
+        ) ?? []);
 
     // 10. Resolve change_type
     const changeType = agentLog.source ?? config?.source ?? "swarm_agent";
