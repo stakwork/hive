@@ -429,6 +429,7 @@ describe("executeWorkflowEditorRetry", () => {
       const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
       const body = JSON.parse(fetchCall[1].body as string);
       const vars = body.workflow_params.set_var.attributes.vars;
+      expect(vars.featureId).toBe("feature-1");
       expect(vars.featureContext).toBeDefined();
       expect(vars.featureContext.feature.id).toBe("feature-1");
       expect(vars.featureContext.currentPhase.name).toBe("All Tasks");
@@ -447,6 +448,7 @@ describe("executeWorkflowEditorRetry", () => {
       const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
       const body = JSON.parse(fetchCall[1].body as string);
       const vars = body.workflow_params.set_var.attributes.vars;
+      expect(Object.prototype.hasOwnProperty.call(vars, "featureId")).toBe(false);
       expect(Object.prototype.hasOwnProperty.call(vars, "featureContext")).toBe(false);
     });
 
