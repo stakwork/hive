@@ -34,6 +34,7 @@ export const UrnEdge = { neighborsOf };
 
 // Edge CRUD (for callers that need direct access)
 export {
+  upsertEdge,
   createEdge,
   listEdges,
   deleteEdge,

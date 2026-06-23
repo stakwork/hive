@@ -16,6 +16,19 @@ export interface UrnEdgeNeighbor {
   direction: "forward" | "reverse";
 }
 
+export async function upsertEdge(
+  orgId: string,
+  fromUrn: string,
+  toUrn: string,
+  type: string
+): Promise<UrnEdge> {
+  return db.urnEdge.upsert({
+    where: { orgId_fromUrn_toUrn_type: { orgId, fromUrn, toUrn, type } },
+    create: { orgId, fromUrn, toUrn, type },
+    update: {}, // idempotent — existence is the goal, no fields to update
+  });
+}
+
 export async function createEdge(
   orgId: string,
   fromUrn: string,
