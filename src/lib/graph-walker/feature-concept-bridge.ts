@@ -38,6 +38,13 @@ export interface BackfillResult {
   edgesUpserted: number;
   skipped: number;
   skippedNoRefId: number;
+  /**
+   * Keyset cursor: the id of the last feature processed in this batch. Pass it
+   * back as `cursor` to resume after it. `null` when the run reached the end.
+   */
+  nextCursor: string | null;
+  /** True when more features remain beyond this batch (call again with `nextCursor`). */
+  hasMore: boolean;
 }
 
 const ZERO_RESULT: FeatureConceptResult = {
@@ -221,34 +228,76 @@ export async function linkFeatureToConcepts(
 // Backfill
 // ---------------------------------------------------------------------------
 
+const DEFAULT_BATCH_SIZE = 50;
+const MAX_BATCH_SIZE = 500;
+const DEFAULT_BUDGET_MS = 120_000;
+
 /**
- * Backfill Feature→Concept edges for all features in an org (optionally
- * scoped to a single workspace). Safe to re-run at any time.
+ * Backfill Feature→Concept edges for features in an org (optionally scoped to a
+ * single workspace).
+ *
+ * RESUMABLE & BOUNDED. Each call processes at most `batchSize` features and runs
+ * for at most `budgetMs`, then returns a keyset `cursor`. This is what keeps the
+ * job under a serverless function timeout: instead of one unbounded loop over
+ * thousands of features (which gets killed mid-way by FUNCTION_INVOCATION_TIMEOUT
+ * and never reaches the tail), the caller drives it in safe chunks, passing the
+ * returned `nextCursor` back until `hasMore` is false.
+ *
+ * Features are walked in a stable `id asc` keyset order so progress is monotonic
+ * — every call advances past the previous cursor regardless of whether edges were
+ * produced (features with no PRs / no concepts won't be re-processed on resume).
+ * Idempotent — safe to re-run or overlap.
  */
 export async function backfillFeatureConceptEdges({
   orgId,
   workspaceId,
+  cursor,
+  batchSize = DEFAULT_BATCH_SIZE,
+  budgetMs = DEFAULT_BUDGET_MS,
 }: {
   orgId: string;
   workspaceId?: string;
+  /** Resume after this feature id (exclusive). Omit to start from the beginning. */
+  cursor?: string;
+  /** Max features to process this call. Clamped to [1, 500]. */
+  batchSize?: number;
+  /** Soft wall-clock budget; stop early (with a resumable cursor) once exceeded. */
+  budgetMs?: number;
 }): Promise<BackfillResult> {
-  const features = await db.feature.findMany({
+  const take = Math.min(Math.max(Math.trunc(batchSize), 1), MAX_BATCH_SIZE);
+  const start = Date.now();
+
+  // Fetch one extra row to detect whether more remain past this batch.
+  const rows = await db.feature.findMany({
     where: {
       deleted: false,
       workspace: {
         sourceControlOrgId: orgId,
         ...(workspaceId ? { id: workspaceId } : {}),
       },
+      ...(cursor ? { id: { gt: cursor } } : {}),
     },
     select: { id: true },
+    orderBy: { id: "asc" },
+    take: take + 1,
   });
+
+  const moreBeyondBatch = rows.length > take;
+  const batch = moreBeyondBatch ? rows.slice(0, take) : rows;
 
   let featuresProcessed = 0;
   let edgesUpserted = 0;
   let skipped = 0;
   let skippedNoRefId = 0;
+  let lastProcessedId: string | null = null;
+  let stoppedEarly = false;
 
-  for (const feature of features) {
+  for (const feature of batch) {
+    // Stop before the function times out; the cursor lets the caller resume.
+    if (Date.now() - start > budgetMs) {
+      stoppedEarly = true;
+      break;
+    }
     try {
       const result = await linkFeatureToConcepts(feature.id);
       featuresProcessed++;
@@ -262,16 +311,34 @@ export async function backfillFeatureConceptEdges({
       });
       skipped++;
     }
+    lastProcessedId = feature.id;
   }
 
-  console.info("[FeatureConceptBridge] backfill complete", {
+  // More work remains if we cut the batch short, or there were rows past it.
+  const hasMore = stoppedEarly || moreBeyondBatch;
+  // Resume after the last id we actually processed. If we processed nothing this
+  // call (e.g. budget already exceeded), keep the incoming cursor so the caller
+  // doesn't skip unprocessed features.
+  const nextCursor = hasMore ? (lastProcessedId ?? cursor ?? null) : null;
+
+  console.info("[FeatureConceptBridge] backfill batch complete", {
     orgId,
     workspaceId,
     featuresProcessed,
     edgesUpserted,
     skipped,
     skippedNoRefId,
+    hasMore,
+    nextCursor,
+    elapsedMs: Date.now() - start,
   });
 
-  return { featuresProcessed, edgesUpserted, skipped, skippedNoRefId };
+  return {
+    featuresProcessed,
+    edgesUpserted,
+    skipped,
+    skippedNoRefId,
+    nextCursor,
+    hasMore,
+  };
 }
