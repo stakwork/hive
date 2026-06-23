@@ -31,6 +31,7 @@ import type { NeighborResult, PgNeighborContext } from "@/lib/graph-walker";
 import { resolveKgSeam } from "@/lib/urn/resolvers/kg";
 import { kgGetNode, kgGetNeighbors, kgSearch } from "./kg-adapter";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
+import { getJarvisUrl } from "@/lib/utils/swarm";
 
 /**
  * Verify that the URN's embedded org (a githubLogin) maps to the same
@@ -530,7 +531,7 @@ async function searchKg(
     });
     const seam = await resolveKgSeam(syntheticUrn, { userId });
     if (!seam) return [];
-    const hits = await kgSearch(seam.swarmUrl, seam.swarmApiKey, query, opts);
+    const hits = await kgSearch(seam.jarvisUrl, seam.swarmApiKey, query, opts);
     return hits.map((hit) => ({
       urn: formatUrn({
         realm: "kg",
@@ -558,9 +559,11 @@ async function searchKg(
   const settled = await Promise.allSettled(
     workspaces.map(async (ws) => {
       const access = await getSwarmAccessByWorkspaceId(ws.id);
-      if (!access.success) return [] as SearchResult[];
+      if (!access.success || !access.data.swarmName) return [] as SearchResult[];
+      // kg realm talks to Jarvis (:8444), not stakgraph (:3355).
+      const jarvisUrl = getJarvisUrl(access.data.swarmName);
       const hits = await kgSearch(
-        access.data.swarmUrl,
+        jarvisUrl,
         access.data.swarmApiKey,
         query,
         opts,
@@ -632,7 +635,7 @@ export function buildGraphWalkerTools(
           case "kg": {
             const seam = await resolveKgSeam(urn, { userId });
             if (!seam) return { error: "swarm not configured or access denied" };
-            const node = await kgGetNode(seam.swarmUrl, seam.swarmApiKey, parsed.id);
+            const node = await kgGetNode(seam.jarvisUrl, seam.swarmApiKey, parsed.id);
             if (!node) return { error: "node not found" };
             return node;
           }
@@ -700,7 +703,7 @@ export function buildGraphWalkerTools(
             const seam = await resolveKgSeam(urn, { userId });
             if (!seam) return { error: "swarm not configured or access denied" };
             const { neighbors: raw, reachable } = await kgGetNeighbors(
-              seam.swarmUrl,
+              seam.jarvisUrl,
               seam.swarmApiKey,
               parsed.id,
               { edgeTypes: edge_type, nodeTypes: node_type },

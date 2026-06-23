@@ -1,8 +1,9 @@
 /**
  * kg-adapter — thin HTTP client for Jarvis v2 `/v2/nodes` endpoints.
  *
- * All functions accept resolved `(swarmUrl, swarmApiKey)` from `resolveKgSeam`.
- * Auth is via `x-api-token` header on every request.
+ * All functions accept a resolved `(jarvisUrl, swarmApiKey)` pair. `jarvisUrl`
+ * is the Jarvis knowledge-graph base URL (`:8444`) — NOT the stakgraph base
+ * (`:3355`), which does not serve `/v2/nodes`. Auth is via `x-api-token`.
  * All functions catch network / HTTP errors and return null / [] / { neighbors: [], reachable: false }.
  * They never throw.
  */
@@ -27,8 +28,16 @@ interface JarvisEdge {
   properties?: Record<string, unknown>;
 }
 
+interface JarvisNode {
+  ref_id: string;
+  node_type: string;
+  name?: string;
+  properties?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 interface JarvisExpandEdgesResponse {
-  nodes: Array<{ ref_id: string; node_type: string; name?: string; [key: string]: unknown }>;
+  nodes: JarvisNode[];
   edges: JarvisEdge[];
 }
 
@@ -58,6 +67,29 @@ function authHeaders(swarmApiKey: string): Record<string, string> {
   return { "x-api-token": swarmApiKey };
 }
 
+/**
+ * Jarvis nodes do not carry a top-level `name` for most node types — the human
+ * label lives in `properties` under a type-dependent key. Derive the best
+ * available label, falling back to "".
+ */
+function deriveNodeName(
+  node: { name?: unknown },
+  properties: Record<string, unknown>,
+): string {
+  const candidates = [
+    node?.name,
+    properties.name,
+    properties.title,
+    properties.entity,
+    properties.episode_title,
+    properties.show_title,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.length > 0) return c;
+  }
+  return "";
+}
+
 // ---------------------------------------------------------------------------
 // kgGetNode
 // ---------------------------------------------------------------------------
@@ -65,22 +97,37 @@ function authHeaders(swarmApiKey: string): Record<string, string> {
 /**
  * Fetch a single node by refId.
  * Returns `{ name, node_type, ref_id, properties }` or `null` on any error.
+ *
+ * The deployed Jarvis wraps the node in `{ nodes, edges, status }` (the queried
+ * node is found in `nodes` by ref_id); some builds return the node directly.
+ * Both shapes are handled.
  */
 export async function kgGetNode(
-  swarmUrl: string,
+  jarvisUrl: string,
   swarmApiKey: string,
   refId: string,
 ): Promise<KgNode | null> {
   try {
-    const url = `${swarmUrl}/v2/nodes/${encodeURIComponent(refId)}`;
+    const url = `${jarvisUrl}/v2/nodes/${encodeURIComponent(refId)}`;
     const res = await fetch(url, { headers: authHeaders(swarmApiKey) });
     if (!res.ok) return null;
-    const data = (await res.json()) as KgNode;
+    const data = (await res.json()) as
+      | JarvisNode
+      | { nodes?: JarvisNode[] };
+
+    const raw: JarvisNode | undefined =
+      data && typeof data === "object" && Array.isArray((data as { nodes?: JarvisNode[] }).nodes)
+        ? (data as { nodes: JarvisNode[] }).nodes.find((n) => n.ref_id === refId) ??
+          (data as { nodes: JarvisNode[] }).nodes[0]
+        : (data as JarvisNode);
+
+    if (!raw || !raw.ref_id) return null;
+    const properties = (raw.properties ?? {}) as Record<string, unknown>;
     return {
-      ref_id: data.ref_id,
-      node_type: data.node_type,
-      name: data.name,
-      properties: data.properties,
+      ref_id: raw.ref_id,
+      node_type: raw.node_type,
+      name: deriveNodeName(raw, properties),
+      properties: raw.properties,
     };
   } catch {
     return null;
@@ -106,7 +153,7 @@ export interface KgGetNeighborsOpts {
  * 4. Importance passthrough — `edge.properties.importance` forwarded to neighbor.
  */
 export async function kgGetNeighbors(
-  swarmUrl: string,
+  jarvisUrl: string,
   swarmApiKey: string,
   refId: string,
   opts?: KgGetNeighborsOpts,
@@ -119,17 +166,17 @@ export async function kgGetNeighbors(
     if (opts?.nodeTypes && opts.nodeTypes.length > 0) {
       params.set("node_type", toPythonListLiteral(opts.nodeTypes));
     }
-    const url = `${swarmUrl}/v2/nodes/${encodeURIComponent(refId)}?${params.toString()}`;
+    const url = `${jarvisUrl}/v2/nodes/${encodeURIComponent(refId)}?${params.toString()}`;
     const res = await fetch(url, { headers: authHeaders(swarmApiKey) });
     if (!res.ok) return { neighbors: [], reachable: false };
 
     const data = (await res.json()) as JarvisExpandEdgesResponse;
 
     // Build a lookup map for node details keyed by ref_id, excluding the queried node itself.
-    const nodeMap = new Map<string, { node_type: string; name?: string }>();
+    const nodeMap = new Map<string, { node_type: string }>();
     for (const node of data.nodes ?? []) {
       if (node.ref_id !== refId) {
-        nodeMap.set(node.ref_id, { node_type: node.node_type, name: node.name });
+        nodeMap.set(node.ref_id, { node_type: node.node_type });
       }
     }
 
@@ -173,12 +220,19 @@ export interface KgSearchOpts {
   limit?: number;
 }
 
+interface JarvisSearchLiteResponse {
+  nodes?: Array<{ node_type: string; ref_id: string; title?: string }>;
+}
+
 /**
- * Keyword search over Jarvis v2 nodes.
+ * Keyword search over Jarvis v2 nodes via the lightweight `/v2/nodes/search`
+ * endpoint, which returns matches-only `{ nodes: [{ node_type, ref_id, title }] }`
+ * (no neighbor expansion, no paid properties to strip). The `type` filter is
+ * comma-separated; `limit` is capped at 50 server-side.
  * Returns an array of matching node summaries, or `[]` on any error.
  */
 export async function kgSearch(
-  swarmUrl: string,
+  jarvisUrl: string,
   swarmApiKey: string,
   query: string,
   opts?: KgSearchOpts,
@@ -187,16 +241,22 @@ export async function kgSearch(
     const params = new URLSearchParams({
       q: query,
       limit: String(opts?.limit ?? 20),
-      expand: "false",
     });
     if (opts?.type) {
-      params.set("node_type", toPythonListLiteral([opts.type]));
+      params.set("node_type", opts.type);
     }
-    const url = `${swarmUrl}/v2/nodes?${params.toString()}`;
+    const url = `${jarvisUrl}/v2/nodes/search?${params.toString()}`;
     const res = await fetch(url, { headers: authHeaders(swarmApiKey) });
     if (!res.ok) return [];
-    const data = (await res.json()) as KgNode[];
-    return Array.isArray(data) ? data : [];
+    const data = (await res.json()) as JarvisSearchLiteResponse;
+    const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+    return nodes
+      .filter((n) => n.ref_id)
+      .map((n) => ({
+        ref_id: n.ref_id,
+        node_type: n.node_type,
+        name: n.title ?? "",
+      }));
   } catch {
     return [];
   }

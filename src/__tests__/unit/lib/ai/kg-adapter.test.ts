@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { kgGetNode, kgGetNeighbors, kgSearch } from "@/lib/ai/kg-adapter";
 
-const SWARM_URL = "https://jarvis.example.com";
+const JARVIS_URL = "https://jarvis.example.com";
 const API_KEY = "test-api-key";
 
 function mockFetch(response: unknown, ok = true, status = 200) {
@@ -33,7 +33,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("kgGetNode", () => {
-  it("happy path: maps node fields correctly", async () => {
+  it("bare shape: maps node fields directly", async () => {
     const raw = {
       ref_id: "node-abc",
       node_type: "Function",
@@ -42,7 +42,7 @@ describe("kgGetNode", () => {
     };
     globalThis.fetch = mockFetch(raw);
 
-    const result = await kgGetNode(SWARM_URL, API_KEY, "node-abc");
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "node-abc");
 
     expect(result).toEqual({
       ref_id: "node-abc",
@@ -51,20 +51,55 @@ describe("kgGetNode", () => {
       properties: { file: "src/index.ts" },
     });
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      `${SWARM_URL}/v2/nodes/node-abc`,
+      `${JARVIS_URL}/v2/nodes/node-abc`,
       { headers: { "x-api-token": API_KEY } },
     );
   });
 
+  it("wrapped shape: finds the queried node inside { nodes, edges, status }", async () => {
+    // The deployed Jarvis wraps the node in { nodes, edges, status } and the
+    // queried node has NO top-level name — its label lives in properties.
+    const wrapped = {
+      status: "Success",
+      edges: [{ source: "node-abc", target: "other", edge_type: "RELATED_TO" }],
+      nodes: [
+        { ref_id: "other", node_type: "Clip", properties: { description: "x" } },
+        { ref_id: "node-abc", node_type: "Topic", properties: { name: "Auth" } },
+      ],
+    };
+    globalThis.fetch = mockFetch(wrapped);
+
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "node-abc");
+
+    expect(result).toEqual({
+      ref_id: "node-abc",
+      node_type: "Topic",
+      name: "Auth",
+      properties: { name: "Auth" },
+    });
+  });
+
+  it("derives name from properties.entity when no top-level name", async () => {
+    const raw = {
+      ref_id: "ent-1",
+      node_type: "Entity",
+      properties: { entity: "Auth", entity_lower: "auth" },
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "ent-1");
+    expect(result?.name).toBe("Auth");
+  });
+
   it("returns null on HTTP error (non-2xx)", async () => {
     globalThis.fetch = mockFetch(null, false, 404);
-    const result = await kgGetNode(SWARM_URL, API_KEY, "missing-node");
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "missing-node");
     expect(result).toBeNull();
   });
 
   it("returns null on network throw", async () => {
     globalThis.fetch = mockFetchThrow();
-    const result = await kgGetNode(SWARM_URL, API_KEY, "any-ref");
+    const result = await kgGetNode(JARVIS_URL, API_KEY, "any-ref");
     expect(result).toBeNull();
   });
 });
@@ -94,7 +129,7 @@ describe("kgGetNeighbors", () => {
     globalThis.fetch = mockFetch(raw);
 
     const { neighbors, reachable } = await kgGetNeighbors(
-      SWARM_URL,
+      JARVIS_URL,
       API_KEY,
       QUERIED_REF,
     );
@@ -125,7 +160,7 @@ describe("kgGetNeighbors", () => {
     globalThis.fetch = mockFetch(raw);
 
     const { neighbors, reachable } = await kgGetNeighbors(
-      SWARM_URL,
+      JARVIS_URL,
       API_KEY,
       QUERIED_REF,
     );
@@ -154,7 +189,7 @@ describe("kgGetNeighbors", () => {
     };
     globalThis.fetch = mockFetch(raw);
 
-    const { neighbors } = await kgGetNeighbors(SWARM_URL, API_KEY, QUERIED_REF);
+    const { neighbors } = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
 
     const selfEntry = neighbors.find((n) => n.ref_id === QUERIED_REF);
     expect(selfEntry).toBeUndefined();
@@ -167,7 +202,7 @@ describe("kgGetNeighbors", () => {
     globalThis.fetch = mockFetch(raw);
 
     const { neighbors, reachable } = await kgGetNeighbors(
-      SWARM_URL,
+      JARVIS_URL,
       API_KEY,
       QUERIED_REF,
     );
@@ -180,7 +215,7 @@ describe("kgGetNeighbors", () => {
     globalThis.fetch = mockFetchThrow();
 
     const { neighbors, reachable } = await kgGetNeighbors(
-      SWARM_URL,
+      JARVIS_URL,
       API_KEY,
       QUERIED_REF,
     );
@@ -206,7 +241,7 @@ describe("kgGetNeighbors", () => {
     };
     globalThis.fetch = mockFetch(raw);
 
-    const { neighbors } = await kgGetNeighbors(SWARM_URL, API_KEY, QUERIED_REF);
+    const { neighbors } = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
 
     expect(neighbors[0].importance).toBe(0.85);
   });
@@ -214,7 +249,7 @@ describe("kgGetNeighbors", () => {
   it("edge_type filter URL-encoded as Python list literal", async () => {
     globalThis.fetch = mockFetch({ nodes: [], edges: [] });
 
-    await kgGetNeighbors(SWARM_URL, API_KEY, QUERIED_REF, {
+    await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF, {
       edgeTypes: ["MODIFIES", "CITES"],
     });
 
@@ -226,7 +261,7 @@ describe("kgGetNeighbors", () => {
   it("node_type filter URL-encoded as Python list literal", async () => {
     globalThis.fetch = mockFetch({ nodes: [], edges: [] });
 
-    await kgGetNeighbors(SWARM_URL, API_KEY, QUERIED_REF, {
+    await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF, {
       nodeTypes: ["File"],
     });
 
@@ -238,7 +273,7 @@ describe("kgGetNeighbors", () => {
   it("reachable: false on non-2xx HTTP response", async () => {
     globalThis.fetch = mockFetch(null, false, 500);
 
-    const { reachable } = await kgGetNeighbors(SWARM_URL, API_KEY, QUERIED_REF);
+    const { reachable } = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
     expect(reachable).toBe(false);
   });
 });
@@ -248,14 +283,16 @@ describe("kgGetNeighbors", () => {
 // ---------------------------------------------------------------------------
 
 describe("kgSearch", () => {
-  it("maps result array correctly", async () => {
-    const raw = [
-      { ref_id: "n1", node_type: "Function", name: "doThing", properties: {} },
-      { ref_id: "n2", node_type: "File", name: "utils.ts" },
-    ];
+  it("hits the lite /v2/nodes/search endpoint and maps { nodes:[{title}] }", async () => {
+    const raw = {
+      nodes: [
+        { ref_id: "n1", node_type: "Function", title: "doThing" },
+        { ref_id: "n2", node_type: "File", title: "utils.ts" },
+      ],
+    };
     globalThis.fetch = mockFetch(raw);
 
-    const results = await kgSearch(SWARM_URL, API_KEY, "doThing");
+    const results = await kgSearch(JARVIS_URL, API_KEY, "doThing");
 
     expect(results).toHaveLength(2);
     expect(results[0]).toMatchObject({
@@ -263,39 +300,49 @@ describe("kgSearch", () => {
       node_type: "Function",
       name: "doThing",
     });
-    expect(results[1]).toMatchObject({ ref_id: "n2", node_type: "File" });
+    expect(results[1]).toMatchObject({ ref_id: "n2", node_type: "File", name: "utils.ts" });
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    expect(calledUrl).toContain("/v2/nodes/search");
+  });
+
+  it("returns [] when response is not the { nodes } object shape", async () => {
+    globalThis.fetch = mockFetch([{ ref_id: "x" }]); // bare array → ignored
+    const results = await kgSearch(JARVIS_URL, API_KEY, "anything");
+    expect(results).toEqual([]);
   });
 
   it("returns empty array on fetch error", async () => {
     globalThis.fetch = mockFetchThrow();
-    const results = await kgSearch(SWARM_URL, API_KEY, "anything");
+    const results = await kgSearch(JARVIS_URL, API_KEY, "anything");
     expect(results).toEqual([]);
   });
 
   it("returns empty array on non-2xx response", async () => {
     globalThis.fetch = mockFetch(null, false, 503);
-    const results = await kgSearch(SWARM_URL, API_KEY, "anything");
+    const results = await kgSearch(JARVIS_URL, API_KEY, "anything");
     expect(results).toEqual([]);
   });
 
-  it("node_type filter forwarded as Python list literal", async () => {
-    globalThis.fetch = mockFetch([]);
+  it("node_type filter forwarded comma-separated (not a Python list literal)", async () => {
+    globalThis.fetch = mockFetch({ nodes: [] });
 
-    await kgSearch(SWARM_URL, API_KEY, "func", { type: "Function" });
+    await kgSearch(JARVIS_URL, API_KEY, "func", { type: "Function" });
 
     const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
-    expect(calledUrl).toContain('node_type=%5B%22Function%22%5D');
+    expect(calledUrl).toContain("node_type=Function");
+    expect(calledUrl).not.toContain("%5B"); // no "["
   });
 
-  it("includes limit and expand=false params", async () => {
-    globalThis.fetch = mockFetch([]);
+  it("includes limit param", async () => {
+    globalThis.fetch = mockFetch({ nodes: [] });
 
-    await kgSearch(SWARM_URL, API_KEY, "query", { limit: 42 });
+    await kgSearch(JARVIS_URL, API_KEY, "query", { limit: 42 });
 
     const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
     expect(calledUrl).toContain("limit=42");
-    expect(calledUrl).toContain("expand=false");
   });
 });

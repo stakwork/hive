@@ -301,6 +301,7 @@ describe("buildGraphWalkerTools", () => {
       mockResolveKgSeam.mockResolvedValue({
         workspace: "my-workspace",
         swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
         swarmApiKey: "key-123",
       });
       mockKgGetNode.mockResolvedValue({
@@ -339,6 +340,7 @@ describe("buildGraphWalkerTools", () => {
       mockResolveKgSeam.mockResolvedValue({
         workspace: "my-workspace",
         swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
         swarmApiKey: "key-123",
       });
       mockKgGetNode.mockResolvedValue(null);
@@ -487,6 +489,7 @@ describe("buildGraphWalkerTools", () => {
       mockResolveKgSeam.mockResolvedValue({
         workspace: "my-ws",
         swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
         swarmApiKey: "key-123",
       });
       mockKgGetNeighbors.mockResolvedValue({ neighbors: [], reachable: false });
@@ -511,6 +514,7 @@ describe("buildGraphWalkerTools", () => {
       mockResolveKgSeam.mockResolvedValue({
         workspace: "my-ws",
         swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
         swarmApiKey: "key-123",
       });
       mockKgGetNeighbors.mockResolvedValue({ neighbors: [], reachable: true });
@@ -535,6 +539,7 @@ describe("buildGraphWalkerTools", () => {
       mockResolveKgSeam.mockResolvedValue({
         workspace: "my-ws",
         swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
         swarmApiKey: "key-123",
       });
       mockKgGetNeighbors.mockResolvedValue({
@@ -579,6 +584,7 @@ describe("buildGraphWalkerTools", () => {
       mockResolveKgSeam.mockResolvedValue({
         workspace: "my-ws",
         swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
         swarmApiKey: "key-123",
       });
       mockKgGetNeighbors.mockResolvedValue({
@@ -615,6 +621,7 @@ describe("buildGraphWalkerTools", () => {
       mockResolveKgSeam.mockResolvedValue({
         workspace: "my-ws",
         swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
         swarmApiKey: "key-123",
       });
       mockKgGetNeighbors.mockResolvedValue({
@@ -652,6 +659,7 @@ describe("buildGraphWalkerTools", () => {
       mockResolveKgSeam.mockResolvedValue({
         workspace: "my-ws",
         swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
         swarmApiKey: "key-123",
       });
       mockKgGetNeighbors.mockResolvedValue({ neighbors: [], reachable: true });
@@ -769,6 +777,7 @@ describe("buildGraphWalkerTools", () => {
       mockResolveKgSeam.mockResolvedValue({
         workspace: "my-ws",
         swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
         swarmApiKey: "key-kg",
       });
       mockKgSearch.mockResolvedValue([
@@ -813,7 +822,7 @@ describe("buildGraphWalkerTools", () => {
       mockGetSwarmAccessByWorkspaceId
         .mockResolvedValueOnce({
           success: true,
-          data: { swarmUrl: "https://jarvis1.example.com", swarmApiKey: "key-1" },
+          data: { swarmUrl: "https://jarvis1.example.com", swarmName: "swarm-one", swarmApiKey: "key-1" },
         })
         .mockResolvedValueOnce({ success: false, error: { type: "SWARM_NOT_CONFIGURED" } });
       mockKgSearch.mockResolvedValue([
