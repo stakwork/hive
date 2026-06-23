@@ -211,6 +211,39 @@ describe("kgGetNeighbors", () => {
     expect(neighbors).toHaveLength(0);
   });
 
+  it("caps neighbors at 50 (hot node with many edges)", async () => {
+    const edges = Array.from({ length: 200 }, (_, i) => ({
+      source: QUERIED_REF,
+      target: `n-${i}`,
+      edge_type: "MODIFIES",
+      properties: {},
+    }));
+    globalThis.fetch = mockFetch({ nodes: [], edges });
+
+    const { neighbors, reachable } = await kgGetNeighbors(
+      JARVIS_URL,
+      API_KEY,
+      QUERIED_REF,
+    );
+
+    expect(reachable).toBe(true);
+    expect(neighbors).toHaveLength(50);
+  });
+
+  it("dedups a neighbor reached via multiple parallel edges", async () => {
+    const edges = [
+      { source: QUERIED_REF, target: "dup", edge_type: "MODIFIES", properties: {} },
+      { source: QUERIED_REF, target: "dup", edge_type: "MODIFIES", properties: {} },
+      { source: QUERIED_REF, target: "other", edge_type: "MODIFIES", properties: {} },
+    ];
+    globalThis.fetch = mockFetch({ nodes: [], edges });
+
+    const { neighbors } = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
+
+    expect(neighbors).toHaveLength(2);
+    expect(neighbors.map((n) => n.ref_id).sort()).toEqual(["dup", "other"]);
+  });
+
   it("reachable: false when fetch throws", async () => {
     globalThis.fetch = mockFetchThrow();
 
