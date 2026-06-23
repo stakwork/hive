@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
+import { linkFeatureToConcepts } from "@/lib/graph-walker";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
@@ -126,6 +127,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         void notifyFeatureCanvasRefresh(updatedTask.featureId, "task-messages-saved", {
           taskId,
         });
+        // Feature→Concept edge bridge — fire async, never blocks user path
+        void linkFeatureToConcepts(updatedTask.featureId).catch((err) =>
+          console.error("[FeatureConceptBridge] live hook failed", {
+            featureId: updatedTask.featureId,
+            err,
+          })
+        );
       }
     }
 
