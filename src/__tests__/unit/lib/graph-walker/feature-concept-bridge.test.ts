@@ -369,4 +369,75 @@ describe("backfillFeatureConceptEdges", () => {
       expect(result.edgesUpserted).toBe(2);
     });
   });
+
+  describe("resumability (cursor / batch / budget)", () => {
+    it("queries a keyset page: id asc, take = batchSize + 1, id > cursor", async () => {
+      mockDb.feature.findMany.mockResolvedValue([]);
+
+      await backfillFeatureConceptEdges({
+        orgId: ORG_ID,
+        cursor: "feat-cursor",
+        batchSize: 10,
+      });
+
+      expect(mockDb.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: { gt: "feat-cursor" } }),
+          orderBy: { id: "asc" },
+          take: 11,
+        }),
+      );
+    });
+
+    it("returns hasMore + nextCursor when more rows remain than the batch", async () => {
+      // batchSize 2 → take 2 → fetch 3 (the extra signals 'more remain')
+      mockDb.feature.findMany.mockResolvedValue([
+        { id: "f1" },
+        { id: "f2" },
+        { id: "f3" },
+      ]);
+      // linkFeatureToConcepts: findUnique → undefined → ZERO_RESULT, no throw
+      mockDb.feature.findUnique.mockResolvedValue(undefined);
+
+      const result = await backfillFeatureConceptEdges({
+        orgId: ORG_ID,
+        batchSize: 2,
+      });
+
+      expect(result.featuresProcessed).toBe(2); // only the batch, not the probe row
+      expect(result.hasMore).toBe(true);
+      expect(result.nextCursor).toBe("f2"); // last processed id
+    });
+
+    it("returns hasMore=false and nextCursor=null when the batch isn't full", async () => {
+      mockDb.feature.findMany.mockResolvedValue([{ id: "f1" }]);
+      mockDb.feature.findUnique.mockResolvedValue(undefined);
+
+      const result = await backfillFeatureConceptEdges({
+        orgId: ORG_ID,
+        batchSize: 50,
+      });
+
+      expect(result.hasMore).toBe(false);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it("stops before the timeout when the budget is exhausted, resuming from the incoming cursor", async () => {
+      mockDb.feature.findMany.mockResolvedValue([{ id: "f1" }, { id: "f2" }]);
+      mockDb.feature.findUnique.mockResolvedValue(undefined);
+
+      // budgetMs negative → the time check trips on the first iteration, so
+      // nothing is processed and the caller is told to resume from where it was.
+      const result = await backfillFeatureConceptEdges({
+        orgId: ORG_ID,
+        cursor: "prev",
+        batchSize: 50,
+        budgetMs: -1,
+      });
+
+      expect(result.featuresProcessed).toBe(0);
+      expect(result.hasMore).toBe(true);
+      expect(result.nextCursor).toBe("prev");
+    });
+  });
 });
