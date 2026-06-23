@@ -26,6 +26,12 @@ export async function GET(
       },
       include: {
         sourceControlOrg: true,
+        swarm: { select: { id: true, swarmUrl: true } },
+        members: {
+          where: { userId, leftAt: null },
+          select: { role: true },
+          take: 1,
+        },
         _count: { select: { members: { where: { leftAt: null } } } },
       },
     });
@@ -38,10 +44,14 @@ export async function GET(
       ownerId: ws.ownerId,
       createdAt: ws.createdAt.toISOString(),
       updatedAt: ws.updatedAt.toISOString(),
-      userRole: (ws.ownerId === userId ? "OWNER" : "MEMBER") as WorkspaceRole | "OWNER" | "MEMBER",
+      userRole: (
+        ws.ownerId === userId ? "OWNER" : (ws.members[0]?.role ?? "MEMBER")
+      ) as WorkspaceRole | "OWNER" | "MEMBER",
       memberCount: ws._count.members + 1, // +1 for owner
       logoKey: ws.logoKey,
       logoUrl: ws.logoUrl,
+      hasSwarm: !!ws.swarm?.swarmUrl,
+      isDefault: ws.sourceControlOrg?.defaultWorkspaceId === ws.id,
       sourceControlOrg: ws.sourceControlOrg
         ? {
             id: ws.sourceControlOrg.id,

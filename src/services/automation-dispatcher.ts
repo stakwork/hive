@@ -72,26 +72,40 @@ export interface AutomationDispatchResult {
  * automation. Filtering at the source keeps the run robust against
  * half-configured workspaces (e.g. a "testing" workspace with no swarm).
  */
-async function resolveOrgWorkspaceSlugs(
+export async function resolveOrgWorkspaceSlugs(
   sourceControlOrgId: string,
   userId: string,
 ): Promise<string[]> {
-  const workspaces = await db.workspace.findMany({
-    where: {
-      sourceControlOrgId,
-      deletedAt: null,
-      OR: [
-        { ownerId: userId },
-        { members: { some: { userId, leftAt: null } } },
-      ],
-      swarm: { swarmUrl: { not: null } },
-      repositories: { some: {} },
-    },
-    select: { slug: true },
-    orderBy: { createdAt: "asc" },
-    take: MAX_WORKSPACE_SLUGS,
-  });
-  return workspaces.map((w) => w.slug);
+  const [org, workspaces] = await Promise.all([
+    db.sourceControlOrg.findUnique({
+      where: { id: sourceControlOrgId },
+      select: { defaultWorkspaceId: true },
+    }),
+    db.workspace.findMany({
+      where: {
+        sourceControlOrgId,
+        deletedAt: null,
+        OR: [
+          { ownerId: userId },
+          { members: { some: { userId, leftAt: null } } },
+        ],
+        swarm: { swarmUrl: { not: null } },
+        repositories: { some: {} },
+      },
+      select: { slug: true, id: true },
+      orderBy: { createdAt: "asc" },
+      take: MAX_WORKSPACE_SLUGS,
+    }),
+  ]);
+
+  const slugs = workspaces.map((w) => w.slug);
+
+  if (org?.defaultWorkspaceId) {
+    const def = workspaces.find((w) => w.id === org.defaultWorkspaceId);
+    if (def) return [def.slug, ...slugs.filter((s) => s !== def.slug)];
+  }
+
+  return slugs;
 }
 
 export async function dispatchDueAutomations(): Promise<AutomationDispatchResult> {
