@@ -129,7 +129,8 @@ async function fetchSourceRow(
 async function resolveEdge(
   edge: EdgeDefinition,
   sourceId: string,
-  row: Record<string, unknown>
+  row: Record<string, unknown>,
+  org: string
 ): Promise<NeighborResult[]> {
   const { resolver, edgeType, toType, direction } = edge;
   const results: NeighborResult[] = [];
@@ -139,7 +140,7 @@ async function resolveEdge(
       const val = row[resolver.field];
       if (val != null) {
         results.push({
-          urn: formatUrn("pg", toType, String(val)),
+          urn: formatUrn({ realm: "pg", org, type: toType, id: String(val) }),
           edgeType,
           direction,
         });
@@ -152,7 +153,7 @@ async function resolveEdge(
       if (Array.isArray(arr)) {
         for (const id of arr as string[]) {
           results.push({
-            urn: formatUrn("pg", toType, id),
+            urn: formatUrn({ realm: "pg", org, type: toType, id }),
             edgeType,
             direction,
           });
@@ -171,7 +172,7 @@ async function resolveEdge(
         `;
         for (const r of rows) {
           results.push({
-            urn: formatUrn("pg", toType, r.id),
+            urn: formatUrn({ realm: "pg", org, type: toType, id: r.id }),
             edgeType,
             direction,
           });
@@ -193,7 +194,7 @@ async function resolveEdge(
 
       for (const r of rows) {
         results.push({
-          urn: formatUrn("pg", toType, r.id),
+          urn: formatUrn({ realm: "pg", org, type: toType, id: r.id }),
           edgeType,
           direction,
         });
@@ -242,7 +243,7 @@ export async function pgNeighbors(
   const parsed = parseUrn(urn);
   if (!parsed || parsed.realm !== "pg") return [];
 
-  const { type, id } = parsed;
+  const { org, type, id } = parsed;
 
   // Step 2 — apply source access guard BEFORE any DB fetch
   const sourceAllowed = await checkPgAccess(urn, ctx);
@@ -258,7 +259,7 @@ export async function pgNeighbors(
 
   const registryResults: NeighborResult[] = [];
   for (const edge of applicableEdges) {
-    const edgeResults = await resolveEdge(edge, id, row);
+    const edgeResults = await resolveEdge(edge, id, row, org);
     registryResults.push(...edgeResults);
   }
 
@@ -283,8 +284,9 @@ export async function pgNeighbors(
   // Step 6 — apply access guard to every pg: URN; opaque-external passes through
   const guarded: NeighborResult[] = [];
   for (const r of merged) {
-    if (!r.urn.startsWith("pg:")) {
-      // opaque-external (e.g. stakwork:workflow:…) — bypass guard
+    const rp = parseUrn(r.urn);
+    if (!rp || rp.realm !== "pg") {
+      // opaque-external (e.g. stakwork:workflow:…) or non-pg realm — bypass guard
       guarded.push(r);
       continue;
     }

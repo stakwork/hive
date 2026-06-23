@@ -44,7 +44,7 @@ vi.mock("@/lib/urn", () => ({
 // ---------------------------------------------------------------------------
 
 import { db } from "@/lib/db";
-import { parseUrn, formatUrn, UrnEdge, checkPgAccess } from "@/lib/urn";
+import { parseUrn, formatUrn, UrnEdge, checkPgAccess, type ParsedUrn } from "@/lib/urn";
 import { pgNeighbors } from "@/lib/graph-walker/pg-neighbors";
 import { REGISTRY } from "@/lib/graph-walker/registry";
 
@@ -75,8 +75,11 @@ const CTX = { userId: "user-1", workspaceId: "ws-1" };
 // ---------------------------------------------------------------------------
 
 /** Default formatUrn implementation used by most tests. */
-function defaultFormatUrn(realm: string, type: string, id: string) {
-  return `${realm}:${type}:${id}`;
+function defaultFormatUrn(parts: ParsedUrn) {
+  if (parts.realm === "kg") {
+    return `urn:${parts.org}:kg:${parts.workspace}:${parts.type}:${parts.id}`;
+  }
+  return `urn:${parts.org}:${parts.realm}:${parts.type}:${parts.id}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +110,7 @@ describe("pgNeighbors", () => {
   // ── 1. Forward scalar FK read ──────────────────────────────────────────
 
   it("forward scalar FK read: emits pg:feature:f1 via Task.featureId", async () => {
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "task", id: "t1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "task", id: "t1" });
     dbTask.findFirst.mockResolvedValue({
       id: "t1",
       featureId: "f1",
@@ -118,13 +121,13 @@ describe("pgNeighbors", () => {
 
     const results = await pgNeighbors("pg:task:t1", CTX);
 
-    expect(mockFormatUrn).toHaveBeenCalledWith("pg", "feature", "f1");
+    expect(mockFormatUrn).toHaveBeenCalledWith({ realm: "pg", org: "test-org", type: "feature", id: "f1" });
     const urns = results.map((r) => r.urn);
-    expect(urns).toContain("pg:feature:f1");
-    expect(results.find((r) => r.urn === "pg:feature:f1")?.edgeType).toBe(
+    expect(urns).toContain("urn:test-org:pg:feature:f1");
+    expect(results.find((r) => r.urn === "urn:test-org:pg:feature:f1")?.edgeType).toBe(
       "BELONGS_TO_FEATURE"
     );
-    expect(results.find((r) => r.urn === "pg:feature:f1")?.direction).toBe(
+    expect(results.find((r) => r.urn === "urn:test-org:pg:feature:f1")?.direction).toBe(
       "forward"
     );
   });
@@ -132,7 +135,7 @@ describe("pgNeighbors", () => {
   // ── 2. Null FK is skipped ──────────────────────────────────────────────
 
   it("null FK is skipped: Task.featureId = null → no BELONGS_TO_FEATURE result", async () => {
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "task", id: "t1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "task", id: "t1" });
     dbTask.findFirst.mockResolvedValue({
       id: "t1",
       featureId: null,
@@ -153,7 +156,7 @@ describe("pgNeighbors", () => {
   // ── 3. Forward array expansion ─────────────────────────────────────────
 
   it("forward array expansion: feature with dependsOnFeatureIds emits two pg:feature: URNs", async () => {
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "feature", id: "f1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "feature", id: "f1" });
     dbFeature.findFirst.mockResolvedValue({
       id: "f1",
       initiativeId: null,
@@ -166,20 +169,20 @@ describe("pgNeighbors", () => {
     // task reverse
     db.task.findMany.mockResolvedValue([]);
 
-    const results = await pgNeighbors("pg:feature:f1", CTX);
+    const results = await pgNeighbors("urn:test-org:pg:feature:f1", CTX);
 
     const dependsUrns = results
       .filter((r) => r.edgeType === "DEPENDS_ON_FEATURE")
       .map((r) => r.urn);
     expect(dependsUrns).toHaveLength(2);
-    expect(dependsUrns).toContain("pg:feature:f2");
-    expect(dependsUrns).toContain("pg:feature:f3");
+    expect(dependsUrns).toContain("urn:test-org:pg:feature:f2");
+    expect(dependsUrns).toContain("urn:test-org:pg:feature:f3");
   });
 
   // ── 4. Reverse indexed query ───────────────────────────────────────────
 
   it("reverse indexed query: pgNeighbors(pg:feature:f1) calls db.task.findMany and emits results", async () => {
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "feature", id: "f1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "feature", id: "f1" });
     dbFeature.findFirst.mockResolvedValue({
       id: "f1",
       initiativeId: null,
@@ -190,7 +193,7 @@ describe("pgNeighbors", () => {
     dbFeature.findMany.mockResolvedValue([]);
     dbChatMessage.findMany.mockResolvedValue([]);
 
-    const results = await pgNeighbors("pg:feature:f1", CTX);
+    const results = await pgNeighbors("urn:test-org:pg:feature:f1", CTX);
 
     // Verify the call signature
     expect(db.task.findMany).toHaveBeenCalledWith(
@@ -203,14 +206,14 @@ describe("pgNeighbors", () => {
     const taskUrns = results
       .filter((r) => r.edgeType === "HAS_TASK")
       .map((r) => r.urn);
-    expect(taskUrns).toContain("pg:task:t10");
-    expect(taskUrns).toContain("pg:task:t11");
+    expect(taskUrns).toContain("urn:test-org:pg:task:t10");
+    expect(taskUrns).toContain("urn:test-org:pg:task:t11");
   });
 
   // ── 5. UrnEdge union ──────────────────────────────────────────────────
 
   it("UrnEdge union: cross-realm URNs from UrnEdge.neighborsOf appear alongside pg: hops", async () => {
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "feature", id: "f1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "feature", id: "f1" });
     dbFeature.findFirst.mockResolvedValue({
       id: "f1",
       initiativeId: null,
@@ -226,7 +229,7 @@ describe("pgNeighbors", () => {
       { urn: "slack:channel:abc", edgeType: "HAS_CHANNEL", direction: "reverse" },
     ]);
 
-    const results = await pgNeighbors("pg:feature:f1", CTX);
+    const results = await pgNeighbors("urn:test-org:pg:feature:f1", CTX);
 
     const urns = results.map((r) => r.urn);
     expect(urns).toContain("github:repo:12345");
@@ -236,7 +239,7 @@ describe("pgNeighbors", () => {
   // ── 6. Access guard drops results ─────────────────────────────────────
 
   it("access guard drops results: checkPgAccess returns false for two URNs → absent from output", async () => {
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "feature", id: "f1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "feature", id: "f1" });
     dbFeature.findFirst.mockResolvedValue({
       id: "f1",
       initiativeId: null,
@@ -249,21 +252,21 @@ describe("pgNeighbors", () => {
 
     // Selectively deny access for t-blocked
     mockCheckPgAccess.mockImplementation(async (urn: string) => {
-      if (urn === "pg:task:t-blocked") return false;
+      if (urn === "urn:test-org:pg:task:t-blocked") return false;
       return true;
     });
 
-    const results = await pgNeighbors("pg:feature:f1", CTX);
+    const results = await pgNeighbors("urn:test-org:pg:feature:f1", CTX);
 
     const urns = results.map((r) => r.urn);
-    expect(urns).toContain("pg:task:t-allowed");
-    expect(urns).not.toContain("pg:task:t-blocked");
+    expect(urns).toContain("urn:test-org:pg:task:t-allowed");
+    expect(urns).not.toContain("urn:test-org:pg:task:t-blocked");
   });
 
   // ── 7. Result cap enforced ────────────────────────────────────────────
 
   it("result cap enforced: 60 raw results generated → only 50 returned", async () => {
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "feature", id: "f1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "feature", id: "f1" });
     dbFeature.findFirst.mockResolvedValue({
       id: "f1",
       initiativeId: null,
@@ -277,7 +280,7 @@ describe("pgNeighbors", () => {
     dbFeature.findMany.mockResolvedValue([]);
     dbChatMessage.findMany.mockResolvedValue([]);
 
-    const results = await pgNeighbors("pg:feature:f1", CTX);
+    const results = await pgNeighbors("urn:test-org:pg:feature:f1", CTX);
 
     expect(results).toHaveLength(50);
   });
@@ -285,7 +288,14 @@ describe("pgNeighbors", () => {
   // ── 8. Opaque external URN shape ──────────────────────────────────────
 
   it("opaque external URN: pgNeighbors(pg:workflowtask:wt1) emits stakwork:workflow:42; checkPgAccess not called for it", async () => {
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "workflowtask", id: "wt1" });
+    // Return a real pg URN for the source, and null for the opaque-external URN
+    // (which doesn't start with "urn:") so the access guard bypasses it.
+    mockParseUrn.mockImplementation((urn: string) => {
+      if (urn === "pg:workflowtask:wt1") {
+        return { realm: "pg", org: "test-org", type: "workflowtask", id: "wt1" };
+      }
+      return null;
+    });
     // Note: URN type "workflowtask" maps to Prisma accessor "workflowTask"
     dbWorkflowTask.findFirst.mockResolvedValue({
       id: "wt1",
@@ -318,7 +328,7 @@ describe("pgNeighbors", () => {
 
     // Now actually call pgNeighbors for a repository and verify Task.findMany
     // is NOT called for the HAS_TASK reverse edge
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "repository", id: "r1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "repository", id: "r1" });
     db.repository.findFirst.mockResolvedValue({ id: "r1" });
 
     await pgNeighbors("pg:repository:r1", CTX);
@@ -337,7 +347,7 @@ describe("pgNeighbors", () => {
     );
     expect(blockedBy?.requiresMigration).toBe(true);
 
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "feature", id: "f1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "feature", id: "f1" });
     dbFeature.findFirst.mockResolvedValue({
       id: "f1",
       initiativeId: null,
@@ -349,7 +359,7 @@ describe("pgNeighbors", () => {
     dbChatMessage.findMany.mockResolvedValue([]);
     mockQueryRaw.mockResolvedValue([]);
 
-    const results = await pgNeighbors("pg:feature:f1", CTX);
+    const results = await pgNeighbors("urn:test-org:pg:feature:f1", CTX);
 
     // $queryRaw should NOT be called since BLOCKED_BY_FEATURE has requiresMigration:true
     expect(db.$queryRaw).not.toHaveBeenCalled();
@@ -376,7 +386,7 @@ describe("pgNeighbors", () => {
     // Because Vitest mocks tagged template literals as regular function calls,
     // we ensure $queryRaw is invoked and returns stub data.
 
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "feature", id: "f-target" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "feature", id: "f-target" });
     dbFeature.findFirst.mockResolvedValue({
       id: "f-target",
       initiativeId: null,
@@ -411,7 +421,7 @@ describe("pgNeighbors", () => {
       // Result should include the blocker feature
       const blockerResult = results.find((r) => r.edgeType === "BLOCKED_BY_FEATURE");
       expect(blockerResult).toBeDefined();
-      expect(blockerResult?.urn).toBe("pg:feature:f-blocker");
+      expect(blockerResult?.urn).toBe("urn:test-org:pg:feature:f-blocker");
     } finally {
       // Restore the flag
       Object.assign(blockedByEntry!, { requiresMigration: originalFlag });
@@ -441,7 +451,7 @@ describe("pgNeighbors", () => {
   // ── Extra: source access guard failure returns empty ──────────────────
 
   it("returns empty array when source access guard fails", async () => {
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "task", id: "t1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "task", id: "t1" });
     dbTask.findFirst.mockResolvedValue({ id: "t1", featureId: "f1", repositoryId: null });
 
     // First call is for the source URN — deny it
@@ -455,7 +465,7 @@ describe("pgNeighbors", () => {
   // ── Extra: UrnEdge results are deduplicated ────────────────────────────
 
   it("deduplicates URNs when registry and UrnEdge produce the same URN", async () => {
-    mockParseUrn.mockReturnValue({ realm: "pg", type: "feature", id: "f1" });
+    mockParseUrn.mockReturnValue({ realm: "pg", org: "test-org", type: "feature", id: "f1" });
     dbFeature.findFirst.mockResolvedValue({
       id: "f1",
       initiativeId: null,
@@ -468,12 +478,12 @@ describe("pgNeighbors", () => {
 
     // UrnEdge also returns pg:feature:f2 (duplicate)
     mockNeighborsOf.mockResolvedValue([
-      { urn: "pg:feature:f2", edgeType: "DEPENDS_ON_FEATURE", direction: "forward" },
+      { urn: "urn:test-org:pg:feature:f2", edgeType: "DEPENDS_ON_FEATURE", direction: "forward" },
     ]);
 
-    const results = await pgNeighbors("pg:feature:f1", CTX);
+    const results = await pgNeighbors("urn:test-org:pg:feature:f1", CTX);
 
-    const f2Count = results.filter((r) => r.urn === "pg:feature:f2").length;
+    const f2Count = results.filter((r) => r.urn === "urn:test-org:pg:feature:f2").length;
     expect(f2Count).toBe(1);
   });
 });
