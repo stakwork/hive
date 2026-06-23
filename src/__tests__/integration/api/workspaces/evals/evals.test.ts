@@ -2198,10 +2198,15 @@ describe("Evals API — Integration Tests", () => {
         process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
         process.env.STAKWORK_API_KEY = "test-stakwork-key";
 
-        global.fetch = vi.fn().mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ project_id: "proj-abc" }),
-        } as any);
+        global.fetch = vi.fn()
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ properties: { source: "repo_agent" } }),
+          } as any)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ project_id: "proj-abc" }),
+          } as any);
 
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
@@ -2219,7 +2224,7 @@ describe("Evals API — Integration Tests", () => {
         expect(data.project_id).toBe("proj-abc");
 
         // Assert swarmUrl and swarmSecretAlias are present in the Stakwork payload
-        const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+        const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[1];
         const body = JSON.parse(fetchCall[1].body);
         const vars = body.workflow_params.set_var.attributes.vars;
         expect(vars).toHaveProperty("swarmUrl");
@@ -2235,10 +2240,15 @@ describe("Evals API — Integration Tests", () => {
         process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
         process.env.STAKWORK_API_KEY = "test-stakwork-key";
 
-        global.fetch = vi.fn().mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ project_id: "proj-xyz" }),
-        } as any);
+        global.fetch = vi.fn()
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ properties: { source: "repo_agent" } }),
+          } as any)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ project_id: "proj-xyz" }),
+          } as any);
 
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
@@ -2251,7 +2261,7 @@ describe("Evals API — Integration Tests", () => {
         });
 
         expect(response.status).toBe(200);
-        const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+        const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[1];
         const body = JSON.parse(fetchCall[1].body);
         const vars = body.workflow_params.set_var.attributes.vars;
         expect(vars.swarmSecretAlias).toBe("my-alias");
@@ -2267,10 +2277,15 @@ describe("Evals API — Integration Tests", () => {
         process.env.STAKWORK_EVAL_WORKFLOW_ID = "12345";
         process.env.STAKWORK_API_KEY = "test-stakwork-key";
 
-        global.fetch = vi.fn().mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ project_id: "proj-null-alias" }),
-        } as any);
+        global.fetch = vi.fn()
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ properties: { source: "repo_agent" } }),
+          } as any)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ project_id: "proj-null-alias" }),
+          } as any);
 
         const request = createAuthenticatedPostRequest(
           `http://localhost:3000/api/workspaces/${workspace.slug}/evals/set-1/requirements/req-1/triggers/trig-1/run`,
@@ -2283,7 +2298,7 @@ describe("Evals API — Integration Tests", () => {
         });
 
         expect(response.status).toBe(200);
-        const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+        const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[1];
         const body = JSON.parse(fetchCall[1].body);
         const vars = body.workflow_params.set_var.attributes.vars;
         expect(vars.swarmSecretAlias).toBe("");

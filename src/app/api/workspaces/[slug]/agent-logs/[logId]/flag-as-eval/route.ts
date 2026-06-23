@@ -6,6 +6,7 @@ import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { lookupAgentSessionByLogUrl } from "@/lib/utils/agent-session-lookup";
 import { db } from "@/lib/db";
+import { isEvalTriggerSource, type EvalTriggerSource } from "@/lib/utils/eval-source";
 import { logger } from "@/lib/logger";
 
 type RouteParams = { params: Promise<{ slug: string; logId: string }> };
@@ -69,7 +70,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       startPoint,
       endPoint,
       runCount,
+      source,
     } = body ?? {};
+
+    const evalTriggerSource: EvalTriggerSource = isEvalTriggerSource(source) ? source : "repo_agent";
 
     if (
       !evalSetId ||
@@ -146,6 +150,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         start_point: startPoint ?? null,
         end_point: endPoint ?? null,
         run_count: runCount ?? 3,
+        source: evalTriggerSource,
       },
     });
 
