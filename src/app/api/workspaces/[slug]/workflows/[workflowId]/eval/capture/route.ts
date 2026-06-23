@@ -163,6 +163,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         start_point: `step:${step_id ?? ""}`,
         end_point: `step:${step_id ?? ""}`,
         change_type: "prompt",
+        source: "provider_direct" as const,
         body: JSON.stringify({
           prompt_snapshot: promptSnapshot,
           output_snapshot: outputSnapshot,

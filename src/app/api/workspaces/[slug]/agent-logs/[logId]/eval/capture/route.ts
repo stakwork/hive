@@ -7,6 +7,7 @@ import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { db } from "@/lib/db";
 import { fetchBlobContent } from "@/lib/utils/blob-fetch";
 import { parseAgentLogStats } from "@/lib/utils/agent-log-stats";
+import { deriveEvalTriggerSource } from "@/lib/utils/eval-source";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -133,6 +134,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // 10. Resolve change_type
     const changeType = agentLog.source ?? config?.source ?? "swarm_agent";
 
+    // 10a. Derive EvalTrigger source discriminator
+    const evalTriggerSource = deriveEvalTriggerSource(
+      agentLog.source,
+      (config as { resolvedRequestUrl?: string } | undefined)?.resolvedRequestUrl,
+    );
+
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
     const jarvisUrl = getJarvisUrl(swarmName);
     const nodeConfig = { jarvisUrl, apiKey: swarmApiKey };
@@ -166,6 +173,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         agent: agentLog.agent ?? "swarm_agent",
         environment: logId,
         change_type: changeType,
+        source: evalTriggerSource,
         start_point: scopeKey,
         end_point: scopeKey,
         body: JSON.stringify({
