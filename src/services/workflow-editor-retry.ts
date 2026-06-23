@@ -143,6 +143,7 @@ export async function executeWorkflowEditorRetry(
 
     // Enrich payload with feature context when this task is linked to a feature
     if (task.featureId) {
+      (vars as Record<string, unknown>).featureId = task.featureId;
       const featureContext = await buildWorkflowEditorFeatureContext(task.featureId);
       if (featureContext) {
         (vars as Record<string, unknown>).featureContext = featureContext;
