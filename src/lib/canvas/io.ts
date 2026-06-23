@@ -35,7 +35,7 @@ const EMPTY_BLOB: CanvasBlob = { nodes: [], edges: [] };
  * upgraded (read-only; we only write the new fields when the user
  * actually sets them).
  */
-function asBlob(value: unknown): CanvasBlob {
+export function asBlob(value: unknown): CanvasBlob {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { ...EMPTY_BLOB };
   }
