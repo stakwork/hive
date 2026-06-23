@@ -131,7 +131,7 @@ export default function AgentLogDetailPage() {
         rawContent={rawContent}
         loading={loading}
         error={error}
-        onFlagTurn={(i) => { setCaptureTurnIndex(i); setCaptureOpen(true); }}
+        onFlagTurn={slug === "stakwork" ? (i) => { setCaptureTurnIndex(i); setCaptureOpen(true); } : undefined}
       />
 
       <FlagAsEvalModal
