@@ -570,6 +570,7 @@ model Task {
   @@index([bountyCode])
   @@index([layerType])
   @@index([deploymentStatus])
+  @@index([repositoryId])
   @@map("tasks")
 }
 
