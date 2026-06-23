@@ -116,7 +116,12 @@ function SectionContent({
   if (hasContent) {
     return (
       <div className={`border-l-2 border-transparent pl-3 rounded-r min-w-0 overflow-x-hidden w-full ${highlight ? "plan-section-highlight" : ""}`}>
-        <MarkdownRenderer size="compact">{section.content!}</MarkdownRenderer>
+        <MarkdownRenderer
+          size="compact"
+          className="[overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words"
+        >
+          {section.content!}
+        </MarkdownRenderer>
       </div>
     );
   }
@@ -254,7 +259,7 @@ export function PlanArtifactPanel({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <ScrollArea className="flex-1 min-h-0">
-        <div className="px-5 py-4">
+        <div className="px-5 py-4 min-w-0">
           <AnimatePresence initial={false}>
             {sections.map((section, i) => (
               <motion.div
