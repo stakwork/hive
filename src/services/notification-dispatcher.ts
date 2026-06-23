@@ -10,6 +10,7 @@ import {
   WorkflowStatus,
   FeatureStatus,
 } from "@prisma/client";
+import { isNotificationEnabled } from "@/lib/notifications/preferences";
 
 export interface DispatchResult {
   dispatched: number;
@@ -128,7 +129,7 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
     taskId: string | null;
     featureId: string | null;
     message: string | null;
-    targetUser: { lightningPubkey: string | null; sphinxRouteHint: string | null; iosDeviceToken: string | null };
+    targetUser: { lightningPubkey: string | null; sphinxRouteHint: string | null; iosDeviceToken: string | null; notificationPreferences: unknown };
     task: { workspace: { slug: string } } | null;
     feature: { workspace: { slug: string } } | null;
   }>;
@@ -159,7 +160,7 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
       : await db.notificationTrigger.findMany({
           where: { id: { in: claimedIdList } },
           include: {
-            targetUser: { select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true } },
+            targetUser: { select: { lightningPubkey: true, sphinxRouteHint: true, iosDeviceToken: true, notificationPreferences: true } },
             task: { select: { workspace: { select: { slug: true } } } },
             feature: { select: { workspace: { select: { slug: true } } } },
           },
@@ -191,6 +192,20 @@ export async function dispatchPendingNotifications(): Promise<DispatchResult> {
         });
         logger.info(
           `[NotificationDispatcher] Cancelled ${record.notificationType} (${record.id}) — entity resolved`,
+          "NOTIFICATION_DISPATCHER"
+        );
+        result.cancelled++;
+        continue;
+      }
+
+      // Preference gate — cancel if user has disabled this type since the record was queued
+      if (!isNotificationEnabled(record.targetUser?.notificationPreferences, record.notificationType)) {
+        await db.notificationTrigger.update({
+          where: { id: record.id },
+          data: { status: NotificationTriggerStatus.CANCELLED },
+        });
+        logger.info(
+          `[NotificationDispatcher] Cancelled ${record.notificationType} (${record.id}) — user preference disabled`,
           "NOTIFICATION_DISPATCHER"
         );
         result.cancelled++;
