@@ -438,19 +438,19 @@ function ProposalDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <div className={SECTION_LABEL_CLASS}>{kindLabel} Proposal</div>
           <DialogTitle className="text-base">{title}</DialogTitle>
         </DialogHeader>
 
         <ScrollArea className="max-h-[60vh]">
-          <div className="px-5 py-4 space-y-4">
+          <div className="px-5 py-4 space-y-4 min-w-0">
             {/* Description — all kinds */}
             {proposal.payload.description && (
               <div className="space-y-1">
                 <div className={SECTION_LABEL_CLASS}>Description</div>
-                <div className="prose prose-sm dark:prose-invert max-w-none">
+                <div className="prose prose-sm dark:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words">
                   <ReactMarkdown>{proposal.payload.description}</ReactMarkdown>
                 </div>
               </div>
@@ -473,7 +473,7 @@ function ProposalDetailsDialog({
                 {proposal.payload.initialMessage && (
                   <div className="space-y-1">
                     <div className={SECTION_LABEL_CLASS}>Planning seed</div>
-                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                    <div className="prose prose-sm dark:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words">
                       <ReactMarkdown>
                         {proposal.payload.initialMessage}
                       </ReactMarkdown>
@@ -499,7 +499,7 @@ function ProposalDetailsDialog({
                           {proposal.payload.dependsOnFeatureIds!.map((id) => (
                             <li
                               key={id}
-                              className="text-xs font-mono text-muted-foreground"
+                              className="text-xs font-mono text-muted-foreground break-all"
                             >
                               {id}
                             </li>
@@ -521,7 +521,7 @@ function ProposalDetailsDialog({
                           {proposal.payload.dependsOnProposalIds!.map((id) => (
                             <li
                               key={id}
-                              className="text-xs font-mono text-muted-foreground"
+                              className="text-xs font-mono text-muted-foreground break-all"
                             >
                               {id}
                             </li>

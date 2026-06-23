@@ -963,16 +963,22 @@ export function buildInitiativeTools(
               "query that workspace's own swarm / knowledge graph for " +
               "cross-workspace details on demand. Only mention " +
               "workspaces that are genuinely relevant. " +
-              "ACCURACY OVER SPEED: only include contracts you " +
-              "actually verified via research/tools (the per-workspace " +
-              "concept/code agents, `web_search`, or a referenced " +
-              "`@slug` workspace's swarm) — never guess or fabricate " +
-              "endpoint paths, field names, or types. A made-up " +
-              "contract is worse than none: the planner treats the " +
-              "seed as ground truth and will build on it. For anything " +
-              "you could not verify, say so explicitly and instruct " +
-              "the planner to confirm the shape against the real " +
-              "codebase before implementing, rather than inventing it. " +
+              "FOLLOW THE USER'S LEAD ON DEPTH. The seed's richness " +
+              "should mirror the conversation: a detailed conversation " +
+              "should carry its established contracts into the seed " +
+              "verbatim (API shapes, data models, types the user " +
+              "specified or you surfaced earlier) so nothing is lost " +
+              "when the planner takes over; a brief request gets a " +
+              "brief seed — the planner will do the deep research " +
+              "itself. Do NOT kick off a research pass just to pad the " +
+              "seed; that's the planner's job. But NEVER guess or " +
+              "fabricate endpoint paths, field names, or types to make " +
+              "the seed look complete — a made-up contract is worse " +
+              "than none, because the planner treats the seed as " +
+              "ground truth and will build on it. For any shape that is " +
+              "NOT already established in this conversation, simply " +
+              "name it and tell the planner to confirm it against the " +
+              "real codebase — don't invent it. " +
               "Markdown is supported. Required.",
           ),
         workspaceSlug: z

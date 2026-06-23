@@ -2,21 +2,28 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Building2, Calendar, Pencil, Users } from "lucide-react";
+import { Building2, Calendar, Pencil, Star, Users } from "lucide-react";
 import Link from "next/link";
 import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import type { WorkspaceWithRole } from "@/types/workspace";
 
+interface OrgWorkspace extends WorkspaceWithRole {
+  hasSwarm?: boolean;
+  isDefault?: boolean;
+}
+
 interface WorkspaceCardProps {
-  workspace: WorkspaceWithRole;
+  workspace: OrgWorkspace;
   logoUrl: string | undefined;
   canAccessLogo: boolean;
   onDescriptionSaved: (id: string, description: string) => void;
+  onSetDefault: (id: string) => void;
 }
 
 function WorkspaceCard({
@@ -24,10 +31,15 @@ function WorkspaceCard({
   logoUrl,
   canAccessLogo,
   onDescriptionSaved,
+  onSetDefault,
 }: WorkspaceCardProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [settingDefault, setSettingDefault] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const isAdminOrOwner =
+    workspace.userRole === "OWNER" || workspace.userRole === "ADMIN";
 
   const startEdit = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -65,6 +77,18 @@ function WorkspaceCard({
     }
   };
 
+  const handleSetDefault = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (settingDefault || workspace.isDefault) return;
+    setSettingDefault(true);
+    try {
+      await onSetDefault(workspace.id);
+    } finally {
+      setSettingDefault(false);
+    }
+  };
+
   return (
     <Card className="group hover:shadow-md transition-all duration-200">
       <CardContent className="p-4">
@@ -81,7 +105,7 @@ function WorkspaceCard({
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <Link
                 href={`/w/${workspace.slug}`}
                 className="font-semibold text-lg hover:text-primary transition-colors truncate"
@@ -92,8 +116,16 @@ function WorkspaceCard({
                 variant={workspace.userRole === "OWNER" ? "default" : "secondary"}
                 className="text-xs shrink-0"
               >
-                {workspace.userRole.toLowerCase()}
+                {typeof workspace.userRole === "string"
+                  ? workspace.userRole.toLowerCase()
+                  : workspace.userRole}
               </Badge>
+              {workspace.isDefault && (
+                <Badge variant="outline" className="text-xs shrink-0 gap-1">
+                  <Star className="w-3 h-3 fill-current" />
+                  Default
+                </Badge>
+              )}
             </div>
 
             {editing ? (
@@ -126,24 +158,40 @@ function WorkspaceCard({
               </div>
             )}
 
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Users className="w-3.5 h-3.5" />
-                <span>
-                  {workspace.memberCount} member{workspace.memberCount !== 1 ? "s" : ""}
-                </span>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5" />
+                  <span>
+                    {workspace.memberCount} member{workspace.memberCount !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>
+                    Created{" "}
+                    {new Date(workspace.createdAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5" />
-                <span>
-                  Created{" "}
-                  {new Date(workspace.createdAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </span>
-              </div>
+
+              {isAdminOrOwner && workspace.hasSwarm && !workspace.isDefault && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={handleSetDefault}
+                  disabled={settingDefault}
+                  title="Set as default swarm workspace"
+                >
+                  <Star className="w-3 h-3" />
+                  Set as default
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -157,7 +205,7 @@ interface WorkspacesViewProps {
 }
 
 export function WorkspacesView({ githubLogin }: WorkspacesViewProps) {
-  const [workspaces, setWorkspaces] = useState<WorkspaceWithRole[]>([]);
+  const [workspaces, setWorkspaces] = useState<OrgWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
   const { logoUrls } = useWorkspaceLogos(workspaces);
   const canAccessLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
@@ -174,6 +222,28 @@ export function WorkspacesView({ githubLogin }: WorkspacesViewProps) {
     setWorkspaces((prev) =>
       prev.map((ws) => (ws.id === id ? { ...ws, description } : ws)),
     );
+  };
+
+  const onSetDefault = async (id: string) => {
+    // Optimistic update
+    const previous = workspaces;
+    setWorkspaces((prev) =>
+      prev.map((ws) => ({ ...ws, isDefault: ws.id === id })),
+    );
+
+    try {
+      const res = await fetch(`/api/orgs/${githubLogin}/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ defaultWorkspaceId: id }),
+      });
+      if (!res.ok) {
+        // Revert on error
+        setWorkspaces(previous);
+      }
+    } catch {
+      setWorkspaces(previous);
+    }
   };
 
   if (loading) {
@@ -203,6 +273,7 @@ export function WorkspacesView({ githubLogin }: WorkspacesViewProps) {
           logoUrl={logoUrls[workspace.id]}
           canAccessLogo={canAccessLogo}
           onDescriptionSaved={onDescriptionSaved}
+          onSetDefault={onSetDefault}
         />
       ))}
     </div>
