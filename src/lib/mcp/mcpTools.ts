@@ -317,7 +317,7 @@ export async function mcpLearnConcept(
 ): Promise<McpToolResult> {
   try {
     const res = await fetch(
-      `${credentials.swarmUrl}/gitree/features/${encodeURIComponent(conceptId)}`,
+      `${credentials.swarmUrl}/gitree/concepts/${encodeURIComponent(conceptId)}`,
       {
         method: "GET",
         headers: {
@@ -331,7 +331,7 @@ export async function mcpLearnConcept(
 
     const data = await res.json();
     const documentation =
-      data.feature?.documentation || "No documentation available";
+      data.concept?.documentation || data.feature?.documentation || "No documentation available";
     return { content: [{ type: "text", text: documentation }] };
   } catch (error) {
     console.error("Error fetching concept:", error);

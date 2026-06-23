@@ -29,7 +29,7 @@ export async function PUT(
 
     const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
 
-    const swarmUrl = `${baseSwarmUrl}/gitree/features/${encodeURIComponent(id)}/documentation`;
+    const swarmUrl = `${baseSwarmUrl}/gitree/concepts/${encodeURIComponent(id)}/documentation`;
 
     const response = await fetch(swarmUrl, {
       method: "PUT",
