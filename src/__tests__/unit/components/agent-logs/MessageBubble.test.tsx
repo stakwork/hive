@@ -204,11 +204,11 @@ describe("MessageBubble flag button", () => {
     expect(screen.getByTestId("icon-flag")).toBeDefined();
   });
 
-  it("does not render flag button on user message even when onFlag is provided", () => {
+  it("renders flag button on user message when onFlag is provided", () => {
     const onFlag = vi.fn();
     const message: ParsedMessage = { role: "user", content: "Hello" };
     render(React.createElement(MessageBubble, { message, onFlag }));
-    expect(screen.queryByTestId("icon-flag")).toBeNull();
+    expect(screen.getByTestId("icon-flag")).toBeDefined();
   });
 
   it("does not render flag button on system message even when onFlag is provided", () => {

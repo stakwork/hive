@@ -539,7 +539,7 @@ export function MessageBubble({
           </Tooltip>
         )}
       </div>
-      {onFlag && isAssistant && (
+      {onFlag && (
         <Button variant="ghost" size="icon" onClick={onFlag} className="h-6 w-6 shrink-0 mt-0.5 self-start">
           <Flag className="h-3.5 w-3.5" />
         </Button>
