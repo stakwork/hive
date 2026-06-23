@@ -17,31 +17,42 @@ export function UserRow({
   onSetOwner: () => void;
 }) {
   const isOwner = user.role === "owner";
+  const hasRealName = !!user.name && user.name.length > 2;
 
   function truncate(s: string) {
     return `${s.slice(0, 5)}…${s.slice(-5)}`;
   }
 
-  const pubkeyDisplay = user.pubkey ? truncate(user.pubkey) : null;
-  const routeHintSuffix = user.routeHint ? `:${truncate(user.routeHint)}` : "";
-  const displayName = user.name ?? (pubkeyDisplay ? `${pubkeyDisplay}${routeHintSuffix}` : "—");
-
   return (
     <tr className="border-b last:border-0">
-      {/* User cell */}
+      {/* Name */}
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           <Avatar className="h-7 w-7 text-xs">
             <AvatarFallback>{getInitials(user.name, user.pubkey)}</AvatarFallback>
           </Avatar>
-          <span className="font-mono text-xs text-muted-foreground">{displayName}</span>
+          <span className="text-xs text-muted-foreground">
+            {hasRealName ? user.name : "—"}
+          </span>
         </div>
       </td>
-      {/* Role cell */}
+      {/* Pubkey */}
+      <td className="px-4 py-3">
+        <span className="font-mono text-xs text-muted-foreground">
+          {user.pubkey ? truncate(user.pubkey) : "—"}
+        </span>
+      </td>
+      {/* Route Hint */}
+      <td className="px-4 py-3">
+        <span className="font-mono text-xs text-muted-foreground">
+          {user.routeHint ? truncate(user.routeHint) : "—"}
+        </span>
+      </td>
+      {/* Role */}
       <td className="px-4 py-3">
         <Badge variant={isOwner ? "secondary" : "outline"}>{getRoleLabel(user.role)}</Badge>
       </td>
-      {/* Actions cell */}
+      {/* Actions */}
       <td className="px-4 py-3 text-right">
         {isOwner && user.pubkey === null ? (
           <Button size="sm" variant="outline" onClick={onSetOwner}>
