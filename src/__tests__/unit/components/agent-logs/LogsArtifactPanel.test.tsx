@@ -10,9 +10,31 @@ globalThis.React = React;
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+let mockSlug = "other-workspace";
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ slug: mockSlug }),
+}));
+
+vi.mock("@/components/evals/AgentSessionCaptureModal", () => ({
+  AgentSessionCaptureModal: ({ open, slug, logId, turnIndex }: { open: boolean; slug: string; logId: string; turnIndex?: number }) =>
+    open
+      ? React.createElement("div", {
+          "data-testid": "capture-modal",
+          "data-slug": slug,
+          "data-log-id": logId,
+          "data-turn-index": turnIndex ?? "undefined",
+        })
+      : null,
+}));
+
 vi.mock("@/components/agent-logs/LogDetailContent", () => ({
-  MessageBubble: ({ message }: { message: { role: string; content: string } }) =>
-    React.createElement("div", { "data-testid": "log-message" }, `${message.role}:${message.content}`),
+  MessageBubble: ({ message, onFlag }: { message: { role: string; content: string }; onFlag?: () => void }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "log-message", "data-role": message.role },
+      `${message.role}:${message.content}`,
+      onFlag ? React.createElement("button", { "data-testid": "flag-btn", onClick: onFlag }, "flag") : null,
+    ),
   StatsBar: ({ stats }: { stats: { messageCount: number } }) =>
     React.createElement("div", { "data-testid": "log-stats" }, `messages:${stats.messageCount}`),
   unescapeLogString: (s: string) => s,
@@ -56,6 +78,7 @@ const singleLogWithTimestamp = [{ id: "log-123", agent: `coding-agent-${FEATURE_
 describe("LogsArtifactPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSlug = "other-workspace";
     globalThis.URL.createObjectURL = vi.fn(() => "blob:fake");
     globalThis.URL.revokeObjectURL = vi.fn();
   });
@@ -427,5 +450,66 @@ describe("LogsArtifactPanel — lastUpdated cache invalidation", () => {
     await waitFor(() => {
       expect(mockFetch.mock.calls.length).toBe(callCountAfterMount);
     });
+  });
+});
+
+// ── Flag button / stakwork gate tests ─────────────────────────────────────────
+
+describe("LogsArtifactPanel — flag buttons and stakwork gate", () => {
+  const assistantStats = {
+    conversation: [
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+    ],
+    stats: { messageCount: 2, tokenEstimate: 50, toolUsage: {}, bashCommands: [] },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSlug = "other-workspace";
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:fake");
+    globalThis.URL.revokeObjectURL = vi.fn();
+  });
+
+  it("does not render flag buttons when slug is not 'stakwork'", async () => {
+    mockSlug = "other-workspace";
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => assistantStats });
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
+    await waitFor(() => screen.getAllByTestId("log-message"));
+    expect(screen.queryByTestId("flag-btn")).toBeNull();
+  });
+
+  it("renders flag buttons only on assistant messages when slug is 'stakwork'", async () => {
+    mockSlug = "stakwork";
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => assistantStats });
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
+    await waitFor(() => screen.getAllByTestId("log-message"));
+    expect(screen.queryAllByTestId("flag-btn")).toHaveLength(1);
+  });
+
+  it("opens capture modal with i-1 turnIndex when flag button is clicked", async () => {
+    mockSlug = "stakwork";
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => assistantStats });
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
+    await waitFor(() => screen.getAllByTestId("log-message"));
+    await userEvent.click(screen.getByTestId("flag-btn"));
+    await waitFor(() => {
+      const modal = screen.getByTestId("capture-modal");
+      expect(modal).toBeDefined();
+      // assistant is at index 1, so turnIndex = i-1 = 0
+      expect(modal.getAttribute("data-turn-index")).toBe("0");
+    });
+  });
+
+  it("does not render AgentSessionCaptureModal when slug is not 'stakwork'", async () => {
+    mockSlug = "other-workspace";
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => assistantStats });
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: singleLog }));
+    await waitFor(() => screen.getAllByTestId("log-message"));
+    expect(screen.queryByTestId("capture-modal")).toBeNull();
   });
 });
