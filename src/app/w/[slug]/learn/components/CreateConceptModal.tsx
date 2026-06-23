@@ -21,17 +21,17 @@ interface Repository {
   repositoryUrl: string;
 }
 
-interface CreateFeatureModalProps {
+interface CreateConceptModalProps {
   isOpen: boolean;
   onClose: () => void;
   workspaceSlug: string;
-  onFeatureCreated?: () => void;
+  onConceptCreated?: () => void;
   repositories: Repository[];
   selectedRepoId: string;
   onRepoChange: (repoId: string) => void;
 }
 
-export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCreated, repositories, selectedRepoId, onRepoChange }: CreateFeatureModalProps) {
+export function CreateConceptModal({ isOpen, onClose, workspaceSlug, onConceptCreated, repositories, selectedRepoId, onRepoChange }: CreateConceptModalProps) {
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -58,7 +58,7 @@ export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCr
     setError(null);
 
     try {
-      const response = await fetch("/api/learnings/features/create", {
+      const response = await fetch("/api/learnings/concepts/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -73,21 +73,21 @@ export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCr
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to create feature");
+        throw new Error(errorData.error || "Failed to create concept");
       }
 
       const data = await response.json();
 
       if (data.success) {
         // Success!
-        onFeatureCreated?.();
+        onConceptCreated?.();
         handleClose();
       } else {
         throw new Error("Unexpected response format");
       }
     } catch (err) {
-      console.error("Error creating feature:", err);
-      setError(err instanceof Error ? err.message : "Failed to create feature");
+      console.error("Error creating concept:", err);
+      setError(err instanceof Error ? err.message : "Failed to create concept");
     } finally {
       setIsCreating(false);
     }
@@ -107,7 +107,7 @@ export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCr
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Create New Concept</DialogTitle>
-          <DialogDescription>Generate documentation for a specific feature of your codebase.</DialogDescription>
+          <DialogDescription>Generate documentation for a specific concept of your codebase.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>

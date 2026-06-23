@@ -87,7 +87,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         // Fetch docs, concepts, and diagrams in parallel
         const [docsResponse, conceptsResponse] = await Promise.all([
           fetch(`/api/learnings/docs?workspace=${workspaceSlug}`),
-          fetch(`/api/learnings/features?workspace=${workspaceSlug}`),
+          fetch(`/api/learnings/concepts?workspace=${workspaceSlug}`),
         ]);
 
         if (docsResponse.ok) {
@@ -130,7 +130,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
 
         if (conceptsResponse.ok) {
           const conceptsData = await conceptsResponse.json();
-          setConcepts(Array.isArray(conceptsData) ? conceptsData : conceptsData.features || []);
+          setConcepts(Array.isArray(conceptsData) ? conceptsData : conceptsData.concepts || conceptsData.features || []);
         }
         setIsConceptsLoading(false);
       } catch (error) {
@@ -181,11 +181,11 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
   const refreshConcepts = async () => {
     try {
       const response = await fetch(
-        `/api/learnings/features?workspace=${workspaceSlug}`
+        `/api/learnings/concepts?workspace=${workspaceSlug}`
       );
       if (response.ok) {
         const data = await response.json();
-        setConcepts(Array.isArray(data) ? data : data.features || []);
+        setConcepts(Array.isArray(data) ? data : data.concepts || data.features || []);
       }
     } catch (error) {
       console.error("Failed to refresh concepts:", error);
@@ -209,11 +209,11 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
     if (!content) {
       try {
         const response = await fetch(
-          `/api/learnings/features/${encodeURIComponent(id)}?workspace=${workspaceSlug}`
+          `/api/learnings/concepts/${encodeURIComponent(id)}?workspace=${workspaceSlug}`
         );
         if (response.ok) {
           const data = await response.json();
-          const documentation = data?.feature?.documentation || "";
+          const documentation = data?.concept?.documentation || data?.feature?.documentation || "";
           setActiveItem({ type: "concept", id, name, content: documentation });
           setConcepts((prev) =>
             prev.map((c) => (c.id === id ? { ...c, content: documentation } : c))
@@ -286,7 +286,7 @@ export function LearnViewer({ workspaceSlug }: LearnViewerProps) {
         toast.success("Documentation saved successfully");
       } else if (activeItem.type === "concept" && activeItem.id) {
         const response = await fetch(
-          `/api/learnings/features/${encodeURIComponent(activeItem.id)}/documentation`,
+          `/api/learnings/concepts/${encodeURIComponent(activeItem.id)}/documentation`,
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },

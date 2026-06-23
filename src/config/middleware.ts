@@ -118,8 +118,8 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   // POST/PUT siblings on the same paths fall through to `protected`.
   { path: "/api/learnings/diagrams", strategy: "exact", access: "public", methods: ["GET"] },
   { path: "/api/learnings/docs", strategy: "exact", access: "public", methods: ["GET"] },
-  { path: "/api/learnings/features", strategy: "exact", access: "public", methods: ["GET"] },
-  { path: "/api/learnings/features/*", strategy: "pattern", access: "public", methods: ["GET"] },
+  { path: "/api/learnings/concepts", strategy: "exact", access: "public", methods: ["GET"] },
+  { path: "/api/learnings/concepts/*", strategy: "pattern", access: "public", methods: ["GET"] },
   { path: "/api/workspaces/*/learn/config", strategy: "pattern", access: "public", methods: ["GET"] },
 
   // Public dashboard chat. The single POST endpoint that drives
