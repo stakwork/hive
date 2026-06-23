@@ -192,6 +192,8 @@ model SourceControlOrg {
   macaroonOrgId        String?              @unique @map("macaroon_org_id")
   macaroonOrgPubkey    String?              @map("macaroon_org_pubkey") // hex compressed secp256k1 (33 bytes / 66 hex chars)
   macaroonOrgPrivkey   String?              @map("macaroon_org_privkey") // encrypted; custodial in phase 1
+  defaultWorkspaceId   String?              @unique @map("default_workspace_id")
+  defaultWorkspace     Workspace?           @relation("OrgDefaultWorkspace", fields: [defaultWorkspaceId], references: [id])
   tokens               SourceControlToken[]
   workspaces           Workspace[]
   sharedConversations  SharedConversation[]
@@ -288,6 +290,7 @@ model Workspace {
   workspaceSecrets        WorkspaceSecret[]
   owner                   User                     @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   sourceControlOrg        SourceControlOrg?        @relation(fields: [sourceControlOrgId], references: [id])
+  defaultForOrg           SourceControlOrg?        @relation("OrgDefaultWorkspace")
 
   @@index([ownerId])
   @@index([deleted])

@@ -133,6 +133,42 @@ export async function persistCanvasUserMessage(args: {
 }
 
 /**
+ * Fetch the stored messages for an org-canvas conversation, validating
+ * that the row belongs to this org and either to this caller or is an
+ * explicitly shared room (same ownership rule as
+ * `resolveOrgConversationRowId` / `loadOrgCanvasPromptCache`). Returns
+ * the rows for server-history reconstruction, or `null` when the id is
+ * missing / mismatched / not an org row.
+ *
+ * Org-canvas sibling of `fetchStoredConversationMessages` (which is
+ * workspace-keyed and so never matches a workspace-null org row). The
+ * `/api/ask/sync` server-history turn rebuilds prior turns from this.
+ * IDOR-safe: a mismatched id is indistinguishable from missing.
+ */
+export async function fetchOrgCanvasConversationMessages(args: {
+  conversationId: unknown;
+  userId: string;
+  orgId: string;
+}): Promise<StoredMessage[] | null> {
+  const { conversationId, userId, orgId } = args;
+  if (typeof conversationId !== "string" || conversationId.length === 0) {
+    return null;
+  }
+  const row = await db.sharedConversation.findFirst({
+    where: {
+      id: conversationId,
+      sourceControlOrgId: orgId,
+      OR: [{ userId }, { isShared: true }],
+    },
+    select: { messages: true },
+  });
+  if (!row) return null;
+  return Array.isArray(row.messages)
+    ? (row.messages as unknown as StoredMessage[])
+    : [];
+}
+
+/**
  * Load the cached concepts for an org-canvas conversation, while
  * validating that the row belongs to this org and either to this caller
  * or is an explicitly shared room (same ownership rule as

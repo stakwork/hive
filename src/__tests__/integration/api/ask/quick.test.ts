@@ -52,7 +52,8 @@ vi.mock('@/lib/constants/prompt', () => ({
   getMultiWorkspacePrefixMessages: vi.fn(() => []),
   // Per-capability snippets consumed by the capability registry
   // (@/lib/ai/capabilities), reached transitively via runCanvasAgent.
-  getCanvasCapabilitySnippet: vi.fn(() => ''),
+  getRoadmapCapabilitySnippet: vi.fn(() => ''),
+  getWhiteboardCapabilitySnippet: vi.fn(() => ''),
   getPlannerCapabilitySnippet: vi.fn(() => ''),
   getResearchCapabilitySnippet: vi.fn(() => ''),
   getConnectionsCapabilitySnippet: vi.fn(() => ''),
