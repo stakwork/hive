@@ -143,7 +143,7 @@ describe("askTools", () => {
 
       expect(result).toEqual(mockFeatures);
       expect(mockFetch).toHaveBeenCalledWith(
-        `${mockSwarmUrl}/gitree/features`,
+        `${mockSwarmUrl}/gitree/concepts`,
         expect.objectContaining({
           method: "GET",
           headers: {
@@ -191,7 +191,7 @@ describe("askTools", () => {
 
       expect(result).toEqual(mockFeatureData);
       expect(mockFetch).toHaveBeenCalledWith(
-        `${mockSwarmUrl}/gitree/features/${encodeURIComponent("feature-1")}`,
+        `${mockSwarmUrl}/gitree/concepts/${encodeURIComponent("feature-1")}`,
         expect.objectContaining({
           method: "GET",
           headers: {
@@ -233,7 +233,7 @@ describe("askTools", () => {
       await tools.learn_concept.execute({ conceptId: "feature/with/slashes" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        `${mockSwarmUrl}/gitree/features/${encodeURIComponent("feature/with/slashes")}`,
+        `${mockSwarmUrl}/gitree/concepts/${encodeURIComponent("feature/with/slashes")}`,
         expect.any(Object)
       );
     });
@@ -894,7 +894,7 @@ describe("askTools", () => {
       await tools.learn_concept.execute({ conceptId: "special!@#$%^&*()" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        `${mockSwarmUrl}/gitree/features/${encodeURIComponent("special!@#$%^&*()")}`,
+        `${mockSwarmUrl}/gitree/concepts/${encodeURIComponent("special!@#$%^&*()")}`,
         expect.any(Object)
       );
     });
