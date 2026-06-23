@@ -10,12 +10,37 @@ globalThis.React = React;
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// Track onFlag calls per message index for testing
+const capturedOnFlags: Array<{ index: number; handler: () => void }> = [];
+
 vi.mock("@/components/agent-logs/LogDetailContent", () => ({
-  MessageBubble: ({ message }: { message: { role: string; content: string } }) =>
-    React.createElement("div", { "data-testid": "log-message" }, `${message.role}:${message.content}`),
+  MessageBubble: ({ message, onFlag }: { message: { role: string; content: string }; onFlag?: () => void }) => {
+    // Store onFlag handler with a data attr so tests can detect presence
+    return React.createElement(
+      "div",
+      {
+        "data-testid": "log-message",
+        "data-has-flag": onFlag ? "true" : "false",
+        onClick: onFlag,
+      },
+      `${message.role}:${message.content}`,
+    );
+  },
   StatsBar: ({ stats }: { stats: { messageCount: number } }) =>
     React.createElement("div", { "data-testid": "log-stats" }, `messages:${stats.messageCount}`),
   unescapeLogString: (s: string) => s,
+}));
+
+vi.mock("@/components/evals/AgentSessionCaptureModal", () => ({
+  AgentSessionCaptureModal: ({ open, logId, turnIndex }: { open: boolean; logId: string; turnIndex?: number }) =>
+    open
+      ? React.createElement("div", { "data-testid": "capture-modal", "data-log-id": logId, "data-turn-index": turnIndex ?? "" }, "CaptureModal")
+      : null,
+}));
+
+let mockSlug = "stakwork";
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ slug: mockSlug }),
 }));
 
 vi.mock("@/components/ui/button", () => ({
@@ -426,6 +451,122 @@ describe("LogsArtifactPanel — lastUpdated cache invalidation", () => {
     // No additional fetch should have been triggered
     await waitFor(() => {
       expect(mockFetch.mock.calls.length).toBe(callCountAfterMount);
+    });
+  });
+});
+
+// ── Flag button gating tests ───────────────────────────────────────────────────
+
+describe("LogsArtifactPanel — flag button gating", () => {
+  const assistantConversation = [
+    { role: "user", content: "hello" },
+    { role: "assistant", content: "hi there" },
+    { role: "assistant", content: "doing more work" },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:fake");
+    globalThis.URL.revokeObjectURL = vi.fn();
+  });
+
+  it("passes onFlag to assistant messages when slug is 'stakwork'", async () => {
+    mockSlug = "stakwork";
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        conversation: assistantConversation,
+        stats: { messageCount: 3, estimatedTokens: 30, toolFrequency: {}, bashFrequency: {}, developerShellFrequency: {} },
+      }),
+    });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: [{ id: "log-1", agent: "coding-agent" }] }));
+
+    await waitFor(() => {
+      const messages = screen.getAllByTestId("log-message");
+      // assistant messages (index 1 and 2) should have onFlag; user (index 0) should not
+      const assistantMessages = messages.filter((m) => m.getAttribute("data-has-flag") === "true");
+      expect(assistantMessages.length).toBe(2);
+    });
+  });
+
+  it("does NOT pass onFlag to any message when slug is NOT 'stakwork'", async () => {
+    mockSlug = "other-workspace";
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        conversation: assistantConversation,
+        stats: { messageCount: 3, estimatedTokens: 30, toolFrequency: {}, bashFrequency: {}, developerShellFrequency: {} },
+      }),
+    });
+
+    // Re-import to pick up new mock slug
+    vi.resetModules();
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: [{ id: "log-2", agent: "coding-agent" }] }));
+
+    await waitFor(() => {
+      const messages = screen.getAllByTestId("log-message");
+      const flaggedMessages = messages.filter((m) => m.getAttribute("data-has-flag") === "true");
+      expect(flaggedMessages.length).toBe(0);
+    });
+  });
+
+  it("passes turnIndex as i-1 when assistant message at index i is flagged", async () => {
+    mockSlug = "stakwork";
+    vi.resetModules();
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        conversation: assistantConversation,
+        stats: { messageCount: 3, estimatedTokens: 30, toolFrequency: {}, bashFrequency: {}, developerShellFrequency: {} },
+      }),
+    });
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: [{ id: "log-3", agent: "coding-agent" }] }));
+
+    await waitFor(() => {
+      const messages = screen.getAllByTestId("log-message");
+      // assistant at index 1 → turnIndex = 0; at index 2 → turnIndex = 1
+      // Click the first assistant (index 1)
+      const firstAssistant = messages[1];
+      expect(firstAssistant.getAttribute("data-has-flag")).toBe("true");
+      firstAssistant.click();
+    });
+
+    // After clicking, the capture modal should open with turnIndex = 0 (i-1 where i=1)
+    await waitFor(() => {
+      const modal = screen.queryByTestId("capture-modal");
+      expect(modal).not.toBeNull();
+      expect(modal?.getAttribute("data-turn-index")).toBe("0");
+    });
+  });
+
+  it("does not render capture modal on provisional (streaming) tab", async () => {
+    mockSlug = "stakwork";
+    vi.resetModules();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        conversation: assistantConversation,
+        stats: { messageCount: 3, estimatedTokens: 30, toolFrequency: {}, bashFrequency: {}, developerShellFrequency: {} },
+      }),
+    });
+
+    const streamingLog = {
+      agent: "streaming-agent",
+      conversation: [{ role: "assistant", content: "working…", toolCalls: [] }],
+      status: "streaming" as const,
+    };
+
+    const { LogsArtifactPanel } = await import("@/components/agent-logs/LogsArtifactPanel");
+    render(React.createElement(LogsArtifactPanel, { logs: [], streamingLog }));
+
+    // No canonical log selected, so modal should not render
+    await waitFor(() => {
+      expect(screen.queryByTestId("capture-modal")).toBeNull();
     });
   });
 });

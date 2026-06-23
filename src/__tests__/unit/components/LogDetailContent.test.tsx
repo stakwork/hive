@@ -598,21 +598,26 @@ describe("MessageBubble — flag button", () => {
     role: "tool",
     content: [{ type: "tool-result", toolCallId: "id1", toolName: "bash", output: "ok" }],
   };
+  const toolOnlyAssistantMsg: ParsedMessage = {
+    role: "assistant",
+    content: [{ type: "tool-call", toolCallId: "tc1", toolName: "bash", input: { cmd: "ls" } }],
+  };
 
-  test("renders flag button for user message when onFlag provided", () => {
-    const onFlag = vi.fn();
-    render(<MessageBubble message={userMsg} onFlag={onFlag} />);
-    expect(screen.getByTestId("icon-flag")).toBeTruthy();
-  });
-
-  test("renders flag button for assistant message when onFlag provided", () => {
+  test("renders flag button for assistant message with text when onFlag provided", () => {
     const onFlag = vi.fn();
     render(<MessageBubble message={assistantMsg} onFlag={onFlag} />);
     expect(screen.getByTestId("icon-flag")).toBeTruthy();
   });
 
-  test("does not render flag button when onFlag is omitted for user message", () => {
-    render(<MessageBubble message={userMsg} />);
+  test("renders flag button for tool-only assistant message when onFlag provided", () => {
+    const onFlag = vi.fn();
+    render(<MessageBubble message={toolOnlyAssistantMsg} onFlag={onFlag} />);
+    expect(screen.getByTestId("icon-flag")).toBeTruthy();
+  });
+
+  test("does NOT render flag button for user message even when onFlag provided", () => {
+    const onFlag = vi.fn();
+    render(<MessageBubble message={userMsg} onFlag={onFlag} />);
     expect(screen.queryByTestId("icon-flag")).toBeNull();
   });
 
@@ -627,10 +632,25 @@ describe("MessageBubble — flag button", () => {
     expect(screen.queryByTestId("icon-flag")).toBeNull();
   });
 
-  test("calls onFlag when flag button is clicked", async () => {
+  test("does not render flag button for tool-result message even when onFlag provided", () => {
+    const onFlag = vi.fn();
+    render(<MessageBubble message={toolMsg} onFlag={onFlag} />);
+    expect(screen.queryByTestId("icon-flag")).toBeNull();
+  });
+
+  test("calls onFlag when flag button clicked on assistant message", async () => {
     const user = userEvent.setup();
     const onFlag = vi.fn();
-    render(<MessageBubble message={userMsg} onFlag={onFlag} />);
+    render(<MessageBubble message={assistantMsg} onFlag={onFlag} />);
+    const flagButton = screen.getByTestId("icon-flag").closest("button")!;
+    await user.click(flagButton);
+    expect(onFlag).toHaveBeenCalledTimes(1);
+  });
+
+  test("calls onFlag when flag button clicked on tool-only assistant message", async () => {
+    const user = userEvent.setup();
+    const onFlag = vi.fn();
+    render(<MessageBubble message={toolOnlyAssistantMsg} onFlag={onFlag} />);
     const flagButton = screen.getByTestId("icon-flag").closest("button")!;
     await user.click(flagButton);
     expect(onFlag).toHaveBeenCalledTimes(1);
