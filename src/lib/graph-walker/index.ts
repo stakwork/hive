@@ -9,6 +9,9 @@ export { pgNeighbors } from "./pg-neighbors";
 export type { NeighborResult, PgNeighborContext } from "./pg-neighbors";
 
 export { REGISTRY, PG_NODE_TYPES } from "./registry";
+
+export { linkFeatureToConcepts, backfillFeatureConceptEdges } from "./feature-concept-bridge";
+export type { FeatureConceptResult, BackfillResult } from "./feature-concept-bridge";
 export type {
   EdgeDefinition,
   ForwardScalarResolver,
