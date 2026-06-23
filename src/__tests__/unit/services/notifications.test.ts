@@ -352,4 +352,77 @@ describe("createAndSendNotification", () => {
       );
     });
   });
+
+  describe("notification preference gate", () => {
+    it("creates a SKIPPED record and does not send when the type is disabled in user preferences", async () => {
+      userFindUnique.mockResolvedValue({
+        ...userWithPubkey,
+        notificationPreferences: { TASK_ASSIGNED: false },
+      });
+      create.mockResolvedValue({ ...mockRecord, status: NotificationTriggerStatus.SKIPPED });
+
+      await createAndSendNotification(baseInput);
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: NotificationTriggerStatus.SKIPPED,
+            notificationType: NotificationTriggerType.TASK_ASSIGNED,
+          }),
+        })
+      );
+      // The idempotency check must NOT have run (findFirst not called)
+      expect(findFirst).not.toHaveBeenCalled();
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+    });
+
+    it("sends normally when notificationPreferences is null (backward-compat)", async () => {
+      userFindUnique.mockResolvedValue({
+        ...userWithPubkey,
+        notificationPreferences: null,
+      });
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue(mockRecord);
+      update.mockResolvedValue({});
+
+      await createAndSendNotification(baseInput);
+
+      // Preference gate should NOT have fired — idempotency check should have run
+      expect(findFirst).toHaveBeenCalled();
+    });
+
+    it("sends normally when notificationPreferences is an empty object", async () => {
+      userFindUnique.mockResolvedValue({
+        ...userWithPubkey,
+        notificationPreferences: {},
+      });
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue(mockRecord);
+      update.mockResolvedValue({});
+
+      await createAndSendNotification(baseInput);
+
+      expect(findFirst).toHaveBeenCalled();
+    });
+
+    it("sends normally when only a different type is disabled", async () => {
+      userFindUnique.mockResolvedValue({
+        ...userWithPubkey,
+        notificationPreferences: { FEATURE_ASSIGNED: false },
+      });
+      findFirst.mockResolvedValue(null);
+      create.mockResolvedValue(mockRecord);
+      update.mockResolvedValue({});
+
+      // baseInput is TASK_ASSIGNED — FEATURE_ASSIGNED being disabled should not affect it
+      await createAndSendNotification(baseInput);
+
+      expect(findFirst).toHaveBeenCalled();
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: NotificationTriggerStatus.PENDING }),
+        })
+      );
+    });
+  });
 });

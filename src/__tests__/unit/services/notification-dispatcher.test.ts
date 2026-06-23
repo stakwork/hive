@@ -268,6 +268,7 @@ describe("dispatchPendingNotifications", () => {
             lightningPubkey: "pubkey-abc",
             sphinxRouteHint: null,
             iosDeviceToken: "device-xyz",
+            notificationPreferences: null,
           },
           task: null,
           feature: { workspace: { slug: "feat-ws" } },
@@ -283,6 +284,93 @@ describe("dispatchPendingNotifications", () => {
           workspaceSlug: "feat-ws",
         })
       );
+    });
+  });
+
+  describe("notification preference gate", () => {
+    beforeEach(() => {
+      // TASK_ASSIGNED shouldCancel: task must be active (not DONE/CANCELLED)
+      taskFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
+    });
+
+    it("cancels the record when the user has disabled the notification type", async () => {
+      triggerFindMany.mockResolvedValue([
+        makeRecord({
+          targetUser: {
+            lightningPubkey: "pubkey-abc",
+            sphinxRouteHint: null,
+            iosDeviceToken: null,
+            notificationPreferences: { TASK_ASSIGNED: false },
+          },
+        }),
+      ]);
+
+      const result = await dispatchPendingNotifications();
+
+      expect(result.cancelled).toBe(1);
+      expect(result.dispatched).toBe(0);
+      expect(triggerUpdate).toHaveBeenCalledWith({
+        where: { id: "record-1" },
+        data: { status: NotificationTriggerStatus.CANCELLED },
+      });
+      expect(mockedSendDirectMessage).not.toHaveBeenCalled();
+    });
+
+    it("sends when notificationPreferences is null (backward-compat)", async () => {
+      triggerFindMany.mockResolvedValue([
+        makeRecord({
+          targetUser: {
+            lightningPubkey: "pubkey-abc",
+            sphinxRouteHint: null,
+            iosDeviceToken: null,
+            notificationPreferences: null,
+          },
+        }),
+      ]);
+      mockedSendDirectMessage.mockResolvedValue({ success: true });
+
+      const result = await dispatchPendingNotifications();
+
+      expect(result.dispatched).toBe(1);
+      expect(result.cancelled).toBe(0);
+    });
+
+    it("sends when notificationPreferences is an empty object", async () => {
+      triggerFindMany.mockResolvedValue([
+        makeRecord({
+          targetUser: {
+            lightningPubkey: "pubkey-abc",
+            sphinxRouteHint: null,
+            iosDeviceToken: null,
+            notificationPreferences: {},
+          },
+        }),
+      ]);
+      mockedSendDirectMessage.mockResolvedValue({ success: true });
+
+      const result = await dispatchPendingNotifications();
+
+      expect(result.dispatched).toBe(1);
+    });
+
+    it("sends when the user has a different type disabled", async () => {
+      triggerFindMany.mockResolvedValue([
+        makeRecord({
+          targetUser: {
+            lightningPubkey: "pubkey-abc",
+            sphinxRouteHint: null,
+            iosDeviceToken: null,
+            notificationPreferences: { FEATURE_ASSIGNED: false },
+          },
+        }),
+      ]);
+      mockedSendDirectMessage.mockResolvedValue({ success: true });
+
+      // Record is TASK_ASSIGNED — only FEATURE_ASSIGNED is disabled
+      const result = await dispatchPendingNotifications();
+
+      expect(result.dispatched).toBe(1);
+      expect(result.cancelled).toBe(0);
     });
   });
 });

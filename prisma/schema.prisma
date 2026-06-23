@@ -75,6 +75,7 @@ model User {
   voiceSignatureKey        String?                  @map("voice_signature_key")
   sphinxRouteHint          String?                  @map("sphinx_route_hint")
   iosDeviceToken           String?                  @map("ios_device_token")
+  notificationPreferences  Json?                    @default("{}") @map("notification_preferences")
   // Phase-4 macaroon user identity. Each user owns one ed25519
   // keypair that signs every invocation macaroon they (or Hive on
   // their behalf, in custodial phase 1) mint. Same user across all
@@ -202,6 +203,7 @@ model SourceControlOrg {
   initiatives          Initiative[]
   researches           Research[]
   automations          Automation[]
+  urnEdges             UrnEdge[]
 
   @@index([githubLogin])
   @@index([githubInstallationId])
@@ -1943,4 +1945,23 @@ model WorkflowSummary {
   @@unique([workflowId, cacheKey])
   @@index([workspaceId])
   @@map("workflow_summaries")
+}
+
+/// Cross-realm typed edge between two URN-addressed nodes.
+/// Persists relationships between Postgres entities, Canvas authored nodes,
+/// and KG concepts that cannot be expressed via FK columns alone.
+model UrnEdge {
+  id        String           @id @default(cuid())
+  orgId     String           @map("org_id")
+  fromUrn   String           @map("from_urn")
+  toUrn     String           @map("to_urn")
+  type      String
+  createdAt DateTime         @default(now()) @map("created_at")
+  org       SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([fromUrn])
+  @@index([toUrn])
+  @@index([orgId, fromUrn])
+  @@index([orgId, toUrn])
+  @@map("urn_edges")
 }
