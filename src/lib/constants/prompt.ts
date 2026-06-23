@@ -689,6 +689,44 @@ Assign every node to a class. No unstyled nodes.
 - Make sure to create valid mermaid syntax, avoid special characters in node names in general.`;
 }
 
+export function getGraphWalkerCapabilitySnippet(): string {
+  return `
+
+## Graph Walker Tools
+
+You have three **read-only** tools for cross-realm graph traversal. These tools never create, modify, or delete nodes or edges.
+
+### URN format
+
+URNs follow a variable-arity canonical format. Never construct URN strings by hand — use \`formatUrn\` from the URN utilities:
+
+\`\`\`
+pg / canvas  →  urn:{org}:{realm}:{type}:{id}
+kg           →  urn:{org}:kg:{workspace}:{type}:{id}
+\`\`\`
+
+Realms: \`pg\` (Postgres roadmap entities), \`canvas\` (canvas nodes), \`kg\` (workspace knowledge-graph — not yet enabled in v1).
+
+### Tools
+
+- **\`graph_get({ urn })\`** — Resolve a single URN to its full node content. Use this when you have a specific URN and need the entity's complete data.
+
+- **\`graph_neighbors({ urn, depth? })\`** — Return all adjacent URNs reachable in one hop, with \`edgeType\` and \`direction\`. Use this to explore what a node is connected to without fetching the full content of each neighbor.
+
+- **\`graph_search({ query, realm?, type?, workspace?, limit? })\`** — Discover nodes by keyword. Returns \`{ urn, type, title, realm }[]\` ranked results. Scope with \`realm\` and/or \`type\` to narrow results:
+  - \`realm: "pg"\` — searches features, initiatives, milestones by name
+  - \`realm: "canvas"\` — searches canvas nodes by text/label
+  - Omit \`realm\` to search both pg and canvas simultaneously
+
+### Scope reminder
+
+pg and canvas realms are live. **kg realm is not yet enabled** — \`graph_get\` or \`graph_neighbors\` with a \`kg\` URN, or \`graph_search\` with \`realm: "kg"\`, will return \`{ error: "kg realm not yet enabled" }\`. Default (no realm) searches pg + canvas only, not kg.
+
+### Read-only
+
+These tools are purely read-only. They never create, modify, or delete nodes or edges in any realm.`;
+}
+
 /**
  * Back-compat full composition: every capability snippet, in canonical
  * order. This is what org-scope agents got before capabilities were
