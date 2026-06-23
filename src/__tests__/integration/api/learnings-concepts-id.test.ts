@@ -435,7 +435,7 @@ describe("GET /api/learnings/concepts/[id] - Data Integrity", () => {
 
     // Verify URL format: https://{hostname}:3355/gitree/concepts/{id}
     expect(fetchUrl).toMatch(
-      /^https:\/\/feature-integrity-swarm\.sphinx\.chat:3355\/gitree\/features\/feature-123$/
+      /^https:\/\/feature-integrity-swarm\.sphinx\.chat:3355\/gitree\/concepts\/feature-123$/
     );
 
     fetchSpy.mockRestore();
@@ -464,7 +464,7 @@ describe("GET /api/learnings/concepts/[id] - Data Integrity", () => {
     const fetchUrl = fetchCall[0] as string;
 
     // Verify localhost uses http:// instead of https://
-    expect(fetchUrl).toMatch(/^http:\/\/localhost:3355\/gitree\/features\/feature-123$/);
+    expect(fetchUrl).toMatch(/^http:\/\/localhost:3355\/gitree\/concepts\/feature-123$/);
 
     fetchSpy.mockRestore();
   });
