@@ -278,6 +278,88 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     expect(triggerCall[1].node_data.change_type).toBe("github");
   });
 
+  // ── source discriminator ─────────────────────────────────────────────────
+
+  test('sets source to "repo_agent" when agentLog.source is "repo_agent"', async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      source: "repo_agent",
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "source repo_agent" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.source).toBe("repo_agent");
+  });
+
+  test('sets source to "provider_direct" when agentLog.source is null and resolvedRequestUrl matches Anthropic', async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      source: null,
+    });
+    (parseAgentLogStats as Mock).mockReturnValue({
+      conversation: SAMPLE_MESSAGES,
+      config: { ...BASE_CONFIG, resolvedRequestUrl: "https://api.anthropic.com/v1/messages" },
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "source provider_direct" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.source).toBe("provider_direct");
+  });
+
+  test('sets source to "jamie_agent" when agentLog.source is "canvas_chat"', async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      source: "canvas_chat",
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "source jamie_agent" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.source).toBe("jamie_agent");
+  });
+
+  test('falls back to "repo_agent" source when agentLog.source is unknown and no matching resolvedRequestUrl', async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
+      source: "github",
+    });
+    (parseAgentLogStats as Mock).mockReturnValue({
+      conversation: SAMPLE_MESSAGES,
+      config: BASE_CONFIG, // no resolvedRequestUrl
+    });
+
+    await POST(
+      makeRequest({ evalSetId: "eval-set-1", requirement: "source fallback" }),
+      makeParams(),
+    );
+
+    const triggerCall = (addNode as Mock).mock.calls.find(
+      ([, node]) => node.node_type === "EvalTrigger",
+    );
+    expect(triggerCall).toBeDefined();
+    expect(triggerCall[1].node_data.source).toBe("repo_agent");
+  });
+
   test("falls back to config.source when agentLog.source is null", async () => {
     (db.agentLog.findUnique as Mock).mockResolvedValue({
       ...BASE_AGENT_LOG,
