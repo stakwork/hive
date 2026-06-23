@@ -784,7 +784,9 @@ export function GraphAdminClient({ swarmUrl, workspaceSlug, workspaceName }: Gra
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40">
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">User</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Name</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Pubkey</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Route Hint</th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Role</th>
                     <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Actions</th>
                   </tr>
