@@ -1959,6 +1959,7 @@ model UrnEdge {
   createdAt DateTime         @default(now()) @map("created_at")
   org       SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
+  @@unique([orgId, fromUrn, toUrn, type])
   @@index([fromUrn])
   @@index([toUrn])
   @@index([orgId, fromUrn])
