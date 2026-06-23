@@ -42,7 +42,10 @@ export async function loadNodeDetail(
   orgId: string,
 ): Promise<NodeDetail | null> {
   switch (kind) {
-    case "ws": {
+    // "ws" is the canvas projector's live-node token; "workspace" is the
+    // pg-realm URN type. Both resolve identically.
+    case "ws":
+    case "workspace": {
       const ws = await db.workspace.findFirst({
         where: { id, sourceControlOrgId: orgId, deleted: false },
         select: {
@@ -66,7 +69,10 @@ export async function loadNodeDetail(
         },
       };
     }
-    case "repo": {
+    // "repo" is the canvas projector's live-node token; "repository" is the
+    // pg-realm URN type. Both resolve identically.
+    case "repo":
+    case "repository": {
       const repo = await db.repository.findFirst({
         where: { id, workspace: { sourceControlOrgId: orgId, deleted: false } },
         select: {
@@ -253,6 +259,38 @@ export async function loadNodeDetail(
         },
       };
     }
+    case "connection": {
+      // Connection rows belong to the org directly. They describe how two or
+      // more systems integrate; surface the summary as the body and the
+      // architecture/spec as structured extras.
+      const connection = await db.connection.findFirst({
+        where: { id, orgId },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          summary: true,
+          architecture: true,
+          openApiSpec: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      if (!connection) return null;
+      return {
+        kind: "connection",
+        id: connection.id,
+        name: connection.name,
+        description: connection.summary,
+        extras: {
+          slug: connection.slug,
+          architecture: connection.architecture,
+          openApiSpec: connection.openApiSpec,
+          createdAt: connection.createdAt,
+          updatedAt: connection.updatedAt,
+        },
+      };
+    }
     case "task": {
       const task = await db.task.findFirst({
         where: {
@@ -286,6 +324,82 @@ export async function loadNodeDetail(
           workspaceSlug: task.workspace.slug,
           feature: task.feature,
         },
+      };
+    }
+    case "conversation": {
+      // Org-canvas chat conversation (SharedConversation). Scoped to the org
+      // via the direct sourceControlOrgId column so cross-org reads return null.
+      const convo = await db.sharedConversation.findFirst({
+        where: { id, sourceControlOrgId: orgId },
+        select: {
+          id: true,
+          title: true,
+          messages: true,
+          lastMessageAt: true,
+          source: true,
+        },
+      });
+      if (!convo) return null;
+      return {
+        kind: "conversation",
+        id: convo.id,
+        name: convo.title ?? "(untitled conversation)",
+        // Conversations have no description column; the message transcript is
+        // the body. Surface it as a structured extra rather than flattening.
+        description: null,
+        extras: {
+          messages: convo.messages,
+          lastMessageAt: convo.lastMessageAt,
+          source: convo.source,
+        },
+      };
+    }
+    case "workspacemember": {
+      // Scoped to the org via the member's workspace.sourceControlOrgId.
+      const member = await db.workspaceMember.findFirst({
+        where: {
+          id,
+          workspace: { sourceControlOrgId: orgId, deleted: false },
+        },
+        select: {
+          id: true,
+          role: true,
+          description: true,
+          user: { select: { id: true, name: true, image: true } },
+          workspace: { select: { id: true, slug: true, name: true } },
+        },
+      });
+      if (!member) return null;
+      return {
+        kind: "workspacemember",
+        id: member.id,
+        name: member.user.name ?? "(unnamed member)",
+        description: member.description,
+        extras: {
+          role: member.role,
+          user: member.user,
+          workspaceSlug: member.workspace.slug,
+          workspaceName: member.workspace.name,
+        },
+      };
+    }
+    case "user": {
+      // A user is visible only if they are a member of a workspace under
+      // the org — enforced via the membership existence check.
+      const membership = await db.workspaceMember.findFirst({
+        where: {
+          userId: id,
+          workspace: { sourceControlOrgId: orgId, deleted: false },
+        },
+        select: { user: { select: { id: true, name: true, image: true } } },
+      });
+      if (!membership) return null;
+      return {
+        kind: "user",
+        id: membership.user.id,
+        name: membership.user.name ?? "(unnamed user)",
+        description: null,
+        extras: { image: membership.user.image },
       };
     }
     default:
