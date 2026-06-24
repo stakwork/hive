@@ -161,11 +161,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Store full payload as blob: new shape { sessionId, messages, config } or legacy { messages }
+    // Store transcript as blob: { sessionId?, messages } — config is the canonical DB column
     const blobPayload = {
       ...(sessionId ? { sessionId } : {}),
       messages,
-      ...(config ? { config } : {}),
     };
     const logContent = JSON.stringify(blobPayload);
 
