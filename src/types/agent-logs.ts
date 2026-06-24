@@ -26,6 +26,9 @@ export interface AgentLogRecord {
   repos?: string[];
   sessionId?: string | null;
   config?: AgentRunConfig | null;
+  traceId?: string | null;
+  phoenixTraceUrl?: string | null;
+  traceStatus?: "pending" | "ready" | "error" | null;
 }
 
 export interface AgentLogsResponse {
