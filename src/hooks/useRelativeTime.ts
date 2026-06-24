@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { formatRelativeOrDate, isRelativeFormat } from '@/lib/date-utils';
+import { formatRelativeOrDate, formatRelativeOrDateInTz, isRelativeFormat } from '@/lib/date-utils';
 
 /**
  * Hook that returns a formatted relative time string that automatically updates.
@@ -11,14 +11,18 @@ import { formatRelativeOrDate, isRelativeFormat } from '@/lib/date-utils';
  * - Cleans up intervals and event listeners on unmount
  * 
  * @param date - The date to format
+ * @param timezone - Optional IANA timezone string (e.g. "America/New_York"). Defaults to "UTC".
  * @returns Formatted relative time string (e.g., "2 hrs ago", "Yesterday", or "Nov 1, 2023")
  */
-export function useRelativeTime(date: string | Date): string {
-  const [formattedTime, setFormattedTime] = useState(() => formatRelativeOrDate(date));
+export function useRelativeTime(date: string | Date, timezone?: string): string {
+  const format = (d: string | Date) =>
+    timezone ? formatRelativeOrDateInTz(d, timezone) : formatRelativeOrDate(d);
+
+  const [formattedTime, setFormattedTime] = useState(() => format(date));
 
   useEffect(() => {
     // Update the formatted time when date changes
-    setFormattedTime(formatRelativeOrDate(date));
+    setFormattedTime(format(date));
 
     // Get update interval from environment or use default (60 seconds)
     const envInterval = typeof window !== 'undefined' 
@@ -29,7 +33,7 @@ export function useRelativeTime(date: string | Date): string {
 
     // Update the formatted time
     const updateTime = () => {
-      setFormattedTime(formatRelativeOrDate(date));
+      setFormattedTime(format(date));
     };
 
     // Handler for visibility change
@@ -57,7 +61,8 @@ export function useRelativeTime(date: string | Date): string {
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [date]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, timezone]);
 
   return formattedTime;
 }

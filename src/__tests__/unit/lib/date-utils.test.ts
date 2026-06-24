@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
-import { formatRelativeOrDate, formatFeatureDate, isRelativeFormat, formatDaySeparatorLabel, isSameCalendarDay } from "@/lib/date-utils";
+import { formatRelativeOrDate, formatFeatureDate, isRelativeFormat, formatDaySeparatorLabel, isSameCalendarDay, formatInUserTz, formatRelativeOrDateInTz, formatDaySeparatorLabelInTz } from "@/lib/date-utils";
 
 describe("date-utils", () => {
   beforeEach(() => {
@@ -271,5 +271,147 @@ describe("date-utils", () => {
       const b = new Date(2025, 11, 2, 12, 0, 0); // Dec 2
       expect(isSameCalendarDay(a, b)).toBe(false);
     });
+  });
+});
+
+// ─── Timezone-aware utilities ─────────────────────────────────────────────────
+
+describe("formatInUserTz", () => {
+  const fixedDate = new Date("2025-06-15T15:00:00.000Z"); // 15:00 UTC
+
+  test("returns a formatted string with UTC abbreviation when timezone is UTC", () => {
+    const result = formatInUserTz(fixedDate, "UTC");
+    expect(result).toContain("UTC");
+    expect(result).toContain("2025");
+  });
+
+  test("returns a formatted string with New York timezone abbreviation (EDT/EST)", () => {
+    const result = formatInUserTz(fixedDate, "America/New_York");
+    // June → EDT; expect "EDT" in the output
+    expect(result).toMatch(/EDT|EST/);
+    expect(result).toContain("2025");
+  });
+
+  test("falls back to UTC on an invalid timezone", () => {
+    const result = formatInUserTz(fixedDate, "Fake/Zone");
+    expect(result).toContain("UTC");
+  });
+
+  test("accepts an ISO string date input", () => {
+    const result = formatInUserTz("2025-06-15T15:00:00.000Z", "UTC");
+    expect(result).toContain("2025");
+  });
+
+  test("respects custom Intl.DateTimeFormatOptions", () => {
+    const result = formatInUserTz(fixedDate, "UTC", {
+      year: "numeric",
+      month: "long",
+      timeZone: "UTC",
+    });
+    expect(result).toContain("2025");
+  });
+});
+
+describe("formatRelativeOrDateInTz", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-12-02T12:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("returns 'Just now' for dates less than 1 minute ago", () => {
+    const date = new Date("2025-12-02T11:59:30.000Z");
+    expect(formatRelativeOrDateInTz(date, "UTC")).toBe("Just now");
+  });
+
+  test("returns 'X mins ago' for recent minutes", () => {
+    const date = new Date("2025-12-02T11:45:00.000Z"); // 15 minutes ago
+    expect(formatRelativeOrDateInTz(date, "UTC")).toBe("15 mins ago");
+  });
+
+  test("returns 'X hrs ago' for recent hours", () => {
+    const date = new Date("2025-12-02T09:00:00.000Z"); // 3 hours ago
+    expect(formatRelativeOrDateInTz(date, "UTC")).toBe("3 hrs ago");
+  });
+
+  test("returns 'Yesterday' for 1 calendar day ago (UTC)", () => {
+    // 2025-12-01 in UTC
+    const date = new Date("2025-12-01T06:00:00.000Z");
+    expect(formatRelativeOrDateInTz(date, "UTC")).toBe("Yesterday");
+  });
+
+  test("returns '2 days ago' for 2 calendar days ago (UTC)", () => {
+    const date = new Date("2025-11-30T06:00:00.000Z");
+    expect(formatRelativeOrDateInTz(date, "UTC")).toBe("2 days ago");
+  });
+
+  test("returns formatted date with tz abbreviation for older dates", () => {
+    const date = new Date("2025-11-01T12:00:00.000Z"); // > 2 days ago
+    const result = formatRelativeOrDateInTz(date, "UTC");
+    expect(result).toContain("2025");
+    expect(result).toContain("UTC");
+  });
+
+  test("falls back to UTC on an invalid timezone string", () => {
+    const date = new Date("2025-11-01T12:00:00.000Z");
+    const result = formatRelativeOrDateInTz(date, "Not/Valid");
+    expect(result).toContain("UTC");
+  });
+
+  test("evaluates 'Yesterday' boundary in user timezone (America/New_York, UTC-5 in Dec)", () => {
+    // Now = 2025-12-02T12:00:00Z → 07:00 EST (Dec 2)
+    // A date at 2025-12-01T10:00:00Z is Dec 1 05:00 EST → yesterday in EST
+    const date = new Date("2025-12-01T10:00:00.000Z");
+    const result = formatRelativeOrDateInTz(date, "America/New_York");
+    expect(result).toBe("Yesterday");
+  });
+});
+
+describe("formatDaySeparatorLabelInTz", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-12-02T12:00:00.000Z")); // Dec 2 noon UTC
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("returns 'Today' for a date on the same day in UTC", () => {
+    const date = new Date("2025-12-02T09:00:00.000Z");
+    expect(formatDaySeparatorLabelInTz(date, "UTC")).toBe("Today");
+  });
+
+  test("returns 'Yesterday' for a date one day back in UTC", () => {
+    const date = new Date("2025-12-01T09:00:00.000Z");
+    expect(formatDaySeparatorLabelInTz(date, "UTC")).toBe("Yesterday");
+  });
+
+  test("returns formatted date string for older dates", () => {
+    const date = new Date("2025-10-12T09:00:00.000Z");
+    const result = formatDaySeparatorLabelInTz(date, "UTC");
+    expect(result).toBe("Oct 12, 2025");
+  });
+
+  test("falls back to UTC on an invalid timezone", () => {
+    const date = new Date("2025-12-02T09:00:00.000Z");
+    const result = formatDaySeparatorLabelInTz(date, "Bad/Timezone");
+    expect(result).toBe("Today");
+  });
+
+  test("evaluates 'Today'/'Yesterday' boundary in user timezone", () => {
+    // Now = 2025-12-02T12:00:00Z → 07:00 EST (America/New_York, UTC-5)
+    // A date at 2025-12-01T23:00:00Z = Dec 1 18:00 EST → Yesterday in EST
+    const date = new Date("2025-12-01T23:00:00.000Z");
+    const result = formatDaySeparatorLabelInTz(date, "America/New_York");
+    expect(result).toBe("Yesterday");
+  });
+
+  test("accepts ISO string date input", () => {
+    const result = formatDaySeparatorLabelInTz("2025-12-02T09:00:00.000Z", "UTC");
+    expect(result).toBe("Today");
   });
 });
