@@ -113,7 +113,7 @@ describe("addNode", () => {
         node_data: { name: "Duplicate" },
       });
 
-      expect(result).toEqual({ success: true, ref_id: "existing-node-id" });
+      expect(result).toEqual({ success: true, ref_id: "existing-node-id", alreadyExists: true });
     });
 
     test("is case-insensitive for 'already exists' check", async () => {
@@ -152,7 +152,7 @@ describe("addNode", () => {
         node_data: { name: "plan-agent" },
       });
 
-      expect(result).toEqual({ success: true, ref_id: "existing-role-ref-id" });
+      expect(result).toEqual({ success: true, ref_id: "existing-role-ref-id", alreadyExists: true });
     });
   });
 
