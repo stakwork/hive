@@ -29,7 +29,7 @@ interface AddEdgePanelProps {
 }
 
 const DEFAULT_EDGE_TYPE = "RELATED_TO";
-const COMMON_EDGE_TYPES = ["RELATED_TO", "PART_OF", "DEPENDS_ON", "SYNONYM_OF", "EXTENDS"];
+const COMMON_EDGE_TYPES = ["RELATED_TO", "PART_OF", "DEPENDS_ON", "SYNONYM_OF", "EXTENDS", "HAS_DEFINITION", "SUPERSEDES"];
 
 export function AddEdgePanel({
   sourceRefId,
