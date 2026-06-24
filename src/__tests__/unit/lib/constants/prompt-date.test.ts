@@ -70,6 +70,48 @@ describe("getCurrentDateSnippet", () => {
     expect(first).toContain("2026");
     expect(second).toContain("2027");
   });
+
+  // ── Timezone-aware behaviour ──────────────────────────────────────────────
+
+  it("includes timezone abbreviation (EDT) when America/New_York is passed in June", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T10:00:00Z")); // June → EDT
+
+    const snippet = getCurrentDateSnippet("America/New_York");
+
+    expect(snippet).toMatch(/EDT|EST/);
+    expect(snippet).toContain("America/New_York");
+  });
+
+  it("includes the localisation instruction line when a valid timezone is passed", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T10:00:00Z"));
+
+    const snippet = getCurrentDateSnippet("America/Chicago");
+
+    expect(snippet).toContain("Convert all UTC times to this timezone");
+    expect(snippet).toContain("America/Chicago");
+  });
+
+  it("falls back to UTC behaviour when no timezone is passed", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T10:00:00Z"));
+
+    const snippet = getCurrentDateSnippet();
+
+    expect(snippet).toContain("(UTC)");
+    expect(snippet).not.toContain("Convert all UTC times");
+  });
+
+  it("falls back to UTC behaviour when an invalid timezone is passed", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T10:00:00Z"));
+
+    const snippet = getCurrentDateSnippet("Fake/Zone");
+
+    expect(snippet).toContain("(UTC)");
+    expect(snippet).not.toContain("Convert all UTC times");
+  });
 });
 
 // ─── getQuickAskSystemPrompt includes date snippet ───────────────────────────
@@ -101,6 +143,22 @@ describe("getQuickAskSystemPrompt — date injection", () => {
     const roleIndex = prompt.indexOf("You are a source code learning assistant");
     expect(dateIndex).toBeGreaterThanOrEqual(0);
     expect(roleIndex).toBeGreaterThan(dateIndex);
+  });
+
+  it("includes timezone abbreviation when userTimezone is provided", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T10:00:00Z")); // June → EDT
+
+    const prompt = getQuickAskSystemPrompt(
+      ["https://github.com/owner/repo"],
+      undefined,
+      undefined,
+      undefined,
+      "America/New_York",
+    );
+
+    expect(prompt).toMatch(/EDT|EST/);
+    expect(prompt).toContain("Convert all UTC times to this timezone");
   });
 });
 
@@ -138,5 +196,20 @@ describe("getMultiWorkspaceSystemPrompt — date injection", () => {
     const prompt = getMultiWorkspaceSystemPrompt([makeWs("alpha")]);
 
     expect(prompt).toContain("2027");
+  });
+
+  it("includes timezone abbreviation and instruction when userTimezone is provided", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T10:00:00Z")); // June → EDT
+
+    const prompt = getMultiWorkspaceSystemPrompt(
+      [makeWs("alpha")],
+      undefined,
+      undefined,
+      "America/New_York",
+    );
+
+    expect(prompt).toMatch(/EDT|EST/);
+    expect(prompt).toContain("Convert all UTC times to this timezone");
   });
 });

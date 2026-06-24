@@ -395,6 +395,90 @@ describe("buildGraphWalkerTools", () => {
       expect(result).toEqual({ neighbors: fakeNeighbors });
     });
 
+    it("pg arm attaches a human-readable title to each neighbor (batched per type)", async () => {
+      // Real-ish URN parser so attachPgTitles groups neighbors by type/id.
+      mockParseUrn.mockImplementation((urn: string) => {
+        const [, org, realm, type, ...idParts] = urn.split(":");
+        if (realm === "kg") {
+          const [workspace, kgType, ...rest] = [type, ...idParts];
+          return { realm, org, workspace, type: kgType, id: rest.join(":") };
+        }
+        return { realm, org, type, id: idParts.join(":") };
+      });
+
+      mockPgNeighbors.mockResolvedValue([
+        { urn: "urn:myorg:pg:initiative:init-1", edgeType: "BELONGS_TO_INITIATIVE", direction: "forward" },
+        { urn: "urn:myorg:pg:milestone:ms-1", edgeType: "BELONGS_TO_MILESTONE", direction: "forward" },
+        // opaque-external neighbor — no pg recipe, must pass through untouched
+        { urn: "stakwork:workflow:42", edgeType: "REFERENCES_WORKFLOW", direction: "forward" },
+      ]);
+      dbInitiative.findMany.mockResolvedValue([{ id: "init-1", name: "Canvas Chat" }]);
+      dbMilestone.findMany.mockResolvedValue([{ id: "ms-1", name: "Planner Agent & Tooling" }]);
+
+      const tools = getTools();
+      const result = await tools.graph_neighbors.execute(
+        { urn: "urn:myorg:pg:feature:feat-1" },
+        {} as never,
+      );
+
+      // Batched: one query per distinct neighbor type
+      expect(dbInitiative.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ["init-1"] } },
+        select: { id: true, name: true },
+      });
+      const neighbors = (result as { neighbors: Array<{ urn: string; title?: string }> }).neighbors;
+      expect(neighbors.find((n) => n.urn.includes("init-1"))?.title).toBe("Canvas Chat");
+      expect(neighbors.find((n) => n.urn.includes("ms-1"))?.title).toBe(
+        "Planner Agent & Tooling",
+      );
+      // opaque-external neighbor stays untouched (no title)
+      expect(neighbors.find((n) => n.urn === "stakwork:workflow:42")?.title).toBeUndefined();
+    });
+
+    it("kg arm maps the derived node name onto each neighbor's title", async () => {
+      mockParseUrn.mockReturnValue({
+        realm: "kg",
+        org: "myorg",
+        workspace: "my-ws",
+        type: "concept",
+        id: "c1",
+      });
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-ws",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-123",
+      });
+      mockKgGetNeighbors.mockResolvedValue({
+        neighbors: [
+          {
+            urn: "",
+            edgeType: "MODIFIES",
+            direction: "forward",
+            node_type: "File",
+            ref_id: "file-ref",
+            name: "graphWalkerTools.ts",
+          },
+        ],
+        reachable: true,
+      });
+      mockFormatUrn.mockImplementation(
+        (p: { realm: string; org: string; workspace?: string; type: string; id: string }) =>
+          `urn:${p.org}:${p.realm}:${p.workspace ? p.workspace + ":" : ""}${p.type}:${p.id}`,
+      );
+
+      const tools = getTools();
+      const result = await tools.graph_neighbors.execute(
+        { urn: "urn:myorg:kg:my-ws:concept:c1" },
+        {} as never,
+      );
+
+      const neighbors = (result as { neighbors: Array<{ title?: string; name?: string }> }).neighbors;
+      expect(neighbors[0].title).toBe("graphWalkerTools.ts");
+      // raw `name` is folded into `title`, not duplicated on the output
+      expect(neighbors[0].name).toBeUndefined();
+    });
+
     it("canvas arm unions canvas structural edges with UrnEdge neighbors and deduplicates", async () => {
       const canvasUrn = "urn:myorg:canvas:node:ws~ref1.nodeA";
       mockParseUrn.mockReturnValue({

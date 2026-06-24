@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { isValidTimezone } from "@/lib/automations/schedule";
 
 /**
  * Authenticated user's UI preferences. Currently:
@@ -23,7 +24,7 @@ export async function GET() {
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { canvasAutonomousTurns: true, chatAgentModel: true },
+    select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true },
   });
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -32,6 +33,7 @@ export async function GET() {
   return NextResponse.json({
     canvasAutonomousTurns: user.canvasAutonomousTurns,
     chatAgentModel: user.chatAgentModel,
+    timezone: user.timezone ?? "UTC",
   });
 }
 
@@ -44,7 +46,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { canvasAutonomousTurns, chatAgentModel } = body;
+    const { canvasAutonomousTurns, chatAgentModel, timezone } = body;
 
     if (
       canvasAutonomousTurns !== undefined &&
@@ -67,24 +69,36 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    if (timezone !== undefined) {
+      if (typeof timezone !== "string" || !isValidTimezone(timezone)) {
+        return NextResponse.json(
+          { error: "Invalid IANA timezone" },
+          { status: 400 },
+        );
+      }
+    }
+
     const updated = await db.user.update({
       where: { id: session.user.id },
       data: {
         ...(canvasAutonomousTurns !== undefined && { canvasAutonomousTurns }),
         ...(chatAgentModel !== undefined && { chatAgentModel }),
+        ...(timezone !== undefined && { timezone }),
       },
-      select: { canvasAutonomousTurns: true, chatAgentModel: true },
+      select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true },
     });
 
     logger.info("User preferences updated", "USER_PREFERENCES_UPDATE", {
       userId: session.user.id,
       canvasAutonomousTurns: updated.canvasAutonomousTurns,
       chatAgentModel: updated.chatAgentModel,
+      timezone: updated.timezone,
     });
 
     return NextResponse.json({
       canvasAutonomousTurns: updated.canvasAutonomousTurns,
       chatAgentModel: updated.chatAgentModel,
+      timezone: updated.timezone ?? "UTC",
     });
   } catch (error) {
     logger.error(
