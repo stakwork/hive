@@ -769,6 +769,30 @@ export function OrgCanvasBackground({
     [currentRef, root],
   );
 
+  // ── Canvas deeplink chip navigation ────────────────────────────────
+  // Consumes `pendingDeeplink` from the chat store. When the user clicks
+  // a `CanvasDeeplinkChip` in chat, the store slot is set; this effect
+  // fires, navigates to the correct sub-canvas (if needed), then pans
+  // and zooms to the target node. `clearDeeplink()` is always called in
+  // `finally` so the slot is never stuck.
+  const pendingDeeplink = useCanvasChatStore((s) => s.pendingDeeplink);
+  const clearDeeplink = useCanvasChatStore((s) => s.clearDeeplink);
+
+  useEffect(() => {
+    if (!pendingDeeplink || !canvasHandleRef.current) return;
+    const handle = canvasHandleRef.current;
+    const { nodeId, canvasRef } = pendingDeeplink;
+
+    const doNavigate =
+      canvasRef && canvasRef !== currentRef
+        ? handle
+            .zoomIntoNode(canvasRef, { durationMs: 300 })
+            .then(() => scrollToNode(nodeId))
+        : Promise.resolve().then(() => scrollToNode(nodeId));
+
+    void doNavigate.finally(() => clearDeeplink());
+  }, [pendingDeeplink, currentRef, scrollToNode, clearDeeplink]);
+
   // Initial drill-in from `?canvas=<ref>`. Runs once after the root
   // canvas has loaded — `zoomIntoNode` requires the projected node
   // (e.g. `initiative:<id>`) to actually exist on the rendered canvas.
