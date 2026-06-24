@@ -267,6 +267,20 @@ export function useSendCanvasChatMessage() {
 
           for (const item of timeline) {
             if (item.type === "text") {
+              // Symmetric flush: if tool calls are pending, emit them before
+              // starting the next text run, preserving true arrival order.
+              if (currentToolCalls.length > 0) {
+                timelineMessages.push({
+                  id: `${messageId}-${msgCounter++}`,
+                  role: "assistant",
+                  content: "",
+                  timestamp: new Date(),
+                  toolCalls: currentToolCalls,
+                  timeline: currentToolItems,
+                });
+                currentToolCalls = [];
+                currentToolItems = [];
+              }
               currentText += (item.data as { content: string }).content;
             } else if (item.type === "toolCall") {
               if (currentText.trim()) {
