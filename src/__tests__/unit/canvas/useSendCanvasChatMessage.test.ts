@@ -17,12 +17,15 @@ function resetStreamPromise() {
   });
 }
 
+// Mutable timeline that tests can override before each send.
+let mockTimeline: unknown[] = [];
+
 vi.mock("@/lib/streaming", () => ({
   useStreamProcessor: () => ({
     processStream: vi.fn(
       (_response: unknown, _messageId: unknown, onUpdate: (msg: unknown) => void) => {
         // Immediately call onUpdate once to simulate a first chunk
-        onUpdate({ timeline: [] });
+        onUpdate({ timeline: mockTimeline });
         return streamPromise;
       },
     ),
@@ -153,6 +156,7 @@ function buildErrorFetch() {
 describe("useSendCanvasChatMessage — attachments forwarding", () => {
   beforeEach(() => {
     mockState = makeTrackedState();
+    mockTimeline = [];
     resetStreamPromise();
     vi.clearAllMocks();
   });
@@ -232,9 +236,96 @@ describe("useSendCanvasChatMessage — attachments forwarding", () => {
   });
 });
 
+describe("useSendCanvasChatMessage — timeline ordering: interleaved text and tool calls", () => {
+  beforeEach(() => {
+    mockState = makeTrackedState();
+    mockTimeline = [];
+    resetStreamPromise();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("interleaves text and tool-call messages in true arrival order", async () => {
+    mockTimeline = [
+      { type: "text", data: { content: "A" } },
+      { type: "toolCall", data: { id: "tc-1", toolName: "tool_one", input: {}, output: { ok: true }, status: "output" } },
+      { type: "text", data: { content: "B" } },
+      { type: "toolCall", data: { id: "tc-2", toolName: "tool_two", input: {}, output: { ok: true }, status: "output" } },
+      { type: "text", data: { content: "C" } },
+    ];
+
+    global.fetch = buildOkFetch();
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "hello" });
+    });
+
+    const calls = (mockState.replaceAssistantStream as ReturnType<typeof vi.fn>).mock.calls;
+    const lastCall = calls[calls.length - 1];
+    const timelineMessages = lastCall[2] as Array<{ content: string; toolCalls?: Array<{ toolName: string }> }>;
+
+    expect(timelineMessages).toHaveLength(5);
+    // 1: text "A"
+    expect(timelineMessages[0].content).toBe("A");
+    expect(timelineMessages[0].toolCalls).toBeUndefined();
+    // 2: tool call 1
+    expect(timelineMessages[1].content).toBe("");
+    expect(timelineMessages[1].toolCalls).toHaveLength(1);
+    expect(timelineMessages[1].toolCalls![0].toolName).toBe("tool_one");
+    // 3: text "B"
+    expect(timelineMessages[2].content).toBe("B");
+    expect(timelineMessages[2].toolCalls).toBeUndefined();
+    // 4: tool call 2
+    expect(timelineMessages[3].content).toBe("");
+    expect(timelineMessages[3].toolCalls).toHaveLength(1);
+    expect(timelineMessages[3].toolCalls![0].toolName).toBe("tool_two");
+    // 5: text "C"
+    expect(timelineMessages[4].content).toBe("C");
+    expect(timelineMessages[4].toolCalls).toBeUndefined();
+  });
+
+  it("regression: does NOT batch all tool calls after all text segments", async () => {
+    mockTimeline = [
+      { type: "text", data: { content: "A" } },
+      { type: "toolCall", data: { id: "tc-1", toolName: "tool_one", input: {}, output: {}, status: "output" } },
+      { type: "text", data: { content: "B" } },
+    ];
+
+    global.fetch = buildOkFetch();
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "hello" });
+    });
+
+    const calls = (mockState.replaceAssistantStream as ReturnType<typeof vi.fn>).mock.calls;
+    const lastCall = calls[calls.length - 1];
+    const timelineMessages = lastCall[2] as Array<{ content: string; toolCalls?: unknown[] }>;
+
+    // With the fix: [text-A, toolCall-1, text-B] — 3 entries
+    expect(timelineMessages).toHaveLength(3);
+
+    // The broken behaviour was: text-A+B concatenated first, tool batched at end.
+    // Confirm text-A is NOT merged with text-B.
+    expect(timelineMessages[0].content).toBe("A");
+    // Tool call appears at index 1 (between the two text segments), not last.
+    expect(timelineMessages[1].toolCalls).toBeDefined();
+    expect(timelineMessages[2].content).toBe("B");
+  });
+});
+
 describe("useSendCanvasChatMessage — isStreaming lifecycle", () => {
   beforeEach(() => {
     mockState = makeTrackedState();
+    mockTimeline = [];
     resetStreamPromise();
     vi.clearAllMocks();
   });
