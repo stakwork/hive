@@ -198,8 +198,14 @@ export function registerOrgTools(
         "\"how does this fit in\" questions. Not a good fit: narrow lookups " +
         "you can answer with your own tools (single files, single PRs, " +
         "syntax questions). " +
+        "This agent can also take action, not just answer: it can propose " +
+        "new features for the organization. So if the user asks you to " +
+        "create or draft a feature (or something equivalent — \"add\", " +
+        "\"build\", \"spec out\", \"file a feature for…\"), call this tool " +
+        "and ask it to propose that feature, describing what the user wants " +
+        "in your prompt. " +
         "The answer comes back as prose, not structured data — phrase your " +
-        "question the way you would ask a knowledgeable teammate.",
+        "question (or request) the way you would ask a knowledgeable teammate.",
       inputSchema: {
         prompt: z
           .string()
