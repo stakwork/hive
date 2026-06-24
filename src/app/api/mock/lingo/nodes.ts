@@ -1,8 +1,9 @@
 export interface JargonNode {
   ref_id: string;
   name: string;
-  jargon_context: string;
-  jargon_candidates: string[];
+  definition?: string;         // real Lingo nodes from jarvis carry this
+  jargon_context: string;      // keep for mock backward compat
+  jargon_candidates: string[]; // keep for mock backward compat
   created_at: string;
 }
 
