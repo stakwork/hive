@@ -307,6 +307,12 @@ export interface RunCanvasAgentOptions {
     | Array<StopCondition<ToolSet>>;
   /** Caller-owned side effects. */
   hooks?: CanvasAgentHooks;
+  /**
+   * The user's stored IANA timezone preference (e.g. "America/New_York").
+   * Threaded into the system prompt so Jamie uses localised time in all
+   * responses. Defaults to "UTC" when absent.
+   */
+  userTimezone?: string;
 }
 
 export interface RunCanvasAgentResult {
@@ -527,6 +533,7 @@ export async function runCanvasAgent(
     prepareStep,
     extraStopConditions,
     modelName,
+    userTimezone,
   } = opts;
 
   // When cached concepts are supplied we skip the slow per-workspace
@@ -674,6 +681,7 @@ export async function runCanvasAgent(
       buildScopeHint(scope, linkedWorkspaces),
       orgPromptSuffix,
       canvasSystemPrompt,
+      userTimezone,
     );
     cacheHit = multiCacheHit;
     cacheableConcepts = { conceptsByWorkspace };
@@ -760,6 +768,7 @@ export async function runCanvasAgent(
           }
         : undefined,
       ws.currentUserGithubUsername,
+      userTimezone,
     );
     primarySwarmUrl = ws.swarmUrl;
     primarySwarmApiKey = ws.swarmApiKey;

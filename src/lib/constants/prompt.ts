@@ -7,16 +7,46 @@ import { jamieName } from "@/lib/constants/jamie";
 /**
  * Returns a current-date context snippet, computed fresh on every call (never cached).
  * Tells the model what today's date is so web searches default to the current year.
+ * When `timezone` is provided and valid, formats the date in that zone and appends
+ * localisation instructions for the agent.
  */
-export function getCurrentDateSnippet(): string {
-  const formatted = new Date().toLocaleDateString("en-GB", {
+export function getCurrentDateSnippet(timezone?: string): string {
+  // Validate the timezone; fall back to UTC if absent/invalid.
+  const safeZone = (() => {
+    if (!timezone) return "UTC";
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+      return timezone;
+    } catch {
+      return "UTC";
+    }
+  })();
+
+  const now = new Date();
+  const formatted = now.toLocaleDateString("en-GB", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
-    timeZone: "UTC",
+    timeZone: safeZone,
   });
-  return `Current date: ${formatted} (UTC). When searching or reasoning about recent / "latest" information, treat this as today — do not default to an earlier year unless the user explicitly requests a historical range.`;
+
+  // Extract the short timezone abbreviation (e.g. "EST", "PDT").
+  const abbrev = (() => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: safeZone,
+      timeZoneName: "short",
+    }).formatToParts(now);
+    return parts.find((p) => p.type === "timeZoneName")?.value ?? safeZone;
+  })();
+
+  const baseSnippet = `Current date: ${formatted} (${abbrev}). When searching or reasoning about recent / "latest" information, treat this as today — do not default to an earlier year unless the user explicitly requests a historical range.`;
+
+  if (safeZone === "UTC") {
+    return baseSnippet;
+  }
+
+  return `${baseSnippet} The user's local timezone is ${abbrev} (${safeZone}). Convert all UTC times to this timezone and append the abbreviation when describing any time or relative time (yesterday, tomorrow, specific hours, etc.).`;
 }
 
 /**
@@ -34,7 +64,7 @@ function formatMemberList(members: WorkspaceMemberInfo[]): string {
 }
 
 // System prompt for the quick ask learning assistant
-export function getQuickAskSystemPrompt(repoUrls: string[], description?: string, members?: WorkspaceMemberInfo[], currentUserGithubUsername?: string): string {
+export function getQuickAskSystemPrompt(repoUrls: string[], description?: string, members?: WorkspaceMemberInfo[], currentUserGithubUsername?: string, userTimezone?: string): string {
   const repoDescription =
     repoUrls.length === 1 ? `the repository ${repoUrls[0]}` : `the repositories: ${repoUrls.join(", ")}`;
   const descSuffix = description ? ` — ${description}` : "";
@@ -44,7 +74,7 @@ export function getQuickAskSystemPrompt(repoUrls: string[], description?: string
     : "";
 
   return `
-${getCurrentDateSnippet()}
+${getCurrentDateSnippet(userTimezone)}
 
 You are a source code learning assistant for ${repoDescription}${descSuffix}. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand —- a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
 
@@ -89,8 +119,9 @@ export function getQuickAskPrefixMessages(
   members?: WorkspaceMemberInfo[],
   orgContext?: SingleWorkspaceOrgContext,
   currentUserGithubUsername?: string,
+  userTimezone?: string,
 ): ModelMessage[] {
-  const baseSystem = getQuickAskSystemPrompt(repoUrls, description, members, currentUserGithubUsername);
+  const baseSystem = getQuickAskSystemPrompt(repoUrls, description, members, currentUserGithubUsername, userTimezone);
   const systemContent = orgContext
     ? baseSystem +
       (orgContext.promptSuffix ?? getCanvasPromptSuffix()) +
@@ -206,6 +237,7 @@ export function getMultiWorkspaceSystemPrompt(
   workspaces: WorkspaceConfig[],
   currentUserGithubUsername?: string,
   canvasSystemPrompt: string = DEFAULT_CANVAS_SYSTEM_PROMPT,
+  userTimezone?: string,
 ): string {
   // Surface only the identifiers the agent needs to *speak* about and
   // *call tools* with:
@@ -246,7 +278,7 @@ export function getMultiWorkspaceSystemPrompt(
     : "";
 
   return `
-${getCurrentDateSnippet()}
+${getCurrentDateSnippet(userTimezone)}
 
 ${canvasSystemPrompt}
 
@@ -680,7 +712,7 @@ Realms: \`pg\` (Postgres roadmap entities), \`canvas\` (canvas nodes), \`kg\` (t
 
 - **\`graph_get({ urn })\`** — Resolve a single URN to its full node content. Use this when you have a specific URN and need the entity's complete data.
 
-- **\`graph_neighbors({ urn, depth? })\`** — Return all adjacent URNs reachable in one hop, with \`edgeType\` and \`direction\`. Use this to explore what a node is connected to without fetching the full content of each neighbor.
+- **\`graph_neighbors({ urn, depth? })\`** — Return all adjacent URNs reachable in one hop, each with \`edgeType\`, \`direction\`, and a best-effort \`title\` (a human-readable label — e.g. a feature's title, a file's name, a concept's name). Use the \`title\` to decide which neighbor to follow without having to \`graph_get\` every one. kg neighbors also carry \`node_type\` and \`ref_id\`; \`title\` may be absent for a node type that exposes no recognizable label.
 
 - **\`graph_search({ query, realm?, type?, workspace?, limit? })\`** — Discover nodes by keyword. Returns \`{ urn, type, title, realm }[]\` ranked results. Scope with \`realm\` and/or \`type\` to narrow results:
   - \`realm: "pg"\` — searches features, initiatives, milestones, tasks, workspaces, and repositories by title/name (features also match on their brief/requirements/architecture plan content; tasks also match on description; workspaces also match on description/mission; repositories also match on description/URL), plus research docs (title/topic/summary/content), connection docs (name/summary/architecture), and org-canvas chat conversations (title + message content)
@@ -798,6 +830,7 @@ export function getMultiWorkspacePrefixMessages(
    * Stakwork Prompt Manager (`getCanvasSystemPrompt`) to override it.
    */
   canvasSystemPrompt: string = DEFAULT_CANVAS_SYSTEM_PROMPT,
+  userTimezone?: string,
 ): ModelMessage[] {
   // Build pre-filled tool calls for each workspace's concepts
   const toolCalls: ModelMessage[] = [];
@@ -846,10 +879,10 @@ export function getMultiWorkspacePrefixMessages(
   // The two suffixes have disjoint vocabulary so they don't fight.
   const currentUserGithubUsername = workspaces[0]?.currentUserGithubUsername;
   const systemPrompt = orgId
-    ? getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername, canvasSystemPrompt) +
+    ? getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername, canvasSystemPrompt, userTimezone) +
       (orgPromptSuffix ?? getCanvasPromptSuffix()) +
       getCanvasScopeHint(scope)
-    : getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername, canvasSystemPrompt);
+    : getMultiWorkspaceSystemPrompt(workspaces, currentUserGithubUsername, canvasSystemPrompt, userTimezone);
 
   return [
     { role: "system", content: systemPrompt },
