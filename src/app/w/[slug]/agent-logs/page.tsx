@@ -479,7 +479,7 @@ export default function AgentLogsPage() {
               </div>
             )}
 
-            {activeTab === "agents" && !loading && !error && <AgentLogsTable logs={logs} onRowClick={handleRowClick} />}
+            {activeTab === "agents" && !loading && !error && <AgentLogsTable logs={logs} onRowClick={handleRowClick} slug={slug} />}
 
             {activeTab === "agents" && !loading && !error && logs.length > 0 && (
               <div className="mt-6">
@@ -594,7 +594,7 @@ export default function AgentLogsPage() {
             )}
 
             {activeTab === "chats" && !chatLoading && !chatError && (
-              <AgentLogsTable logs={chatLogs} onRowClick={handleChatRowClick} onDownload={handleChatDownload} />
+              <AgentLogsTable logs={chatLogs} onRowClick={handleChatRowClick} onDownload={handleChatDownload} slug={slug} />
             )}
 
             {activeTab === "chats" && !chatLoading && !chatError && chatLogs.length > 0 && (
@@ -692,6 +692,7 @@ export default function AgentLogsPage() {
                 onRowClick={handleCanvasRowClick}
                 onDownload={handleChatDownload}
                 showUserColumn={true}
+                slug={slug}
               />
             )}
 
