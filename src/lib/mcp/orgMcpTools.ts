@@ -59,6 +59,7 @@ import {
   appendTurnMessages,
 } from "@/services/canvas-turn-persistence";
 import { toModelMessages } from "@/lib/ai/conversationHelpers";
+import { buildOrgConversationReadout } from "@/services/org-conversation-readout";
 import type { OrgPermission } from "@/lib/mcp/orgPermissions";
 
 /**
@@ -480,6 +481,84 @@ export function registerOrgTools(
         return {
           content: [
             { type: "text" as const, text: "Error: org agent call failed" },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // `read_conversation` — read-only companion to `org_agent`. Lets the
+  // caller check the CURRENT state of a conversation it started (without
+  // spending an LLM turn): what was said, which proposals were approved/
+  // rejected, what plans/features were built, their tasks, and any PR
+  // links. Answers "did they approve it?" / "is the plan done?" / "are
+  // there PRs?". Any org-scope token may read a conversation it owns or
+  // that is shared; an unknown/inaccessible id reads as "not found".
+  server.registerTool(
+    "read_conversation",
+    {
+      title: "Read Conversation",
+      description:
+        "Look up the current state of an existing conversation by id — the " +
+        "same id that appears in a previous answer's link (the `chat` query " +
+        "param in `/org/<org>?chat=<id>`). Returns the back-and-forth plus " +
+        "the things that came out of it: each message, every proposal and " +
+        "whether it was approved or rejected, any plans that were built " +
+        "(with their tasks and pull-request links), and research. " +
+        "Use this to check on something you set in motion earlier — e.g. " +
+        "whether a feature you proposed got approved, whether its plan has " +
+        "been turned into tasks yet, or whether any PRs have opened — " +
+        "instead of asking the org agent to do work. Read-only: it changes " +
+        "nothing.",
+      inputSchema: {
+        conversationId: z
+          .string()
+          .min(1)
+          .describe(
+            "The conversation id to read — the `chat` value from a prior " +
+              "`/org/<org>?chat=<id>` link.",
+          ),
+      },
+    },
+    async (args: { conversationId: string }, extra) => {
+      const authExtra = extra.authInfo?.extra as OrgMcpAuthExtra | undefined;
+      if (!authExtra || authExtra.scope !== "org") {
+        return {
+          content: [
+            { type: "text" as const, text: "Error: Org auth context missing" },
+          ],
+          isError: true,
+        };
+      }
+
+      try {
+        const readout = await buildOrgConversationReadout({
+          conversationId: args.conversationId,
+          userId: authExtra.userId,
+          orgId: authExtra.orgId,
+        });
+
+        if (readout === null) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Conversation not found (or not accessible).",
+              },
+            ],
+          };
+        }
+
+        return { content: [{ type: "text" as const, text: readout }] };
+      } catch (error) {
+        console.error(
+          "[orgMcpTools.read_conversation] readout failed:",
+          error,
+        );
+        return {
+          content: [
+            { type: "text" as const, text: "Error: failed to read conversation" },
           ],
           isError: true,
         };

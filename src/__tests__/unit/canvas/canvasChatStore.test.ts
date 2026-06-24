@@ -100,3 +100,83 @@ describe("canvasChatStore — isStreaming", () => {
     expect(useCanvasChatStore.getState().conversations[id].isStreaming).toBe(true);
   });
 });
+
+describe("canvasChatStore — pendingDeeplink", () => {
+  beforeEach(() => {
+    useCanvasChatStore.setState({
+      conversations: {},
+      activeConversationId: null,
+      ephemeralSeedCounts: {},
+      pendingInputDraft: null,
+      pendingDeeplink: null,
+      proposals: {},
+      subAgentRuns: {},
+      artifacts: {},
+      dismissedArtifactIds: {},
+    });
+  });
+
+  it("initialises pendingDeeplink as null", () => {
+    expect(useCanvasChatStore.getState().pendingDeeplink).toBeNull();
+  });
+
+  it("triggerDeeplink sets pendingDeeplink correctly", () => {
+    useCanvasChatStore.getState().triggerDeeplink({
+      nodeId: "initiative:abc",
+      canvasRef: "initiative:abc",
+      label: "Q3 Roadmap",
+    });
+
+    expect(useCanvasChatStore.getState().pendingDeeplink).toEqual({
+      nodeId: "initiative:abc",
+      canvasRef: "initiative:abc",
+      label: "Q3 Roadmap",
+      x: undefined,
+      y: undefined,
+    });
+  });
+
+  it("triggerDeeplink passes x and y coordinates through", () => {
+    useCanvasChatStore.getState().triggerDeeplink({
+      nodeId: "feature:123",
+      canvasRef: "initiative:xyz",
+      label: "Launch Beta",
+      x: 100,
+      y: 200,
+    });
+
+    const dl = useCanvasChatStore.getState().pendingDeeplink;
+    expect(dl?.x).toBe(100);
+    expect(dl?.y).toBe(200);
+  });
+
+  it("clearDeeplink sets pendingDeeplink to null", () => {
+    useCanvasChatStore.getState().triggerDeeplink({
+      nodeId: "initiative:abc",
+      canvasRef: "initiative:abc",
+      label: "Q3 Roadmap",
+    });
+
+    expect(useCanvasChatStore.getState().pendingDeeplink).not.toBeNull();
+
+    useCanvasChatStore.getState().clearDeeplink();
+    expect(useCanvasChatStore.getState().pendingDeeplink).toBeNull();
+  });
+
+  it("calling triggerDeeplink twice overwrites the previous pending deeplink", () => {
+    useCanvasChatStore.getState().triggerDeeplink({
+      nodeId: "initiative:abc",
+      canvasRef: "initiative:abc",
+      label: "First",
+    });
+    useCanvasChatStore.getState().triggerDeeplink({
+      nodeId: "feature:999",
+      canvasRef: "initiative:xyz",
+      label: "Second",
+    });
+
+    const dl = useCanvasChatStore.getState().pendingDeeplink;
+    expect(dl?.nodeId).toBe("feature:999");
+    expect(dl?.label).toBe("Second");
+  });
+});
