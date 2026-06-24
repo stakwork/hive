@@ -73,23 +73,6 @@ const SWARM_SUCCESS = {
   data: { swarmName: "test-swarm", swarmApiKey: "key-123" },
 };
 
-const BASE_AGENT_LOG = {
-  workspaceId: "ws-1",
-  blobUrl: "https://store.private.blob.vercel-storage.com/test-log.json",
-  agentName: "coding-agent",
-  source: "github",
-  metadata: null,
-};
-
-const BASE_WORKSPACE = { slug: "test-ws" };
-
-const SAMPLE_MESSAGES = [
-  { role: "user", content: "Hello" },
-  { role: "assistant", content: "Hi there" },
-  { role: "user", content: "Do this task" },
-  { role: "assistant", content: "Done" },
-];
-
 const BASE_CONFIG = {
   model: "claude-3-5-sonnet",
   temperature: 0.7,
@@ -100,6 +83,24 @@ const BASE_CONFIG = {
   baseUrl: "https://api.anthropic.com",
   mcpServers: [],
 };
+
+const BASE_AGENT_LOG = {
+  workspaceId: "ws-1",
+  blobUrl: "https://store.private.blob.vercel-storage.com/test-log.json",
+  agentName: "coding-agent",
+  source: "github",
+  metadata: null,
+  config: BASE_CONFIG, // DB column is the canonical source of truth
+};
+
+const BASE_WORKSPACE = { slug: "test-ws" };
+
+const SAMPLE_MESSAGES = [
+  { role: "user", content: "Hello" },
+  { role: "assistant", content: "Hi there" },
+  { role: "user", content: "Do this task" },
+  { role: "assistant", content: "Done" },
+];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -116,9 +117,10 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     (db.agentLog.findUnique as Mock).mockResolvedValue(BASE_AGENT_LOG);
     (db.workspace.findUnique as Mock).mockResolvedValue(BASE_WORKSPACE);
     (fetchBlobContent as Mock).mockResolvedValue("{}");
+    // blob-parsed config is undefined by default — DB column is the canonical source
     (parseAgentLogStats as Mock).mockReturnValue({
       conversation: SAMPLE_MESSAGES,
-      config: BASE_CONFIG,
+      config: undefined,
     });
     (addNode as Mock).mockImplementation((_cfg, node) => {
       const type = node.node_type;
@@ -224,8 +226,8 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("uses config.resolvedRequestUrl when present", async () => {
-    (parseAgentLogStats as Mock).mockReturnValue({
-      conversation: SAMPLE_MESSAGES,
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
       config: { ...BASE_CONFIG, resolvedRequestUrl: "https://api.anthropic.com/v1/messages" },
     });
 
@@ -246,10 +248,7 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
   });
 
   test("falls back to empty string for url when resolvedRequestUrl is absent", async () => {
-    (parseAgentLogStats as Mock).mockReturnValue({
-      conversation: SAMPLE_MESSAGES,
-      config: BASE_CONFIG, // no resolvedRequestUrl
-    });
+    // BASE_AGENT_LOG.config = BASE_CONFIG which has no resolvedRequestUrl — default mock is sufficient
 
     await POST(
       makeRequest({ evalSetId: "eval-set-1", requirement: "No URL" }),
@@ -307,9 +306,6 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     (db.agentLog.findUnique as Mock).mockResolvedValue({
       ...BASE_AGENT_LOG,
       source: null,
-    });
-    (parseAgentLogStats as Mock).mockReturnValue({
-      conversation: SAMPLE_MESSAGES,
       config: { ...BASE_CONFIG, resolvedRequestUrl: "https://api.anthropic.com/v1/messages" },
     });
 
@@ -347,10 +343,7 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     (db.agentLog.findUnique as Mock).mockResolvedValue({
       ...BASE_AGENT_LOG,
       source: "github",
-    });
-    (parseAgentLogStats as Mock).mockReturnValue({
-      conversation: SAMPLE_MESSAGES,
-      config: BASE_CONFIG, // no resolvedRequestUrl
+      // config: BASE_CONFIG (default) — no resolvedRequestUrl
     });
 
     await POST(
@@ -387,9 +380,6 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     (db.agentLog.findUnique as Mock).mockResolvedValue({
       ...BASE_AGENT_LOG,
       source: null,
-    });
-    (parseAgentLogStats as Mock).mockReturnValue({
-      conversation: SAMPLE_MESSAGES,
       config: { model: "gpt-4", temperature: 0 }, // no source
     });
 
@@ -512,8 +502,8 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
       providerConfig: { timeout: 30 },
       repos: ["repo-1"],
     };
-    (parseAgentLogStats as Mock).mockReturnValue({
-      conversation: SAMPLE_MESSAGES,
+    (db.agentLog.findUnique as Mock).mockResolvedValue({
+      ...BASE_AGENT_LOG,
       config: fullConfig,
     });
 
@@ -553,7 +543,7 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     ];
     (parseAgentLogStats as Mock).mockReturnValue({
       conversation: messagesWithSystem,
-      config: BASE_CONFIG,
+      config: undefined,
     });
 
     await POST(
@@ -596,6 +586,23 @@ describe("POST /api/workspaces/[slug]/agent-logs/[logId]/eval/capture", () => {
     expect(triggerCall[1].node_data.prompts).toEqual([
       JSON.stringify({ name: "MY_PROMPT", prompt_id: 1, prompt_version_id: 2 }),
     ]);
+  });
+
+  // ── fallback: DB config null → blob-parsed config ───────────────────────
+
+  test("falls back to blob-parsed config for request_params when DB config column is null", async () => {
+    (db.agentLog.findUnique as Mock).mockResolvedValue({ ...BASE_AGENT_LOG, config: null });
+    (parseAgentLogStats as Mock).mockReturnValue({
+      conversation: SAMPLE_MESSAGES,
+      config: BASE_CONFIG,
+    });
+
+    await POST(makeRequest({ evalSetId: "eval-set-1", requirement: "fallback" }), makeParams());
+
+    const triggerCall = (addNode as Mock).mock.calls.find(([, n]) => n.node_type === "EvalTrigger");
+    const snapshot = JSON.parse(JSON.parse(triggerCall![1].node_data.body).prompt_snapshot);
+    expect(snapshot.request_params.model).toBe(BASE_CONFIG.model);
+    expect(snapshot.request_params.systemOverride).toBe(BASE_CONFIG.systemOverride);
   });
 
   // ── USE_MOCKS delegation ─────────────────────────────────────────────────
