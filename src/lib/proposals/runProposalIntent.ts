@@ -46,6 +46,14 @@ export async function runProposalIntent(args: {
    * autosave. Mirrors the LLM turn's persistence.
    */
   turnId?: string;
+  /**
+   * The approving user's `chatAgentModel` preference (e.g.
+   * `"anthropic/claude-opus-4-6"`). Forwarded to `handleApproval` so
+   * feature approvals persist it as `Feature.model`, ensuring subsequent
+   * plan-chat messages use it via the existing
+   * `feature.model || model || undefined` chain.
+   */
+  chatAgentModel?: string;
 }): Promise<Response> {
   const {
     orgId,
@@ -55,6 +63,7 @@ export async function runProposalIntent(args: {
     rejectionIntent,
     conversationId,
     turnId,
+    chatAgentModel,
   } = args;
 
   let summaryText: string;
@@ -69,6 +78,7 @@ export async function runProposalIntent(args: {
       messages: transcript,
       intent: approvalIntent,
       ...(conversationId ? { conversationId } : {}),
+      ...(chatAgentModel ? { chatAgentModel } : {}),
     });
     if (!outcome.ok) {
       // Surface validation errors as the assistant text. The card UI
