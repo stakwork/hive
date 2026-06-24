@@ -244,6 +244,17 @@ export async function POST(request: NextRequest) {
         userId,
         orgId,
       });
+      // Fetch the user's model preference here (before the early return)
+      // so it can be forwarded to the feature planner via runProposalIntent.
+      // The same fetch happens below for the non-approval path; keeping
+      // them separate avoids re-ordering a large amount of existing code.
+      const approvalChatAgentModel =
+        (
+          await db.user.findUnique({
+            where: { id: userId },
+            select: { chatAgentModel: true },
+          })
+        )?.chatAgentModel ?? undefined;
       return await runProposalIntent({
         orgId,
         userId,
@@ -252,6 +263,7 @@ export async function POST(request: NextRequest) {
         rejectionIntent,
         ...(approvalConversationId ? { conversationId: approvalConversationId } : {}),
         ...(typeof turnId === "string" && turnId ? { turnId } : {}),
+        ...(approvalChatAgentModel ? { chatAgentModel: approvalChatAgentModel } : {}),
       });
     }
 
