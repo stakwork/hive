@@ -13,6 +13,7 @@ vi.mock("@/lib/utils/swarm", () => ({
 }));
 
 vi.mock("@/services/swarm/api/nodes", () => ({
+  addNode: vi.fn(),
   addEdge: vi.fn(),
   patchEdge: vi.fn(),
 }));
@@ -23,9 +24,10 @@ vi.stubGlobal("fetch", mockFetch);
 // ─── Imports after mocks ──────────────────────────────────────────────────────
 
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
-import { addEdge, patchEdge } from "@/services/swarm/api/nodes";
+import { addNode, addEdge, patchEdge } from "@/services/swarm/api/nodes";
 
 const mockGetWorkspaceSwarmAccess = vi.mocked(getWorkspaceSwarmAccess);
+const mockAddNode = vi.mocked(addNode);
 const mockAddEdge = vi.mocked(addEdge);
 const mockPatchEdge = vi.mocked(patchEdge);
 
@@ -186,7 +188,7 @@ describe("GET /api/workspaces/[slug]/lingo/nodes", () => {
     const [calledUrl] = mockFetch.mock.calls[0] as [string];
     expect(calledUrl).toContain("limit=10");
     expect(calledUrl).toContain("offset=20");
-    expect(calledUrl).toContain("type=Jargon");
+    expect(calledUrl).toContain("type=Lingo");
     expect(calledUrl).toContain("namespace=testswarm");
   });
 
@@ -768,5 +770,152 @@ describe("PATCH /api/workspaces/[slug]/lingo/edges/[ref_id]", () => {
     });
     expect(res.status).toBe(404);
     expect(mockPatchEdge).not.toHaveBeenCalled();
+  });
+});
+
+// ─── POST /lingo/nodes ────────────────────────────────────────────────────────
+
+describe("POST /api/workspaces/[slug]/lingo/nodes", () => {
+  let POST: typeof import("@/app/api/workspaces/[slug]/lingo/nodes/route").POST;
+
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    delete process.env.USE_MOCKS;
+    ({ POST } = await import("@/app/api/workspaces/[slug]/lingo/nodes/route"));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("returns 401 for unauthenticated request", async () => {
+    const req = new NextRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+      { method: "POST", body: JSON.stringify({ name: "Test" }), headers: { "Content-Type": "application/json" } },
+    );
+    const res = await POST(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(401);
+  });
+
+  test("returns 400 when name is missing", async () => {
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+      { method: "POST", body: {} },
+    );
+    const res = await POST(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json).toEqual({ success: false, error: "name is required" });
+  });
+
+  test("returns 400 when name is empty string", async () => {
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+      { method: "POST", body: { name: "   " } },
+    );
+    const res = await POST(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+  });
+
+  test("returns 403 when ACCESS_DENIED", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: false,
+      error: { type: "ACCESS_DENIED" },
+    });
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+      { method: "POST", body: { name: "MyTerm" } },
+    );
+    const res = await POST(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(403);
+  });
+
+  test("returns 404 when WORKSPACE_NOT_FOUND", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: false,
+      error: { type: "WORKSPACE_NOT_FOUND" },
+    });
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/bad-slug/lingo/nodes`,
+      { method: "POST", body: { name: "MyTerm" } },
+    );
+    const res = await POST(req, { params: Promise.resolve({ slug: "bad-slug" }) });
+    expect(res.status).toBe(404);
+  });
+
+  test("returns success on fresh create", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: true,
+      data: SWARM_DATA,
+    });
+    mockAddNode.mockResolvedValueOnce({ success: true, ref_id: "new-ref-123" });
+
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+      { method: "POST", body: { name: "My Term", definition: "A great term" } },
+    );
+    const res = await POST(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.ref_id).toBe("new-ref-123");
+    expect(json.data.name).toBe("My Term");
+    expect(json.data.definition).toBe("A great term");
+    expect(json.alreadyExists).toBeUndefined();
+  });
+
+  test("returns alreadyExists: true on duplicate name", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: true,
+      data: SWARM_DATA,
+    });
+    mockAddNode.mockResolvedValueOnce({ success: true, ref_id: "existing-ref", alreadyExists: true });
+
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+      { method: "POST", body: { name: "Existing Term" } },
+    );
+    const res = await POST(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.alreadyExists).toBe(true);
+    expect(json.data.ref_id).toBe("existing-ref");
+  });
+
+  test("returns 500 when addNode fails", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
+      success: true,
+      data: SWARM_DATA,
+    });
+    mockAddNode.mockResolvedValueOnce({ success: false, error: "Jarvis error" });
+
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+      { method: "POST", body: { name: "Bad Term" } },
+    );
+    const res = await POST(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+  });
+
+  test("USE_MOCKS=true returns mock node without calling addNode", async () => {
+    process.env.USE_MOCKS = "true";
+    process.env.NODE_ENV = "test";
+
+    const req = makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
+      { method: "POST", body: { name: "Mock Term", definition: "Mock def" } },
+    );
+    const res = await POST(req, { params: Promise.resolve({ slug: SLUG }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.ref_id).toBe("mock-lingo-ref");
+    expect(json.data.name).toBe("Mock Term");
+    expect(mockAddNode).not.toHaveBeenCalled();
   });
 });

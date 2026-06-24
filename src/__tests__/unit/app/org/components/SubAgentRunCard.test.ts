@@ -142,13 +142,44 @@ describe("deriveCardStatus — inbound latest", () => {
     ).toEqual({ label: "Running", tone: "running" });
   });
 
-  test("COMPLETED → Plan ready", () => {
+  test("COMPLETED + taskCount undefined (loading) → Replied", () => {
+    // taskCount is not set on the run (still loading) — must fall back to Replied.
     expect(
       statusFor([inbound("p1", "done", { workflowStatus: "COMPLETED" })]),
-    ).toEqual({ label: "Plan ready", tone: "replied" });
+    ).toEqual({ label: "Replied", tone: "replied" });
   });
 
-  test("FAILED / ERROR / HALTED → Needs attention", () => {
+  test("COMPLETED + taskCount 0 → Replied", () => {
+    const runs = getSubAgentRunsFromMessages([
+      inbound("p1", "done", { workflowStatus: "COMPLETED" }),
+    ]);
+    expect(deriveCardStatus({ ...runs[0], taskCount: 0 })).toEqual({
+      label: "Replied",
+      tone: "replied",
+    });
+  });
+
+  test("COMPLETED + taskCount > 0 → Plan ready", () => {
+    const runs = getSubAgentRunsFromMessages([
+      inbound("p1", "done", { workflowStatus: "COMPLETED" }),
+    ]);
+    expect(deriveCardStatus({ ...runs[0], taskCount: 3 })).toEqual({
+      label: "Plan ready",
+      tone: "replied",
+    });
+  });
+
+  test("COMPLETED + taskCount 1 (single MCP-created task) → Plan ready", () => {
+    const runs = getSubAgentRunsFromMessages([
+      inbound("p1", "done", { workflowStatus: "COMPLETED" }),
+    ]);
+    expect(deriveCardStatus({ ...runs[0], taskCount: 1 })).toEqual({
+      label: "Plan ready",
+      tone: "replied",
+    });
+  });
+
+  test("FAILED / ERROR / HALTED → Needs attention (taskCount does not affect)", () => {
     for (const ws of ["FAILED", "ERROR", "HALTED"]) {
       expect(
         statusFor([inbound("p1", "broke", { workflowStatus: ws })]),

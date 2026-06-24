@@ -14,6 +14,7 @@ import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 import type { ClarifyingQuestion } from "@/types/stakwork";
 import { FeaturePlanDialog } from "./FeaturePlanDialog";
+import { useFeatureTaskCount } from "./useFeatureTaskCount";
 
 /**
  * SubAgentRunCard — a "conversation thread" card showing the canvas
@@ -160,6 +161,16 @@ export interface SubAgentRun {
    * call (it spins up real compute) — the canvas agent never does it.
    */
   hasGeneratedTasks?: boolean;
+  /**
+   * Live total task count (done + in-progress + pending, excluding
+   * cancelled) fetched from `GET /api/features/{id}?sortBy=order`.
+   * `undefined` while still loading or when the fetch failed.
+   * Used by `deriveCardStatus` to gate the "Plan ready" label — the
+   * card only shows "Plan ready" when this is > 0, so MCP-created tasks
+   * (`create_task` / `create_feature_task`) that leave `hasGeneratedTasks`
+   * false are still reflected correctly.
+   */
+  taskCount?: number;
 }
 
 interface ToolCallOutput {
@@ -443,7 +454,15 @@ export function deriveCardStatus(run: SubAgentRun): CardStatus {
     case "IN_PROGRESS":
       return { label: "Running", tone: "running" };
     case "COMPLETED":
-      return { label: "Plan ready", tone: "replied" };
+      // Only show "Plan ready" when the feature genuinely has tasks (total
+      // > 0, excluding cancelled). This catches tasks created via MCP
+      // (`create_task` / `create_feature_task`) which produce no TASKS
+      // artifact and leave `hasGeneratedTasks` false. When `taskCount` is
+      // still loading (undefined) or zero we fall through to "Replied".
+      if (run.taskCount && run.taskCount > 0) {
+        return { label: "Plan ready", tone: "replied" };
+      }
+      return { label: "Replied", tone: "replied" };
     case "FAILED":
     case "ERROR":
     case "HALTED":
@@ -550,7 +569,12 @@ export function SubAgentRunCard({ run }: SubAgentRunCardProps) {
   // headline; now `Running` / `Waiting for you` / `Plan ready` /
   // `Needs attention` materialize from the inbound planner message's
   // `workflowStatus` + `hasForm` signals carried through the fan-out.
-  const status = deriveCardStatus(run);
+  //
+  // Fetch the live task count so "Plan ready" only fires when the feature
+  // genuinely has tasks (catches MCP-created tasks that produce no artifact).
+  // Re-runs on `anchorMessageId` change (new planner message) and on focus.
+  const taskCount = useFeatureTaskCount(run.featureId, run.anchorMessageId);
+  const status = deriveCardStatus({ ...run, taskCount });
   const StatusIcon = <StatusIconForTone tone={status.tone} />;
 
   const Chevron = collapsed ? (
