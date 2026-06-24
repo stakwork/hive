@@ -222,6 +222,16 @@ describe("kgGetNeighbors", () => {
     expect(calledUrl).toContain("limit=50");
   });
 
+  it("requests importance-ordered neighbors so the cap keeps the most important", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    expect(calledUrl).toContain("sort_by=importance");
+  });
+
   it("caps neighbors at 50 (hot node with many edges)", async () => {
     const edges = Array.from({ length: 200 }, (_, i) => ({
       source: QUERIED_REF,
@@ -266,6 +276,62 @@ describe("kgGetNeighbors", () => {
 
     expect(reachable).toBe(false);
     expect(neighbors).toHaveLength(0);
+  });
+
+  it("propagates the neighbor's top-level name as the neighbor label", async () => {
+    const raw = {
+      nodes: [
+        { ref_id: QUERIED_REF, node_type: "Concept", name: "Unit Tests" },
+        { ref_id: "ref-file", node_type: "File", name: "graphWalkerTools.ts" },
+      ],
+      edges: [
+        { source: QUERIED_REF, target: "ref-file", edge_type: "MODIFIES", properties: {} },
+      ],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const { neighbors } = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
+
+    expect(neighbors[0].name).toBe("graphWalkerTools.ts");
+  });
+
+  it("derives a neighbor label from properties when there is no top-level name", async () => {
+    const raw = {
+      nodes: [
+        { ref_id: QUERIED_REF, node_type: "Concept" },
+        // No top-level name; label lives under properties.file_name
+        {
+          ref_id: "ref-file",
+          node_type: "File",
+          properties: { file_name: "kg-adapter.ts" },
+        },
+      ],
+      edges: [
+        { source: QUERIED_REF, target: "ref-file", edge_type: "MODIFIES", properties: {} },
+      ],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const { neighbors } = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
+
+    expect(neighbors[0].name).toBe("kg-adapter.ts");
+  });
+
+  it("leaves the neighbor label empty when no recognizable field exists", async () => {
+    const raw = {
+      nodes: [
+        { ref_id: QUERIED_REF, node_type: "Concept" },
+        { ref_id: "ref-x", node_type: "Mystery", properties: { weight: 3 } },
+      ],
+      edges: [
+        { source: QUERIED_REF, target: "ref-x", edge_type: "REL", properties: {} },
+      ],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const { neighbors } = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
+
+    expect(neighbors[0].name).toBe("");
   });
 
   it("importance passthrough from edge.properties.importance", async () => {

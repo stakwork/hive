@@ -712,7 +712,7 @@ Realms: \`pg\` (Postgres roadmap entities), \`canvas\` (canvas nodes), \`kg\` (t
 
 - **\`graph_get({ urn })\`** — Resolve a single URN to its full node content. Use this when you have a specific URN and need the entity's complete data.
 
-- **\`graph_neighbors({ urn, depth? })\`** — Return all adjacent URNs reachable in one hop, with \`edgeType\` and \`direction\`. Use this to explore what a node is connected to without fetching the full content of each neighbor.
+- **\`graph_neighbors({ urn, depth? })\`** — Return all adjacent URNs reachable in one hop, each with \`edgeType\`, \`direction\`, and a best-effort \`title\` (a human-readable label — e.g. a feature's title, a file's name, a concept's name). Use the \`title\` to decide which neighbor to follow without having to \`graph_get\` every one. kg neighbors also carry \`node_type\` and \`ref_id\`; \`title\` may be absent for a node type that exposes no recognizable label.
 
 - **\`graph_search({ query, realm?, type?, workspace?, limit? })\`** — Discover nodes by keyword. Returns \`{ urn, type, title, realm }[]\` ranked results. Scope with \`realm\` and/or \`type\` to narrow results:
   - \`realm: "pg"\` — searches features, initiatives, milestones, tasks, workspaces, and repositories by title/name (features also match on their brief/requirements/architecture plan content; tasks also match on description; workspaces also match on description/mission; repositories also match on description/URL), plus research docs (title/topic/summary/content), connection docs (name/summary/architecture), and org-canvas chat conversations (title + message content)
