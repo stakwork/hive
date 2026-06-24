@@ -16,8 +16,8 @@ export async function GET(
   const user = requireAuth(ctx);
   if (user instanceof NextResponse) return user;
 
-  // Mock fallback
-  if (process.env.USE_MOCKS === "true") {
+  // Mock fallback — dev/test only, never fires in production
+  if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
     const data = getNeighborData(ref_id);
     if (!data) {
       return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
@@ -35,11 +35,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
     }
     if (type === "SWARM_NOT_CONFIGURED" || type === "SWARM_NAME_MISSING" || type === "SWARM_API_KEY_MISSING") {
-      const data = getNeighborData(ref_id);
-      if (!data) {
-        return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
-      }
-      return NextResponse.json({ success: true, data });
+      return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
     }
     return NextResponse.json({ success: false, error: "Swarm unavailable" }, { status: 503 });
   }
@@ -60,22 +56,14 @@ export async function GET(
     );
 
     if (!response.ok) {
-      console.warn(`[Lingo nodes/${ref_id}] Jarvis returned ${response.status}, falling back to mock`);
-      const data = getNeighborData(ref_id);
-      if (!data) {
-        return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
-      }
-      return NextResponse.json({ success: true, data });
+      console.warn(`[Lingo nodes/${ref_id}] Jarvis returned ${response.status}`);
+      return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
     }
 
     const data = await response.json();
     return NextResponse.json({ success: true, data });
   } catch (err) {
-    console.error("[Lingo nodes/[ref_id]] Jarvis fetch failed, falling back to mock", err);
-    const data = getNeighborData(ref_id);
-    if (!data) {
-      return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
-    }
-    return NextResponse.json({ success: true, data });
+    console.error("[Lingo nodes/[ref_id]] Jarvis fetch failed", err);
+    return NextResponse.json({ success: false, error: "Node not found" }, { status: 404 });
   }
 }
