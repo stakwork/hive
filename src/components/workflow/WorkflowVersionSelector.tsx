@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect } from "react";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { Loader2, GitBranch } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -56,6 +58,7 @@ export function WorkflowVersionSelector({
   isLoading,
   variant = "default",
 }: WorkflowVersionSelectorProps) {
+  const { timezone } = useUserTimezone();
   const isCompact = variant === "compact";
 
   // Auto-select first version if none selected and versions are available
@@ -85,14 +88,9 @@ export function WorkflowVersionSelector({
   const formatDate = (dateString: string) => {
     try {
       const num = Number(dateString);
-      // Unix timestamp in seconds (numeric string like "1765974987.4301317")
       const date = !isNaN(num) && isFinite(num) ? new Date(num * 1000) : new Date(dateString);
       if (isNaN(date.getTime())) return dateString;
-      return date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
+      return formatInUserTz(date, timezone);
     } catch {
       return dateString;
     }

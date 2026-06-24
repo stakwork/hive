@@ -15,6 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { Archive, ExternalLink, Loader2, Plus, Play, PlayCircle, Eye, ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -59,6 +61,7 @@ interface UserJourneysProps {
 }
 
 export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps) {
+  const { timezone } = useUserTimezone();
   const { id, slug, workspace } = useWorkspace();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
@@ -670,7 +673,7 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
                             )}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {new Date(row.createdAt).toLocaleDateString()}
+                            {formatInUserTz(row.createdAt, timezone)}
                           </TableCell>
                           <TableCell>
                             <Button

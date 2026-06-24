@@ -44,6 +44,13 @@ vi.mock("@/components/tasks/DeploymentStatusBadge", () => ({
 // Mock date util
 vi.mock("@/lib/date-utils", () => ({
   formatRelativeOrDate: () => "just now",
+  formatRelativeOrDateInTz: () => "just now",
+}));
+
+// Mock useUserTimezone — keep it deterministic and avoid real fetch calls
+vi.mock("@/hooks/useUserTimezone", () => ({
+  useUserTimezone: () => ({ timezone: "UTC" }),
+  resetTimezoneCache: vi.fn(),
 }));
 
 // Mock sonner toast

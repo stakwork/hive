@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,21 +26,6 @@ interface WorkflowVersionListProps {
   onCustomSelectionConfirm?: () => void;
 }
 
-const formatDate = (dateString: string) => {
-  try {
-    const num = Number(dateString);
-    const date = !isNaN(num) && isFinite(num) ? new Date(num * 1000) : new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return dateString;
-  }
-};
-
 export function WorkflowVersionList({
   versions,
   selectedVersionId,
@@ -48,6 +35,7 @@ export function WorkflowVersionList({
   onSelectionChange,
   onCustomSelectionConfirm,
 }: WorkflowVersionListProps) {
+  const { timezone } = useUserTimezone();
   if (versions.length === 0) {
     return (
       <p className="text-sm text-muted-foreground p-2">No versions available.</p>
@@ -94,7 +82,15 @@ export function WorkflowVersionList({
         {version.workflow_version_id.substring(0, 8)}
       </span>
       <span className="text-xs text-muted-foreground truncate flex-1">
-        {formatDate(version.date_added_to_graph)}
+        {(() => {
+          const s = version.date_added_to_graph;
+          if (!s) return "—";
+          try {
+            const num = Number(s);
+            const d = !isNaN(num) && isFinite(num) ? new Date(num * 1000) : new Date(s);
+            return formatInUserTz(d, timezone);
+          } catch { return s; }
+        })()}
       </span>
       {version.workflow_version_id === activeVersionId ? (
         <Badge variant="default" className="shrink-0 text-xs">Active</Badge>
