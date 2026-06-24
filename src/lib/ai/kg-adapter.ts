@@ -71,8 +71,13 @@ const KG_NEIGHBOR_CAP = 50;
  */
 const KG_QUERY_LIMIT = KG_NEIGHBOR_CAP;
 
-/** Fail fast instead of hanging the agent's tool call on a pathological node. */
-const KG_FETCH_TIMEOUT_MS = 25_000;
+/**
+ * Fail fast instead of hanging the agent's tool call on a pathological node.
+ * Kept tight on purpose: with `limit` bounding the Cypher, healthy queries
+ * return in ~1s, so anything past a few seconds means the graph is overloaded
+ * (or massive) and we'd rather surface that quickly than block the agent.
+ */
+const KG_FETCH_TIMEOUT_MS = 5_000;
 
 /**
  * Encode an array as a Python list literal string, e.g. `["MODIFIES","CITES"]`.
