@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
+import { addNode } from "@/services/swarm/api/nodes";
 import { mockLingoNodes } from "@/app/api/mock/lingo/nodes";
 
 export const runtime = "nodejs";
@@ -51,7 +52,7 @@ export async function GET(
   const jarvisUrl = getJarvisUrl(swarmName);
 
   const queryParams = new URLSearchParams({
-    type: "Jargon",
+    type: "Lingo",
     namespace: swarmName,
     limit: String(limit),
     offset: String(offset),
@@ -82,4 +83,69 @@ export async function GET(
     console.error("[Lingo nodes] Jarvis fetch failed", err);
     return NextResponse.json({ success: true, data: { nodes: [], hasMore: false } });
   }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  const { slug } = await params;
+  const ctx = getMiddlewareContext(request);
+  const user = requireAuth(ctx);
+  if (user instanceof NextResponse) return user;
+
+  const body = await request.json().catch(() => ({})) as { name?: string; definition?: string };
+  const name = body.name?.trim() ?? "";
+  const definition = body.definition?.trim() || undefined;
+
+  if (!name) {
+    return NextResponse.json({ success: false, error: "name is required" }, { status: 400 });
+  }
+
+  // Mock fallback — dev/test only
+  if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
+    return NextResponse.json({
+      success: true,
+      data: { ref_id: "mock-lingo-ref", name, definition },
+    });
+  }
+
+  const swarmResult = await getWorkspaceSwarmAccess(slug, user.id);
+  if (!swarmResult.success) {
+    const { type } = swarmResult.error;
+    if (type === "WORKSPACE_NOT_FOUND") {
+      return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });
+    }
+    if (type === "ACCESS_DENIED") {
+      return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
+    }
+    return NextResponse.json({ success: false, error: "Swarm unavailable" }, { status: 503 });
+  }
+
+  const { swarmName, swarmApiKey } = swarmResult.data;
+  const jarvisUrl = getJarvisUrl(swarmName);
+
+  const result = await addNode(
+    { jarvisUrl, apiKey: swarmApiKey },
+    { node_type: "Lingo", node_data: { name, definition } },
+  );
+
+  if (!result.success) {
+    return NextResponse.json(
+      { success: false, error: result.error ?? "Failed to create node" },
+      { status: 500 },
+    );
+  }
+
+  const responseBody: {
+    success: boolean;
+    data: { ref_id?: string; name: string; definition?: string };
+    alreadyExists?: boolean;
+  } = { success: true, data: { ref_id: result.ref_id, name, definition } };
+
+  if (result.alreadyExists) {
+    responseBody.alreadyExists = true;
+  }
+
+  return NextResponse.json(responseBody);
 }

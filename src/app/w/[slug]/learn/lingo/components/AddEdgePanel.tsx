@@ -40,7 +40,7 @@ export function AddEdgePanel({
   onEdgeCreated,
 }: AddEdgePanelProps) {
   const [nodeTypes, setNodeTypes] = useState<string[]>([]);
-  const [selectedType, setSelectedType] = useState<string>("Jargon");
+  const [selectedType, setSelectedType] = useState<string>("Lingo");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<JargonNode[]>([]);
   const [targetNode, setTargetNode] = useState<JargonNode | null>(null);
@@ -142,9 +142,9 @@ export function AddEdgePanel({
                 <SelectValue placeholder="Any type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Jargon">Jargon</SelectItem>
+                <SelectItem value="Lingo">Lingo</SelectItem>
                 {nodeTypes
-                  .filter((t) => t !== "Jargon")
+                  .filter((t) => t !== "Lingo")
                   .map((t) => (
                     <SelectItem key={t} value={t}>
                       {t}
