@@ -77,7 +77,7 @@ const KG_QUERY_LIMIT = KG_NEIGHBOR_CAP;
  * return in ~1s, so anything past a few seconds means the graph is overloaded
  * (or massive) and we'd rather surface that quickly than block the agent.
  */
-const KG_FETCH_TIMEOUT_MS = 5_000;
+const KG_FETCH_TIMEOUT_MS = 25_000;
 
 /**
  * Encode an array as a Python list literal string, e.g. `["MODIFIES","CITES"]`.
