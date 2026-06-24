@@ -102,6 +102,33 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/AddEdgePanel", () => ({
     ) : null,
 }));
 
+vi.mock("@/app/w/[slug]/learn/lingo/components/CreateLingoNodeDialog", () => ({
+  CreateLingoNodeDialog: ({ isOpen, onClose, onCreated }: any) =>
+    isOpen ? (
+      <div data-testid="create-lingo-node-dialog">
+        <button data-testid="close-create-dialog" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          data-testid="trigger-node-created"
+          onClick={() => {
+            onCreated({
+              ref_id: "new-node-ref",
+              name: "New Term",
+              definition: "A new term",
+              jargon_context: "",
+              jargon_candidates: [],
+              created_at: new Date().toISOString(),
+            });
+            onClose();
+          }}
+        >
+          Create
+        </button>
+      </div>
+    ) : null,
+}));
+
 // ─── Import after mocks ────────────────────────────────────────────────────────
 
 import { LingoExplorer } from "@/app/w/[slug]/learn/lingo/components/LingoExplorer";
@@ -534,6 +561,101 @@ describe("LingoExplorer", () => {
       await waitFor(() => {
         expect(screen.queryByTestId("retry-button")).not.toBeInTheDocument();
         expect(screen.getByTestId("jargon-card-jargon-1")).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("New Lingo Node button and dialog", () => {
+    it("shows 'New Lingo Node' button in list view", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
+      });
+
+      render(<LingoExplorer workspaceSlug={SLUG} />);
+      await waitFor(() =>
+        expect(screen.queryByTestId("jargon-card-skeleton")).not.toBeInTheDocument(),
+      );
+
+      expect(screen.getByTestId("new-lingo-node-button")).toBeInTheDocument();
+    });
+
+    it("opens CreateLingoNodeDialog when button is clicked", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
+      });
+
+      render(<LingoExplorer workspaceSlug={SLUG} />);
+      await waitFor(() =>
+        expect(screen.queryByTestId("jargon-card-skeleton")).not.toBeInTheDocument(),
+      );
+
+      expect(screen.queryByTestId("create-lingo-node-dialog")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("new-lingo-node-button"));
+      expect(screen.getByTestId("create-lingo-node-dialog")).toBeInTheDocument();
+    });
+
+    it("hides the button in detail view", async () => {
+      const nodes = makeNodes(1);
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { nodes, hasMore: false } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(makeNeighborData("jargon-1")),
+        });
+
+      render(<LingoExplorer workspaceSlug={SLUG} />);
+      await waitFor(() => screen.getByTestId("jargon-card-jargon-1"));
+
+      fireEvent.click(screen.getByTestId("jargon-card-jargon-1"));
+      await waitFor(() => screen.getByTestId("neighbor-view"));
+
+      expect(screen.queryByTestId("new-lingo-node-button")).not.toBeInTheDocument();
+    });
+
+    it("handleNodeCreated prepends node to list and navigates to detail view", async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true, data: { nodes: [], hasMore: false } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              data: {
+                node: {
+                  ref_id: "new-node-ref",
+                  name: "New Term",
+                  jargon_context: "",
+                  jargon_candidates: [],
+                  created_at: new Date().toISOString(),
+                },
+                edges: [],
+              },
+            }),
+        });
+
+      render(<LingoExplorer workspaceSlug={SLUG} />);
+      await waitFor(() =>
+        expect(screen.queryByTestId("jargon-card-skeleton")).not.toBeInTheDocument(),
+      );
+
+      // Open dialog and trigger creation
+      fireEvent.click(screen.getByTestId("new-lingo-node-button"));
+      await waitFor(() => screen.getByTestId("create-lingo-node-dialog"));
+
+      fireEvent.click(screen.getByTestId("trigger-node-created"));
+
+      // Dialog closes and detail view opens
+      await waitFor(() => {
+        expect(screen.queryByTestId("create-lingo-node-dialog")).not.toBeInTheDocument();
+        expect(screen.getByTestId("neighbor-view")).toBeInTheDocument();
       });
     });
   });

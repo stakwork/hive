@@ -10,6 +10,19 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
+import {
+  buildTaskList,
+  countTasks,
+  useFeatureTaskCount,
+  type TaskView,
+  type TaskCounts,
+  type FeatureTasksResponse,
+} from "./useFeatureTaskCount";
+
+// Re-export shared utilities so existing imports from this file continue
+// to work (StartTasksSlot was previously the canonical location).
+export { buildTaskList, countTasks };
+export type { TaskView, TaskCounts, FeatureTasksResponse };
 
 /**
  * StartTasksSlot — the canvas-chat "Tasks" status card.
@@ -51,105 +64,6 @@ import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
  * tasks yet shows no card.
  */
 
-type TaskStatusValue =
-  | "TODO"
-  | "IN_PROGRESS"
-  | "DONE"
-  | "CANCELLED"
-  | "BLOCKED";
-
-interface PrArtifactView {
-  content: {
-    url: string;
-    status: "IN_PROGRESS" | "DONE" | "CANCELLED";
-    progress?: {
-      ciStatus?: "pending" | "success" | "failure";
-      ciSummary?: string;
-    };
-  };
-}
-
-interface TaskView {
-  title: string;
-  status: TaskStatusValue;
-  prArtifact?: {
-    url: string;
-    status: "IN_PROGRESS" | "DONE" | "CANCELLED";
-    ciStatus?: "pending" | "success" | "failure";
-    ciSummary?: string;
-  } | null;
-}
-
-interface TaskCounts {
-  done: number;
-  inProgress: number;
-  pending: number;
-  /** done + inProgress + pending. Excludes CANCELLED. */
-  total: number;
-}
-
-interface FeatureTasksResponse {
-  data?: {
-    phases?: {
-      tasks?: {
-        title?: string | null;
-        status?: string | null;
-        prArtifact?: PrArtifactView | null;
-      }[];
-    }[];
-    tasks?: {
-      title?: string | null;
-      status?: string | null;
-      prArtifact?: PrArtifactView | null;
-    }[];
-  } | null;
-}
-
-/**
- * Flatten the feature payload into an ordered task list. Phases come
- * back ordered by `order`; their tasks are ordered by the `sortBy=order`
- * query. Top-level (phase-less) tasks trail the phased ones.
- */
-function buildTaskList(feature: NonNullable<FeatureTasksResponse["data"]>): TaskView[] {
-  const out: TaskView[] = [];
-  const push = (t: {
-    title?: string | null;
-    status?: string | null;
-    prArtifact?: PrArtifactView | null;
-  }) => {
-    out.push({
-      title: t.title?.trim() || "Untitled task",
-      status: (t.status as TaskStatusValue) ?? "TODO",
-      prArtifact: t.prArtifact
-        ? {
-            url: t.prArtifact.content.url,
-            status: t.prArtifact.content.status,
-            ciStatus: t.prArtifact.content.progress?.ciStatus,
-            ciSummary: t.prArtifact.content.progress?.ciSummary,
-          }
-        : null,
-    });
-  };
-  for (const phase of feature.phases ?? []) {
-    for (const t of phase.tasks ?? []) push(t);
-  }
-  for (const t of feature.tasks ?? []) push(t);
-  return out;
-}
-
-function countTasks(tasks: TaskView[]): TaskCounts {
-  let done = 0;
-  let inProgress = 0;
-  let pending = 0;
-  for (const t of tasks) {
-    if (t.status === "DONE") done++;
-    else if (t.status === "IN_PROGRESS") inProgress++;
-    else if (t.status === "TODO" || t.status === "BLOCKED") pending++;
-    // CANCELLED is intentionally excluded from the rollup.
-  }
-  return { done, inProgress, pending, total: done + inProgress + pending };
-}
-
 /** Tailwind bg for a task's status — done emerald, running amber, pending grey.
  * Matches the app-wide task status dots (see CompactTasksList STATUS_DOT). */
 const STATUS_BG: Record<"done" | "inProgress" | "pending", string> = {
@@ -158,7 +72,9 @@ const STATUS_BG: Record<"done" | "inProgress" | "pending", string> = {
   pending: "bg-zinc-300 dark:bg-zinc-600",
 };
 
-function bucketOf(status: TaskStatusValue): "done" | "inProgress" | "pending" | null {
+function bucketOf(
+  status: TaskView["status"],
+): "done" | "inProgress" | "pending" | null {
   if (status === "DONE") return "done";
   if (status === "IN_PROGRESS") return "inProgress";
   if (status === "TODO" || status === "BLOCKED") return "pending";
@@ -216,52 +132,58 @@ export function StartTasksSlot({
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
-  const counts = useMemo(
-    () => (tasks ? countTasks(tasks) : null),
-    [tasks],
-  );
+  // Use the shared hook for the total task count (drives the bar + checklist).
+  const taskTotal = useFeatureTaskCount(featureId, revalidateKey);
 
-  const refresh = useCallback(async () => {
-    const id = encodeURIComponent(featureId);
-    // Fetch the ready-count (Start button scope) and the full task list
-    // (bar + checklist) together. Either failing leaves its slice as-is.
-    const [readyRes, featureRes] = await Promise.allSettled([
-      fetch(`/api/features/${id}/tasks/assign-all`),
-      fetch(`/api/features/${id}?sortBy=order`),
-    ]);
-
-    if (readyRes.status === "fulfilled" && readyRes.value.ok) {
-      try {
-        const data = (await readyRes.value.json()) as { readyCount?: number };
-        setReadyCount(typeof data.readyCount === "number" ? data.readyCount : 0);
-      } catch {
-        // leave hidden
-      }
-    }
-
-    if (featureRes.status === "fulfilled" && featureRes.value.ok) {
-      try {
-        const json = (await featureRes.value.json()) as FeatureTasksResponse;
-        if (json.data) setTasks(buildTaskList(json.data));
-      } catch {
-        // leave hidden
-      }
+  // Keep a local copy of the task list for bar/checklist rendering.
+  // We still need the raw TaskView[] for the segmented bar and checklist,
+  // which the shared hook doesn't expose directly — so we fetch the list
+  // separately here and keep it in sync.
+  const refreshList = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/features/${encodeURIComponent(featureId)}?sortBy=order`,
+      );
+      if (!res.ok) return;
+      const json = (await res.json()) as FeatureTasksResponse;
+      if (json.data) setTasks(buildTaskList(json.data));
+    } catch {
+      // leave as-is
     }
   }, [featureId]);
 
-  // Re-query on mount and whenever the run advances (`revalidateKey`).
+  const refreshReady = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/features/${encodeURIComponent(featureId)}/tasks/assign-all`,
+      );
+      if (res.ok) {
+        const data = (await res.json()) as { readyCount?: number };
+        setReadyCount(typeof data.readyCount === "number" ? data.readyCount : 0);
+      }
+    } catch {
+      // leave as-is
+    }
+  }, [featureId]);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshReady(), refreshList()]);
+  }, [refreshReady, refreshList]);
+
   useEffect(() => {
     void refresh();
   }, [refresh, revalidateKey]);
 
-  // Revalidate when the user returns to the tab. Unlike the old
-  // start-only slot, we keep listening after a start too — the card is
-  // now a monitor, so returning to the tab should reflect task progress.
   useEffect(() => {
     const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
+
+  const counts = useMemo(
+    () => (tasks ? countTasks(tasks) : null),
+    [tasks],
+  );
 
   const handleStart = async () => {
     setStarting(true);
@@ -289,7 +211,7 @@ export function StartTasksSlot({
     }
   };
 
-  const total = counts?.total ?? 0;
+  const total = taskTotal ?? 0;
   const showStart = (readyCount ?? 0) > 0 && startedCount === null;
 
   // Nothing to show: no tasks at all, nothing ready, nothing just
