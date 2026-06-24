@@ -14,14 +14,12 @@
  * path is needed here.
  */
 
-import { randomUUID } from "crypto";
 import { ModelMessage } from "ai";
 import { db } from "@/lib/db";
 import type { CachedConcepts } from "@/lib/ai/runCanvasAgent";
 import { generateTitle } from "@/lib/ai/conversationHelpers";
 import {
   appendTurnMessages,
-  messagesFromSteps,
   type StoredMessage,
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
@@ -78,6 +76,13 @@ export async function resolveOrgConversationRowId(args: {
  *   and later turns read — org rows have no `workspaceId` to recover the
  *   slugs from). Creating a new row on an IDOR-mismatched id is safe:
  *   the caller can only ever write to their own conversation.
+ *
+ * `isShared` controls the visibility of a NEWLY-created row (default
+ * `false`: owner-only until the user clicks Share, matching the
+ * interactive chat). The `org_agent` MCP path passes `true` so the
+ * `?chat=<id>` link it hands back is openable by any org member. Existing
+ * rows keep whatever `isShared` they already had — this only seeds it on
+ * create.
  */
 export async function persistCanvasUserMessage(args: {
   orgId: string;
@@ -87,6 +92,7 @@ export async function persistCanvasUserMessage(args: {
   content: string;
   attachments?: StoredAttachment[];
   workspaceSlugs: string[];
+  isShared?: boolean;
 }): Promise<string> {
   const {
     orgId,
@@ -96,6 +102,7 @@ export async function persistCanvasUserMessage(args: {
     content,
     attachments,
     workspaceSlugs,
+    isShared = false,
   } = args;
 
   const userRow: StoredMessage = {
@@ -127,78 +134,10 @@ export async function persistCanvasUserMessage(args: {
       source: "org-canvas",
       settings: { extraWorkspaceSlugs: workspaceSlugs } as unknown as never,
       followUpQuestions: [],
-      isShared: false,
+      isShared,
     },
     select: { id: true },
   });
-  return created.id;
-}
-
-/**
- * Persist a single-shot org-agent exchange (one user prompt + the
- * agent's full turn) as a fresh, shareable org-canvas conversation, and
- * return its id.
- *
- * Used by the `org_agent` MCP tool when invoked from a call/voice
- * context: the agent asks/acts once, and we want a durable, org-
- * member-viewable record the caller can hand back as a link
- * (`/org/<login>?chat=<id>`, which auto-loads the conversation). Unlike
- * the interactive chat path, there is no prior conversation to
- * continue — each call mints its own row.
- *
- * The assistant turn is reconstructed from the finished run's `steps`
- * via `messagesFromSteps` — the SAME primitive the streaming chat route
- * uses — so tool-call rows survive. This is what makes a `propose_*`
- * card render and be approvable when the conversation is later opened:
- * `<ProposalCard>` reads the persisted `toolCalls[{ toolName, output }]`
- * entry. Persisting only the final prose would drop the proposal.
- *
- * The row mirrors `persistCanvasUserMessage`'s org-canvas shape
- * (`workspaceId: null`, `sourceControlOrgId` set, `source: "org-canvas"`
- * so it appears in the org chat list, `extraWorkspaceSlugs` in
- * `settings` so later org tooling can recover the slug set) but is
- * created `isShared: true` so any org member can open it, and carries
- * the whole turn in one atomic create.
- */
-export async function createSharedOrgAgentConversation(args: {
-  orgId: string;
-  userId: string;
-  prompt: string;
-  /** Finished run steps, e.g. `await result.steps` from `runCanvasAgent`. */
-  steps: Parameters<typeof messagesFromSteps>[0];
-  workspaceSlugs: string[];
-}): Promise<string> {
-  const { orgId, userId, prompt, steps, workspaceSlugs } = args;
-
-  const turnId = randomUUID();
-  const now = new Date();
-
-  const userRow: StoredMessage = {
-    id: `${turnId}-u`,
-    role: "user",
-    content: prompt,
-    timestamp: now.toISOString(),
-  };
-  // `${turnId}-a` prefix namespaces the assistant rows away from the
-  // `${turnId}-u` user row (matches the streaming route's convention).
-  const assistantRows = messagesFromSteps(steps, `${turnId}-a`);
-
-  const created = await db.sharedConversation.create({
-    data: {
-      sourceControlOrgId: orgId,
-      userId,
-      workspaceId: null,
-      messages: [userRow, ...assistantRows] as unknown as never,
-      title: generateTitle([userRow]),
-      lastMessageAt: now,
-      source: "org-canvas",
-      settings: { extraWorkspaceSlugs: workspaceSlugs } as unknown as never,
-      followUpQuestions: [],
-      isShared: true,
-    },
-    select: { id: true },
-  });
-
   return created.id;
 }
 
