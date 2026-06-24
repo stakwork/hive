@@ -22,6 +22,13 @@ export interface NeighborResult {
   urn: string;
   edgeType: string;
   direction: "forward" | "reverse";
+  /**
+   * Best-effort human-readable label for the neighbor, surfaced alongside (not
+   * in place of) the URN. Populated by the graph_neighbors tool layer (pg
+   * titles, canvas node text, kg node name) so the agent can tell neighbors
+   * apart without dereferencing each URN.
+   */
+  title?: string;
   /** Importance score — only populated by the kg realm arm (from edge.properties.importance) */
   importance?: number;
 }
