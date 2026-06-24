@@ -21,6 +21,7 @@ import type { CachedConcepts } from "@/lib/ai/runCanvasAgent";
 import { generateTitle } from "@/lib/ai/conversationHelpers";
 import {
   appendTurnMessages,
+  messagesFromSteps,
   type StoredMessage,
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
@@ -134,30 +135,40 @@ export async function persistCanvasUserMessage(args: {
 }
 
 /**
- * Persist a single-shot org-agent exchange (one user prompt + one
- * assistant answer) as a fresh, shareable org-canvas conversation, and
+ * Persist a single-shot org-agent exchange (one user prompt + the
+ * agent's full turn) as a fresh, shareable org-canvas conversation, and
  * return its id.
  *
  * Used by the `org_agent` MCP tool when invoked from a call/voice
- * context: the agent asks one question, and we want a durable, org-
- * member-viewable record at `/org/<login>/chat/shared/<id>` to hand
- * back as a link. Unlike the interactive chat path, there is no prior
- * conversation to continue — each call mints its own row.
+ * context: the agent asks/acts once, and we want a durable, org-
+ * member-viewable record the caller can hand back as a link
+ * (`/org/<login>?chat=<id>`, which auto-loads the conversation). Unlike
+ * the interactive chat path, there is no prior conversation to
+ * continue — each call mints its own row.
+ *
+ * The assistant turn is reconstructed from the finished run's `steps`
+ * via `messagesFromSteps` — the SAME primitive the streaming chat route
+ * uses — so tool-call rows survive. This is what makes a `propose_*`
+ * card render and be approvable when the conversation is later opened:
+ * `<ProposalCard>` reads the persisted `toolCalls[{ toolName, output }]`
+ * entry. Persisting only the final prose would drop the proposal.
  *
  * The row mirrors `persistCanvasUserMessage`'s org-canvas shape
- * (`workspaceId: null`, `sourceControlOrgId` set, `extraWorkspaceSlugs`
- * in `settings` so later org tooling can recover the slug set) but is
+ * (`workspaceId: null`, `sourceControlOrgId` set, `source: "org-canvas"`
+ * so it appears in the org chat list, `extraWorkspaceSlugs` in
+ * `settings` so later org tooling can recover the slug set) but is
  * created `isShared: true` so any org member can open it, and carries
- * both turns in one atomic create.
+ * the whole turn in one atomic create.
  */
 export async function createSharedOrgAgentConversation(args: {
   orgId: string;
   userId: string;
   prompt: string;
-  answer: string;
+  /** Finished run steps, e.g. `await result.steps` from `runCanvasAgent`. */
+  steps: Parameters<typeof messagesFromSteps>[0];
   workspaceSlugs: string[];
 }): Promise<string> {
-  const { orgId, userId, prompt, answer, workspaceSlugs } = args;
+  const { orgId, userId, prompt, steps, workspaceSlugs } = args;
 
   const turnId = randomUUID();
   const now = new Date();
@@ -168,22 +179,19 @@ export async function createSharedOrgAgentConversation(args: {
     content: prompt,
     timestamp: now.toISOString(),
   };
-  const assistantRow: StoredMessage = {
-    id: `${turnId}-a0`,
-    role: "assistant",
-    content: answer,
-    timestamp: now.toISOString(),
-  };
+  // `${turnId}-a` prefix namespaces the assistant rows away from the
+  // `${turnId}-u` user row (matches the streaming route's convention).
+  const assistantRows = messagesFromSteps(steps, `${turnId}-a`);
 
   const created = await db.sharedConversation.create({
     data: {
       sourceControlOrgId: orgId,
       userId,
       workspaceId: null,
-      messages: [userRow, assistantRow] as unknown as never,
+      messages: [userRow, ...assistantRows] as unknown as never,
       title: generateTitle([userRow]),
       lastMessageAt: now,
-      source: "org-agent",
+      source: "org-canvas",
       settings: { extraWorkspaceSlugs: workspaceSlugs } as unknown as never,
       followUpQuestions: [],
       isShared: true,
