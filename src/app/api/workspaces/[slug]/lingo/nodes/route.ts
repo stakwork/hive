@@ -20,8 +20,8 @@ export async function GET(
   const limit = Math.min(parseInt(searchParams.get("limit") ?? "50", 10), 100);
   const offset = Math.max(parseInt(searchParams.get("offset") ?? "0", 10), 0);
 
-  // Mock fallback
-  if (process.env.USE_MOCKS === "true") {
+  // Mock fallback — dev/test only, never fires in production
+  if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
     const sorted = [...mockLingoNodes].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
@@ -42,15 +42,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
     }
     if (type === "SWARM_NOT_CONFIGURED" || type === "SWARM_NAME_MISSING" || type === "SWARM_API_KEY_MISSING") {
-      // Fall back to mock data when swarm is not configured
-      const sorted = [...mockLingoNodes].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
-      const page = sorted.slice(offset, offset + limit);
-      return NextResponse.json({
-        success: true,
-        data: { nodes: page, hasMore: page.length === limit },
-      });
+      return NextResponse.json({ success: true, data: { nodes: [], hasMore: false } });
     }
     return NextResponse.json({ success: false, error: "Swarm unavailable" }, { status: 503 });
   }
@@ -76,15 +68,8 @@ export async function GET(
     });
 
     if (!response.ok) {
-      console.warn(`[Lingo nodes] Jarvis returned ${response.status}, falling back to mock`);
-      const sorted = [...mockLingoNodes].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
-      const page = sorted.slice(offset, offset + limit);
-      return NextResponse.json({
-        success: true,
-        data: { nodes: page, hasMore: page.length === limit },
-      });
+      console.warn(`[Lingo nodes] Jarvis returned ${response.status}`);
+      return NextResponse.json({ success: true, data: { nodes: [], hasMore: false } });
     }
 
     const data = await response.json();
@@ -94,14 +79,7 @@ export async function GET(
       data: { nodes, hasMore: nodes.length === limit },
     });
   } catch (err) {
-    console.error("[Lingo nodes] Jarvis fetch failed, falling back to mock", err);
-    const sorted = [...mockLingoNodes].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
-    const page = sorted.slice(offset, offset + limit);
-    return NextResponse.json({
-      success: true,
-      data: { nodes: page, hasMore: page.length === limit },
-    });
+    console.error("[Lingo nodes] Jarvis fetch failed", err);
+    return NextResponse.json({ success: true, data: { nodes: [], hasMore: false } });
   }
 }
