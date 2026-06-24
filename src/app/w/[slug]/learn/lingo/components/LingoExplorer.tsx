@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Search } from "lucide-react";
+import { Search, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { JargonCard, JargonCardSkeleton } from "./JargonCard";
 import { NeighborView } from "./NeighborView";
 import { LingoBreadcrumb, type BreadcrumbItem } from "./Breadcrumb";
 import { AddEdgePanel } from "./AddEdgePanel";
+import { CreateLingoNodeDialog } from "./CreateLingoNodeDialog";
 import type { JargonNode } from "@/app/api/mock/lingo/nodes";
 import type { NeighborEdge, NeighborNode } from "@/app/api/mock/lingo/neighbors";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -34,6 +36,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [deletedEdgeIds, setDeletedEdgeIds] = useState<Set<string>>(new Set());
   const [isAddEdgePanelOpen, setIsAddEdgePanelOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
   const isFetchingRef = useRef(false);
@@ -229,6 +232,17 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
     }
   };
 
+  // ── Node creation ─────────────────────────────────────────────────────────
+
+  const handleNodeCreated = useCallback(
+    (node: JargonNode) => {
+      setNodes((prev) => [node, ...prev]);
+      setDeletedEdgeIds(new Set());
+      openDetail(node, true);
+    },
+    [openDetail],
+  );
+
   // ── Filtered nodes ────────────────────────────────────────────────────────
 
   const filteredNodes = nameFilter
@@ -241,10 +255,20 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
     <div className="flex flex-col h-full w-full">
       {/* Top bar */}
       <div className="border-b px-6 py-4 flex items-center gap-3 shrink-0">
-        <div>
+        <div className="flex-1">
           <h1 className="text-xl font-bold">Lingo</h1>
           <p className="text-sm text-muted-foreground">Workspace jargon graph</p>
         </div>
+        {view === "list" && (
+          <Button
+            size="sm"
+            onClick={() => setIsCreateDialogOpen(true)}
+            data-testid="new-lingo-node-button"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            New Lingo Node
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-4">
@@ -366,6 +390,14 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
           }}
         />
       )}
+
+      {/* Create Lingo Node Dialog */}
+      <CreateLingoNodeDialog
+        workspaceSlug={workspaceSlug}
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onCreated={handleNodeCreated}
+      />
     </div>
   );
 }

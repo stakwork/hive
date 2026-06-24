@@ -70,7 +70,7 @@ async function jarvisRequest({
 export async function addNode(
   config: JarvisConnectionConfig,
   payload: { node_type: string; node_data: Record<string, unknown> },
-): Promise<{ success: boolean; ref_id?: string; error?: string }> {
+): Promise<{ success: boolean; ref_id?: string; alreadyExists?: boolean; error?: string }> {
   const result = await jarvisRequest({
     config,
     endpoint: "/node",
@@ -107,8 +107,12 @@ export async function addNode(
 
   const ref_id = body?.data?.ref_id ?? body?.nodes?.[0]?.ref_id;
 
-  if (body?.status === "success" || isAlreadyExists || isWarningWithRef) {
+  if (body?.status === "success") {
     return { success: true, ref_id };
+  }
+
+  if (isAlreadyExists || isWarningWithRef) {
+    return { success: true, ref_id, alreadyExists: true };
   }
 
   return {

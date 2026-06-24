@@ -31,12 +31,12 @@ export function NeighborView({
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <h2 className="text-xl font-bold text-foreground truncate">{node.name}</h2>
-          {node.jargon_context && (
+          {(node.definition ?? node.jargon_context) && (
             <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
-              {node.jargon_context}
+              {node.definition ?? node.jargon_context}
             </p>
           )}
-          {node.jargon_candidates.length > 0 && (
+          {node.jargon_candidates?.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {node.jargon_candidates.map((c) => (
                 <span
