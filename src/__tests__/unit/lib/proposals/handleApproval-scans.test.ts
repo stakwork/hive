@@ -248,6 +248,66 @@ describe("handleRejection", () => {
   });
 });
 
+describe("approveFeature — chatAgentModel wiring", () => {
+  function setupWorkspaceMock() {
+    (db.workspace.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "ws_1",
+    });
+  }
+
+  it("passes chatAgentModel as model to createFeature when supplied", async () => {
+    setupWorkspaceMock();
+    (createFeature as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "feat_new",
+    });
+
+    const messages = [
+      proposeFeatureMessage("p_model1", {
+        title: "Model feature",
+        workspaceId: "ws_1",
+      }),
+    ];
+
+    await handleApproval({
+      orgId: "org_1",
+      userId: "user_1",
+      messages,
+      intent: { proposalId: "p_model1" },
+      chatAgentModel: "anthropic/claude-opus-4-6",
+    });
+
+    expect(createFeature).toHaveBeenCalledWith(
+      "user_1",
+      expect.objectContaining({ model: "anthropic/claude-opus-4-6" }),
+    );
+  });
+
+  it("does not pass model to createFeature when chatAgentModel is absent", async () => {
+    setupWorkspaceMock();
+    (createFeature as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "feat_new",
+    });
+
+    const messages = [
+      proposeFeatureMessage("p_model2", {
+        title: "No model feature",
+        workspaceId: "ws_1",
+      }),
+    ];
+
+    await handleApproval({
+      orgId: "org_1",
+      userId: "user_1",
+      messages,
+      intent: { proposalId: "p_model2" },
+      // no chatAgentModel
+    });
+
+    const call = (createFeature as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[1]).not.toHaveProperty("model");
+  });
+});
+
 describe("approveFeature — autoRespond wiring", () => {
   /** Minimal workspace / initiative mocks so approveFeature reaches createFeature. */
   function setupWorkspaceMock() {

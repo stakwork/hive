@@ -96,6 +96,13 @@ export interface CapabilityContext {
   orgId: string;
   userId: string;
   currentCanvasConversationId?: string;
+  /**
+   * The user's `chatAgentModel` preference (e.g. `"anthropic/claude-opus-4-6"`).
+   * Forwarded to `buildInitiativeTools` so `send_to_feature_planner` can pass
+   * it as the `model` arg to `sendFeatureChatMessage`, covering features whose
+   * `Feature.model` is not already set (e.g. features not created via canvas).
+   */
+  chatAgentModel?: string;
   capturedWebSearchResults: CapturedSearchResult[];
   dispatchedResearch?: DispatchedResearchIntent[];
 }
@@ -186,6 +193,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
             ctx.orgId,
             ctx.userId,
             ctx.currentCanvasConversationId,
+            ctx.chatAgentModel,
           ),
           ROADMAP_INITIATIVE_TOOL_NAMES,
         ),
@@ -212,6 +220,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
             ctx.orgId,
             ctx.userId,
             ctx.currentCanvasConversationId,
+            ctx.chatAgentModel,
           ),
           PLANNER_TOOL_NAMES,
         ),
