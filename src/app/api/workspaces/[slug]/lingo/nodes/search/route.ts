@@ -24,8 +24,8 @@ export async function GET(
     return NextResponse.json({ success: false, error: "Query parameter 'q' is required" }, { status: 400 });
   }
 
-  // Mock fallback
-  if (process.env.USE_MOCKS === "true") {
+  // Mock fallback — dev/test only, never fires in production
+  if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
     const results = mockLingoNodes.filter((n) =>
       n.name.toLowerCase().includes(q.toLowerCase()),
     );
@@ -46,10 +46,7 @@ export async function GET(
       errorType === "SWARM_NAME_MISSING" ||
       errorType === "SWARM_API_KEY_MISSING"
     ) {
-      const results = mockLingoNodes.filter((n) =>
-        n.name.toLowerCase().includes(q.toLowerCase()),
-      );
-      return NextResponse.json({ success: true, data: results });
+      return NextResponse.json({ success: true, data: [] });
     }
     return NextResponse.json({ success: false, error: "Swarm unavailable" }, { status: 503 });
   }
@@ -70,20 +67,14 @@ export async function GET(
     });
 
     if (!response.ok) {
-      console.warn(`[Lingo nodes/search] Jarvis returned ${response.status}, falling back to mock`);
-      const results = mockLingoNodes.filter((n) =>
-        n.name.toLowerCase().includes(q.toLowerCase()),
-      );
-      return NextResponse.json({ success: true, data: results });
+      console.warn(`[Lingo nodes/search] Jarvis returned ${response.status}`);
+      return NextResponse.json({ success: true, data: [] });
     }
 
     const data = await response.json();
     return NextResponse.json({ success: true, data: Array.isArray(data) ? data : (data?.nodes ?? []) });
   } catch (err) {
-    console.error("[Lingo nodes/search] Jarvis fetch failed, falling back to mock", err);
-    const results = mockLingoNodes.filter((n) =>
-      n.name.toLowerCase().includes(q.toLowerCase()),
-    );
-    return NextResponse.json({ success: true, data: results });
+    console.error("[Lingo nodes/search] Jarvis fetch failed", err);
+    return NextResponse.json({ success: true, data: [] });
   }
 }
