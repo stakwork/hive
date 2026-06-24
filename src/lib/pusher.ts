@@ -102,6 +102,8 @@ export const PUSHER_EVENTS = {
   WORKFLOW_SUMMARY_READY: "workflow-summary-ready",
   // Prompt eval run completed — carries pass/fail badge data for version rows
   PROMPT_EVAL_RESULT: "prompt-eval-result",
+  // Agent trace visualization ready (Arize Phoenix trace URL available)
+  AGENT_TRACE_READY: "agent-trace-ready",
 } as const;
 
 /**
