@@ -6,7 +6,8 @@
  * the correct payload.
  */
 
-import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, test, expect, beforeEach, afterEach, vi, type Mock } from "vitest";
+import { put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { generateUniqueId, generateUniqueSlug, generateUniqueEmail } from "@/__tests__/support/helpers";
 
@@ -489,6 +490,12 @@ describe("POST /api/webhook/agent-logs — new payload shape & config persistenc
       model: "claude-sonnet-4-6",
       provider: "anthropic",
     });
+
+    // Blob must only carry the transcript — no config key
+    const blobBody = JSON.parse((put as Mock).mock.calls[0][1] as string);
+    expect(blobBody).not.toHaveProperty("config");
+    expect(blobBody).toHaveProperty("messages");
+    expect(blobBody).toHaveProperty("sessionId", "sess-abc-123");
   });
 
   test("POST with legacy { logs } shape → 201, config is null on DB row", async () => {
