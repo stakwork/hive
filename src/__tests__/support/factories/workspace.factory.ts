@@ -157,6 +157,7 @@ export async function createTestWorkspaceScenario(
     description: workspaceOverrides.description ?? null,
     slug: workspaceOverrides.slug,
     stakworkApiKey: workspaceOverrides.stakworkApiKey ?? "test-api-key",
+    sourceControlOrgId: workspaceOverrides.sourceControlOrgId ?? null,
   });
 
   const defaultRoles: WorkspaceRole[] = [

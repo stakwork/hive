@@ -36,8 +36,12 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
   const [isAddEdgePanelOpen, setIsAddEdgePanelOpen] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
   const isFetchingRef = useRef(false);
+  const hasMoreRef = useRef(hasMore);
+  hasMoreRef.current = hasMore;
+  const offsetRef = useRef(offset);
+  offsetRef.current = offset;
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   // ── Initial load ──────────────────────────────────────────────────────────
 
@@ -81,21 +85,26 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
 
   // ── Infinite scroll ───────────────────────────────────────────────────────
 
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
-          fetchNodes(offset);
-        }
-      },
-      { threshold: 0.1 },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMore, isLoadingMore, offset, fetchNodes]);
+  const sentinelRef = useCallback(
+    (sentinel: HTMLDivElement | null) => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+      if (!sentinel) return;
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting && hasMoreRef.current && !isFetchingRef.current) {
+            fetchNodes(offsetRef.current);
+          }
+        },
+        { threshold: 0.1 },
+      );
+      observer.observe(sentinel);
+      observerRef.current = observer;
+    },
+    [fetchNodes],
+  );
 
   // ── Detail navigation ─────────────────────────────────────────────────────
 

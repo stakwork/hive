@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { optionalEnvVars } from "@/config/env";
+import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
 import jwt from "jsonwebtoken";
 
 export async function POST(
@@ -97,15 +98,76 @@ export async function POST(
       );
     }
 
-    // Mint a short-lived JWT for the agent to authenticate with the Hive API
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      return NextResponse.json(
-        { error: "JWT secret not configured" },
-        { status: 500 },
+    // Mint a short-lived JWT for the agent to authenticate with the Hive API.
+    //
+    // Default scope is "org": the token is keyed to the workspace's
+    // SourceControlOrg so the call agent can drive the org-wide `org_agent`
+    // tool across every workspace in the org. Pass `?scope=workspace` to fall
+    // back to a single-workspace token (the legacy swarm-tool surface).
+    //
+    // Both shapes carry `userId` so `verifyJwt`/`verifyOrgJwt` can re-check
+    // membership at use time (memberships can be revoked between mint and use).
+    const scope =
+      request.nextUrl.searchParams.get("scope") === "workspace"
+        ? "workspace"
+        : "org";
+
+    let hiveToken: string;
+    if (scope === "workspace") {
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        return NextResponse.json(
+          { error: "JWT secret not configured" },
+          { status: 500 },
+        );
+      }
+      hiveToken = jwt.sign(
+        { slug, userId: userOrResponse.id },
+        jwtSecret,
+        { expiresIn: "4h" },
       );
+    } else {
+      if (!workspace.sourceControlOrgId) {
+        return NextResponse.json(
+          { error: "Workspace is not linked to a source-control org" },
+          { status: 400 },
+        );
+      }
+
+      const outcome = await mintOrgToken({
+        orgId: workspace.sourceControlOrgId,
+        userId: userOrResponse.id,
+        requestedPermissions: ["read", "write"],
+        purpose: "call-link",
+      });
+
+      if (!outcome.ok) {
+        switch (outcome.error) {
+          case "JWT_SECRET_MISSING":
+            return NextResponse.json(
+              { error: "JWT secret not configured" },
+              { status: 500 },
+            );
+          case "ORG_MEMBERSHIP_REQUIRED":
+            return NextResponse.json(
+              { error: "Access denied" },
+              { status: 403 },
+            );
+          case "INVALID_PERMISSIONS":
+            return NextResponse.json(
+              { error: "Invalid permission value" },
+              { status: 400 },
+            );
+          default:
+            return NextResponse.json(
+              { error: "Failed to mint org token" },
+              { status: 500 },
+            );
+        }
+      }
+
+      hiveToken = outcome.token;
     }
-    const hiveToken = jwt.sign({ slug }, jwtSecret, { expiresIn: "4h" });
 
     // Generate call URL with token
     const timestamp = Math.floor(Date.now() / 1000);
