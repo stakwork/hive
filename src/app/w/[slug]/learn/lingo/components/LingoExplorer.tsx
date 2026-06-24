@@ -38,6 +38,10 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const isFetchingRef = useRef(false);
+  const hasMoreRef = useRef(hasMore);
+  hasMoreRef.current = hasMore;
+  const offsetRef = useRef(offset);
+  offsetRef.current = offset;
 
   // ── Initial load ──────────────────────────────────────────────────────────
 
@@ -87,15 +91,15 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
-          fetchNodes(offset);
+        if (entries[0].isIntersecting && hasMoreRef.current && !isFetchingRef.current) {
+          fetchNodes(offsetRef.current);
         }
       },
       { threshold: 0.1 },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, isLoadingMore, offset, fetchNodes]);
+  }, [fetchNodes]);
 
   // ── Detail navigation ─────────────────────────────────────────────────────
 
