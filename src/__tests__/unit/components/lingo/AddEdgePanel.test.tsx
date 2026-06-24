@@ -166,7 +166,7 @@ describe("AddEdgePanel", () => {
         const searchCall = mockFetch.mock.calls[1][0] as string;
         expect(searchCall).toContain(`/api/workspaces/${defaultProps.workspaceSlug}/lingo/nodes/search`);
         expect(searchCall).toContain("q=pod");
-        expect(searchCall).toContain("type=Jargon");
+        expect(searchCall).toContain("type=Lingo");
       });
 
       vi.useRealTimers();
