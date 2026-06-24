@@ -7,6 +7,7 @@ import { type Components } from "react-markdown";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { FileIcon } from "lucide-react";
 import type { CanvasAttachment } from "../_state/canvasChatStore";
+import { CanvasDeeplinkChip } from "./CanvasDeeplinkChip";
 
 /**
  * Sidebar-flavored chat bubble. Forked from
@@ -38,7 +39,7 @@ import type { CanvasAttachment } from "../_state/canvasChatStore";
  * the agent's link surface (e.g. future `?canvas=`, `?n=` for
  * generic node selection).
  */
-const IN_PAGE_PARAMS = new Set(["r", "c"]);
+const IN_PAGE_PARAMS = new Set(["r", "c", "canvas", "node"]);
 
 interface SidebarChatMessageProps {
   message: {
@@ -85,6 +86,26 @@ export function SidebarChatMessage({
           // `OrgCanvasView`'s URL watchers pick it up; otherwise let
           // the browser handle it (rare — anchor refs etc.).
           const qs = new URLSearchParams(trimmed.slice(1));
+          // Canvas deeplink: `?canvas=<ref>&node=<id>` — render as
+          // a clickable chip that imperatively navigates the canvas.
+          if (qs.has("canvas") && qs.has("node")) {
+            const canvasRef = qs.get("canvas") ?? "";
+            const nodeId = qs.get("node") ?? "";
+            const x = qs.has("nx") ? Number(qs.get("nx")) : undefined;
+            const y = qs.has("ny") ? Number(qs.get("ny")) : undefined;
+            const label =
+              typeof children === "string" ? children : String(children);
+            return (
+              <CanvasDeeplinkChip
+                nodeId={nodeId}
+                canvasRef={canvasRef}
+                label={label}
+                x={x}
+                y={y}
+              />
+            );
+          }
+
           const touchesInPage = Array.from(qs.keys()).some((k) =>
             IN_PAGE_PARAMS.has(k),
           );
