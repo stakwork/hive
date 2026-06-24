@@ -305,6 +305,7 @@ describe("pusher.ts", () => {
         ACTIVITY_UPDATED: "activity-updated",
         WORKFLOW_SUMMARY_READY: "workflow-summary-ready",
         PROMPT_EVAL_RESULT: "prompt-eval-result",
+        AGENT_TRACE_READY: "agent-trace-ready",
       });
     });
 

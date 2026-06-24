@@ -138,6 +138,9 @@ export async function GET(request: NextRequest) {
           provider: true,
           source: true,
           repos: true,
+          traceId: true,
+          phoenixTraceUrl: true,
+          traceStatus: true,
           stakworkRun: {
             select: {
               feature: {
@@ -159,11 +162,14 @@ export async function GET(request: NextRequest) {
 
     // Flatten the feature title from either the StakworkRun relation or direct feature relation
     // and expose model from config for at-a-glance display
-    const flattenedLogs = logs.map(({ stakworkRun, feature, config, ...log }) => ({
+    const flattenedLogs = logs.map(({ stakworkRun, feature, config, traceId, phoenixTraceUrl, traceStatus, ...log }) => ({
       ...log,
       config: config ?? null,
       model: (config as Record<string, unknown> | null)?.model as string | null ?? null,
       featureTitle: stakworkRun?.feature?.title ?? feature?.title ?? null,
+      traceId: traceId ?? null,
+      phoenixTraceUrl: phoenixTraceUrl ?? null,
+      traceStatus: (traceStatus as "pending" | "ready" | "error" | null) ?? null,
     }));
 
     // ⚠️ PERFORMANCE WARNING:
