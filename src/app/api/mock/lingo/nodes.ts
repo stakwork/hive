@@ -6,6 +6,44 @@ export interface JargonNode {
   created_at: string;
 }
 
+export interface JargonDefinition {
+  ref_id: string;
+  text: string;
+  valid_from: string;   // ISO 8601 date
+  valid_until: string | null; // null = current/active definition
+}
+
+// Seeded JargonDefinition nodes — 2 Jargon nodes × 2 chained defs each.
+// Each pair has one superseded (valid_until set) and one current (valid_until = null).
+export const mockJargonDefinitions: JargonDefinition[] = [
+  // Pod Orchestration definitions (jargon-001)
+  {
+    ref_id: "jargon-def-001-v1",
+    text: "The process of managing compute pods within a workspace swarm.",
+    valid_from: "2026-01-01",
+    valid_until: "2026-06-01",
+  },
+  {
+    ref_id: "jargon-def-001-v2",
+    text: "The automated process of creating, scaling, and managing compute pods for AI workloads within a workspace swarm.",
+    valid_from: "2026-06-01",
+    valid_until: null,
+  },
+  // Swarm definitions (jargon-003)
+  {
+    ref_id: "jargon-def-003-v1",
+    text: "A cluster of AI agents assigned to a workspace.",
+    valid_from: "2026-01-01",
+    valid_until: "2026-05-15",
+  },
+  {
+    ref_id: "jargon-def-003-v2",
+    text: "A managed cluster of AI agents and supporting infrastructure assigned to a workspace, identified by a unique swarm name.",
+    valid_from: "2026-05-15",
+    valid_until: null,
+  },
+];
+
 export const mockLingoNodes: JargonNode[] = [
   {
     ref_id: "jargon-001",
