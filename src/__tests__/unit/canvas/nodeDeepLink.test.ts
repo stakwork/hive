@@ -255,3 +255,123 @@ describe("targetZoom derivation from node width and container width", () => {
     expect(computeNodeFocusZoom(10000, 800)).toBe(0.5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Chip-triggered cross-scope deeplink navigation
+// ---------------------------------------------------------------------------
+
+/**
+ * Replicates the `pendingDeeplink` useEffect body from OrgCanvasBackground.
+ * Cross-scope path: canvasRef !== currentRef → zoomIntoNode(canvasRef) first,
+ * then scrollToNode(nodeId).
+ */
+async function runDeeplinkChipEffect(
+  pendingDeeplink: { nodeId: string; canvasRef: string } | null,
+  currentRef: string,
+  handle: CanvasHandle | null,
+  canvasData: CanvasData | null,
+  containerWidth: number,
+  clearDeeplink: () => void,
+): Promise<void> {
+  if (!pendingDeeplink || !handle) return;
+  const { nodeId, canvasRef } = pendingDeeplink;
+
+  const doNavigate =
+    canvasRef && canvasRef !== currentRef
+      ? handle
+          .zoomIntoNode(canvasRef, { durationMs: 300 })
+          .then(() => runScrollToNode(nodeId, handle, canvasData, containerWidth))
+      : Promise.resolve().then(() =>
+          runScrollToNode(nodeId, handle, canvasData, containerWidth),
+        );
+
+  await doNavigate.finally(() => clearDeeplink());
+}
+
+describe("CanvasDeeplinkChip — cross-scope navigation (canvasRef !== currentRef)", () => {
+  let zoomIntoNode: ReturnType<typeof vi.fn>;
+  let clearDeeplink: ReturnType<typeof vi.fn>;
+  let handle: CanvasHandle;
+  const subCanvas: CanvasData = { nodes: [{ id: "feature:456", width: 280 }] };
+
+  beforeEach(() => {
+    zoomIntoNode = vi.fn().mockResolvedValue(undefined);
+    clearDeeplink = vi.fn();
+    handle = { zoomIntoNode };
+  });
+
+  it("calls zoomIntoNode(canvasRef) first, then zoomIntoNode(nodeId) after promise resolves", async () => {
+    await runDeeplinkChipEffect(
+      { nodeId: "feature:456", canvasRef: "initiative:xyz" },
+      /* currentRef = */ "",
+      handle,
+      subCanvas,
+      816,
+      clearDeeplink,
+    );
+
+    expect(zoomIntoNode).toHaveBeenCalledTimes(2);
+    expect(zoomIntoNode).toHaveBeenNthCalledWith(1, "initiative:xyz", {
+      durationMs: 300,
+    });
+    expect(zoomIntoNode).toHaveBeenNthCalledWith(
+      2,
+      "feature:456",
+      expect.objectContaining({ durationMs: 600 }),
+    );
+  });
+
+  it("calls clearDeeplink in finally after successful navigation", async () => {
+    await runDeeplinkChipEffect(
+      { nodeId: "feature:456", canvasRef: "initiative:xyz" },
+      "",
+      handle,
+      subCanvas,
+      816,
+      clearDeeplink,
+    );
+
+    expect(clearDeeplink).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls clearDeeplink even when canvas nav rejects", async () => {
+    zoomIntoNode = vi.fn().mockRejectedValue(new Error("canvas gone"));
+    handle = { zoomIntoNode };
+
+    await runDeeplinkChipEffect(
+      { nodeId: "feature:456", canvasRef: "initiative:deleted" },
+      "",
+      handle,
+      subCanvas,
+      816,
+      clearDeeplink,
+    ).catch(() => {});
+
+    expect(clearDeeplink).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips canvas nav when canvasRef matches currentRef (same-scope)", async () => {
+    await runDeeplinkChipEffect(
+      { nodeId: "feature:456", canvasRef: "initiative:xyz" },
+      /* currentRef = */ "initiative:xyz",
+      handle,
+      subCanvas,
+      816,
+      clearDeeplink,
+    );
+
+    // Only scrollToNode fires — no canvas nav
+    expect(zoomIntoNode).toHaveBeenCalledTimes(1);
+    expect(zoomIntoNode).toHaveBeenCalledWith(
+      "feature:456",
+      expect.objectContaining({ durationMs: 600 }),
+    );
+  });
+
+  it("is a no-op when pendingDeeplink is null", async () => {
+    await runDeeplinkChipEffect(null, "", handle, subCanvas, 816, clearDeeplink);
+
+    expect(zoomIntoNode).not.toHaveBeenCalled();
+    expect(clearDeeplink).not.toHaveBeenCalled();
+  });
+});

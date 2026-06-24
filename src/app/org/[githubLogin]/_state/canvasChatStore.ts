@@ -523,6 +523,32 @@ interface CanvasChatState {
    */
   setPendingInputDraft: (draft: string | null) => void;
 
+  // ─── Canvas deeplink ─────────────────────────────────────────────────
+  /**
+   * A pending imperative navigation request emitted when the user
+   * clicks a `CanvasDeeplinkChip` in chat. `OrgCanvasBackground`
+   * consumes this in a `useEffect`, navigates to the target canvas/node,
+   * and calls `clearDeeplink()` in the `finally` block so the slot is
+   * never stuck.
+   *
+   * `canvasRef` is an empty string for the root canvas.
+   */
+  pendingDeeplink: {
+    nodeId: string;
+    canvasRef: string;
+    label: string;
+    x?: number;
+    y?: number;
+  } | null;
+  triggerDeeplink: (dl: {
+    nodeId: string;
+    canvasRef: string;
+    label: string;
+    x?: number;
+    y?: number;
+  }) => void;
+  clearDeeplink: () => void;
+
   // ─── Artifact actions ────────────────────────────────────────────────
   /**
    * Register a `CanvasArtifact` so that `MessageArtifacts` (and any
@@ -552,6 +578,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       ephemeralSeedCounts: {},
       locallyAuthoredTurnIds: new Set<string>(),
       pendingInputDraft: null,
+      pendingDeeplink: null,
       canvasViewport: null,
       proposals: {},
       subAgentRuns: {},
@@ -841,6 +868,12 @@ export const useCanvasChatStore = create<CanvasChatState>()(
 
       setPendingInputDraft: (draft) =>
         set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
+
+      triggerDeeplink: (dl) =>
+        set({ pendingDeeplink: dl }, false, "triggerDeeplink"),
+
+      clearDeeplink: () =>
+        set({ pendingDeeplink: null }, false, "clearDeeplink"),
 
       setCanvasViewport: (v) =>
         set({ canvasViewport: v }, false, "setCanvasViewport"),
