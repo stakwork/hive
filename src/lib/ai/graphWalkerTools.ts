@@ -89,6 +89,14 @@ async function resolveCanvasNeighbors(
   const blob = asBlob(row.data);
   const results: NeighborResult[] = [];
 
+  // Map each canvas node id → its display text so each neighbor carries a
+  // human-readable label alongside its URN (the URN still holds the node id).
+  const nodeText = new Map<string, string>();
+  for (const node of blob.nodes ?? []) {
+    const text = node.text ?? node.label ?? "";
+    if (text) nodeText.set(node.id, truncateLabel(text));
+  }
+
   for (const edge of blob.edges ?? []) {
     if (edge.fromNode === nodeId) {
       results.push({
@@ -100,6 +108,7 @@ async function resolveCanvasNeighbors(
         }),
         edgeType: edge.label ?? "canvas_edge",
         direction: "forward",
+        ...(nodeText.has(edge.toNode) ? { title: nodeText.get(edge.toNode) } : {}),
       });
     } else if (edge.toNode === nodeId) {
       results.push({
@@ -111,6 +120,7 @@ async function resolveCanvasNeighbors(
         }),
         edgeType: edge.label ?? "canvas_edge",
         direction: "reverse",
+        ...(nodeText.has(edge.fromNode) ? { title: nodeText.get(edge.fromNode) } : {}),
       });
     }
   }
@@ -129,6 +139,146 @@ function deduplicateByUrn(
     if (seen.has(item.urn)) return false;
     seen.add(item.urn);
     return true;
+  });
+}
+
+/** Max length of a neighbor's display label. */
+const LABEL_MAX = 160;
+
+/** Trim and truncate a label for display in neighbor lists. */
+function truncateLabel(s: string, max = LABEL_MAX): string {
+  const trimmed = s.trim();
+  return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
+}
+
+/**
+ * Per-pg-type recipe for resolving a human-readable label.
+ *
+ * `accessor` is the Prisma client property; `select` is the (id + candidate
+ * fields) projection; `pick` chooses the best semantic identifier from the row,
+ * falling back across fields since not every row populates the primary one.
+ *
+ * Access is already enforced upstream (pgNeighbors / UrnEdge.neighborsOf only
+ * emit authorized URNs), so these lookups query by id alone.
+ */
+type PgTitleRecipe = {
+  accessor: string;
+  select: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pick: (row: any) => string;
+};
+
+const PG_TITLE_RECIPES: Record<string, PgTitleRecipe> = {
+  feature: {
+    accessor: "feature",
+    select: { id: true, title: true },
+    pick: (r) => r.title ?? "",
+  },
+  task: {
+    accessor: "task",
+    select: { id: true, title: true },
+    pick: (r) => r.title ?? "",
+  },
+  milestone: {
+    accessor: "milestone",
+    select: { id: true, name: true },
+    pick: (r) => r.name ?? "",
+  },
+  initiative: {
+    accessor: "initiative",
+    select: { id: true, name: true },
+    pick: (r) => r.name ?? "",
+  },
+  repository: {
+    accessor: "repository",
+    select: { id: true, name: true, repositoryUrl: true },
+    pick: (r) => r.name || r.repositoryUrl || "",
+  },
+  workspace: {
+    accessor: "workspace",
+    select: { id: true, name: true, slug: true },
+    pick: (r) => r.name || r.slug || "",
+  },
+  connection: {
+    accessor: "connection",
+    select: { id: true, name: true },
+    pick: (r) => r.name ?? "",
+  },
+  research: {
+    accessor: "research",
+    select: { id: true, title: true, topic: true, summary: true },
+    pick: (r) => r.title || r.topic || r.summary || "",
+  },
+  conversation: {
+    accessor: "sharedConversation",
+    select: { id: true, title: true },
+    pick: (r) => r.title || "(untitled conversation)",
+  },
+  user: {
+    accessor: "user",
+    select: { id: true, name: true, email: true },
+    pick: (r) => r.name || r.email || "",
+  },
+  workspacemember: {
+    accessor: "workspaceMember",
+    select: { id: true, description: true, user: { select: { name: true, email: true } } },
+    pick: (r) => r.user?.name || r.user?.email || r.description || "",
+  },
+  chatmessage: {
+    accessor: "chatMessage",
+    select: { id: true, message: true },
+    pick: (r) => r.message ?? "",
+  },
+};
+
+/**
+ * Attach a best-effort `title` to every pg-realm neighbor by batch-fetching the
+ * display label per distinct type (one query per type). Non-pg neighbors
+ * (kg / canvas / opaque-external) pass through untouched — they're labeled by
+ * their own realm arms. Enrichment is best-effort: a failed/empty lookup just
+ * leaves `title` unset rather than failing the whole traversal.
+ */
+async function attachPgTitles<T extends { urn: string }>(
+  neighbors: T[],
+): Promise<T[]> {
+  const idsByType = new Map<string, Set<string>>();
+  for (const n of neighbors) {
+    const p = parseUrn(n.urn);
+    if (!p || p.realm !== "pg" || !PG_TITLE_RECIPES[p.type]) continue;
+    const set = idsByType.get(p.type) ?? new Set<string>();
+    set.add(p.id);
+    idsByType.set(p.type, set);
+  }
+  if (idsByType.size === 0) return neighbors;
+
+  // key: `${type}:${id}` → label
+  const labelByKey = new Map<string, string>();
+  await Promise.all(
+    [...idsByType.entries()].map(async ([type, ids]) => {
+      const recipe = PG_TITLE_RECIPES[type];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const model = (db as any)[recipe.accessor];
+      if (!model?.findMany) return;
+      try {
+        const rows: Array<{ id: string }> = await model.findMany({
+          where: { id: { in: [...ids] } },
+          select: recipe.select,
+        });
+        for (const row of rows ?? []) {
+          const label = truncateLabel(recipe.pick(row));
+          if (label) labelByKey.set(`${type}:${row.id}`, label);
+        }
+      } catch {
+        // best-effort — never fail neighbor traversal over a label lookup
+      }
+    }),
+  );
+
+  return neighbors.map((n) => {
+    const p = parseUrn(n.urn);
+    if (!p || p.realm !== "pg") return n;
+    const label = labelByKey.get(`${p.type}:${p.id}`);
+    return label ? { ...n, title: label } : n;
   });
 }
 
@@ -689,7 +839,8 @@ export function buildGraphWalkerTools(
           case "pg": {
             const ctx: PgNeighborContext = { userId, orgId };
             const results = await pgNeighbors(urn, ctx);
-            return { neighbors: results };
+            const neighbors = await attachPgTitles(results);
+            return { neighbors };
           }
           case "canvas": {
             const [canvasEdges, urnEdges] = await Promise.all([
@@ -697,7 +848,10 @@ export function buildGraphWalkerTools(
               UrnEdge.neighborsOf(urn),
             ]);
             const merged = deduplicateByUrn([...canvasEdges, ...urnEdges]);
-            return { neighbors: merged };
+            // Canvas structural neighbors are already labeled from node text;
+            // this also labels any pg-realm cross-realm UrnEdge neighbors.
+            const neighbors = await attachPgTitles(merged);
+            return { neighbors };
           }
           case "kg": {
             const seam = await resolveKgSeam(urn, { userId });
@@ -709,7 +863,10 @@ export function buildGraphWalkerTools(
               { edgeTypes: edge_type, nodeTypes: node_type },
             );
             if (!reachable) return { error: "swarm unreachable" };
-            const neighbors = raw.map((n) => ({
+            // Surface the derived node label as `title` (consistent with the pg
+            // and canvas arms), alongside the URN/ref_id the agent still needs
+            // to dereference or traverse further.
+            const neighbors = raw.map(({ name, ...n }) => ({
               ...n,
               urn: formatUrn({
                 realm: "kg",
@@ -718,6 +875,7 @@ export function buildGraphWalkerTools(
                 type: n.node_type,
                 id: n.ref_id,
               }),
+              ...(name ? { title: name } : {}),
             }));
             return { neighbors };
           }
