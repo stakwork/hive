@@ -369,14 +369,14 @@ export async function POST(request: NextRequest) {
     // gear). Threaded into `runCanvasAgent`, which only honors Anthropic
     // selections today. Null/absent → aieo default. Public viewers have
     // no user row, so they always get the default.
-    const chatAgentModel = userId
-      ? (
-          await db.user.findUnique({
-            where: { id: userId },
-            select: { chatAgentModel: true },
-          })
-        )?.chatAgentModel ?? undefined
-      : undefined;
+    const userPrefs = userId
+      ? await db.user.findUnique({
+          where: { id: userId },
+          select: { chatAgentModel: true, timezone: true },
+        })
+      : null;
+    const chatAgentModel = userPrefs?.chatAgentModel ?? undefined;
+    const userTimezone = userPrefs?.timezone ?? "UTC";
 
     // ============================================================
     // Backend-driven canvas turn — server-side persistence (Tier 1).
@@ -509,6 +509,7 @@ export async function POST(request: NextRequest) {
           // The HTTP chat is a live UI surface; emit HIGHLIGHT_NODES so
           // open clients animate the researched node.
           silentPusher: false,
+          userTimezone,
           dispatchedResearch,
           // Inject the schedule_check tool when we have a fully-resolved
           // canvas conversation (org + user + server-owned row). All three
