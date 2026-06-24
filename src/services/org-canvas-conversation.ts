@@ -140,9 +140,10 @@ export async function persistCanvasUserMessage(args: {
  *
  * Used by the `org_agent` MCP tool when invoked from a call/voice
  * context: the agent asks one question, and we want a durable, org-
- * member-viewable record at `/org/<login>/chat/shared/<id>` to hand
- * back as a link. Unlike the interactive chat path, there is no prior
- * conversation to continue — each call mints its own row.
+ * member-viewable record the caller can hand back as a link
+ * (`/org/<login>?chat=<id>`, which auto-loads the conversation). Unlike
+ * the interactive chat path, there is no prior conversation to
+ * continue — each call mints its own row.
  *
  * The row mirrors `persistCanvasUserMessage`'s org-canvas shape
  * (`workspaceId: null`, `sourceControlOrgId` set, `extraWorkspaceSlugs`

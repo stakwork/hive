@@ -328,7 +328,12 @@ export function registerOrgTools(
               select: { githubLogin: true },
             });
             if (org) {
-              const path = `/org/${org.githubLogin}/chat/shared/${conversationId}`;
+              // `?chat=<id>` on the org page auto-loads the conversation
+              // (OrgCanvasView reads the `chat` param and fetches the
+              // isShared-gated row). Preferred over /chat/shared/<id> so
+              // the link drops the user straight into the live org canvas
+              // with the chat open.
+              const path = `/org/${org.githubLogin}?chat=${conversationId}`;
               const base = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
               shareLink = base ? `${base}${path}` : path;
             }
