@@ -56,7 +56,6 @@ import type {
 import { categoryAllowedOnScope, CATEGORY_REGISTRY } from "./canvas-categories";
 import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
-import useCanvasClipboard from "./useCanvasClipboard";
 import { useSession } from "next-auth/react";
 import { useCanvasCollaboration } from "@/hooks/useCanvasCollaboration";
 import { toast } from "sonner";
@@ -495,13 +494,11 @@ export function OrgCanvasBackground({
   const handleSelectionChange = useCallback(
     (selection: CanvasSelection) => {
       if (!selection) {
-        selectedNodeForClipboardRef.current = null;
         setSelectedNodeIdForPresence(null);
         onSelectionChange?.(null);
         return;
       }
       if (selection.kind === "node") {
-        selectedNodeForClipboardRef.current = selection.node;
         setSelectedNodeIdForPresence(selection.node.id);
         onSelectionChange?.({
           kind: "node",
@@ -510,7 +507,6 @@ export function OrgCanvasBackground({
         });
         return;
       }
-      selectedNodeForClipboardRef.current = null;
       setSelectedNodeIdForPresence(null);
       // Multi-select (lasso / shift-click on multiple nodes) — enrich
       // with internal edges (edges where both endpoints are among the
@@ -622,9 +618,6 @@ export function OrgCanvasBackground({
 
   // Container ref for reading dimensions during paste position calculation.
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-
-  // Selected node ref for clipboard — updated inside handleSelectionChange.
-  const selectedNodeForClipboardRef = useRef<CanvasNode | null>(null);
 
   // Selected node id for presence broadcasting.
   const [selectedNodeIdForPresence, setSelectedNodeIdForPresence] = useState<string | null>(null);
@@ -2152,18 +2145,6 @@ export function OrgCanvasBackground({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [handleUndo]);
-
-  // Copy / Cut / Paste keyboard shortcuts for authored canvas elements.
-  // Pass the ref itself — `selectedNodeForClipboardRef` is updated inside
-  // `handleSelectionChange` without triggering a re-render, so reading
-  // `.current` here would always be `null`.
-  useCanvasClipboard({
-    selectedNodeRef: selectedNodeForClipboardRef,
-    currentRefRef,
-    applyMutation,
-    currentViewportRef,
-    canvasContainerRef,
-  });
 
   // Real-time canvas presence — cursors, selection halos, conflict flash
   const { collaborators } = useCanvasCollaboration({
