@@ -4,10 +4,10 @@
  * Exposes three agent tools:
  *   - `graph_get`       — resolve a single URN to its full node content
  *   - `graph_neighbors` — return all adjacent URNs reachable in one hop
- *   - `graph_search`    — keyword search across pg and canvas realms
+ *   - `graph_search`    — keyword search across pg, canvas, and kg realms
  *
- * v1 scope: pg and canvas realms are fully implemented.
- * kg realm is a clearly-marked stub returning { error: "kg realm not yet enabled" }.
+ * All three realms are live: pg (Postgres roadmap), canvas (canvas nodes), and
+ * kg (the swarm knowledge graph, served by Jarvis v2 over HTTP).
  *
  * All tools are read-only — no node creation, edge writes, or swarm mutations.
  */
@@ -606,7 +606,7 @@ export function buildGraphWalkerTools(
       description:
         "Resolve a single URN to its full node content. " +
         "Routes by realm: `pg` and `canvas` URNs are resolved locally; " +
-        "`kg` URNs are not yet enabled in v1. " +
+        "`kg` URNs are resolved live from the swarm knowledge graph (Jarvis). " +
         "Use this when you have a specific URN and need the entity's data.",
       inputSchema: z.object({
         urn: z.string().describe(

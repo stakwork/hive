@@ -56,6 +56,13 @@ export interface KgNeighborsResponse {
 // ---------------------------------------------------------------------------
 
 /**
+ * Max neighbors returned in a single hop. Mirrors pgNeighbors' DEFAULT_CAP (50).
+ * A hot kg node (e.g. a concept) can connect to hundreds of files/edges; without
+ * a cap the tool result floods the agent's context and token budget.
+ */
+const KG_NEIGHBOR_CAP = 50;
+
+/**
  * Encode an array as a Python list literal string, e.g. `["MODIFIES","CITES"]`.
  * This is the format Jarvis v2 expects for filter params.
  */
@@ -181,6 +188,7 @@ export async function kgGetNeighbors(
     }
 
     const neighbors: KgNeighborResult[] = [];
+    const seen = new Set<string>();
     for (const edge of data.edges ?? []) {
       const direction: "forward" | "reverse" =
         edge.source === refId ? "forward" : "reverse";
@@ -188,6 +196,11 @@ export async function kgGetNeighbors(
 
       // Skip if the neighbor is the queried node itself (self-loop guard / source dedup)
       if (neighborRefId === refId) continue;
+
+      // Dedup by neighbor — a node can be reached via multiple parallel edges
+      // (e.g. several MODIFIES). Keep the first occurrence.
+      if (seen.has(neighborRefId)) continue;
+      seen.add(neighborRefId);
 
       const nodeDetail = nodeMap.get(neighborRefId);
       // If the node detail isn't in the nodes array, derive what we can from the edge
@@ -203,6 +216,9 @@ export async function kgGetNeighbors(
         ref_id: neighborRefId,
         ...(importance !== undefined ? { importance } : {}),
       });
+
+      // Cap to keep tool output within the agent's context/token budget.
+      if (neighbors.length >= KG_NEIGHBOR_CAP) break;
     }
 
     return { neighbors, reachable: true };
