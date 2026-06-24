@@ -45,7 +45,20 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
+import { createSharedOrgAgentConversation } from "@/services/org-canvas-conversation";
 import type { OrgPermission } from "@/lib/mcp/orgPermissions";
+
+/**
+ * Token purposes for which `org_agent` persists the exchange as a
+ * shareable org conversation and returns a link to it. Call/voice
+ * agents (minted by the calls `generate-link` route with
+ * `purpose: "call-link"`) want a durable, linkable record to hand back
+ * to a human. Other callers — notably plan-mode (`purpose: "plan-mode"`
+ * / `"feature:<id>"`) — only consume the prose inline and should not
+ * litter the org with one shared conversation per context lookup, so
+ * they keep the original text-only behavior.
+ */
+const LINK_RETURNING_PURPOSES: ReadonlySet<string> = new Set(["call-link"]);
 
 // ---------------------------------------------------------------------------
 // Permission model
@@ -289,17 +302,51 @@ export function registerOrgTools(
         // — not the intermediate tool-call trace.
         const text = await result.text;
         const cleaned = text.replace(/\[END_OF_ANSWER\]/g, "").trim();
+        const answer = cleaned || "(empty response)";
+
+        // Call/voice contexts get a durable, shareable org conversation
+        // plus a link back to it. Best-effort: a persistence failure
+        // must not fail the answer the caller already has.
+        let shareLink: string | undefined;
+        if (LINK_RETURNING_PURPOSES.has(authExtra.purpose)) {
+          try {
+            const conversationId = await createSharedOrgAgentConversation({
+              orgId: authExtra.orgId,
+              userId: authExtra.userId,
+              prompt: args.prompt,
+              answer,
+              workspaceSlugs: slugs,
+            });
+            const org = await db.sourceControlOrg.findUnique({
+              where: { id: authExtra.orgId },
+              select: { githubLogin: true },
+            });
+            if (org) {
+              const path = `/org/${org.githubLogin}/chat/shared/${conversationId}`;
+              const base = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
+              shareLink = base ? `${base}${path}` : path;
+            }
+          } catch (err) {
+            console.error(
+              "[orgMcpTools.org_agent] share-link persist failed:",
+              err,
+            );
+          }
+        }
 
         console.log(
           `[orgMcpTools.org_agent] org=${authExtra.orgId} user=${authExtra.userId} ` +
             `purpose=${authExtra.purpose} readonly=${effectiveReadonly} ` +
-            `slugs=${slugs.length} chars=${cleaned.length}`,
+            `slugs=${slugs.length} chars=${cleaned.length} ` +
+            `link=${shareLink ? "yes" : "no"}`,
         );
 
+        const responseText = shareLink
+          ? `${answer}\n\nView this conversation: ${shareLink}`
+          : answer;
+
         return {
-          content: [
-            { type: "text" as const, text: cleaned || "(empty response)" },
-          ],
+          content: [{ type: "text" as const, text: responseText }],
         };
       } catch (error) {
         console.error("[orgMcpTools.org_agent] runCanvasAgent failed:", error);
