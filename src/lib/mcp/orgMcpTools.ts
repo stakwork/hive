@@ -41,11 +41,24 @@
  *   what the caller asks for.
  */
 
+import { randomUUID } from "crypto";
 import { z } from "zod";
+import type { ModelMessage } from "ai";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db } from "@/lib/db";
-import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
-import { createSharedOrgAgentConversation } from "@/services/org-canvas-conversation";
+import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
+import {
+  persistCanvasUserMessage,
+  fetchOrgCanvasConversationMessages,
+  loadOrgCanvasPromptCache,
+  persistOrgCanvasPromptCache,
+  hasConcepts,
+} from "@/services/org-canvas-conversation";
+import {
+  messagesFromSteps,
+  appendTurnMessages,
+} from "@/services/canvas-turn-persistence";
+import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import type { OrgPermission } from "@/lib/mcp/orgPermissions";
 
 /**
@@ -238,10 +251,26 @@ export function registerOrgTools(
             "Ask in read-only mode. Defaults to whatever the token allows. " +
               "You normally don't need to set this.",
           ),
+        conversationId: z
+          .string()
+          .optional()
+          .describe(
+            "Continue an existing conversation instead of starting a new " +
+              "one. Pass the id from a previous answer's link — the `chat` " +
+              "query param in `/org/<org>?chat=<id>`. The agent will load the " +
+              "prior messages and treat your prompt as the next turn. Omit to " +
+              "start fresh. (Only applies to call/voice sessions that get a " +
+              "link back; ignored otherwise.)",
+          ),
       },
     },
     async (
-      args: { prompt: string; scope?: string; readonly?: boolean },
+      args: {
+        prompt: string;
+        scope?: string;
+        readonly?: boolean;
+        conversationId?: string;
+      },
       extra,
     ) => {
       const authExtra = extra.authInfo?.extra as OrgMcpAuthExtra | undefined;
@@ -289,44 +318,127 @@ export function registerOrgTools(
         ? { currentCanvasRef: args.scope }
         : undefined;
 
-      try {
-        const { result } = await runCanvasAgent({
-          userId: authExtra.userId,
-          orgId: authExtra.orgId,
-          workspaceSlugs: slugs,
-          scope: scopeHint,
-          readonly: effectiveReadonly,
-          // Programmatic caller, no UI subscriber — suppress the
-          // HIGHLIGHT_NODES Pusher fan-out the org chat surface
-          // uses for "researching node X" animations.
-          silentPusher: true,
-          messages: [{ role: "user", content: args.prompt }],
-        });
+      // Call/voice sessions persist the exchange to a durable, shareable
+      // org-canvas conversation and get a `?chat=<id>` link back; they can
+      // also continue a prior conversation by passing its id. Plan-mode and
+      // other purposes stay stateless (prose only, no DB writes) — this is
+      // the gate that keeps the original behavior for them.
+      const persistAndLink = LINK_RETURNING_PURPOSES.has(authExtra.purpose);
 
-        // Auto-consume the stream and resolve to the final step's
-        // text. The plan/voice agent consuming this only needs prose
-        // — not the intermediate tool-call trace.
+      try {
+        // Build the turn. For link sessions we mirror `/api/ask/sync`'s
+        // server-history path: reload prior turns (if continuing), persist
+        // the user message FIRST so the run can claim the conversation row
+        // (proposal fan-out / schedule_check key off it), and reuse the
+        // org-canvas prompt cache. Non-link sessions run stateless.
+        const turnId = randomUUID();
+        let convertedMessages: ModelMessage[];
+        let rowId: string | null = null;
+        let cachedConcepts: CachedConcepts | null = null;
+
+        if (persistAndLink) {
+          // `loadOrgCanvasPromptCache` validates the id (org + owner/
+          // isShared) and returns the canonical rowId + cached concepts; an
+          // unknown/inaccessible id yields null → a fresh conversation is
+          // created (IDOR-safe: the caller can only ever write its own row).
+          const promptCache = await loadOrgCanvasPromptCache({
+            conversationId: args.conversationId,
+            userId: authExtra.userId,
+            orgId: authExtra.orgId,
+          });
+          cachedConcepts = promptCache?.cachedConcepts ?? null;
+
+          const history = promptCache?.rowId
+            ? ((await fetchOrgCanvasConversationMessages({
+                conversationId: args.conversationId,
+                userId: authExtra.userId,
+                orgId: authExtra.orgId,
+              })) ?? [])
+            : [];
+
+          convertedMessages = [
+            ...toModelMessages(history),
+            { role: "user", content: args.prompt },
+          ];
+
+          rowId = await persistCanvasUserMessage({
+            orgId: authExtra.orgId,
+            userId: authExtra.userId,
+            existingRowId: promptCache?.rowId ?? null,
+            turnId,
+            content: args.prompt,
+            workspaceSlugs: slugs,
+            // Shareable so the `?chat=<id>` link opens for any org member.
+            isShared: true,
+          });
+        } else {
+          convertedMessages = [{ role: "user", content: args.prompt }];
+        }
+
+        const { result, cacheableConcepts, cacheHit, assembledPrefix } =
+          await runCanvasAgent({
+            userId: authExtra.userId,
+            orgId: authExtra.orgId,
+            workspaceSlugs: slugs,
+            scope: scopeHint,
+            readonly: effectiveReadonly,
+            // Programmatic caller, no UI subscriber — suppress the
+            // HIGHLIGHT_NODES Pusher fan-out the org chat surface
+            // uses for "researching node X" animations.
+            silentPusher: true,
+            cachedConcepts,
+            messages: convertedMessages,
+            // Let the run claim the conversation row for proposal fan-out /
+            // schedule_check. Only set on a persisted (link) turn.
+            ...(rowId ? { currentCanvasConversationId: rowId } : {}),
+          });
+
+        // Drive the run to completion in-request (no UI stream), then read
+        // the final text. The caller only needs prose.
+        await result.consumeStream();
         const text = await result.text;
         const cleaned = text.replace(/\[END_OF_ANSWER\]/g, "").trim();
         const answer = cleaned || "(empty response)";
 
-        // Call/voice contexts get a durable, shareable org conversation
-        // plus a link back to it. Best-effort: a persistence failure
-        // must not fail the answer the caller already has.
+        // Persist the assistant turn + build the link. Best-effort: a
+        // persistence failure must not fail the answer the caller has.
         let shareLink: string | undefined;
-        if (LINK_RETURNING_PURPOSES.has(authExtra.purpose)) {
+        if (persistAndLink && rowId) {
           try {
             // Persist the FULL turn (via the run's steps), not just the
             // prose, so `propose_*` tool calls survive and render as an
             // approvable card when the conversation is opened.
             const steps = await result.steps;
-            const conversationId = await createSharedOrgAgentConversation({
-              orgId: authExtra.orgId,
-              userId: authExtra.userId,
-              prompt: args.prompt,
-              steps,
-              workspaceSlugs: slugs,
+            const assistantPrefix = `${turnId}-a`;
+            const rows = messagesFromSteps(
+              steps as Parameters<typeof messagesFromSteps>[0],
+              assistantPrefix,
+            );
+            await appendTurnMessages({
+              conversationId: rowId,
+              rows,
+              idPrefix: assistantPrefix,
+              reason: "user-turn",
             });
+
+            // Cache the freshly-fetched concepts for the next turn (skip the
+            // swarm `listConcepts` round-trip). Only on a cache MISS with
+            // non-empty concepts. Best-effort.
+            if (!cacheHit && hasConcepts(cacheableConcepts)) {
+              try {
+                await persistOrgCanvasPromptCache(
+                  rowId,
+                  cacheableConcepts,
+                  assembledPrefix,
+                );
+              } catch (cacheErr) {
+                console.error(
+                  "[orgMcpTools.org_agent] prompt-cache persist failed:",
+                  cacheErr,
+                );
+              }
+            }
+
             const org = await db.sourceControlOrg.findUnique({
               where: { id: authExtra.orgId },
               select: { githubLogin: true },
@@ -334,10 +446,9 @@ export function registerOrgTools(
             if (org) {
               // `?chat=<id>` on the org page auto-loads the conversation
               // (OrgCanvasView reads the `chat` param and fetches the
-              // isShared-gated row). Preferred over /chat/shared/<id> so
-              // the link drops the user straight into the live org canvas
-              // with the chat open.
-              const path = `/org/${org.githubLogin}?chat=${conversationId}`;
+              // isShared-gated row). Drops the user straight into the live
+              // org canvas with the chat open.
+              const path = `/org/${org.githubLogin}?chat=${rowId}`;
               const base = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
               shareLink = base ? `${base}${path}` : path;
             }
@@ -353,6 +464,7 @@ export function registerOrgTools(
           `[orgMcpTools.org_agent] org=${authExtra.orgId} user=${authExtra.userId} ` +
             `purpose=${authExtra.purpose} readonly=${effectiveReadonly} ` +
             `slugs=${slugs.length} chars=${cleaned.length} ` +
+            `continued=${args.conversationId ? "yes" : "no"} ` +
             `link=${shareLink ? "yes" : "no"}`,
         );
 
