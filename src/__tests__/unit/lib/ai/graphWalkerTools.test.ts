@@ -58,6 +58,7 @@ vi.mock("@/lib/urn/resolvers/kg", () => ({
 vi.mock("@/lib/ai/kg-adapter", () => ({
   kgGetNode: vi.fn(),
   kgGetNeighbors: vi.fn(),
+  kgGetNodesByRefs: vi.fn(),
   kgSearch: vi.fn(),
 }));
 
@@ -106,7 +107,7 @@ import { pgNeighbors } from "@/lib/graph-walker";
 import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import { resolveCapabilities } from "@/lib/ai/capabilities";
 import { resolveKgSeam } from "@/lib/urn/resolvers/kg";
-import { kgGetNode, kgGetNeighbors, kgSearch } from "@/lib/ai/kg-adapter";
+import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch } from "@/lib/ai/kg-adapter";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 
 // ---------------------------------------------------------------------------
@@ -124,6 +125,7 @@ const mockAsBlob = asBlob as ReturnType<typeof vi.fn>;
 const mockResolveKgSeam = resolveKgSeam as ReturnType<typeof vi.fn>;
 const mockKgGetNode = kgGetNode as ReturnType<typeof vi.fn>;
 const mockKgGetNeighbors = kgGetNeighbors as ReturnType<typeof vi.fn>;
+const mockKgGetNodesByRefs = kgGetNodesByRefs as ReturnType<typeof vi.fn>;
 const mockKgSearch = kgSearch as ReturnType<typeof vi.fn>;
 const mockGetSwarmAccessByWorkspaceId = getSwarmAccessByWorkspaceId as ReturnType<typeof vi.fn>;
 
@@ -433,6 +435,59 @@ describe("buildGraphWalkerTools", () => {
       );
       // opaque-external neighbor stays untouched (no title)
       expect(neighbors.find((n) => n.urn === "stakwork:workflow:42")?.title).toBeUndefined();
+    });
+
+    it("pg arm labels cross-realm kg neighbors (implemented-by concepts) via a batched by-refs call", async () => {
+      // Real-ish parser so both pg and kg URNs resolve to {realm,type,id,workspace}.
+      mockParseUrn.mockImplementation((urn: string) => {
+        const [, org, realm, type, ...idParts] = urn.split(":");
+        if (realm === "kg") {
+          const [workspace, kgType, ...rest] = [type, ...idParts];
+          return { realm, org, workspace, type: kgType, id: rest.join(":") };
+        }
+        return { realm, org, type, id: idParts.join(":") };
+      });
+
+      // A pg feature whose neighbors include pg siblings AND kg concepts that
+      // arrived through the Postgres UrnEdge bridge (no title from pgNeighbors).
+      mockPgNeighbors.mockResolvedValue([
+        { urn: "urn:myorg:pg:milestone:ms-1", edgeType: "BELONGS_TO_MILESTONE", direction: "forward" },
+        { urn: "urn:myorg:kg:my-ws:concept:c1", edgeType: "implemented-by", direction: "forward" },
+        { urn: "urn:myorg:kg:my-ws:concept:c2", edgeType: "implemented-by", direction: "forward" },
+      ]);
+      dbMilestone.findMany.mockResolvedValue([{ id: "ms-1", name: "Canvas Workflow" }]);
+
+      mockResolveKgSeam.mockResolvedValue({
+        workspace: "my-ws",
+        swarmUrl: "https://jarvis.example.com",
+        jarvisUrl: "https://jarvis.example.com",
+        swarmApiKey: "key-123",
+      });
+      mockKgGetNodesByRefs.mockResolvedValue(
+        new Map([
+          ["c1", "Integration Tests"],
+          ["c2", "Org Canvas"],
+        ]),
+      );
+
+      const tools = getTools();
+      const result = await tools.graph_neighbors.execute(
+        { urn: "urn:myorg:pg:feature:feat-1" },
+        {} as never,
+      );
+
+      // One batched call covering both concept ref_ids
+      expect(mockKgGetNodesByRefs).toHaveBeenCalledTimes(1);
+      expect(mockKgGetNodesByRefs).toHaveBeenCalledWith(
+        "https://jarvis.example.com",
+        "key-123",
+        expect.arrayContaining(["c1", "c2"]),
+      );
+
+      const neighbors = (result as { neighbors: Array<{ urn: string; title?: string }> }).neighbors;
+      expect(neighbors.find((n) => n.urn.includes("ms-1"))?.title).toBe("Canvas Workflow");
+      expect(neighbors.find((n) => n.urn.includes("concept:c1"))?.title).toBe("Integration Tests");
+      expect(neighbors.find((n) => n.urn.includes("concept:c2"))?.title).toBe("Org Canvas");
     });
 
     it("kg arm maps the derived node name onto each neighbor's title", async () => {

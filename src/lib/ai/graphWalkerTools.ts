@@ -29,7 +29,7 @@ import type { UrnEdgeNeighbor } from "@/lib/urn";
 import { pgNeighbors } from "@/lib/graph-walker";
 import type { NeighborResult, PgNeighborContext } from "@/lib/graph-walker";
 import { resolveKgSeam } from "@/lib/urn/resolvers/kg";
-import { kgGetNode, kgGetNeighbors, kgSearch } from "./kg-adapter";
+import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch } from "./kg-adapter";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
 
@@ -278,6 +278,55 @@ async function attachPgTitles<T extends { urn: string }>(
     const p = parseUrn(n.urn);
     if (!p || p.realm !== "pg") return n;
     const label = labelByKey.get(`${p.type}:${p.id}`);
+    return label ? { ...n, title: label } : n;
+  });
+}
+
+/**
+ * Attach a `title` to kg-realm neighbors that don't already have one. These are
+ * cross-realm neighbors reached through a Postgres `UrnEdge` bridge (e.g. a
+ * feature's `implemented-by` concepts): the edge row carries no node label, and
+ * `attachPgTitles` skips them because they're kg-realm. Their names live only in
+ * Jarvis, so we resolve them in ONE batched `by-refs` call per swarm.
+ *
+ * Best-effort: an unresolvable seam or failed fetch just leaves `title` unset
+ * rather than failing the traversal. Skips neighbors that already have a title
+ * (e.g. anything the kg arm already labeled).
+ */
+async function attachKgTitles<T extends { urn: string; title?: string }>(
+  neighbors: T[],
+  ctx: { userId: string },
+): Promise<T[]> {
+  // Group untitled kg ref_ids by swarm seam. A single traversal's neighbors
+  // normally share one workspace, but grouping keeps it correct if not.
+  const refsByWorkspace = new Map<string, { seamUrn: string; refIds: Set<string> }>();
+  for (const n of neighbors) {
+    if (n.title) continue;
+    const p = parseUrn(n.urn);
+    if (!p || p.realm !== "kg") continue;
+    const entry = refsByWorkspace.get(p.workspace) ?? { seamUrn: n.urn, refIds: new Set<string>() };
+    entry.refIds.add(p.id);
+    refsByWorkspace.set(p.workspace, entry);
+  }
+  if (refsByWorkspace.size === 0) return neighbors;
+
+  // ref_id → label, merged across all swarms touched by this traversal.
+  const labelByRef = new Map<string, string>();
+  await Promise.all(
+    [...refsByWorkspace.values()].map(async ({ seamUrn, refIds }) => {
+      const seam = await resolveKgSeam(seamUrn, ctx);
+      if (!seam) return; // best-effort — no seam, no labels
+      const labels = await kgGetNodesByRefs(seam.jarvisUrl, seam.swarmApiKey, [...refIds]);
+      for (const [ref, name] of labels) labelByRef.set(ref, name);
+    }),
+  );
+  if (labelByRef.size === 0) return neighbors;
+
+  return neighbors.map((n) => {
+    if (n.title) return n;
+    const p = parseUrn(n.urn);
+    if (!p || p.realm !== "kg") return n;
+    const label = labelByRef.get(p.id);
     return label ? { ...n, title: label } : n;
   });
 }
@@ -839,7 +888,13 @@ export function buildGraphWalkerTools(
           case "pg": {
             const ctx: PgNeighborContext = { userId, orgId };
             const results = await pgNeighbors(urn, ctx);
-            const neighbors = await attachPgTitles(results);
+            // pg-native neighbors get labels from Postgres; cross-realm kg
+            // neighbors (e.g. `implemented-by` concepts) are labeled in one
+            // batched Jarvis call since their names live only in the swarm.
+            const neighbors = await attachKgTitles(
+              await attachPgTitles(results),
+              { userId },
+            );
             return { neighbors };
           }
           case "canvas": {
@@ -849,8 +904,12 @@ export function buildGraphWalkerTools(
             ]);
             const merged = deduplicateByUrn([...canvasEdges, ...urnEdges]);
             // Canvas structural neighbors are already labeled from node text;
-            // this also labels any pg-realm cross-realm UrnEdge neighbors.
-            const neighbors = await attachPgTitles(merged);
+            // attachPgTitles labels pg-realm UrnEdge neighbors, attachKgTitles
+            // labels kg-realm ones (batched, names sourced from the swarm).
+            const neighbors = await attachKgTitles(
+              await attachPgTitles(merged),
+              { userId },
+            );
             return { neighbors };
           }
           case "kg": {
