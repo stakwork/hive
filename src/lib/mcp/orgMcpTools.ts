@@ -316,11 +316,15 @@ export function registerOrgTools(
         let shareLink: string | undefined;
         if (LINK_RETURNING_PURPOSES.has(authExtra.purpose)) {
           try {
+            // Persist the FULL turn (via the run's steps), not just the
+            // prose, so `propose_*` tool calls survive and render as an
+            // approvable card when the conversation is opened.
+            const steps = await result.steps;
             const conversationId = await createSharedOrgAgentConversation({
               orgId: authExtra.orgId,
               userId: authExtra.userId,
               prompt: args.prompt,
-              answer,
+              steps,
               workspaceSlugs: slugs,
             });
             const org = await db.sourceControlOrg.findUnique({
