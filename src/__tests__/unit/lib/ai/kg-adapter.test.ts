@@ -222,6 +222,16 @@ describe("kgGetNeighbors", () => {
     expect(calledUrl).toContain("limit=50");
   });
 
+  it("requests importance-ordered neighbors so the cap keeps the most important", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    expect(calledUrl).toContain("sort_by=importance");
+  });
+
   it("caps neighbors at 50 (hot node with many edges)", async () => {
     const edges = Array.from({ length: 200 }, (_, i) => ({
       source: QUERIED_REF,

@@ -250,9 +250,16 @@ export async function kgGetNeighbors(
   try {
     // `limit` is mandatory — it bounds the Cypher traversal so a hub node
     // doesn't OOM Neo4j. We cap the output client-side at KG_NEIGHBOR_CAP too.
+    //
+    // `sort_by=importance` makes Jarvis order edges by their `importance`
+    // property BEFORE applying `limit` (depth=1 only), so the cap keeps the most
+    // important neighbors (e.g. a Concept's documentation files, scored 0.5–1.0)
+    // instead of an arbitrary slice. Harmless for edges without importance —
+    // Jarvis coalesces a missing value to 0.
     const params = new URLSearchParams({
       expand: "edges",
       limit: String(KG_QUERY_LIMIT),
+      sort_by: "importance",
     });
     if (opts?.edgeTypes && opts.edgeTypes.length > 0) {
       params.set("edge_type", toPythonListLiteral(opts.edgeTypes));
