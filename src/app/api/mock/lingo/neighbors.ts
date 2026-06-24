@@ -1,9 +1,13 @@
-import type { JargonNode } from "./nodes";
+import type { JargonNode, JargonDefinition } from "./nodes";
+export type { JargonDefinition };
 
 export interface NeighborNode {
   ref_id: string;
   name: string;
   node_type: string;
+  // Present when node_type === "JargonDefinition"
+  valid_from?: string;
+  valid_until?: string | null;
 }
 
 export interface NeighborEdge {
@@ -41,6 +45,40 @@ export const mockLingoNeighbors: Record<string, NodeNeighborData> = {
         edge_ref_id: "edge-001-015",
         edge_type: "USES",
         neighbor_node: { ref_id: "jargon-015", name: "Service Factory", node_type: "Jargon" },
+      },
+      // Temporal definition edges
+      {
+        edge_ref_id: "edge-001-def-v2",
+        edge_type: "HAS_DEFINITION",
+        neighbor_node: {
+          ref_id: "jargon-def-001-v2",
+          name: "Pod Orchestration (current definition)",
+          node_type: "JargonDefinition",
+          valid_from: "2026-06-01",
+          valid_until: null,
+        },
+      },
+    ],
+  },
+  "jargon-def-001-v2": {
+    node: {
+      ref_id: "jargon-def-001-v2",
+      name: "Pod Orchestration (current definition)",
+      jargon_context: "The automated process of creating, scaling, and managing compute pods for AI workloads within a workspace swarm.",
+      jargon_candidates: [],
+      created_at: "2026-06-01T00:00:00Z",
+    },
+    edges: [
+      {
+        edge_ref_id: "edge-def-001-supersedes",
+        edge_type: "SUPERSEDES",
+        neighbor_node: {
+          ref_id: "jargon-def-001-v1",
+          name: "Pod Orchestration (superseded definition)",
+          node_type: "JargonDefinition",
+          valid_from: "2026-01-01",
+          valid_until: "2026-06-01",
+        },
       },
     ],
   },
@@ -93,6 +131,40 @@ export const mockLingoNeighbors: Record<string, NodeNeighborData> = {
         edge_ref_id: "edge-003-021",
         edge_type: "ENABLES",
         neighbor_node: { ref_id: "jargon-021", name: "Auto-Learn", node_type: "Jargon" },
+      },
+      // Temporal definition edges
+      {
+        edge_ref_id: "edge-003-def-v2",
+        edge_type: "HAS_DEFINITION",
+        neighbor_node: {
+          ref_id: "jargon-def-003-v2",
+          name: "Swarm (current definition)",
+          node_type: "JargonDefinition",
+          valid_from: "2026-05-15",
+          valid_until: null,
+        },
+      },
+    ],
+  },
+  "jargon-def-003-v2": {
+    node: {
+      ref_id: "jargon-def-003-v2",
+      name: "Swarm (current definition)",
+      jargon_context: "A managed cluster of AI agents and supporting infrastructure assigned to a workspace, identified by a unique swarm name.",
+      jargon_candidates: [],
+      created_at: "2026-05-15T00:00:00Z",
+    },
+    edges: [
+      {
+        edge_ref_id: "edge-def-003-supersedes",
+        edge_type: "SUPERSEDES",
+        neighbor_node: {
+          ref_id: "jargon-def-003-v1",
+          name: "Swarm (superseded definition)",
+          node_type: "JargonDefinition",
+          valid_from: "2026-01-01",
+          valid_until: "2026-05-15",
+        },
       },
     ],
   },
