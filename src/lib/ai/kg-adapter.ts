@@ -44,6 +44,8 @@ interface JarvisExpandEdgesResponse {
 export interface KgNeighborResult extends NeighborResult {
   node_type: string;
   ref_id: string;
+  /** Best-effort human-readable label for the neighbor (see deriveNodeName). */
+  name: string;
 }
 
 export interface KgNeighborsResponse {
@@ -106,24 +108,71 @@ async function kgFetch(url: string, swarmApiKey: string): Promise<Response> {
 }
 
 /**
- * Jarvis nodes do not carry a top-level `name` for most node types — the human
- * label lives in `properties` under a type-dependent key. Derive the best
- * available label, falling back to "".
+ * Max length of a derived label. Long text blobs (summary/description/content)
+ * are valid last-resort identifiers but must be truncated so a single neighbor
+ * row doesn't flood the agent's context.
+ */
+const LABEL_MAX = 160;
+
+/**
+ * Jarvis nodes do not carry a top-level `name` for most node types — and
+ * different node types (File, Function, Concept, Endpoint, Datamodel, Page,
+ * Person, Episode, …) keep their human label under wildly different keys.
+ *
+ * Rather than enumerate every type, try a generous ordered list of candidate
+ * keys: short, identifier-like fields first (name/title/file/path/symbol), then
+ * progressively longer descriptive fields as a last resort. The goal is to give
+ * the agent *some* semantic identifier alongside the URN/ref_id (not in place of
+ * it) so it can tell neighbors apart. Returns "" only when nothing usable exists.
  */
 function deriveNodeName(
   node: { name?: unknown },
   properties: Record<string, unknown>,
 ): string {
   const candidates = [
+    // Top-level name (rare but authoritative)
     node?.name,
     properties.name,
+    // Generic human labels
     properties.title,
+    properties.label,
+    properties.display_name,
+    properties.displayName,
+    properties.identifier,
+    // Code-graph identifiers (File / Function / Class / Endpoint / Datamodel)
+    properties.file_name,
+    properties.fileName,
+    properties.file,
+    properties.path,
+    properties.symbol,
+    properties.function_name,
+    properties.class_name,
+    properties.method_name,
+    properties.operation_id,
+    properties.endpoint,
+    properties.route,
+    properties.url,
+    // Misc keys
     properties.entity,
+    properties.key,
+    properties.slug,
     properties.episode_title,
     properties.show_title,
+    properties.username,
+    properties.email,
+    // Long descriptive fields — valid but truncated last-resort labels
+    properties.summary,
+    properties.description,
+    properties.text,
+    properties.content,
+    properties.body,
+    properties.docs,
   ];
   for (const c of candidates) {
-    if (typeof c === "string" && c.length > 0) return c;
+    if (typeof c === "string" && c.trim().length > 0) {
+      const trimmed = c.trim();
+      return trimmed.length > LABEL_MAX ? trimmed.slice(0, LABEL_MAX) : trimmed;
+    }
   }
   return "";
 }
@@ -201,9 +250,16 @@ export async function kgGetNeighbors(
   try {
     // `limit` is mandatory — it bounds the Cypher traversal so a hub node
     // doesn't OOM Neo4j. We cap the output client-side at KG_NEIGHBOR_CAP too.
+    //
+    // `sort_by=importance` makes Jarvis order edges by their `importance`
+    // property BEFORE applying `limit` (depth=1 only), so the cap keeps the most
+    // important neighbors (e.g. a Concept's documentation files, scored 0.5–1.0)
+    // instead of an arbitrary slice. Harmless for edges without importance —
+    // Jarvis coalesces a missing value to 0.
     const params = new URLSearchParams({
       expand: "edges",
       limit: String(KG_QUERY_LIMIT),
+      sort_by: "importance",
     });
     if (opts?.edgeTypes && opts.edgeTypes.length > 0) {
       params.set("edge_type", toPythonListLiteral(opts.edgeTypes));
@@ -217,11 +273,16 @@ export async function kgGetNeighbors(
 
     const data = (await res.json()) as JarvisExpandEdgesResponse;
 
-    // Build a lookup map for node details keyed by ref_id, excluding the queried node itself.
-    const nodeMap = new Map<string, { node_type: string }>();
+    // Build a lookup map for node details keyed by ref_id, excluding the queried
+    // node itself. Derive a human-readable label here while we still have the
+    // node's properties — otherwise the caller only sees a bare ref_id.
+    const nodeMap = new Map<string, { node_type: string; name: string }>();
     for (const node of data.nodes ?? []) {
       if (node.ref_id !== refId) {
-        nodeMap.set(node.ref_id, { node_type: node.node_type });
+        nodeMap.set(node.ref_id, {
+          node_type: node.node_type,
+          name: deriveNodeName(node, (node.properties ?? {}) as Record<string, unknown>),
+        });
       }
     }
 
@@ -252,6 +313,7 @@ export async function kgGetNeighbors(
         direction,
         node_type,
         ref_id: neighborRefId,
+        name: nodeDetail?.name ?? "",
         ...(importance !== undefined ? { importance } : {}),
       });
 
