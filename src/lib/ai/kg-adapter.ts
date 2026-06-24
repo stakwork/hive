@@ -224,6 +224,61 @@ export async function kgGetNode(
 }
 
 // ---------------------------------------------------------------------------
+// kgGetNodesByRefs
+// ---------------------------------------------------------------------------
+
+/**
+ * Max ref_ids to send in a single by-refs batch. Mirrors KG_NEIGHBOR_CAP — a
+ * traversal never surfaces more kg neighbors than that, so one POST covers a
+ * whole hop's worth of cross-realm labels.
+ */
+const KG_BY_REFS_CAP = KG_NEIGHBOR_CAP;
+
+/**
+ * Bulk-resolve human-readable labels for a list of kg ref_ids in ONE request,
+ * via `POST /v2/nodes/by-refs` (the internal boltwall bulk-fetch — gated by the
+ * swarm `x-api-token`, which we already hold). Used to label cross-realm kg
+ * neighbors that arrive through a Postgres `UrnEdge` bridge (e.g. a feature's
+ * `implemented-by` concepts), where the bare edge carries no node properties.
+ *
+ * Returns a `Map<ref_id, name>` containing only entries with a non-empty derived
+ * name. Soft-deleted / muted nodes are excluded server-side. Returns an empty
+ * map on any error — labeling is best-effort and must never fail a traversal.
+ */
+export async function kgGetNodesByRefs(
+  jarvisUrl: string,
+  swarmApiKey: string,
+  refIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const unique = [...new Set(refIds.filter((r) => r))].slice(0, KG_BY_REFS_CAP);
+  if (unique.length === 0) return out;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), KG_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${jarvisUrl.replace(/\/$/, "")}/v2/nodes/by-refs`, {
+      method: "POST",
+      headers: { ...authHeaders(swarmApiKey), "Content-Type": "application/json" },
+      body: JSON.stringify({ ref_ids: unique }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return out;
+    const data = (await res.json()) as { nodes?: JarvisNode[] };
+    for (const node of data.nodes ?? []) {
+      if (!node?.ref_id) continue;
+      const name = deriveNodeName(node, (node.properties ?? {}) as Record<string, unknown>);
+      if (name) out.set(node.ref_id, name);
+    }
+    return out;
+  } catch {
+    return out;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // kgGetNeighbors
 // ---------------------------------------------------------------------------
 
