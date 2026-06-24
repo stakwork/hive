@@ -7,7 +7,7 @@
 // @vitest-environment node
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { kgGetNode, kgGetNeighbors, kgSearch } from "@/lib/ai/kg-adapter";
+import { kgGetNode, kgGetNeighbors, kgGetNodesByRefs, kgSearch } from "@/lib/ai/kg-adapter";
 
 const JARVIS_URL = "https://jarvis.example.com";
 const API_KEY = "test-api-key";
@@ -385,6 +385,80 @@ describe("kgGetNeighbors", () => {
 
     const { reachable } = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
     expect(reachable).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// kgGetNodesByRefs
+// ---------------------------------------------------------------------------
+
+describe("kgGetNodesByRefs", () => {
+  it("POSTs ref_ids to /v2/nodes/by-refs and returns a ref_id→name map", async () => {
+    const raw = {
+      nodes: [
+        { ref_id: "c1", node_type: "Concept", properties: { name: "Integration Tests" } },
+        { ref_id: "c2", node_type: "Concept", properties: { name: "Org Canvas" } },
+      ],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const map = await kgGetNodesByRefs(JARVIS_URL, API_KEY, ["c1", "c2"]);
+
+    expect(map.get("c1")).toBe("Integration Tests");
+    expect(map.get("c2")).toBe("Org Canvas");
+
+    const [calledUrl, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(calledUrl).toBe(`${JARVIS_URL}/v2/nodes/by-refs`);
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: { "x-api-token": API_KEY, "Content-Type": "application/json" },
+    });
+    expect(JSON.parse(init.body as string)).toEqual({ ref_ids: ["c1", "c2"] });
+  });
+
+  it("derives names from fallback property keys (file_name) and skips unlabeled nodes", async () => {
+    const raw = {
+      nodes: [
+        { ref_id: "f1", node_type: "File", properties: { file_name: "kg-adapter.ts" } },
+        { ref_id: "x1", node_type: "Mystery", properties: { weight: 3 } },
+      ],
+    };
+    globalThis.fetch = mockFetch(raw);
+
+    const map = await kgGetNodesByRefs(JARVIS_URL, API_KEY, ["f1", "x1"]);
+
+    expect(map.get("f1")).toBe("kg-adapter.ts");
+    expect(map.has("x1")).toBe(false);
+  });
+
+  it("dedups and drops empty ref_ids before sending", async () => {
+    globalThis.fetch = mockFetch({ nodes: [] });
+
+    await kgGetNodesByRefs(JARVIS_URL, API_KEY, ["a", "a", "", "b"]);
+
+    const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(JSON.parse(init.body as string)).toEqual({ ref_ids: ["a", "b"] });
+  });
+
+  it("returns an empty map without calling fetch when given no ref_ids", async () => {
+    globalThis.fetch = mockFetch({ nodes: [] });
+
+    const map = await kgGetNodesByRefs(JARVIS_URL, API_KEY, []);
+
+    expect(map.size).toBe(0);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("returns an empty map on non-2xx response", async () => {
+    globalThis.fetch = mockFetch(null, false, 401);
+    const map = await kgGetNodesByRefs(JARVIS_URL, API_KEY, ["c1"]);
+    expect(map.size).toBe(0);
+  });
+
+  it("returns an empty map on fetch throw", async () => {
+    globalThis.fetch = mockFetchThrow();
+    const map = await kgGetNodesByRefs(JARVIS_URL, API_KEY, ["c1"]);
+    expect(map.size).toBe(0);
   });
 });
 
