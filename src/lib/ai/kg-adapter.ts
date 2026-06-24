@@ -63,6 +63,18 @@ export interface KgNeighborsResponse {
 const KG_NEIGHBOR_CAP = 50;
 
 /**
+ * Hard limit sent to Jarvis on every node/neighbor query. This is NOT just a
+ * result cap — Jarvis applies it inside the Cypher, which is what stops a hub
+ * node (a concept touching hundreds of files) from collecting its entire
+ * neighborhood into one row and blowing past Neo4j's per-transaction memory
+ * limit (a MemoryPoolOutOfMemoryError → 500 after ~50s). Always send it.
+ */
+const KG_QUERY_LIMIT = KG_NEIGHBOR_CAP;
+
+/** Fail fast instead of hanging the agent's tool call on a pathological node. */
+const KG_FETCH_TIMEOUT_MS = 25_000;
+
+/**
  * Encode an array as a Python list literal string, e.g. `["MODIFIES","CITES"]`.
  * This is the format Jarvis v2 expects for filter params.
  */
@@ -72,6 +84,20 @@ function toPythonListLiteral(arr: string[]): string {
 
 function authHeaders(swarmApiKey: string): Record<string, string> {
   return { "x-api-token": swarmApiKey };
+}
+
+/** fetch with an abort timeout so a slow/overloaded swarm fails fast. */
+async function kgFetch(url: string, swarmApiKey: string): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), KG_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      headers: authHeaders(swarmApiKey),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -115,8 +141,10 @@ export async function kgGetNode(
   refId: string,
 ): Promise<KgNode | null> {
   try {
-    const url = `${jarvisUrl}/v2/nodes/${encodeURIComponent(refId)}`;
-    const res = await fetch(url, { headers: authHeaders(swarmApiKey) });
+    // limit=1 keeps Jarvis from materializing the node's whole neighborhood
+    // (which OOMs Neo4j for hub nodes). We only read the node itself here.
+    const url = `${jarvisUrl}/v2/nodes/${encodeURIComponent(refId)}?limit=1`;
+    const res = await kgFetch(url, swarmApiKey);
     if (!res.ok) return null;
     const data = (await res.json()) as
       | JarvisNode
@@ -166,7 +194,12 @@ export async function kgGetNeighbors(
   opts?: KgGetNeighborsOpts,
 ): Promise<KgNeighborsResponse> {
   try {
-    const params = new URLSearchParams({ expand: "edges" });
+    // `limit` is mandatory — it bounds the Cypher traversal so a hub node
+    // doesn't OOM Neo4j. We cap the output client-side at KG_NEIGHBOR_CAP too.
+    const params = new URLSearchParams({
+      expand: "edges",
+      limit: String(KG_QUERY_LIMIT),
+    });
     if (opts?.edgeTypes && opts.edgeTypes.length > 0) {
       params.set("edge_type", toPythonListLiteral(opts.edgeTypes));
     }
@@ -174,7 +207,7 @@ export async function kgGetNeighbors(
       params.set("node_type", toPythonListLiteral(opts.nodeTypes));
     }
     const url = `${jarvisUrl}/v2/nodes/${encodeURIComponent(refId)}?${params.toString()}`;
-    const res = await fetch(url, { headers: authHeaders(swarmApiKey) });
+    const res = await kgFetch(url, swarmApiKey);
     if (!res.ok) return { neighbors: [], reachable: false };
 
     const data = (await res.json()) as JarvisExpandEdgesResponse;
@@ -262,7 +295,7 @@ export async function kgSearch(
       params.set("node_type", opts.type);
     }
     const url = `${jarvisUrl}/v2/nodes/search?${params.toString()}`;
-    const res = await fetch(url, { headers: authHeaders(swarmApiKey) });
+    const res = await kgFetch(url, swarmApiKey);
     if (!res.ok) return [];
     const data = (await res.json()) as JarvisSearchLiteResponse;
     const nodes = Array.isArray(data?.nodes) ? data.nodes : [];

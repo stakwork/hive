@@ -51,8 +51,8 @@ describe("kgGetNode", () => {
       properties: { file: "src/index.ts" },
     });
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      `${JARVIS_URL}/v2/nodes/node-abc`,
-      { headers: { "x-api-token": API_KEY } },
+      `${JARVIS_URL}/v2/nodes/node-abc?limit=1`,
+      expect.objectContaining({ headers: { "x-api-token": API_KEY } }),
     );
   });
 
@@ -209,6 +209,17 @@ describe("kgGetNeighbors", () => {
 
     expect(reachable).toBe(true);
     expect(neighbors).toHaveLength(0);
+  });
+
+  it("sends a limit to Jarvis to bound the Cypher traversal (OOM guard)", async () => {
+    globalThis.fetch = mockFetch({ nodes: [], edges: [] });
+
+    await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
+
+    const calledUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    expect(calledUrl).toContain("expand=edges");
+    expect(calledUrl).toContain("limit=50");
   });
 
   it("caps neighbors at 50 (hot node with many edges)", async () => {
