@@ -108,6 +108,169 @@ export function isRelativeFormat(date: string | Date): boolean {
   return diffHours >= 0 && diffHours <= 48;
 }
 
+// ─── Timezone-aware date utilities ───────────────────────────────────────────
+
+/**
+ * Helper: extract the short timezone abbreviation (e.g. "EST", "PDT") for a
+ * given IANA timezone at a given instant.
+ */
+function getTzAbbrev(date: Date, timezone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      timeZoneName: "short",
+    }).formatToParts(date);
+    return parts.find((p) => p.type === "timeZoneName")?.value ?? timezone;
+  } catch {
+    return "UTC";
+  }
+}
+
+/**
+ * Helper: extract { year, month, day } in the given IANA timezone.
+ * Month is 1-based.
+ */
+function zonedYmdLocal(
+  date: Date,
+  timezone: string,
+): { year: number; month: number; day: number } {
+  try {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const parts = dtf.formatToParts(date);
+    const get = (type: string) =>
+      Number(parts.find((p) => p.type === type)?.value ?? "0");
+    return { year: get("year"), month: get("month"), day: get("day") };
+  } catch {
+    return zonedYmdLocal(date, "UTC");
+  }
+}
+
+/**
+ * Format a date in the user's IANA timezone, appending the short timezone
+ * abbreviation (e.g. "Jun 23, 2026, 10:00 AM EST").
+ *
+ * Falls back to UTC on any invalid timezone string.
+ */
+export function formatInUserTz(
+  date: string | Date,
+  timezone: string,
+  options?: Intl.DateTimeFormatOptions,
+): string {
+  const d = new Date(date);
+  const safeZone = (() => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+      return timezone;
+    } catch {
+      return "UTC";
+    }
+  })();
+
+  const defaultOptions: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+    timeZone: safeZone,
+  };
+
+  const merged = options ? { ...defaultOptions, ...options, timeZone: safeZone } : defaultOptions;
+  return new Intl.DateTimeFormat("en-US", merged).format(d);
+}
+
+/**
+ * Same relative-vs-absolute logic as `formatRelativeOrDate`, but day-boundary
+ * comparisons ("Yesterday") are evaluated in the user's IANA timezone and the
+ * absolute branch uses `formatInUserTz` (includes the tz abbreviation).
+ *
+ * Falls back to UTC on any invalid timezone string.
+ */
+export function formatRelativeOrDateInTz(
+  date: string | Date,
+  timezone: string,
+): string {
+  const dateObj = new Date(date);
+  const now = new Date();
+  const diffMs = now.getTime() - dateObj.getTime();
+  const diffSeconds = Math.floor(diffMs / 1000);
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
+
+  if (diffSeconds < 60) return "Just now";
+  if (diffMinutes < 60) return diffMinutes === 1 ? "1 min ago" : `${diffMinutes} mins ago`;
+  if (diffHours < 24) return diffHours === 1 ? "1 hr ago" : `${diffHours} hrs ago`;
+
+  // For day-boundary comparisons, use the user's wall clock.
+  const safeZone = (() => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+      return timezone;
+    } catch {
+      return "UTC";
+    }
+  })();
+
+  const nowYmd = zonedYmdLocal(now, safeZone);
+  const dateYmd = zonedYmdLocal(dateObj, safeZone);
+
+  // Compute calendar-day diff in the user's timezone
+  const nowMidnight = Date.UTC(nowYmd.year, nowYmd.month - 1, nowYmd.day);
+  const dateMidnight = Date.UTC(dateYmd.year, dateYmd.month - 1, dateYmd.day);
+  const diffDays = Math.round((nowMidnight - dateMidnight) / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays === 2) return "2 days ago";
+
+  return formatInUserTz(dateObj, safeZone);
+}
+
+/**
+ * Returns "Today", "Yesterday", or a formatted date string (e.g. "Oct 12, 2025")
+ * with all comparisons done in the user's IANA timezone.
+ *
+ * Falls back to UTC on any invalid timezone string.
+ */
+export function formatDaySeparatorLabelInTz(
+  date: string | Date,
+  timezone: string,
+): string {
+  const d = new Date(date);
+  const now = new Date();
+
+  const safeZone = (() => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+      return timezone;
+    } catch {
+      return "UTC";
+    }
+  })();
+
+  const nowYmd = zonedYmdLocal(now, safeZone);
+  const dateYmd = zonedYmdLocal(d, safeZone);
+
+  const nowMidnight = Date.UTC(nowYmd.year, nowYmd.month - 1, nowYmd.day);
+  const dateMidnight = Date.UTC(dateYmd.year, dateYmd.month - 1, dateYmd.day);
+  const diffDays = Math.round((nowMidnight - dateMidnight) / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: safeZone,
+  }).format(d);
+}
+
 /**
  * Format duration in hours to a human-readable string.
  * - Less than 24 hours: "2.5h"
