@@ -53,6 +53,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         agent: true,
         source: true,
         metadata: true,
+        config: true,
       },
     });
 
@@ -104,9 +105,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(await mockRes.json());
     }
 
-    // 6. Fetch blob and parse conversation + config
+    // 6. Fetch blob and parse conversation + config (blob still needed for conversation)
     const blobContent = await fetchBlobContent(agentLog.blobUrl);
-    const { conversation, config } = parseAgentLogStats(blobContent);
+    const { conversation, config: blobConfig } = parseAgentLogStats(blobContent);
+
+    // Prefer DB column (canonical); fall back to blob-parsed config for legacy rows
+    const effectiveConfig =
+      agentLog.config && typeof agentLog.config === "object"
+        ? (agentLog.config as Record<string, unknown>)
+        : (blobConfig as Record<string, unknown> | undefined);
 
     // 7. Slice conversation
     const slicedConversation =
@@ -114,24 +121,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // 8. Build prompt_snapshot
     const promptSnapshot = JSON.stringify({
-      url: (config as { resolvedRequestUrl?: string } | undefined)?.resolvedRequestUrl ?? "",
+      url: (effectiveConfig as { resolvedRequestUrl?: string } | undefined)?.resolvedRequestUrl ?? "",
       method: "post",
       request_params: {
         // Full harness config spread
-        ...(config
+        ...(effectiveConfig
           ? {
-              systemOverride: config.systemOverride,
-              toolsConfig: config.toolsConfig,
-              tools: config.tools,
-              schema: config.schema,
-              providerConfig: config.providerConfig,
-              baseUrl: config.baseUrl,
-              mcpServers: config.mcpServers,
-              model: config.model,
-              provider: config.provider,
-              temperature: config.temperature,
-              source: config.source,
-              repos: config.repos,
+              systemOverride: effectiveConfig.systemOverride,
+              toolsConfig: effectiveConfig.toolsConfig,
+              tools: effectiveConfig.tools,
+              schema: effectiveConfig.schema,
+              providerConfig: effectiveConfig.providerConfig,
+              baseUrl: effectiveConfig.baseUrl,
+              mcpServers: effectiveConfig.mcpServers,
+              model: effectiveConfig.model,
+              provider: effectiveConfig.provider,
+              temperature: effectiveConfig.temperature,
+              source: effectiveConfig.source,
+              repos: effectiveConfig.repos,
             }
           : {}),
         messages: slicedConversation, // role:"system" at index 0 is preserved by slice(0, n+1)
@@ -151,12 +158,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         ) ?? []);
 
     // 10. Resolve change_type
-    const changeType = agentLog.source ?? config?.source ?? "swarm_agent";
+    const changeType = agentLog.source ?? (effectiveConfig?.source as string | undefined) ?? "swarm_agent";
 
     // 10a. Derive EvalTrigger source discriminator
     const evalTriggerSource = deriveEvalTriggerSource(
       agentLog.source,
-      (config as { resolvedRequestUrl?: string } | undefined)?.resolvedRequestUrl,
+      (effectiveConfig as { resolvedRequestUrl?: string } | undefined)?.resolvedRequestUrl,
     );
 
     const { swarmName, swarmApiKey } = swarmAccessResult.data;
