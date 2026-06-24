@@ -237,12 +237,22 @@ interface HandleApprovalArgs {
    * Optional. Other approval kinds (initiative, milestone) ignore it.
    */
   conversationId?: string;
+  /**
+   * The approving user's `chatAgentModel` preference (e.g.
+   * `"anthropic/claude-opus-4-6"`). When supplied, persisted as
+   * `Feature.model` on the new row so all subsequent plan-chat
+   * messages honour the user's model selection via the existing
+   * `feature.model || model || undefined` chain in
+   * `sendFeatureChatMessage`. Optional; when absent, the existing
+   * `getDefaultModel("plan")` fallback is unchanged.
+   */
+  chatAgentModel?: string;
 }
 
 export async function handleApproval(
   args: HandleApprovalArgs,
 ): Promise<HandleApprovalReturn> {
-  const { orgId, userId, messages, intent, conversationId } = args;
+  const { orgId, userId, messages, intent, conversationId, chatAgentModel } = args;
 
   // 1. Find the proposal.
   const proposal = findProposal(messages, intent.proposalId);
@@ -282,6 +292,7 @@ export async function handleApproval(
     proposal,
     intent,
     conversationId,
+    chatAgentModel,
   });
 }
 
@@ -407,8 +418,16 @@ async function approveFeature(args: {
    * `HandleApprovalArgs.conversationId` for the validation contract.
    */
   conversationId?: string;
+  /**
+   * The approving user's `chatAgentModel` preference. Persisted as
+   * `Feature.model` so subsequent plan-chat messages use the user's
+   * selected model via `sendFeatureChatMessage`'s
+   * `feature.model || model || undefined` chain. Optional; absent →
+   * existing `getDefaultModel("plan")` fallback unchanged.
+   */
+  chatAgentModel?: string;
 }): Promise<HandleApprovalReturn> {
-  const { orgId, userId, messages, proposal, intent, conversationId } = args;
+  const { orgId, userId, messages, proposal, intent, conversationId, chatAgentModel } = args;
 
   const merged: FeatureProposalPayload = {
     ...proposal.payload,
@@ -634,6 +653,7 @@ async function approveFeature(args: {
       ...(merged.milestoneId && { milestoneId: merged.milestoneId }),
       ...(uniqueDeps.length > 0 && { dependsOnFeatureIds: uniqueDeps }),
       autoRespond: merged.autoRespond ?? null,
+      ...(chatAgentModel ? { model: chatAgentModel } : {}),
     });
 
     // Stamp ownership: this canvas conversation now "owns" the new

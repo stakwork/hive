@@ -124,6 +124,15 @@ export function buildInitiativeTools(
    * unowned for fan-out purposes.
    */
   currentCanvasConversationId?: string,
+  /**
+   * The canvas agent user's `chatAgentModel` preference (e.g.
+   * `"anthropic/claude-opus-4-6"`). Forwarded as the `model` arg to
+   * `sendFeatureChatMessage` in `send_to_feature_planner`, covering
+   * features whose `Feature.model` is not already set. Optional;
+   * when absent, the existing `getDefaultModel("plan")` fallback is
+   * unchanged.
+   */
+  chatAgentModel?: string,
 ): ToolSet {
   return {
     read_initiative: tool({
@@ -746,6 +755,7 @@ export function buildInitiativeTools(
             userId,
             message: prefixedMessage,
             skipOrgContextScout: true,
+            ...(chatAgentModel ? { model: chatAgentModel } : {}),
           });
 
           return {
