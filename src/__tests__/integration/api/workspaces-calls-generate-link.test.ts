@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
+import jwt from "jsonwebtoken";
 import { POST } from "@/app/api/workspaces/[slug]/calls/generate-link/route";
 import {
   createTestUser,
@@ -11,6 +12,46 @@ import {
   createPostRequest,
   createAuthenticatedPostRequest,
 } from "@/__tests__/support/helpers";
+import { db } from "@/lib/db";
+import { generateUniqueId } from "@/__tests__/support/helpers/ids";
+
+/**
+ * Create a SourceControlOrg and a workspace scenario linked to it. The
+ * generate-link endpoint now defaults to an org-scope token, which requires
+ * the workspace to be linked to a SourceControlOrg.
+ */
+async function createOrgWorkspaceScenario(
+  options: Parameters<typeof createTestWorkspaceScenario>[0] = {},
+) {
+  const org = await db.sourceControlOrg.create({
+    data: {
+      id: generateUniqueId("test-org"),
+      githubLogin: `org-${generateUniqueId()}`,
+      githubInstallationId: Math.floor(Math.random() * 1_000_000_000),
+      type: "ORG",
+    },
+  });
+
+  const scenario = await createTestWorkspaceScenario({
+    ...options,
+    workspace: {
+      ...options.workspace,
+      sourceControlOrgId: org.id,
+    },
+  });
+
+  return { ...scenario, org };
+}
+
+function decodeHiveToken(url: string): Record<string, unknown> {
+  const match = url.match(/\?hiveToken=([^&]+)/);
+  if (!match) throw new Error(`No hiveToken in URL: ${url}`);
+  const token = decodeURIComponent(match[1]);
+  return jwt.verify(token, process.env.JWT_SECRET as string) as Record<
+    string,
+    unknown
+  >;
+}
 
 describe("Generate Call Link API - Integration Tests", () => {
   const originalLiveKit = process.env.LIVEKIT_CALL_BASE_URL;
@@ -80,7 +121,7 @@ describe("Generate Call Link API - Integration Tests", () => {
 
     describe("Authorization Tests", () => {
       test("allows workspace owner to generate call link", async () => {
-        const { owner, workspace } = await createTestWorkspaceScenario({
+        const { owner, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
           swarm: { status: "ACTIVE", name: "swarm38" },
         });
@@ -99,10 +140,15 @@ describe("Generate Call Link API - Integration Tests", () => {
         const data = await response.json();
         expect(data.url).toBeDefined();
         expect(typeof data.url).toBe("string");
+
+        // Default scope is org: token carries scope=org + write (owner).
+        const payload = decodeHiveToken(data.url);
+        expect(payload.scope).toBe("org");
+        expect(payload.permissions).toContain("write");
       });
 
       test("allows workspace admin to generate call link", async () => {
-        const { members, workspace } = await createTestWorkspaceScenario({
+        const { members, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
           swarm: { status: "ACTIVE", name: "swarm38" },
           members: [{ role: "ADMIN" }],
@@ -126,7 +172,7 @@ describe("Generate Call Link API - Integration Tests", () => {
       });
 
       test("allows workspace PM to generate call link", async () => {
-        const { members, workspace } = await createTestWorkspaceScenario({
+        const { members, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
           swarm: { status: "ACTIVE", name: "swarm38" },
           members: [{ role: "PM" }],
@@ -150,7 +196,7 @@ describe("Generate Call Link API - Integration Tests", () => {
       });
 
       test("allows workspace developer to generate call link", async () => {
-        const { members, workspace } = await createTestWorkspaceScenario({
+        const { members, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
           swarm: { status: "ACTIVE", name: "swarm38" },
           members: [{ role: "DEVELOPER" }],
@@ -174,7 +220,7 @@ describe("Generate Call Link API - Integration Tests", () => {
       });
 
       test("allows workspace viewer to generate call link", async () => {
-        const { members, workspace } = await createTestWorkspaceScenario({
+        const { members, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
           swarm: { status: "ACTIVE", name: "swarm38" },
           members: [{ role: "VIEWER" }],
@@ -195,6 +241,11 @@ describe("Generate Call Link API - Integration Tests", () => {
         expect(response.status).toBe(200);
         const data = await response.json();
         expect(data.url).toBeDefined();
+
+        // A viewer is a member, so they get a read-only org token (no write).
+        const payload = decodeHiveToken(data.url);
+        expect(payload.scope).toBe("org");
+        expect(payload.permissions).toEqual(["read"]);
       });
 
       test("rejects non-member access", async () => {
@@ -339,7 +390,7 @@ describe("Generate Call Link API - Integration Tests", () => {
 
     describe("Success Cases", () => {
       test("generates call URL with correct format", async () => {
-        const { owner, workspace } = await createTestWorkspaceScenario({
+        const { owner, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
           swarm: { status: "ACTIVE", name: "swarm42" },
         });
@@ -363,7 +414,7 @@ describe("Generate Call Link API - Integration Tests", () => {
       });
 
       test("timestamp in URL is recent", async () => {
-        const { owner, workspace } = await createTestWorkspaceScenario({
+        const { owner, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
           swarm: { status: "ACTIVE", name: "swarm42" },
         });
@@ -396,7 +447,7 @@ describe("Generate Call Link API - Integration Tests", () => {
       });
 
       test("handles swarm names with special characters", async () => {
-        const { owner, workspace } = await createTestWorkspaceScenario({
+        const { owner, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
           swarm: { status: "ACTIVE", name: "swarm-test_123" },
         });
