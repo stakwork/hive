@@ -414,7 +414,7 @@ describe("Generate Call Link API - Integration Tests", () => {
       });
 
       test("timestamp in URL is recent", async () => {
-        const { owner, workspace } = await createTestWorkspaceScenario({
+        const { owner, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
           swarm: { status: "ACTIVE", name: "swarm42" },
         });
@@ -447,7 +447,7 @@ describe("Generate Call Link API - Integration Tests", () => {
       });
 
       test("handles swarm names with special characters", async () => {
-        const { owner, workspace } = await createTestWorkspaceScenario({
+        const { owner, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
           swarm: { status: "ACTIVE", name: "swarm-test_123" },
         });
