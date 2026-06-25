@@ -540,6 +540,7 @@ export function OrgCanvasBackground({
         });
         return;
       }
+      if (selection.kind !== "edge") return;
       // Edge — resolve human labels off the canvas the edge lives on.
       // The refs lag state by one commit, but the edge's endpoints
       // are already in the rendered canvas (it wouldn't have been
