@@ -298,10 +298,10 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
         });
         onUpdate({ ...feature, phases: updatedPhases });
       }
-    } catch {
+    } catch (err) {
       // Revert optimistic update on failure
       setOptimisticUpdates(prev => { const n = { ...prev }; delete n[taskId]; return n; });
-      toast.error("Failed to update task");
+      toast.error(err instanceof Error ? err.message : "Failed to update task");
     }
   };
 
