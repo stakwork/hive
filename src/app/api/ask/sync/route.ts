@@ -454,17 +454,23 @@ export async function POST(request: NextRequest) {
           reason: "user-turn",
         });
 
-        // Persist the freshly-fetched concepts so the next turn can reuse
-        // them and skip the swarm `listConcepts` call. Only on a cache MISS
-        // with non-empty concepts (a swarm outage yields an empty list;
-        // caching that would poison the cache). Best-effort, off-response.
-        if (!cacheHit && hasConcepts(cacheableConcepts)) {
+        // Snapshot the rendered prefix for the Agent Logs detail view, and
+        // (when present) cache the freshly-fetched concepts for reuse next
+        // turn. Decoupled: the prefix snapshot is written on every cache
+        // MISS so the panel always renders, even when the swarm returns no
+        // concepts; the concept cache is gated on non-empty concepts (a
+        // swarm outage yields an empty list, and caching that would poison
+        // the cache). Best-effort, off-response.
+        if (!cacheHit) {
           const cacheRowId = rowId;
+          const conceptsToCache = hasConcepts(cacheableConcepts)
+            ? cacheableConcepts
+            : null;
           after(async () => {
             try {
               await persistOrgCanvasPromptCache(
                 cacheRowId,
-                cacheableConcepts,
+                conceptsToCache,
                 assembledPrefix,
               );
             } catch (err) {

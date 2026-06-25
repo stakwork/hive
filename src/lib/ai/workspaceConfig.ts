@@ -211,7 +211,7 @@ export async function fetchConceptsForWorkspaces(
     configs.map(async (ws) => {
       try {
         const concepts = await listConcepts(ws.swarmUrl, ws.swarmApiKey);
-        conceptsByWorkspace[ws.slug] = (concepts.features as Record<string, unknown>[]) || [];
+        conceptsByWorkspace[ws.slug] = (concepts.concepts as Record<string, unknown>[]) || [];
       } catch (e) {
         console.error(`Failed to fetch concepts for ${ws.slug}:`, e);
         conceptsByWorkspace[ws.slug] = [];
