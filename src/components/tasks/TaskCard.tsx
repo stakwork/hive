@@ -14,7 +14,8 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { toast } from "sonner";
 
 interface TaskCardProps {
@@ -26,6 +27,7 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isArchived = false, onUndoArchive }: TaskCardProps) {
+  const { timezone } = useUserTimezone();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const { isSuperAdmin } = useWorkspace();
@@ -188,7 +190,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         {/* Date */}
         <div className="flex items-center gap-1">
           <Calendar className="w-3 h-3" />
-          <span>{formatRelativeOrDate(task.createdAt)}</span>
+          <span>{formatRelativeOrDateInTz(task.createdAt, timezone)}</span>
         </div>
 
         {/* Pod indicator - shows when pod is active */}
