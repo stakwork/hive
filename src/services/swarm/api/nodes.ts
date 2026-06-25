@@ -70,12 +70,15 @@ async function jarvisRequest({
 export async function addNode(
   config: JarvisConnectionConfig,
   payload: { node_type: string; node_data: Record<string, unknown> },
+  opts?: { reprocess?: boolean },
 ): Promise<{ success: boolean; ref_id?: string; alreadyExists?: boolean; error?: string }> {
   const result = await jarvisRequest({
     config,
     endpoint: "/node",
     method: "POST",
-    data: payload,
+    // `reprocess: true` makes Jarvis update an existing node (matched by
+    // node_key) in place instead of returning an "already exists" warning.
+    data: opts?.reprocess ? { ...payload, reprocess: true } : payload,
   });
 
   if (!result.ok) {
@@ -121,12 +124,22 @@ export async function addNode(
   };
 }
 
+/**
+ * An edge endpoint can be specified either by its existing `ref_id`, or by
+ * `{ node_type, node_data }` — in which case Jarvis resolves (or creates) the
+ * node by its schema node_key. The node_key path lets callers wire edges
+ * purely from stable identifiers (e.g. a Postgres id) without tracking ref_ids.
+ */
+export type JarvisEdgeEndpoint =
+  | { ref_id: string }
+  | { node_type: string; node_data: Record<string, unknown> };
+
 export async function addEdge(
   config: JarvisConnectionConfig,
   payload: {
     edge: { edge_type: string; edge_data?: Record<string, unknown> };
-    source: { ref_id: string };
-    target: { ref_id: string };
+    source: JarvisEdgeEndpoint;
+    target: JarvisEdgeEndpoint;
   },
 ): Promise<{ success: boolean; error?: string }> {
   const result = await jarvisRequest({
@@ -162,10 +175,11 @@ export async function addEdgeBulk(
   config: JarvisConnectionConfig,
   edgeList: Array<{
     edge: { edge_type: string; weight?: number; edge_data?: Record<string, unknown> };
-    source: { ref_id: string };
-    target: { ref_id: string };
+    source: JarvisEdgeEndpoint;
+    target: JarvisEdgeEndpoint;
   }>,
 ): Promise<{ success: boolean; errors: string[] }> {
+  if (edgeList.length === 0) return { success: true, errors: [] };
   const result = await jarvisRequest({
     config,
     endpoint: "/node/edge/bulk",
@@ -190,6 +204,55 @@ export async function addEdgeBulk(
 
   return {
     success: body?.status?.toLowerCase() === "success",
+    errors,
+  };
+}
+
+/**
+ * Bulk create-or-merge nodes in a single request (Jarvis `/node/bulk`).
+ * With `reprocess: true`, existing nodes (matched by node_key) are updated in
+ * place. Jarvis processes the list sequentially in one Neo4j session, so this
+ * collapses many round-trips into one HTTP call. Errors are returned, never
+ * thrown. Callers should chunk large lists (see BULK_CHUNK in the mirror cron).
+ */
+export async function addNodeBulk(
+  config: JarvisConnectionConfig,
+  nodes: Array<{ node_type: string; node_data: Record<string, unknown> }>,
+  opts?: { reprocess?: boolean },
+): Promise<{ success: boolean; errors: string[] }> {
+  if (nodes.length === 0) return { success: true, errors: [] };
+
+  const nodeList = opts?.reprocess
+    ? nodes.map((n) => ({ ...n, reprocess: true }))
+    : nodes;
+
+  const result = await jarvisRequest({
+    config,
+    endpoint: "/node/bulk",
+    method: "POST",
+    data: { node_list: nodeList },
+  });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      errors: [result.error || `Failed to create nodes (status: ${result.status})`],
+    };
+  }
+
+  const body = result.body as
+    | { status?: string; status_messages?: string[] }
+    | undefined;
+
+  const errors = (body?.status_messages ?? []).filter((m) =>
+    m.toLowerCase().startsWith("error"),
+  );
+
+  // Bulk node returns "Warning" when some nodes already existed (without
+  // reprocess); treat Success and Warning as non-fatal — only collected
+  // "ERROR:" messages indicate real failures.
+  return {
+    success: errors.length === 0,
     errors,
   };
 }
