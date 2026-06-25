@@ -441,8 +441,16 @@ export async function updateTicket(
         const result = await checkRepoAllowsAutoMerge(octokit, owner, repoName);
 
         if (result.error) {
+          const messages: Record<string, string> = {
+            permission_denied:
+              "GitHub returned 403 — your token may lack 'repo' scope or admin access to this repository. Check your GitHub connection.",
+            not_found:
+              "GitHub returned 404 — the repository URL on this task may be incorrect or the repo has been deleted.",
+            unknown:
+              "Could not verify auto-merge setting on GitHub — reconnect GitHub and try again.",
+          };
           throw new AutoMergeCheckFailedError(
-            "Could not verify auto-merge setting on GitHub — reconnect GitHub and try again."
+            messages[result.error] ?? messages.unknown
           );
         }
 
