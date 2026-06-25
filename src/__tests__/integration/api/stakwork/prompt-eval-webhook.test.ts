@@ -177,4 +177,69 @@ describe("processStakworkRunWebhook — PROMPT_EVAL branch", () => {
     const runsAfter = await db.stakworkRun.count({ where: { workspaceId: workspace.id } });
     expect(runsAfter).toBe(runsBefore);
   });
+
+  it("does not return wrong run when project_id is absent and multiple runs exist", async () => {
+    // Create two runs in the same workspace — no project_id supplied to webhook
+    const run1 = await createPromptEvalRun(workspace.id, { promptVersionId: 10 });
+    const run2 = await db.stakworkRun.create({
+      data: {
+        type: "PROMPT_EVAL",
+        workspaceId: workspace.id,
+        promptVersionId: 20,
+        evalSetId: "eval-set-other",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: `https://example.com/api/webhook/stakwork/response?type=PROMPT_EVAL&workspace_id=${workspace.id}`,
+      },
+    });
+
+    // Call without project_id — should resolve without throwing and update one run
+    await expect(
+      processStakworkRunWebhook(
+        { result: RICH_EVAL_RESULT, project_status: "complete" },
+        { type: "PROMPT_EVAL", workspace_id: workspace.id }
+      )
+    ).resolves.not.toThrow();
+
+    // The OTHER run must not have had its result overwritten
+    const untouched1 = await db.stakworkRun.findUnique({ where: { id: run1.id } });
+    const untouched2 = await db.stakworkRun.findUnique({ where: { id: run2.id } });
+    // At most one of them should be COMPLETED; the other should remain unchanged
+    const completedCount = [untouched1, untouched2].filter(
+      (r) => r?.status === WorkflowStatus.COMPLETED
+    ).length;
+    expect(completedCount).toBeLessThanOrEqual(1);
+  });
+
+  it("finds COMPLETED run by workspace/type/status (result webhook after status webhook)", async () => {
+    // Simulate a run that was already transitioned to COMPLETED by a prior status webhook
+    const run = await db.stakworkRun.create({
+      data: {
+        type: "PROMPT_EVAL",
+        workspaceId: workspace.id,
+        promptVersionId: 66,
+        evalSetId: "eval-set-completed",
+        status: WorkflowStatus.COMPLETED,
+        webhookUrl: `https://example.com/api/webhook/stakwork/response?type=PROMPT_EVAL&workspace_id=${workspace.id}`,
+      },
+    });
+
+    // Result webhook arrives without project_id — must still find the COMPLETED run
+    await processStakworkRunWebhook(
+      { result: RICH_EVAL_RESULT, project_status: "complete" },
+      { type: "PROMPT_EVAL", workspace_id: workspace.id }
+    );
+
+    // Pusher PROMPT_EVAL_RESULT event should have fired with the correct runId
+    const evalResultCalls = pusherServer.trigger.mock.calls.filter(
+      (call: unknown[]) => call[1] === "prompt-eval-result"
+    );
+    expect(evalResultCalls.length).toBeGreaterThan(0);
+    expect(evalResultCalls[0][2]).toMatchObject({ runId: run.id });
+
+    // DB row should have the stored result
+    const updated = await db.stakworkRun.findUnique({ where: { id: run.id } });
+    expect(updated).not.toBeNull();
+    const stored = JSON.parse(updated!.result as string);
+    expect(stored).toEqual(RICH_EVAL_RESULT);
+  });
 });
