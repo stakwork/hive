@@ -14,10 +14,20 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-// Mock Pusher (no-op in unit tests)
+// Mutable Pusher mock so individual tests can capture bind handlers
+let capturedPusherHandler: ((data: unknown) => void) | null = null;
+
 vi.mock("@/lib/pusher", () => ({
   getPusherClient: () => ({
-    subscribe: () => ({ bind: vi.fn(), unbind: vi.fn(), unbind_all: vi.fn() }),
+    subscribe: () => ({
+      bind: vi.fn((event: string, handler: (data: unknown) => void) => {
+        if (event === "prompt-eval-result") {
+          capturedPusherHandler = handler;
+        }
+      }),
+      unbind: vi.fn(),
+      unbind_all: vi.fn(),
+    }),
     unsubscribe: vi.fn(),
   }),
   getWorkspaceChannelName: (slug: string) => `workspace-${slug}`,
@@ -104,6 +114,7 @@ async function navigateToHistory() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  capturedPusherHandler = null;
 });
 
 describe("Version row eval run UI", () => {
@@ -170,5 +181,119 @@ describe("Version row eval run UI", () => {
 
     const badge = screen.getByText("7/10 pass");
     expect(badge.className).toMatch(/bg-red/);
+  });
+
+  it("maps Pusher promptVersionId to CURRENT_VERSION_SENTINEL for the current version", async () => {
+    // No pre-existing eval runs
+    global.fetch = buildFetch({});
+
+    render(<PromptsPanel workspaceSlug="test-workspace" />);
+    await navigateToHistory();
+
+    // Wait for version list to render so Pusher effect has fired
+    await waitFor(() => expect(screen.getByText("v1")).toBeInTheDocument());
+
+    // Simulate Pusher event with the real DB id (3 = current_version_id)
+    expect(capturedPusherHandler).not.toBeNull();
+    capturedPusherHandler!({
+      runId: "r1",
+      promptVersionId: 3, // matches mockPrompt.current_version_id
+      result: { pass: 4, fail: 0, total: 4 },
+    });
+
+    // The Current row should now show the green badge
+    await waitFor(() => {
+      expect(screen.getByText("4/4 pass")).toBeInTheDocument();
+    });
+    const badge = screen.getByText("4/4 pass");
+    expect(badge.className).toMatch(/bg-green/);
+
+    // No badge should appear under a raw numeric key of 3 — only the Current row renders it
+    // (The "Current" label is the sentinel row, not a "v3" row)
+    expect(screen.queryByText("v3")).not.toBeInTheDocument();
+  });
+
+  it("shows expandable history toggle and list when multiple runs exist", async () => {
+    const run1 = { id: "run-a", status: "COMPLETED", result: '{"pass":5,"fail":0,"total":5}', evalSetId: "es-set-1", createdAt: "2024-01-10T12:00:00Z" };
+    const run2 = { id: "run-b", status: "COMPLETED", result: '{"pass":3,"fail":2,"total":5}', evalSetId: "es-set-2", createdAt: "2024-01-09T08:00:00Z" };
+
+    // Override fetch to return history for version 1
+    const mockFetch = vi.fn((url: unknown) => {
+      const u = String(url);
+
+      if (u.includes("/api/workflow/prompts?")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { prompts: [{ ...mockPrompt }], total: 1, size: 10, page: 1 },
+          }),
+        });
+      }
+      if (u.match(/\/api\/workflow\/prompts\/\d+$/) && !u.includes("/versions")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: mockPrompt }),
+        });
+      }
+      if (u.includes("/versions") && !u.includes("/versions/")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: { versions: mockVersions } }),
+        });
+      }
+      // Eval run GET — returns both data and history for version 1
+      const evalRunMatch = u.match(/\/versions\/(\d+)\/run-evals/);
+      if (evalRunMatch) {
+        const vId = parseInt(evalRunMatch[1], 10);
+        if (vId === 1) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ success: true, data: run1, history: [run1, run2] }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: null, history: [] }),
+        });
+      }
+      if (u.match(/\/versions\/\d+$/)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: { value: "version content", description: "" } }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    }) as unknown as typeof fetch;
+
+    global.fetch = mockFetch;
+
+    render(<PromptsPanel workspaceSlug="test-workspace" />);
+    await navigateToHistory();
+
+    // Wait for v1 to appear
+    await waitFor(() => expect(screen.getByText("v1")).toBeInTheDocument());
+
+    // Chevron toggle button should be visible for v1 (title="Toggle eval run history")
+    await waitFor(() => {
+      expect(screen.getByTitle("Toggle eval run history")).toBeInTheDocument();
+    });
+
+    // Click the toggle to expand
+    const toggleBtn = screen.getByTitle("Toggle eval run history");
+    await userEvent.click(toggleBtn);
+
+    // Two history entries should now be visible (timestamps from createdAt)
+    await waitFor(() => {
+      const entries = screen.getAllByText(/2024/);
+      expect(entries.length).toBeGreaterThanOrEqual(2);
+    });
+
+    // The second history entry (3/5 pass — red) should appear in the expanded list
+    await waitFor(() => {
+      expect(screen.getByText("3/5 pass")).toBeInTheDocument();
+    });
+    const redBadge = screen.getByText("3/5 pass");
+    expect(redBadge.className).toMatch(/bg-red/);
   });
 });
