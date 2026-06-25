@@ -5,12 +5,12 @@ import { toast } from "sonner";
 import { Search, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { JargonCard, JargonCardSkeleton } from "./JargonCard";
+import { LingoCard, LingoCardSkeleton } from "./LingoCard";
 import { NeighborView } from "./NeighborView";
 import { LingoBreadcrumb, type BreadcrumbItem } from "./Breadcrumb";
 import { AddEdgePanel } from "./AddEdgePanel";
 import { CreateLingoNodeDialog } from "./CreateLingoNodeDialog";
-import type { JargonNode } from "@/app/api/mock/lingo/nodes";
+import type { LingoNode } from "@/app/api/mock/lingo/nodes";
 import type { NeighborEdge, NeighborNode } from "@/app/api/mock/lingo/neighbors";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
@@ -23,7 +23,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
 
   // List state
   const [view, setView] = useState<"list" | "detail">("list");
-  const [nodes, setNodes] = useState<JargonNode[]>([]);
+  const [nodes, setNodes] = useState<LingoNode[]>([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -31,7 +31,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
   const [nameFilter, setNameFilter] = useState("");
 
   // Detail state
-  const [selectedNode, setSelectedNode] = useState<JargonNode | null>(null);
+  const [selectedNode, setSelectedNode] = useState<LingoNode | null>(null);
   const [edges, setEdges] = useState<NeighborEdge[]>([]);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [deletedEdgeIds, setDeletedEdgeIds] = useState<Set<string>>(new Set());
@@ -59,13 +59,13 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
         );
         const json = await res.json();
         if (!json.success) throw new Error(json.error ?? "Failed to load nodes");
-        const incoming: JargonNode[] = json.data?.nodes ?? [];
+        const incoming: LingoNode[] = json.data?.nodes ?? [];
         const more: boolean = json.data?.hasMore ?? false;
         setNodes((prev) => (replace ? incoming : [...prev, ...incoming]));
         setOffset(currentOffset + incoming.length);
         setHasMore(more);
       } catch {
-        toast.error("Failed to load Jargon nodes");
+        toast.error("Failed to load Lingo nodes");
         setHasMore(false);
         setHasError(true);
       } finally {
@@ -112,7 +112,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
   // ── Detail navigation ─────────────────────────────────────────────────────
 
   const openDetail = useCallback(
-    async (node: JargonNode, appendToBreadcrumb = true) => {
+    async (node: LingoNode, appendToBreadcrumb = true) => {
       setIsLoadingDetail(true);
       try {
         const res = await fetch(
@@ -140,18 +140,17 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
     [workspaceSlug],
   );
 
-  const handleCardClick = (node: JargonNode) => {
+  const handleCardClick = (node: LingoNode) => {
     setDeletedEdgeIds(new Set());
     openDetail(node, true);
   };
 
   const handleNavigateNeighbor = (neighbor: NeighborNode) => {
-    const neighborAsNode: JargonNode = {
+    const neighborAsNode: LingoNode = {
       ref_id: neighbor.ref_id,
       name: neighbor.name,
-      jargon_context: "",
-      jargon_candidates: [],
-      created_at: "",
+      node_type: "Lingo",
+      date_added_to_graph: 0,
     };
     setDeletedEdgeIds(new Set());
     openDetail(neighborAsNode, true);
@@ -171,12 +170,11 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
     if (!target) return;
     setBreadcrumbs((prev) => prev.slice(0, index + 1));
     setDeletedEdgeIds(new Set());
-    const asNode: JargonNode = {
+    const asNode: LingoNode = {
       ref_id: target.ref_id,
       name: target.name,
-      jargon_context: "",
-      jargon_candidates: [],
-      created_at: "",
+      node_type: "Lingo",
+      date_added_to_graph: 0,
     };
     openDetail(asNode, false);
   };
@@ -235,7 +233,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
   // ── Node creation ─────────────────────────────────────────────────────────
 
   const handleNodeCreated = useCallback(
-    (node: JargonNode) => {
+    (node: LingoNode) => {
       setNodes((prev) => [node, ...prev]);
       setDeletedEdgeIds(new Set());
       openDetail(node, true);
@@ -295,10 +293,10 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
             {/* Node grid */}
             <div
               className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-              data-testid="jargon-card-grid"
+              data-testid="lingo-card-grid"
             >
               {filteredNodes.map((node) => (
-                <JargonCard
+                <LingoCard
                   key={node.ref_id}
                   node={node}
                   onClick={() => handleCardClick(node)}
@@ -309,9 +307,9 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
             {/* Loading skeletons */}
             {isLoadingMore && (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <JargonCardSkeleton />
-                <JargonCardSkeleton />
-                <JargonCardSkeleton />
+                <LingoCardSkeleton />
+                <LingoCardSkeleton />
+                <LingoCardSkeleton />
               </div>
             )}
 
@@ -332,7 +330,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
             {hasError && (
               <div className="flex flex-col items-center gap-3 py-12" data-testid="fetch-error-state">
                 <p className="text-center text-sm text-muted-foreground">
-                  Failed to load Jargon nodes.
+                  Failed to load Lingo nodes.
                 </p>
                 <button
                   onClick={handleRetry}
@@ -347,7 +345,7 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
             {/* Empty state */}
             {!isLoadingMore && !hasError && nodes.length === 0 && (
               <p className="text-center text-sm text-muted-foreground py-12" data-testid="empty-state">
-                No Jargon nodes found for this workspace.
+                No Lingo nodes found for this workspace.
               </p>
             )}
           </>
