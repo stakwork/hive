@@ -1,4 +1,6 @@
 import { useWorkspace } from '@/hooks/useWorkspace'
+import { formatInUserTz } from '@/lib/date-utils'
+import { useUserTimezone } from '@/hooks/useUserTimezone'
 import { useStoreId } from '@/stores/StoreProvider'
 import { distributeNodesOnCircle } from '@/stores/useSimulationStore/utils/distributeNodesOnCircle/indes'
 import { getLinksBetweenNodesInstance } from '@/stores/useStoreInstances'
@@ -15,6 +17,7 @@ type TGroupsMap = Record<string, number>
 
 export const RelevanceGroups = memo(() => {
   const { selectedNode, setSelectedNodeType, selectedNodeType } = useGraphStore(useShallow((s) => s))
+  const { timezone } = useUserTimezone()
   const { slug } = useWorkspace()
   const storeId = useStoreId()
 
@@ -138,14 +141,16 @@ export const RelevanceGroups = memo(() => {
                       const isoDateMatch = episodeTitle.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/);
                       if (isoDateMatch) {
                         const date = new Date(isoDateMatch[1]);
-                        const formattedDate = date.toLocaleDateString('en-US', {
+                        const formattedDate = formatInUserTz(date, timezone, {
                           year: 'numeric',
                           month: 'long',
-                          day: 'numeric'
+                          day: 'numeric',
+                          timeZoneName: undefined,
                         });
-                        const formattedTime = date.toLocaleTimeString('en-US', {
+                        const formattedTime = formatInUserTz(date, timezone, {
                           hour: '2-digit',
-                          minute: '2-digit'
+                          minute: '2-digit',
+                          timeZoneName: 'short',
                         });
                         return `Meeting recording from ${formattedDate} at ${formattedTime}`;
                       }

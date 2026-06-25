@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect } from "react";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { Screenshot } from "@/types/common";
 import {
   Dialog,
@@ -26,6 +28,7 @@ export function ScreenshotModal({
   onClose,
   onNavigate,
 }: ScreenshotModalProps) {
+  const { timezone } = useUserTimezone();
   if (!screenshot) return null;
 
   const currentIndex = allScreenshots.findIndex((s) => s.id === screenshot.id);
@@ -115,7 +118,7 @@ export function ScreenshotModal({
         </div>
 
         <div className="text-xs text-muted-foreground mt-2">
-          Captured: {new Date(screenshot.timestamp).toLocaleString()}
+          Captured: {formatInUserTz(new Date(screenshot.timestamp), timezone)}
         </div>
       </DialogContent>
     </Dialog>

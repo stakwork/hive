@@ -1,7 +1,10 @@
+"use client";
+
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, GitBranch, Workflow, Activity } from "lucide-react";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 
 interface ProjectInfoCardProps {
   projectData: {
@@ -49,6 +52,7 @@ const getWorkflowStateColor = (state: string): string => {
 };
 
 export function ProjectInfoCard({ projectData }: ProjectInfoCardProps) {
+  const { timezone } = useUserTimezone();
   const {
     id,
     name,
@@ -110,7 +114,7 @@ export function ProjectInfoCard({ projectData }: ProjectInfoCardProps) {
               <Calendar className="h-4 w-4" />
               Created At
             </div>
-            <div className="text-base">{formatRelativeOrDate(new Date(created_at))}</div>
+            <div className="text-base">{formatRelativeOrDateInTz(new Date(created_at), timezone)}</div>
           </div>
 
           {/* Updated At */}
@@ -119,7 +123,7 @@ export function ProjectInfoCard({ projectData }: ProjectInfoCardProps) {
               <Calendar className="h-4 w-4" />
               Updated At
             </div>
-            <div className="text-base">{formatRelativeOrDate(new Date(updated_at))}</div>
+            <div className="text-base">{formatRelativeOrDateInTz(new Date(updated_at), timezone)}</div>
           </div>
         </div>
 

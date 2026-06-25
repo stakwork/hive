@@ -4,7 +4,8 @@ import { Calendar, User, Bell } from "lucide-react";
 import Link from "next/link";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import type { FeatureWithDetails } from "@/types/roadmap";
 import { FEATURE_STATUS_LABELS, FEATURE_STATUS_COLORS } from "@/types/roadmap";
 import { PriorityBadge } from "@/components/ui/priority-selector";
@@ -18,6 +19,7 @@ interface FeatureCardProps {
 }
 
 export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: FeatureCardProps) {
+  const { timezone } = useUserTimezone();
   const needsReview = feature.awaitingFeedback;
 
   return (
@@ -73,7 +75,7 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
         )}
         <div className="flex items-center gap-1">
           <Calendar className="w-3 h-3" />
-          <span>{formatRelativeOrDate(feature.createdAt)}</span>
+          <span>{formatRelativeOrDateInTz(feature.createdAt, timezone)}</span>
         </div>
       </div>
       </div>

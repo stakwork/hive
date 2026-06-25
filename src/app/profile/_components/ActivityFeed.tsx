@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MessageSquare, FileText, CheckSquare, Flag, ArrowUpRight, Loader2, Search, X, Building2 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ interface ActivityFeedProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ActivityFeed({ userId }: ActivityFeedProps) {
+  const { timezone } = useUserTimezone();
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -254,7 +256,7 @@ export function ActivityFeed({ userId }: ActivityFeedProps) {
               })()}
 
               <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
+                {formatRelativeOrDateInTz(item.timestamp, timezone)}
               </span>
 
               <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

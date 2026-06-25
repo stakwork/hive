@@ -21,7 +21,8 @@ import type { StreamContext } from "./WorkflowStatusBadge";
 import { ChatMessage } from "./ChatMessage";
 import { DateSeparator } from "./DateSeparator";
 import { findClarifyingReply } from "@/lib/utils/clarifying-questions";
-import { formatDaySeparatorLabel, isSameCalendarDay } from "@/lib/date-utils";
+import { formatDaySeparatorLabelInTz, isSameCalendarDay } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
@@ -121,6 +122,7 @@ export function ChatArea({
   suggestions,
   onSuggestionSelect,
 }: ChatAreaProps) {
+  const { timezone } = useUserTimezone();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
@@ -399,7 +401,7 @@ export function ChatArea({
             return (
               <React.Fragment key={msg.id}>
                 {showSeparator && (
-                  <DateSeparator label={formatDaySeparatorLabel(msg.createdAt)} />
+                  <DateSeparator label={formatDaySeparatorLabelInTz(msg.createdAt, timezone)} />
                 )}
                 <ChatMessage
                   message={msg}
