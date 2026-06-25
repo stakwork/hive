@@ -13,13 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import type { JargonNode } from "@/app/api/mock/lingo/nodes";
+import type { LingoNode } from "@/app/api/mock/lingo/nodes";
 
 interface CreateLingoNodeDialogProps {
   workspaceSlug: string;
   isOpen: boolean;
   onClose: () => void;
-  onCreated: (node: JargonNode) => void;
+  onCreated: (node: LingoNode) => void;
 }
 
 export function CreateLingoNodeDialog({
@@ -73,13 +73,12 @@ export function CreateLingoNodeDialog({
         return;
       }
 
-      const node: JargonNode = {
+      const node: LingoNode = {
         ref_id: json.data?.ref_id ?? "",
         name: json.data?.name ?? trimmedName,
         definition: json.data?.definition,
-        jargon_context: "",
-        jargon_candidates: [],
-        created_at: new Date().toISOString(),
+        node_type: "Lingo",
+        date_added_to_graph: Date.now() / 1000,
       };
 
       if (json.alreadyExists) {

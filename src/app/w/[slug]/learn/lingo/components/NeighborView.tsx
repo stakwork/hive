@@ -3,11 +3,11 @@
 import React from "react";
 import { Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { JargonNode } from "@/app/api/mock/lingo/nodes";
+import type { LingoNode } from "@/app/api/mock/lingo/nodes";
 import type { NeighborEdge, NeighborNode } from "@/app/api/mock/lingo/neighbors";
 
 interface NeighborViewProps {
-  node: JargonNode;
+  node: LingoNode;
   edges: NeighborEdge[];
   deletedEdgeIds: Set<string>;
   onDeleteEdge: (edgeRefId: string) => void;
@@ -31,22 +31,10 @@ export function NeighborView({
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <h2 className="text-xl font-bold text-foreground truncate">{node.name}</h2>
-          {(node.definition ?? node.jargon_context) && (
+          {node.definition && (
             <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
-              {node.definition ?? node.jargon_context}
+              {node.definition}
             </p>
-          )}
-          {node.jargon_candidates?.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {node.jargon_candidates.map((c) => (
-                <span
-                  key={c}
-                  className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium text-muted-foreground bg-muted"
-                >
-                  {c}
-                </span>
-              ))}
-            </div>
           )}
         </div>
         <Button

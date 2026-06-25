@@ -33,13 +33,13 @@ vi.mock("@/components/ui/input", () => ({
   ),
 }));
 
-vi.mock("@/app/w/[slug]/learn/lingo/components/JargonCard", () => ({
-  JargonCard: ({ node, onClick }: any) => (
-    <div data-testid={`jargon-card-${node.ref_id}`} onClick={onClick}>
+vi.mock("@/app/w/[slug]/learn/lingo/components/LingoCard", () => ({
+  LingoCard: ({ node, onClick }: any) => (
+    <div data-testid={`lingo-card-${node.ref_id}`} onClick={onClick}>
       {node.name}
     </div>
   ),
-  JargonCardSkeleton: () => <div data-testid="jargon-card-skeleton" />,
+  LingoCardSkeleton: () => <div data-testid="lingo-card-skeleton" />,
 }));
 
 vi.mock("@/app/w/[slug]/learn/lingo/components/NeighborView", () => ({
@@ -116,9 +116,8 @@ vi.mock("@/app/w/[slug]/learn/lingo/components/CreateLingoNodeDialog", () => ({
               ref_id: "new-node-ref",
               name: "New Term",
               definition: "A new term",
-              jargon_context: "",
-              jargon_candidates: [],
-              created_at: new Date().toISOString(),
+              node_type: "Lingo",
+              date_added_to_graph: Date.now() / 1000,
             });
             onClose();
           }}
@@ -142,9 +141,9 @@ function makeNodes(count: number, startIndex = 1) {
   return Array.from({ length: count }, (_, i) => ({
     ref_id: `jargon-${startIndex + i}`,
     name: `Term ${startIndex + i}`,
-    jargon_context: `Context for term ${startIndex + i}`,
-    jargon_candidates: ["alias"],
-    created_at: new Date(Date.now() - i * 1000).toISOString(),
+    node_type: "Lingo",
+    definition: `Definition for term ${startIndex + i}`,
+    date_added_to_graph: Date.now() / 1000 - i * 1000,
   }));
 }
 
@@ -155,15 +154,15 @@ function makeNeighborData(nodeId: string) {
       node: {
         ref_id: nodeId,
         name: `Term from detail`,
-        jargon_context: "Detailed context",
-        jargon_candidates: [],
-        created_at: "2026-01-01T00:00:00Z",
+        node_type: "Lingo",
+        definition: "Detailed definition",
+        date_added_to_graph: 1750000000,
       },
       edges: [
         {
           edge_ref_id: "edge-1",
           edge_type: "RELATED_TO",
-          neighbor_node: { ref_id: "neighbor-1", name: "Neighbor Node", node_type: "Jargon" },
+          neighbor_node: { ref_id: "neighbor-1", name: "Neighbor Node", node_type: "Lingo" },
         },
       ],
     },
@@ -215,9 +214,9 @@ describe("LingoExplorer", () => {
       render(<LingoExplorer workspaceSlug={SLUG} />);
 
       await waitFor(() => {
-        expect(screen.getByTestId("jargon-card-jargon-1")).toBeInTheDocument();
-        expect(screen.getByTestId("jargon-card-jargon-2")).toBeInTheDocument();
-        expect(screen.getByTestId("jargon-card-jargon-3")).toBeInTheDocument();
+        expect(screen.getByTestId("lingo-card-jargon-1")).toBeInTheDocument();
+        expect(screen.getByTestId("lingo-card-jargon-2")).toBeInTheDocument();
+        expect(screen.getByTestId("lingo-card-jargon-3")).toBeInTheDocument();
       });
     });
 
@@ -245,7 +244,7 @@ describe("LingoExplorer", () => {
       });
 
       render(<LingoExplorer workspaceSlug={SLUG} />);
-      await waitFor(() => screen.getByTestId("jargon-card-jargon-1"));
+      await waitFor(() => screen.getByTestId("lingo-card-jargon-1"));
 
       // Trigger intersection even though hasMore=false — should not fetch
       await act(async () => {
@@ -288,7 +287,7 @@ describe("LingoExplorer", () => {
       render(<LingoExplorer workspaceSlug={SLUG} />);
 
       // Wait for first page to fully render (state settled, isLoadingMore=false)
-      await waitFor(() => expect(screen.getByTestId("jargon-card-jargon-1")).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId("lingo-card-jargon-1")).toBeInTheDocument());
 
       // Trigger intersection observer — by now hasMore=true, isLoadingMore=false, offset=50
       await act(async () => {
@@ -308,9 +307,9 @@ describe("LingoExplorer", () => {
   describe("Name filter", () => {
     it("filters visible cards by name", async () => {
       const nodes = [
-        { ref_id: "n1", name: "Alpha Term", jargon_context: "ctx", jargon_candidates: [], created_at: "2026-01-01T00:00:00Z" },
-        { ref_id: "n2", name: "Beta Term", jargon_context: "ctx", jargon_candidates: [], created_at: "2026-01-01T00:00:00Z" },
-        { ref_id: "n3", name: "Alpha Extra", jargon_context: "ctx", jargon_candidates: [], created_at: "2026-01-01T00:00:00Z" },
+        { ref_id: "n1", name: "Alpha Term", node_type: "Lingo", definition: "ctx", date_added_to_graph: 1750000003 },
+        { ref_id: "n2", name: "Beta Term", node_type: "Lingo", definition: "ctx", date_added_to_graph: 1750000002 },
+        { ref_id: "n3", name: "Alpha Extra", node_type: "Lingo", definition: "ctx", date_added_to_graph: 1750000001 },
       ];
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -318,15 +317,15 @@ describe("LingoExplorer", () => {
       });
 
       render(<LingoExplorer workspaceSlug={SLUG} />);
-      await waitFor(() => screen.getByTestId("jargon-card-n1"));
+      await waitFor(() => screen.getByTestId("lingo-card-n1"));
 
       fireEvent.change(screen.getByTestId("name-filter-input"), {
         target: { value: "alpha" },
       });
 
-      expect(screen.getByTestId("jargon-card-n1")).toBeInTheDocument();
-      expect(screen.queryByTestId("jargon-card-n2")).not.toBeInTheDocument();
-      expect(screen.getByTestId("jargon-card-n3")).toBeInTheDocument();
+      expect(screen.getByTestId("lingo-card-n1")).toBeInTheDocument();
+      expect(screen.queryByTestId("lingo-card-n2")).not.toBeInTheDocument();
+      expect(screen.getByTestId("lingo-card-n3")).toBeInTheDocument();
     });
   });
 
@@ -344,9 +343,9 @@ describe("LingoExplorer", () => {
         });
 
       render(<LingoExplorer workspaceSlug={SLUG} />);
-      await waitFor(() => screen.getByTestId("jargon-card-jargon-1"));
+      await waitFor(() => screen.getByTestId("lingo-card-jargon-1"));
 
-      fireEvent.click(screen.getByTestId("jargon-card-jargon-1"));
+      fireEvent.click(screen.getByTestId("lingo-card-jargon-1"));
 
       await waitFor(() => {
         expect(screen.getByTestId("neighbor-view")).toBeInTheDocument();
@@ -366,16 +365,16 @@ describe("LingoExplorer", () => {
         });
 
       render(<LingoExplorer workspaceSlug={SLUG} />);
-      await waitFor(() => screen.getByTestId("jargon-card-jargon-1"));
+      await waitFor(() => screen.getByTestId("lingo-card-jargon-1"));
 
-      fireEvent.click(screen.getByTestId("jargon-card-jargon-1"));
+      fireEvent.click(screen.getByTestId("lingo-card-jargon-1"));
       await waitFor(() => screen.getByTestId("neighbor-view"));
 
       fireEvent.click(screen.getByTestId("breadcrumb-home"));
 
       await waitFor(() => {
         expect(screen.queryByTestId("neighbor-view")).not.toBeInTheDocument();
-        expect(screen.getByTestId("jargon-card-jargon-1")).toBeInTheDocument();
+        expect(screen.getByTestId("lingo-card-jargon-1")).toBeInTheDocument();
       });
     });
 
@@ -385,7 +384,7 @@ describe("LingoExplorer", () => {
       const deepNeighborData = {
         success: true,
         data: {
-          node: { ref_id: "neighbor-1", name: "Neighbor Node", jargon_context: "", jargon_candidates: [], created_at: "" },
+          node: { ref_id: "neighbor-1", name: "Neighbor Node", node_type: "Lingo", definition: null, date_added_to_graph: 0 },
           edges: [],
         },
       };
@@ -408,9 +407,9 @@ describe("LingoExplorer", () => {
         });
 
       render(<LingoExplorer workspaceSlug={SLUG} />);
-      await waitFor(() => screen.getByTestId("jargon-card-jargon-1"));
+      await waitFor(() => screen.getByTestId("lingo-card-jargon-1"));
 
-      fireEvent.click(screen.getByTestId("jargon-card-jargon-1"));
+      fireEvent.click(screen.getByTestId("lingo-card-jargon-1"));
       await waitFor(() => screen.getByTestId("neighbor-view"));
 
       fireEvent.click(screen.getByTestId("navigate-neighbor-neighbor-1"));
@@ -438,8 +437,8 @@ describe("LingoExplorer", () => {
         });
 
       render(<LingoExplorer workspaceSlug={SLUG} />);
-      await waitFor(() => screen.getByTestId("jargon-card-jargon-1"));
-      fireEvent.click(screen.getByTestId("jargon-card-jargon-1"));
+      await waitFor(() => screen.getByTestId("lingo-card-jargon-1"));
+      fireEvent.click(screen.getByTestId("lingo-card-jargon-1"));
       await waitFor(() => screen.getByTestId("neighbor-view"));
     }
 
@@ -523,6 +522,22 @@ describe("LingoExplorer", () => {
       });
     });
 
+    it("calls toast.error with 'Failed to load Lingo nodes' on success: false response", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: false, error: "Jarvis down" }),
+      });
+
+      render(<LingoExplorer workspaceSlug={SLUG} />);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith("Failed to load Lingo nodes");
+      });
+
+      // No node cards rendered (grid container may still exist but be empty)
+      expect(screen.queryAllByTestId(/^lingo-card-(?!grid)/).length).toBe(0);
+    });
+
     it("does not trigger second fetch when sentinel intersects after failure", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -560,7 +575,7 @@ describe("LingoExplorer", () => {
 
       await waitFor(() => {
         expect(screen.queryByTestId("retry-button")).not.toBeInTheDocument();
-        expect(screen.getByTestId("jargon-card-jargon-1")).toBeInTheDocument();
+        expect(screen.getByTestId("lingo-card-jargon-1")).toBeInTheDocument();
       });
     });
   });
@@ -574,7 +589,7 @@ describe("LingoExplorer", () => {
 
       render(<LingoExplorer workspaceSlug={SLUG} />);
       await waitFor(() =>
-        expect(screen.queryByTestId("jargon-card-skeleton")).not.toBeInTheDocument(),
+        expect(screen.queryByTestId("lingo-card-skeleton")).not.toBeInTheDocument(),
       );
 
       expect(screen.getByTestId("new-lingo-node-button")).toBeInTheDocument();
@@ -588,7 +603,7 @@ describe("LingoExplorer", () => {
 
       render(<LingoExplorer workspaceSlug={SLUG} />);
       await waitFor(() =>
-        expect(screen.queryByTestId("jargon-card-skeleton")).not.toBeInTheDocument(),
+        expect(screen.queryByTestId("lingo-card-skeleton")).not.toBeInTheDocument(),
       );
 
       expect(screen.queryByTestId("create-lingo-node-dialog")).not.toBeInTheDocument();
@@ -609,9 +624,9 @@ describe("LingoExplorer", () => {
         });
 
       render(<LingoExplorer workspaceSlug={SLUG} />);
-      await waitFor(() => screen.getByTestId("jargon-card-jargon-1"));
+      await waitFor(() => screen.getByTestId("lingo-card-jargon-1"));
 
-      fireEvent.click(screen.getByTestId("jargon-card-jargon-1"));
+      fireEvent.click(screen.getByTestId("lingo-card-jargon-1"));
       await waitFor(() => screen.getByTestId("neighbor-view"));
 
       expect(screen.queryByTestId("new-lingo-node-button")).not.toBeInTheDocument();
@@ -632,9 +647,9 @@ describe("LingoExplorer", () => {
                 node: {
                   ref_id: "new-node-ref",
                   name: "New Term",
-                  jargon_context: "",
-                  jargon_candidates: [],
-                  created_at: new Date().toISOString(),
+                  node_type: "Lingo",
+                  definition: null,
+                  date_added_to_graph: Date.now() / 1000,
                 },
                 edges: [],
               },
@@ -643,7 +658,7 @@ describe("LingoExplorer", () => {
 
       render(<LingoExplorer workspaceSlug={SLUG} />);
       await waitFor(() =>
-        expect(screen.queryByTestId("jargon-card-skeleton")).not.toBeInTheDocument(),
+        expect(screen.queryByTestId("lingo-card-skeleton")).not.toBeInTheDocument(),
       );
 
       // Open dialog and trigger creation
