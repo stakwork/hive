@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 import { ActivityFeed } from "./_components/ActivityFeed";
 import { BackButton } from "./_components/BackButton";
+import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
 
 export default async function ProfilePage() {
   const session = await getServerSession(authOptions);
@@ -49,6 +50,7 @@ export default async function ProfilePage() {
           </div>
         </div>
 
+        <DailyRecapCard />
         <ActivityFeed userId={session.user.id as string} />
       </div>
     </div>

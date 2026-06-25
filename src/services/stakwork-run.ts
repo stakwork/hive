@@ -270,6 +270,18 @@ export async function createStakworkRun(
 
   try {
     // Step 2: Build Stakwork payload
+    if (input.type === StakworkRunType.DAILY_RECAP) {
+      const recapWorkflowId = config.STAKWORK_DAILY_RECAP_WORKFLOW_ID;
+      if (!recapWorkflowId) {
+        throw new Error("STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured");
+      }
+      // DAILY_RECAP runs are dispatched via the cron's batch path.
+      // This branch exists for forward-compatibility only.
+      throw new Error(
+        "DAILY_RECAP runs must be dispatched via the daily-recap cron batch pipeline",
+      );
+    }
+
     const workflowId = config.STAKWORK_AI_GENERATION_WORKFLOW_ID;
     if (!workflowId) {
       throw new Error("STAKWORK_AI_GENERATION_WORKFLOW_ID not configured");
