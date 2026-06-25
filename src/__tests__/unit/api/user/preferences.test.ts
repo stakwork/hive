@@ -51,6 +51,7 @@ describe("GET /api/user/preferences", () => {
       canvasAutonomousTurns: true,
       chatAgentModel: null,
       timezone: "America/Chicago",
+      dailyRecapEnabled: true,
     });
 
     const res = await GET();
@@ -65,12 +66,42 @@ describe("GET /api/user/preferences", () => {
       canvasAutonomousTurns: false,
       chatAgentModel: null,
       timezone: null,
+      dailyRecapEnabled: true,
     });
 
     const res = await GET();
     const body = await res.json();
 
     expect(body.timezone).toBe("UTC");
+  });
+
+  test("returns dailyRecapEnabled in response", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      timezone: "UTC",
+      dailyRecapEnabled: false,
+    });
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.dailyRecapEnabled).toBe(false);
+  });
+
+  test("returns dailyRecapEnabled true by default", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(body.dailyRecapEnabled).toBe(true);
   });
 
   test("returns 401 when unauthenticated", async () => {
@@ -92,6 +123,7 @@ describe("PATCH /api/user/preferences — timezone", () => {
       canvasAutonomousTurns: false,
       chatAgentModel: null,
       timezone: "America/Chicago",
+      dailyRecapEnabled: true,
     });
 
     const req = makeRequest({ timezone: "America/Chicago" });
@@ -129,6 +161,7 @@ describe("PATCH /api/user/preferences — timezone", () => {
       canvasAutonomousTurns: true,
       chatAgentModel: null,
       timezone: "UTC",
+      dailyRecapEnabled: true,
     });
 
     const req = makeRequest({ canvasAutonomousTurns: true });
@@ -150,5 +183,78 @@ describe("PATCH /api/user/preferences — timezone", () => {
     const res = await PATCH(req);
 
     expect(res.status).toBe(401);
+  });
+});
+
+describe("PATCH /api/user/preferences — dailyRecapEnabled", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetServerSession.mockResolvedValue({ user: { id: "user-1" } });
+  });
+
+  test("updates dailyRecapEnabled to false and returns it in the response", async () => {
+    mockUserUpdate.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      timezone: "UTC",
+      dailyRecapEnabled: false,
+    });
+
+    const req = makeRequest({ dailyRecapEnabled: false });
+    const res = await PATCH(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.dailyRecapEnabled).toBe(false);
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ dailyRecapEnabled: false }),
+      }),
+    );
+  });
+
+  test("updates dailyRecapEnabled to true", async () => {
+    mockUserUpdate.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+
+    const req = makeRequest({ dailyRecapEnabled: true });
+    const res = await PATCH(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.dailyRecapEnabled).toBe(true);
+  });
+
+  test("rejects non-boolean dailyRecapEnabled with 400", async () => {
+    const req = makeRequest({ dailyRecapEnabled: "yes" });
+    const res = await PATCH(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("dailyRecapEnabled must be a boolean");
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
+
+  test("does not include dailyRecapEnabled in update when not provided", async () => {
+    mockUserUpdate.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+
+    const req = makeRequest({ canvasAutonomousTurns: false });
+    const res = await PATCH(req);
+
+    expect(res.status).toBe(200);
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ dailyRecapEnabled: expect.anything() }),
+      }),
+    );
   });
 });
