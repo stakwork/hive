@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock, Trash2, Zap, Upload, Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Loader2, Copy, Check, Plus, Minus, Pencil, Save, X, Share2, Search, History, Clock, Trash2, Zap, Upload, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { estimateTokens, formatTokenCount } from "@/lib/utils/token-estimate";
@@ -152,6 +152,11 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   // Eval runs state
   const [evalRuns, setEvalRuns] = useState<Record<number, EvalRunState | null>>({});
   const [runEvalsTarget, setRunEvalsTarget] = useState<{ versionId: number; label: string } | null>(null);
+
+  // Eval run history (per-version list of all runs, populated when >1 run exists)
+  type EvalHistoryEntry = EvalRunState & { evalSetId: string | null; createdAt: string };
+  const [evalRunHistory, setEvalRunHistory] = useState<Record<number, EvalHistoryEntry[]>>({});
+  const [expandedHistoryKey, setExpandedHistoryKey] = useState<number | null>(null);
 
   // Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -344,7 +349,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             );
             if (!res.ok) return null;
             const data = await res.json();
-            return data.success && data.data ? { vId, run: data.data } : null;
+            return data.success ? { vId, run: data.data ?? null, history: data.history ?? [] } : null;
           } catch {
             return null;
           }
@@ -354,7 +359,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       setEvalRuns((prev) => {
         const next = { ...prev };
         results.forEach((item) => {
-          if (!item) return;
+          if (!item || !item.run) return;
           const { vId, run } = item;
           // Key Current row under CURRENT_VERSION_SENTINEL
           const key = vId === selectedPrompt.current_version_id ? CURRENT_VERSION_SENTINEL : vId;
@@ -363,6 +368,22 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
             status: run.status,
             result: run.result ? (typeof run.result === 'string' ? JSON.parse(run.result) : run.result) : null,
           };
+        });
+        return next;
+      });
+
+      setEvalRunHistory((prev) => {
+        const next = { ...prev };
+        results.forEach((item) => {
+          if (!item || item.history.length < 2) return;
+          const key = item.vId === selectedPrompt.current_version_id ? CURRENT_VERSION_SENTINEL : item.vId;
+          next[key] = item.history.map((h: { id: string; status: string; result: string | null; evalSetId: string | null; createdAt: string }) => ({
+            runId: h.id,
+            status: h.status as EvalRunState['status'],
+            result: h.result ? (typeof h.result === 'string' ? JSON.parse(h.result) : h.result) : null,
+            evalSetId: h.evalSetId,
+            createdAt: h.createdAt,
+          }));
         });
         return next;
       });
@@ -382,9 +403,13 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       channel.bind(
         PUSHER_EVENTS.PROMPT_EVAL_RESULT,
         (data: { runId: string; promptVersionId: number; result: EvalResult }) => {
+          const key =
+            selectedPrompt && data.promptVersionId === selectedPrompt.current_version_id
+              ? CURRENT_VERSION_SENTINEL
+              : data.promptVersionId;
           setEvalRuns((prev) => ({
             ...prev,
-            [data.promptVersionId]: {
+            [key]: {
               runId: data.runId,
               status: 'COMPLETED',
               result: data.result,
@@ -399,7 +424,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     return () => {
       channel?.unbind(PUSHER_EVENTS.PROMPT_EVAL_RESULT);
     };
-  }, [viewMode, resolvedSlug]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewMode, resolvedSlug, selectedPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch prompts when page or search changes
   useEffect(() => {
@@ -1227,61 +1252,95 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                   const isCurrentSelected = isCurrentA || isCurrentB;
 
                   return (
-                    <button
-                      onClick={() => handleVersionClick(CURRENT_VERSION_SENTINEL)}
-                      className={cn(
-                        "w-full text-left px-3 py-2 rounded transition-colors text-sm",
-                        "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
-                        isCurrentA && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
-                        isCurrentB && "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500",
-                        !isCurrentSelected && "bg-muted/50"
-                      )}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Zap className="w-3 h-3" />
-                          <span className="font-mono font-medium">Current</span>
-                          {isCurrentA && <span className="text-xs text-green-600 dark:text-green-400 font-medium">A</span>}
-                          {isCurrentB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {selectedPrompt.published_version_id !== null &&
-                            selectedPrompt.current_version_id === selectedPrompt.published_version_id && (
-                              <Badge variant="default" className="text-xs flex-shrink-0 bg-green-600 text-white">
-                                Published
-                              </Badge>
-                            )}
-                          <span className="text-xs text-muted-foreground">Latest</span>
-                          {evalRuns[CURRENT_VERSION_SENTINEL]?.status === 'IN_PROGRESS' ? (
-                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
-                          ) : evalRuns[CURRENT_VERSION_SENTINEL]?.status === 'COMPLETED' && evalRuns[CURRENT_VERSION_SENTINEL]?.result ? (
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleVersionClick(CURRENT_VERSION_SENTINEL)}
+                          className={cn(
+                            "flex-1 text-left px-3 py-2 rounded transition-colors text-sm",
+                            "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
+                            isCurrentA && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                            isCurrentB && "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500",
+                            !isCurrentSelected && "bg-muted/50"
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Zap className="w-3 h-3" />
+                              <span className="font-mono font-medium">Current</span>
+                              {isCurrentA && <span className="text-xs text-green-600 dark:text-green-400 font-medium">A</span>}
+                              {isCurrentB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {selectedPrompt.published_version_id !== null &&
+                                selectedPrompt.current_version_id === selectedPrompt.published_version_id && (
+                                  <Badge variant="default" className="text-xs flex-shrink-0 bg-green-600 text-white">
+                                    Published
+                                  </Badge>
+                                )}
+                              <span className="text-xs text-muted-foreground">Latest</span>
+                              {evalRuns[CURRENT_VERSION_SENTINEL]?.status === 'IN_PROGRESS' ? (
+                                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
+                              ) : evalRuns[CURRENT_VERSION_SENTINEL]?.status === 'COMPLETED' && evalRuns[CURRENT_VERSION_SENTINEL]?.result ? (
+                                <Badge
+                                  variant="default"
+                                  className={cn(
+                                    "text-xs flex-shrink-0",
+                                    (evalRuns[CURRENT_VERSION_SENTINEL]!.result!.failed ?? evalRuns[CURRENT_VERSION_SENTINEL]!.result!.fail ?? 0) === 0
+                                      ? "bg-green-600 text-white"
+                                      : "bg-red-600 text-white"
+                                  )}
+                                  title="Eval result"
+                                >
+                                  {evalRuns[CURRENT_VERSION_SENTINEL]!.result!.passed ?? evalRuns[CURRENT_VERSION_SENTINEL]!.result!.pass}/{evalRuns[CURRENT_VERSION_SENTINEL]!.result!.total} pass
+                                </Badge>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="flex-shrink-0 h-7 px-2"
+                                  disabled={!resolvedSlug}
+                                  title="Run evals on Current"
+                                  onClick={(e) => { e.stopPropagation(); setRunEvalsTarget({ versionId: CURRENT_VERSION_SENTINEL, label: 'Current' }); }}
+                                >
+                                  <Play className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                        {evalRunHistory[CURRENT_VERSION_SENTINEL]?.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-shrink-0 h-7 w-7 p-0"
+                            title="Toggle eval run history"
+                            onClick={(e) => { e.stopPropagation(); setExpandedHistoryKey(expandedHistoryKey === CURRENT_VERSION_SENTINEL ? null : CURRENT_VERSION_SENTINEL); }}
+                          >
+                            {expandedHistoryKey === CURRENT_VERSION_SENTINEL
+                              ? <ChevronDown className="h-3 w-3" />
+                              : <ChevronRight className="h-3 w-3" />}
+                          </Button>
+                        )}
+                      </div>
+                      {expandedHistoryKey === CURRENT_VERSION_SENTINEL && evalRunHistory[CURRENT_VERSION_SENTINEL]?.map((entry) => (
+                        <div key={entry.runId} className="ml-8 flex items-center gap-2 py-1 text-xs text-muted-foreground border-l border-border pl-3">
+                          <span>{new Date(entry.createdAt).toLocaleString()}</span>
+                          {entry.evalSetId && <span className="font-mono">{entry.evalSetId}</span>}
+                          {entry.status === 'COMPLETED' && entry.result && (
                             <Badge
                               variant="default"
                               className={cn(
-                                "text-xs flex-shrink-0",
-                                (evalRuns[CURRENT_VERSION_SENTINEL]!.result!.failed ?? evalRuns[CURRENT_VERSION_SENTINEL]!.result!.fail ?? 0) === 0
-                                  ? "bg-green-600 text-white"
-                                  : "bg-red-600 text-white"
+                                "text-xs",
+                                (entry.result.failed ?? entry.result.fail ?? 0) === 0 ? "bg-green-600 text-white" : "bg-red-600 text-white"
                               )}
-                              title="Eval result"
                             >
-                              {evalRuns[CURRENT_VERSION_SENTINEL]!.result!.passed ?? evalRuns[CURRENT_VERSION_SENTINEL]!.result!.pass}/{evalRuns[CURRENT_VERSION_SENTINEL]!.result!.total} pass
+                              {entry.result.passed ?? entry.result.pass}/{entry.result.total} pass
                             </Badge>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="flex-shrink-0 h-7 px-2"
-                              disabled={!resolvedSlug}
-                              title="Run evals on Current"
-                              onClick={(e) => { e.stopPropagation(); setRunEvalsTarget({ versionId: CURRENT_VERSION_SENTINEL, label: 'Current' }); }}
-                            >
-                              <Play className="h-3 w-3" />
-                            </Button>
                           )}
                         </div>
-                      </div>
-                    </button>
+                      ))}
+                    </div>
                   );
                 })()}
 
@@ -1295,91 +1354,125 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
                                   version.id !== selectedPrompt.current_version_id;
 
                     return (
-                      <div key={version.id} className="relative flex items-center gap-2">
-                        <button
-                          onClick={() => handleVersionClick(version.id)}
-                          className={cn(
-                            "flex-1 text-left px-3 py-2 rounded transition-colors text-sm",
-                            "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
-                            isSelectedA && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
-                            isSelectedB && "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500",
-                            !isSelected && "bg-muted/50"
-                          )}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-medium">v{version.version_number}</span>
-                              {isSelectedA && <span className="text-xs text-green-600 dark:text-green-400 font-medium">A</span>}
-                              {isSelectedB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              {formatTimestamp(version.created_at)}
-                            </span>
-                          </div>
-                        </button>
-
-                        {/* Eval run button / spinner / badge */}
-                        {evalRuns[version.id]?.status === 'IN_PROGRESS' ? (
-                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
-                        ) : evalRuns[version.id]?.status === 'COMPLETED' && evalRuns[version.id]?.result ? (
-                          <Badge
-                            variant="default"
+                      <div key={version.id}>
+                        <div className="relative flex items-center gap-2">
+                          <button
+                            onClick={() => handleVersionClick(version.id)}
                             className={cn(
-                              "text-xs flex-shrink-0",
-                              (evalRuns[version.id]!.result!.failed ?? evalRuns[version.id]!.result!.fail ?? 0) === 0
-                                ? "bg-green-600 text-white"
-                                : "bg-red-600 text-white"
+                              "flex-1 text-left px-3 py-2 rounded transition-colors text-sm",
+                              "hover:bg-muted/70 focus:outline-none focus:ring-2 focus:ring-primary",
+                              isSelectedA && "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500",
+                              isSelectedB && "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500",
+                              !isSelected && "bg-muted/50"
                             )}
-                            title="Eval result"
                           >
-                            {evalRuns[version.id]!.result!.passed ?? evalRuns[version.id]!.result!.pass}/{evalRuns[version.id]!.result!.total} pass
-                          </Badge>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="flex-shrink-0 h-7 px-2"
-                            disabled={!resolvedSlug}
-                            title={`Run evals on v${version.version_number}`}
-                            onClick={(e) => { e.stopPropagation(); setRunEvalsTarget({ versionId: version.id, label: `v${version.version_number}` }); }}
-                          >
-                            <Play className="h-3 w-3" />
-                          </Button>
-                        )}
-                        {/* Publish button */}
-                        {isLive ? (
-                          <Badge variant="default" className="text-xs flex-shrink-0 bg-green-600 text-white">Published</Badge>
-                        ) : publishingVersionId === version.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
-                        ) : (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="flex-shrink-0 h-7 w-7 p-0"
-                                  disabled={isPublishing}
-                                  title={`Publish v${version.version_number}`}
-                                >
-                                  <Upload className="h-3 w-3" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Publish Version v{version.version_number}?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This will make v{version.version_number} the live prompt used by all workflows. This cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handlePublishVersion(version.id)}>
-                                    Publish
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                        )}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-medium">v{version.version_number}</span>
+                                {isSelectedA && <span className="text-xs text-green-600 dark:text-green-400 font-medium">A</span>}
+                                {isSelectedB && <span className="text-xs text-red-600 dark:text-red-400 font-medium">B</span>}
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {formatTimestamp(version.created_at)}
+                              </span>
+                            </div>
+                          </button>
+
+                          {/* Eval run button / spinner / badge */}
+                          {evalRuns[version.id]?.status === 'IN_PROGRESS' ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
+                          ) : evalRuns[version.id]?.status === 'COMPLETED' && evalRuns[version.id]?.result ? (
+                            <Badge
+                              variant="default"
+                              className={cn(
+                                "text-xs flex-shrink-0",
+                                (evalRuns[version.id]!.result!.failed ?? evalRuns[version.id]!.result!.fail ?? 0) === 0
+                                  ? "bg-green-600 text-white"
+                                  : "bg-red-600 text-white"
+                              )}
+                              title="Eval result"
+                            >
+                              {evalRuns[version.id]!.result!.passed ?? evalRuns[version.id]!.result!.pass}/{evalRuns[version.id]!.result!.total} pass
+                            </Badge>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex-shrink-0 h-7 px-2"
+                              disabled={!resolvedSlug}
+                              title={`Run evals on v${version.version_number}`}
+                              onClick={(e) => { e.stopPropagation(); setRunEvalsTarget({ versionId: version.id, label: `v${version.version_number}` }); }}
+                            >
+                              <Play className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {/* History toggle */}
+                          {evalRunHistory[version.id]?.length > 1 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex-shrink-0 h-7 w-7 p-0"
+                              title="Toggle eval run history"
+                              onClick={(e) => { e.stopPropagation(); setExpandedHistoryKey(expandedHistoryKey === version.id ? null : version.id); }}
+                            >
+                              {expandedHistoryKey === version.id
+                                ? <ChevronDown className="h-3 w-3" />
+                                : <ChevronRight className="h-3 w-3" />}
+                            </Button>
+                          )}
+                          {/* Publish button */}
+                          {isLive ? (
+                            <Badge variant="default" className="text-xs flex-shrink-0 bg-green-600 text-white">Published</Badge>
+                          ) : publishingVersionId === version.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />
+                          ) : (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="flex-shrink-0 h-7 w-7 p-0"
+                                    disabled={isPublishing}
+                                    title={`Publish v${version.version_number}`}
+                                  >
+                                    <Upload className="h-3 w-3" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Publish Version v{version.version_number}?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will make v{version.version_number} the live prompt used by all workflows. This cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handlePublishVersion(version.id)}>
+                                      Publish
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                          )}
+                        </div>
+                        {/* Expandable eval run history */}
+                        {expandedHistoryKey === version.id && evalRunHistory[version.id]?.map((entry) => (
+                          <div key={entry.runId} className="ml-8 flex items-center gap-2 py-1 text-xs text-muted-foreground border-l border-border pl-3">
+                            <span>{new Date(entry.createdAt).toLocaleString()}</span>
+                            {entry.evalSetId && <span className="font-mono">{entry.evalSetId}</span>}
+                            {entry.status === 'COMPLETED' && entry.result && (
+                              <Badge
+                                variant="default"
+                                className={cn(
+                                  "text-xs",
+                                  (entry.result.failed ?? entry.result.fail ?? 0) === 0 ? "bg-green-600 text-white" : "bg-red-600 text-white"
+                                )}
+                              >
+                                {entry.result.passed ?? entry.result.pass}/{entry.result.total} pass
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     );
                   })
