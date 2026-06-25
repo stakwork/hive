@@ -24,7 +24,7 @@ export async function GET() {
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true },
+    select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, dailyRecapEnabled: true },
   });
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -34,6 +34,7 @@ export async function GET() {
     canvasAutonomousTurns: user.canvasAutonomousTurns,
     chatAgentModel: user.chatAgentModel,
     timezone: user.timezone ?? "UTC",
+    dailyRecapEnabled: user.dailyRecapEnabled,
   });
 }
 
@@ -46,7 +47,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { canvasAutonomousTurns, chatAgentModel, timezone } = body;
+    const { canvasAutonomousTurns, chatAgentModel, timezone, dailyRecapEnabled } = body;
 
     if (
       canvasAutonomousTurns !== undefined &&
@@ -78,14 +79,22 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    if (dailyRecapEnabled !== undefined && typeof dailyRecapEnabled !== "boolean") {
+      return NextResponse.json(
+        { error: "dailyRecapEnabled must be a boolean" },
+        { status: 400 },
+      );
+    }
+
     const updated = await db.user.update({
       where: { id: session.user.id },
       data: {
         ...(canvasAutonomousTurns !== undefined && { canvasAutonomousTurns }),
         ...(chatAgentModel !== undefined && { chatAgentModel }),
         ...(timezone !== undefined && { timezone }),
+        ...(dailyRecapEnabled !== undefined && { dailyRecapEnabled }),
       },
-      select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true },
+      select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, dailyRecapEnabled: true },
     });
 
     logger.info("User preferences updated", "USER_PREFERENCES_UPDATE", {
@@ -93,12 +102,14 @@ export async function PATCH(request: NextRequest) {
       canvasAutonomousTurns: updated.canvasAutonomousTurns,
       chatAgentModel: updated.chatAgentModel,
       timezone: updated.timezone,
+      dailyRecapEnabled: updated.dailyRecapEnabled,
     });
 
     return NextResponse.json({
       canvasAutonomousTurns: updated.canvasAutonomousTurns,
       chatAgentModel: updated.chatAgentModel,
       timezone: updated.timezone ?? "UTC",
+      dailyRecapEnabled: updated.dailyRecapEnabled,
     });
   } catch (error) {
     logger.error(
