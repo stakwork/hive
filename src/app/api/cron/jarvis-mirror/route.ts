@@ -19,6 +19,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Opt-in kill switch so the code can ship dark and be turned on only once
+  // the Jarvis Hive schemas are deployed (jarvis-backend#2925).
+  if (process.env.JARVIS_MIRROR_CRON_ENABLED !== "true") {
+    logger.info("[JARVIS MIRROR] disabled via JARVIS_MIRROR_CRON_ENABLED", "JARVIS_MIRROR");
+    return NextResponse.json({ success: true, disabled: true, processed: 0 });
+  }
+
   const depth = Number(request.nextUrl.searchParams.get("d") ?? "0") || 0;
 
   logger.info(`[JARVIS MIRROR] cron invoked (depth=${depth})`, "JARVIS_MIRROR");
