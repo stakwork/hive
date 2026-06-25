@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { format } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -315,6 +317,7 @@ export function MessageBubble({
   consumedResultIds?: Set<string>;
   onFlag?: () => void;
 }) {
+  const { timezone } = useUserTimezone();
   const [showToolDetails, setShowToolDetails] = useState(false);
   const [showMore, setShowMore] = useState(false);
 
@@ -535,7 +538,7 @@ export function MessageBubble({
                 {formatMsgTime(message.timestamp)}
               </span>
             </TooltipTrigger>
-            <TooltipContent>{new Date(message.timestamp).toLocaleString()}</TooltipContent>
+            <TooltipContent>{formatInUserTz(new Date(message.timestamp), timezone)}</TooltipContent>
           </Tooltip>
         )}
       </div>

@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -36,22 +38,6 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
-function formatRelative(iso: string | null): string {
-  if (!iso) return "—";
-  const then = new Date(iso).getTime();
-  if (isNaN(then)) return "—";
-  const diff = Date.now() - then;
-  if (diff < 0) return "just now";
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 export function WorkflowRunsTable({
   slug,
   workflowId,
@@ -59,6 +45,7 @@ export function WorkflowRunsTable({
   selectedRunId,
   onEvalCaptured,
 }: WorkflowRunsTableProps) {
+  const { timezone } = useUserTimezone();
   const { runs, isLoading } = useWorkflowRuns(slug, workflowId);
   const [flaggingRunId, setFlaggingRunId] = useState<string | null>(null);
   const [flaggedRunIds, setFlaggedRunIds] = useState<Set<string>>(new Set());
@@ -152,7 +139,7 @@ export function WorkflowRunsTable({
                 <span>·</span>
                 <span className={meta.text}>{meta.label}</span>
                 <span>·</span>
-                <span>{formatRelative(run.started_at)}</span>
+                <span>{run.started_at ? formatRelativeOrDateInTz(run.started_at, timezone) : "—"}</span>
                 <span>·</span>
                 <span className="font-mono tabular-nums">
                   {formatDuration(run.started_at, run.finished_at)}

@@ -7,6 +7,8 @@ import { Building2, Users, Calendar, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import type { WorkspaceWithRole } from "@/types/workspace";
 import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 
@@ -15,6 +17,7 @@ interface WorkspacesPageContentProps {
 }
 
 export function WorkspacesPageContent({ workspaces }: WorkspacesPageContentProps) {
+  const { timezone } = useUserTimezone();
   const { logoUrls } = useWorkspaceLogos(workspaces);
   const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
 
@@ -70,11 +73,7 @@ export function WorkspacesPageContent({ workspaces }: WorkspacesPageContentProps
                     <div className="flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5" />
                       <span>
-                        Created {new Date(workspace.createdAt).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
+                        Created {formatInUserTz(workspace.createdAt, timezone)}
                       </span>
                     </div>
                   </div>

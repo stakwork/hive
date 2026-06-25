@@ -58,10 +58,25 @@ vi.mock("lucide-react", () => ({
   Loader2: () => React.createElement("span", { "data-testid": "log-loading" }, "loading-icon"),
 }));
 
+// Mock useUserTimezone — prevents the hook from issuing real fetch calls that
+// would consume queued mockFetch responses.  vi.resetModules() re-imports the
+// real module, so we also intercept /api/user/preferences in the fetch shim.
+vi.mock("@/hooks/useUserTimezone", () => ({
+  useUserTimezone: () => ({ timezone: "UTC" }),
+  resetTimezoneCache: vi.fn(),
+}));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const mockFetch = vi.fn();
-globalThis.fetch = mockFetch;
+// Silently handle /api/user/preferences so useUserTimezone (when re-imported
+// after vi.resetModules()) never steals a queued response.
+globalThis.fetch = ((url: string, ...args: unknown[]) => {
+  if (typeof url === "string" && url.includes("/api/user/preferences")) {
+    return Promise.resolve({ ok: true, json: async () => ({ timezone: "UTC" }) } as Response);
+  }
+  return mockFetch(url, ...args);
+}) as typeof fetch;
 
 const FEATURE_ID = "feat-abc";
 
@@ -289,8 +304,13 @@ describe("LogsArtifactPanel", () => {
     render(React.createElement(LogsArtifactPanel, { logs: singleLogWithTimestamp }));
 
     const tab = screen.getByRole("tab", { name: /Coding Agent/i });
-    const expectedTitle = new Date("2026-06-09T14:34:00.000Z").toLocaleString();
-    expect(tab.getAttribute("title")).toBe(expectedTitle);
+    // Component now uses formatInUserTz(date, timezone) — with timezone="UTC" from
+    // the mocked hook, this produces an Intl-formatted string that includes "UTC".
+    const title = tab.getAttribute("title");
+    expect(title).toBeTruthy();
+    expect(title).toContain("Jun 9, 2026");
+    expect(title).toContain("2:34 PM");
+    expect(title).toContain("UTC");
   });
 
   it("does not render a timestamp for a log without createdAt", async () => {

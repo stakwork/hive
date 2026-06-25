@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { Activity, Zap, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkflowRunStats } from "@/hooks/useWorkflowRunStats";
@@ -11,6 +13,7 @@ interface WorkflowStatsPanelProps {
 }
 
 export function WorkflowStatsPanel({ slug, workflowId }: WorkflowStatsPanelProps) {
+  const { timezone } = useUserTimezone();
   const { stats, isLoading } = useWorkflowRunStats(slug, workflowId);
 
   if (isLoading) {
@@ -56,11 +59,12 @@ export function WorkflowStatsPanel({ slug, workflowId }: WorkflowStatsPanelProps
         : "text-emerald-600 dark:text-emerald-400";
 
   const lastRunFormatted = stats.last_run_at
-    ? new Date(stats.last_run_at).toLocaleString(undefined, {
+    ? formatInUserTz(new Date(stats.last_run_at), timezone, {
         month: "short",
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        timeZoneName: "short",
       })
     : "—";
 

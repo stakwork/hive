@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,6 +115,7 @@ type EvalRunState = {
 };
 
 export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkflow, workspaceSlug }: PromptsPanelProps) {
+  const { timezone } = useUserTimezone();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -804,8 +807,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
   const formatTimestamp = (timestamp: string) => {
     try {
-      const date = new Date(timestamp);
-      return date.toLocaleString();
+      return formatInUserTz(new Date(timestamp), timezone);
     } catch {
       return timestamp;
     }

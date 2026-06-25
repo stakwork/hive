@@ -1,19 +1,11 @@
+"use client";
+
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { formatInUserTz } from '@/lib/date-utils'
+import { useUserTimezone } from '@/hooks/useUserTimezone'
 
 const formatLabel = (label: string) => label.replaceAll('_', ' ').replaceAll(/\b\w/g, (char) => char.toUpperCase())
-
-const formatDate = (timestamp: number): string => {
-  const date = new Date(timestamp * 1000)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  })
-}
 
 interface NodeDetailProps {
   label: string
@@ -22,6 +14,7 @@ interface NodeDetailProps {
 }
 
 export const NodeDetail = ({ label, value, compact = false }: NodeDetailProps) => {
+  const { timezone } = useUserTimezone()
   if (!value || value === '') {
     return null
   }
@@ -33,7 +26,15 @@ export const NodeDetail = ({ label, value, compact = false }: NodeDetailProps) =
 
   let displayValue: string = stringValue
   if (isDate) {
-    displayValue = formatDate(Number(value))
+    displayValue = formatInUserTz(new Date(Number(value) * 1000), timezone, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short',
+    })
   }
 
   if (compact) {

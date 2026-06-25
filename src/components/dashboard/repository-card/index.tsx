@@ -6,12 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { ExternalLink, GitBranch, Github, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 export function RepositoryCard() {
-
+  const { timezone } = useUserTimezone();
   const { workspace, slug } = useWorkspace();
 
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
@@ -220,7 +221,7 @@ export function RepositoryCard() {
             </div>
             <div className="flex items-center gap-1 text-muted-foreground">
               <RefreshCw className="w-3 h-3" />
-              {formatRelativeOrDate(repository.updatedAt)}
+              {formatRelativeOrDateInTz(repository.updatedAt, timezone)}
             </div>
           </div>
         </div>
