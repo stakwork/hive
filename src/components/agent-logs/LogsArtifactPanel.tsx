@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { useParams } from "next/navigation";
 import { Download, Loader2, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -86,6 +88,7 @@ export function LogsArtifactPanel({
   featureId,
   isSuperAdmin,
 }: LogsArtifactPanelProps) {
+  const { timezone } = useUserTimezone();
   const params = useParams();
   const slug = params?.slug as string | undefined;
   const isStakwork = slug === "stakwork";
@@ -298,7 +301,7 @@ export function LogsArtifactPanel({
               role="tab"
               aria-selected={selectedId === tab.id}
               onClick={() => setSelectedId(tab.id)}
-              title={tab.createdAt ? new Date(tab.createdAt).toLocaleString() : undefined}
+              title={tab.createdAt ? formatInUserTz(new Date(tab.createdAt), timezone) : undefined}
               className={cn(
                 "px-2.5 h-auto py-1 text-xs rounded-md transition-colors whitespace-nowrap border flex items-center gap-1.5",
                 selectedId === tab.id
