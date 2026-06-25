@@ -7,6 +7,10 @@
     }
   },
   "crons": [{
+      "path": "/api/cron/daily-recap",
+      "schedule": "0 9 * * *"
+    },
+    {
       "path": "/api/cron/janitors",
       "schedule": "0 * * * *"
     },
