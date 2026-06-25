@@ -184,6 +184,53 @@ export class StakworkService extends BaseServiceClass {
   }
 
   /**
+   * Create multiple projects in a single batch request.
+   * The caller is responsible for chunking to ≤500 projects per call.
+   *
+   * @param projects - Array of project definitions (max 500 per call)
+   * @returns Batch response with ref_id and per-project results
+   */
+  async createBatchProjects(
+    projects: Array<{
+      name: string;
+      workflow_id: number;
+      webhook_url: string;
+      workflow_params: { set_var: { attributes: { vars: unknown } } };
+    }>,
+  ): Promise<{
+    data: {
+      ref_id: string;
+      projects: Array<{ name: string; project_id?: number; error?: string }>;
+    };
+  }> {
+    const endpoint = `/projects/batch`;
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Token token=${encryptionService.decryptField(
+        "stakworkApiKey",
+        this.config.apiKey,
+      )}`,
+    };
+
+    const client = this.getClient();
+    const requestFn = () => {
+      return client.post<{
+        data: {
+          ref_id: string;
+          projects: Array<{
+            name: string;
+            project_id?: number;
+            error?: string;
+          }>;
+        };
+      }>(endpoint, { projects }, headers, this.serviceName);
+    };
+
+    return this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
+  }
+
+  /**
    * Stop a running project
    * @param projectId - The Stakwork project ID to stop
    * @returns void (optimistic - does not throw on API errors)
