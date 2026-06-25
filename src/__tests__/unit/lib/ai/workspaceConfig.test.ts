@@ -43,7 +43,7 @@ vi.mock("@/lib/encryption", () => ({
 }));
 
 vi.mock("@/lib/ai/askTools", () => ({
-  listConcepts: vi.fn().mockResolvedValue({ features: [] }),
+  listConcepts: vi.fn().mockResolvedValue({ concepts: [] }),
 }));
 
 // ─── Import after mocks ───────────────────────────────────────────────────────
