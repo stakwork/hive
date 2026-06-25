@@ -53,6 +53,10 @@
     {
       "path": "/api/cron/automations",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/jarvis-mirror",
+      "schedule": "0 * * * *"
     }
   ]
 }
