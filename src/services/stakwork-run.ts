@@ -1550,6 +1550,11 @@ async function applyAcceptResult(
       break;
     }
 
+    case StakworkRunType.DAILY_RECAP:
+      // Daily recap results are stored directly on StakworkRun.result;
+      // no feature/task side-effects needed.
+      break;
+
     default:
       console.warn(`Unhandled StakworkRunType: ${run.type}`);
   }
