@@ -229,22 +229,31 @@ export function hasConcepts(c: CachedConcepts): boolean {
 }
 
 /**
- * Atomically merge the cached concepts (for reuse) + the rendered prefix
- * snapshot (for the Agent Logs detail view) into
+ * Atomically merge the rendered prefix snapshot (for the Agent Logs
+ * detail view) and — when present — the reusable concept cache into
  * `SharedConversation.settings` via a jsonb `||` merge. Using a single
  * UPDATE (rather than read-modify-write) keeps it race-free against the
  * client autosave's concurrent `settings` writes — both sides merge into
  * the same blob instead of overwriting it. Caller has validated `rowId`.
+ *
+ * The two payloads are DECOUPLED on purpose: the prefix snapshot is a
+ * display-only debugging artifact and must always be written so the
+ * Agent Logs panel renders, even for orgs whose swarm returns no
+ * concepts. The concept cache is a reuse optimization and is written
+ * only when `concepts` is non-null — caching an empty list would poison
+ * the next turn into permanently skipping the swarm fetch. Pass `null`
+ * to snapshot the prefix without touching `promptConcepts`.
  */
 export async function persistOrgCanvasPromptCache(
   rowId: string,
-  concepts: CachedConcepts,
+  concepts: CachedConcepts | null,
   prefixSnapshot: ModelMessage[],
 ): Promise<void> {
-  const patch = JSON.stringify({
-    promptConcepts: concepts,
-    promptPrefix: prefixSnapshot,
-  });
+  const patch = JSON.stringify(
+    concepts
+      ? { promptConcepts: concepts, promptPrefix: prefixSnapshot }
+      : { promptPrefix: prefixSnapshot },
+  );
   await db.$executeRaw`
     UPDATE shared_conversations
     SET settings = COALESCE(settings, '{}'::jsonb) || ${patch}::jsonb
