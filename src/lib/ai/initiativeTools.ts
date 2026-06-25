@@ -1,6 +1,7 @@
 import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { updateFeature } from "@/services/roadmap";
 import { sendFeatureChatMessage } from "@/services/roadmap/feature-chat";
 import { getUserActivityFeed } from "@/services/roadmap/user-activity";
@@ -1486,6 +1487,31 @@ export function buildInitiativeTools(
           const message =
             e instanceof Error ? e.message : "Failed to propose milestone";
           return { error: message };
+        }
+      },
+    }),
+
+    // ─── get_daily_recap ─────────────────────────────────────────────────
+    get_daily_recap: tool({
+      description:
+        "Returns the user's most recent AI-generated daily recap if one exists. " +
+        "Call this when the user asks about their daily summary or what they accomplished recently.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const run = await db.stakworkRun.findFirst({
+            where: {
+              userId,
+              type: StakworkRunType.DAILY_RECAP,
+              status: WorkflowStatus.COMPLETED,
+            },
+            orderBy: { createdAt: "desc" },
+            select: { result: true, createdAt: true },
+          });
+          if (!run?.result) return { recap: null };
+          return { recap: run.result, generatedAt: run.createdAt };
+        } catch {
+          return { error: "Failed to load daily recap" };
         }
       },
     }),
