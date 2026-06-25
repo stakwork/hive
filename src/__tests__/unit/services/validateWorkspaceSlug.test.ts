@@ -34,7 +34,7 @@ describe("validateWorkspaceSlug", () => {
     });
 
     test("should accept minimum length slug", () => {
-      const result = validateWorkspaceSlug("ab");
+      const result = validateWorkspaceSlug("abc");
       expect(result).toEqual({ isValid: true });
     });
 
@@ -193,7 +193,7 @@ describe("validateWorkspaceSlug", () => {
     });
 
     test("should reject slug with only hyphens", () => {
-      const result = validateWorkspaceSlug("--");
+      const result = validateWorkspaceSlug("---");
       expect(result).toEqual({
         isValid: false,
         error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
@@ -340,7 +340,7 @@ describe("validateWorkspaceSlug", () => {
     });
 
     test("should handle slug at exact min length boundary", () => {
-      const minLengthSlug = "ab"; // exactly MIN_LENGTH characters
+      const minLengthSlug = "abc"; // exactly MIN_LENGTH characters
       const result = validateWorkspaceSlug(minLengthSlug);
       expect(result).toEqual({ isValid: true });
     });
