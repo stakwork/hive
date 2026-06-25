@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -50,6 +52,7 @@ function SortableHeader({ label, sortKey, currentSort, sortDirection, onSort, cl
 }
 
 export function GitLeaksSection() {
+  const { timezone } = useUserTimezone();
   const { workspace } = useWorkspace();
   const searchParams = useSearchParams();
   const [leaks, setLeaks] = useState<GitLeakResult[]>([]);
@@ -162,12 +165,7 @@ export function GitLeaksSection() {
 
   const formatDate = (dateString: string) => {
     try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
+      return formatInUserTz(new Date(dateString), timezone);
     } catch {
       return dateString;
     }

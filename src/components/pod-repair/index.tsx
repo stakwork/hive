@@ -8,7 +8,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { toast } from "sonner";
 import {
   Bot,
@@ -48,6 +49,7 @@ function PodStateInline({ state, repoCount }: { state: PodState; repoCount: numb
 }
 
 export function PodRepairSection() {
+  const { timezone } = useUserTimezone();
   const { slug, id: workspaceId, workspace, isOwner, isAdmin, isSuperAdmin } = useWorkspace();
   const { formData, handleProjectInfoChange, saveSettings } = useStakgraphStore();
 
@@ -271,7 +273,7 @@ export function PodRepairSection() {
                   className="flex items-center justify-between py-1.5 text-sm"
                 >
                   <span className="text-muted-foreground">
-                    {formatRelativeOrDate(run.createdAt)}
+                    {formatRelativeOrDateInTz(run.createdAt, timezone)}
                   </span>
                   {isSuperAdmin && run.projectId && (
                     <StakworkRunDropdown

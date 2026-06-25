@@ -37,7 +37,8 @@ import {
   type MilestoneForm,
 } from "@/components/initiatives/MilestoneDialog";
 import { useReorderMilestones } from "@/hooks/useReorderMilestones";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import type { InitiativeResponse, MilestoneResponse } from "@/types/initiatives";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -81,8 +82,9 @@ function MilestoneStatusBadge({ status }: { status: MilestoneResponse["status"] 
 // ─── Date formatter helper ────────────────────────────────────────────────────
 
 function DateCell({ value }: { value: string | null | undefined }) {
+  const { timezone } = useUserTimezone();
   if (!value) return <span className="text-muted-foreground/50">—</span>;
-  return <span className="text-sm">{formatRelativeOrDate(value)}</span>;
+  return <span className="text-sm">{formatRelativeOrDateInTz(value, timezone)}</span>;
 }
 
 // ─── Sortable Milestone Row ───────────────────────────────────────────────────

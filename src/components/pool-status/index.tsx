@@ -7,7 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { Clock, Server, Zap } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "../modals/ModlaProvider";
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 
 export function VMConfigSection() {
+  const { timezone } = useUserTimezone();
   const { slug, workspace } = useWorkspace();
   const open = useModal();
   const { data: session } = useSession();
@@ -161,9 +163,9 @@ export function VMConfigSection() {
 
               {poolStatus.status.lastCheck && (
                 <div className="text-xs text-muted-foreground">
-                  Updated {formatRelativeOrDate(poolStatus.status.lastCheck.endsWith('Z')
+                  Updated {formatRelativeOrDateInTz(poolStatus.status.lastCheck.endsWith('Z')
                     ? poolStatus.status.lastCheck
-                    : poolStatus.status.lastCheck + 'Z')}
+                    : poolStatus.status.lastCheck + 'Z', timezone)}
                 </div>
               )}
 

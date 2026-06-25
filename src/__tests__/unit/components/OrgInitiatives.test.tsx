@@ -55,6 +55,14 @@ vi.mock("@/hooks/useReorderMilestones", () => ({
 
 vi.mock("@/lib/date-utils", () => ({
   formatRelativeOrDate: (v: string) => v,
+  formatRelativeOrDateInTz: (v: string) => v,
+}));
+
+// Mock useUserTimezone — prevents the hook from issuing a real fetch that
+// would consume one of the queued mockFetch responses.
+vi.mock("@/hooks/useUserTimezone", () => ({
+  useUserTimezone: () => ({ timezone: "UTC" }),
+  resetTimezoneCache: vi.fn(),
 }));
 
 // Minimal shadcn/ui stubs — render children transparently
