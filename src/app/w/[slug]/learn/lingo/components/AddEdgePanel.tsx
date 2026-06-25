@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { JargonNode } from "@/app/api/mock/lingo/nodes";
+import type { LingoNode } from "@/app/api/mock/lingo/nodes";
 
 interface AddEdgePanelProps {
   sourceRefId: string;
@@ -42,8 +42,8 @@ export function AddEdgePanel({
   const [nodeTypes, setNodeTypes] = useState<string[]>([]);
   const [selectedType, setSelectedType] = useState<string>("Lingo");
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<JargonNode[]>([]);
-  const [targetNode, setTargetNode] = useState<JargonNode | null>(null);
+  const [searchResults, setSearchResults] = useState<LingoNode[]>([]);
+  const [targetNode, setTargetNode] = useState<LingoNode | null>(null);
   const [edgeType, setEdgeType] = useState(DEFAULT_EDGE_TYPE);
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
