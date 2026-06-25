@@ -249,16 +249,21 @@ describe("updateTicket — auto-merge gate", () => {
     expect(mockDbTask.update).not.toHaveBeenCalled();
   });
 
-  it("throws AutoMergeCheckFailedError when GitHub check returns an error", async () => {
+  it.each([
+    ["permission_denied", "GitHub returned 403"],
+    ["not_found",         "GitHub returned 404"],
+    ["unknown",           "Could not verify auto-merge"],
+  ])("throws AutoMergeCheckFailedError with correct message for error=%s", async (errorCode, expectedSubstring) => {
     mockDbTask.findUnique.mockResolvedValue(makeTaskWithRepo());
-    mockCheckRepoAllowsAutoMerge.mockResolvedValue({
-      allowed: false,
-      error: "permission_denied",
-    });
+    mockCheckRepoAllowsAutoMerge.mockResolvedValue({ allowed: false, error: errorCode });
 
     await expect(
       updateTicket(TASK_ID, USER_ID, { autoMerge: true })
     ).rejects.toThrow(AutoMergeCheckFailedError);
+
+    await expect(
+      updateTicket(TASK_ID, USER_ID, { autoMerge: true })
+    ).rejects.toMatchObject({ message: expect.stringContaining(expectedSubstring) });
   });
 
   it("does not run GitHub check when toggling auto-merge OFF", async () => {
