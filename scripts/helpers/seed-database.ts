@@ -1766,6 +1766,40 @@ async function seedDeferredChatAction(
   console.log("✓ Seeded 1 DeferredChatAction (fireAt = now + 2min)");
 }
 
+async function seedDailyRecapRun(
+  users: Array<{ id: string; email: string }>,
+) {
+  const workspaces = await prisma.workspace.findMany({ take: 1 });
+  if (workspaces.length === 0 || users.length === 0) {
+    console.log("Skipping daily recap seed: no workspaces or users");
+    return;
+  }
+
+  const existing = await prisma.stakworkRun.findFirst({
+    where: { userId: users[0].id, type: StakworkRunType.DAILY_RECAP },
+  });
+
+  if (existing) {
+    console.log("✓ Daily recap seed run already exists — skipping");
+    return;
+  }
+
+  await prisma.stakworkRun.create({
+    data: {
+      type: StakworkRunType.DAILY_RECAP,
+      userId: users[0].id,
+      workspaceId: workspaces[0].id,
+      status: WorkflowStatus.COMPLETED,
+      webhookUrl: "https://example.com/webhook/daily-recap/seed",
+      result: "You merged 2 PRs and created 3 tasks yesterday — solid progress on the auth refactor.",
+      dataType: "string",
+      autoAccept: false,
+    },
+  });
+
+  console.log("✓ Seeded 1 DAILY_RECAP StakworkRun");
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -1783,6 +1817,7 @@ async function main() {
   await seedWorkflowTask();
   await seedStakworkSecrets();
   await seedDeferredChatAction(users);
+  await seedDailyRecapRun(users);
 
   console.log("Seed completed.");
 }
