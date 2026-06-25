@@ -43,7 +43,7 @@ export async function createAndSendNotification(input: {
       }),
       db.workspace.findUnique({
         where: { id: input.workspaceId },
-        select: { slug: true },
+        select: { slug: true, sphinxEnabled: true },
       }),
     ]);
 
@@ -96,7 +96,7 @@ export async function createAndSendNotification(input: {
     const decryptedPubkey = targetUser?.lightningPubkey
       ? encryptionService.decryptField("lightningPubkey", targetUser.lightningPubkey)
       : null;
-    const dmReady = isDirectMessageConfigured() && !!decryptedPubkey;
+    const dmReady = isDirectMessageConfigured() && !!decryptedPubkey && (workspace?.sphinxEnabled ?? false);
 
     // 5. Always insert a row — use SKIPPED when DM is not ready
     const record = await db.notificationTrigger.create({

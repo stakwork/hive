@@ -74,6 +74,7 @@ describe("POST /api/stakwork/webhook — WORKFLOW_HALTED notification", () => {
     workspace = await createTestWorkspace({
       ownerId: user.id,
       slug: generateUniqueSlug("ws-halted"),
+      sphinxEnabled: true,
     });
 
     await db.workspaceMember.create({
