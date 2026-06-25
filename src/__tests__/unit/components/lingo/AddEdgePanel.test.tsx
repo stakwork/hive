@@ -143,7 +143,7 @@ describe("AddEdgePanel", () => {
           json: () =>
             Promise.resolve({
               data: [
-                { ref_id: "n1", name: "Pod", jargon_context: "", jargon_candidates: [], created_at: "" },
+                { ref_id: "n1", name: "Pod", node_type: "Lingo", definition: null, date_added_to_graph: 1750000000 },
               ],
             }),
         });
@@ -204,7 +204,7 @@ describe("AddEdgePanel", () => {
           json: () =>
             Promise.resolve({
               data: [
-                { ref_id: "result-1", name: "Result Node", jargon_context: "", jargon_candidates: [], created_at: "" },
+                { ref_id: "result-1", name: "Result Node", node_type: "Lingo", definition: null, date_added_to_graph: 1750000000 },
               ],
             }),
         });
@@ -253,7 +253,7 @@ describe("AddEdgePanel", () => {
           json: () =>
             Promise.resolve({
               data: [
-                { ref_id: "target-node", name: "Target", jargon_context: "", jargon_candidates: [], created_at: "" },
+                { ref_id: "target-node", name: "Target", node_type: "Lingo", definition: null, date_added_to_graph: 1750000000 },
               ],
             }),
         })
@@ -315,7 +315,7 @@ describe("AddEdgePanel", () => {
           ok: true,
           json: () =>
             Promise.resolve({
-              data: [{ ref_id: "t1", name: "T1", jargon_context: "", jargon_candidates: [], created_at: "" }],
+              data: [{ ref_id: "t1", name: "T1", node_type: "Lingo", definition: null, date_added_to_graph: 1750000000 }],
             }),
         })
         .mockResolvedValueOnce({
