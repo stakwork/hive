@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +81,7 @@ interface ScriptsPanelProps {
 type ViewMode = "list" | "detail" | "create" | "history";
 
 export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelProps) {
+  const { timezone } = useUserTimezone();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -585,7 +588,7 @@ export function ScriptsPanel({ variant = "panel", workspaceSlug }: ScriptsPanelP
 
   const formatTimestamp = (timestamp: string) => {
     try {
-      return new Date(timestamp).toLocaleString();
+      return formatInUserTz(new Date(timestamp), timezone);
     } catch {
       return timestamp;
     }

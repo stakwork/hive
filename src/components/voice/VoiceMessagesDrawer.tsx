@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { formatInUserTz } from "@/lib/date-utils";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
 import { SendHorizontal } from "lucide-react";
 import { useVoiceStore, type AgentMessage } from "@/stores/useVoiceStore";
 import {
@@ -18,21 +20,20 @@ interface VoiceMessagesDrawerProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function formatTime(timestamp: number) {
-  return new Date(timestamp).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function MessageBubble({ msg }: { msg: AgentMessage }) {
+  const { timezone } = useUserTimezone();
   const isUser = msg.sender === "user";
   const displayName = isUser ? "You" : "Jamie";
+  const formattedTime = formatInUserTz(new Date(msg.timestamp), timezone, {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
   return (
     <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
       <div className={`flex items-center gap-2 ${isUser ? "flex-row-reverse" : ""}`}>
         <span className="text-xs font-medium text-foreground">{displayName}</span>
-        <span className="text-xs text-muted-foreground">{formatTime(msg.timestamp)}</span>
+        <span className="text-xs text-muted-foreground">{formattedTime}</span>
       </div>
       <div
         className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words max-w-[85%] ${
