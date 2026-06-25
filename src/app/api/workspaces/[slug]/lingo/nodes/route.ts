@@ -24,7 +24,7 @@ export async function GET(
   // Mock fallback — dev/test only, never fires in production
   if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
     const sorted = [...mockLingoNodes].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      (a, b) => b.date_added_to_graph - a.date_added_to_graph,
     );
     const page = sorted.slice(offset, offset + limit);
     return NextResponse.json({
@@ -70,18 +70,37 @@ export async function GET(
 
     if (!response.ok) {
       console.warn(`[Lingo nodes] Jarvis returned ${response.status}`);
-      return NextResponse.json({ success: true, data: { nodes: [], hasMore: false } });
+      return NextResponse.json(
+        { success: false, error: "Failed to fetch Lingo nodes" },
+        { status: 500 },
+      );
     }
 
     const data = await response.json();
-    const nodes = Array.isArray(data) ? data : (data?.nodes ?? []);
+    const rawNodes = Array.isArray(data) ? data : (data?.nodes ?? []);
+    const nodes = rawNodes.map((n: {
+      ref_id: string;
+      node_type: string;
+      date_added_to_graph: number;
+      properties?: { name?: string; definition?: string };
+    }) => ({
+      ref_id: n.ref_id,
+      node_type: n.node_type,
+      name: n.properties?.name,
+      definition: n.properties?.definition ?? null,
+      date_added_to_graph: n.date_added_to_graph,
+    }));
+
     return NextResponse.json({
       success: true,
       data: { nodes, hasMore: nodes.length === limit },
     });
   } catch (err) {
     console.error("[Lingo nodes] Jarvis fetch failed", err);
-    return NextResponse.json({ success: true, data: { nodes: [], hasMore: false } });
+    return NextResponse.json(
+      { success: false, error: "Failed to fetch Lingo nodes" },
+      { status: 500 },
+    );
   }
 }
 

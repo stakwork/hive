@@ -163,7 +163,7 @@ describe("CreateLingoNodeDialog", () => {
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith("Lingo node created");
       expect(props.onCreated).toHaveBeenCalledWith(
-        expect.objectContaining({ ref_id: "ref-001", name: "My Term", definition: "A definition" }),
+        expect.objectContaining({ ref_id: "ref-001", name: "My Term", definition: "A definition", node_type: "Lingo" }),
       );
       expect(props.onClose).toHaveBeenCalled();
     });
@@ -194,7 +194,7 @@ describe("CreateLingoNodeDialog", () => {
         "A node with that name already exists — opening it",
       );
       expect(props.onCreated).toHaveBeenCalledWith(
-        expect.objectContaining({ ref_id: "existing-ref", name: "Dupe Term" }),
+        expect.objectContaining({ ref_id: "existing-ref", name: "Dupe Term", node_type: "Lingo" }),
       );
       expect(props.onClose).toHaveBeenCalled();
     });

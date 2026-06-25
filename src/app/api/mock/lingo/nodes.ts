@@ -1,22 +1,21 @@
-export interface JargonNode {
+export interface LingoNode {
   ref_id: string;
+  node_type: string;           // "Lingo"
   name: string;
-  definition?: string;         // real Lingo nodes from jarvis carry this
-  jargon_context: string;      // keep for mock backward compat
-  jargon_candidates: string[]; // keep for mock backward compat
-  created_at: string;
+  definition?: string | null;  // promoted from properties.definition
+  date_added_to_graph: number; // epoch float — replaces created_at
 }
 
-export interface JargonDefinition {
+export interface LingoDefinition {
   ref_id: string;
   text: string;
   valid_from: string;   // ISO 8601 date
   valid_until: string | null; // null = current/active definition
 }
 
-// Seeded JargonDefinition nodes — 2 Jargon nodes × 2 chained defs each.
+// Seeded LingoDefinition nodes — 2 Lingo nodes × 2 chained defs each.
 // Each pair has one superseded (valid_until set) and one current (valid_until = null).
-export const mockJargonDefinitions: JargonDefinition[] = [
+export const mockLingoDefinitions: LingoDefinition[] = [
   // Pod Orchestration definitions (jargon-001)
   {
     ref_id: "jargon-def-001-v1",
@@ -45,159 +44,159 @@ export const mockJargonDefinitions: JargonDefinition[] = [
   },
 ];
 
-export const mockLingoNodes: JargonNode[] = [
+export const mockLingoNodes: LingoNode[] = [
   {
     ref_id: "jargon-001",
+    node_type: "Lingo",
     name: "Pod Orchestration",
-    jargon_context: "The automated process of creating, scaling, and managing compute pods for AI workloads within a workspace swarm.",
-    jargon_candidates: ["pod management", "container orchestration", "swarm pods"],
-    created_at: "2026-06-20T18:00:00Z",
+    definition: "The automated process of creating, scaling, and managing compute pods for AI workloads within a workspace swarm.",
+    date_added_to_graph: 1750442400,
   },
   {
     ref_id: "jargon-002",
+    node_type: "Lingo",
     name: "Janitor Workflow",
-    jargon_context: "An automated code quality sweep that analyses a repository for test coverage gaps, security vulnerabilities, and refactoring opportunities.",
-    jargon_candidates: ["janitor", "code sweep", "automated review"],
-    created_at: "2026-06-20T17:30:00Z",
+    definition: "An automated code quality sweep that analyses a repository for test coverage gaps, security vulnerabilities, and refactoring opportunities.",
+    date_added_to_graph: 1750440600,
   },
   {
     ref_id: "jargon-003",
+    node_type: "Lingo",
     name: "Swarm",
-    jargon_context: "A managed cluster of AI agents and supporting infrastructure assigned to a workspace, identified by a unique swarm name.",
-    jargon_candidates: ["agent cluster", "AI swarm", "workspace swarm"],
-    created_at: "2026-06-20T17:00:00Z",
+    definition: "A managed cluster of AI agents and supporting infrastructure assigned to a workspace, identified by a unique swarm name.",
+    date_added_to_graph: 1750438800,
   },
   {
     ref_id: "jargon-004",
+    node_type: "Lingo",
     name: "StakworkRun",
-    jargon_context: "A tracked execution of a Stakwork AI workflow, recording inputs, outputs, and status transitions for audit and debugging.",
-    jargon_candidates: ["workflow run", "stakwork execution", "AI run"],
-    created_at: "2026-06-20T16:30:00Z",
+    definition: "A tracked execution of a Stakwork AI workflow, recording inputs, outputs, and status transitions for audit and debugging.",
+    date_added_to_graph: 1750437000,
   },
   {
     ref_id: "jargon-005",
+    node_type: "Lingo",
     name: "Feature Brief",
-    jargon_context: "A structured description of a product feature including requirements, architecture notes, and linked user stories.",
-    jargon_candidates: ["feature spec", "brief", "product brief"],
-    created_at: "2026-06-20T16:00:00Z",
+    definition: "A structured description of a product feature including requirements, architecture notes, and linked user stories.",
+    date_added_to_graph: 1750435200,
   },
   {
     ref_id: "jargon-006",
+    node_type: "Lingo",
     name: "Workspace Slug",
-    jargon_context: "A URL-safe, lowercase identifier for a workspace used in routing (e.g., /w/my-workspace). Must not contain capitals, spaces, or leading/trailing hyphens.",
-    jargon_candidates: ["slug", "workspace identifier", "url slug"],
-    created_at: "2026-06-20T15:30:00Z",
+    definition: "A URL-safe, lowercase identifier for a workspace used in routing (e.g., /w/my-workspace). Must not contain capitals, spaces, or leading/trailing hyphens.",
+    date_added_to_graph: 1750433400,
   },
   {
     ref_id: "jargon-007",
+    node_type: "Lingo",
     name: "Dual Status System",
-    jargon_context: "Tasks carry two independent status fields: `status` for user/PM work tracking and `workflowStatus` for system automation state.",
-    jargon_candidates: ["task status", "workflow status", "dual status"],
-    created_at: "2026-06-20T15:00:00Z",
+    definition: "Tasks carry two independent status fields: `status` for user/PM work tracking and `workflowStatus` for system automation state.",
+    date_added_to_graph: 1750431600,
   },
   {
     ref_id: "jargon-008",
+    node_type: "Lingo",
     name: "Field-Level Encryption",
-    jargon_context: "AES-256-GCM encryption applied to individual sensitive database fields (e.g., API keys, tokens) using the EncryptionService.",
-    jargon_candidates: ["field encryption", "AES-256", "data encryption"],
-    created_at: "2026-06-20T14:30:00Z",
+    definition: "AES-256-GCM encryption applied to individual sensitive database fields (e.g., API keys, tokens) using the EncryptionService.",
+    date_added_to_graph: 1750429800,
   },
   {
     ref_id: "jargon-009",
+    node_type: "Lingo",
     name: "Jarvis",
-    jargon_context: "The graph database backend (ArcadeDB) that stores knowledge nodes and edges for a workspace swarm.",
-    jargon_candidates: ["jarvis backend", "graph DB", "knowledge graph"],
-    created_at: "2026-06-20T14:00:00Z",
+    definition: "The graph database backend (ArcadeDB) that stores knowledge nodes and edges for a workspace swarm.",
+    date_added_to_graph: 1750428000,
   },
   {
     ref_id: "jargon-010",
+    node_type: "Lingo",
     name: "IDOR Guard",
-    jargon_context: "Insecure Direct Object Reference protection ensuring that authenticated users can only access resources belonging to their authorised workspace.",
-    jargon_candidates: ["IDOR", "access guard", "authorization check"],
-    created_at: "2026-06-20T13:30:00Z",
+    definition: "Insecure Direct Object Reference protection ensuring that authenticated users can only access resources belonging to their authorised workspace.",
+    date_added_to_graph: 1750426200,
   },
   {
     ref_id: "jargon-011",
+    node_type: "Lingo",
     name: "IntersectionObserver Sentinel",
-    jargon_context: "A zero-height div placed at the bottom of a scrollable list that, when it enters the viewport, triggers the next page fetch for infinite scroll.",
-    jargon_candidates: ["sentinel element", "scroll trigger", "infinite scroll"],
-    created_at: "2026-06-20T13:00:00Z",
+    definition: "A zero-height div placed at the bottom of a scrollable list that, when it enters the viewport, triggers the next page fetch for infinite scroll.",
+    date_added_to_graph: 1750424400,
   },
   {
     ref_id: "jargon-012",
+    node_type: "Lingo",
     name: "Optimistic Update",
-    jargon_context: "A UI pattern where the interface reflects the expected result of an action immediately, before the server confirms success, improving perceived responsiveness.",
-    jargon_candidates: ["optimistic UI", "optimistic state", "immediate feedback"],
-    created_at: "2026-06-20T12:30:00Z",
+    definition: "A UI pattern where the interface reflects the expected result of an action immediately, before the server confirms success, improving perceived responsiveness.",
+    date_added_to_graph: 1750422600,
   },
   {
     ref_id: "jargon-013",
+    node_type: "Lingo",
     name: "Breadcrumb Trail",
-    jargon_context: "A navigation aid displaying the sequence of nodes a user has traversed in the graph explorer, allowing step-back navigation.",
-    jargon_candidates: ["breadcrumb", "navigation trail", "graph path"],
-    created_at: "2026-06-20T12:00:00Z",
+    definition: "A navigation aid displaying the sequence of nodes a user has traversed in the graph explorer, allowing step-back navigation.",
+    date_added_to_graph: 1750420800,
   },
   {
     ref_id: "jargon-014",
+    node_type: "Lingo",
     name: "Pusher Channel",
-    jargon_context: "A real-time event channel provided by Pusher used to broadcast live updates (e.g., task status, workflow progress) to connected clients.",
-    jargon_candidates: ["pusher", "real-time channel", "websocket channel"],
-    created_at: "2026-06-20T11:30:00Z",
+    definition: "A real-time event channel provided by Pusher used to broadcast live updates (e.g., task status, workflow progress) to connected clients.",
+    date_added_to_graph: 1750419000,
   },
   {
     ref_id: "jargon-015",
+    node_type: "Lingo",
     name: "Service Factory",
-    jargon_context: "A singleton pattern used in Hive to instantiate and cache external API service clients (e.g., StakworkService, PoolManagerService).",
-    jargon_candidates: ["service factory", "singleton service", "factory pattern"],
-    created_at: "2026-06-20T11:00:00Z",
+    definition: "A singleton pattern used in Hive to instantiate and cache external API service clients (e.g., StakworkService, PoolManagerService).",
+    date_added_to_graph: 1750417200,
   },
   {
     ref_id: "jargon-016",
+    node_type: "Lingo",
     name: "WorkflowStatus",
-    jargon_context: "System-controlled automation state for tasks: PENDING, IN_PROGRESS, COMPLETED, ERROR, HALTED, or FAILED.",
-    jargon_candidates: ["workflow status", "automation state", "system status"],
-    created_at: "2026-06-20T10:30:00Z",
+    definition: "System-controlled automation state for tasks: PENDING, IN_PROGRESS, COMPLETED, ERROR, HALTED, or FAILED.",
+    date_added_to_graph: 1750415400,
   },
   {
     ref_id: "jargon-017",
+    node_type: "Lingo",
     name: "Mock Fallback",
-    jargon_context: "When USE_MOCKS=true or a real external service is unreachable, API routes return pre-seeded in-memory data instead of calling the live service.",
-    jargon_candidates: ["mock mode", "mock fallback", "development mock"],
-    created_at: "2026-06-20T10:00:00Z",
+    definition: "When USE_MOCKS=true or a real external service is unreachable, API routes return pre-seeded in-memory data instead of calling the live service.",
+    date_added_to_graph: 1750413600,
   },
   {
     ref_id: "jargon-018",
+    node_type: "Lingo",
     name: "Streaming Response",
-    jargon_context: "AI assistant replies that are delivered token-by-token to the client over a Server-Sent Events or ReadableStream connection.",
-    jargon_candidates: ["AI streaming", "SSE stream", "token stream"],
-    created_at: "2026-06-20T09:30:00Z",
+    definition: "AI assistant replies that are delivered token-by-token to the client over a Server-Sent Events or ReadableStream connection.",
+    date_added_to_graph: 1750411800,
   },
   {
     ref_id: "jargon-019",
+    node_type: "Lingo",
     name: "Phase",
-    jargon_context: "An ordered stage within a product Feature that groups related tasks and tracks progress toward a milestone.",
-    jargon_candidates: ["feature phase", "sprint phase", "milestone phase"],
-    created_at: "2026-06-20T09:00:00Z",
+    definition: "An ordered stage within a product Feature that groups related tasks and tracks progress toward a milestone.",
+    date_added_to_graph: 1750410000,
   },
   {
     ref_id: "jargon-020",
+    node_type: "Lingo",
     name: "Source Control Token",
-    jargon_context: "An encrypted GitHub App installation token stored per user/workspace, used to authenticate repository operations.",
-    jargon_candidates: ["GitHub token", "install token", "source control credential"],
-    created_at: "2026-06-20T08:30:00Z",
+    definition: "An encrypted GitHub App installation token stored per user/workspace, used to authenticate repository operations.",
+    date_added_to_graph: 1750408200,
   },
   {
     ref_id: "jargon-021",
+    node_type: "Lingo",
     name: "Auto-Learn",
-    jargon_context: "A swarm setting that enables the AI to continuously ingest new code changes into the knowledge graph without manual triggers.",
-    jargon_candidates: ["auto learn", "continuous ingestion", "auto ingest"],
-    created_at: "2026-06-20T08:00:00Z",
+    definition: "A swarm setting that enables the AI to continuously ingest new code changes into the knowledge graph without manual triggers.",
+    date_added_to_graph: 1750406400,
   },
   {
     ref_id: "jargon-022",
+    node_type: "Lingo",
     name: "User Journey Task",
-    jargon_context: "An E2E test scenario tracked as a task with sourceType USER_JOURNEY; test code lives in the swarm graph while metadata is stored in the DB.",
-    jargon_candidates: ["user journey", "E2E task", "journey test"],
-    created_at: "2026-06-20T07:30:00Z",
+    definition: "An E2E test scenario tracked as a task with sourceType USER_JOURNEY; test code lives in the swarm graph while metadata is stored in the DB.",
+    date_added_to_graph: 1750404600,
   },
 ];

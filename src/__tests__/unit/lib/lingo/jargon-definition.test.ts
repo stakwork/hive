@@ -1,19 +1,19 @@
 import { describe, it, expect } from "vitest";
 import {
-  mockJargonDefinitions,
-  type JargonDefinition,
+  mockLingoDefinitions,
+  type LingoDefinition,
 } from "@/app/api/mock/lingo/nodes";
 import { mockLingoNeighbors } from "@/app/api/mock/lingo/neighbors";
 
 // ─── Schema assertions ────────────────────────────────────────────────────────
 
-describe("JargonDefinition mock data — node attributes", () => {
-  it("exports at least one JargonDefinition", () => {
-    expect(mockJargonDefinitions.length).toBeGreaterThan(0);
+describe("LingoDefinition mock data — node attributes", () => {
+  it("exports at least one LingoDefinition", () => {
+    expect(mockLingoDefinitions.length).toBeGreaterThan(0);
   });
 
-  it("every JargonDefinition has required attributes: ref_id, text, valid_from", () => {
-    for (const def of mockJargonDefinitions) {
+  it("every LingoDefinition has required attributes: ref_id, text, valid_from", () => {
+    for (const def of mockLingoDefinitions) {
       expect(def.ref_id).toBeTruthy();
       expect(typeof def.text).toBe("string");
       expect(def.text.length).toBeGreaterThan(0);
@@ -24,7 +24,7 @@ describe("JargonDefinition mock data — node attributes", () => {
   });
 
   it("valid_until is either null (current) or a valid ISO 8601 date (superseded)", () => {
-    for (const def of mockJargonDefinitions) {
+    for (const def of mockLingoDefinitions) {
       if (def.valid_until !== null) {
         expect(typeof def.valid_until).toBe("string");
         expect(new Date(def.valid_until).toString()).not.toBe("Invalid Date");
@@ -32,11 +32,11 @@ describe("JargonDefinition mock data — node attributes", () => {
     }
   });
 
-  it("each Jargon node has exactly one current definition (valid_until = null)", () => {
-    const jargon001Defs = mockJargonDefinitions.filter((d) =>
+  it("each Lingo node has exactly one current definition (valid_until = null)", () => {
+    const jargon001Defs = mockLingoDefinitions.filter((d) =>
       d.ref_id.startsWith("jargon-def-001"),
     );
-    const jargon003Defs = mockJargonDefinitions.filter((d) =>
+    const jargon003Defs = mockLingoDefinitions.filter((d) =>
       d.ref_id.startsWith("jargon-def-003"),
     );
 
@@ -47,11 +47,11 @@ describe("JargonDefinition mock data — node attributes", () => {
     expect(currentDefs003).toHaveLength(1);
   });
 
-  it("each Jargon node has at least one superseded definition (valid_until set)", () => {
-    const superseded001 = mockJargonDefinitions.filter(
+  it("each Lingo node has at least one superseded definition (valid_until set)", () => {
+    const superseded001 = mockLingoDefinitions.filter(
       (d) => d.ref_id.startsWith("jargon-def-001") && d.valid_until !== null,
     );
-    const superseded003 = mockJargonDefinitions.filter(
+    const superseded003 = mockLingoDefinitions.filter(
       (d) => d.ref_id.startsWith("jargon-def-003") && d.valid_until !== null,
     );
 
@@ -63,20 +63,20 @@ describe("JargonDefinition mock data — node attributes", () => {
 // ─── Edge type assertions ─────────────────────────────────────────────────────
 
 describe("HAS_DEFINITION edges in mock neighbor data", () => {
-  it("jargon-001 has a HAS_DEFINITION edge to a JargonDefinition node", () => {
+  it("jargon-001 has a HAS_DEFINITION edge to a LingoDefinition node", () => {
     const data = mockLingoNeighbors["jargon-001"];
     expect(data).toBeDefined();
     const hasDefinitionEdge = data.edges.find((e) => e.edge_type === "HAS_DEFINITION");
     expect(hasDefinitionEdge).toBeDefined();
-    expect(hasDefinitionEdge!.neighbor_node.node_type).toBe("JargonDefinition");
+    expect(hasDefinitionEdge!.neighbor_node.node_type).toBe("LingoDefinition");
   });
 
-  it("jargon-003 has a HAS_DEFINITION edge to a JargonDefinition node", () => {
+  it("jargon-003 has a HAS_DEFINITION edge to a LingoDefinition node", () => {
     const data = mockLingoNeighbors["jargon-003"];
     expect(data).toBeDefined();
     const hasDefinitionEdge = data.edges.find((e) => e.edge_type === "HAS_DEFINITION");
     expect(hasDefinitionEdge).toBeDefined();
-    expect(hasDefinitionEdge!.neighbor_node.node_type).toBe("JargonDefinition");
+    expect(hasDefinitionEdge!.neighbor_node.node_type).toBe("LingoDefinition");
   });
 
   it("HAS_DEFINITION target has valid_from and valid_until=null (current)", () => {
@@ -89,20 +89,20 @@ describe("HAS_DEFINITION edges in mock neighbor data", () => {
 });
 
 describe("SUPERSEDES edges in mock neighbor data", () => {
-  it("current JargonDefinition for jargon-001 has a SUPERSEDES edge", () => {
+  it("current LingoDefinition for jargon-001 has a SUPERSEDES edge", () => {
     const data = mockLingoNeighbors["jargon-def-001-v2"];
     expect(data).toBeDefined();
     const supersedesEdge = data.edges.find((e) => e.edge_type === "SUPERSEDES");
     expect(supersedesEdge).toBeDefined();
-    expect(supersedesEdge!.neighbor_node.node_type).toBe("JargonDefinition");
+    expect(supersedesEdge!.neighbor_node.node_type).toBe("LingoDefinition");
   });
 
-  it("current JargonDefinition for jargon-003 has a SUPERSEDES edge", () => {
+  it("current LingoDefinition for jargon-003 has a SUPERSEDES edge", () => {
     const data = mockLingoNeighbors["jargon-def-003-v2"];
     expect(data).toBeDefined();
     const supersedesEdge = data.edges.find((e) => e.edge_type === "SUPERSEDES");
     expect(supersedesEdge).toBeDefined();
-    expect(supersedesEdge!.neighbor_node.node_type).toBe("JargonDefinition");
+    expect(supersedesEdge!.neighbor_node.node_type).toBe("LingoDefinition");
   });
 
   it("SUPERSEDES target has valid_until set (is superseded)", () => {
@@ -117,13 +117,13 @@ describe("SUPERSEDES edges in mock neighbor data", () => {
 // ─── Lookup pattern validations ───────────────────────────────────────────────
 
 describe("current definition lookup — one-hop HAS_DEFINITION", () => {
-  function getCurrentDefinition(jargonRefId: string): JargonDefinition | undefined {
-    const neighborData = mockLingoNeighbors[jargonRefId];
+  function getCurrentDefinition(lingoRefId: string): LingoDefinition | undefined {
+    const neighborData = mockLingoNeighbors[lingoRefId];
     if (!neighborData) return undefined;
     const hasDefEdge = neighborData.edges.find((e) => e.edge_type === "HAS_DEFINITION");
     if (!hasDefEdge) return undefined;
     const defRefId = hasDefEdge.neighbor_node.ref_id;
-    return mockJargonDefinitions.find((d) => d.ref_id === defRefId);
+    return mockLingoDefinitions.find((d) => d.ref_id === defRefId);
   }
 
   it("returns the current definition (valid_until = null) for jargon-001", () => {
@@ -141,12 +141,12 @@ describe("current definition lookup — one-hop HAS_DEFINITION", () => {
 
 describe("point-in-time definition lookup — SUPERSEDES walk with date filter", () => {
   /**
-   * Simulates a point-in-time lookup: given all definitions for a Jargon node,
+   * Simulates a point-in-time lookup: given all definitions for a Lingo node,
    * find the one active at `atDate`.
    * Condition: valid_from <= atDate AND (valid_until IS NULL OR valid_until > atDate)
    */
-  function getDefinitionAtDate(jargonPrefix: string, atDate: string): JargonDefinition | undefined {
-    const defs = mockJargonDefinitions.filter((d) => d.ref_id.startsWith(jargonPrefix));
+  function getDefinitionAtDate(lingoPrefix: string, atDate: string): LingoDefinition | undefined {
+    const defs = mockLingoDefinitions.filter((d) => d.ref_id.startsWith(lingoPrefix));
     const at = new Date(atDate).getTime();
     return defs.find((d) => {
       const from = new Date(d.valid_from).getTime();
