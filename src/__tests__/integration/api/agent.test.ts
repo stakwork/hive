@@ -12,6 +12,21 @@ import { createTestTask } from "@/__tests__/support/factories/task.factory";
 import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 import { db } from "@/lib/db";
 
+const { mockAfter, pendingAfterCallbacks } = vi.hoisted(() => ({
+  pendingAfterCallbacks: [] as Promise<unknown>[],
+  mockAfter: vi.fn((callback: () => unknown) => {
+    pendingAfterCallbacks.push(Promise.resolve().then(callback));
+  }),
+}));
+
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: mockAfter,
+  };
+});
+
 // Mock the gooseWeb provider
 const mockStreamText = vi.fn();
 vi.mock("ai-sdk-provider-goose-web", () => ({
@@ -34,6 +49,7 @@ vi.stubGlobal("fetch", mockFetch);
 describe("POST /api/agent Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pendingAfterCallbacks.length = 0;
 
     // Enable agent mode feature flag for all tests
     process.env.NEXT_PUBLIC_FEATURE_TASK_AGENT_MODE = "true";
@@ -44,7 +60,9 @@ describe("POST /api/agent Integration Tests", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await Promise.allSettled(pendingAfterCallbacks);
+    pendingAfterCallbacks.length = 0;
     delete process.env.NEXT_PUBLIC_FEATURE_TASK_AGENT_MODE;
   });
 
@@ -101,6 +119,9 @@ describe("POST /api/agent Integration Tests", () => {
             json: () => Promise.resolve({ token: "mock-stream-token" }),
           });
         }
+        if (url.includes("/stream/")) {
+          return Promise.resolve(new Response("data: {}\n\n"));
+        }
         return Promise.resolve({
           ok: false,
           text: () => Promise.resolve("Not found"),
@@ -139,6 +160,8 @@ describe("POST /api/agent Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
+      expect(data.backgroundStream).toBe(true);
+      expect(data.streamToken).toBeUndefined();
 
       const sessionCall = mockFetch.mock.calls.find(([url]: [string]) =>
         url.includes("/session"),
@@ -148,6 +171,47 @@ describe("POST /api/agent Integration Tests", () => {
       const sessionBody = JSON.parse(sessionCall[1].body);
       expect(sessionBody.agent_name).toBeUndefined();
       expect(sessionBody.model).toBe("sonnet");
+    });
+
+    test("starts the agent stream in a Next after callback", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({ ownerId: user.id });
+      const task = await createTestTask({
+        workspaceId: workspace.id,
+        createdById: user.id,
+        title: "Background stream task",
+      });
+
+      await db.task.update({
+        where: { id: task.id },
+        data: { mode: "agent", model: "sonnet" },
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = createPostRequest("http://localhost/api/agent", {
+        message: "Keep working if I leave the page",
+        taskId: task.id,
+        model: "sonnet",
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backgroundStream).toBe(true);
+      expect(mockAfter).toHaveBeenCalledTimes(1);
+
+      await Promise.all(pendingAfterCallbacks);
+
+      const streamCall = mockFetch.mock.calls.find(([url]: [string]) =>
+        url.includes(`/stream/${task.id}`),
+      );
+      expect(streamCall).toBeDefined();
+      expect(streamCall?.[0]).toContain("token=mock-stream-token");
+      expect(JSON.parse(streamCall?.[1].body)).toEqual({
+        prompt: "Keep working if I leave the page",
+      });
     });
   });
 
