@@ -818,12 +818,16 @@ export async function processStakworkRunWebhook(
   let run = await db.stakworkRun.findFirst({
     where: {
       OR: [
-        { projectId: project_id || undefined },
+        // Only include projectId arm when it is actually present; omitting it
+        // avoids `{ projectId: undefined }` which Prisma treats as match-all.
+        ...(project_id ? [{ projectId: project_id }] : []),
         {
           workspaceId: workspace_id,
           type: type as StakworkRunType,
           featureId: feature_id || null,
-          status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+          // COMPLETED included so result webhooks can find runs already
+          // transitioned to COMPLETED by a prior status-only webhook.
+          status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED] },
         },
       ],
     },

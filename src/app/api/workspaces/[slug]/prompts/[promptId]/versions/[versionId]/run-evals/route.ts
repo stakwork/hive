@@ -200,7 +200,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Invalid versionId" }, { status: 400 });
     }
 
-    const run = await db.stakworkRun.findFirst({
+    const runs = await db.stakworkRun.findMany({
       where: {
         type: "PROMPT_EVAL",
         promptVersionId: promptVersionIdInt,
@@ -217,7 +217,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     });
 
-    return NextResponse.json({ success: true, data: run ?? null });
+    return NextResponse.json({ success: true, data: runs[0] ?? null, history: runs });
   } catch (error) {
     console.error("[run-evals GET] Unexpected error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
