@@ -24,5 +24,6 @@ export async function POST(_request: NextRequest, _context: RouteParams) {
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   const { versionId } = await params;
   const run = SEEDED_RUNS[versionId] ?? null;
-  return NextResponse.json({ success: true, data: run });
+  const history = run ? [run] : [];
+  return NextResponse.json({ success: true, data: run, history });
 }

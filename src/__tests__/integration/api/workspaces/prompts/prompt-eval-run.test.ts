@@ -204,6 +204,61 @@ describe("Prompt Eval Run API — Integration Tests", () => {
       expect(data.data).toBeNull();
     });
 
+    test("returns history array with all runs ordered by createdAt desc", async () => {
+      const owner = await createTestUser();
+      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      await createTestMembership({ workspaceId: workspace.id, userId: owner.id, role: "OWNER" });
+      await createTestSwarm({ workspaceId: workspace.id, swarmApiKey: "test-key", swarmUrl: "https://test.swarm.url" });
+
+      // Create two runs for the same promptVersionId — older first
+      const older = await db.stakworkRun.create({
+        data: {
+          type: "PROMPT_EVAL",
+          workspaceId: workspace.id,
+          promptVersionId: 88,
+          evalSetId: "eval-set-older",
+          status: "COMPLETED",
+          result: JSON.stringify({ pass: 3, fail: 2, total: 5 }),
+          webhookUrl: "https://example.com/webhook",
+        },
+      });
+
+      // Small delay so createdAt timestamps differ
+      await new Promise((r) => setTimeout(r, 5));
+
+      const newer = await db.stakworkRun.create({
+        data: {
+          type: "PROMPT_EVAL",
+          workspaceId: workspace.id,
+          promptVersionId: 88,
+          evalSetId: "eval-set-newer",
+          status: "IN_PROGRESS",
+          result: null,
+          webhookUrl: "https://example.com/webhook2",
+        },
+      });
+
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/prompts/1/versions/88/run-evals`,
+        owner,
+      );
+
+      const response = await runEvalsGet(request, makeParams(workspace.slug, "1", "88"));
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // data.data should be the most recent run (backward-compat)
+      expect(data.data).not.toBeNull();
+      expect(data.data.id).toBe(newer.id);
+
+      // history should contain both runs, newest first
+      expect(Array.isArray(data.history)).toBe(true);
+      expect(data.history).toHaveLength(2);
+      expect(data.history[0].id).toBe(newer.id);
+      expect(data.history[1].id).toBe(older.id);
+    });
+
     test("returns the latest PROMPT_EVAL run for the correct promptVersionId", async () => {
       const owner = await createTestUser();
       const workspace = await createTestWorkspace({ ownerId: owner.id });
