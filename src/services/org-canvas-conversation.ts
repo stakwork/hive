@@ -219,7 +219,7 @@ export async function loadOrgCanvasPromptCache(args: {
 /** True when a cache holds at least one concept (defensive: never cache
  *  an empty result from a swarm outage). */
 export function hasConcepts(c: CachedConcepts): boolean {
-  if (Array.isArray(c.features)) return c.features.length > 0;
+  if (Array.isArray(c.concepts)) return c.concepts.length > 0;
   if (c.conceptsByWorkspace) {
     return Object.values(c.conceptsByWorkspace).some(
       (list) => Array.isArray(list) && list.length > 0,
