@@ -228,7 +228,7 @@ describe("GET /api/workspaces/[slug]/lingo/nodes", () => {
     expect(body.data.hasMore).toBe(false);
   });
 
-  test("returns empty nodes when Jarvis returns non-2xx", async () => {
+  test("returns 500 when Jarvis returns non-2xx", async () => {
     mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "bad request" }), { status: 400 }),
@@ -237,25 +237,23 @@ describe("GET /api/workspaces/[slug]/lingo/nodes", () => {
       `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
     );
     const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.data.nodes).toEqual([]);
-    expect(body.data.hasMore).toBe(false);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("Failed to fetch Lingo nodes");
   });
 
-  test("returns empty nodes when Jarvis fetch throws", async () => {
+  test("returns 500 when Jarvis fetch throws", async () => {
     mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({ success: true, data: SWARM_DATA });
     mockFetch.mockRejectedValueOnce(new Error("Network error"));
     const req = makeAuthenticatedRequest(
       `http://localhost/api/workspaces/${SLUG}/lingo/nodes`,
     );
     const res = await GET(req, { params: Promise.resolve({ slug: SLUG }) });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.data.nodes).toEqual([]);
-    expect(body.data.hasMore).toBe(false);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("Failed to fetch Lingo nodes");
   });
 });
 
