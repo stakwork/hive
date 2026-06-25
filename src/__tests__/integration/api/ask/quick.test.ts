@@ -41,7 +41,7 @@ vi.mock('@/lib/ai/provider', () => ({
 // Mock the AI tools
 vi.mock('@/lib/ai/askTools', () => ({
   askTools: vi.fn(() => ({})),
-  listConcepts: vi.fn(() => Promise.resolve({ features: [] })),
+  listConcepts: vi.fn(() => Promise.resolve({ concepts: [] })),
   createHasEndMarkerCondition: vi.fn(() => () => false),
   clueToolMsgs: vi.fn(() => Promise.resolve(null)),
 }));

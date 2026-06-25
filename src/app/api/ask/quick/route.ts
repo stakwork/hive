@@ -549,23 +549,29 @@ export async function POST(request: NextRequest) {
           },
         });
 
-      // Persist the freshly-fetched concepts so the next turn of this
-      // conversation can reuse them and skip the swarm `listConcepts`
-      // call. Also snapshot the rendered prefix for the Agent Logs detail
-      // view. Only on a cache MISS, with a validated org-canvas row id,
-      // and only when the concepts are NON-EMPTY — a swarm outage on the
-      // first turn yields an empty list, and caching that would poison
-      // the cache into permanently serving nothing (we retry next turn).
+      // Snapshot the rendered prefix for the Agent Logs detail view, and
+      // (when present) cache the freshly-fetched concepts so the next turn
+      // of this conversation can reuse them and skip the swarm
+      // `listConcepts` call. These are DECOUPLED: the prefix snapshot is a
+      // display-only artifact written on every cache MISS so the Agent
+      // Logs panel always renders — even for orgs whose swarm returns no
+      // concepts. The concept cache is gated on NON-EMPTY concepts (a
+      // swarm outage yields an empty list, and caching that would poison
+      // the cache into permanently serving nothing; we retry next turn).
+      // Only on a cache MISS, with a validated org-canvas row id.
       // Best-effort + off the response path via `after()`.
       // `canvasConversationRowId` covers the first turn (the row was just
       // created in this request, so `promptCache.rowId` was null at load).
       const cacheRowId = promptCache?.rowId ?? canvasConversationRowId;
-      if (cacheRowId && !cacheHit && hasConcepts(cacheableConcepts)) {
+      if (cacheRowId && !cacheHit) {
+        const conceptsToCache = hasConcepts(cacheableConcepts)
+          ? cacheableConcepts
+          : null;
         after(async () => {
           try {
             await persistOrgCanvasPromptCache(
               cacheRowId,
-              cacheableConcepts,
+              conceptsToCache,
               assembledPrefix,
             );
           } catch (err) {
