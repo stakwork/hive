@@ -1325,9 +1325,19 @@ describe("ChatInput - @mention autocomplete (plan chat)", () => {
     expect(screen.queryByTestId("mention-item-beta-ws")).not.toBeInTheDocument();
   });
 
-  test("popup does NOT appear in non-plan (task) chat", async () => {
+  test("popup does NOT appear in non-plan, non-workflow_editor (live) chat", async () => {
     const user = userEvent.setup();
-    render(<ChatInput {...planProps} isPlanChat={false} />);
+    render(<ChatInput {...planProps} isPlanChat={false} taskMode="live" />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@");
+
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+  });
+
+  test("popup does NOT appear in agent mode", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...planProps} isPlanChat={false} taskMode="agent" />);
     const textarea = screen.getByTestId("chat-message-input");
 
     await user.type(textarea, "@");
@@ -1408,5 +1418,91 @@ describe("ChatInput - @mention autocomplete (plan chat)", () => {
     await user.keyboard("{Enter}");
     const textarea2 = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
     expect(textarea2.value).toContain("@beta-ws");
+  });
+});
+
+describe("ChatInput - @mention autocomplete (workflow_editor mode)", () => {
+  const workflowEditorProps = {
+    onSend: vi.fn().mockResolvedValue(undefined),
+    disabled: false,
+    isLoading: false,
+    pendingDebugAttachment: null,
+    workflowStatus: null as WorkflowStatus | null,
+    isPlanChat: false,
+    taskMode: "workflow_editor",
+    currentWorkspaceSlug: "current-ws",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("popup appears when '@' is typed in workflow_editor mode", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...workflowEditorProps} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@");
+
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+    expect(screen.getByTestId("mention-item-alpha-ws")).toBeInTheDocument();
+    expect(screen.getByTestId("mention-item-beta-ws")).toBeInTheDocument();
+    // Current workspace excluded
+    expect(screen.queryByTestId("mention-item-current-ws")).not.toBeInTheDocument();
+  });
+
+  test("popup filters by partial slug in workflow_editor mode", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...workflowEditorProps} />);
+    const textarea = screen.getByTestId("chat-message-input");
+
+    await user.type(textarea, "@alp");
+
+    expect(screen.getByTestId("mention-item-alpha-ws")).toBeInTheDocument();
+    expect(screen.queryByTestId("mention-item-beta-ws")).not.toBeInTheDocument();
+  });
+
+  test("clicking a mention item inserts @slug and closes popup in workflow_editor mode", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...workflowEditorProps} />);
+    const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+
+    await user.type(textarea, "hello @alp");
+    expect(screen.getByTestId("mention-item-alpha-ws")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("mention-item-alpha-ws"));
+
+    expect(textarea.value).toContain("@alpha-ws");
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+  });
+
+  test("Escape closes popup in workflow_editor mode", async () => {
+    const user = userEvent.setup();
+    render(<ChatInput {...workflowEditorProps} />);
+    const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+
+    await user.type(textarea, "@alp");
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
+    expect(textarea.value).toContain("@alp");
+  });
+
+  test("Enter selects highlighted item (does NOT submit) in workflow_editor mode", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<ChatInput {...workflowEditorProps} onSend={onSend} />);
+    const textarea = screen.getByTestId("chat-message-input") as HTMLTextAreaElement;
+
+    await user.type(textarea, "@alp");
+    expect(screen.getByTestId("mention-popup")).toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toContain("@alpha-ws");
+    expect(screen.queryByTestId("mention-popup")).not.toBeInTheDocument();
   });
 });
