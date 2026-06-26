@@ -503,6 +503,19 @@ jobs:
             sleep 15
           done
 
+          # Pre-resolve our new migration one final time immediately before vercel build,
+          # so that Vercel's own internal "prisma migrate deploy" (part of the Vercel
+          # build command) sees it as already applied and does not need the advisory lock.
+          echo "Pre-resolving 20260626160017_add_hive_prompt_models before vercel build..."
+          PROMPTS_TABLE_FINAL=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='prompts' AND table_schema='public';" 2>/dev/null | tr -d '[:space:]' || echo "0")
+          if [ "$PROMPTS_TABLE_FINAL" = "1" ]; then
+            echo "  prompts table exists — marking as applied"
+            npx prisma migrate resolve --applied "20260626160017_add_hive_prompt_models" 2>&1 || true
+          else
+            echo "  prompts table absent — rolling back so Vercel will apply it"
+            npx prisma migrate resolve --rolled-back "20260626160017_add_hive_prompt_models" 2>&1 || true
+          fi
+
           vercel build --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
 
       ############################################################
