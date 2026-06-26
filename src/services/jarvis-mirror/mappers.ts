@@ -25,6 +25,13 @@ export const HIVE_CHAT_MESSAGE = "HiveChatMessage";
 export const EDGE_HAS_TASK = "HAS_TASK";
 export const EDGE_HAS_MESSAGE = "HAS_MESSAGE";
 
+// PR-link cron: HiveTask -RESULTED_IN-> PullRequest (the ingested code node).
+// `PULL_REQUEST` is codegraph's node_type, not a Hive-owned one. Verified on
+// prod: these nodes are labeled `PullRequest` (stakgraph ingests them directly,
+// bypassing Jarvis's capitalize-on-write) and carry `repo` + `number` props.
+export const EDGE_RESULTED_IN = "RESULTED_IN";
+export const PULL_REQUEST = "PullRequest";
+
 export interface JarvisNodePayload {
   node_type: string;
   node_data: Record<string, unknown>;
@@ -181,6 +188,56 @@ function chatEndpoint(m: ChatMessageRow) {
   return {
     node_type: HIVE_CHAT_MESSAGE,
     node_data: { message_id: m.id, name: chatMessageName(m), message: m.message },
+  };
+}
+
+// --- PR linking (jarvis-pr-link-cron) ---
+
+/**
+ * Parse a GitHub PR URL into `{ repo: "owner/name", number }`. The artifact's
+ * `content.url` (the PR html_url) is the only reliable per-task PR reference;
+ * `content.repo`/`content.number` are inconsistent across writers, so we derive
+ * both from the URL. Returns null for anything that isn't a `/pull/<n>` URL.
+ */
+export function parsePullRequestUrl(
+  url: unknown,
+): { repo: string; number: number } | null {
+  if (typeof url !== "string") return null;
+  // .../{owner}/{repo}/pull/{number}
+  const m = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/i);
+  if (!m) return null;
+  const number = Number(m[3]);
+  if (!Number.isInteger(number) || number <= 0) return null;
+  return { repo: `${m[1]}/${m[2]}`, number };
+}
+
+/**
+ * Stable map key for matching a parsed PR ref against a `PullRequest` graph
+ * node's `repo` + `number` properties. Lowercased — GitHub owner/repo are
+ * case-insensitive and the graph stores them lowercased.
+ */
+export function prNodeKey(repo: string, number: number): string {
+  return `${repo.toLowerCase()}#${number}`;
+}
+
+/**
+ * HiveTask -RESULTED_IN-> PullRequest. Source resolves by Hive node_key
+ * (`task_id` + required `name`); target is the *existing* ingested PR node,
+ * addressed by `ref_id` so we never create a stub.
+ */
+export function taskPrEdge(
+  taskId: string,
+  taskName: string,
+  prRefId: string,
+): {
+  edge: { edge_type: string };
+  source: { node_type: string; node_data: Record<string, unknown> };
+  target: { ref_id: string };
+} {
+  return {
+    edge: { edge_type: EDGE_RESULTED_IN },
+    source: taskEndpoint(taskId, taskName),
+    target: { ref_id: prRefId },
   };
 }
 
