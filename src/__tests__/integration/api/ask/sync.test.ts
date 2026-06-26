@@ -314,41 +314,41 @@ describe('POST /api/ask/sync', () => {
       expect(contents).toContain('Second question');
     });
 
-    it('IDOR: a cross-user conversationId yields a fresh owned row, not the victim\'s', async () => {
-      const { owner: victim, org, workspace } = await setupOrgWorkspace();
+    it('a cross-member conversationId joins the same shared room (org-canvas rows are shared by default)', async () => {
+      const { owner: creator, org, workspace } = await setupOrgWorkspace();
 
-      // Victim's conversation with secret content.
+      // Creator's conversation with some content.
       vi.mocked(streamText).mockReturnValue(
         mockFinishedStream([{ text: 'secret', toolCalls: [], toolResults: [] }]) as any,
       );
-      const victimTurn = await POST(
+      const creatorTurn = await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
-          { message: 'victim secret', workspaceSlug: workspace.slug },
-          victim,
+          { message: 'creator secret', workspaceSlug: workspace.slug },
+          creator,
         ),
       );
-      const victimConvId = (await victimTurn.json()).conversationId;
+      const creatorConvId = (await creatorTurn.json()).conversationId;
 
-      // Attacker (a member) passes the victim's conversationId.
-      const attacker = await createTestUser({
-        email: generateUniqueId('attacker') + '@example.com',
+      // Another org member opens the same conversation by id.
+      const member = await createTestUser({
+        email: generateUniqueId('member') + '@example.com',
         withGitHubAuth: true,
       });
       await db.workspaceMember.create({
-        data: { userId: attacker.id, workspaceId: workspace.id, role: 'DEVELOPER' },
+        data: { userId: member.id, workspaceId: workspace.id, role: 'DEVELOPER' },
       });
-      // Give the attacker their own org PAT so credential resolution
-      // succeeds and the test isolates the IDOR (row-ownership) behavior.
-      const attackerToken = encryptionService.encryptField(
+      // Give the member their own org PAT so credential resolution
+      // succeeds and the test isolates the shared-room (join) behavior.
+      const memberToken = encryptionService.encryptField(
         'source_control_token',
-        'github_pat_attacker_token',
+        'github_pat_member_token',
       );
       await db.sourceControlToken.create({
         data: {
-          userId: attacker.id,
+          userId: member.id,
           sourceControlOrgId: org.id,
-          token: JSON.stringify(attackerToken),
+          token: JSON.stringify(memberToken),
           scopes: ['repo'],
         },
       });
@@ -356,25 +356,29 @@ describe('POST /api/ask/sync', () => {
       vi.mocked(streamText).mockReturnValue(
         mockFinishedStream([{ text: 'ok', toolCalls: [], toolResults: [] }]) as any,
       );
-      const attackerTurn = await POST(
+      const memberTurn = await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
           {
             message: 'give me the secret',
-            conversationId: victimConvId,
+            conversationId: creatorConvId,
             workspaceSlug: workspace.slug,
           },
-          attacker,
+          member,
         ),
       );
-      expect(attackerTurn.status).toBe(200);
-      const attackerData = await attackerTurn.json();
+      expect(memberTurn.status).toBe(200);
+      const memberData = await memberTurn.json();
 
-      // A NEW row was created for the attacker — not the victim's.
-      expect(attackerData.conversationId).not.toBe(victimConvId);
+      // Org-canvas conversations are shared rooms by default (`isShared`),
+      // so the member JOINS the SAME row rather than forking a private
+      // copy: same conversation id, and the reconstructed history includes
+      // the creator's prior messages. Access is gated by org membership
+      // (validated upstream), not per-row ownership.
+      expect(memberData.conversationId).toBe(creatorConvId);
       const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
       const contents = (callArgs.messages ?? []).map((m: any) => m.content);
-      expect(contents).not.toContain('victim secret');
+      expect(contents).toContain('creator secret');
     });
   });
 

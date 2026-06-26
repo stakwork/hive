@@ -369,8 +369,6 @@ export function registerOrgTools(
             turnId,
             content: args.prompt,
             workspaceSlugs: slugs,
-            // Shareable so the `?chat=<id>` link opens for any org member.
-            isShared: true,
           });
         } else {
           convertedMessages = [{ role: "user", content: args.prompt }];
