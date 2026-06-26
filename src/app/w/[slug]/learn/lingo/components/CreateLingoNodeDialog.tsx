@@ -13,7 +13,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { LingoNode } from "@/app/api/mock/lingo/nodes";
+import { LINGO_TYPES, type LingoType } from "@/lib/constants/lingo";
 
 interface CreateLingoNodeDialogProps {
   workspaceSlug: string;
@@ -30,6 +38,7 @@ export function CreateLingoNodeDialog({
 }: CreateLingoNodeDialogProps) {
   const [name, setName] = useState("");
   const [definition, setDefinition] = useState("");
+  const [lingoType, setLingoType] = useState<LingoType | "">("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -39,6 +48,7 @@ export function CreateLingoNodeDialog({
     if (isOpen) {
       setName("");
       setDefinition("");
+      setLingoType("");
       setError(null);
       setIsSubmitting(false);
       // Autofocus name input
@@ -58,12 +68,16 @@ export function CreateLingoNodeDialog({
       const res = await fetch(`/api/workspaces/${workspaceSlug}/lingo/nodes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmedName, definition: definition.trim() || undefined }),
+        body: JSON.stringify({
+          name: trimmedName,
+          definition: definition.trim() || undefined,
+          ...(lingoType ? { lingo_type: lingoType } : {}),
+        }),
       });
 
       const json = await res.json() as {
         success: boolean;
-        data?: { ref_id?: string; name: string; definition?: string };
+        data?: { ref_id?: string; name: string; definition?: string; lingo_type?: LingoType };
         alreadyExists?: boolean;
         error?: string;
       };
@@ -79,6 +93,7 @@ export function CreateLingoNodeDialog({
         definition: json.data?.definition,
         node_type: "Lingo",
         date_added_to_graph: Date.now() / 1000,
+        lingo_type: lingoType || undefined,
       };
 
       if (json.alreadyExists) {
@@ -135,6 +150,26 @@ export function CreateLingoNodeDialog({
               disabled={isSubmitting}
               data-testid="lingo-definition-input"
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lingo-type">Type <span className="text-muted-foreground text-xs">(optional)</span></Label>
+            <Select
+              value={lingoType}
+              onValueChange={(val) => setLingoType(val as LingoType)}
+              disabled={isSubmitting}
+            >
+              <SelectTrigger id="lingo-type" data-testid="lingo-type-select">
+                <SelectValue placeholder="Select a type…" />
+              </SelectTrigger>
+              <SelectContent>
+                {LINGO_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <DialogFooter>
