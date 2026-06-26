@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 /**
  * Restore-from-hidden pill.
@@ -29,6 +29,8 @@ export interface HiddenLiveEntry {
 interface HiddenLivePillProps {
   entries: HiddenLiveEntry[];
   onRestore: (id: string) => void | Promise<void>;
+  /** Pixel width of the right panel. Pill and modal shift left by this amount. */
+  rightInset?: number;
 }
 
 /**
@@ -46,7 +48,7 @@ function pluralLabel(kind: string, count: number): string {
   return count === 1 ? singular : plural;
 }
 
-export function HiddenLivePill({ entries, onRestore }: HiddenLivePillProps) {
+export function HiddenLivePill({ entries, onRestore, rightInset = 0 }: HiddenLivePillProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -93,12 +95,13 @@ export function HiddenLivePill({ entries, onRestore }: HiddenLivePillProps) {
       style={{
         position: "absolute",
         top: 16,
-        right: 16,
+        right: rightInset + 16,
         zIndex: 25,
         fontFamily:
           "'Inter', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif",
         fontSize: 12,
         userSelect: "none",
+        transition: "right 200ms ease",
       }}
     >
       <button
@@ -151,6 +154,7 @@ export function HiddenLivePill({ entries, onRestore }: HiddenLivePillProps) {
             border: "1px solid rgba(255, 255, 255, 0.08)",
             boxShadow: "0 8px 24px rgba(0, 0, 0, 0.35)",
             backdropFilter: "blur(10px)",
+            transition: "right 200ms ease",
           }}
         >
           {[...groups.entries()].map(([kind, items], idx) => (
