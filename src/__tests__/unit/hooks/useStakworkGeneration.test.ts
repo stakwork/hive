@@ -48,6 +48,96 @@ describe("useStakworkGeneration", () => {
     } as Response);
   });
 
+  describe("Pusher run-update event triggers refetch", () => {
+    it("calls queryLatestRun when a matching stakwork-run-update event arrives", async () => {
+      let capturedHandler: ((data: unknown) => void) | null = null;
+      mockChannel.bind.mockImplementation(
+        (event: string, handler: (data: unknown) => void) => {
+          if (event === "stakwork-run-update") {
+            capturedHandler = handler;
+          }
+        },
+      );
+
+      renderHook(() =>
+        useStakworkGeneration({
+          featureId,
+          type: "TASK_GENERATION",
+          enabled: true,
+        }),
+      );
+
+      // Wait for initial fetch
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(mockChannel.bind).toHaveBeenCalledWith(
+        "stakwork-run-update",
+        expect.any(Function),
+      );
+      expect(capturedHandler).not.toBeNull();
+
+      const fetchBefore = vi.mocked(global.fetch).mock.calls.length;
+
+      // Simulate a run-update event matching featureId + type (the creation broadcast)
+      await act(async () => {
+        capturedHandler!({
+          runId: "run-new",
+          type: "TASK_GENERATION",
+          status: "IN_PROGRESS",
+          featureId,
+          timestamp: new Date().toISOString(),
+        });
+        await Promise.resolve();
+      });
+
+      // fetch should have been called again to re-query the latest run
+      expect(vi.mocked(global.fetch).mock.calls.length).toBeGreaterThan(
+        fetchBefore,
+      );
+    });
+
+    it("does NOT call queryLatestRun when the event featureId does not match", async () => {
+      let capturedHandler: ((data: unknown) => void) | null = null;
+      mockChannel.bind.mockImplementation(
+        (event: string, handler: (data: unknown) => void) => {
+          if (event === "stakwork-run-update") {
+            capturedHandler = handler;
+          }
+        },
+      );
+
+      renderHook(() =>
+        useStakworkGeneration({
+          featureId,
+          type: "TASK_GENERATION",
+          enabled: true,
+        }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      const fetchBefore = vi.mocked(global.fetch).mock.calls.length;
+
+      // Event for a different feature — should be ignored
+      await act(async () => {
+        capturedHandler!({
+          runId: "run-other",
+          type: "TASK_GENERATION",
+          status: "IN_PROGRESS",
+          featureId: "different-feature-id",
+          timestamp: new Date().toISOString(),
+        });
+        await Promise.resolve();
+      });
+
+      expect(vi.mocked(global.fetch).mock.calls.length).toBe(fetchBefore);
+    });
+  });
+
   describe("error handling", () => {
     it("should handle getPusherClient throwing error gracefully", async () => {
       const pusher = await import("@/lib/pusher");

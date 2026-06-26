@@ -222,4 +222,52 @@ describe("POST /api/stakwork/ai/generate — idempotency guard", () => {
     // Should succeed (201) — the completed run does not block a new one
     expect(response.status).toBe(201);
   });
+
+  it("broadcasts a Pusher run-update event on successful run creation", async () => {
+    const { pusherServer } = await import("@/lib/pusher");
+
+    const request = createAuthenticatedPostRequest(BASE_URL, user, {
+      type: "TASK_GENERATION",
+      featureId: feature.id,
+      workspaceId: workspace.id,
+      autoAccept: true,
+      params: { skipClarifyingQuestions: true },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    expect(pusherServer.trigger).toHaveBeenCalledWith(
+      `workspace-${workspace.slug}`,
+      "stakwork-run-update",
+      expect.objectContaining({
+        type: "TASK_GENERATION",
+        status: WorkflowStatus.IN_PROGRESS,
+        featureId: feature.id,
+      }),
+    );
+  });
+
+  it("run creation succeeds even when Pusher broadcast throws", async () => {
+    const { pusherServer } = await import("@/lib/pusher");
+    vi.mocked(pusherServer.trigger).mockRejectedValueOnce(
+      new Error("Pusher unavailable"),
+    );
+
+    const request = createAuthenticatedPostRequest(BASE_URL, user, {
+      type: "TASK_GENERATION",
+      featureId: feature.id,
+      workspaceId: workspace.id,
+      autoAccept: true,
+      params: { skipClarifyingQuestions: true },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    const createdRun = await db.stakworkRun.findFirst({
+      where: { featureId: feature.id, type: StakworkRunType.TASK_GENERATION },
+    });
+    expect(createdRun?.status).toBe(WorkflowStatus.IN_PROGRESS);
+  });
 });
