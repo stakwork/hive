@@ -31,16 +31,18 @@ vi.mock("@/components/MarkdownRenderer", () => ({
     React.createElement("div", { "data-testid": "markdown" }, children),
 }));
 
-vi.mock("date-fns", () => ({
-  format: (date: Date, fmt: string) => {
-    // Simple HH:mm implementation for tests
-    if (fmt === "HH:mm") {
-      const h = String(date.getUTCHours()).padStart(2, "0");
-      const m = String(date.getUTCMinutes()).padStart(2, "0");
-      return `${h}:${m}`;
-    }
-    return date.toISOString();
-  },
+
+
+vi.mock("gpt-tokenizer", () => ({
+  encode: (text: string) => Array.from(text),
+}));
+
+vi.mock("@/hooks/useUserTimezone", () => ({
+  useUserTimezone: () => ({ timezone: "UTC" }),
+}));
+
+vi.mock("@/lib/date-utils", () => ({
+  formatInUserTz: (date: Date) => date.toISOString(),
 }));
 
 import { MessageBubble } from "@/components/agent-logs/LogDetailContent";
@@ -127,7 +129,7 @@ describe("MessageBubble reasoning rendering", () => {
 });
 
 describe("MessageBubble timestamp rendering", () => {
-  it("renders HH:mm label and tooltip when timestamp is present on a user message", () => {
+  it("puts the timestamp in tooltip content (not a visible label) for a user message", () => {
     const message: ParsedMessage = {
       role: "user",
       content: "Hello",
@@ -135,15 +137,17 @@ describe("MessageBubble timestamp rendering", () => {
     };
     render(React.createElement(MessageBubble, { message }));
 
-    // HH:mm label should be visible
-    expect(screen.getByText("10:30")).toBeDefined();
+    // There should be NO always-visible HH:mm span
+    expect(screen.queryByText("10:30")).toBeNull();
 
-    // Tooltip content should show the full locale string
+    // The tooltip content should contain the formatted timestamp
     const tooltip = screen.getByTestId("tooltip-content");
     expect(tooltip.textContent).toBeTruthy();
+    // toLocaleString of the timestamp should appear somewhere
+    expect(tooltip.textContent).toContain(new Date("2024-01-15T10:30:00.000Z").toLocaleString());
   });
 
-  it("renders HH:mm label and tooltip when timestamp is present on an assistant message", () => {
+  it("puts the timestamp in tooltip content (not a visible label) for an assistant message", () => {
     const message: ParsedMessage = {
       role: "assistant",
       content: "Hi there",
@@ -151,12 +155,14 @@ describe("MessageBubble timestamp rendering", () => {
     };
     render(React.createElement(MessageBubble, { message }));
 
-    expect(screen.getByText("14:05")).toBeDefined();
+    // No always-visible time label
+    expect(screen.queryByText("14:05")).toBeNull();
+
     const tooltip = screen.getByTestId("tooltip-content");
-    expect(tooltip.textContent).toBeTruthy();
+    expect(tooltip.textContent).toContain(new Date("2024-01-15T14:05:00.000Z").toLocaleString());
   });
 
-  it("does not render a timestamp label when timestamp is null", () => {
+  it("does not render tooltip content when timestamp is null", () => {
     const message: ParsedMessage = {
       role: "user",
       content: "No timestamp here",
@@ -164,11 +170,10 @@ describe("MessageBubble timestamp rendering", () => {
     };
     render(React.createElement(MessageBubble, { message }));
 
-    // No tooltip content should be rendered
     expect(screen.queryByTestId("tooltip-content")).toBeNull();
   });
 
-  it("does not render a timestamp label when timestamp is absent", () => {
+  it("does not render tooltip content when timestamp is absent", () => {
     const message: ParsedMessage = {
       role: "assistant",
       content: "No timestamp here",
