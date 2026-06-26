@@ -210,11 +210,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    */
   const [currentCanvasBreadcrumb, setCurrentCanvasBreadcrumb] = useState("");
 
-  // Optional `?chat=<conversationId>` preload — the chat's "copy share
-  // link" action writes URLs of this shape pointing at a live shared
-  // conversation row. Landing on one preloads that conversation and
-  // adopts it as our server row, so we *join* the same room (sharer
-  // included) rather than forking a private copy.
+  // Optional `?chat=<conversationId>` preload. The URL tracks the live
+  // conversation row (set on row creation, and what "copy share link"
+  // hands out). Landing on one preloads that conversation and adopts it
+  // as our server row, so we RESUME our own chat after a reload — or
+  // JOIN someone else's shared room — rather than starting a fresh one.
   const sharedChatId = searchParams.get("chat");
   const [chatInitialMessages, setChatInitialMessages] =
     useState<CanvasChatMessage[] | null>(null);
@@ -223,8 +223,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // Synthetic "My Activity" intro — fetched from /api/profile/activity.
   // Resolved before `startConversation` fires so the seed lands cleanly
   // into the new conversation. Intentionally skipped when:
-  //   - `?chat=<shareId>` is present (forking — we'd be polluting
-  //     someone else's transcript with the new viewer's intro).
+  //   - `?chat=<id>` is present (resuming/joining an existing room — we'd
+  //     be polluting an established transcript with the intro).
   //   - The user dismissed the intro during this session (×).
   // See `_components/MyActivityPanel.tsx` for the rendered card.
   const [activityData, setActivityData] = useState<ActivityItem[] | null>(null);
@@ -345,8 +345,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // Resolve the synthetic intro's data BEFORE starting the
   // conversation so the seed messages land atomically with
   // `startConversation` (avoiding a flicker of empty chat → seed
-  // populated). Skipped when forking a share or when the user
-  // dismissed during this session.
+  // populated). Skipped when resuming/joining a `?chat=` room or when
+  // the user dismissed during this session.
   //
   // We wait for `hiddenInitialized` so the slug allow-list we send
   // matches what the user actually sees on the root canvas — without
@@ -354,7 +354,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // intro card on first paint, then jump away on the next refresh.
   useEffect(() => {
     if (sharedChatId) {
-      // Forking someone else's conversation — never inject our intro.
+      // Resuming/joining an existing room — never inject our intro.
       setActivityLoadComplete(true);
       return;
     }
@@ -809,9 +809,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   useEffect(() => {
     if (!chatReady || conversationStarted) return;
 
-    // Build the seed: forked-share messages take precedence (those
-    // are the user's prior conversation). When neither share nor
-    // attention items exist, seed is empty and we land in today's
+    // Build the seed: preloaded `?chat=` messages take precedence (the
+    // resumed/joined conversation's prior transcript). When neither a
+    // preloaded room nor attention items exist, seed is empty and we land
+    // in today's
     // "Ask the agent…" empty state.
     let seedMessages: CanvasChatMessage[] | undefined =
       chatInitialMessages ?? undefined;
@@ -848,19 +849,19 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       ephemeralSeedCount = 1;
     }
 
-    // Share = continue the SAME conversation, not fork. When we
-    // preloaded a conversation via `?chat=<shareId>`, adopt that row
-    // as our server conversation so new turns PUT-append to it instead
-    // of POSTing a fresh fork row — this is what makes refresh
-    // idempotent (re-load the same room, no new copy) and lets two
-    // people share one conversation. The seeded messages already live
-    // in that row, so they all count as already-saved. Omitting
-    // `joinServerConversationId` would fork instead — kept reachable
-    // for a future explicit "Fork" action.
-    const joinServerConversationId =
-      sharedChatId && chatInitialMessages ? sharedChatId : undefined;
-    if (joinServerConversationId) {
-      ephemeralSeedCount = chatInitialMessages!.length;
+    // Resume / join, never fork. When the URL carries `?chat=<id>` we
+    // always adopt that row as our server conversation so new turns
+    // append to it — whether it's our own conversation being resumed
+    // after a reload or someone else's shared room we're joining. Every
+    // org-canvas row is a joinable room (`isShared` defaults true), so a
+    // member who opens the link reads + appends to the same row. If the
+    // row is genuinely inaccessible (deleted / wrong org) the server
+    // forks a fresh owned row and the send hook reconciles us to it.
+    // Seeded messages (when the preload returned them) already live in
+    // that row, so they all count as already-saved.
+    const joinServerConversationId = sharedChatId ?? undefined;
+    if (joinServerConversationId && chatInitialMessages) {
+      ephemeralSeedCount = chatInitialMessages.length;
     }
 
     const conversationId = useCanvasChatStore.getState().startConversation(
