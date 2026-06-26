@@ -17,6 +17,7 @@ import {
   mcpCreateTask,
   mcpCreateFeatureTask,
   mcpCreateWorkflowTask,
+  isWorkflowTasksEnabled,
   mcpUpdateTask,
   mcpSendToTaskAgent,
   mcpSendMessage,
@@ -519,6 +520,8 @@ function createServer(
       description: [
         "Create a WORKFLOW task anchored to a feature in this workspace. Use this when the work is executed by running, building, or configuring a Stakwork **workflow** — a Lambda-based, DAG-style automation pipeline. Do NOT use this for code changes; use `create_feature_task` for those.",
         "",
+        "**Availability.** Workflow tasks are ONLY supported on the `stakwork` workspace. On any other workspace this tool will reject the call — treat the work as a coding task via `create_feature_task` instead.",
+        "",
         "Workflow tasks split into two kinds, both handled by this tool:",
         "- **Existing workflow** — running, triggering, or reconfiguring a workflow that already exists. Pass `workflowId` (integer).",
         "- **New workflow** — building a brand-new workflow in the editor. Omit `workflowId` entirely (never set it to null).",
@@ -629,6 +632,19 @@ function createServer(
       // workspace owner) when no hint matches.
       const result = await getWorkspaceAuth(authExtra, "create_workflow_task");
       if (result.error) return result.error;
+      // Gate: workflow tasks are stakwork-only (belt-and-suspenders with
+      // the same check inside mcpCreateWorkflowTask).
+      if (!isWorkflowTasksEnabled(result.auth!)) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Error: workflow tasks are only supported on the stakwork workspace",
+            },
+          ],
+          isError: true,
+        };
+      }
       return mcpCreateWorkflowTask(
         result.auth!,
         featureId,

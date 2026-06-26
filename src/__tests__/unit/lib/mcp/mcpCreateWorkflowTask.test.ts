@@ -21,6 +21,10 @@ import { mcpCreateWorkflowTask } from "@/lib/mcp/mcpTools";
 const AUTH = {
   userId: "user-1",
   workspaceId: "ws-1",
+  // Workflow tasks are gated to the stakwork workspace (see
+  // isWorkflowTasksEnabled); the slug must be "stakwork" for the create
+  // path to run.
+  workspaceSlug: "stakwork",
   role: "DEVELOPER" as const,
   workspaceOwnerId: "owner-1",
 };
@@ -99,6 +103,31 @@ describe("mcpCreateWorkflowTask — workflowTaskType threading", () => {
 
     expect(result.isError).toBe(true);
     expect(mockCreateTicket).not.toHaveBeenCalled();
+  });
+});
+
+describe("mcpCreateWorkflowTask — stakwork-only gate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDbFeature.findUnique.mockResolvedValue({
+      workspaceId: "ws-1",
+      createdById: "feature-creator-1",
+    });
+    mockCreateTicket.mockResolvedValue(BASE_TASK);
+  });
+
+  it("rejects workflow-task creation on a non-stakwork workspace", async () => {
+    const result = await mcpCreateWorkflowTask(
+      { ...AUTH, workspaceSlug: "some-other-workspace" },
+      "feature-1",
+      { title: "Task" },
+      { workflowTaskType: "SKILL" },
+    );
+
+    expect(result.isError).toBe(true);
+    expect(mockCreateTicket).not.toHaveBeenCalled();
+    // Should reject before even looking up the feature.
+    expect(mockDbFeature.findUnique).not.toHaveBeenCalled();
   });
 });
 
