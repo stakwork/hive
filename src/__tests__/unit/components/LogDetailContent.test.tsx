@@ -6,6 +6,18 @@ import userEvent from "@testing-library/user-event";
 
 // --- Mocks ---
 
+vi.mock("gpt-tokenizer", () => ({
+  encode: (text: string) => Array.from(text),
+}));
+
+vi.mock("@/hooks/useUserTimezone", () => ({
+  useUserTimezone: () => ({ timezone: "UTC" }),
+}));
+
+vi.mock("@/lib/date-utils", () => ({
+  formatInUserTz: (date: Date) => date.toISOString(),
+}));
+
 vi.mock("@/components/MarkdownRenderer", () => ({
   MarkdownRenderer: ({ children }: { children: React.ReactNode }) => <div data-testid="markdown">{children}</div>,
 }));
@@ -232,10 +244,10 @@ describe("SystemMessageBubble", () => {
     expect(screen.queryByTestId("markdown")).toBeNull();
   });
 
-  test("shows char count badge", () => {
+  test("shows token count badge", () => {
     render(<SystemMessageBubble message={systemMessage} />);
     const badge = screen.getByTestId("badge");
-    expect(badge.textContent).toContain("chars");
+    expect(badge.textContent).toContain("tokens");
   });
 });
 
