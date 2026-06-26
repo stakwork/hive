@@ -74,6 +74,14 @@ export function NeighborView({
                 >
                   {edge.neighbor_node.name}
                 </button>
+                {edge.neighbor_node.node_type === "Lingo" && edge.neighbor_node.lingo_type && (
+                  <span
+                    className="shrink-0 rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground font-mono"
+                    data-testid={`lingo-type-badge-${edge.edge_ref_id}`}
+                  >
+                    {edge.neighbor_node.lingo_type}
+                  </span>
+                )}
                 <span className="shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium text-muted-foreground bg-muted">
                   {edge.edge_type}
                 </span>

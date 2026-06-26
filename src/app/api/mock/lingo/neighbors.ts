@@ -8,6 +8,8 @@ export interface NeighborNode {
   // Present when node_type === "LingoDefinition"
   valid_from?: string;
   valid_until?: string | null;
+  // Present when node_type === "Lingo"
+  lingo_type?: string;
 }
 
 export interface NeighborEdge {
