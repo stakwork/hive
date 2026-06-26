@@ -55,7 +55,6 @@ export async function GET(
     type: "Lingo",
     limit: String(limit),
     offset: String(offset),
-    sort: "created_at:desc",
   });
 
   try {
@@ -89,6 +88,8 @@ export async function GET(
       definition: n.properties?.definition ?? null,
       date_added_to_graph: n.date_added_to_graph,
     }));
+
+    nodes.sort((a: { date_added_to_graph: number }, b: { date_added_to_graph: number }) => (b.date_added_to_graph ?? 0) - (a.date_added_to_graph ?? 0));
 
     return NextResponse.json({
       success: true,
