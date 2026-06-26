@@ -27,6 +27,7 @@ import { logger } from "@/lib/logger";
 import { ArtifactType } from "@prisma/client";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { addEdgeBulk, searchLatestByTypes } from "@/services/swarm/api/nodes";
+import type { JarvisGraphNode } from "@/services/swarm/api/nodes";
 import type { JarvisConnectionConfig } from "@/types/jarvis";
 import {
   PULL_REQUEST,
@@ -46,6 +47,17 @@ const FULL_LIMIT = 100_000;
 // Newest-window size for incremental fetches; widened if the boundary (a node
 // at-or-below the high-water) isn't reached.
 const INCREMENTAL_LIMIT = 2_000;
+
+// The PR backfill is the one heavy read here (~7 s / ~6 MB for ~3400 PRs with
+// properties, more on larger swarms), so it must NOT use the default 7 s write
+// timeout — that would abort a legitimate full pull and silently link nothing.
+const PR_FETCH_TIMEOUT_MS = 45_000;
+
+// Wall-clock cap for a single workspace's link pass. The route allows 300 s
+// across all workspaces (sequential), so no one swarm — especially a slow or
+// unreachable one — may dominate. Once exceeded, remaining edge chunks are left
+// for the next run (tasks aren't marked, so they simply retry).
+export const WORKSPACE_BUDGET_MS = 60_000;
 
 interface SyncState {
   prLink?: { highWater?: string };
@@ -86,21 +98,35 @@ function readHighWaterSec(state: SyncState): number {
   return Number.isNaN(t) ? 0 : Math.floor(t / 1000);
 }
 
+type PrFetch =
+  | { ok: true; nodes: JarvisGraphNode[]; newestSec: number }
+  | { ok: false; endpointMissing: boolean; error?: string };
+
 /**
  * Fetch `PullRequest` nodes newer than `sinceSec` (0 = backfill / all), with
- * properties. Returns the matching nodes plus the newest `date_added_to_graph`
- * observed across the whole fetch (for advancing the high-water). The endpoint
- * has no server-side filter, so for incremental fetches we widen the window
- * until a node at-or-below the boundary appears (proving completeness).
+ * properties. On success returns the matching nodes plus the newest
+ * `date_added_to_graph` observed (for advancing the high-water). On any read
+ * failure returns `ok:false` (NOT an empty set) so the caller can retry instead
+ * of mistaking a transient failure for "no PRs to link." The endpoint has no
+ * server-side filter, so for incremental fetches we widen the window until a
+ * node at-or-below the boundary appears (proving completeness).
  */
 async function fetchPrNodesSince(
   config: JarvisConnectionConfig,
   sinceSec: number,
-): Promise<{ nodes: Awaited<ReturnType<typeof searchLatestByTypes>>; newestSec: number }> {
+): Promise<PrFetch> {
   let limit = sinceSec === 0 ? FULL_LIMIT : INCREMENTAL_LIMIT;
 
   for (;;) {
-    const nodes = await searchLatestByTypes(config, { [PULL_REQUEST]: limit }, { withProperties: true });
+    const res = await searchLatestByTypes(
+      config,
+      { [PULL_REQUEST]: limit },
+      { withProperties: true, timeoutMs: PR_FETCH_TIMEOUT_MS },
+    );
+    if (!res.ok) {
+      return { ok: false, endpointMissing: !!res.endpointMissing, error: res.error };
+    }
+    const nodes = res.nodes;
     const newestSec = nodes[0]?.date_added_to_graph ?? 0;
     const oldestSec = nodes[nodes.length - 1]?.date_added_to_graph ?? 0;
 
@@ -113,16 +139,14 @@ async function fetchPrNodesSince(
         sinceSec === 0
           ? nodes
           : nodes.filter((n) => (n.date_added_to_graph ?? 0) > sinceSec);
-      return { nodes: filtered, newestSec };
+      return { ok: true, nodes: filtered, newestSec };
     }
     limit = Math.min(limit * 4, FULL_LIMIT);
   }
 }
 
 /** repo#number → ref_id, from PR graph nodes. Skips nodes missing properties. */
-function buildPrMap(
-  nodes: Awaited<ReturnType<typeof searchLatestByTypes>>,
-): Map<string, string> {
+function buildPrMap(nodes: JarvisGraphNode[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const n of nodes) {
     const repo = n.properties?.repo;
@@ -188,37 +212,93 @@ async function linkWorkspace(
 
   const state = parseState(workspace.jarvisSyncState);
   const sinceSec = readHighWaterSec(state);
-  const { nodes, newestSec } = await fetchPrNodesSince(config, sinceSec);
+
+  const fetched = await fetchPrNodesSince(config, sinceSec);
+  if (!fetched.ok) {
+    // 404 ⇒ this backend lacks the search endpoint (version mismatch): skip
+    // quietly. Any other failure (timeout/5xx) is transient — surface it and
+    // leave every task unmarked so the next run retries.
+    if (fetched.endpointMissing) {
+      return { workspaceId: workspace.id, slug: workspace.slug, skipped: "jarvis search endpoint missing (404)" };
+    }
+    return {
+      workspaceId: workspace.id,
+      slug: workspace.slug,
+      linked: 0,
+      pending: tasks.length,
+      capped: false,
+      errors: [`PR fetch failed: ${fetched.error ?? "unknown"}`],
+    };
+  }
+  const { nodes, newestSec } = fetched;
   const prMap = buildPrMap(nodes);
 
-  const edges: ReturnType<typeof taskPrEdge>[] = [];
-  const linkedTaskIds: string[] = [];
+  // Tasks with no resolvable PR URL are marked unconditionally (no edge to
+  // write). Tasks whose PRs all resolve are queued with their edges so they can
+  // be marked only once those edges actually land.
+  const noEdgeTaskIds: string[] = [];
+  const resolved: { taskId: string; edges: ReturnType<typeof taskPrEdge>[] }[] = [];
   let pending = 0;
 
   for (const task of tasks) {
     const refs = taskPrRefs(task);
-
-    // No usable PR URL on the artifact(s): nothing to ever resolve — mark linked
-    // so it stops consuming a scan slot every run.
     if (refs.length === 0) {
-      linkedTaskIds.push(task.id);
+      noEdgeTaskIds.push(task.id);
       continue;
     }
-
     const refIds = refs.map((r) => prMap.get(prNodeKey(r.repo, r.number)));
     if (refIds.some((id) => !id)) {
       // At least one PR not ingested yet — retry next run, don't mark.
       pending++;
       continue;
     }
-
-    for (const refId of refIds) edges.push(taskPrEdge(task.id, task.title, refId!));
-    linkedTaskIds.push(task.id);
+    resolved.push({ taskId: task.id, edges: refIds.map((id) => taskPrEdge(task.id, task.title, id!)) });
   }
 
-  for (const part of chunk(edges, BULK_CHUNK)) {
-    const res = await addEdgeBulk(config, part);
-    if (!res.success) errors.push(...res.errors);
+  const linkedTaskIds: string[] = [...noEdgeTaskIds];
+  let endpointMissing = false;
+  let budgetHit = false;
+
+  // Flush edges in BULK_CHUNK batches, marking a task linked ONLY after its
+  // edges land (never split a task's edges across batches). Stop on the
+  // per-workspace budget so a slow swarm yields to the next.
+  const deadline = Date.now() + WORKSPACE_BUDGET_MS;
+  let batchEdges: ReturnType<typeof taskPrEdge>[] = [];
+  let batchTaskIds: string[] = [];
+
+  const flush = async (): Promise<boolean> => {
+    if (batchEdges.length === 0) return true;
+    const res = await addEdgeBulk(config, batchEdges);
+    if (res.endpointMissing) {
+      endpointMissing = true;
+      batchEdges = [];
+      batchTaskIds = [];
+      return false;
+    }
+    if (res.success) linkedTaskIds.push(...batchTaskIds);
+    else errors.push(...res.errors);
+    batchEdges = [];
+    batchTaskIds = [];
+    return true;
+  };
+
+  for (const { taskId, edges: taskEdges } of resolved) {
+    if (Date.now() >= deadline) {
+      budgetHit = true;
+      break;
+    }
+    if (batchEdges.length + taskEdges.length > BULK_CHUNK) {
+      if (!(await flush())) break; // endpointMissing — stop writing
+    }
+    batchEdges.push(...taskEdges);
+    batchTaskIds.push(taskId);
+  }
+  if (!endpointMissing) await flush();
+
+  // A 404 from the edge endpoint means this backend can't take the writes at
+  // all — skip quietly rather than spam errors (mirrors the search-404 path).
+  if (endpointMissing && linkedTaskIds.length === 0) {
+    return { workspaceId: workspace.id, slug: workspace.slug, skipped: "jarvis edge endpoint missing (404)" };
   }
 
   if (linkedTaskIds.length > 0) {
@@ -228,10 +308,11 @@ async function linkWorkspace(
     });
   }
 
-  // Capped only when we hit the batch limit AND made progress, so a batch of
-  // perpetually-pending tasks can't trigger runaway self-chaining.
+  // Capped when there's more to do AND we made progress, so a batch of
+  // perpetually-pending tasks can't trigger runaway self-chaining. Either we
+  // filled the task batch, or the budget cut the edge writes short.
   const linked = linkedTaskIds.length;
-  const capped = tasks.length === maxPerRun && linked > 0;
+  const capped = (tasks.length === maxPerRun || budgetHit) && linked > 0;
 
   // Advance the high-water only on a fully-drained pass (see file header).
   if (!capped && newestSec > sinceSec) {
@@ -280,7 +361,7 @@ export async function runJarvisPrLink(
       const result = await linkWorkspace(ws, config, maxPerRun);
       if (result.capped) anyCapped = true;
       if (result.errors && result.errors.length > 0) {
-        logger.warn(`[JARVIS PR LINK] ${ws.slug}: ${result.errors.length} edge errors`, LOG, {
+        logger.warn(`[JARVIS PR LINK] ${ws.slug}: ${result.errors.length} errors`, LOG, {
           errors: result.errors.slice(0, 5),
         });
       }
